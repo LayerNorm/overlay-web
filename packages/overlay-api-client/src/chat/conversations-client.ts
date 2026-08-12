@@ -99,7 +99,7 @@ export class ConversationsClient {
   }
 
   addMessage(body: ConversationMessageRequest, init?: MutationRequestInit) {
-    return this.http.json<{ success: boolean; conversationId: string; turnId: string }>(
+    return this.http.json<{ success: boolean; conversationId: string; turnId: string; messageId?: string }>(
       '/api/v1/conversations/message',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
@@ -186,6 +186,13 @@ export class ConversationsClient {
     return this.http.json<{ updated: number }>(
       '/api/v1/conversations/notifications',
       this.http.jsonRequest({ notificationIds }, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  markConversationNotificationsRead(conversationId: string, init?: MutationRequestInit) {
+    return this.http.json<{ updated: number }>(
+      '/api/v1/conversations/notifications',
+      this.http.jsonRequest({ conversationId }, { ...init, method: 'PATCH' }),
     )
   }
 

@@ -53,6 +53,7 @@ export type RoomMessageView = {
   createdAt: number
   eventSequence?: number
   editedAt?: number
+  editHistory?: Array<{ content: string; editedAt: number }>
   deletedAt?: number
   delivery?: 'sending' | 'failed'
   /** Plain text used for copy, edit, and quote-reply. */

@@ -230,6 +230,7 @@ export const billingTopUpStatus = pgEnum('overlay_billing_top_up_status', [
   'succeeded',
   'failed',
   'canceled',
+  'refunded',
 ])
 
 export const billingProviderEventStatus = pgEnum('overlay_billing_provider_event_status', [
@@ -1608,6 +1609,7 @@ export const billingTopUps = pgTable('billing_top_ups', {
   providerCustomerId: text('provider_customer_id'),
   providerPaymentIntentId: text('provider_payment_intent_id'),
   errorMessage: text('error_message'),
+  refundedAmountCents: integer('refunded_amount_cents'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

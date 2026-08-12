@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation'
 import { AgentEditorDialog } from './AgentEditorDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
+import { dispatchAgentDirectoryChanged, NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 
 const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   ['showcase-research', 'Research partner', 'Finds primary evidence and challenges assumptions.', '#2563eb'],
@@ -105,6 +105,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     try {
       if (editing) await overlayAppClient.agents.update(activeWorkspaceId, editing.id, input)
       else await overlayAppClient.agents.create(activeWorkspaceId, input)
+      dispatchAgentDirectoryChanged(activeWorkspaceId)
       setDialogOpen(false)
       setEditing(null)
       await load()
@@ -145,6 +146,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     setError(null)
     try {
       await overlayAppClient.agents.archive(activeWorkspaceId, editing.id)
+      dispatchAgentDirectoryChanged(activeWorkspaceId)
       setDialogOpen(false)
       setEditing(null)
       await load()

@@ -15,7 +15,6 @@ import { markNewEmptyChat, upsertCachedChat } from '@/shared/chat/chat-list-cach
 import { createIdempotencyKey, toRequestInit } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 const nextSidebarActionMutation = createKnowledgeMutationPublisher(
   `web-sidebar-action:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
@@ -30,7 +29,6 @@ function publishCreatedNote(id: string): void {
 export interface UseAppSidebarActionsOptions {
   user: object | null
   pathname: string
-  searchParams: URLSearchParams
   isFreeTier?: boolean
   requireAuth: (reason: GateReason) => void
   onCloseMobileMenu: () => void
@@ -54,7 +52,6 @@ function isKnownActionKey(actionKey: OverlaySidebarActionKey): actionKey is
 export function useAppSidebarActions({
   user,
   pathname,
-  searchParams,
   isFreeTier = false,
   requireAuth,
   onCloseMobileMenu,
@@ -63,7 +60,6 @@ export function useAppSidebarActions({
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
   const { settings } = useAppSettings()
-  const { appDataCapabilities } = useOverlayCapabilities()
 
   const createChat = useCallback(async () => {
     if (!user) {
@@ -141,62 +137,33 @@ export function useAppSidebarActions({
       return false
     }
     const idempotencyKey = createIdempotencyKey()
-    if (appDataCapabilities.provider === 'postgres') {
-      const res = await overlayAppClient.notes.createResponse(
-        {
-          title: 'Untitled',
-          content: '',
-        },
-        toRequestInit({ idempotencyKey }),
-      )
-      if (!res.ok) return false
-      const data = await res.json() as {
-        id?: string
-        note?: {
-          _id: string
-          title?: string
-          content?: string
-          tags?: string[]
-          createdAt?: number
-          updatedAt?: number
-          projectId?: string
-        }
-      }
-      if (!data.id) return false
-      publishCreatedNote(data.id)
-      onCloseMobileMenu()
-      router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
-      return true
-    }
-
-    const parentId = pathname.startsWith('/app/files') ? searchParams.get('folder') : null
-    const res = await overlayAppClient.files.createResponse(
+    const res = await overlayAppClient.notes.createResponse(
       {
-        kind: 'note',
-        name: 'Untitled',
-        textContent: '',
-        parentId,
+        title: 'Untitled',
+        content: '',
       },
-      { idempotencyKey },
+      toRequestInit({ idempotencyKey }),
     )
     if (!res.ok) return false
     const data = await res.json() as {
       id?: string
-      file?: {
+      note?: {
         _id: string
-        name?: string
+        title?: string
         content?: string
-        textContent?: string
+        tags?: string[]
         createdAt?: number
         updatedAt?: number
+        projectId?: string
       }
     }
-    if (!data.id) return false
-    publishCreatedNote(data.id)
+    const noteId = data.id ?? data.note?._id
+    if (!noteId) return false
+    publishCreatedNote(noteId)
     onCloseMobileMenu()
-    router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
+    router.push(`/app/notes?id=${encodeURIComponent(noteId)}`)
     return true
-  }, [appDataCapabilities.provider, onCloseMobileMenu, pathname, requireAuth, router, searchParams, user])
+  }, [onCloseMobileMenu, requireAuth, router, user])
 
   const createProject = useCallback(async () => {
     if (!user) {

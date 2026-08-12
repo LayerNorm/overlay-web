@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -174,14 +175,16 @@ export function DirectMessageExperience({
     && appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
-  // BFF event long-poll is the Postgres transport and a Convex fallback when
-  // the browser subscription is offline (token mint delay, transient JWKS
-  // failure). On Convex, ConvexRoomMessageSubscription remains primary.
+  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
+    && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
+  // A Convex WebSocket subscription and BFF long-poll must never reconcile the
+  // same optimistic row concurrently: that produces a second visible swap
+  // after send. Long-poll remains the fallback until Convex auth is ready.
   const roomEventSyncEnabled = !showcase
     && appDataCapabilities.supportsRealtime
     && (
       appDataCapabilities.provider === 'postgres'
-      || appDataCapabilities.provider === 'convex'
+      || (appDataCapabilities.provider === 'convex' && !convexRoomSubscriptionEnabled)
     )
   const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
@@ -200,6 +203,7 @@ export function DirectMessageExperience({
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
@@ -302,6 +306,8 @@ export function DirectMessageExperience({
     closeSourcesPanel,
     openAttachmentPreview,
     openFilePreview,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
   } = useChatPanels()
@@ -511,9 +517,10 @@ export function DirectMessageExperience({
       // decide whether its critical transcript can open.
       void Promise.allSettled([loadPresence(), loadCollaboration()])
       void Promise.all([loadParticipants(), loadMessages()])
-        .catch(() => {
-          if (!cancelled) setNotice('This conversation is unavailable.')
-        })
+        // A room can receive its transcript through the realtime transport
+        // while one of these initial BFF reads is transiently unavailable.
+        // Do not turn that recoverable race into a false access failure.
+        .catch(() => undefined)
         .finally(() => {
           if (!cancelled) setLoading(false)
         })
@@ -744,7 +751,7 @@ export function DirectMessageExperience({
         description: participant.principalType === 'agent' ? 'Agent' : 'Member',
         icon: 'UsersRound',
       }))
-    return items.length ? [{ type: 'person', label: 'People & agents', icon: 'UsersRound', items }] : []
+    return items.length ? [{ type: 'person', label: 'Members', icon: 'UsersRound', items }] : []
   }, [currentPrincipalId, participants])
 
   function resolveMentionTargets(text: string): string[] {
@@ -839,9 +846,9 @@ export function DirectMessageExperience({
           ? { replyToTurnId: options.reply.replyToTurnId, replySnippet: options.reply.snippet }
           : {}),
       })
-      await loadMessages()
+      if (!convexRoomSubscriptionEnabled) await loadMessages()
       if (invokedAgents.length) {
-        const humanMessageId = messagesRef.current.find((message) => (
+        const humanMessageId = saved.messageId ?? messagesRef.current.find((message) => (
           message.clientNonce === clientNonce
         ))?.id
         if (humanMessageId) {
@@ -940,7 +947,7 @@ export function DirectMessageExperience({
       // The reply is still persisted server-side; the next poll picks it up.
     } finally {
       setStreamingAgentReplies({})
-      await loadMessages().catch(() => undefined)
+      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
     }
   }
 
@@ -1143,6 +1150,8 @@ export function DirectMessageExperience({
     attachmentPreviewMode,
     closeAttachmentPreview,
     closeSourcesPanel,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
     renderAttachmentViewer,
@@ -1328,7 +1337,7 @@ export function DirectMessageExperience({
 
   return (
     <>
-      {convexLiveSyncEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
+      {convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
         <ConvexRoomMessageSubscription
           accessToken={convexAccessToken}
           actorUserId={authUser.id}
@@ -1431,6 +1440,7 @@ export function DirectMessageExperience({
                   {participants.length}
                 </button>
                 <button
+                  ref={menuTriggerRef}
                   type="button"
                   aria-label="Conversation options"
                   onClick={() => setMenuOpen((open) => !open)}
@@ -1438,27 +1448,40 @@ export function DirectMessageExperience({
                 >
                   <MoreHorizontal size={15} />
                 </button>
-                {menuOpen ? (
-                  <div className="absolute right-0 top-10 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-xl">
+                <FloatingMenu
+                  anchorRef={menuTriggerRef}
+                  open={menuOpen}
+                  onOpenChange={setMenuOpen}
+                  align="end"
+                  className="w-48 p-1"
+                >
                     <MenuButton
                       icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
                       label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}
-                      onClick={() => void updateState({
-                        notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
-                      }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({
+                          notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
+                        }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')
+                      }}
                     />
                     <MenuButton
                       icon={Bell}
                       label="Mark unread"
-                      onClick={() => void updateState({ markUnread: true }, 'Marked unread')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({ markUnread: true }, 'Marked unread')
+                      }}
                     />
                     <MenuButton
                       icon={Archive}
                       label="Archive"
-                      onClick={() => void updateState({ archived: true }, 'Conversation archived')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({ archived: true }, 'Conversation archived')
+                      }}
                     />
-                  </div>
-                ) : null}
+                </FloatingMenu>
               </div>
             )}
           />
@@ -1719,13 +1742,13 @@ function MenuButton({
   onClick(): void
 }) {
   return (
-    <button
+    <MenuItem
       type="button"
       onClick={onClick}
-      className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="h-8 rounded-md px-2"
     >
       <Icon size={13} />
       {label}
-    </button>
+    </MenuItem>
   )
 }

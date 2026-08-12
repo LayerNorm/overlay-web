@@ -356,6 +356,25 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return result.rows[0] ? principalFromRow(result.rows[0]) : null
   }
 
+  async updatePrincipal(args: {
+    principalId: string
+    workspaceId: string
+    displayName?: string
+    email?: string
+    now: number
+  }): Promise<WorkspacePrincipal> {
+    const result = await this.db.execute<PrincipalRow>(sql`
+      UPDATE workspace_principals
+      SET display_name = COALESCE(${args.displayName ?? null}, display_name),
+          email = COALESCE(lower(${args.email ?? null}), email),
+          updated_at = ${new Date(args.now)}
+      WHERE id = ${args.principalId}
+        AND workspace_id = ${args.workspaceId}
+      RETURNING ${principalColumns}
+    `)
+    return principalFromRow(required(result.rows[0], 'updated principal'))
+  }
+
   async listPrincipals(args: {
     workspaceId: string
     includeArchived?: boolean

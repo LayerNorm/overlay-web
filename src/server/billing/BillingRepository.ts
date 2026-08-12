@@ -199,6 +199,13 @@ export interface BillingRepository {
     stripePaymentIntentId?: string
     errorMessage?: string
   }): Promise<unknown>
+  reverseTopUp(args: {
+    userId: string
+    billingAccountId?: string
+    stripePaymentIntentId: string
+    refundAmountCents: number
+    reason: string
+  }): Promise<{ reversed: boolean }>
   resolveBillingAccountIdByProviderReference(args: {
     provider: string
     providerCustomerId?: string

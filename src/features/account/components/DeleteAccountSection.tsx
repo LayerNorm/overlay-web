@@ -80,7 +80,7 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors sm:w-auto ${
+        className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
           isLandingDark
             ? 'text-red-400 hover:bg-red-950/40 hover:text-red-300'
             : 'text-red-600 hover:bg-red-50 hover:text-red-700'

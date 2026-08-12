@@ -26,11 +26,10 @@ import {
   SettingsPageShell,
   ThemePresetRow,
 } from '@overlay/modules-react/settings'
-import { getExtensionComponent } from '@/extensions/registry'
+import { renderExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
-import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
 import { isWorkspaceSettingsTab, WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
 import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
@@ -59,7 +58,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { capabilities, appDataCapabilities } = useOverlayCapabilities()
+  const { capabilities } = useOverlayCapabilities()
   const appShell = useMemo(
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
@@ -100,9 +99,9 @@ export default function SettingsPage() {
     () => resolveSettingsPanel(settingsPanels, section),
     [section, settingsPanels],
   )
-  const ExtensionSettingsPanel = useMemo(
-    () => getExtensionComponent(registeredPanel?.componentKey),
-    [registeredPanel?.componentKey],
+  const extensionSettingsPanel = renderExtensionComponent(
+    registeredPanel?.componentKey,
+    { settingsPanel: registeredPanel ?? undefined },
   )
 
   useEffect(() => {
@@ -202,10 +201,7 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'account' && (
-            <div className="space-y-5">
-              <AccountPageContent embedded />
-              {appDataCapabilities.supportsApiKeys ? <ApiKeySettings /> : null}
-            </div>
+            <AccountPageContent embedded />
           )}
 
           {!isLoading && section === 'workspace' && (
@@ -285,11 +281,9 @@ export default function SettingsPage() {
             </SettingsCard>
           )}
 
-          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && ExtensionSettingsPanel ? (
-            <ExtensionSettingsPanel settingsPanel={registeredPanel ?? undefined} />
-          ) : null}
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) ? extensionSettingsPanel : null}
 
-          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && !ExtensionSettingsPanel && (
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && !extensionSettingsPanel && (
             <SettingsCard title={registeredPanel?.label ?? sectionLabel}>
               <p>
                 {registeredPanel

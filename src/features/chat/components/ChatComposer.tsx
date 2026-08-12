@@ -291,6 +291,7 @@ function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | '
   const targets = [
     mentionCategories?.some((category) => category.type === 'person') ? 'members' : null,
     capabilities.files ? 'files' : null,
+    capabilities.knowledge ? 'knowledge bases' : null,
     capabilities.skills ? 'skills' : null,
     capabilities.automations ? 'automations' : null,
     capabilities.mcpServers ? 'MCP servers' : null,
@@ -425,7 +426,7 @@ function AttachMenuButton({
       {icon}
       <span>{label}</span>
       {showSwitch ? (
-        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-[var(--foreground)]' : 'bg-[var(--border)]'}`}>
+        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-[var(--muted)]' : 'bg-[var(--border)]'}`}>
           <span className={`h-3 w-3 rounded-full bg-[var(--surface-elevated)] transition-transform ${active ? 'translate-x-3' : ''}`} />
         </span>
       ) : checked ? (

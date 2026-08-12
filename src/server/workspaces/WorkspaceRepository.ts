@@ -115,6 +115,13 @@ export interface WorkspaceRepository {
   createPrincipal(input: CreateWorkspacePrincipalInput): Promise<WorkspacePrincipal>
   getPrincipal(principalId: string): Promise<WorkspacePrincipal | null>
   getHumanPrincipal(args: { workspaceId: string; userId: string }): Promise<WorkspacePrincipal | null>
+  updatePrincipal(args: {
+    principalId: string
+    workspaceId: string
+    displayName?: string
+    email?: string
+    now: number
+  }): Promise<WorkspacePrincipal>
   listPrincipals(args: {
     workspaceId: string
     includeArchived?: boolean

@@ -184,6 +184,7 @@ export function createOverlayServerContext(
   const memoryService = new MemoryService(appData.repositories.memories)
   const auditService = new AuditService(appData.repositories.audit)
   const eventBus = appConfig.eventBus ?? new InMemoryEventBus()
+  const rateLimiter = appConfig.rateLimiter ?? createRateLimiter(runtimeConfig)
   const lifecycleEvents = new LifecycleEventPublisher({
     enabled: () => runtimeConfig?.features.lifecycleEvents !== false,
     eventBus,
@@ -195,7 +196,7 @@ export function createOverlayServerContext(
       createPostHogLifecycleSink(),
       createOpenTelemetryLifecycleSink(),
       ...(transactionalEmailEnabled(runtimeConfig)
-        ? [createEmailLifecycleSink(appData.repositories.outbox)]
+        ? [createEmailLifecycleSink(appData.repositories.outbox, rateLimiter)]
         : []),
     ],
   })
@@ -304,7 +305,7 @@ export function createOverlayServerContext(
 
   const workspaceGovernanceService = new WorkspaceGovernanceService({
     audit: appData.repositories.audit,
-    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    rateLimiter,
     repository: workspaceRepository,
     workspaces: workspaceService,
     appDataProvider: appData.capabilities.provider,
@@ -368,7 +369,7 @@ export function createOverlayServerContext(
     objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
-    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    rateLimiter,
     eventBus,
     appData,
     appDataCapabilities: appData.capabilities,

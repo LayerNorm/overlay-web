@@ -3,6 +3,10 @@
 import AppSidebar from '@/components/layout/AppSidebar'
 import { AgentsInlinePanel, KnowledgeInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
 import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
+import {
+  ActivityInlinePanel,
+  ArchivedInlinePanel,
+} from '@/features/chat/components/ChatSubviewInlinePanels'
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
 import { useSearchParams } from 'next/navigation'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
@@ -44,15 +48,21 @@ export function AppShellSidebar() {
           />
         ),
       }}
-      renderChatPanel={({ refreshKey, onNavigate }) => (
-        <ChatInlinePanel
-          refreshKey={refreshKey}
-          searchQuery=""
-          onNavigate={onNavigate}
-          baseHref={chatBaseHref}
-          workspaceId={activeWorkspaceId}
-          seededChats={publicShowcase ? SHOWCASE_CHAT_SUMMARIES : undefined}
-        />
+      renderChatPanel={({ refreshKey, onNavigate, view }) => (
+        // Activity and Archived are their own routes with their own lists; only
+        // the conversation subviews should render the chat list.
+        view === 'activity' ? <ActivityInlinePanel onNavigate={onNavigate} />
+        : view === 'archived' ? <ArchivedInlinePanel onNavigate={onNavigate} />
+        : (
+          <ChatInlinePanel
+            refreshKey={refreshKey}
+            searchQuery=""
+            onNavigate={onNavigate}
+            baseHref={chatBaseHref}
+            workspaceId={activeWorkspaceId}
+            seededChats={publicShowcase ? SHOWCASE_CHAT_SUMMARIES : undefined}
+          />
+        )
       )}
       renderAutomationsPanel={({ onNavigate }) => (
         publicShowcase

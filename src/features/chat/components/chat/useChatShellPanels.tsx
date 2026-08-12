@@ -7,6 +7,7 @@ import {
   type AttachmentPreviewMode,
 } from '@overlay/chat-react'
 import { ChatSourcesPanel } from '../ChatSourcesPanel'
+import type { PanelPresentation } from './useChatPanels'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 
 export type RenderAttachmentViewer = (args: {
@@ -19,6 +20,8 @@ export function useChatShellPanels({
   attachmentPreviewMode,
   closeAttachmentPreview,
   closeSourcesPanel,
+  panelPresentation,
+  setPanelPresentation,
   setAttachmentPreviewMode,
   sourcesPanel,
   renderAttachmentViewer,
@@ -27,6 +30,8 @@ export function useChatShellPanels({
   attachmentPreviewMode: AttachmentPreviewMode
   closeAttachmentPreview: () => void
   closeSourcesPanel: () => void
+  panelPresentation: PanelPresentation
+  setPanelPresentation: (presentation: PanelPresentation) => void
   setAttachmentPreviewMode: (mode: AttachmentPreviewMode) => void
   sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
   renderAttachmentViewer: RenderAttachmentViewer
@@ -45,6 +50,8 @@ export function useChatShellPanels({
       open
       onClose={closeSourcesPanel}
       sources={sourcesPanel.sources}
+      presentation={panelPresentation}
+      onPresentationChange={setPanelPresentation}
     />
   ) : null
 
@@ -56,7 +63,7 @@ export function useChatShellPanels({
   const shellRightPanelWidth = attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : 380
   const shellRightPanelMode: 'docked' | 'floating' =
     sourcesPanel && !(attachmentPreview && attachmentPreviewMode === 'panel')
-      ? 'floating'
+      ? (panelPresentation === 'sidebar' ? 'docked' : 'floating')
       : 'docked'
 
   return {

@@ -27,7 +27,7 @@ export function Toggle({
       className={cn(
         'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-70',
         checked
-          ? 'border-[var(--foreground)] bg-[var(--foreground)]'
+          ? 'border-[var(--muted)] bg-[var(--muted)]'
           : 'border-[var(--border)] bg-[var(--surface-subtle)]',
         className,
       )}

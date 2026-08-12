@@ -146,6 +146,7 @@ export async function handleBffRoute(
     organizationId: auth.organizationId,
     pathname: request.nextUrl.pathname,
     userId: auth.userId,
+    workspaceId: request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined,
   })
   addDefaultAuthenticatedRouteRateLimits(rateLimits, bffSafety.defaultRateLimitEnabled, clientIp, auth.userId)
   if (auth.authType === 'api-key' && auth.apiKeyId) {

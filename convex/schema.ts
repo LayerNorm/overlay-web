@@ -194,7 +194,9 @@ export default defineSchema({
       v.literal('succeeded'),
       v.literal('failed'),
       v.literal('canceled'),
+      v.literal('refunded'),
     ),
+    refundedAmountCents: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     errorMessage: v.optional(v.string()),
@@ -1807,7 +1809,8 @@ export default defineSchema({
     activeWorkspaceId: v.string(),
     updatedAt: v.number(),
   })
-    .index('by_userId', ['userId']),
+    .index('by_userId', ['userId'])
+    .index('by_activeWorkspaceId', ['activeWorkspaceId']),
 
   // ────────────────────────────────────────────────────────────────────────────
   // Conversation collaboration tables
@@ -1862,7 +1865,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_workspaceId_principalId_createdAt', ['workspaceId', 'principalId', 'createdAt'])
-    .index('by_messageId_principalId', ['messageId', 'principalId']),
+    .index('by_messageId_principalId', ['messageId', 'principalId'])
+    .index('by_conversationId', ['conversationId']),
 
   conversationMessageReactions: defineTable({
     conversationId: v.id('conversations'),

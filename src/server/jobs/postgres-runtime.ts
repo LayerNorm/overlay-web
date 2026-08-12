@@ -66,6 +66,7 @@ import { PostgresEmailRecipientRepository } from '@/server/email/EmailRecipientR
 import { PostgresEmailSuppressionRepository } from '@/server/email/PostgresEmailSuppressionRepository'
 import { PostgresOutboxRepository } from './PostgresOutboxRepository'
 import { PostgresOutboxWorker } from './PostgresOutboxWorker'
+import { sanitizeJobError } from './sanitize-job-error'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
@@ -167,7 +168,7 @@ export function createPostgresRuntime(args: {
         } catch (error) {
           await automationRuns.failAttempt({
             attemptNumber: job.attempts,
-            error: error instanceof Error ? error.stack ?? error.message : String(error),
+            error: sanitizeJobError(error),
             runId,
             terminal: job.attempts >= job.maxAttempts,
           })

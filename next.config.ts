@@ -48,6 +48,12 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   output: process.env.NEXT_OUTPUT_MODE?.trim() === "standalone" ? "standalone" : undefined,
   transpilePackages: ["@overlay/app-core"],
+  // Explicit server action body size limit. Prevents DoS via large payloads.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
   async redirects() {
     if (!mintlifyDocsOrigin) return [];
 

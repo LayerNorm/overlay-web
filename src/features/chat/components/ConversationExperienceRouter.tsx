@@ -24,7 +24,7 @@ function readBrowserChatRoute(): SoftChatRoute | null {
 function CollaborationViewEmptyState({ view }: { view: 'dms' | 'channels' }) {
   const Icon = view === 'dms' ? Mail : Hash
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+    <div className="flex min-h-[100dvh] w-full items-center justify-center px-6 pb-16 text-center">
       <div className="max-w-sm">
         <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
           <Icon size={19} strokeWidth={1.7} />

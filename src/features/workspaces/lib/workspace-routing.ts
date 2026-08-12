@@ -2,6 +2,9 @@ const FALLBACK_SURFACE = 'chat'
 const APP_SURFACES = new Set([
   'activity',
   'admin',
+  // Missing here, buildWorkspaceHref falls back to 'chat', so selecting Archived
+  // silently navigated to /app/w/:id/chat — the new personal chat page.
+  'archived',
   'agents',
   'automations',
   'chat',

@@ -20,6 +20,7 @@ export type RoomMessageRecord = {
   createdAt: number
   eventSequence?: number
   editedAt?: number
+  editHistory?: Array<{ content: string; editedAt: number }>
   deletedAt?: number
   clientNonce?: string
   threadRootMessageId?: string
@@ -130,6 +131,7 @@ export function toRoomMessageView({
     createdAt: message.createdAt,
     eventSequence: message.eventSequence,
     editedAt: message.editedAt,
+    editHistory: message.editHistory,
     deletedAt: message.deletedAt,
     delivery: message.delivery,
     text: bodyText,

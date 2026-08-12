@@ -294,6 +294,39 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
     })
   }
 
+  async reverseTopUp(args: {
+    userId: string
+    billingAccountId?: string
+    stripePaymentIntentId: string
+    refundAmountCents: number
+    reason: string
+  }): Promise<{ reversed: boolean }> {
+    if (args.billingAccountId) {
+      return await convex.mutation<{ reversed: boolean }>(
+        'billing/accountSubscriptions:reverseTopUpByServer',
+        {
+          billingAccountId: args.billingAccountId,
+          refundAmountCents: args.refundAmountCents,
+          reason: args.reason,
+          serverSecret: this.serverSecret,
+          stripePaymentIntentId: args.stripePaymentIntentId,
+        },
+        { throwOnError: true },
+      ) ?? { reversed: false }
+    }
+    return await convex.mutation<{ reversed: boolean }>(
+      'billing/subscriptions:reverseTopUpByServer',
+      {
+        refundAmountCents: args.refundAmountCents,
+        reason: args.reason,
+        serverSecret: this.serverSecret,
+        stripePaymentIntentId: args.stripePaymentIntentId,
+        userId: args.userId,
+      },
+      { throwOnError: true },
+    ) ?? { reversed: false }
+  }
+
   async resolveBillingAccountIdByProviderReference(args: {
     provider: string
     providerCustomerId?: string

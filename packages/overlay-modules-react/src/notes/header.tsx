@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
-import { ArrowLeft, FolderOpen, MessageCircle, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2, X } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
 import { AppScreenHeader } from '../shell'
 
@@ -48,7 +48,11 @@ export function NotebookHeader({
   onTitleKeyDown,
   onToggleAgentPanel,
 }: NotebookHeaderProps) {
-  const headerClassName = compact ? 'h-11 min-h-11 gap-0 px-0 py-0' : 'px-6'
+  // AppScreenHeader's base padding is `px-3 sm:px-6` and cn() concatenates rather
+  // than merges, so a bare `px-0` loses to `sm:px-6` on anything desktop-width.
+  // The responsive variant has to be cancelled too, or the row keeps 24px of dead
+  // space before the back button on top of its own px-3.
+  const headerClassName = compact ? 'h-11 min-h-11 gap-0 px-0 py-0 sm:px-0' : 'px-6'
   const headerStyle = compact ? { height: 44, minHeight: 44, padding: 0 } : undefined
 
   if (!activeNote && loading) {
@@ -79,7 +83,7 @@ export function NotebookHeader({
   }
 
   return (
-    <AppScreenHeader className={compact ? headerClassName : 'px-0 py-0'} style={headerStyle}>
+    <AppScreenHeader className={compact ? headerClassName : 'px-0 py-0 sm:px-0'} style={headerStyle}>
       <div className={`flex flex-1 items-center justify-between gap-2 px-3 ${compact ? 'h-11' : ''}`}>
         {leading}
         {!hideBackButton ? (
@@ -110,7 +114,6 @@ export function NotebookHeader({
             </span>
           )}
           {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
-          {exportMenu}
           {onDeleteNote ? (
             <button
               type="button"
@@ -133,6 +136,9 @@ export function NotebookHeader({
           >
             <MessageCircle size={compact ? 13 : 16} />
           </button>
+          {/* Overflow menu sits last: it is the catch-all, so it belongs at the
+              edge rather than between the direct actions. */}
+          {exportMenu}
         </div> : null}
       </div>
       {agentPanelOpen ? assistantHeader : null}
@@ -143,6 +149,9 @@ export function NotebookHeader({
 export interface NotebookAgentHeaderProps {
   pendingDiffCount: number
   modelPicker: ReactNode
+  /** Floating overlays the note; sidebar docks the panel as a column. */
+  presentation?: 'floating' | 'sidebar'
+  onPresentationChange?: (presentation: 'floating' | 'sidebar') => void
   onAcceptAllDiffs: () => void
   onRejectAllDiffs: () => void
   onClose: () => void
@@ -151,10 +160,14 @@ export interface NotebookAgentHeaderProps {
 export function NotebookAgentHeader({
   pendingDiffCount,
   modelPicker,
+  presentation,
+  onPresentationChange,
   onAcceptAllDiffs,
   onRejectAllDiffs,
   onClose,
 }: NotebookAgentHeaderProps) {
+  const nextPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
+  const presentationLabel = presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'
   return (
     <div className="flex h-11 min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3">
       <span className="text-[13px] font-medium text-[var(--foreground)]">Assistant</span>
@@ -178,6 +191,19 @@ export function NotebookAgentHeader({
           </>
         )}
         {modelPicker}
+        {presentation && onPresentationChange ? (
+          <button
+            type="button"
+            onClick={() => onPresentationChange(nextPresentation)}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            aria-label={presentationLabel}
+            title={presentationLabel}
+          >
+            {presentation === 'floating'
+              ? <PanelRightOpen size={14} strokeWidth={1.8} />
+              : <Maximize2 size={14} strokeWidth={1.8} />}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClose}

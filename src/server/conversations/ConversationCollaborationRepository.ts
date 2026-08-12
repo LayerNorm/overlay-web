@@ -34,6 +34,11 @@ export interface ConversationCollaborationRepository {
     actorUserId: string
     workspaceId: string
   }): Promise<ConversationListRow[]>
+  /** Conversations the actor archived. Subtracted from the main list; shown in Archived. */
+  listArchivedConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationListRow[]>
   listMessages(args: {
     actorUserId: string
     beforeCreatedAt?: number

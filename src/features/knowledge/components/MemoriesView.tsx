@@ -4,6 +4,7 @@
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
+import { ListboxSelect } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
@@ -295,31 +296,27 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
             <div className="mt-3 grid grid-cols-2 gap-3">
               <label className="text-xs text-[var(--muted)]">
                 Type
-                <select
+                <ListboxSelect
                   value={addType ?? 'fact'}
-                  onChange={(event) => setAddType(event.target.value as Memory['type'])}
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-                >
-                  <option value="fact">Fact</option>
-                  <option value="preference">Preference</option>
-                  <option value="project">Project</option>
-                  <option value="decision">Decision</option>
-                  <option value="agent">Agent</option>
-                </select>
+                  onChange={(value) => setAddType(value as Memory['type'])}
+                  options={[
+                    { value: 'fact', label: 'Fact' },
+                    { value: 'preference', label: 'Preference' },
+                    { value: 'project', label: 'Project' },
+                    { value: 'decision', label: 'Decision' },
+                    { value: 'agent', label: 'Agent' },
+                  ]}
+                  className="mt-1 w-full"
+                />
               </label>
               <label className="text-xs text-[var(--muted)]">
                 Importance
-                <select
+                <ListboxSelect
                   value={addImportance}
-                  onChange={(event) => setAddImportance(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-                >
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
+                  onChange={setAddImportance}
+                  options={['1', '2', '3', '4', '5'].map((value) => ({ value, label: value }))}
+                  className="mt-1 w-full"
+                />
               </label>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">
