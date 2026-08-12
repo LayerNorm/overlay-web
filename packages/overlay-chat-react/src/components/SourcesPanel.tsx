@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { PanelRightOpen, Maximize2 } from 'lucide-react'
 import {
   faviconUrl,
   prettyUrlPath,
@@ -10,18 +11,49 @@ import {
 } from '@overlay/chat-core'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 
+/** Whether the panel floats over the page or docks as a right-hand column. */
+export type PanelPresentation = 'floating' | 'sidebar'
+
+function PresentationToggle({
+  presentation,
+  onPresentationChange,
+}: {
+  presentation: PanelPresentation
+  onPresentationChange: (presentation: PanelPresentation) => void
+}) {
+  const next: PanelPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
+  const label = presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'
+  return (
+    <button
+      type="button"
+      onClick={() => onPresentationChange(next)}
+      className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      aria-label={label}
+      title={label}
+    >
+      {presentation === 'floating'
+        ? <PanelRightOpen size={15} strokeWidth={1.75} />
+        : <Maximize2 size={15} strokeWidth={1.75} />}
+    </button>
+  )
+}
+
 export function SourcesPanel({
   open,
   onClose,
   onOpenSource,
   sources,
   variant = 'inline',
+  presentation,
+  onPresentationChange,
 }: {
   open: boolean
   onClose: () => void
   onOpenSource?: (url: string) => void
   sources: WebSourceItem[]
   variant?: 'inline' | 'shell'
+  presentation?: PanelPresentation
+  onPresentationChange?: (presentation: PanelPresentation) => void
 }) {
   useEffect(() => {
     if (!open) return
@@ -33,6 +65,9 @@ export function SourcesPanel({
   }, [open, onClose])
 
   const shellPanel = variant === 'shell'
+  const presentationToggle = presentation && onPresentationChange ? (
+    <PresentationToggle presentation={presentation} onPresentationChange={onPresentationChange} />
+  ) : null
   const sourceList = (
     <ul className="flex flex-col gap-1">
       {sources.flatMap((source, idx) => {
@@ -108,6 +143,7 @@ export function SourcesPanel({
         closeLabel="Close sources"
         aria-label="Sources"
         aria-hidden={!open}
+        actions={presentationToggle}
         compactHeader
         className="bg-[var(--sidebar-surface)]"
         bodyClassName="overflow-y-auto px-3 py-3"
@@ -121,10 +157,10 @@ export function SourcesPanel({
     <aside
       aria-label="Sources"
       aria-hidden={!open}
-      className={`absolute inset-y-2 right-2 z-30 hidden w-[min(40vw,380px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--sidebar-surface)] shadow-xl transition-[transform,opacity] duration-300 ease-[var(--overlay-ease)] md:flex ${
-        open
-          ? 'translate-x-0 opacity-100'
-          : 'pointer-events-none translate-x-[calc(100%+0.5rem)] opacity-0'
+      // Floating fades rather than slides, matching AppScreen's floating right
+      // panel so the two surfaces appear and disappear the same way.
+      className={`absolute inset-y-2 right-2 z-30 hidden w-[min(40vw,380px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--sidebar-surface)] shadow-xl transition-opacity duration-300 ease-[var(--overlay-ease)] md:flex ${
+        open ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
       <div className="flex h-full w-[min(40vw,380px)] flex-col">
@@ -132,6 +168,7 @@ export function SourcesPanel({
           title="Sources"
           onClose={onClose}
           closeLabel="Close sources"
+          actions={presentationToggle}
           compactHeader
           className="bg-[var(--sidebar-surface)]"
           bodyClassName="overflow-y-auto px-3 py-3"

@@ -193,6 +193,8 @@ export interface CanonicalNotebookEditorProps {
   externalInsertion?: { id: string; text: string }
   controlledAgentPanelOpen?: boolean
   agentPanelMode?: 'docked' | 'floating'
+  /** Lets the assistant header move itself between floating and docked. */
+  onAgentPanelModeChange?: (mode: 'docked' | 'floating') => void
   createNoteRequest?: number
   onHydrated?(note: NotebookNote): void
   onAgentPanelOpenChange?(open: boolean): void
@@ -251,6 +253,7 @@ export function CanonicalNotebookEditor({
   externalInsertion,
   controlledAgentPanelOpen,
   agentPanelMode = 'floating',
+  onAgentPanelModeChange,
   createNoteRequest,
   onHydrated,
   onAgentPanelOpenChange,
@@ -1175,6 +1178,10 @@ export function CanonicalNotebookEditor({
     <NotebookAgentHeader
       pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
       modelPicker={modelPicker}
+      presentation={onAgentPanelModeChange ? (agentPanelMode === 'docked' ? 'sidebar' : 'floating') : undefined}
+      onPresentationChange={onAgentPanelModeChange
+        ? (presentation) => onAgentPanelModeChange(presentation === 'sidebar' ? 'docked' : 'floating')
+        : undefined}
       onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
       onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
       onClose={() => void handleToggleAgentPanel()}

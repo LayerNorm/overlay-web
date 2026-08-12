@@ -9,8 +9,14 @@ import type {
 import type { WebSourceItem } from '@/shared/web/web-sources'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { shouldFetchTextContent } from '@/shared/files/file-viewer-types'
+import {
+  readStoredPanelPresentation,
+  storePanelPresentation,
+  type PanelPresentation,
+} from '@/shared/ui/panel-presentation'
 
 export type { AttachmentPreview, AttachmentPreviewMode }
+export type { PanelPresentation }
 
 const ATTACHMENT_PREVIEW_MODE_KEY = 'overlay_attachment_preview_mode'
 
@@ -30,6 +36,12 @@ export function useChatPanels() {
     setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
   }, [])
   const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
+
+  const [panelPresentation, setPanelPresentationState] = useState<PanelPresentation>(readStoredPanelPresentation)
+  const setPanelPresentation = useCallback((presentation: PanelPresentation) => {
+    setPanelPresentationState(presentation)
+    storePanelPresentation(presentation)
+  }, [])
 
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null)
   const [attachmentPreviewMode, setAttachmentPreviewModeState] = useState<AttachmentPreviewMode>(readStoredAttachmentPreviewMode)
@@ -90,6 +102,8 @@ export function useChatPanels() {
     openAttachmentPreview,
     openFilePreview,
     openSourcesPanel,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     setSourcesPanel,
     sourcesPanel,

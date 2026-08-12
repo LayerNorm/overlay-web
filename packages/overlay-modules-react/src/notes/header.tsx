@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
-import { ArrowLeft, FolderOpen, MessageCircle, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2, X } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
 import { AppScreenHeader } from '../shell'
 
@@ -149,6 +149,9 @@ export function NotebookHeader({
 export interface NotebookAgentHeaderProps {
   pendingDiffCount: number
   modelPicker: ReactNode
+  /** Floating overlays the note; sidebar docks the panel as a column. */
+  presentation?: 'floating' | 'sidebar'
+  onPresentationChange?: (presentation: 'floating' | 'sidebar') => void
   onAcceptAllDiffs: () => void
   onRejectAllDiffs: () => void
   onClose: () => void
@@ -157,10 +160,14 @@ export interface NotebookAgentHeaderProps {
 export function NotebookAgentHeader({
   pendingDiffCount,
   modelPicker,
+  presentation,
+  onPresentationChange,
   onAcceptAllDiffs,
   onRejectAllDiffs,
   onClose,
 }: NotebookAgentHeaderProps) {
+  const nextPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
+  const presentationLabel = presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'
   return (
     <div className="flex h-11 min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3">
       <span className="text-[13px] font-medium text-[var(--foreground)]">Assistant</span>
@@ -184,6 +191,19 @@ export function NotebookAgentHeader({
           </>
         )}
         {modelPicker}
+        {presentation && onPresentationChange ? (
+          <button
+            type="button"
+            onClick={() => onPresentationChange(nextPresentation)}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            aria-label={presentationLabel}
+            title={presentationLabel}
+          >
+            {presentation === 'floating'
+              ? <PanelRightOpen size={14} strokeWidth={1.8} />
+              : <Maximize2 size={14} strokeWidth={1.8} />}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClose}
