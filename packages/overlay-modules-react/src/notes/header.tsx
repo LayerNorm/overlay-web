@@ -110,7 +110,6 @@ export function NotebookHeader({
             </span>
           )}
           {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
-          {exportMenu}
           {onDeleteNote ? (
             <button
               type="button"
@@ -133,6 +132,9 @@ export function NotebookHeader({
           >
             <MessageCircle size={compact ? 13 : 16} />
           </button>
+          {/* Overflow menu sits last: it is the catch-all, so it belongs at the
+              edge rather than between the direct actions. */}
+          {exportMenu}
         </div> : null}
       </div>
       {agentPanelOpen ? assistantHeader : null}
