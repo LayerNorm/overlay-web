@@ -830,6 +830,7 @@ export default function AppSidebar({
         ? renderChatPanel({
             refreshKey: chatPanelRefreshKey,
             onNavigate: closeMobileDrawer,
+            view: chatsView,
           })
         : null}
       {panelKind === 'files' || panelKind === 'notes' ? (
