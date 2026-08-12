@@ -106,7 +106,7 @@ export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, onContinue, getModelDisplayName,
+  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
@@ -214,7 +214,7 @@ export function ChatExchange({
             )}
             {showTextBubble && (
               <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-                <MarkdownMessage text={userBodyText} isStreaming={false} />
+                <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
               </UserMessageBubble>
             )}
           </div>
