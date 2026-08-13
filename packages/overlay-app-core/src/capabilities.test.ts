@@ -24,6 +24,9 @@ test('resolveOverlayAppShellConfig hides capability-gated registries', () => {
       automations: false,
       projects: false,
       vectorSearch: false,
+      // Memories settings is gated on `memory` (managing the store), not on
+      // vectorSearch — a deployment can have memory without semantic search.
+      memory: false,
     },
   })
 
