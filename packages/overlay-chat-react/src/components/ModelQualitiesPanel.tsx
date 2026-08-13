@@ -93,7 +93,11 @@ export function ModelQualitiesPanel({
             onChange={(next) => onReasoningChange(next === 'provider-default' ? undefined : next)}
             portal
             className="min-w-0 max-w-[8.25rem] flex-1"
-            buttonClassName="h-6 w-full bg-[var(--surface-subtle)] py-0 pl-2 pr-2 text-[11px] text-[var(--foreground)] hover:bg-[var(--border)]"
+            // Reads like the metric values above it — no box, no fill, same
+            // 11px foreground text, right-aligned with a small chevron. The
+            // border/background come from the ListboxSelect default; override
+            // them to transparent so the control blends into the panel.
+            buttonClassName="h-6 w-full justify-end gap-1 rounded-md border-transparent bg-transparent px-1 py-0 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
             menuClassName="min-w-[8.25rem] rounded-lg py-0.5"
           />
         </div>
