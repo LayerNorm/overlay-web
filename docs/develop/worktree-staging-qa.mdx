@@ -47,6 +47,54 @@ npm run convex:deploy
 npm run convex:deploy:all
 ```
 
+## Long-lived development branch: `codex/workspaces`
+
+For extended staging work (e.g. the workspaces feature track), a long-lived development branch can replace per-feature branches. This branch lives in its own worktree and tracks `origin/staging` rather than `origin/main`, so it accumulates staging-bound changes across multiple sessions without creating a new branch each time.
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing
+git fetch origin
+git worktree add ../overlay-landing-workspaces -b codex/workspaces origin/staging
+cd ../overlay-landing-workspaces
+./scripts/dev-setup.sh 3001
+```
+
+### Ship from `codex/workspaces` to `staging`
+
+The workflow is: commit on `codex/workspaces` in the workspaces worktree, merge into `staging` in the dedicated staging worktree, push only `staging` to origin, then push Convex dev from the staging worktree.
+
+```bash
+# 1. Commit on codex/workspaces
+cd ~/Downloads/overlay-mono/overlay-landing-workspaces
+git add -A && git commit -m "fix: ..."
+
+# 2. Merge into staging (fast-forward when possible)
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git merge codex/workspaces --no-edit
+
+# 3. Push only staging — do NOT push codex/workspaces
+git push origin staging
+
+# 4. Push Convex dev from the staging worktree
+npm run convex:push:dev
+```
+
+### Do not push `codex/workspaces`
+
+`codex/workspaces` is a local development branch only. Vercel builds every pushed branch, so pushing both `codex/workspaces` and `staging` triggers two concurrent deployments of the same code. The branch is preserved in the `staging` merge commit; only `staging` needs to reach origin.
+
+### Maintain parity
+
+After every merge and push, verify that `codex/workspaces` (local), `staging` (local), and `origin/staging` point at the same commit:
+
+```bash
+git rev-parse codex/workspaces          # workspaces worktree
+git rev-parse staging                   # staging worktree
+git rev-parse origin/staging            # remote
+```
+
+All three must match. If they diverge, fast-forward the lagging branch to the latest commit before starting new work. This ensures the workspaces worktree, the staging Vercel deployment, and the shared development Convex backend always reflect the same code.
+
 ## Prepare the staging release candidate
 
 Use one dedicated worktree for the shared `staging` branch. This prevents a feature worktree from accidentally becoming the staging or production deployment source.
