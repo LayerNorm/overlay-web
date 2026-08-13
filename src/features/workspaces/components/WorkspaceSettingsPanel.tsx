@@ -71,6 +71,14 @@ const TABS: ReadonlyArray<{
     action: 'Invite people',
   },
   {
+    id: 'chats-agents',
+    label: 'Agents',
+    icon: Bot,
+    emptyTitle: 'No shared agents',
+    emptyDescription: 'Named agents for this workspace will be managed here.',
+    action: 'Add agent',
+  },
+  {
     id: 'teams',
     label: 'Teams',
     icon: UsersRound,
@@ -93,14 +101,6 @@ const TABS: ReadonlyArray<{
     emptyTitle: 'No custom roles',
     emptyDescription: 'Built-in workspace roles are ready. Custom roles will appear here.',
     action: 'Create role',
-  },
-  {
-    id: 'chats-agents',
-    label: 'Agents',
-    icon: Bot,
-    emptyTitle: 'No shared agents',
-    emptyDescription: 'Named agents for this workspace will be managed here.',
-    action: 'Add agent',
   },
   {
     id: 'sharing',
