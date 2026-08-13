@@ -85,18 +85,35 @@ function normalizeStripePaymentMethodId(value: unknown): string | null {
   return null
 }
 
+export function isStripeMissingResourceError(error: unknown): boolean {
+  const code = typeof error === 'object' && error && 'code' in error
+    ? String((error as { code?: unknown }).code ?? '')
+    : ''
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return code === 'resource_missing' || /no such (subscription|customer|payment[_ ]method)/i.test(message)
+}
+
 async function resolveDefaultPaymentMethodId(state: SubscriptionBillingState): Promise<string | null> {
   if (state.stripeSubscriptionId) {
-    const subscription = await stripe.subscriptions.retrieve(state.stripeSubscriptionId)
-    const fromSubscription = normalizeStripePaymentMethodId(subscription.default_payment_method)
-    if (fromSubscription) return fromSubscription
+    try {
+      const subscription = await stripe.subscriptions.retrieve(state.stripeSubscriptionId)
+      const fromSubscription = normalizeStripePaymentMethodId(subscription.default_payment_method)
+      if (fromSubscription) return fromSubscription
+    } catch (error) {
+      if (!isStripeMissingResourceError(error)) throw error
+    }
   }
   if (!state.stripeCustomerId) return null
-  const customer = await stripe.customers.retrieve(state.stripeCustomerId)
-  if (!customer || typeof customer === 'string' || ('deleted' in customer && customer.deleted)) {
-    return null
+  try {
+    const customer = await stripe.customers.retrieve(state.stripeCustomerId)
+    if (!customer || typeof customer === 'string' || ('deleted' in customer && customer.deleted)) {
+      return null
+    }
+    return normalizeStripePaymentMethodId(customer.invoice_settings?.default_payment_method)
+  } catch (error) {
+    if (isStripeMissingResourceError(error)) return null
+    throw error
   }
-  return normalizeStripePaymentMethodId(customer.invoice_settings?.default_payment_method)
 }
 
 export async function maybeAutoTopUpBudget(params: {
@@ -115,30 +132,29 @@ export async function maybeAutoTopUpBudget(params: {
     return { applied: false as const, reason: 'amount_too_small' }
   }
 
-  const paymentMethodId = await resolveDefaultPaymentMethodId(state)
-  if (!paymentMethodId) {
-    return { applied: false as const, reason: 'missing_payment_method' }
-  }
-
-  const now = Date.now()
-  const triggerWindowStart = now - AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS
-  const recentTopUps = await repository.listBudgetTopUpsByServer({ userId: params.userId })
-  const matchingRecentTopUp = (recentTopUps ?? []).find((topUp) =>
-    topUp.source === 'auto' &&
-    topUp.amountCents === amountCents &&
-    (topUp.status === 'pending' || topUp.status === 'succeeded') &&
-    topUp.updatedAt >= triggerWindowStart
-  )
-  if (matchingRecentTopUp) {
-    return {
-      applied: matchingRecentTopUp.status === 'succeeded',
-      amountCents,
-      paymentIntentId: matchingRecentTopUp.stripePaymentIntentId,
-      reason: matchingRecentTopUp.status === 'succeeded' ? 'already_succeeded' : 'already_pending',
-    } as const
-  }
-
   try {
+    const paymentMethodId = await resolveDefaultPaymentMethodId(state)
+    if (!paymentMethodId) {
+      return { applied: false as const, reason: 'missing_payment_method' }
+    }
+
+    const now = Date.now()
+    const triggerWindowStart = now - AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS
+    const recentTopUps = await repository.listBudgetTopUpsByServer({ userId: params.userId })
+    const matchingRecentTopUp = (recentTopUps ?? []).find((topUp) =>
+      topUp.source === 'auto' &&
+      topUp.amountCents === amountCents &&
+      (topUp.status === 'pending' || topUp.status === 'succeeded') &&
+      topUp.updatedAt >= triggerWindowStart
+    )
+    if (matchingRecentTopUp) {
+      return {
+        applied: matchingRecentTopUp.status === 'succeeded',
+        amountCents,
+        paymentIntentId: matchingRecentTopUp.stripePaymentIntentId,
+        reason: matchingRecentTopUp.status === 'succeeded' ? 'already_succeeded' : 'already_pending',
+      } as const
+    }
     const idempotencyKey = [
       'auto-topup',
       params.userId,
@@ -180,6 +196,13 @@ export async function maybeAutoTopUpBudget(params: {
     } as const
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error ?? 'Auto top-up failed')
+    if (/idempotent key|in-progress request/i.test(errorMessage)) {
+      return {
+        applied: false as const,
+        reason: 'already_pending',
+        errorMessage,
+      }
+    }
     await repository.recordBudgetTopUp({
       userId: params.userId,
       amountCents,

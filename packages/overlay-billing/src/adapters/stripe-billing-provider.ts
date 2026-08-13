@@ -353,12 +353,22 @@ export class StripeBillingProvider implements BillingProvider {
     const subscriptionId = subscription?.stripeSubscriptionId
 
     if (!customerId && subscriptionId && this.options.stripe.subscriptions) {
-      const stripeSubscription = await this.options.stripe.subscriptions.retrieve(subscriptionId)
-      customerId = await this.resolveExistingCustomerId(
-        typeof stripeSubscription.customer === 'string'
-          ? stripeSubscription.customer
-          : stripeSubscription.customer?.id,
-      )
+      try {
+        const stripeSubscription = await this.options.stripe.subscriptions.retrieve(subscriptionId)
+        customerId = await this.resolveExistingCustomerId(
+          typeof stripeSubscription.customer === 'string'
+            ? stripeSubscription.customer
+            : stripeSubscription.customer?.id,
+        )
+      } catch (error) {
+        const stripeError = error as { code?: string; message?: string }
+        if (
+          stripeError?.code !== 'resource_missing'
+          && !/no such subscription/i.test(stripeError?.message ?? '')
+        ) {
+          throw error
+        }
+      }
     }
 
     if (!customerId) {
