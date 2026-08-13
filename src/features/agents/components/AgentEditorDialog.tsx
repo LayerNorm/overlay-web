@@ -21,7 +21,6 @@ const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#
 export function AgentEditorDialog({
   open,
   agent,
-  teams,
   busy,
   error,
   onOpenChange,
@@ -45,7 +44,6 @@ export function AgentEditorDialog({
   const [instructions, setInstructions] = useState(agent?.instructions ?? '')
   const [modelId, setModelId] = useState<string>(agent?.modelId ?? DEFAULT_MODEL_ID)
   const [avatarColor, setAvatarColor] = useState(agent?.avatarColor ?? AVATAR_COLORS[0]!)
-  const [teamIds, setTeamIds] = useState<string[]>(agent?.teamIds ?? [])
   const [advanced, setAdvanced] = useState(false)
 
   // Same catalog the personal chat model picker offers: every model the
@@ -81,7 +79,7 @@ export function AgentEditorDialog({
               harness: 'overlay',
               modelId: modelId.trim(),
               avatarColor,
-              teamIds,
+              teamIds: agent?.teamIds ?? [],
             })}
           >
             {busy ? 'Saving…' : agent ? 'Save changes' : 'Create agent'}
@@ -142,26 +140,6 @@ export function AgentEditorDialog({
               buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
             />
           </label>
-          {teams.length ? (
-            <div>
-              <p className="text-xs font-medium">Agent teams</p>
-              <div className="mt-1.5 flex flex-wrap gap-2">
-                {teams.map((team) => {
-                  const selected = teamIds.includes(team.id)
-                  return (
-                    <button
-                      key={team.id}
-                      type="button"
-                      onClick={() => setTeamIds((current) => selected ? current.filter((id) => id !== team.id) : [...current, team.id])}
-                      className={`rounded-full border px-3 py-1.5 text-xs ${selected ? 'border-[var(--foreground)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'border-[var(--border)] text-[var(--muted)]'}`}
-                    >
-                      {team.name}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ) : null}
           <button type="button" onClick={() => setAdvanced((value) => !value)} className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]">
             Advanced <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
           </button>

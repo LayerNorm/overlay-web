@@ -76,6 +76,7 @@ type ChatMessageListProps = {
   showLoadingState: boolean
   reserveLatestExchangeStartSpace?: boolean
   transcriptKey?: string | null
+  afterMessages?: ReactNode
   state: ChatMessageListState
   runtime: ChatMessageListRuntime
   actions: ChatMessageListActions
@@ -88,6 +89,7 @@ export function ChatMessageList({
   showLoadingState,
   reserveLatestExchangeStartSpace = false,
   transcriptKey,
+  afterMessages,
   state,
   runtime,
   actions,
@@ -120,6 +122,7 @@ export function ChatMessageList({
               actions={actions}
             />
           )}
+          {afterMessages ? <div className="px-1 py-1">{afterMessages}</div> : null}
           <div ref={messagesEndRef} className="h-px shrink-0" />
           {reservedSpace !== null ? (
             <div

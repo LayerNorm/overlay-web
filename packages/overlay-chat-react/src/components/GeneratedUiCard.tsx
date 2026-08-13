@@ -23,6 +23,7 @@ import type {
   GeneratedUiVariant,
 } from '@overlay/chat-core/generated-ui'
 import { generatedUiDataToPlainText } from '@overlay/chat-core/generated-ui'
+import { FileMarkdown } from '@overlay/modules-react/file-viewer'
 
 export type GeneratedUiConnectorActions = {
   getLogoUrl?: (serviceName: string, slug?: string) => string | null
@@ -179,12 +180,12 @@ function ScrollableDraftBody({
         followTailRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32
       }}
       className={classNames(
-        'overscroll-contain whitespace-pre-wrap text-sm leading-7 text-[var(--foreground)]',
+        'overscroll-contain',
         expanded ? 'max-h-[70vh] overflow-y-auto' : 'max-h-[28rem] overflow-y-auto',
         className,
       )}
     >
-      {value}
+      <FileMarkdown content={value} />
     </div>
   )
 }

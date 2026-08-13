@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, MessageSquare, MoreHorizontal, Plus, Share2, Users } from 'lucide-react'
-import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem, WorkspaceManagementItem } from '@overlay/workspace-contracts'
+import { useCallback, useEffect, useState } from 'react'
+import { Bot, MessageSquare, MoreHorizontal, Plus, Share2 } from 'lucide-react'
+import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
@@ -22,18 +22,13 @@ const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   instructions: description, harness: 'overlay', modelId: 'openrouter/free', avatarColor,
   allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'showcase-divyansh',
   createdAt: Date.parse('2026-07-29T18:00:00.000Z') + index, updatedAt: Date.parse('2026-07-29T18:00:00.000Z') + index,
-  teamIds: index < 2 ? ['showcase-team-launch'] : [], roomCount: 2 + index,
+  teamIds: [], roomCount: 2 + index,
 }))
-const SHOWCASE_TEAMS: WorkspaceManagementItem[] = [{
-  id: 'showcase-team-launch', kind: 'team', name: 'Launch crew', description: 'Research and writing agents',
-  teamMemberPrincipalIds: SHOWCASE_AGENTS.slice(0, 2).map((agent) => agent.principalId),
-}]
 
 export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
   const { activeWorkspaceId } = useWorkspace()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>(showcase ? SHOWCASE_AGENTS : [])
-  const [teams, setTeams] = useState<WorkspaceManagementItem[]>(showcase ? SHOWCASE_TEAMS : [])
   const [canCreate, setCanCreate] = useState(showcase)
   const [loading, setLoading] = useState(!showcase)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -47,13 +42,9 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     if (!activeWorkspaceId) return
     setLoading(true)
     try {
-      const [directory, teamDirectory] = await Promise.all([
-        overlayAppClient.agents.list(activeWorkspaceId),
-        overlayAppClient.workspaces.management(activeWorkspaceId, 'teams'),
-      ])
+      const directory = await overlayAppClient.agents.list(activeWorkspaceId)
       setAgents(directory.agents)
       setCanCreate(directory.canCreate)
-      setTeams(teamDirectory.items.filter((item) => item.kind === 'team'))
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load agents.')
     } finally {
@@ -72,11 +63,6 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     window.addEventListener(NEW_AGENT_EVENT, openCreateDialog)
     return () => window.removeEventListener(NEW_AGENT_EVENT, openCreateDialog)
   }, [])
-
-  const teamsWithAgents = useMemo(() => teams.map((team) => ({
-    team,
-    agents: agents.filter((agent) => agent.teamIds.includes(team.id)),
-  })).filter(({ agents: members }) => members.length), [agents, teams])
 
   async function save(input: WorkspaceAgentCreateInput) {
     if (showcase) {
@@ -194,26 +180,9 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
             ) : null}
           </div>
         )}
-
-        {teamsWithAgents.length ? (
-          <section className="mt-12 border-t border-[var(--border)] pt-8">
-            <div className="flex items-center gap-2"><Users size={16} /><h2 className="text-lg font-semibold">Agent teams</h2></div>
-            <p className="mt-1 text-xs text-[var(--muted)]">Reusable groups you can add to rooms and share resources with together.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {teamsWithAgents.map(({ team, agents: members }) => (
-                <div key={team.id} className="rounded-xl border border-[var(--border)] p-4">
-                  <p className="text-sm font-medium">{team.name}</p>
-                  <div className="mt-3 flex -space-x-2">
-                    {members.map((agent) => <div key={agent.id} title={agent.name} className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-[var(--background)] text-white" style={{ backgroundColor: agent.avatarColor ?? '#64748b' }}><Bot size={14} /></div>)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
       </AppScreenBody>
       </AppScreenShell>
-      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={teams} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input) => void save(input)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
+      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input) => void save(input)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
       <ShareDialog
         workspaceId={activeWorkspaceId}
         isOpen={Boolean(sharingAgent)}

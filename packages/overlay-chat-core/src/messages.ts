@@ -530,7 +530,7 @@ export function looksLikeStoredGenerationError(message: string): boolean {
   if (!text) return false
   if (text.length > 220) return false
   if (
-    /^(Generation failed\.?|generation_interrupted_|weekly_limit|premium_model|generation_not_allowed|insufficient_credits|storage_limit_exceeded|bandwidth_limit_exceeded)/i.test(
+    /^(Generation failed\.?|generation_interrupted_|weekly_limit|premium_model|generation_not_allowed|insufficient_credits|insufficient_budget|storage_limit_exceeded|bandwidth_limit_exceeded)/i.test(
       text,
     )
   ) {
@@ -569,19 +569,29 @@ export function persistedGenerationErrorMessage(responseText: string | null | un
   return 'generation_interrupted_connection'
 }
 
+export const USAGE_EXHAUSTED_LABEL =
+  'You have used your allowance. Add credits in Account to continue.'
+
+export function isUsageExhaustedError(text: string | null | undefined): boolean {
+  if (!text) return false
+  return /insufficient_credits|insufficient_budget|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|top up your account|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent/i.test(
+    text,
+  )
+}
+
 export function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
   const message = err.message || ''
+  if (isUsageExhaustedError(message) || message.includes('Payment Required') || message.includes('payment required')) {
+    return USAGE_EXHAUSTED_LABEL
+  }
   if (
     message.includes('OpenRouter') ||
     message.includes('AI Gateway') ||
     message.includes('model provider') ||
     message.includes('rate-limited') ||
     message.includes('rate limit') ||
-    message.includes('spend limit') ||
-    message.includes('Payment Required') ||
-    message.includes('payment required') ||
-    message.includes('insufficient credits')
+    message.includes('spend limit')
   ) {
     return message
   }
@@ -589,7 +599,9 @@ export function errorLabel(err: Error | null | undefined): string | null {
   if (message.includes('weekly_limit')) return 'Weekly limit reached - upgrade to a paid plan for unlimited messages.'
   if (message.includes('premium_model')) return 'This model requires a paid plan.'
   if (message.includes('generation_not_allowed')) return 'This action requires a paid plan.'
-  if (message.includes('insufficient_credits')) return 'No budget remaining.'
+  if (message.includes('insufficient_credits') || message.includes('insufficient_budget')) {
+    return USAGE_EXHAUSTED_LABEL
+  }
   if (message.includes('storage_limit_exceeded')) return 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.'
   if (message.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
   if (message.includes('generation_interrupted_server_timeout')) {

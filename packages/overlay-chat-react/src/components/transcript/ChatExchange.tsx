@@ -9,6 +9,7 @@ import {
   computeToolChainFlags,
   getDraftFromToolBlock,
   isOverlayGatedToolOutput,
+  isUsageExhaustedError,
 } from '@overlay/chat-core'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
@@ -31,6 +32,7 @@ import {
   WebSearchToolBlock,
 } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
+import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
 import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
@@ -428,18 +430,22 @@ export function ChatExchange({
         {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 
         {errorMessage && !responseInProgress && (
-          <div className="flex justify-start">
-            <div
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-              style={{
-                background: 'var(--chat-alert-error-bg)',
-                borderColor: 'var(--chat-alert-error-border)',
-                color: 'var(--chat-alert-error-text)',
-              }}
-            >
-              <AlertCircle size={12} />
-              {errorMessage}
-            </div>
+          <div className="flex justify-start px-1 py-1">
+            {isUsageExhaustedError(errorMessage) ? (
+              <UsageExhaustedNotice />
+            ) : (
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+                style={{
+                  background: 'var(--chat-alert-error-bg)',
+                  borderColor: 'var(--chat-alert-error-border)',
+                  color: 'var(--chat-alert-error-text)',
+                }}
+              >
+                <AlertCircle size={12} />
+                {errorMessage}
+              </div>
+            )}
           </div>
         )}
 
