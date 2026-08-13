@@ -10,22 +10,34 @@ export class ConvexMemoryRepository implements MemoryRepository {
     return getInternalApiSecret()
   }
 
-  async get(args: { includeDeleted?: boolean; memoryId: string; userId: string }): Promise<MemoryRecord | null> {
-    const rows = await this.list({ includeDeleted: true, userId: args.userId })
+  async get(args: { includeDeleted?: boolean; memoryId: string; userId: string; workspaceId?: string }): Promise<MemoryRecord | null> {
+    const rows = await this.list({ includeDeleted: true, userId: args.userId, workspaceId: args.workspaceId })
     const memory = rows.find((row) => row._id === args.memoryId) ?? null
     return memory && (args.includeDeleted || !memory.deletedAt) ? memory : null
   }
 
   async list(args: {
     conversationId?: string
+    creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
     projectId?: string
+    scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord[]> {
+    if (args.scope === 'workspace') {
+      if (!args.workspaceId) throw new Error('workspaceId required for workspace memory listing')
+      const { scope: _scope, userId: _actorUserId, ...queryArgs } = args
+      return await convex.query<MemoryRecord[]>('knowledge/memories:listWorkspace', {
+        ...queryArgs,
+        serverSecret: this.serverSecret,
+      }) ?? []
+    }
+    const { creatorUserId: _creatorUserId, scope: _scope, ...queryArgs } = args
     return await convex.query<MemoryRecord[]>('knowledge/memories:list', {
-      ...args,
+      ...queryArgs,
       serverSecret: this.serverSecret,
     }) ?? []
   }
@@ -36,7 +48,7 @@ export class ConvexMemoryRepository implements MemoryRepository {
       serverSecret: this.serverSecret,
     })
     if (!memoryId) throw new Error('Failed to create memory')
-    const memory = await this.get({ includeDeleted: true, memoryId, userId: args.userId })
+    const memory = await this.get({ includeDeleted: true, memoryId, userId: args.userId, workspaceId: args.workspaceId })
     if (!memory) throw new Error('Created memory could not be loaded')
     return memory
   }
@@ -44,22 +56,24 @@ export class ConvexMemoryRepository implements MemoryRepository {
   async update(args: Omit<MemoryWrite, 'clientId' | 'userId'> & {
     memoryId: string
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord | null> {
     await convex.mutation('knowledge/memories:update', {
       ...args,
       memoryId: args.memoryId as Id<'memories'>,
       serverSecret: this.serverSecret,
     })
-    return await this.get({ includeDeleted: true, memoryId: args.memoryId, userId: args.userId })
+    return await this.get({ includeDeleted: true, memoryId: args.memoryId, userId: args.userId, workspaceId: args.workspaceId })
   }
 
-  async remove(args: { memoryId: string; userId: string }): Promise<{ deletedAt: number; memoryId: string } | null> {
-    const existing = await this.get({ memoryId: args.memoryId, userId: args.userId })
+  async remove(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<{ deletedAt: number; memoryId: string } | null> {
+    const existing = await this.get({ memoryId: args.memoryId, userId: args.userId, workspaceId: args.workspaceId })
     if (!existing) return null
     await convex.mutation('knowledge/memories:remove', {
       memoryId: args.memoryId as Id<'memories'>,
       serverSecret: this.serverSecret,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     return { deletedAt: Date.now(), memoryId: args.memoryId }
   }

@@ -93,6 +93,11 @@ export type MemoryRowForSidebar = {
   turnId?: string
   tags?: string[]
   actor?: 'user' | 'agent'
+  canDelete: boolean
+  creatorEmail?: string
+  creatorName: string
+  creatorPrincipalId?: string
+  creatorUserId: string
   createdAt: number
   updatedAt?: number
 }
@@ -109,6 +114,7 @@ export function segmentMemoryForIngestion(text: string): string[] {
 export function memoriesToClientListRows(
   memories: Array<{
     _id: string
+    userId: string
     content: string
     source: string
     type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
@@ -123,32 +129,49 @@ export function memoriesToClientListRows(
     createdAt: number
     updatedAt?: number
   }>,
+  options?: {
+    attributionsByUserId?: ReadonlyMap<string, {
+      email?: string
+      name: string
+      principalId?: string
+    }>
+    viewerUserId?: string
+  },
 ): MemoryRowForSidebar[] {
-  return memories.map((m) => ({
-    key: m._id,
-    memoryId: m._id,
-    segmentIndex: 0,
-    content: m.content,
-    fullContent: m.content,
-    source: m.source,
-    type: m.type,
-    importance: m.importance,
-    projectId: m.projectId,
-    conversationId: m.conversationId,
-    noteId: m.noteId,
-    messageId: m.messageId,
-    turnId: m.turnId,
-    tags: m.tags,
-    actor: m.actor,
-    createdAt: m.createdAt,
-    updatedAt: m.updatedAt,
-  }))
+  return memories.map((m) => {
+    const attribution = options?.attributionsByUserId?.get(m.userId)
+    return {
+      key: m._id,
+      memoryId: m._id,
+      segmentIndex: 0,
+      content: m.content,
+      fullContent: m.content,
+      source: m.source,
+      type: m.type,
+      importance: m.importance,
+      projectId: m.projectId,
+      conversationId: m.conversationId,
+      noteId: m.noteId,
+      messageId: m.messageId,
+      turnId: m.turnId,
+      tags: m.tags,
+      actor: m.actor,
+      canDelete: options?.viewerUserId === m.userId,
+      creatorEmail: attribution?.email,
+      creatorName: attribution?.name ?? (options?.viewerUserId === m.userId ? 'You' : 'Former member'),
+      creatorPrincipalId: attribution?.principalId,
+      creatorUserId: m.userId,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+    }
+  })
 }
 
 /** One Convex memory row → many sidebar rows (virtual segments). */
 export function expandMemoriesForSidebarList(
   memories: Array<{
     _id: string
+    userId: string
     content: string
     source: string
     type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
@@ -184,6 +207,9 @@ export function expandMemoriesForSidebarList(
         turnId: m.turnId,
         tags: m.tags,
         actor: m.actor,
+        canDelete: false,
+        creatorName: 'Workspace member',
+        creatorUserId: m.userId,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
       })

@@ -181,6 +181,11 @@ export interface MemoryRow {
   turnId?: string
   tags?: string[]
   actor?: 'user' | 'agent'
+  canDelete?: boolean
+  creatorEmail?: string
+  creatorName?: string
+  creatorPrincipalId?: string
+  creatorUserId?: string
   status?: 'candidate' | 'approved' | 'rejected'
   createdAt: number
   updatedAt?: number
@@ -194,6 +199,7 @@ export interface MemoryQueryContract extends PaginationQueryContract {
   projectId?: string
   conversationId?: string
   noteId?: string
+  memberPrincipalId?: string
 }
 
 export interface CreateMemoryRequest {

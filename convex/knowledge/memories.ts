@@ -24,6 +24,34 @@ function normalizeMemoryDoc<T extends {
   }
 }
 
+const memoryDocValidator = v.object({
+  _creationTime: v.number(),
+  _id: v.id('memories'),
+  actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+  clientId: v.optional(v.string()),
+  content: v.string(),
+  conversationId: v.optional(v.string()),
+  createdAt: v.number(),
+  deletedAt: v.optional(v.number()),
+  importance: v.optional(v.number()),
+  messageId: v.optional(v.string()),
+  noteId: v.optional(v.string()),
+  projectId: v.optional(v.string()),
+  source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
+  tags: v.optional(v.array(v.string())),
+  turnId: v.optional(v.string()),
+  type: v.optional(v.union(
+    v.literal('preference'),
+    v.literal('fact'),
+    v.literal('project'),
+    v.literal('decision'),
+    v.literal('agent'),
+  )),
+  updatedAt: v.number(),
+  userId: v.string(),
+  workspaceId: v.optional(v.string()),
+})
+
 export const list = query({
   args: {
     userId: v.string(),
@@ -55,6 +83,50 @@ export const list = query({
       .filter((memory) => (conversationId !== undefined ? memory.conversationId === conversationId : true))
       .filter((memory) => (noteId !== undefined ? memory.noteId === noteId : true))
       .filter((memory) => (workspaceId !== undefined ? memory.workspaceId === workspaceId : true))
+  },
+})
+
+export const listWorkspace = query({
+  args: {
+    workspaceId: v.string(),
+    creatorUserId: v.optional(v.string()),
+    serverSecret: v.string(),
+    updatedSince: v.optional(v.number()),
+    includeDeleted: v.optional(v.boolean()),
+    projectId: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
+    noteId: v.optional(v.string()),
+  },
+  returns: v.array(memoryDocValidator),
+  handler: async (ctx, {
+    workspaceId,
+    creatorUserId,
+    serverSecret,
+    updatedSince,
+    includeDeleted,
+    projectId,
+    conversationId,
+    noteId,
+  }) => {
+    if (!validateServerSecret(serverSecret)) return []
+    const memories = creatorUserId
+      ? await ctx.db
+          .query('memories')
+          .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', creatorUserId))
+          .order('desc')
+          .take(100)
+      : await ctx.db
+          .query('memories')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .order('desc')
+          .take(100)
+    return memories
+      .map(normalizeMemoryDoc)
+      .filter((memory) => (updatedSince !== undefined ? memory.updatedAt > updatedSince : true))
+      .filter((memory) => (includeDeleted ? true : !memory.deletedAt))
+      .filter((memory) => (projectId !== undefined ? memory.projectId === projectId : true))
+      .filter((memory) => (conversationId !== undefined ? memory.conversationId === conversationId : true))
+      .filter((memory) => (noteId !== undefined ? memory.noteId === noteId : true))
   },
 })
 
@@ -92,10 +164,19 @@ export const add = mutation({
       throw new Error(`Memory content exceeds size limit (max ${MAX_MEMORY_BYTES / 1024} KB)`)
     }
     if (args.clientId?.trim()) {
-      const existing = await ctx.db
-        .query('memories')
-        .withIndex('by_userId_clientId', (q) => q.eq('userId', args.userId).eq('clientId', args.clientId!.trim()))
-        .first()
+      const existing = args.workspaceId
+        ? await ctx.db
+            .query('memories')
+            .withIndex('by_workspaceId_userId', (q) => q
+              .eq('workspaceId', args.workspaceId)
+              .eq('userId', args.userId))
+            .filter((q) => q.eq(q.field('clientId'), args.clientId!.trim()))
+            .first()
+        : await ctx.db
+            .query('memories')
+            .withIndex('by_userId_clientId', (q) => q.eq('userId', args.userId).eq('clientId', args.clientId!.trim()))
+            .filter((q) => q.eq(q.field('workspaceId'), undefined))
+            .first()
       if (existing) {
         return existing._id
       }
@@ -104,10 +185,16 @@ export const add = mutation({
     // Deduplication: exact / near-exact content match for non-clientId inserts
     if (!args.clientId?.trim()) {
       const normalized = args.content.toLowerCase().replace(/\s+/g, ' ').trim()
-      const candidates = await ctx.db
-        .query('memories')
-        .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-        .take(100)
+      const candidates = args.workspaceId
+        ? await ctx.db
+            .query('memories')
+            .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', args.workspaceId).eq('userId', args.userId))
+            .take(100)
+        : await ctx.db
+            .query('memories')
+            .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+            .filter((q) => q.eq(q.field('workspaceId'), undefined))
+            .take(100)
       for (const candidate of candidates) {
         if (candidate.deletedAt) continue
         const candNorm = candidate.content.toLowerCase().replace(/\s+/g, ' ').trim()

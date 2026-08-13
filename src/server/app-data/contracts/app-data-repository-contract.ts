@@ -782,6 +782,39 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal((await backend.memories.list({ userId })).length >= 1, true)
     })
 
+    await t.test(`${backend.name}: workspace memories are shared and filterable by creator`, async () => {
+      const workspaceId = `contract_workspace_${randomUUID()}`
+      const ownerMemory = await backend.memories.create({
+        content: 'Owner workspace memory.',
+        source: 'manual',
+        userId,
+        workspaceId,
+      })
+      const memberMemory = await backend.memories.create({
+        content: 'Member workspace memory.',
+        source: 'manual',
+        userId: foreignUserId,
+        workspaceId,
+      })
+
+      const all = await backend.memories.list({
+        scope: 'workspace',
+        userId,
+        workspaceId,
+      })
+      assert.equal(all.some((memory) => memory._id === ownerMemory._id), true)
+      assert.equal(all.some((memory) => memory._id === memberMemory._id), true)
+
+      const memberOnly = await backend.memories.list({
+        creatorUserId: foreignUserId,
+        scope: 'workspace',
+        userId,
+        workspaceId,
+      })
+      assert.deepEqual(memberOnly.map((memory) => memory._id), [memberMemory._id])
+      assert.equal(await backend.memories.get({ memoryId: memberMemory._id, userId }), null)
+    })
+
     await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {
       const result = await deleteAccount(backend, userId)
       accountDeleted = true

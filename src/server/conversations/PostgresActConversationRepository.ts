@@ -12,6 +12,7 @@ import {
   conversationMessages,
   conversationParticipants,
   conversations,
+  memories,
   automations,
   projects,
   skills,
@@ -560,8 +561,27 @@ export class PostgresActConversationRepository implements ActConversationReposit
     })
   }
 
-  async listMemories(): Promise<ActMemoryRow[] | null> {
-    return []
+  async listMemories(args: { userId: string; workspaceId?: string }): Promise<ActMemoryRow[] | null> {
+    const rows = await this.db
+      .select({
+        content: memories.content,
+        importance: memories.importance,
+        updatedAt: memories.updatedAt,
+      })
+      .from(memories)
+      .where(and(
+        args.workspaceId
+          ? eq(memories.workspaceId, args.workspaceId)
+          : eq(memories.userId, args.userId),
+        isNull(memories.deletedAt),
+      ))
+      .orderBy(desc(memories.updatedAt))
+      .limit(100)
+    return rows.map((row) => ({
+      content: row.content,
+      importance: row.importance ?? undefined,
+      updatedAt: row.updatedAt.getTime(),
+    }))
   }
 
   async listSkills(args: { userId: string }): Promise<ActSkillRow[]> {

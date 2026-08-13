@@ -44,6 +44,8 @@ Then map `componentKey` to a local renderer in the web settings container. Other
 
 Capability gates should match the panel's direct function. The built-in Memories section and panel require `memory`, while semantic retrieval and the knowledge-search tool separately require `vectorSearch`. This keeps memory CRUD reachable in deployments that intentionally disable vector search.
 
+The Memories web container is workspace-aware: its single member filter contains `All` plus active human members, defaults to `All`, and renders creator attribution supplied by the memory API. Do not infer attribution client-side from the signed-in user.
+
 ## Extending UI Primitives
 
 Prefer composition over editing existing primitives. Add a new primitive to `@overlay/ui` only when it is broadly reusable and can preserve the current visual language. Feature-specific surfaces belong in `@overlay/modules-react`.

@@ -27,18 +27,25 @@ export class PostgresMemoryRepository implements MemoryRepository {
 
   async list(args: {
     conversationId?: string
+    creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
     projectId?: string
+    scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string
     workspaceId?: string
   }): Promise<MemoryRecord[]> {
+    if (args.scope === 'workspace' && !args.workspaceId) {
+      throw new Error('workspaceId required for workspace memory listing')
+    }
     const rows = await this.db
       .select()
       .from(memories)
       .where(and(
-        eq(memories.userId, args.userId),
+        args.scope === 'workspace'
+          ? (args.creatorUserId ? eq(memories.userId, args.creatorUserId) : undefined)
+          : eq(memories.userId, args.userId),
         args.workspaceId ? eq(memories.workspaceId, args.workspaceId) : undefined,
         ...(args.includeDeleted ? [] : [isNull(memories.deletedAt)]),
         ...(args.updatedSince !== undefined ? [gt(memories.updatedAt, new Date(args.updatedSince))] : []),
@@ -100,6 +107,9 @@ export class PostgresMemoryRepository implements MemoryRepository {
         .from(memories)
         .where(and(
           eq(memories.userId, args.userId),
+          args.workspaceId
+            ? eq(memories.workspaceId, args.workspaceId)
+            : isNull(memories.workspaceId),
           isNull(memories.deletedAt),
           ...(clientId
             ? [eq(memories.clientId, clientId)]
@@ -202,6 +212,7 @@ function toMemoryRecord(row: MemoryRow): MemoryRecord {
   return {
     _id: row.id,
     userId: row.userId,
+    workspaceId: row.workspaceId ?? undefined,
     clientId: row.clientId ?? undefined,
     content: row.content,
     source: row.source,

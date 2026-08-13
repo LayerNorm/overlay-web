@@ -78,6 +78,10 @@ Use `featureFlags` for coarse product areas and `policyGates` for enterprise pol
 
 Capability gates are evaluated per registry entry. Memory management in Settings requires the `memory` capability only; `vectorSearch` controls semantic retrieval and search tooling independently, so disabling vector search must not hide saved-memory management.
 
+## Workspace Memories
+
+Memories are shared workspace resources with member attribution. Settings > Memories defaults to `All` and uses one dropdown containing `All` plus every active human member; selecting a member reloads only memories attributed to that member. Creator names are shown on memory cards. Members may copy any visible workspace memory, while selection and delete controls appear only on memories they created.
+
 ## Account Settings
 
 The account panel contains identity, desktop handoff, and deployment-supported billing controls. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.

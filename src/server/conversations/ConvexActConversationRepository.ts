@@ -182,11 +182,17 @@ export class ConvexActConversationRepository implements ActConversationRepositor
 
   async listMemories(args: {
     userId: string
+    workspaceId?: string
   }): Promise<ActMemoryRow[] | null> {
-    return await convex.query<ActMemoryRow[]>('knowledge/memories:list', {
-      userId: args.userId,
-      serverSecret: this.serverSecret,
-    })
+    return args.workspaceId
+      ? await convex.query<ActMemoryRow[]>('knowledge/memories:listWorkspace', {
+          workspaceId: args.workspaceId,
+          serverSecret: this.serverSecret,
+        })
+      : await convex.query<ActMemoryRow[]>('knowledge/memories:list', {
+          userId: args.userId,
+          serverSecret: this.serverSecret,
+        })
   }
 
   async listSkills(args: {

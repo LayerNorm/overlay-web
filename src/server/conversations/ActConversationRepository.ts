@@ -223,6 +223,7 @@ export interface ActConversationRepository {
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {
     userId: string
+    workspaceId?: string
   }): Promise<ActMemoryRow[] | null>
   listSkills(args: {
     userId: string

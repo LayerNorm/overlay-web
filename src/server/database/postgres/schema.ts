@@ -807,10 +807,18 @@ export const memories = pgTable('memories', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => [
   index('memories_user_id_updated_at_idx').on(table.userId, table.updatedAt),
-  uniqueIndex('memories_user_id_client_id_idx').on(table.userId, table.clientId),
-  uniqueIndex('memories_user_id_content_hash_active_idx')
+  uniqueIndex('memories_user_workspace_client_id_idx')
+    .on(table.userId, table.workspaceId, table.clientId)
+    .where(sql`${table.workspaceId} IS NOT NULL`),
+  uniqueIndex('memories_legacy_user_client_id_idx')
+    .on(table.userId, table.clientId)
+    .where(sql`${table.workspaceId} IS NULL`),
+  uniqueIndex('memories_user_workspace_content_hash_active_idx')
+    .on(table.userId, table.workspaceId, table.contentHash)
+    .where(sql`${table.workspaceId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+  uniqueIndex('memories_legacy_user_content_hash_active_idx')
     .on(table.userId, table.contentHash)
-    .where(sql`${table.deletedAt} IS NULL`),
+    .where(sql`${table.workspaceId} IS NULL AND ${table.deletedAt} IS NULL`),
   index('memories_project_id_idx').on(table.projectId),
   index('memories_conversation_id_idx').on(table.conversationId),
   index('memories_note_id_idx').on(table.noteId),

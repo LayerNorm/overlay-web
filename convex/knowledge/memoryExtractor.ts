@@ -33,15 +33,24 @@ export const getRecentMessages = internalQuery({
 })
 
 export const findExactDuplicate = internalQuery({
-  args: { userId: v.string(), normalizedContent: v.string() },
-  handler: async (ctx, { userId, normalizedContent }) => {
-    const memories = await ctx.db
-      .query('memories')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect()
+  args: {
+    normalizedContent: v.string(),
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, workspaceId, normalizedContent }) => {
+    const memories = workspaceId
+      ? await ctx.db
+          .query('memories')
+          .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId))
+          .take(100)
+      : await ctx.db
+          .query('memories')
+          .withIndex('by_userId', (q) => q.eq('userId', userId))
+          .take(100)
 
     for (const m of memories) {
-      if (m.deletedAt) continue
+      if (m.deletedAt || m.workspaceId !== workspaceId) continue
       const existingNorm = m.content.toLowerCase().replace(/\s+/g, ' ').trim()
       if (existingNorm === normalizedContent) return m._id
     }

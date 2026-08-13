@@ -14,7 +14,8 @@ function readBooleanParam(value: string | null): boolean | undefined {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const service = getOverlayServerContext().memoryService
+    const server = getOverlayServerContext()
+    const service = server.memoryService
     const memoryId = request.nextUrl.searchParams.get('memoryId')
     const raw = readBooleanParam(request.nextUrl.searchParams.get('raw')) === true
     const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
@@ -29,17 +30,41 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(memory)
     }
 
+    const members = (await server.workspaceService.listMembers({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })).filter(({ principal }) => principal.type === 'human' && principal.userId)
+    const requestedMemberPrincipalId = request.nextUrl.searchParams.get('memberPrincipalId')?.trim()
+    const requestedMember = requestedMemberPrincipalId
+      ? members.find(({ principal }) => principal.id === requestedMemberPrincipalId)
+      : undefined
+    if (requestedMemberPrincipalId && !requestedMember?.principal.userId) {
+      return NextResponse.json({ error: 'Workspace member not found' }, { status: 400 })
+    }
     const updatedSinceValue = Number(request.nextUrl.searchParams.get('updatedSince'))
     const rows = await service.list({
       conversationId: request.nextUrl.searchParams.get('conversationId') ?? undefined,
+      creatorUserId: requestedMember?.principal.userId,
       includeDeleted,
       noteId: request.nextUrl.searchParams.get('noteId') ?? undefined,
       projectId: request.nextUrl.searchParams.get('projectId') ?? undefined,
+      scope: 'workspace',
       updatedSince: Number.isFinite(updatedSinceValue) && updatedSinceValue > 0 ? updatedSinceValue : undefined,
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
-    return NextResponse.json(raw ? rows : memoriesToClientListRows(rows))
+    const attributionsByUserId = new Map(members.map(({ principal }) => [
+      principal.userId!,
+      {
+        email: principal.email,
+        name: principal.displayName,
+        principalId: principal.id,
+      },
+    ]))
+    return NextResponse.json(raw ? rows : memoriesToClientListRows(rows, {
+      attributionsByUserId,
+      viewerUserId: context.auth.userId,
+    }))
   } catch (error) {
     return memoryErrorResponse('GET', error)
   }

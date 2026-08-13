@@ -7,6 +7,7 @@ export type MemoryActor = 'user' | 'agent'
 export type MemoryRecord = {
   _id: string
   userId: string
+  workspaceId?: string
   clientId?: string
   content: string
   source: MemorySource
@@ -45,9 +46,11 @@ export interface MemoryRepository {
   get(args: { includeDeleted?: boolean; memoryId: string; userId: string; workspaceId?: string }): Promise<MemoryRecord | null>
   list(args: {
     conversationId?: string
+    creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
     projectId?: string
+    scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string
     workspaceId?: string

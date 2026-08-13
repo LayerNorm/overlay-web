@@ -21,13 +21,18 @@ export class MemoryService {
 
   list(args: {
     conversationId?: string
+    creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
     projectId?: string
+    scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string
     workspaceId?: string
   }) {
+    if (args.scope === 'workspace' && !args.workspaceId?.trim()) {
+      throw new MemoryServiceError('workspaceId required for workspace memory listing', 400)
+    }
     return this.repository.list(args)
   }
 
@@ -83,7 +88,11 @@ export class MemoryService {
     userId: string
     workspaceId?: string
   }): Promise<MemoryRecord> {
-    const existing = await this.repository.get({ memoryId: args.memoryId, userId: args.userId })
+    const existing = await this.repository.get({
+      memoryId: args.memoryId,
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+    })
     if (!existing) throw new MemoryServiceError('Not found', 404)
     const memory = await this.repository.update({
       actor: args.actor ?? existing.actor,
@@ -99,6 +108,7 @@ export class MemoryService {
       turnId: args.turnId ?? existing.turnId,
       type: args.type ?? existing.type,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     if (!memory) throw new MemoryServiceError('Not found', 404)
     return memory

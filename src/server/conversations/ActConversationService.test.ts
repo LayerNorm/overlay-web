@@ -197,6 +197,35 @@ test('act context service keeps auto retrieval enabled when external provider co
   assert.equal(context.mentionsContext, '')
 })
 
+test('act context service loads persistent memory from the active workspace', async () => {
+  let memoryArgs: { userId: string; workspaceId?: string } | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => null,
+      listMemories: async (args) => {
+        memoryArgs = args
+        return [{ content: 'The workspace requires SOC 2 evidence.', importance: 5 }]
+      },
+      listSkills: async () => [],
+    }),
+    buildAutoRetrievalBundle: async () => ({ extension: '', citations: {} }),
+  })
+
+  const context = await service.loadTurnContext({
+    billingUserId: 'user_a',
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    requestIdempotencyKey: 'workspace-memory-idempotency',
+    requestFingerprint: 'workspace-memory-fingerprint',
+    serverSecret: 'server-secret',
+    userId: 'user_a',
+    workspaceId: 'workspace_1',
+  })
+
+  assert.deepEqual(memoryArgs, { userId: 'user_a', workspaceId: 'workspace_1' })
+  assert.match(context.memoryContext, /workspace requires SOC 2 evidence/)
+})
+
 test('act context service preloads attached documents through the active file repository', async () => {
   const loadedFileIds: string[] = []
   const service = new ActContextService({

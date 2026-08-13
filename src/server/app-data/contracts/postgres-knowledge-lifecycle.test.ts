@@ -89,6 +89,7 @@ test('Postgres P4d knowledge lifecycle', {
         const [memory] = await db.select().from(memories).where(eq(memories.userId, userId))
         assert.equal(memory?.type, 'decision')
         assert.equal(memory?.conversationId, conversationId)
+        assert.ok(memory?.workspaceId)
         assert.equal(memory?.indexStatus, 'indexed')
         const [run] = await db.select().from(memoryExtractionRuns).where(eq(memoryExtractionRuns.userId, userId))
         assert.equal(run?.status, 'succeeded')

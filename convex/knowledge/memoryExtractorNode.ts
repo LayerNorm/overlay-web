@@ -384,7 +384,7 @@ export const extractFromTurn = internalAction({
 
         const existingId = await ctx.runQuery(
           internal.knowledge.memoryExtractor.findExactDuplicate,
-          { userId, normalizedContent: normalized }
+          { userId, workspaceId, normalizedContent: normalized }
         );
 
         if (existingId) {
@@ -395,6 +395,7 @@ export const extractFromTurn = internalAction({
         // Insert memory (no status field — all memories are treated equally now)
         await ctx.runMutation(api.knowledge.memories.add, {
           userId,
+          workspaceId,
           serverSecret: serverSecret || "",
           content: candidate.content.trim(),
           source: "chat",

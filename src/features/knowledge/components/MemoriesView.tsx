@@ -2,13 +2,13 @@
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
-import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
 import { ListboxSelect } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 
 interface MemoryListItem {
   key: string
@@ -26,6 +26,11 @@ interface MemoryListItem {
   turnId?: string
   tags?: string[]
   actor?: 'user' | 'agent'
+  canDelete: boolean
+  creatorEmail?: string
+  creatorName: string
+  creatorPrincipalId?: string
+  creatorUserId: string
   createdAt: number
   updatedAt?: number
 }
@@ -43,6 +48,11 @@ interface Memory {
   turnId?: string
   tags: string[]
   actor?: 'user' | 'agent'
+  canDelete: boolean
+  creatorEmail?: string
+  creatorName: string
+  creatorPrincipalId?: string
+  creatorUserId: string
   createdAt: number
   updatedAt?: number
 }
@@ -66,6 +76,11 @@ function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
       turnId: row.turnId,
       tags: row.tags ?? [],
       actor: row.actor,
+      canDelete: row.canDelete,
+      creatorEmail: row.creatorEmail,
+      creatorName: row.creatorName,
+      creatorPrincipalId: row.creatorPrincipalId,
+      creatorUserId: row.creatorUserId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     })
@@ -101,7 +116,11 @@ interface MemoriesViewProps {
 
 export default function MemoriesView({ userId: _userId, onHeaderStateChange }: MemoriesViewProps) {
   void _userId
+  const { activeWorkspaceId } = useWorkspace()
   const [memories, setMemories] = useState<Memory[]>([])
+  const [members, setMembers] = useState<Array<{ name: string; principalId: string }>>([])
+  const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
+  const loadRequestIdRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [addText, setAddText] = useState('')
@@ -119,25 +138,53 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const metaChipClass =
     'rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)]'
 
-  const loadMemories = useCallback(async () => {
+  const loadMemories = useCallback(async (memberPrincipalId = 'all') => {
+    const requestId = ++loadRequestIdRef.current
+    setIsLoading(true)
     try {
-      const res = await overlayAppClient.memory.getResponse({ limit: 100 })
+      const res = await overlayAppClient.memory.getResponse({
+        limit: 100,
+        memberPrincipalId: memberPrincipalId === 'all' ? undefined : memberPrincipalId,
+      })
       if (res.ok) {
         const rows = unwrapPaginatedData<MemoryListItem>(await res.json())
-        setMemories(uniqueMemoriesFromRows(rows))
+        if (requestId === loadRequestIdRef.current) {
+          setMemories(uniqueMemoriesFromRows(rows))
+        }
+      } else if (requestId === loadRequestIdRef.current) {
+        setMemories([])
       }
     } catch {
-      // ignore
+      if (requestId === loadRequestIdRef.current) setMemories([])
     } finally {
-      setIsLoading(false)
+      if (requestId === loadRequestIdRef.current) setIsLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void loadMemories()
-  }, [loadMemories])
-
-  useWorkspaceChanged(loadMemories)
+    if (!activeWorkspaceId) return
+    let cancelled = false
+    setSelectedMemberPrincipalId('all')
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+    void Promise.all([
+      overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
+      overlayAppClient.workspaces.management(activeWorkspaceId, 'guests'),
+      loadMemories('all'),
+    ]).then(([people, guests]) => {
+      if (cancelled) return
+      const byPrincipalId = new Map<string, { name: string; principalId: string }>()
+      for (const item of [...people.items, ...guests.items]) {
+        if (item.kind === 'member' && item.principalId && item.status === 'active') {
+          byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
+        }
+      }
+      setMembers([...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name)))
+    }).catch(() => {
+      if (!cancelled) setMembers([])
+    })
+    return () => { cancelled = true }
+  }, [activeWorkspaceId, loadMemories])
 
   async function handleAdd() {
     const text = addText.trim()
@@ -163,7 +210,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
       setAddType('fact')
       setAddImportance('3')
       setShowAdd(false)
-      await loadMemories()
+      await loadMemories(selectedMemberPrincipalId)
     } finally {
       setPendingSavePreview(null)
       setIsSaving(false)
@@ -205,6 +252,22 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
 
   const headerActions = useMemo(() => (
     <>
+      <ListboxSelect
+        value={selectedMemberPrincipalId}
+        onChange={(value) => {
+          setSelectedMemberPrincipalId(value)
+          setSelectedIds(new Set())
+          setSelectionMode(false)
+          void loadMemories(value)
+        }}
+        options={[
+          { value: 'all', label: 'All' },
+          ...members.map((member) => ({ value: member.principalId, label: member.name })),
+        ]}
+        aria-label="Filter memories by workspace member"
+        className="w-40"
+        buttonClassName="min-h-8 rounded-md py-1 text-xs"
+      />
       <button
         onClick={() => {
           setSelectionMode((value) => !value)
@@ -236,7 +299,15 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         Add memory
       </button>
     </>
-  ), [actionButtonClass, handleBulkDelete, selectedIds.size, selectionMode])
+  ), [
+    actionButtonClass,
+    handleBulkDelete,
+    loadMemories,
+    members,
+    selectedIds.size,
+    selectedMemberPrincipalId,
+    selectionMode,
+  ])
 
   useEffect(() => {
     if (!onHeaderStateChange) return
@@ -353,7 +424,11 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         ) : memories.length === 0 && !pendingSavePreview ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
             <Brain size={40} strokeWidth={1} className="opacity-40" />
-            <p className="text-sm">No memories yet</p>
+            <p className="text-sm">
+              {selectedMemberPrincipalId === 'all'
+                ? 'No memories yet'
+                : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this member'}`}
+            </p>
             <button
               onClick={() => setShowAdd(true)}
               className="text-xs text-[var(--foreground)] underline underline-offset-2 transition-colors"
@@ -396,7 +471,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          {selectionMode && (
+                          {selectionMode && memory.canDelete && (
                             <button
                               type="button"
                               onClick={() => toggleSelected(memory.memoryId)}
@@ -410,6 +485,10 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                               {memory.content}
                             </p>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className={metaChipClass} title={memory.creatorEmail}>
+                                <UserRound size={10} className="mr-1 inline" />
+                                {memory.creatorName}
+                              </span>
                               {memory.type && (
                                 <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
                                   {memory.type}
@@ -479,13 +558,15 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                               >
                                 <Copy size={13} className="text-[var(--muted)]" />
                               </button>
-                              <button
-                                onClick={() => void handleDelete(memory.memoryId)}
-                                className="rounded p-1 transition-colors hover:bg-red-500/10"
-                                title="Delete memory"
-                              >
-                                <Trash2 size={13} className="text-red-400" />
-                              </button>
+                              {memory.canDelete ? (
+                                <button
+                                  onClick={() => void handleDelete(memory.memoryId)}
+                                  className="rounded p-1 transition-colors hover:bg-red-500/10"
+                                  title="Delete memory"
+                                >
+                                  <Trash2 size={13} className="text-red-400" />
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </div>

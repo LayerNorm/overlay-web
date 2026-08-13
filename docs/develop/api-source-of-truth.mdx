@@ -33,6 +33,12 @@ Surfaces should use bootstrap first, then render their native shell from those r
 
 Desktop and Chrome can use the React DOM packages directly where practical. Mobile should use `@overlay/app-core`, `@overlay/api-client`, and pure controllers from `@overlay/app-core/modules`, while keeping React Native rendering in mobile-specific components.
 
+## Workspace Memory
+
+`GET /api/v1/memory` is workspace-scoped. It returns all memories in the authorized active workspace by default and accepts `memberPrincipalId` to filter by one active human member. Each row exposes the creator's workspace identity and whether the authenticated member may delete it. `POST` always writes both the active `workspaceId` and the authenticated creator `userId`; update and delete remain creator-only.
+
+Persistent chat context also lists memories by `workspaceId`, so memories created by one member are available as shared context to other members of that workspace. Provider repositories must preserve the distinction: `workspaceId` owns the resource context, while `userId` records attribution and mutation ownership.
+
 ## Collaboration message contracts
 
 - `POST /api/v1/conversations/message` returns the persisted `messageId`. Agent-invocation callers use that ID directly; transcript refetch state is not an identity source.

@@ -164,7 +164,10 @@ export class ActContextService {
     const externalContextEnabled = args.externalContextEnabled !== false
     const memoriesTask: Promise<ActMemoryRow[]> = memoryEnabled ? (async () => {
       try {
-        const memories = await this.deps.repository.listMemories({ userId: args.userId })
+        const memories = await this.deps.repository.listMemories({
+          userId: args.userId,
+          workspaceId: args.workspaceId,
+        })
         return memories || listMemories(args.userId)
       } catch (_error) {
         return []

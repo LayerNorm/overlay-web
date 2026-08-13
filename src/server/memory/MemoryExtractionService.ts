@@ -101,7 +101,11 @@ export class MemoryExtractionService {
         candidate.content.trim().length > 5 && candidate.confidence >= MIN_CONFIDENCE
       )).slice(0, MAX_CANDIDATES)
       const existingHashes = new Set(
-        (await this.deps.memories.list({ includeDeleted: false, userId: args.userId }))
+        (await this.deps.memories.list({
+          includeDeleted: false,
+          userId: args.userId,
+          workspaceId: turn.workspaceId,
+        }))
           .map((memory) => hashMemoryContent(memory.content)),
       )
       let duplicates = 0
@@ -123,6 +127,7 @@ export class MemoryExtractionService {
           turnId: turn.turnId,
           type: candidate.type,
           userId: args.userId,
+          workspaceId: turn.workspaceId,
         })
         existingHashes.add(hash)
         inserted += 1
