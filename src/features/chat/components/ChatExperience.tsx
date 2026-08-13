@@ -372,6 +372,7 @@ export default function ChatExperience({
     selectableTextModels,
   } = useChatBillingControls({
     activeChatId,
+    activeWorkspaceId,
     billingEnabled,
     catalogRevision: gatewayCatalogRevision,
     chatPrefsHydrated,

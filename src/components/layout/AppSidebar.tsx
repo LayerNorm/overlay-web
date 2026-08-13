@@ -79,6 +79,7 @@ import type { AppSidebarProps } from './appSidebarTypes'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
 import { NEW_AGENT_EVENT, NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 export type {
   AppSidebarChatPanelContext,
@@ -393,12 +394,17 @@ export default function AppSidebar({
       return
     }
     try {
-      const res = await overlayAppClient.subscription.getResponse()
+      const res = await overlayAppClient.subscription.getResponse({
+        cache: 'no-store',
+        ...(activeWorkspaceId
+          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
+          : {}),
+      })
       if (res.ok) setEntitlements(await res.json())
     } catch {
       // ignore
     }
-  }, [authLoading, authUserId, billingEnabled, setEntitlements])
+  }, [activeWorkspaceId, authLoading, authUserId, billingEnabled, setEntitlements])
 
   useEffect(() => {
     document.documentElement.toggleAttribute('data-temporary-chat-ui', hideTemporaryChatChrome)

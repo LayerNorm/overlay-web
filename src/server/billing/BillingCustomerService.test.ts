@@ -85,6 +85,36 @@ test('BillingCustomerService.getLandingSubscription preserves response mapping',
   assert.equal(response.billingPeriodEnd, '2026-06-01T00:00:00.000Z')
 })
 
+test('BillingCustomerService.getAppSubscription reads a workspace billing account when provided', async () => {
+  const requestedBillingAccountIds: string[] = []
+  const repository = createRepository({
+    async getBillingAccountEntitlementsByServer({ billingAccountId }) {
+      requestedBillingAccountIds.push(billingAccountId)
+      return {
+        ...paidEntitlements,
+        billingAccountId,
+        planAmountCents: 800,
+        budgetTotalCents: 800,
+        budgetRemainingCents: 300,
+      }
+    },
+    async getEntitlementsByServer() {
+      throw new Error('personal entitlements must not be read for a workspace payer')
+    },
+  })
+  const service = new BillingCustomerService({ repository })
+
+  const response = await service.getAppSubscription({
+    billingAccountId: 'ba_workspace',
+    userId: 'member_1',
+  })
+
+  assert.deepEqual(requestedBillingAccountIds, ['ba_workspace'])
+  assert.equal(response.planKind, 'paid')
+  assert.equal(response.planAmountCents, 800)
+  assert.equal(response.budgetRemainingCents, 300)
+})
+
 test('BillingCustomerService.updateBillingSettings validates current response shapes', async () => {
   const service = new BillingCustomerService({ repository: createRepository() })
 

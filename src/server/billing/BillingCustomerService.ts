@@ -92,15 +92,21 @@ export class BillingCustomerService {
   }
 
   async getAppSubscription(args: {
+    billingAccountId?: string
     userId: string
   }) {
-    const entitlements = await this.deps.repository.getEntitlementsByServer({ userId: args.userId })
+    const entitlements = args.billingAccountId
+      ? await this.deps.repository.getBillingAccountEntitlementsByServer({
+          billingAccountId: args.billingAccountId,
+        })
+      : await this.deps.repository.getEntitlementsByServer({ userId: args.userId })
     if (!entitlements) {
       serviceError({ error: 'Failed to load subscription' }, 502)
     }
     const usageBuckets = normalizeUsageBuckets(entitlements)
     return {
       ...entitlements,
+      dailyUsage: entitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
       ...getTopUpPreferenceSnapshot(entitlements),
       ...usageBuckets,
       creditsUsed: usageBuckets.budgetUsedCents,

@@ -12,6 +12,7 @@ import {
   modelSupportsZeroDataRetention,
 } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import type { Entitlements } from '../chat-interface/types'
 
 type ChatRouter = {
@@ -40,6 +41,7 @@ function budgetRemainingCentsFor(entitlements: Entitlements): number {
 
 export function useChatBillingControls({
   activeChatId,
+  activeWorkspaceId,
   billingEnabled,
   catalogRevision,
   chatPrefsHydrated,
@@ -56,6 +58,7 @@ export function useChatBillingControls({
   setSelectedModels,
 }: {
   activeChatId: string | null
+  activeWorkspaceId: string | null
   billingEnabled: boolean
   /** From useGatewayModelCatalog — forces recompute when AVAILABLE_MODELS mutates. */
   catalogRevision: number
@@ -152,7 +155,12 @@ export function useChatBillingControls({
       return null
     }
     try {
-      const res = await overlayAppClient.subscription.getResponse()
+      const res = await overlayAppClient.subscription.getResponse({
+        cache: 'no-store',
+        ...(activeWorkspaceId
+          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
+          : {}),
+      })
       if (res.ok) {
         const data = await res.json() as Entitlements
         setEntitlements(data)
@@ -175,7 +183,7 @@ export function useChatBillingControls({
       }
     } catch { /* ignore */ }
     return null
-  }, [billingEnabled, setComposerNotice])
+  }, [activeWorkspaceId, billingEnabled, setComposerNotice])
 
   const buildTopUpReturnPath = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams?.toString() ?? '')

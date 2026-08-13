@@ -34,6 +34,7 @@ import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import type { BillingEntitlementsRecord } from '@/server/billing/BillingRepository'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -58,6 +59,22 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
     const isPostgresAppData = appDataCapabilities.provider === 'postgres'
     const serverContext = getOverlayServerContext()
+    const billingPayer = await serverContext.billingPayerResolver.resolve({
+      userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
+    const entitlementsPromise: Promise<Entitlements | null> = billingPayer.scope === 'workspace'
+      ? serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+          billingAccountId: billingPayer.billingAccountId,
+        }).then((value) => value
+          ? toAppEntitlements(value)
+          : null)
+      : isPostgresAppData
+        ? serverContext.appData.repositories.usage.getEntitlements({ userId: auth.userId })
+        : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
+          userId: auth.userId,
+          serverSecret,
+        })
 
     const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
       !isPostgresAppData && auth.accessToken
@@ -74,12 +91,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
             userId: auth.userId,
           })
         : Promise.resolve(null),
-      isPostgresAppData
-        ? serverContext.appData.repositories.usage.getEntitlements({ userId: auth.userId })
-        : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
-          userId: auth.userId,
-          serverSecret,
-        }),
+      entitlementsPromise,
       isPostgresAppData
         ? serverContext.appData.repositories.settings.getByUserId(auth.userId)
         : convex.query<AppSettings>(
@@ -178,4 +190,59 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     logger.error('[app/bootstrap] GET error:', error)
     return NextResponse.json({ error: 'Failed to load app bootstrap' }, { status: 500 })
   }
+}
+
+function toAppEntitlements(value: BillingEntitlementsRecord): Entitlements {
+  const dailyLimits = value.dailyLimits
+    ? {
+        ask: numericLimit(value.dailyLimits.ask),
+        write: numericLimit(value.dailyLimits.write),
+        agent: numericLimit(value.dailyLimits.agent),
+      }
+    : undefined
+  return {
+    tier: value.tier,
+    planKind: value.planKind,
+    planAmountCents: value.planAmountCents,
+    creditsUsed: value.creditsUsed,
+    creditsTotal: value.creditsTotal,
+    budgetUsedCents: value.budgetUsedCents,
+    budgetTotalCents: value.budgetTotalCents,
+    budgetRemainingCents: value.budgetRemainingCents,
+    allowanceTotalCents: value.allowanceTotalCents,
+    allowanceUsedCents: value.allowanceUsedCents,
+    allowancePercentUsed: value.allowancePercentUsed,
+    topUpBalanceCents: value.topUpBalanceCents,
+    autoTopUpEnabled: value.autoTopUpEnabled,
+    autoTopUpAmountCents: value.autoTopUpAmountCents,
+    autoTopUpConsentGranted: value.autoTopUpConsentGranted,
+    dailyUsage: value.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
+    ...(dailyLimits ? { dailyLimits } : {}),
+    ...(value.overlayStorageBytesUsed === undefined
+      ? {}
+      : { overlayStorageBytesUsed: value.overlayStorageBytesUsed }),
+    ...(value.overlayStorageBytesLimit === undefined
+      ? {}
+      : { overlayStorageBytesLimit: value.overlayStorageBytesLimit }),
+    ...(value.transcriptionSecondsUsed === undefined
+      ? {}
+      : { transcriptionSecondsUsed: value.transcriptionSecondsUsed }),
+    ...(value.transcriptionSecondsLimit === undefined
+      ? {}
+      : { transcriptionSecondsLimit: value.transcriptionSecondsLimit }),
+    ...(value.localTranscriptionEnabled === undefined
+      ? {}
+      : { localTranscriptionEnabled: value.localTranscriptionEnabled }),
+    ...(value.resetAt === undefined
+      ? {}
+      : { resetAt: new Date(value.resetAt).toISOString() }),
+    ...(value.billingPeriodEnd ? { billingPeriodEnd: value.billingPeriodEnd } : {}),
+    ...(value.lastSyncedAt === undefined ? {} : { lastSyncedAt: value.lastSyncedAt }),
+  }
+}
+
+function numericLimit(value: number | string): number {
+  if (value === 'Infinity' || value === Infinity) return Number.MAX_SAFE_INTEGER
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }
