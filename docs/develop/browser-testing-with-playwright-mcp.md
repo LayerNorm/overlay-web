@@ -174,6 +174,12 @@ After merging your feature branch to `staging` and pushing:
 **Never use `npm run dev` for browser QA.** It freezes the user's machine. Always test on
 staging. If you need to verify a route before merging to staging, ask the user first.
 
+Keep one Playwright MCP server/client connection alive for the entire QA run. Re-launching
+extension-mode MCP for each browser command repeatedly connects to and disconnects from the
+user's Chrome profile and can open extra welcome tabs. Reuse the same connection across
+navigations and checks; when temporarily idle, park its page on `about:blank` instead of
+closing and reconnecting it.
+
 ### 2. Verifying PPR static shells
 
 Cache Components + Partial Prefetching means the static shell should be in the HTML before

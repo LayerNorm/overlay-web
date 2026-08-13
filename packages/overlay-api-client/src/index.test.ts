@@ -219,6 +219,21 @@ test('JSON helpers reject HTTP errors instead of treating error payloads as reso
   )
 })
 
+test('JSON helpers explain rate limits and include the retry window', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async () => Response.json(
+      { error: 'Too many requests', retryAfterSeconds: 565 },
+      { status: 429, headers: { 'Retry-After': '565' } },
+    ),
+  })
+
+  await assert.rejects(
+    client.conversations.createChannel({ name: 'qa', visibility: 'public' }),
+    /Too many requests\. This account has reached its temporary request limit\. Try again in 9 minutes 25 seconds\./,
+  )
+})
+
 test('webhook helpers unwrap standardized lists and parse mutation payloads', async () => {
   const client = createOverlayAppClient({
     baseUrl: 'https://example.test',
