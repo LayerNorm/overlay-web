@@ -27,6 +27,7 @@ import {
   getUserMessageDocNames,
   getUserReplyThreadMeta,
   getUserTurnId,
+  looksLikeStoredGenerationError,
   persistedGenerationErrorMessage,
   resolveActAssistant,
   splitUserDisplayText,
@@ -194,6 +195,9 @@ function TextChatMessage(props: TextChatMessageProps) {
     ? (responseMsg as { id: string }).id
     : null
   const assistantVisualBlocks = (() => {
+    if (persistedStatus === 'error' && looksLikeStoredGenerationError(responseText)) {
+      return []
+    }
     const blocks = buildAssistantVisualSequence(responseParts)
     if (blocks.length === 0 && responseText.trim()) {
       return [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }]

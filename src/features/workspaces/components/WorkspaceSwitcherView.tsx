@@ -326,7 +326,9 @@ export function WorkspaceSwitcherView({
   const isFooter = placement === 'footer'
   const portalMenu = isFooter || compact
 
-  if (status === 'idle') return null
+  // Footer hosts the account control. Never unmount it while workspaces are idle
+  // (first paint before the client session enables the workspace provider).
+  if (status === 'idle' && !isFooter && !accountMenu) return null
 
   return (
     <>

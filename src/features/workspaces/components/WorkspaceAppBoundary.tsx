@@ -1,16 +1,23 @@
 'use client'
 
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CircleAlert, Loader2 } from 'lucide-react'
 import { createShowcaseWorkspaceClient } from '@/features/showcase/showcase-workspace-client'
 import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
 import { workspaceClient } from '../lib/workspace-client'
+import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceProvider, useWorkspace } from './WorkspaceProvider'
 
 function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   const { status, error, refresh } = useWorkspace()
-  if (status === 'loading') {
+  const [hasShownApp, setHasShownApp] = useState(status !== 'loading')
+  if (status !== 'loading' && !hasShownApp) {
+    setHasShownApp(true)
+  }
+  // A late client-auth enablement flips idle → loading. Keep the already-visible
+  // app shell mounted so the account footer does not vanish behind a full-page gate.
+  if (status === 'loading' && !hasShownApp) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[var(--background)] text-sm text-[var(--muted)]">
         <Loader2 size={16} className="mr-2 animate-spin" />
@@ -49,15 +56,19 @@ export function WorkspaceAppBoundary({
   hasAuthenticatedUser: boolean
 }) {
   const searchParams = useSearchParams()
+  const { user } = useAuth()
   const publicShowcase = searchParams?.get('showcase') === '1'
   const showcaseClient = useMemo(
     () => createShowcaseWorkspaceClient(SHOWCASE_WORKSPACES),
     [],
   )
+  // Cache Components can first paint this layout without a session. The client
+  // auth check still finds the cookie, so enable workspaces from that too.
+  const enabled = hasAuthenticatedUser || publicShowcase || Boolean(user)
 
   return (
     <WorkspaceProvider
-      enabled={hasAuthenticatedUser || publicShowcase}
+      enabled={enabled}
       client={publicShowcase ? showcaseClient : workspaceClient}
     >
       <WorkspaceHydrationBoundary>{children}</WorkspaceHydrationBoundary>

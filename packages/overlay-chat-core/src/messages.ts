@@ -548,7 +548,8 @@ export function looksLikeStoredGenerationError(message: string): boolean {
     text.includes('AI Gateway') ||
     text.includes('model provider') ||
     /gateway.*(auth|key|billing|quota|limit)|provider.*(blocked|billing|quota|limit)/i.test(text) ||
-    /model.*not found|not found.*model|model_not_found/i.test(text)
+    /model.*not found|not found.*model|model_not_found/i.test(text) ||
+    /no such subscription|resource_missing/i.test(text)
   ) {
     return true
   }
@@ -574,7 +575,7 @@ export const USAGE_EXHAUSTED_LABEL =
 
 export function isUsageExhaustedError(text: string | null | undefined): boolean {
   if (!text) return false
-  return /insufficient_credits|insufficient_budget|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|top up your account|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent/i.test(
+  return /insufficient_credits|insufficient_budget|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|top up your account|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
     text,
   )
 }

@@ -34,7 +34,9 @@ test('errorLabel maps exhausted usage to the account top-up message', () => {
   assert.equal(errorLabel(new Error('insufficient_credits')), USAGE_EXHAUSTED_LABEL)
   assert.equal(errorLabel(new Error('insufficient_budget')), USAGE_EXHAUSTED_LABEL)
   assert.equal(errorLabel(new Error('No budget remaining. Switch to a free model or top up your account.')), USAGE_EXHAUSTED_LABEL)
+  assert.equal(errorLabel(new Error("No such subscription: 'sub_1TKxeqPH7ssnO0LIvQigJkN7'")), USAGE_EXHAUSTED_LABEL)
   assert.equal(isUsageExhaustedError(USAGE_EXHAUSTED_LABEL), true)
+  assert.equal(looksLikeStoredGenerationError("No such subscription: 'sub_1TKxeqPH7ssnO0LIvQigJkN7'"), true)
 })
 
 test('persistedGenerationErrorMessage keeps real stored error strings', () => {
