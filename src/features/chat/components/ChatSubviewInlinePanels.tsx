@@ -17,6 +17,7 @@ import {
   readWorkspaceIdFromPath,
 } from '@/features/workspaces/lib/workspace-routing'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
+import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 
 /**
  * Sidebar lists for the Chats subviews that are not conversation list.
@@ -57,21 +58,11 @@ function viewForConversationType(conversationType?: string): 'personal' | 'dms' 
 export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
-  const [items, setItems] = useState<ActivityNotification[] | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const activity = await overlayAppClient.conversations.notifications({ filter: 'all', limit: 50 })
-        if (cancelled) return
-        setItems(Array.isArray(activity?.notifications) ? activity.notifications : [])
-      } catch {
-        if (!cancelled) setItems([])
-      }
-    })()
-    return () => { cancelled = true }
-  }, [])
+  const { notifications, notificationsReady } = useCollaborationRealtime()
+  const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
+  const items: ActivityNotification[] = notifications.slice(0, 50).map((item) => (
+    locallyRead.has(item.id) ? { ...item, readAt: item.readAt ?? locallyRead.get(item.id) } : item
+  ))
 
   async function openNotification(item: ActivityNotification) {
     onNavigate?.()
@@ -88,7 +79,7 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
       void overlayAppClient.conversations.markNotificationsRead([item.id])
         .then(() => dispatchCollaborationNotificationsChanged())
         .catch(() => undefined)
-      setItems((current) => current?.map((row) => row.id === item.id ? { ...row, readAt: Date.now() } : row) ?? null)
+      setLocallyRead((current) => new Map(current).set(item.id, Date.now()))
     }
     let view: 'personal' | 'dms' | 'channels' = 'personal'
     try {
@@ -104,7 +95,7 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     router.push(`/app/chat?${query.toString()}`)
   }
 
-  if (items === null) {
+  if (!notificationsReady) {
     return <PanelState icon={<Loader2 size={15} className="animate-spin" />} message="Loading activity…" />
   }
   if (items.length === 0) {

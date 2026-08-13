@@ -7,10 +7,19 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
     const { searchParams } = request.nextUrl
+    const fileId = searchParams.get('fileId')
+    const wantsPage = ['true', '1'].includes(searchParams.get('page') ?? '')
+    const rawLimit = searchParams.get('limit')
+    const parsedLimit = rawLimit === null ? undefined : Number.parseInt(rawLimit, 10)
     const result = await fileService.getOrListFiles({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
-      fileId: searchParams.get('fileId'),
+      fileId,
+      cursor: searchParams.get('cursor'),
+      limit: parsedLimit !== undefined && Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? parsedLimit
+        : undefined,
+      paginated: !fileId,
       projectId: searchParams.get('projectId'),
       kind: searchParams.get('kind'),
       parentId: searchParams.get('parentId'),
@@ -18,6 +27,16 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       outputType: searchParams.get('outputType') ?? searchParams.get('type'),
       summary: ['true', '1'].includes(searchParams.get('summary') ?? ''),
     })
+    if (
+      !fileId
+      && !wantsPage
+      && result
+      && typeof result === 'object'
+      && 'data' in result
+      && Array.isArray(result.data)
+    ) {
+      return NextResponse.json(result.data)
+    }
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof Error && error.name === 'FileServiceError') {

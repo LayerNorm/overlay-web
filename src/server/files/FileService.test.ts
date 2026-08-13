@@ -147,6 +147,49 @@ function createService(repository = createRepository(), storage = createStorage(
   })
 }
 
+test('FileService uses the repository cursor page for paginated list requests', async () => {
+  const repository = createRepository({
+    async listFilesPage(args) {
+      assert.equal(args.cursor, 'cursor_1')
+      assert.equal(args.limit, 25)
+      return { data: [{ _id: 'file_1' }], nextCursor: 'cursor_2', hasMore: true }
+    },
+  })
+  const result = await createService(repository).getOrListFiles({
+    userId: 'user_1',
+    workspaceId: 'workspace_1',
+    cursor: 'cursor_1',
+    limit: 25,
+    paginated: true,
+  })
+  assert.deepEqual(result, {
+    data: [{ _id: 'file_1' }],
+    nextCursor: 'cursor_2',
+    hasMore: true,
+  })
+})
+
+test('FileService wraps non-cursor repositories in a terminal page', async () => {
+  const repository = createRepository({
+    async listFiles() {
+      return [{ _id: 'file_1', userId: 'user_1', name: 'notes.txt' }]
+    },
+  })
+  const service = createService(repository)
+
+  const result = await service.getOrListFiles({
+    paginated: true,
+    userId: 'user_1',
+    workspaceId: 'workspace_1',
+  })
+
+  assert.deepEqual(result, {
+    data: [{ _id: 'file_1', userId: 'user_1', name: 'notes.txt' }],
+    nextCursor: null,
+    hasMore: false,
+  })
+})
+
 test('FileService.createFile preserves missing-name error shape', async () => {
   const service = createService()
   await assert.rejects(

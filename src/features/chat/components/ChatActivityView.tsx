@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { AtSign, Bell, BellOff, Check, Inbox, MessageCircle, Smile } from 'lucide-react'
 import type {
@@ -11,9 +11,9 @@ import { SegmentedControl } from '@overlay/ui'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
+import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import {
   buildWorkspaceHref,
   readWorkspaceIdFromPath,
@@ -50,33 +50,20 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
-  const [notifications, setNotifications] = useState<WorkspaceNotification[]>([])
-  const [loading, setLoading] = useState(true)
-
-  // Notifications refetch per filter and on a poll, so they stay out of the
-  // callback and never re-trigger the list skeleton.
-  const load = useCallback(async () => {
-    try {
-      const activity = await overlayAppClient.conversations.notifications({ filter, limit: 100 })
-      // `overlayAppClient` intentionally returns parsed error bodies for non-2xx
-      // responses. Treat an unavailable activity endpoint as an empty, retryable
-      // feed instead of letting an error payload crash the chat shell.
-      setNotifications(Array.isArray(activity?.notifications) ? activity.notifications : [])
-    } catch {
-      setNotifications([])
-    } finally {
-      setLoading(false)
-    }
-  }, [filter])
-
-  useEffect(() => {
-    setLoading(true)
-    void load()
-    const timer = window.setInterval(() => void load(), 15_000)
-    return () => window.clearInterval(timer)
-  }, [load])
-
-  useWorkspaceChanged(load)
+  const { notifications: sourceNotifications, notificationsReady } = useCollaborationRealtime()
+  const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
+  const notifications = useMemo(() => sourceNotifications
+    .filter((notification) => {
+      if (filter === 'unread') return !notification.readAt && !locallyRead.has(notification.id)
+      if (filter === 'mentions') return notification.type === 'mention'
+      if (filter === 'threads') return notification.type === 'thread'
+      if (filter === 'reactions') return notification.type === 'reaction'
+      return true
+    })
+    .map((notification) => locallyRead.has(notification.id)
+      ? { ...notification, readAt: notification.readAt ?? locallyRead.get(notification.id) }
+      : notification), [filter, locallyRead, sourceNotifications])
+  const loading = !notificationsReady
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
 
@@ -90,7 +77,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       void overlayAppClient.conversations.markNotificationsRead([notification.id])
         .then(() => dispatchCollaborationNotificationsChanged())
         .catch(() => undefined)
-      setNotifications((current) => current.map((row) => row.id === notification.id ? { ...row, readAt: Date.now() } : row))
+      setLocallyRead((current) => new Map(current).set(notification.id, Date.now()))
     }
     if (!notification.conversationId) return
     if (notification.conversationState === 'archived') {
@@ -115,8 +102,12 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   async function markAllRead() {
     const unreadIds = notifications.filter((notification) => !notification.readAt).map(({ id }) => id)
     if (unreadIds.length === 0) return
-    const readAt = Date.now()
-    setNotifications((current) => current.map((row) => row.readAt ? row : { ...row, readAt }))
+    setLocallyRead((current) => {
+      const next = new Map(current)
+      const readAt = Date.now()
+      for (const id of unreadIds) next.set(id, readAt)
+      return next
+    })
     await overlayAppClient.conversations.markNotificationsRead(unreadIds)
       .then(() => dispatchCollaborationNotificationsChanged())
       .catch(() => undefined)

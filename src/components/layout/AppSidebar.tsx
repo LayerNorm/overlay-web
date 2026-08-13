@@ -47,7 +47,6 @@ const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mo
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
 import {
-  COLLABORATION_NOTIFICATIONS_CHANGED_EVENT,
   NEW_CHANNEL_EVENT,
   NEW_DIRECT_MESSAGE_EVENT,
 } from '@/shared/chat/collaboration-events'
@@ -124,6 +123,7 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
 ])
 
 export default function AppSidebar({
+  collaborationNotifications = [],
   publicShowcase = false,
   renderChatPanel,
   renderAutomationsPanel,
@@ -351,12 +351,11 @@ export default function AppSidebar({
       return
     }
     let cancelled = false
-    const loadUnread = async () => {
+    const categorizeUnread = async () => {
       try {
-        const result = await overlayAppClient.conversations.notifications({ unreadOnly: true, limit: 100 })
-        const notifications = Array.isArray(result.notifications) ? result.notifications : []
+        const unreadNotifications = collaborationNotifications.filter((notification) => !notification.readAt)
         let conversations: CachedConversation[] = []
-        if (notifications.length > 0) {
+        if (unreadNotifications.length > 0) {
           try {
             const page = await overlayAppClient.conversations.getPage<CachedConversation>({ view: 'all', limit: 100 })
             conversations = page.data
@@ -364,21 +363,18 @@ export default function AppSidebar({
             // Activity remains complete even when the conversation directory is briefly unavailable.
           }
         }
-        if (!cancelled) setCollaborationUnread(categorizeCollaborationUnreadNotifications(notifications, conversations))
+        if (!cancelled) {
+          setCollaborationUnread(categorizeCollaborationUnreadNotifications(unreadNotifications, conversations))
+        }
       } catch {
-        // The primary chat navigation stays usable while notification state retries.
+        // The primary chat navigation stays usable while conversation categorization retries.
       }
     }
-    const handleChanged = () => { void loadUnread() }
-    void loadUnread()
-    const timer = window.setInterval(handleChanged, 15_000)
-    window.addEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, handleChanged)
+    void categorizeUnread()
     return () => {
       cancelled = true
-      window.clearInterval(timer)
-      window.removeEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, handleChanged)
     }
-  }, [activeWorkspaceId, publicShowcase, user])
+  }, [activeWorkspaceId, collaborationNotifications, publicShowcase, user])
 
   useEffect(() => {
     // Unread was folded into Activity; rewrite stale deep links.

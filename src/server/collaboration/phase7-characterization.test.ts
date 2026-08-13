@@ -126,7 +126,7 @@ test('Phase 7 keeps one contract for web, desktop, and mobile surfaces', async (
 })
 
 test('workspace rooms route to the collaboration experience and use participant-scoped persistence', async () => {
-  const [boundary, router, inlinePanel, conversationsRoute, messageRoute, activity, room, convexRooms] = await Promise.all([
+  const [boundary, router, inlinePanel, conversationsRoute, messageRoute, activity, room, convexRooms, realtimeProvider] = await Promise.all([
     readFile(`${root}/src/features/chat/components/ChatSuspenseBoundary.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ConversationExperienceRouter.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ChatInlinePanel.tsx`, 'utf8'),
@@ -135,6 +135,7 @@ test('workspace rooms route to the collaboration experience and use participant-
     readFile(`${root}/src/features/chat/components/ChatActivityView.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx`, 'utf8'),
   ])
   assert.match(boundary, /ConversationExperienceRouter/)
   assert.match(router, /view === 'dms'/)
@@ -154,12 +155,17 @@ test('workspace rooms route to the collaboration experience and use participant-
   assert.match(activity, /conversationType === 'dm'/)
   assert.match(room, /appDataCapabilities\.provider === 'convex'/)
   assert.match(room, /enabled: roomEventSyncEnabled/)
-  assert.match(room, /markNotificationsRead/)
+  assert.match(room, /markConversationNotificationsRead/)
   assert.match(room, /overlay:collaboration-read/)
   assert.match(room, /ConvexRoomMessageSubscription/)
   assert.doesNotMatch(room, /setNotice\('This conversation is unavailable\.'\)/)
   assert.match(convexRooms, /watchRoomMessages/)
+  assert.match(convexRooms, /watchConversationListVersion/)
+  assert.match(convexRooms, /watchNotifications/)
   assert.match(convexRooms, /requireAccessToken/)
   assert.match(convexRooms, /ok: true/)
   assert.match(convexRooms, /ok: false/)
+  assert.match(realtimeProvider, /document\.visibilityState === 'visible'/)
+  assert.match(realtimeProvider, /appDataCapabilities\.provider === 'convex'/)
+  assert.match(realtimeProvider, /setInterval\(\(\) => void loadPostgresNotifications\(\), 15_000\)/)
 })

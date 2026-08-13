@@ -487,7 +487,16 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_sandboxId', ['sandboxId']),
+    .index('by_sandboxId', ['sandboxId'])
+    .index('by_state_updatedAt', ['state', 'updatedAt']),
+
+  maintenanceCursors: defineTable({
+    key: v.string(),
+    cursor: v.optional(v.string()),
+    cutoff: v.number(),
+    nextRunAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index('by_key', ['key']),
 
   daytonaUsageLedger: defineTable({
     userId: v.string(),
@@ -874,6 +883,7 @@ export default defineSchema({
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
     .index('by_shareToken', ['shareToken'])
+    .index('by_createdAt', ['createdAt'])
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey']),
@@ -1296,6 +1306,11 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
   }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
+    .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
+    .index('by_workspaceId_userId_projectId_updatedAt', ['workspaceId', 'userId', 'projectId', 'updatedAt'])
+    .index('by_workspaceId_userId_parentId_updatedAt', ['workspaceId', 'userId', 'parentId', 'updatedAt'])
+    .index('by_workspaceId_userId_conversationId_updatedAt', ['workspaceId', 'userId', 'conversationId', 'updatedAt'])
+    .index('by_workspaceId_userId_outputType_updatedAt', ['workspaceId', 'userId', 'outputType', 'updatedAt'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
@@ -1825,7 +1840,8 @@ export default defineSchema({
     payload: v.optional(v.record(v.string(), v.any())),
     createdAt: v.number(),
   })
-    .index('by_conversationId_createdAt', ['conversationId', 'createdAt']),
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_workspaceId', ['workspaceId']),
 
   conversationParticipants: defineTable({
     conversationId: v.id('conversations'),

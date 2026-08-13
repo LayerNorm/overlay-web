@@ -74,6 +74,8 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
     conversationId: 'conversation_1',
     outputType: 'image',
     kind: 'output',
+    cursor: 'cursor_1',
+    limit: 25,
     summary: true,
   }), {
     userId: 'user_1',
@@ -82,6 +84,8 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
     conversationId: 'conversation_1',
     outputType: 'image',
     kind: 'output',
+    cursor: 'cursor_1',
+    limit: 25,
     summary: true,
   })
 

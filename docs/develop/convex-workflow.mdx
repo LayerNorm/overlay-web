@@ -44,3 +44,15 @@ Browser→Convex subscriptions must use short-lived **HS256** tokens:
 3. Convex `requireAccessToken` verifies HS256 with `crypto.subtle` only (`verifyBrowserConvexAccessToken`).
 
 `INTERNAL_API_SECRET` must match between the Next app env and the Convex deployment. Do not send the raw WorkOS access token into reactive queries.
+
+Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
+
+- `watchRoomMessages` owns room transcript updates.
+- `watchConversationListVersion` provides a metadata-free invalidation signal for the sidebar.
+- `watchNotifications` is the single app-level notification subscription.
+
+Do not run `/api/v1/conversations/events` long-polls alongside those subscriptions. That endpoint is a Postgres-only fallback; polling it against a Convex repository multiplies one browser connection into repeated Convex queries and authorization calls.
+
+## Bounded maintenance and list queries
+
+Maintenance jobs and user-facing lists must advance through indexed, bounded pages. `runEmptyConversationCleanup` persists its pagination cursor in `maintenanceCursors`, and `files/files:listPage` is the cursor-based file listing source. Keep legacy list functions bounded during web/Convex deployment overlap; never restore a growing-table `.collect()` for compatibility.

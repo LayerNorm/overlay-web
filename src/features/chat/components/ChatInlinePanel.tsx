@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, type MouseEvent } from 'react'
+import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Archive, MessageSquare, Check, Hash, Pencil, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
@@ -39,6 +39,8 @@ import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
 import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 
 
 type Conversation = {
@@ -68,6 +70,11 @@ export function ChatInlinePanel({
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
+  const { appDataCapabilities } = useOverlayCapabilities()
+  const {
+    conversationListVersion,
+    notifications: collaborationNotifications,
+  } = useCollaborationRealtime()
   const isPublicShowcase = seededChats !== undefined
   const [chats, setChats] = useState<Conversation[]>(() => seededChats ?? [])
   const [loading, setLoading] = useState(!isPublicShowcase)
@@ -79,6 +86,7 @@ export function ChatInlinePanel({
   const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
+  const lastConversationListVersionRef = useRef<number | null>(null)
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
   useEffect(() => {
     function bumpBrowserRoute() {
@@ -151,47 +159,28 @@ export function ChatInlinePanel({
       setCollaborationUnread({})
       return
     }
-    let cancelled = false
-    const loadUnread = async () => {
-      try {
-        const { notifications } = await overlayAppClient.conversations.notifications({
-          unreadOnly: true,
-          limit: 100,
-        })
-        if (cancelled) return
-        const counts: Record<string, number> = {}
-        for (const notification of notifications) {
-          if (!notification.conversationId) continue
-          counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
-        }
-        setCollaborationUnread(counts)
-      } catch {
-        // Realtime badges are best effort; the conversation remains accessible.
-      }
+    const counts: Record<string, number> = {}
+    for (const notification of collaborationNotifications) {
+      if (notification.readAt) continue
+      if (!notification.conversationId) continue
+      counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
     }
-    void loadUnread()
-    const timer = window.setInterval(() => void loadUnread(), 15_000)
+    setCollaborationUnread(counts)
     function handleCollaborationRead(event: Event) {
       const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
-      if (!conversationId) {
-        void loadUnread()
-        return
-      }
+      if (!conversationId) return
       setCollaborationUnread((current) => {
         if (!(conversationId in current)) return current
         const next = { ...current }
         delete next[conversationId]
         return next
       })
-      void loadUnread()
     }
     window.addEventListener('overlay:collaboration-read', handleCollaborationRead)
     return () => {
-      cancelled = true
-      window.clearInterval(timer)
       window.removeEventListener('overlay:collaboration-read', handleCollaborationRead)
     }
-  }, [isPublicShowcase, user, workspaceId])
+  }, [collaborationNotifications, isPublicShowcase, user, workspaceId])
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
     if (seededChats) {
@@ -284,7 +273,24 @@ export function ChatInlinePanel({
   useWorkspaceChanged(useCallback(() => { void loadChats() }, [loadChats]))
 
   useEffect(() => {
-    if (!workspaceId || isPublicShowcase || !user) return
+    lastConversationListVersionRef.current = null
+  }, [workspaceId])
+
+  useEffect(() => {
+    if (appDataCapabilities.provider !== 'convex' || conversationListVersion === null) return
+    const previous = lastConversationListVersionRef.current
+    lastConversationListVersionRef.current = conversationListVersion
+    if (previous === null || previous === conversationListVersion) return
+    void loadChats()
+  }, [appDataCapabilities.provider, conversationListVersion, loadChats])
+
+  useEffect(() => {
+    if (
+      appDataCapabilities.provider !== 'postgres'
+      || !workspaceId
+      || isPublicShowcase
+      || !user
+    ) return
     const controller = new AbortController()
     let cancelled = false
     const run = async () => {
@@ -316,7 +322,7 @@ export function ChatInlinePanel({
       cancelled = true
       controller.abort()
     }
-  }, [isPublicShowcase, loadChats, user, workspaceId])
+  }, [appDataCapabilities.provider, isPublicShowcase, loadChats, user, workspaceId])
 
   useEffect(() => {
     if (isPublicShowcase) return

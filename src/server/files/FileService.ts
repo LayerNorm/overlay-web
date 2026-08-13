@@ -142,10 +142,13 @@ export class FileService {
 
   async getOrListFiles(args: {
     conversationId?: string | null
+    cursor?: string | null
     fileId?: string | null
     kind?: string | null
     outputType?: string | null
     parentId?: string | null
+    limit?: number
+    paginated?: boolean
     projectId?: string | null
     summary?: boolean
     userId: string
@@ -162,7 +165,15 @@ export class FileService {
       return file
     }
 
-    return await this.deps.repository.listFiles(buildFileListArgs(args))
+    const listArgs = buildFileListArgs(args)
+    if (args.paginated) {
+      if (this.deps.repository.listFilesPage) {
+        return await this.deps.repository.listFilesPage(listArgs)
+      }
+      const data = await this.deps.repository.listFiles(listArgs)
+      return { data, nextCursor: null, hasMore: false }
+    }
+    return await this.deps.repository.listFiles(listArgs)
   }
 
   async createFile(args: {

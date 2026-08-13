@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
-import { mutation, query, type MutationCtx } from '../_generated/server'
+import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import {
   applyStorageUsageDelta,
@@ -410,24 +410,82 @@ export const expireUploadIntentsByServer = mutation({
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
+type FileListArgs = {
+  userId: string
+  workspaceId?: string
+  projectId?: string
+  parentId?: string | null
+  conversationId?: string
+  outputType?: string
+  kind?: FileKind
+  includeDeleted?: boolean
+}
+
+function fileListQuery(ctx: QueryCtx, args: FileListArgs) {
+  if (args.workspaceId) {
+    if (args.projectId !== undefined) {
+      return ctx.db.query('files').withIndex('by_workspaceId_userId_projectId_updatedAt', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.userId).eq('projectId', args.projectId)
+      )).order('desc')
+    }
+    if (args.parentId !== undefined) {
+      return ctx.db.query('files').withIndex('by_workspaceId_userId_parentId_updatedAt', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.userId).eq('parentId', args.parentId ?? undefined)
+      )).order('desc')
+    }
+    if (args.conversationId !== undefined) {
+      return ctx.db.query('files').withIndex('by_workspaceId_userId_conversationId_updatedAt', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.userId).eq('conversationId', args.conversationId)
+      )).order('desc')
+    }
+    if (args.outputType !== undefined) {
+      return ctx.db.query('files').withIndex('by_workspaceId_userId_outputType_updatedAt', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.userId).eq('outputType', args.outputType)
+      )).order('desc')
+    }
+    return ctx.db.query('files').withIndex('by_workspaceId_userId_updatedAt', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('userId', args.userId)
+    )).order('desc')
+  }
+  return ctx.db.query('files')
+    .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+    .order('desc')
+}
+
+function filterFileList(files: Doc<'files'>[], args: FileListArgs): Doc<'files'>[] {
+  return files
+    .filter((file) => (args.includeDeleted ? true : !file.deletedAt))
+    .filter((file) => (args.projectId !== undefined ? file.projectId === args.projectId : true))
+    .filter((file) => (args.parentId !== undefined ? (file.parentId ?? null) === args.parentId : true))
+    .filter((file) => (args.conversationId !== undefined ? file.conversationId === args.conversationId : true))
+    .filter((file) => (args.outputType !== undefined ? file.outputType === args.outputType : true))
+    .filter((file) => (args.kind !== undefined ? inferKind(file) === args.kind : true))
+    .filter((file) => (args.workspaceId !== undefined ? file.workspaceId === args.workspaceId : true))
+}
+
+const fileListArgs = {
+  userId: v.string(),
+  workspaceId: v.optional(v.string()),
+  accessToken: v.optional(v.string()),
+  serverSecret: v.optional(v.string()),
+  projectId: v.optional(v.string()),
+  parentId: v.optional(v.union(v.string(), v.null())),
+  conversationId: v.optional(v.string()),
+  outputType: v.optional(v.string()),
+  kind: v.optional(v.union(
+    v.literal('folder'),
+    v.literal('note'),
+    v.literal('upload'),
+    v.literal('output'),
+  )),
+  summary: v.optional(v.boolean()),
+  includeDeleted: v.optional(v.boolean()),
+}
+
 export const list = query({
   args: {
-    userId: v.string(),
-    workspaceId: v.optional(v.string()),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    projectId: v.optional(v.string()),
-    parentId: v.optional(v.union(v.string(), v.null())),
-    conversationId: v.optional(v.string()),
-    outputType: v.optional(v.string()),
-    kind: v.optional(v.union(
-      v.literal('folder'),
-      v.literal('note'),
-      v.literal('upload'),
-      v.literal('output'),
-    )),
-    summary: v.optional(v.boolean()),
-    includeDeleted: v.optional(v.boolean()),
+    ...fileListArgs,
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, {
     userId,
@@ -439,6 +497,7 @@ export const list = query({
     conversationId,
     outputType,
     kind,
+    limit,
     summary,
     includeDeleted,
   }) => {
@@ -447,24 +506,46 @@ export const list = query({
     } catch {
       return []
     }
-    const allFiles = await ctx.db
-      .query('files')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('desc')
-      .collect()
-
-    const filteredFiles = allFiles
-      .filter((file) => (includeDeleted ? true : !file.deletedAt))
-      .filter((file) => (projectId !== undefined ? file.projectId === projectId : true))
-      .filter((file) => (parentId !== undefined ? (file.parentId ?? null) === parentId : true))
-      .filter((file) => (conversationId !== undefined ? file.conversationId === conversationId : true))
-      .filter((file) => (outputType !== undefined ? file.outputType === outputType : true))
-      .filter((file) => (kind !== undefined ? inferKind(file) === kind : true))
-      .filter((file) => (workspaceId !== undefined ? file.workspaceId === workspaceId : true))
+    const requestedLimit = Math.max(1, Math.min(100, Math.floor(limit ?? 100)))
+    const candidates = await fileListQuery(ctx, {
+      userId, workspaceId, projectId, parentId, conversationId, outputType, kind, includeDeleted,
+    }).take(Math.min(300, requestedLimit * 3))
+    const filteredFiles = filterFileList(candidates, {
+      userId, workspaceId, projectId, parentId, conversationId, outputType, kind, includeDeleted,
+    }).slice(0, requestedLimit)
 
     return summary
       ? filteredFiles.map(normalizeFileSummary)
       : filteredFiles.map(normalizeFile)
+  },
+})
+
+export const listPage = query({
+  args: {
+    ...fileListArgs,
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    try {
+      await authorizeUserAccess(args)
+    } catch {
+      return { data: [], nextCursor: null, hasMore: false }
+    }
+    const limit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)))
+    const page = await fileListQuery(ctx, args).paginate({
+      cursor: args.cursor ?? null,
+      numItems: limit,
+    })
+    const filtered = filterFileList(page.page, args)
+    return {
+      data: args.summary
+        ? filtered.map(normalizeFileSummary)
+        : filtered.map(normalizeFile),
+      nextCursor: page.isDone ? null : page.continueCursor,
+      hasMore: !page.isDone,
+    }
   },
 })
 

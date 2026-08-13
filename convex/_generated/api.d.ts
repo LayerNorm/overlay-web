@@ -58,6 +58,7 @@ import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_logging from "../lib/logging.js";
+import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as outputs_outputs from "../outputs/outputs.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
@@ -129,6 +130,7 @@ declare const fullApi: ApiFromModules<{
   "lib/browserConvexToken": typeof lib_browserConvexToken;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/logging": typeof lib_logging;
+  "lib/workspaceMembership": typeof lib_workspaceMembership;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "outputs/outputs": typeof outputs_outputs;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;

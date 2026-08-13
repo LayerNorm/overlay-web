@@ -57,6 +57,7 @@ import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
+import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
 import {
   compareRoomMessageRecords,
@@ -173,21 +174,18 @@ export function DirectMessageExperience({
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexAuthToken()
+  const { refreshNotifications } = useCollaborationRealtime()
   const convexLiveSyncEnabled = !showcase
     && appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
   const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
     && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
-  // A Convex WebSocket subscription and BFF long-poll must never reconcile the
-  // same optimistic row concurrently: that produces a second visible swap
-  // after send. Long-poll remains the fallback until Convex auth is ready.
+  // Convex uses its native WebSocket subscription exclusively. The BFF event
+  // stream is a Postgres-only fallback; running both caused a request fan-out.
   const roomEventSyncEnabled = !showcase
     && appDataCapabilities.supportsRealtime
-    && (
-      appDataCapabilities.provider === 'postgres'
-      || (appDataCapabilities.provider === 'convex' && !convexRoomSubscriptionEnabled)
-    )
+    && appDataCapabilities.provider === 'postgres'
   const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
@@ -435,23 +433,15 @@ export function DirectMessageExperience({
   const clearCollaborationNotifications = useCallback(async () => {
     if (showcase) return
     try {
-      const { notifications } = await overlayAppClient.conversations.notifications({
-        unreadOnly: true,
-        limit: 100,
-      })
-      const unreadIds = notifications
-        .filter((notification) => notification.conversationId === conversationId)
-        .map((notification) => notification.id)
-      if (unreadIds.length > 0) {
-        await overlayAppClient.conversations.markNotificationsRead(unreadIds)
-      }
+      await overlayAppClient.conversations.markConversationNotificationsRead(conversationId)
+      refreshNotifications()
     } catch {
       // Badge clear is best-effort; the room transcript still works.
     }
     window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
       detail: { conversationId },
     }))
-  }, [conversationId, showcase])
+  }, [conversationId, refreshNotifications, showcase])
 
   const markVisibleRead = useCallback(async () => {
     if (showcase || document.visibilityState !== 'visible') return

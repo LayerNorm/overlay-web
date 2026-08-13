@@ -9,6 +9,32 @@ import { resolveConversationActivityState } from '../../src/shared/chat/conversa
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
+const notificationFilterValidator = v.union(
+  v.literal('all'),
+  v.literal('unread'),
+  v.literal('mentions'),
+  v.literal('threads'),
+  v.literal('reactions'),
+)
+
+const notificationValidator = v.object({
+  id: v.string(),
+  workspaceId: v.string(),
+  recipientPrincipalId: v.string(),
+  type: v.union(v.literal('mention'), v.literal('thread'), v.literal('message'), v.literal('reaction'), v.literal('participant')),
+  conversationId: v.id('conversations'),
+  messageId: v.optional(v.id('conversationMessages')),
+  actorPrincipalId: v.string(),
+  threadRootMessageId: v.optional(v.id('conversationMessages')),
+  eventSequence: v.optional(v.number()),
+  mentionScope: v.optional(v.union(v.literal('direct'), v.literal('channel'), v.literal('here'))),
+  title: v.string(),
+  body: v.optional(v.string()),
+  createdAt: v.number(),
+  readAt: v.optional(v.number()),
+  conversationState: v.optional(v.union(v.literal('archived'), v.literal('deleted'))),
+})
+
 async function requireActor(
   ctx: CollaborationCtx,
   args: {
@@ -1056,11 +1082,11 @@ async function accessibleConversationIdsForEvents(
   const participantRows = await ctx.db.query('conversationParticipants')
     .withIndex('by_workspaceId_principalId_status', (q) => (
       q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId).eq('status', 'active')
-    )).collect()
+    )).take(500)
   const ids = new Set<Id<'conversations'>>(participantRows.map((row) => row.conversationId))
   const owned = await ctx.db.query('conversations')
     .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
-    .collect()
+    .take(500)
   for (const conversation of owned) {
     if (conversation.userId === args.actorUserId && (conversation.conversationType ?? 'personal') === 'personal') {
       ids.add(conversation._id)
@@ -1082,7 +1108,10 @@ export const getConversationEventCursor = query({
       workspaceId: args.workspaceId,
       serverSecret: args.serverSecret,
     })
-    const events = await ctx.db.query('conversationEvents').collect()
+    const events = await ctx.db.query('conversationEvents')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .order('desc')
+      .take(500)
     return events
       .filter((event) => accessible.has(event.conversationId))
       .reduce((max, event) => Math.max(max, event._creationTime), 0)
@@ -1104,11 +1133,15 @@ export const listConversationEvents = query({
       workspaceId: args.workspaceId,
       serverSecret: args.serverSecret,
     })
-    const events = await ctx.db.query('conversationEvents').collect()
+    const events = await ctx.db.query('conversationEvents')
+      .withIndex('by_workspaceId', (q) => (
+        q.eq('workspaceId', args.workspaceId).gt('_creationTime', args.afterSequence)
+      ))
+      .order('asc')
+      .take(Math.max(1, Math.min(200, Math.floor(args.limit))))
     return events
       .filter((event) => accessible.has(event.conversationId) && event._creationTime > args.afterSequence)
       .sort((left, right) => left._creationTime - right._creationTime)
-      .slice(0, Math.max(1, Math.min(200, Math.floor(args.limit))))
       .map((event) => ({
         sequence: event._creationTime,
         conversationId: event.conversationId,
@@ -1117,6 +1150,39 @@ export const listConversationEvents = query({
         payload: event.payload as Record<string, unknown> | undefined,
         createdAt: event.createdAt,
       }))
+  },
+})
+
+/**
+ * A lightweight browser-facing invalidation signal for the conversation list.
+ * It intentionally returns no event metadata: any active workspace member may
+ * observe that the workspace changed, but private conversation identifiers stay
+ * behind the normal list/access checks.
+ */
+export const watchConversationListVersion = query({
+  args: {
+    accessToken: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+  },
+  returns: v.union(
+    v.object({ ok: v.literal(false), version: v.number() }),
+    v.object({ ok: v.literal(true), version: v.number() }),
+  ),
+  handler: async (ctx, args) => {
+    try {
+      await requireActor(ctx, args)
+    } catch (error) {
+      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
+        return { ok: false as const, version: 0 }
+      }
+      throw error
+    }
+    const latest = await ctx.db.query('conversationEvents')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .order('desc')
+      .first()
+    return { ok: true as const, version: latest?._creationTime ?? 0 }
   },
 })
 
@@ -1179,65 +1245,98 @@ export const deleteMessage = mutation({
   },
 })
 
+async function listNotificationRows(
+  ctx: QueryCtx,
+  args: {
+    actorUserId: string
+    filter?: 'all' | 'unread' | 'mentions' | 'threads' | 'reactions'
+    limit?: number
+    unreadOnly?: boolean
+    workspaceId: string
+    accessToken?: string
+    serverSecret?: string
+  },
+) {
+  const actor = await requireActor(ctx, args)
+  const rows = await ctx.db.query('workspaceNotifications')
+    .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
+    )).order('desc').take(Math.max(1, Math.min(100, args.limit ?? 50)))
+  const notifications = rows.filter((row) => {
+    if ((args.unreadOnly || args.filter === 'unread') && row.readAt) return false
+    if (args.filter === 'mentions' && row.type !== 'mention') return false
+    if (args.filter === 'threads' && row.type !== 'thread') return false
+    if (args.filter === 'reactions' && row.type !== 'reaction') return false
+    return true
+  })
+  const conversationIds = [...new Set(notifications.map((row) => row.conversationId))]
+  const conversationStateById = new Map<string, 'archived' | 'deleted'>()
+  await Promise.all(conversationIds.map(async (conversationId) => {
+    const conversation = await ctx.db.get(conversationId)
+    const participant = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) => (
+        q.eq('conversationId', conversationId).eq('principalId', actor.principalId)
+      )).unique()
+    const state = resolveConversationActivityState({
+      archivedAt: participant?.archivedAt,
+      conversation: conversation ? { deletedAt: conversation.deletedAt } : null,
+    })
+    if (state) conversationStateById.set(String(conversationId), state)
+  }))
+  return notifications.map((row) => ({
+    id: row.notificationId,
+    workspaceId: row.workspaceId,
+    recipientPrincipalId: row.recipientPrincipalId,
+    type: row.type,
+    conversationId: row.conversationId,
+    messageId: row.messageId,
+    actorPrincipalId: row.actorPrincipalId,
+    threadRootMessageId: row.threadRootMessageId,
+    eventSequence: row.eventSequence,
+    mentionScope: row.mentionScope,
+    title: row.title,
+    body: row.body,
+    createdAt: row.createdAt,
+    readAt: row.readAt,
+    conversationState: conversationStateById.get(String(row.conversationId)),
+  }))
+}
+
 export const listNotifications = query({
   args: {
     actorUserId: v.string(),
-    filter: v.optional(v.union(v.literal('all'), v.literal('unread'), v.literal('mentions'), v.literal('threads'), v.literal('reactions'))),
+    filter: v.optional(notificationFilterValidator),
     limit: v.optional(v.number()),
     unreadOnly: v.optional(v.boolean()),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
+  returns: v.array(notificationValidator),
+  handler: listNotificationRows,
+})
+
+export const watchNotifications = query({
+  args: {
+    accessToken: v.string(),
+    actorUserId: v.string(),
+    filter: v.optional(notificationFilterValidator),
+    limit: v.optional(v.number()),
+    unreadOnly: v.optional(v.boolean()),
+    workspaceId: v.string(),
+  },
+  returns: v.union(
+    v.object({ ok: v.literal(false), notifications: v.array(notificationValidator) }),
+    v.object({ ok: v.literal(true), notifications: v.array(notificationValidator) }),
+  ),
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args)
-    const rows = await ctx.db.query('workspaceNotifications')
-      .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
-      )).order('desc').take(Math.max(1, Math.min(100, args.limit ?? 50)))
-    const notifications = rows.filter((row) => {
-      if ((args.unreadOnly || args.filter === 'unread') && row.readAt) return false
-      if (args.filter === 'mentions' && row.type !== 'mention') return false
-      if (args.filter === 'threads' && row.type !== 'thread') return false
-      if (args.filter === 'reactions' && row.type !== 'reaction') return false
-      return true
-    })
-    const conversationIds = [...new Set(
-      notifications
-        .map((row) => row.conversationId)
-        .filter((id): id is NonNullable<typeof id> => Boolean(id)),
-    )]
-    const conversationStateById = new Map<string, 'archived' | 'deleted'>()
-    await Promise.all(conversationIds.map(async (conversationId) => {
-      const conversation = await ctx.db.get(conversationId)
-      const participant = await ctx.db.query('conversationParticipants')
-        .withIndex('by_conversationId_principalId', (q) => (
-          q.eq('conversationId', conversationId).eq('principalId', actor.principalId)
-        )).unique()
-      const state = resolveConversationActivityState({
-        archivedAt: participant?.archivedAt,
-        conversation: conversation ? { deletedAt: conversation.deletedAt } : null,
-      })
-      if (state) conversationStateById.set(String(conversationId), state)
-    }))
-    return notifications.map((row) => ({
-      id: row.notificationId,
-      workspaceId: row.workspaceId,
-      recipientPrincipalId: row.recipientPrincipalId,
-      type: row.type,
-      conversationId: row.conversationId,
-      messageId: row.messageId,
-      actorPrincipalId: row.actorPrincipalId,
-      threadRootMessageId: row.threadRootMessageId,
-      eventSequence: row.eventSequence,
-      mentionScope: row.mentionScope,
-      title: row.title,
-      body: row.body,
-      createdAt: row.createdAt,
-      readAt: row.readAt,
-      conversationState: row.conversationId
-        ? conversationStateById.get(String(row.conversationId))
-        : undefined,
-    }))
+    try {
+      return { ok: true as const, notifications: await listNotificationRows(ctx, args) }
+    } catch (error) {
+      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
+        return { ok: false as const, notifications: [] }
+      }
+      throw error
+    }
   },
 })
 

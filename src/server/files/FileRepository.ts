@@ -51,6 +51,12 @@ export type ExtractedDocumentPart = {
   name: string
 }
 
+export type FileListPage = {
+  data: unknown[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
 export interface FileRepository {
   readonly storageCleanupMode: 'immediate' | 'durable'
   getFile(args: {
@@ -63,6 +69,7 @@ export interface FileRepository {
     userId: string
   }): Promise<FileRecord | null>
   listFiles(args: Record<string, unknown> & { userId: string }): Promise<unknown[]>
+  listFilesPage?(args: Record<string, unknown> & { userId: string }): Promise<FileListPage>
   createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createExtractedDocument(args: {

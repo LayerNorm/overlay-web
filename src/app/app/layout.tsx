@@ -21,6 +21,7 @@ import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRou
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
 import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
 import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components/WorkspaceScopedContentBoundary'
+import { CollaborationRealtimeProvider } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
 export const metadata: Metadata = {
   robots: {
@@ -84,21 +85,23 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
               initialCapabilities={capabilities}
               initialIntegrationProvider={getSelectedIntegrationProviderId()}
             >
-              <AuthorizationProvider authorization={authorization}>
-                <BackgroundPollManager />
-                <GuestGateProvider>
-                  <OnboardingProvider>
-                    <AppShellSidebar />
-                    <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
-                      <Suspense fallback={<AppMainFallback />}>
-                        <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
-                          <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>
-                        </WorkspaceScopedContentBoundary>
-                      </Suspense>
-                    </main>
-                  </OnboardingProvider>
-                </GuestGateProvider>
-              </AuthorizationProvider>
+              <CollaborationRealtimeProvider>
+                <AuthorizationProvider authorization={authorization}>
+                  <BackgroundPollManager />
+                  <GuestGateProvider>
+                    <OnboardingProvider>
+                      <AppShellSidebar />
+                      <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
+                        <Suspense fallback={<AppMainFallback />}>
+                          <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
+                            <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>
+                          </WorkspaceScopedContentBoundary>
+                        </Suspense>
+                      </main>
+                    </OnboardingProvider>
+                  </GuestGateProvider>
+                </AuthorizationProvider>
+              </CollaborationRealtimeProvider>
             </CapabilitiesProvider>
           </NavigationProgressProvider>
         </AsyncSessionsProvider>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 
 export interface AppSidebarNavigateContext {
   onNavigate: () => void
@@ -28,6 +29,7 @@ export interface AppSidebarWorkspaceAdapter {
 }
 
 export interface AppSidebarProps {
+  collaborationNotifications?: WorkspaceNotification[]
   /** Public landing mode keeps the production shell but swaps repositories for static data. */
   publicShowcase?: boolean
   /** Injected from app shell — keeps chat feature UI out of shared layout code. */
