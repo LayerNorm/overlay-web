@@ -15,6 +15,11 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import {
+  AGENT_TOOL_GROUPS,
+  enabledAgentToolGroupIds,
+  toolIdsForEnabledGroups,
+} from '@/shared/agents/tool-groups'
 
 const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 
@@ -44,7 +49,19 @@ export function AgentEditorDialog({
   const [instructions, setInstructions] = useState(agent?.instructions ?? '')
   const [modelId, setModelId] = useState<string>(agent?.modelId ?? DEFAULT_MODEL_ID)
   const [avatarColor, setAvatarColor] = useState(agent?.avatarColor ?? AVATAR_COLORS[0]!)
+  const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(
+    () => enabledAgentToolGroupIds(agent?.allowedToolIds ?? []),
+  )
   const [advanced, setAdvanced] = useState(false)
+
+  const toggleToolGroup = (groupId: string) => {
+    setEnabledToolGroups((current) => {
+      const next = new Set(current)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
 
   // Same catalog the personal chat model picker offers: every model the
   // workspace has enabled in settings, not just the curated defaults.
@@ -79,6 +96,7 @@ export function AgentEditorDialog({
               harness: 'overlay',
               modelId: modelId.trim(),
               avatarColor,
+              allowedToolIds: toolIdsForEnabledGroups(enabledToolGroups),
               teamIds: agent?.teamIds ?? [],
             })}
           >
@@ -140,6 +158,43 @@ export function AgentEditorDialog({
               buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
             />
           </label>
+          <div>
+            <p className="text-xs font-medium">Tools</p>
+            <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">
+              Grant this agent the same tools the personal chat can use. It only acts on what you enable here.
+            </p>
+            <div className="mt-2.5 grid gap-1.5 sm:grid-cols-2">
+              {AGENT_TOOL_GROUPS.map((group) => {
+                const active = enabledToolGroups.has(group.id)
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    role="switch"
+                    aria-checked={active}
+                    onClick={() => toggleToolGroup(group.id)}
+                    className={`flex items-start gap-2 rounded-lg border p-2.5 text-left transition-colors ${
+                      active
+                        ? 'border-[var(--muted)] bg-[var(--surface-subtle)]'
+                        : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                        active ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'
+                      }`}
+                    >
+                      {active ? <Check size={11} /> : null}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium text-[var(--foreground)]">{group.label}</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-[var(--muted)]">{group.description}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <button type="button" onClick={() => setAdvanced((value) => !value)} className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]">
             Advanced <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
           </button>
