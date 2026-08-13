@@ -69,6 +69,12 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const workspaceFilter = args.workspaceId
       ? sql`AND chunk.workspace_id = ${args.workspaceId}`
       : sql``
+    const ownerOrWorkspaceMemoryFilter = args.workspaceId
+      ? sql`AND (
+          chunk.user_id = ${args.userId}
+          OR (chunk.source_kind = 'memory' AND chunk.workspace_id = ${args.workspaceId})
+        )`
+      : sql`AND chunk.user_id = ${args.userId}`
     const vectorLiteral = JSON.stringify(queryVector)
     const vectorRows = await this.deps.db.execute<SearchRow & { similarity: number }>(sql`
       SELECT
@@ -82,10 +88,10 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
         1 - (embedding.embedding <=> ${vectorLiteral}::vector) AS similarity
       FROM knowledge_chunk_embeddings embedding
       JOIN knowledge_chunks chunk ON chunk.id = embedding.chunk_id
-      WHERE embedding.user_id = ${args.userId}
-        AND embedding.provider = ${this.deps.embeddings.identity.provider}
+      WHERE embedding.provider = ${this.deps.embeddings.identity.provider}
         AND embedding.model_id = ${this.deps.embeddings.identity.modelId}
         AND embedding.model_version = ${this.deps.embeddings.identity.modelVersion}
+        ${ownerOrWorkspaceMemoryFilter}
         ${sourceFilter}
         ${projectFilter}
         ${workspaceFilter}
@@ -109,7 +115,8 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
           websearch_to_tsquery('simple', ${query})
         ) AS lexical_score
       FROM knowledge_chunks chunk
-      WHERE chunk.user_id = ${args.userId}
+      WHERE 1 = 1
+        ${ownerOrWorkspaceMemoryFilter}
         ${sourceFilter}
         ${projectFilter}
         ${workspaceFilter}

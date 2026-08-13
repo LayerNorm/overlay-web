@@ -337,6 +337,41 @@ export const searchChunksLexical = internalQuery({
   },
 })
 
+export const listWorkspaceMemoryUserIds = internalQuery({
+  args: {
+    requestingUserId: v.string(),
+    workspaceId: v.string(),
+  },
+  returns: v.array(v.string()),
+  handler: async (ctx, { requestingUserId, workspaceId }) => {
+    const [principals, memberships] = await Promise.all([
+      ctx.db
+        .query('workspacePrincipals')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+        .take(200),
+      ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+        .take(200),
+    ])
+    const activePrincipalIds = new Set(
+      memberships
+        .filter((membership) => membership.status === 'active')
+        .map((membership) => membership.principalId),
+    )
+    const userIds = principals.flatMap((principal) => (
+      principal.type === 'human'
+      && !principal.archivedAt
+      && principal.userId
+      && activePrincipalIds.has(principal.principalId)
+        ? [principal.userId]
+        : []
+    ))
+    if (!userIds.includes(requestingUserId)) throw new Error('WORKSPACE_ACCESS_DENIED')
+    return [...new Set(userIds)]
+  },
+})
+
 export const embeddingChunkIdsForVectorResults = internalQuery({
   args: {
     embeddingIds: v.array(v.id('knowledgeChunkEmbeddings')),
@@ -800,40 +835,73 @@ export const hybridSearch = action({
       }
     }
 
-    // Vector index filter supports a single equality chain per Convex; filter userId here,
-    // then optionally drop rows by sourceKind when resolving embedding → chunk ids.
-    let vecRaw = await ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
+    const memoryUserIds = args.workspaceId && args.sourceKind !== 'file'
+      ? await ctx.runQuery(internal.knowledge.knowledge.listWorkspaceMemoryUserIds, {
+          requestingUserId: args.userId,
+          workspaceId: args.workspaceId,
+        })
+      : [args.userId]
+    const additionalMemoryUserIds = memoryUserIds.filter((userId) => userId !== args.userId)
+
+    // The current member keeps access to their indexed files. Additional workspace members
+    // contribute memory chunks only, preserving file ownership while sharing memory context.
+    const currentVectorSearch = ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
       vector,
       limit: kVec,
       filter: (fq) => fq.eq('userId', args.userId),
     })
-    if (args.minVecScore !== undefined) {
-      vecRaw = vecRaw.filter((r) => r._score >= args.minVecScore!)
-    }
-
-    const vecOrderedIds = vecRaw.map((r) => r._id)
-    const vecChunkPairs: Array<{ chunkId: Id<'knowledgeChunks'> | null }> =
-      await ctx.runQuery(internal.knowledge.knowledge.embeddingChunkIdsForVectorResults, {
-        embeddingIds: vecOrderedIds,
-        sourceKind: args.sourceKind,
+    const additionalMemorySearches = additionalMemoryUserIds.map((userId) => (
+      ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
+        vector,
+        limit: kVec,
+        filter: (fq) => fq.eq('userId', userId),
+      })
+    ))
+    const vectorGroups = (await Promise.all([currentVectorSearch, ...additionalMemorySearches]))
+      .map((group) => args.minVecScore === undefined
+        ? group
+        : group.filter((row) => row._score >= args.minVecScore!))
+    const vectorPairGroups = await Promise.all(vectorGroups.map((group, index) => (
+      ctx.runQuery(internal.knowledge.knowledge.embeddingChunkIdsForVectorResults, {
+        embeddingIds: group.map((row) => row._id),
+        sourceKind: index === 0 ? args.sourceKind : 'memory',
         workspaceId: args.workspaceId,
       })
+    )))
+    const rankedVectorPairs = vectorGroups.flatMap((group, groupIndex) => (
+      group.map((row, rowIndex) => ({
+        chunkId: vectorPairGroups[groupIndex]?.[rowIndex]?.chunkId ?? null,
+        score: row._score,
+      }))
+    )).sort((a, b) => b.score - a.score).slice(0, kVec)
 
     const scores = new Map<string, number>()
-    for (let i = 0; i < vecChunkPairs.length; i++) {
-      const cid = vecChunkPairs[i]?.chunkId
+    for (let i = 0; i < rankedVectorPairs.length; i++) {
+      const cid = rankedVectorPairs[i]?.chunkId
       if (!cid) continue
       const rank = i + 1
       scores.set(cid, (scores.get(cid) ?? 0) + 1 / (RRF_K + rank))
     }
 
-    const lexDocs = await ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
-      userId: args.userId,
-      sourceKind: args.sourceKind,
-      workspaceId: args.workspaceId,
-      query: q,
-      limit: kLex,
-    })
+    const lexLists = await Promise.all([
+      ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
+        userId: args.userId,
+        sourceKind: args.sourceKind,
+        workspaceId: args.workspaceId,
+        query: q,
+        limit: kLex,
+      }),
+      ...additionalMemoryUserIds.map((userId) => (
+        ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
+          userId,
+          sourceKind: 'memory' as const,
+          workspaceId: args.workspaceId,
+          query: q,
+          limit: kLex,
+        })
+      )),
+    ])
+    const lexDocs = interleaveRankedLists(lexLists, kLex)
     for (let j = 0; j < lexDocs.length; j++) {
       const id = lexDocs[j]!._id
       const rank = j + 1
@@ -876,3 +944,19 @@ export const hybridSearch = action({
     return { chunks: top }
   },
 })
+
+function interleaveRankedLists<T>(lists: T[][], limit: number): T[] {
+  const out: T[] = []
+  for (let index = 0; out.length < limit; index += 1) {
+    let added = false
+    for (const list of lists) {
+      const value = list[index]
+      if (value === undefined) continue
+      out.push(value)
+      added = true
+      if (out.length >= limit) break
+    }
+    if (!added) break
+  }
+  return out
+}

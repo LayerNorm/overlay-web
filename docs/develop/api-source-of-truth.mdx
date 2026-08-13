@@ -37,7 +37,7 @@ Desktop and Chrome can use the React DOM packages directly where practical. Mobi
 
 `GET /api/v1/memory` is workspace-scoped. It returns all memories in the authorized active workspace by default and accepts `memberPrincipalId` to filter by one active human member. Each row exposes the creator's workspace identity and whether the authenticated member may delete it. `POST` always writes both the active `workspaceId` and the authenticated creator `userId`; update and delete remain creator-only.
 
-Persistent chat context also lists memories by `workspaceId`, so memories created by one member are available as shared context to other members of that workspace. Provider repositories must preserve the distinction: `workspaceId` owns the resource context, while `userId` records attribution and mutation ownership.
+Persistent chat context and hybrid retrieval both resolve memories by `workspaceId`, so memories created by one member are available as shared context to other members of that workspace. Files remain owner-scoped during hybrid retrieval. Provider repositories must preserve the distinction: `workspaceId` owns memory context, while `userId` records attribution and mutation ownership.
 
 ## Collaboration message contracts
 
