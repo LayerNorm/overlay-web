@@ -272,6 +272,17 @@
   margin: 0 0 0.8em;
 }
 
+/*
+ * Drop the trailing paragraph margin inside a user bubble so its visible bottom
+ * padding equals the top. The bubble is py-2.5 both sides, but the last <p>'s
+ * 0.8em bottom margin made the message read as bottom-heavy. Scoped to the user
+ * bubble so assistant message spacing (which relies on the flex gap to its
+ * actions) is unchanged.
+ */
+:where(.overlay-chat-surface) .chat-user-bubble .markdown-content > :last-child {
+  margin-bottom: 0;
+}
+
 :where(.overlay-chat-surface) .markdown-content h1 {
   margin: 0 0 0.45em;
   font-size: 2rem;
