@@ -42,6 +42,8 @@ settingsPanels: [
 
 Then map `componentKey` to a local renderer in the web settings container. Other surfaces can reuse the registry metadata and provide their own renderer for the same key.
 
+Capability gates should match the panel's direct function. The built-in Memories section and panel require `memory`, while semantic retrieval and the knowledge-search tool separately require `vectorSearch`. This keeps memory CRUD reachable in deployments that intentionally disable vector search.
+
 ## Extending UI Primitives
 
 Prefer composition over editing existing primitives. Add a new primitive to `@overlay/ui` only when it is broadly reusable and can preserve the current visual language. Feature-specific surfaces belong in `@overlay/modules-react`.

@@ -76,6 +76,8 @@ Register app metadata through `extendOverlayAppConfig`, map React renderers in `
 
 Use `featureFlags` for coarse product areas and `policyGates` for enterprise policy. Feature flags remove gated registry entries from bootstrap when disabled. Policy gates let surfaces show disabled states, warnings, or hidden entries without changing backend route behavior.
 
+Capability gates are evaluated per registry entry. Memory management in Settings requires the `memory` capability only; `vectorSearch` controls semantic retrieval and search tooling independently, so disabling vector search must not hide saved-memory management.
+
 ## Account Settings
 
 The account panel contains identity, desktop handoff, and deployment-supported billing controls. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.
