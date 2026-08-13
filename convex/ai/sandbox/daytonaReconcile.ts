@@ -230,6 +230,31 @@ async function syncWorkspace(
   return result?.success ? (result.workspace as StoredWorkspace) : null
 }
 
+function workspaceNeedsSync(
+  workspace: StoredWorkspace,
+  params: {
+    sandbox: Sandbox
+    state: DaytonaWorkspaceState
+    tier: DaytonaWorkspaceTier
+    volume: VolumeMetadata
+    lastMeteredAt?: number
+    lastKnownStartedAt?: number
+    lastKnownStoppedAt?: number
+  },
+): boolean {
+  return workspace.sandboxId !== params.sandbox.id
+    || workspace.sandboxName !== params.sandbox.name
+    || workspace.volumeId !== params.volume.volumeId
+    || workspace.volumeName !== params.volume.volumeName
+    || workspace.tier !== params.tier
+    || workspace.state !== params.state
+    || workspace.resourceProfile !== resolveActualResourceProfile(params.sandbox, params.tier)
+    || workspace.mountPath !== params.volume.mountPath
+    || workspace.lastMeteredAt !== params.lastMeteredAt
+    || workspace.lastKnownStartedAt !== params.lastKnownStartedAt
+    || workspace.lastKnownStoppedAt !== params.lastKnownStoppedAt
+}
+
 async function accrueRuntimeWindow(
   ctx: ActionCtx,
   workspace: StoredWorkspace,
@@ -293,14 +318,25 @@ export const runMinuteTick = internalAction({
     }
 
     const now = Date.now()
+    const plan = await ctx.runQuery(internal.ai.sandbox.daytona.getReconciliationPlanInternal, { now })
+    if (!plan.shouldRun) return summary
     const entitlementsCache = new Map<string, Entitlements>()
-    const storedWorkspaces = await ctx.runQuery(internal.ai.sandbox.daytona.listAllWorkspacesInternal, {}) as StoredWorkspace[]
+    const storedWorkspaces = await ctx.runQuery(
+      internal.ai.sandbox.daytona.listAllWorkspacesInternal,
+      { fullSweep: plan.fullSweep },
+    ) as StoredWorkspace[]
     const storedBySandboxId = new Map(storedWorkspaces.map((workspace) => [workspace.sandboxId, workspace]))
     const storedByUserId = new Map(storedWorkspaces.map((workspace) => [workspace.userId, workspace]))
     const seenLiveSandboxIds = new Set<string>()
     const processedUserIds = new Set<string>()
 
-    const liveSandboxes = await listOverlayWorkspaces()
+    const allLiveSandboxes = await listOverlayWorkspaces()
+    const liveSandboxes = plan.fullSweep
+      ? allLiveSandboxes
+      : allLiveSandboxes.filter((sandbox) => (
+          storedBySandboxId.has(sandbox.id)
+          || ['started', 'provisioning', 'error'].includes(normalizeSandboxState(sandbox.state))
+        ))
 
     for (const listedSandbox of liveSandboxes) {
       summary.scanned += 1
@@ -388,13 +424,12 @@ export const runMinuteTick = internalAction({
 
         processedUserIds.add(userId)
 
-        const entitlements = await getEntitlements(ctx, userId, entitlementsCache)
-        const accessRevoked = entitlements.tier === 'free'
-        const creditsExhausted =
-          entitlements.creditsTotal > 0 &&
-          entitlements.creditsUsed >= entitlements.creditsTotal * 100
-
         if (normalizedState === 'started') {
+          const entitlements = await getEntitlements(ctx, userId, entitlementsCache)
+          const accessRevoked = entitlements.tier === 'free'
+          const creditsExhausted =
+            entitlements.creditsTotal > 0 &&
+            entitlements.creditsUsed >= entitlements.creditsTotal * 100
           if (accessRevoked || creditsExhausted) {
             if (typeof workspace.lastMeteredAt === 'number' && now > workspace.lastMeteredAt) {
               const metered = await accrueRuntimeWindow(ctx, workspace, sandbox, workspace.lastMeteredAt, now)
@@ -441,12 +476,10 @@ export const runMinuteTick = internalAction({
           }
         }
 
-        const syncedWorkspace = await syncWorkspace(ctx, {
-          existingWorkspace: workspace,
-          userId,
-          tier,
+        const syncState = {
           sandbox,
           state: normalizedState,
+          tier,
           volume,
           lastMeteredAt:
             normalizedState === 'started'
@@ -460,7 +493,14 @@ export const runMinuteTick = internalAction({
             normalizedState === 'stopped' || normalizedState === 'archived'
               ? (updatedAt ?? now)
               : workspace.lastKnownStoppedAt,
-        })
+        }
+        const syncedWorkspace = workspaceNeedsSync(workspace, syncState)
+          ? await syncWorkspace(ctx, {
+              existingWorkspace: workspace,
+              userId,
+              ...syncState,
+            })
+          : workspace
 
         if (syncedWorkspace) {
           storedByUserId.set(userId, syncedWorkspace)
@@ -479,6 +519,7 @@ export const runMinuteTick = internalAction({
       if (processedUserIds.has(workspace.userId) || seenLiveSandboxIds.has(workspace.sandboxId)) {
         continue
       }
+      if (workspace.state === 'missing') continue
 
       try {
         const markedMissing = await ctx.runMutation(internal.ai.sandbox.daytona.reconcileWorkspaceByServer, {

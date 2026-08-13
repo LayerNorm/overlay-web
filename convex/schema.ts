@@ -349,7 +349,16 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_sandboxId', ['sandboxId']),
+    .index('by_sandboxId', ['sandboxId'])
+    .index('by_state_updatedAt', ['state', 'updatedAt']),
+
+  maintenanceCursors: defineTable({
+    key: v.string(),
+    cursor: v.optional(v.string()),
+    cutoff: v.number(),
+    nextRunAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index('by_key', ['key']),
 
   daytonaUsageLedger: defineTable({
     userId: v.string(),
@@ -713,7 +722,8 @@ export default defineSchema({
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
-    .index('by_shareToken', ['shareToken']),
+    .index('by_shareToken', ['shareToken'])
+    .index('by_createdAt', ['createdAt']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
@@ -1118,6 +1128,7 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])

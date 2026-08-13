@@ -81,7 +81,9 @@ export interface ParsedSearchTextRequest {
 
 export function buildFileListArgs(args: {
   conversationId?: string | null
+  cursor?: string | null
   kind?: string | null
+  limit?: number
   outputType?: string | null
   parentId?: string | null
   projectId?: string | null
@@ -94,6 +96,10 @@ export function buildFileListArgs(args: {
     listArgs.parentId = args.parentId === 'null' ? null : args.parentId
   }
   assignIfPresent(listArgs, 'conversationId', args.conversationId)
+  assignIfPresent(listArgs, 'cursor', args.cursor)
+  if (typeof args.limit === 'number' && Number.isFinite(args.limit)) {
+    listArgs.limit = Math.max(1, Math.min(100, Math.floor(args.limit)))
+  }
   assignIfPresent(listArgs, 'outputType', args.outputType)
   if (isFileKind(args.kind)) listArgs.kind = args.kind
   if (args.summary) listArgs.summary = true

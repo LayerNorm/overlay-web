@@ -7,6 +7,7 @@ export interface FileQuery extends PaginationQuery {
   parentId?: string | null
   conversationId?: string
   outputType?: string
+  page?: boolean
   type?: string
   summary?: boolean
 }

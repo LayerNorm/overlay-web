@@ -32,3 +32,7 @@ Surfaces should use bootstrap first, then render their native shell from those r
 ## Cross-Surface Adoption
 
 Desktop and Chrome can use the React DOM packages directly where practical. Mobile should use `@overlay/app-core`, `@overlay/api-client`, and pure controllers from `@overlay/app-core/modules`, while keeping React Native rendering in mobile-specific components.
+
+## File listing
+
+`GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web and desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.

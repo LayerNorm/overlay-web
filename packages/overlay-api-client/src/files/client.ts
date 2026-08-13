@@ -30,7 +30,7 @@ export class FilesClient {
   }
 
   getPage<T = KnowledgeFile>(query?: FileQuery, init?: RequestInit) {
-    return this.http.json<PaginatedEnvelope<T>>(this.path(query), init)
+    return this.http.json<PaginatedEnvelope<T>>(this.path({ ...query, page: true }), init)
   }
 
   getResponse(query?: FileQuery, init?: RequestInit) {

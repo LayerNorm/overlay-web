@@ -1276,15 +1276,33 @@ export const runOrphanDeltaCleanup = internalMutation({
  */
 export const runEmptyConversationCleanup = internalMutation({
   args: {},
+  returns: v.object({
+    deleted: v.number(),
+    scanned: v.number(),
+    complete: v.boolean(),
+    skipped: v.boolean(),
+  }),
   handler: async (ctx) => {
+    const stateKey = 'empty-conversation-cleanup-v1'
+    const now = Date.now()
     const thresholdMs = 60 * 60 * 1000
-    const cutoff = Date.now() - thresholdMs
-    const candidates = await ctx.db.query('conversations').collect()
-    const targets = candidates
-      .filter((conversation) => !conversation.deletedAt && conversation.createdAt < cutoff)
-      .slice(0, 100)
+    const state = await ctx.db.query('maintenanceCursors')
+      .withIndex('by_key', (q) => q.eq('key', stateKey))
+      .unique()
+    if (state?.nextRunAt && state.nextRunAt > now) {
+      return { deleted: 0, scanned: 0, complete: true, skipped: true }
+    }
+
+    const cutoff = state?.cutoff && state.cutoff > 0
+      ? state.cutoff
+      : now - thresholdMs
+    const page = await ctx.db.query('conversations')
+      .withIndex('by_createdAt', (q) => q.lt('createdAt', cutoff))
+      .order('asc')
+      .paginate({ cursor: state?.cursor ?? null, numItems: 50 })
     let deleted = 0
-    for (const conversation of targets) {
+    for (const conversation of page.page) {
+      if (conversation.deletedAt) continue
       const firstMessage = await ctx.db
         .query('conversationMessages')
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
@@ -1299,7 +1317,19 @@ export const runEmptyConversationCleanup = internalMutation({
       await ctx.db.delete(conversation._id)
       deleted++
     }
-    return { deleted, scanned: targets.length }
+
+    const nextState = page.isDone
+      ? { key: stateKey, cursor: undefined, cutoff: 0, nextRunAt: now + 6 * 60 * 60 * 1000, updatedAt: now }
+      : { key: stateKey, cursor: page.continueCursor, cutoff, nextRunAt: undefined, updatedAt: now }
+    if (state) await ctx.db.patch(state._id, nextState)
+    else await ctx.db.insert('maintenanceCursors', nextState)
+
+    return {
+      deleted,
+      scanned: page.page.length,
+      complete: page.isDone,
+      skipped: false,
+    }
   },
 })
 

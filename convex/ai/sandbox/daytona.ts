@@ -40,9 +40,57 @@ export const getWorkspaceByUserId = query({
 })
 
 export const listAllWorkspacesInternal = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query('daytonaWorkspaces').collect()
+  args: { fullSweep: v.boolean() },
+  returns: v.array(v.any()),
+  handler: async (ctx, { fullSweep }) => {
+    if (fullSweep) {
+      return await ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt')
+        .take(500)
+    }
+    const active = await Promise.all([
+      ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt', (q) => q.eq('state', 'started'))
+        .take(100),
+      ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt', (q) => q.eq('state', 'provisioning'))
+        .take(100),
+      ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt', (q) => q.eq('state', 'error'))
+        .take(100),
+    ])
+    return active.flat()
+  },
+})
+
+export const getReconciliationPlanInternal = internalQuery({
+  args: { now: v.number() },
+  returns: v.object({
+    shouldRun: v.boolean(),
+    hasActiveWorkspace: v.boolean(),
+    fullSweep: v.boolean(),
+  }),
+  handler: async (ctx, { now }) => {
+    const [started, provisioning, error, anyTracked] = await Promise.all([
+      ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt', (q) => q.eq('state', 'started'))
+        .first(),
+      ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt', (q) => q.eq('state', 'provisioning'))
+        .first(),
+      ctx.db.query('daytonaWorkspaces')
+        .withIndex('by_state_updatedAt', (q) => q.eq('state', 'error'))
+        .first(),
+      ctx.db.query('daytonaWorkspaces').withIndex('by_state_updatedAt').first(),
+    ])
+    const hasActiveWorkspace = Boolean(started || provisioning || error)
+    const minute = Math.floor(now / 60_000)
+    const fullSweep = anyTracked ? minute % 15 === 0 : minute % 60 === 0
+    return {
+      shouldRun: hasActiveWorkspace || fullSweep,
+      hasActiveWorkspace,
+      fullSweep,
+    }
   },
 })
 

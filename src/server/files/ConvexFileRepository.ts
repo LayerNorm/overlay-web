@@ -12,6 +12,7 @@ import type {
   FileStorageProxyTarget,
   FileSubtreeStorageEntry,
   FileUploadIntentRecord,
+  FileListPage,
 } from './FileRepository'
 
 export class ConvexFileRepository implements FileRepository {
@@ -49,6 +50,26 @@ export class ConvexFileRepository implements FileRepository {
       ...args,
       serverSecret: this.serverSecret,
     }) ?? []
+  }
+
+  async listFilesPage(args: Record<string, unknown> & { userId: string }): Promise<FileListPage> {
+    try {
+      const page = await convex.query<FileListPage>('files/files:listPage', {
+        ...args,
+        serverSecret: this.serverSecret,
+      }, { throwOnError: true })
+      if (!page) throw new Error('files/files:listPage returned no page')
+      return page
+    } catch (error) {
+      // Web is deployed before Convex in the production lane. During that
+      // short compatibility window, fall back to the bounded legacy query.
+      const message = error instanceof Error ? error.message : String(error)
+      if (!message.includes('listPage') && !message.includes('Could not find public function')) {
+        throw error
+      }
+      const data = await this.listFiles(args)
+      return { data, nextCursor: null, hasMore: false }
+    }
   }
 
   async createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null> {

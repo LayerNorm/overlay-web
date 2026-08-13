@@ -32,3 +32,7 @@ For the full worktree, staging QA, and promotion process, see [Worktree Staging 
 ## Import boundary
 
 Convex code may import browser-safe shared modules from `src/shared`. Convex must not import `src/server`, because server-only modules can break Convex bundling.
+
+## Bounded maintenance and list queries
+
+Maintenance jobs and user-facing lists must advance through indexed, bounded pages. `runEmptyConversationCleanup` persists its pagination cursor in `maintenanceCursors`, and `files/files:listPage` is the cursor-based file listing source. Keep legacy list functions bounded during web/Convex deployment overlap; never restore a growing-table `.collect()` for compatibility.
