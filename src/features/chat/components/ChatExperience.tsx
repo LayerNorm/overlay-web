@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  ArrowUp,
   ChevronDown,
 } from 'lucide-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
@@ -12,11 +11,8 @@ import {
   createConversationUiState,
   sameModelOrder,
 } from '@overlay/chat-core'
-import {
-  BudgetTopUpComposerPrompt,
-} from '@overlay/chat-react'
+import { UsageExhaustedNotice } from '@overlay/chat-react'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
-import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   DEFAULT_MODEL_ID,
@@ -113,10 +109,6 @@ import type { ConversationLoadSnapshot } from './chat/chatTransport'
 // when you open an image or send the first message.
 // NB: the options must be an inline object literal — next/dynamic's SWC
 // transform rejects a shared/referenced options variable.
-const TopUpPreferenceControl = dynamic(
-  () => import('@/features/billing/components/TopUpPreferenceControl').then((mod) => ({ default: mod.TopUpPreferenceControl })),
-  { loading: () => null },
-)
 const FileViewerPanel = dynamic(
   () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
   { loading: () => null },
@@ -373,20 +365,11 @@ export default function ChatExperience({
     setSelectedToolIds((current) => current.filter((id) => id !== toolId))
   }, [])
   const {
-    autoTopUpEnabledDraft,
-    billingActionLoading,
-    budgetRemainingCents,
-    entitlements,
-    handleSaveTopUpPreference,
-    handleStartTopUp,
     isBudgetExhaustedPaid,
     isFreeTier,
     isSendBlocked,
     loadSubscription,
     selectableTextModels,
-    setAutoTopUpEnabledDraft,
-    setTopUpAmountDraftCents,
-    topUpAmountDraftCents,
   } = useChatBillingControls({
     activeChatId,
     billingEnabled,
@@ -1757,14 +1740,9 @@ export default function ChatExperience({
       {belowEmptyComposer}
     </>
   )
-  const budgetTopUpPrompt = isBudgetExhaustedPaid && !isSendBlocked && !isActiveLoading ? (
-    <BudgetTopUpComposerPrompt
-      amountCents={topUpAmountDraftCents}
-      remainingCents={budgetRemainingCents}
-      checkoutLoading={billingActionLoading === 'checkout'}
-      onStartTopUp={() => void handleStartTopUp()}
-    />
-  ) : null
+  const usageExhaustedNotice = isBudgetExhaustedPaid && !isActiveLoading
+    ? <UsageExhaustedNotice />
+    : null
 
   const creatingAutomationDraftRef = useRef(false)
   const selectAutomationDetailTab = useCallback(async (tab: AutomationDetailTab) => {
@@ -2040,6 +2018,7 @@ export default function ChatExperience({
               showLoadingState: showChatLoadingState,
               reserveLatestExchangeStartSpace,
               transcriptKey: activeChatId ?? (isTemporaryChat ? 'temporary-chat' : null),
+              afterMessages: usageExhaustedNotice,
               state: {
                 primaryMessages,
                 latestExchangeIndex: latestExchIdx,
@@ -2114,58 +2093,12 @@ export default function ChatExperience({
                     onCancel={() => setPersonalMentionConfirmationOpen(false)}
                   />
                 ) : undefined,
-                billingPromptContent: budgetTopUpPrompt,
+                billingPromptContent: hasHistory ? null : usageExhaustedNotice,
                 isSendBlocked,
                 isActiveLoading,
                 isTemporaryChat,
-                blockedComposerContent: isBudgetExhaustedPaid ? (
-                  <TopUpPreferenceControl
-                    variant="app"
-                    title="No budget for paid models"
-                    description="You can keep chatting with free models now. Add budget to use paid models and gated tools like web search, browser sessions, sandboxes, image generation, and video generation."
-                    amountCents={topUpAmountDraftCents}
-                    minAmountCents={entitlements?.topUpMinAmountCents ?? 800}
-                    maxAmountCents={entitlements?.topUpMaxAmountCents ?? 20_000}
-                    stepAmountCents={entitlements?.topUpStepAmountCents ?? 100}
-                    onAmountChange={setTopUpAmountDraftCents}
-                    autoTopUpEnabled={autoTopUpEnabledDraft}
-                    onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
-                    checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
-                    note={
-                      <>
-                        Your paid storage stays active. You can also manage budget from{' '}
-                        <Link href="/app/settings?section=account" className="font-medium underline underline-offset-4">
-                          Account
-                        </Link>
-                        .
-                      </>
-                    }
-                    footer={
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void handleStartTopUp()}
-                          disabled={billingActionLoading === 'checkout'}
-                          className="inline-flex items-center justify-center rounded-xl bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
-                        >
-                          {billingActionLoading === 'checkout'
-                            ? 'Opening checkout...'
-                            : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleSaveTopUpPreference()}
-                          disabled={billingActionLoading === 'save'}
-                          className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
-                        >
-                          {billingActionLoading === 'save' ? 'Saving...' : 'Save top-up preference'}
-                        </button>
-                      </>
-                    }
-                  />
-                ) : (
+                blockedComposerContent: isBudgetExhaustedPaid ? null : (
                   <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted)]">
-                    <ArrowUp size={13} className="shrink-0 text-amber-500" />
                     This model requires a paid plan. Switch to Auto or upgrade.
                   </div>
                 ),

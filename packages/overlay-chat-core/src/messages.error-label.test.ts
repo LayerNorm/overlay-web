@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   errorLabel,
+  isUsageExhaustedError,
   looksLikeStoredGenerationError,
   persistedGenerationErrorMessage,
+  USAGE_EXHAUSTED_LABEL,
 } from './messages'
 
 test('errorLabel maps network failures to a connection-lost message', () => {
@@ -26,6 +28,13 @@ test('persistedGenerationErrorMessage does not treat assistant prose as the erro
     errorLabel(new Error(persistedGenerationErrorMessage(prose))),
     'Connection lost mid-response. Check your network and try again.',
   )
+})
+
+test('errorLabel maps exhausted usage to the account top-up message', () => {
+  assert.equal(errorLabel(new Error('insufficient_credits')), USAGE_EXHAUSTED_LABEL)
+  assert.equal(errorLabel(new Error('insufficient_budget')), USAGE_EXHAUSTED_LABEL)
+  assert.equal(errorLabel(new Error('No budget remaining. Switch to a free model or top up your account.')), USAGE_EXHAUSTED_LABEL)
+  assert.equal(isUsageExhaustedError(USAGE_EXHAUSTED_LABEL), true)
 })
 
 test('persistedGenerationErrorMessage keeps real stored error strings', () => {

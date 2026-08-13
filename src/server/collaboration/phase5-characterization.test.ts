@@ -72,7 +72,7 @@ test('Phase 5 ships the Buzz-inspired directory and explicit mention-first copy'
     readFile(`${root}/src/features/agents/components/AgentsDirectory.tsx`, 'utf8'),
     readFile(`${root}/src/features/agents/components/AgentEditorDialog.tsx`, 'utf8'),
   ])
-  assert.match(directory, /Agent teams/)
+  assert.doesNotMatch(directory, /Agent teams/)
   assert.match(directory, /New agent/)
   assert.match(editor, /Create agent/)
   assert.match(editor, /Mention-first is enforced/)

@@ -134,7 +134,7 @@ function WorkspaceSettingsTabs({
   return (
     <div className="overflow-x-auto border-b border-[var(--border)] px-5">
       <TabsList className="min-w-max gap-1 rounded-none bg-transparent p-0" aria-label="Workspace settings">
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => tab.id !== 'teams').map((tab) => {
           const Icon = tab.icon
           return (
             <TabButton
@@ -603,7 +603,9 @@ export function WorkspaceSettingsPanel({
     error: workspaceError,
     refresh: refreshWorkspaces,
   } = useWorkspace()
-  const [activeTab, setActiveTab] = useState<WorkspaceSettingsTab>(initialTab)
+  const [activeTab, setActiveTab] = useState<WorkspaceSettingsTab>(
+    initialTab === 'teams' ? 'people' : initialTab,
+  )
   const [state, setState] = useState<WorkspaceManagementState>({ status: 'loading' })
   const [policyState, setPolicyState] = useState<WorkspaceSharingPolicyState>({ status: 'loading' })
   const [policyBusy, setPolicyBusy] = useState(false)

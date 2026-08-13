@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { FileViewer, FileViewerPanel, OutputViewer } from './file-viewer'
+
+;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
 test('HTML preview remains sandboxed away from the host application', () => {
   const markup = renderToStaticMarkup(
@@ -34,6 +37,21 @@ test('generated outputs use the canonical file renderer', () => {
   assert.match(markup, /overlay-output-viewer/)
   assert.match(markup, /overlay-file-viewer--image/)
   assert.match(markup, /A safe fixture/)
+})
+
+test('markdown files render headings instead of raw markers', () => {
+  const markup = renderToStaticMarkup(
+    <FileViewer
+      name="notes.md"
+      content={`## The memory cost
+
+Each cached token stores **K and V** tensors.`}
+    />,
+  )
+  assert.match(markup, /overlay-file-viewer--markdown/)
+  assert.match(markup, /<h2[^>]*>The memory cost<\/h2>/)
+  assert.match(markup, /<strong>K and V<\/strong>/)
+  assert.doesNotMatch(markup, /## The memory cost/)
 })
 
 test('indexed document text can use a preview classifier without changing its displayed name', () => {

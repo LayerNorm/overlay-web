@@ -115,8 +115,22 @@ function parseCSV(raw: string): string[][] {
   return rows
 }
 
-const proseMarkdown =
+export const FILE_MARKDOWN_PROSE_CLASS =
   'prose prose-sm max-w-2xl text-[var(--foreground)] prose-headings:font-semibold prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-li:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-a:text-blue-600 dark:prose-a:text-sky-400 prose-code:rounded prose-code:bg-[var(--surface-subtle)] prose-code:px-1 prose-code:text-[var(--foreground)] prose-pre:bg-[var(--surface-subtle)] prose-pre:text-[var(--foreground)] prose-blockquote:border-[var(--border)] prose-blockquote:text-[var(--muted)]'
+
+export function FileMarkdown({
+  content,
+  className,
+}: {
+  content: string
+  className?: string
+}) {
+  return (
+    <div className={[FILE_MARKDOWN_PROSE_CLASS, className].filter(Boolean).join(' ')}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  )
+}
 
 // ─── Async binary viewers ─────────────────────────────────────────────────────
 
@@ -231,9 +245,7 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
   if (type === 'markdown') {
     return (
       <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto px-8 py-6">
-        <div className={proseMarkdown}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-        </div>
+        <FileMarkdown content={content} />
       </div>
     )
   }

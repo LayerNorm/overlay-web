@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./knowledge": "./src/knowledge.tsx",
+    "./file-viewer": "./src/knowledge/file-viewer.tsx",
     "./notes": "./src/notes.tsx",
     "./projects": "./src/projects.tsx",
     "./extensions": "./src/extensions.tsx",
