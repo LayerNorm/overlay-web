@@ -10,6 +10,10 @@ import {
   type CapabilityCheck,
 } from '@overlay/app-core'
 import {
+  applyAppDataCapabilitiesToOverlayCapabilities,
+  deriveAppDataCapabilities,
+} from '@/server/app-data/capabilities'
+import {
   getGatewayParallelSearchTool,
   getGatewayPerplexitySearchTool,
 } from '@/server/ai/model-runtime'
@@ -439,12 +443,20 @@ function getActCapabilitiesSync(): CapabilityCheck {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return deriveOverlayCapabilities()
   }
-  return deriveOverlayCapabilities(getOverlayRuntimeConfigSync())
+  const runtimeConfig = getOverlayRuntimeConfigSync()
+  return applyAppDataCapabilitiesToOverlayCapabilities(
+    deriveOverlayCapabilities(runtimeConfig),
+    deriveAppDataCapabilities(runtimeConfig),
+  )
 }
 
 async function getActCapabilities(): Promise<CapabilityCheck> {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return deriveOverlayCapabilities()
   }
-  return deriveOverlayCapabilities(await getOverlayRuntimeConfig())
+  const runtimeConfig = await getOverlayRuntimeConfig()
+  return applyAppDataCapabilitiesToOverlayCapabilities(
+    deriveOverlayCapabilities(runtimeConfig),
+    deriveAppDataCapabilities(runtimeConfig),
+  )
 }

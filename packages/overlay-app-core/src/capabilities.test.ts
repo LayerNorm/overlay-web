@@ -24,8 +24,6 @@ test('resolveOverlayAppShellConfig hides capability-gated registries', () => {
       automations: false,
       projects: false,
       vectorSearch: false,
-      // Memories settings is gated on `memory` (managing the store), not on
-      // vectorSearch — a deployment can have memory without semantic search.
       memory: false,
     },
   })
@@ -88,8 +86,8 @@ test('redacted capability bootstrap payload exposes capabilities without secrets
       canUseAutomations: false,
       canUseExtensions: true,
     },
-    navigation: ['chat', 'files', 'extensions', 'projects'],
-    settingsSections: ['general', 'account', 'customization', 'models', 'contact'],
+    navigation: ['chat', 'files', 'extensions', 'projects', 'knowledge'],
+    settingsSections: ['general', 'account', 'workspace', 'customization', 'models', 'contact'],
   })
   assert.equal(JSON.stringify(payload).includes('secret'), false)
 })
