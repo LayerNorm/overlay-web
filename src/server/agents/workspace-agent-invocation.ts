@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { streamText } from 'ai'
+import { isStepCount } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
@@ -10,7 +11,25 @@ import {
   ActEntitlementService,
 } from '@/server/conversations/ActEntitlementService'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import { buildOverlayToolSet } from '@/server/tools/tools/build'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { resolveMentionFirstInvocations } from './mention-policy'
+
+/**
+ * Room agents run fewer tool steps than the interactive act agent — they reply
+ * inside a shared conversation, so a long autonomous loop is both surprising to
+ * the room and expensive.
+ */
+const MAX_TOOL_STEPS_AGENT = 6
+
+/** Memory mutation tools; their presence in an agent's allow-list enables memory. */
+const AGENT_MEMORY_TOOL_IDS = new Set([
+  'save_memory',
+  'save_memory_batch',
+  'update_memory',
+  'delete_memory',
+])
 
 export type WorkspaceAgentDelta = {
   agentPrincipalId: string
@@ -244,10 +263,30 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           return `${author}: ${message.content}`
         })
         .join('\n')
+      // Give the agent the same overlay tool surface the personal act agent uses,
+      // filtered to the tools the agent was granted. An empty allow-list keeps the
+      // agent text-only, which is the historical behavior. Tools authenticate as
+      // the triggering actor via the internal service secret, exactly like the
+      // act route, so no browser cookie needs to be forwarded server-side.
+      const agentTools = agent.allowedToolIds.length > 0
+        ? buildOverlayToolSet({
+            userId: args.actorUserId,
+            accessToken: args.accessToken,
+            serverSecret: getInternalApiSecret(),
+            workspaceId: args.workspaceId,
+            conversationId: args.conversationId,
+            baseUrl: getInternalApiBaseUrl(),
+            allowedToolIds: agent.allowedToolIds,
+            memoryEnabled: agent.allowedToolIds.some((id) => AGENT_MEMORY_TOOL_IDS.has(id)),
+            includePaidOnlyOverlayTools: paid,
+          })
+        : {}
+      const hasTools = Object.keys(agentTools).length > 0
       const result = streamText({
         model,
         maxOutputTokens: 2_000,
         temperature: 0.4,
+        ...(hasTools ? { tools: agentTools, stopWhen: isStepCount(MAX_TOOL_STEPS_AGENT) } : {}),
         abortSignal: args.signal
           ? AbortSignal.any([args.signal, AbortSignal.timeout(120_000)])
           : AbortSignal.timeout(120_000),
@@ -255,7 +294,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           `You are ${agent.name}, a named AI teammate in an Overlay workspace.`,
           agent.instructions,
           'Respond as this agent, not as a generic assistant.',
-          'You have no tools or resource access in this turn. Never claim that you used or changed a resource.',
+          hasTools
+            ? 'Use your available tools when they genuinely help. Never claim to have used a tool or changed a resource unless the tool call actually ran.'
+            : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource.',
           'Be concise, useful, and explicit when context is insufficient.',
           '',
           'Conversation:',
