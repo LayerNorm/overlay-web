@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import type { KnowledgeBase } from '@overlay/app-core'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import type { WorkspaceAgentDirectoryItem, WorkspaceKind } from '@overlay/workspace-contracts'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -549,6 +549,24 @@ export const chatsInlineItems = [
   { id: 'activity', label: 'Activity', icon: Bell },
   { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
+
+export function chatsInlineItemsForWorkspace({
+  kind,
+  publicShowcase = false,
+}: {
+  kind?: WorkspaceKind | null
+  publicShowcase?: boolean
+}) {
+  if (publicShowcase) {
+    return chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
+  }
+  if (kind === 'personal') {
+    return chatsInlineItems
+      .filter((item) => item.id !== 'channels' && item.id !== 'activity')
+      .map((item) => item.id === 'dms' ? { ...item, label: 'Agent chats', icon: Bot } : item)
+  }
+  return [...chatsInlineItems]
+}
 
 export interface InlineNavItem {
   id: string

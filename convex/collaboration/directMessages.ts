@@ -6,6 +6,9 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
+import {
+  PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE,
+} from '../../src/shared/workspaces/personal-workspace-boundary'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -35,6 +38,25 @@ const notificationValidator = v.object({
   conversationState: v.optional(v.union(v.literal('archived'), v.literal('deleted'))),
 })
 
+const participantValidator = v.object({
+  conversationId: v.id('conversations'),
+  workspaceId: v.string(),
+  principalId: v.string(),
+  principalType: v.union(v.literal('human'), v.literal('agent')),
+  displayName: v.string(),
+  email: v.optional(v.string()),
+  role: v.union(v.literal('moderator'), v.literal('member')),
+  status: v.union(v.literal('active'), v.literal('removed')),
+  notificationLevel: v.union(v.literal('all'), v.literal('mentions'), v.literal('muted')),
+  joinedAt: v.number(),
+  updatedAt: v.number(),
+  removedAt: v.optional(v.number()),
+  lastReadAt: v.optional(v.number()),
+  lastReadSequence: v.optional(v.number()),
+  markedUnreadAt: v.optional(v.number()),
+  archivedAt: v.optional(v.number()),
+})
+
 async function requireActor(
   ctx: CollaborationCtx,
   args: {
@@ -61,6 +83,17 @@ async function requireActor(
     ))
     .unique()
   if (!membership || membership.status !== 'active') throw new Error('WORKSPACE_ACCESS_DENIED')
+  const workspace = await ctx.db.query('workspaces')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+    .unique()
+  if (
+    workspace?.kind === 'personal'
+    && (workspace.createdByPrincipalId
+      ? workspace.createdByPrincipalId !== principal.principalId
+      : membership.role !== 'owner')
+  ) {
+    throw new Error('WORKSPACE_ACCESS_DENIED')
+  }
   return principal
 }
 
@@ -549,6 +582,13 @@ export const createDirectMessage = mutation({
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
+  returns: v.object({
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    title: v.string(),
+    participants: v.array(participantValidator),
+    created: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args)
     const principalIds = [...new Set([actor.principalId, ...args.principalIds.map((id) => id.trim()).filter(Boolean)])]
@@ -572,6 +612,17 @@ export const createDirectMessage = mutation({
         || membership?.status !== 'active'
       ) throw new Error('Every participant must be an active human or agent in this workspace')
       principals.push(principal)
+    }
+    const workspace = await ctx.db.query('workspaces')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .unique()
+    if (
+      workspace?.kind === 'personal'
+      && principals.some((principal) => (
+        principal.type === 'human' && principal.principalId !== actor.principalId
+      ))
+    ) {
+      throw new Error(PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE)
     }
 
     const dmIdentityKey = principalIds.join(':')
@@ -734,8 +785,15 @@ export const addParticipant = mutation({
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
+  returns: participantValidator,
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
+    const workspace = await ctx.db.query('workspaces')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .unique()
+    if (workspace?.kind === 'personal') {
+      throw new Error(PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE)
+    }
     if (access.participant?.role !== 'moderator') throw new Error('CONVERSATION_MODERATOR_REQUIRED')
     if (access.conversation?.conversationType === 'dm') {
       throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')

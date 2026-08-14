@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, MessageSquare, Check, Hash, Pencil, UsersRound } from 'lucide-react'
+import { Archive, Bot, MessageSquare, Check, Hash, Pencil, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -56,6 +56,7 @@ export function ChatInlinePanel({
   onNavigate,
   baseHref = '/app/chat',
   workspaceId,
+  collaborationEnabled = true,
   seededChats,
 }: {
   refreshKey: number
@@ -63,6 +64,7 @@ export function ChatInlinePanel({
   onNavigate?: () => void
   baseHref?: string
   workspaceId?: string | null
+  collaborationEnabled?: boolean
   seededChats?: Conversation[]
 }) {
   const router = useRouter()
@@ -107,7 +109,8 @@ export function ChatInlinePanel({
   const activeId = browserActiveId ?? searchActiveId
   const chatView = (() => {
     const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'all') return value
+    if (value === 'dms') return value
+    if (collaborationEnabled && (value === 'channels' || value === 'all')) return value
     return 'personal'
   })()
   setActiveChatListView(chatView)
@@ -141,10 +144,10 @@ export function ChatInlinePanel({
 
   useEffect(() => {
     const openDialog = () => {
-      if (chatView === 'dms' && workspaceId) setNewDirectMessageOpen(true)
+      if (collaborationEnabled && chatView === 'dms' && workspaceId) setNewDirectMessageOpen(true)
     }
     const openChannelDialog = () => {
-      if (chatView === 'channels' && workspaceId) setNewChannelOpen(true)
+      if (collaborationEnabled && chatView === 'channels' && workspaceId) setNewChannelOpen(true)
     }
     window.addEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
     window.addEventListener(NEW_CHANNEL_EVENT, openChannelDialog)
@@ -152,7 +155,7 @@ export function ChatInlinePanel({
       window.removeEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
       window.removeEventListener(NEW_CHANNEL_EVENT, openChannelDialog)
     }
-  }, [chatView, workspaceId])
+  }, [chatView, collaborationEnabled, workspaceId])
 
   useEffect(() => {
     if (!workspaceId || isPublicShowcase || !user) {
@@ -518,7 +521,9 @@ export function ChatInlinePanel({
                 {chat.conversationType === 'channel' ? (
                   <Hash size={12} className="shrink-0" />
                 ) : chat.conversationType === 'dm' ? (
-                  <UsersRound size={12} className="shrink-0" />
+                  collaborationEnabled
+                    ? <UsersRound size={12} className="shrink-0" />
+                    : <Bot size={12} className="shrink-0" />
                 ) : (
                   <MessageSquare size={12} className="shrink-0" />
                 )}
@@ -602,7 +607,7 @@ export function ChatInlinePanel({
         </>
       )}
     </SidebarResourceList>
-    {workspaceId ? (
+    {workspaceId && collaborationEnabled ? (
       <NewDirectMessageDialog
         open={newDirectMessageOpen}
         workspaceId={workspaceId}
@@ -622,7 +627,7 @@ export function ChatInlinePanel({
         }}
       />
     ) : null}
-    {workspaceId ? (
+    {workspaceId && collaborationEnabled ? (
       <NewChannelDialog
         open={newChannelOpen}
         workspaceId={workspaceId}

@@ -5,12 +5,25 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function GET(_request: Request, context: AppApiRouteContext) {
-  const channels = await getOverlayServerContext().appData.repositories
-    .conversationCollaboration.listChannels({
+  try {
+    const server = getOverlayServerContext()
+    await server.workspaceService.assertCollaborativeWorkspace({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
-  return NextResponse.json({ channels })
+    const channels = await server.appData.repositories.conversationCollaboration.listChannels({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
+    return NextResponse.json({ channels })
+  } catch (error) {
+    if (error instanceof WorkspaceServiceError) {
+      return NextResponse.json({ error: error.message, code: error.code }, {
+        status: error.statusCode,
+      })
+    }
+    throw error
+  }
 }
 
 export async function POST(_request: Request, context: AppApiRouteContext) {
@@ -42,9 +55,11 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       })
     return NextResponse.json({ channel }, { status: 201 })
   } catch (error) {
-    // A policy refusal is a 403 with its own message, not a generic 400.
+    // Policy and workspace-kind refusals preserve their service status/code.
     if (error instanceof WorkspaceServiceError) {
-      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+      return NextResponse.json({ error: error.message, code: error.code }, {
+        status: error.statusCode,
+      })
     }
     const message = error instanceof Error ? error.message : 'Could not create channel'
     return NextResponse.json({ error: message }, {

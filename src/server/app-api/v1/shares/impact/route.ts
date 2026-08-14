@@ -8,6 +8,7 @@ import {
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceSharingServiceError } from '@/server/sharing'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 /**
  * Disclosure endpoint for the Share dialog: who a grant would newly reach, or
@@ -32,9 +33,20 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       })
     return NextResponse.json({ impact })
   } catch (error) {
+    if (error instanceof WorkspaceServiceError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.statusCode })
+    }
     if (!(error instanceof WorkspaceSharingServiceError)) throw error
-    const status = error.code === 'not_found' ? 404 : error.code === 'forbidden' ? 403 : 400
-    return NextResponse.json({ error: error.message, code: `sharing_${error.code}` }, { status })
+    const status = error.code === 'not_found' ? 404
+      : error.code === 'forbidden' ? 403
+        : error.code === 'personal_workspace_not_collaborative' ? 409
+          : 400
+    return NextResponse.json({
+      error: error.message,
+      code: error.code === 'personal_workspace_not_collaborative'
+        ? error.code
+        : `sharing_${error.code}`,
+    }, { status })
   }
 }
 

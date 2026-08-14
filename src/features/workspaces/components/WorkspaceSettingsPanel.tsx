@@ -48,6 +48,7 @@ import {
   TeamMembersDialog,
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
+import { PersonalCollaborationBoundary } from './PersonalCollaborationBoundary'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -628,7 +629,7 @@ export function WorkspaceSettingsPanel({
   const [teamCandidateBusyId, setTeamCandidateBusyId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!activeWorkspace || activeTab !== 'sharing') return
+    if (!activeWorkspace || activeWorkspace.kind === 'personal' || activeTab !== 'sharing') return
     const controller = new AbortController()
     setPolicyState({ status: 'loading' })
     void client.sharingPolicy(activeWorkspace.id, controller.signal)
@@ -666,7 +667,12 @@ export function WorkspaceSettingsPanel({
   }, [activeTab, activeWorkspace, client, refreshKey])
 
   useEffect(() => {
-    if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing') return
+    if (
+      !activeWorkspace
+      || activeWorkspace.kind === 'personal'
+      || activeTab === 'sharing'
+      || activeTab === 'billing'
+    ) return
     const controller = new AbortController()
     setState({ status: 'loading' })
     void client.load(activeWorkspace.id, activeTab, controller.signal)
@@ -684,7 +690,7 @@ export function WorkspaceSettingsPanel({
   }, [activeTab, activeWorkspace, client, refreshKey])
 
   useEffect(() => {
-    if (action?.type !== 'manage-team' || !activeWorkspace) return
+    if (action?.type !== 'manage-team' || !activeWorkspace || activeWorkspace.kind === 'personal') return
     const controller = new AbortController()
     setActionError(null)
     void Promise.all([
@@ -761,6 +767,21 @@ export function WorkspaceSettingsPanel({
         title="Create your first workspace"
         description="Use the workspace menu in the sidebar to create a collaboration boundary."
       />
+    )
+  }
+
+  if (activeWorkspace.kind === 'personal') {
+    return (
+      <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]">
+        <header className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4">
+          <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">Personal</h2>
+            <p className="mt-0.5 truncate text-xs text-[var(--muted)]">Private to you</p>
+          </div>
+        </header>
+        <PersonalCollaborationBoundary />
+      </section>
     )
   }
 

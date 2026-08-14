@@ -104,6 +104,12 @@ function sharingError(error: unknown) {
   if (!(error instanceof WorkspaceSharingServiceError)) throw error
   const status = error.code === 'not_found' ? 404
     : error.code === 'forbidden' ? 403
+      : error.code === 'personal_workspace_not_collaborative' ? 409
       : error.code === 'confirmation_required' ? 409 : 400
-  return NextResponse.json({ error: error.message, code: `sharing_${error.code}` }, { status })
+  return NextResponse.json({
+    error: error.message,
+    code: error.code === 'personal_workspace_not_collaborative'
+      ? error.code
+      : `sharing_${error.code}`,
+  }, { status })
 }

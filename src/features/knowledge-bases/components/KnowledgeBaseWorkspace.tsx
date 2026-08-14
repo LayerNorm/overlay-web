@@ -67,7 +67,8 @@ export function KnowledgeBaseWorkspace({
   initialSelectedSourceId?: string
   initialSources: KnowledgeBaseSourceDetail[]
 }) {
-  const { activeWorkspaceId } = useWorkspace()
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
+  const collaborativeWorkspace = activeWorkspace?.kind === 'organization'
   const router = useRouter()
   const { capabilities, integrationProvider } = useOverlayCapabilities()
   const { can } = useAuthorization()
@@ -345,7 +346,7 @@ export function KnowledgeBaseWorkspace({
                   onChange={setSourceTab}
                   ariaLabel="Knowledge base views"
                 />
-                {canShare ? (
+                {canShare && collaborativeWorkspace ? (
                   <Button size="sm" onClick={() => setShareOpen(true)}>
                     <Share2 size={14} /> Share
                   </Button>
@@ -567,7 +568,7 @@ export function KnowledgeBaseWorkspace({
 
       <ShareDialog
         workspaceId={activeWorkspaceId}
-        isOpen={shareOpen}
+        isOpen={collaborativeWorkspace && shareOpen}
         onClose={() => setShareOpen(false)}
         resource={{
           id: knowledgeBase.id,

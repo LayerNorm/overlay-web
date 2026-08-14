@@ -6,6 +6,8 @@ import { useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { DirectMessageExperience } from './DirectMessageExperience'
 import { resolveSoftChatRoute, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { PersonalCollaborationBoundary } from '@/features/workspaces/components/PersonalCollaborationBoundary'
 
 /**
  * Soft chat switches use `history.pushState` (see ChatInlinePanel) so the app
@@ -43,6 +45,7 @@ function CollaborationViewEmptyState({ view }: { view: 'dms' | 'channels' }) {
 }
 
 export function ConversationExperienceRouter(props: ComponentProps<typeof ChatExperience>) {
+  const { activeWorkspace } = useWorkspace()
   const searchParams = useSearchParams()
   const searchConversationId = searchParams?.get('id') ?? null
   const searchView = searchParams?.get('view') ?? null
@@ -76,6 +79,10 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     ? resolveSoftChatRoute(browserRoute, searchRoute)
     : searchRoute
   const { conversationId, view } = route
+
+  if (activeWorkspace?.kind === 'personal' && view === 'channels') {
+    return <PersonalCollaborationBoundary className="min-h-[100dvh] px-6 pb-16" />
+  }
 
   if (view === 'dms' && conversationId) {
     return (

@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { chatsInlineItems, InlineNavChildren } from './AppSidebarInlinePanels'
+import {
+  chatsInlineItems,
+  chatsInlineItemsForWorkspace,
+  InlineNavChildren,
+} from './AppSidebarInlinePanels'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -25,7 +29,13 @@ test('an expanded section lists every visible chat subview without an All shortc
   for (const view of CHAT_VIEWS) assert.match(html, new RegExp(view.label))
   // The container is addressable so the section button can own aria-controls.
   assert.match(html, /id="sidebar-section-app-chat"/)
-  assert.deepEqual(chatsInlineItems.map((item) => item.id), ['personal', 'dms', 'channels', 'activity'])
+  assert.deepEqual(chatsInlineItems.map((item) => item.id), ['personal', 'dms', 'channels', 'activity', 'archived'])
+})
+
+test('Personal keeps private and agent chats but removes team collaboration views', () => {
+  const items = chatsInlineItemsForWorkspace({ kind: 'personal' })
+  assert.deepEqual(items.map((item) => item.id), ['personal', 'dms', 'archived'])
+  assert.equal(items.find((item) => item.id === 'dms')?.label, 'Agent chats')
 })
 
 test('opening a section from elsewhere selects nothing on the person behalf', () => {

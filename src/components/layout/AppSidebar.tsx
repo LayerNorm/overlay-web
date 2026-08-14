@@ -29,6 +29,7 @@ import {
   KnowledgeInlinePanel,
   ProjectsInlinePanel,
   chatsInlineItems,
+  chatsInlineItemsForWorkspace,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
 import { filesInlineItems, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
@@ -179,6 +180,7 @@ export default function AppSidebar({
   const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : 'Guest'
   const { totalUnread } = useAsyncSessions()
   const activeWorkspaceId = workspace?.activeWorkspaceId ?? null
+  const personalWorkspace = !publicShowcase && workspace?.activeWorkspaceKind === 'personal'
   const resolveSurfaceAdapter = workspace?.resolveSurface
   const buildHrefAdapter = workspace?.buildHref
   const resolveWorkspaceSurface = useCallback(
@@ -644,14 +646,14 @@ export default function AppSidebar({
   }
 
   const resourceAction = chatOpen && chatsView === 'dms'
-    ? {
+    ? personalWorkspace ? null : {
       label: 'New message',
       onClick: () => publicShowcase
         ? requireAuth('nav')
         : window.dispatchEvent(new CustomEvent(NEW_DIRECT_MESSAGE_EVENT)),
     }
     : chatOpen && chatsView === 'channels'
-      ? {
+      ? personalWorkspace ? null : {
         label: 'New channel',
         onClick: () => publicShowcase
           ? requireAuth('nav')
@@ -702,9 +704,10 @@ export default function AppSidebar({
 
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
-      const chatItems = (publicShowcase
-        ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
-        : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
+      const chatItems = chatsInlineItemsForWorkspace({
+        kind: workspace?.activeWorkspaceKind,
+        publicShowcase,
+      }).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
       return {
         items: chatItems,
         activeId: chatsView,
