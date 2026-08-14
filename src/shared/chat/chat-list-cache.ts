@@ -35,6 +35,7 @@ export type ChatListPageInfo = {
 export type ChatListFetchOutcome =
   | { status: 'success'; chats: CachedConversation[] }
   | { status: 'unauthenticated' }
+  | { status: 'rate-limited'; retryAfterMs: number }
   | { status: 'error' }
 
 type WorkspaceChatListCache = {
@@ -44,6 +45,7 @@ type WorkspaceChatListCache = {
   nextPageInFlight: Promise<CachedConversation[]> | null
   cachedPageInfo: ChatListPageInfo
   pendingEmptyChats: Map<string, { chat: CachedConversation; expiresAt: number }>
+  rateLimitedUntil: number
 }
 
 const LEGACY_WORKSPACE_KEY = '__legacy_personal_workspace__'
@@ -63,7 +65,20 @@ function createWorkspaceCache(): WorkspaceChatListCache {
     nextPageInFlight: null,
     cachedPageInfo: { hasMore: false },
     pendingEmptyChats: new Map(),
+    rateLimitedUntil: 0,
   }
+}
+
+function retryAfterMs(response: Response): number {
+  const retryAfter = response.headers.get('Retry-After')?.trim()
+  if (!retryAfter) return 30_000
+
+  const seconds = Number(retryAfter)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.max(1_000, Math.ceil(seconds * 1_000))
+
+  const retryAt = Date.parse(retryAfter)
+  if (Number.isFinite(retryAt)) return Math.max(1_000, retryAt - Date.now())
+  return 30_000
 }
 
 function getWorkspaceCache(workspaceKey = activeCacheKey()): WorkspaceChatListCache {
@@ -162,7 +177,14 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
   if (!options.force && cache.cachedChats && now - cache.cachedAt < CACHE_TTL_MS) {
     return { status: 'success', chats: cache.cachedChats }
   }
-  if (!options.force && cache.inFlight) return cache.inFlight
+  // `force` bypasses the display TTL, not request coalescing. The app shell and
+  // active chat can ask for the same refresh concurrently after a reconnect.
+  // Sharing the promise prevents those refresh sources from multiplying one
+  // logical invalidation into several identical network requests.
+  if (cache.inFlight) return cache.inFlight
+  if (cache.rateLimitedUntil > now) {
+    return { status: 'rate-limited', retryAfterMs: cache.rateLimitedUntil - now }
+  }
 
   cache.inFlight = overlayAppClient.conversations.getResponse({
     limit: INITIAL_CHAT_LIST_LIMIT,
@@ -171,8 +193,14 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
     .then(async (res): Promise<ChatListFetchOutcome> => {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
+        if (res.status === 429) {
+          const cooldownMs = retryAfterMs(res)
+          cache.rateLimitedUntil = Date.now() + cooldownMs
+          return { status: 'rate-limited', retryAfterMs: cooldownMs }
+        }
         return { status: 'error' }
       }
+      cache.rateLimitedUntil = 0
       const payload = await res.json()
       if (!isPaginatedEnvelope<CachedConversation>(payload)) return { status: 'error' }
       primeChatList(payload.data, {
@@ -183,7 +211,7 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
     })
     .catch((): ChatListFetchOutcome => ({ status: 'error' }))
     .finally(() => {
-      getWorkspaceCache(requestWorkspaceKey).inFlight = null
+      cache.inFlight = null
     })
 
   return cache.inFlight

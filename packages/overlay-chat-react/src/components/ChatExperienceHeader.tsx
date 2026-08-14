@@ -494,7 +494,11 @@ export function ChatExperienceHeader({
                   className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
                 >
                   <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
-                    <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="left">
+                    <DelayedTooltip
+                      label="Cycle text / image / video (⇧⌘.)"
+                      side="left"
+                      className="block w-full"
+                    >
                       <span data-tour="generation-mode-toggle" className="block w-full">
                         <GenerationModeToggle
                           mode={generationMode}

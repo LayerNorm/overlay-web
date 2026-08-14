@@ -215,6 +215,13 @@ export function ChatInlinePanel({
         setLoading(false)
         return
       }
+      // The server gives us an exact Retry-After window. The shared list cache
+      // suppresses requests during that window, so do not turn one 429 into an
+      // eight-attempt retry loop. Existing cached chats remain usable.
+      if (outcome.status === 'rate-limited') {
+        setLoading(false)
+        return
+      }
       await new Promise((resolve) => setTimeout(resolve, Math.min(300 * 2 ** attempt, 3000)))
     }
     // Exhausted retries; stop the skeleton so the UI doesn't hang indefinitely.
