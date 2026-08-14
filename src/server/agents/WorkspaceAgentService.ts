@@ -30,6 +30,7 @@ export class WorkspaceAgentService {
 
   async list(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
     return {
       agents: await this.repository.list({ workspaceId: access.workspace.id }),
       canCreate: canCreateAgent(access.membership.role),
@@ -38,9 +39,38 @@ export class WorkspaceAgentService {
 
   async get(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
     if (!agent || agent.archivedAt) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     return agent
+  }
+
+  async ensureDefaultAgent(args: { workspaceId: string; creatorPrincipalId: string }) {
+    const existing = await this.repository.list({ workspaceId: args.workspaceId })
+    const hasDefault = existing.some((a) => a.isDefault || a.name.toLowerCase() === 'overlay')
+    if (hasDefault) return
+    const agentId = `default-overlay-${args.workspaceId}`
+    const principalId = `default-overlay-principal-${args.workspaceId}`
+    try {
+      await this.repository.create({
+        agentId,
+        principalId,
+        workspaceId: args.workspaceId,
+        name: 'Overlay',
+        description: 'Master workspace agent with full access to workspace context, memory, files, notes, automations, and all tools.',
+        instructions: 'You are Overlay, the master workspace agent. You have full access to workspace context, files, notes, memories, automations, skills, and tools. Execute user tasks thoroughly and precisely using your available tools:\n- Search and read workspace knowledge, files, and notes\n- Save and update memories when important user preferences or durable facts are shared\n- Create and edit notes or documents\n- Use web search and browser tools when live or external information is needed\n- Run code in sandboxes when computation or execution is required\n- Help create automations and skills for repeatable workflows\nAlways choose the most direct and effective tools to complete the user\'s request.',
+        harness: 'overlay',
+        modelId: 'openrouter/free',
+        avatarColor: '#18181b',
+        allowedToolIds: [],
+        teamIds: [],
+        isDefault: true,
+        createdByPrincipalId: args.creatorPrincipalId,
+        now: this.now(),
+      })
+    } catch (_error) {
+      // Ignore if already created concurrently
+    }
   }
 
   async create(args: {
@@ -151,6 +181,9 @@ export class WorkspaceAgentService {
 
   async archive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const { access, agent } = await this.requireEditor(args)
+    if (agent.isDefault || agent.name.toLowerCase() === 'overlay') {
+      throw new WorkspaceAgentServiceError('forbidden', 'The default Overlay agent cannot be deleted or archived')
+    }
     if (!await this.repository.archive({
       workspaceId: access.workspace.id,
       agentId: agent.id,

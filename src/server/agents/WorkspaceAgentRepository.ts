@@ -20,6 +20,7 @@ export type CreateWorkspaceAgentRecord = {
   teamIds: string[]
   createdByPrincipalId: string
   now: number
+  isDefault?: boolean
 }
 
 export type UpdateWorkspaceAgentRecord = Partial<Pick<

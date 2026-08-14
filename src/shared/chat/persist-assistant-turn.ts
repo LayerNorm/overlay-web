@@ -240,19 +240,41 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   const textSegments: string[] = []
   const synthesizedToolSegments: string[] = []
   const generatedUiTextSegments: string[] = []
+
+  // Collect all tool results across all steps in the multi-step run.
+  // In AI SDK, step N contains toolCalls while step N+1 contains toolResults.
+  const allToolResultsById = new Map<
+    string,
+    { toolCallId: string; output?: unknown; result?: unknown }
+  >()
+  for (const step of list) {
+    for (const result of step.toolResults ?? []) {
+      if (result && typeof result === 'object' && 'toolCallId' in result && typeof result.toolCallId === 'string') {
+        allToolResultsById.set(
+          result.toolCallId,
+          result as { toolCallId: string; output?: unknown; result?: unknown },
+        )
+      }
+    }
+  }
+
   for (const step of list) {
     const trimmedText = step.text?.trim()
     if (trimmedText) {
       textSegments.push(normalizeAgentAssistantText(trimmedText))
     }
-    const toolResultsById = new Map(
-      (step.toolResults ?? []).map((result) => [result.toolCallId, result] as const),
-    )
     for (const tc of step.toolCalls ?? []) {
-      const result = toolResultsById.get(tc.toolCallId)
+      const result = allToolResultsById.get(tc.toolCallId)
+      const toolOutput = result
+        ? 'output' in result
+          ? result.output
+          : 'result' in result
+            ? result.result
+            : result
+        : undefined
       if (tc.toolName === 'present_generated_ui') {
-        const output = result?.output && typeof result.output === 'object'
-          ? result.output as Record<string, unknown>
+        const output = toolOutput && typeof toolOutput === 'object'
+          ? toolOutput as Record<string, unknown>
           : null
         const data = output?.success === true ? normalizeGeneratedUiData(output.generatedUi) : null
         if (data) generatedUiTextSegments.push(generatedUiDataToPlainText(data))
@@ -261,7 +283,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
       const summary = summarizeToolResultForTranscript({
         toolName: tc.toolName,
         toolInput: tc.input,
-        toolOutput: result?.output,
+        toolOutput,
         state: result ? 'output-available' : 'input-available',
       })
       if (summary) synthesizedToolSegments.push(summary)
@@ -291,15 +313,19 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
       })
     }
 
-    const toolResultsById = new Map(
-      (step.toolResults ?? []).map((result) => [result.toolCallId, result] as const),
-    )
     const calls = step.toolCalls ?? []
     for (const tc of calls) {
-      const result = toolResultsById.get(tc.toolCallId)
+      const result = allToolResultsById.get(tc.toolCallId)
+      const toolOutput = result
+        ? 'output' in result
+          ? result.output
+          : 'result' in result
+            ? result.result
+            : result
+        : undefined
       if (tc.toolName === 'present_generated_ui') {
-        const output = result?.output && typeof result.output === 'object'
-          ? result.output as Record<string, unknown>
+        const output = toolOutput && typeof toolOutput === 'object'
+          ? toolOutput as Record<string, unknown>
           : null
         const part = output?.success === true
           ? buildGeneratedUiPart(
@@ -317,7 +343,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
           toolName: tc.toolName,
           state: result ? 'output-available' : 'input-available',
           toolInput: clampNestingDepth(tc.input),
-          toolOutput: clampNestingDepth(result?.output),
+          toolOutput: clampNestingDepth(toolOutput),
         },
       })
     }

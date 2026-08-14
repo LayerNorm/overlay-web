@@ -1826,6 +1826,7 @@ export default defineSchema({
     archivedAt: v.optional(v.number()),
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
+    isDefault: v.optional(v.boolean()),
   })
     .index('by_agentId', ['agentId'])
     .index('by_workspaceId', ['workspaceId']),

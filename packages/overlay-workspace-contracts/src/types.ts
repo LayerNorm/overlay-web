@@ -501,6 +501,7 @@ export type WorkspaceAgentDefinition = {
   createdAt: number
   updatedAt: number
   archivedAt?: number
+  isDefault?: boolean
 }
 
 export type WorkspaceAgentCreateInput = {
@@ -512,6 +513,7 @@ export type WorkspaceAgentCreateInput = {
   avatarColor?: string
   allowedToolIds?: string[]
   teamIds?: string[]
+  isDefault?: boolean
 }
 
 export type WorkspaceAgentUpdateInput = Partial<WorkspaceAgentCreateInput>

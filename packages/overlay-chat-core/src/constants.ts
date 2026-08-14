@@ -1,6 +1,13 @@
 import type { VideoSubMode } from './types'
 
-export const TOOL_UI_DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
+export const TOOL_UI_DONE_STATES = new Set([
+  'output-available',
+  'output-error',
+  'output-denied',
+  'result',
+  'complete',
+  'completed',
+])
 
 export const OVERLAY_LOGO_SRC = '/assets/overlay-logo.png'
 

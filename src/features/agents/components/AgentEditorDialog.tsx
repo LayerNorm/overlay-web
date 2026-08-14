@@ -73,6 +73,7 @@ export function AgentEditorDialog({
       .map((model) => ({ value: model.id, label: model.name }))
   }, [enabledModelIds, revision])
 
+  const isDefaultMaster = Boolean(agent?.isDefault || agent?.name.toLowerCase() === 'overlay')
   const valid = name.trim() && instructions.trim() && modelId.trim()
   return (
     <DialogFrame
@@ -80,10 +81,10 @@ export function AgentEditorDialog({
       onOpenChange={onOpenChange}
       className="max-h-[92vh] !w-[min(760px,94vw)] overflow-y-auto"
       title={agent ? `Edit ${agent.name}` : 'Create agent'}
-      description="Give this workspace a named teammate with a clear job and its own identity."
+      description={isDefaultMaster ? 'Master workspace agent with full access to workspace context, memory, and tools (cannot be deleted).' : 'Give this workspace a named teammate with a clear job and its own identity.'}
       footer={(
         <>
-          {agent && onArchive ? <Button variant="danger" onClick={onArchive} disabled={busy}>Archive agent</Button> : null}
+          {agent && onArchive && !isDefaultMaster ? <Button variant="danger" onClick={onArchive} disabled={busy}>Archive agent</Button> : null}
           <span className="flex-1" />
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
           <Button

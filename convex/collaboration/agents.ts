@@ -23,6 +23,7 @@ const agentValidator = v.object({
   archivedAt: v.optional(v.number()),
   teamIds: v.array(v.string()),
   roomCount: v.number(),
+  isDefault: v.optional(v.boolean()),
 })
 
 export const createByServer = mutation({
@@ -31,6 +32,7 @@ export const createByServer = mutation({
     name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness,
     modelId: v.string(), avatarColor: v.optional(v.string()), allowedToolIds: v.array(v.string()),
     teamIds: v.array(v.string()), createdByPrincipalId: v.string(), now: v.number(),
+    isDefault: v.optional(v.boolean()),
   },
   returns: agentValidator,
   handler: async (ctx, args) => {
@@ -65,6 +67,7 @@ export const createByServer = mutation({
       invocationPolicy: 'mention', createdByPrincipalId: args.createdByPrincipalId,
       teamIds: unique(args.teamIds), roomCount: 0,
       createdAt: args.now, updatedAt: args.now,
+      isDefault: args.isDefault || args.name.trim().toLowerCase() === 'overlay' ? true : undefined,
     })
     for (const teamId of unique(args.teamIds)) {
       const team = await ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()
@@ -198,6 +201,7 @@ export const archiveByServer = mutation({
     const row = await ctx.db.query('workspaceAgentDefinitions')
       .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
     if (!row || row.workspaceId !== args.workspaceId || row.archivedAt) return false
+    if (row.isDefault || row.name.toLowerCase() === 'overlay') return false
     await ctx.db.patch(row._id, { archivedAt: args.now, updatedAt: args.now, roomCount: 0, teamIds: [] })
     const principal = await ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()

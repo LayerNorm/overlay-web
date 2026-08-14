@@ -264,11 +264,11 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         })
         .join('\n')
       // Give the agent the same overlay tool surface the personal act agent uses,
-      // filtered to the tools the agent was granted. An empty allow-list keeps the
-      // agent text-only, which is the historical behavior. Tools authenticate as
-      // the triggering actor via the internal service secret, exactly like the
-      // act route, so no browser cookie needs to be forwarded server-side.
-      const agentTools = agent.allowedToolIds.length > 0
+      // filtered to the tools the agent was granted. The default master Overlay
+      // agent is granted the full toolset. Tools authenticate as the triggering
+      // actor via the internal service secret, exactly like the act route.
+      const isDefaultMaster = Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
+      const agentTools = (agent.allowedToolIds.length > 0 || isDefaultMaster)
         ? buildOverlayToolSet({
             userId: args.actorUserId,
             accessToken: args.accessToken,
@@ -276,8 +276,8 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
             workspaceId: args.workspaceId,
             conversationId: args.conversationId,
             baseUrl: getInternalApiBaseUrl(),
-            allowedToolIds: agent.allowedToolIds,
-            memoryEnabled: agent.allowedToolIds.some((id) => AGENT_MEMORY_TOOL_IDS.has(id)),
+            allowedToolIds: isDefaultMaster && agent.allowedToolIds.length === 0 ? undefined : agent.allowedToolIds,
+            memoryEnabled: isDefaultMaster || agent.allowedToolIds.some((id) => AGENT_MEMORY_TOOL_IDS.has(id)),
             includePaidOnlyOverlayTools: paid,
           })
         : {}
@@ -293,7 +293,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         prompt: [
           `You are ${agent.name}, a named AI teammate in an Overlay workspace.`,
           agent.instructions,
-          'Respond as this agent, not as a generic assistant.',
+          isDefaultMaster
+            ? 'You are the default Overlay master workspace agent with full access to workspace context, files, notes, automations, skills, and tools.'
+            : 'Respond as this agent, not as a generic assistant.',
           hasTools
             ? 'Use your available tools when they genuinely help. Never claim to have used a tool or changed a resource unless the tool call actually ran.'
             : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource.',

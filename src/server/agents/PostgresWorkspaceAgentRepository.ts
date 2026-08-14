@@ -160,6 +160,7 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
     return await this.db.transaction(async (tx) => {
       const current = await selectAgent(tx, args.workspaceId, args.agentId)
       if (!current || current.archivedAt) return false
+      if (current.isDefault || current.name.toLowerCase() === 'overlay') return false
       await tx.execute(sql`
         UPDATE workspace_agent_definitions
         SET archived_at = ${new Date(args.now)}, updated_at = ${new Date(args.now)}
@@ -226,5 +227,6 @@ function agentFromRow(row: AgentRow): WorkspaceAgentDirectoryItem {
     archivedAt: row.archivedAt ? new Date(row.archivedAt).getTime() : undefined,
     description: row.description ?? undefined,
     avatarColor: row.avatarColor ?? undefined,
+    isDefault: Boolean(row.isDefault || row.name.toLowerCase() === 'overlay'),
   }
 }
