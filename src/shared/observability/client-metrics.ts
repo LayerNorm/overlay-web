@@ -29,6 +29,7 @@ export type MetricsPayload = {
 function emit(event: MetricsEventName, properties: Record<string, unknown>): void {
   if (typeof window === 'undefined') return
   try {
+    console.log('[CLT_METRIC]', event, JSON.stringify(properties))
     window.dispatchEvent(
       new CustomEvent<MetricsPayload>(METRICS_EVENT, {
         detail: { event, properties },

@@ -65,6 +65,8 @@ export function withMetrics<Ret>(
       const result = await handler(ctx, args)
       const durationMs = Date.now() - startTime
 
+      console.log('[CVX_METRIC]', JSON.stringify({ functionName, durationMs, error: false }))
+
       // Fire-and-forget metric recording.
       try {
         await ctx.db.insert('functionMetrics', {
@@ -79,6 +81,7 @@ export function withMetrics<Ret>(
       return result
     } catch (error) {
       const durationMs = Date.now() - startTime
+      console.log('[CVX_METRIC]', JSON.stringify({ functionName, durationMs, error: true }))
       try {
         await ctx.db.insert('functionMetrics', {
           functionName,

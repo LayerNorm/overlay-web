@@ -87,6 +87,18 @@ export async function handleBffRoute(
   ): Promise<void> {
     const durationMs = Math.round(performance.now() - startTime)
     const retryAfter = response.headers.get('Retry-After')
+    const responseBytes = Number(response.headers.get('Content-Length')) || undefined
+    // eslint-disable-next-line no-console
+    console.log('[BFF_METRIC]', JSON.stringify({
+      route,
+      method: request.method,
+      statusCode: response.status,
+      durationMs,
+      authType,
+      workspaceId,
+      responseBytes,
+      retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
+    }))
     captureBffRequestMetric({
       route,
       method: request.method,
@@ -94,7 +106,7 @@ export async function handleBffRoute(
       durationMs,
       authType,
       workspaceId,
-      responseBytes: Number(response.headers.get('Content-Length')) || undefined,
+      responseBytes,
       retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
     })
     await flushPostHog()

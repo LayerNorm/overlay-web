@@ -42,16 +42,22 @@ export function createOverlayPostgresPool(options: CreateOverlayPostgresPoolOpti
             const rows = Array.isArray(res)
               ? res.reduce((sum, r) => sum + (r.rowCount ?? 0), 0)
               : res?.rowCount ?? 0
+            const durationMs = Math.round(performance.now() - startTime)
+            // eslint-disable-next-line no-console
+            console.log('[PG_METRIC]', JSON.stringify({ durationMs, rowsReturned: rows }))
             capturePostgresQueryMetric({
               operation: 'execute',
-              durationMs: Math.round(performance.now() - startTime),
+              durationMs,
               rowsReturned: rows,
             })
           })
           .catch((_error) => {
+            const durationMs = Math.round(performance.now() - startTime)
+            // eslint-disable-next-line no-console
+            console.log('[PG_METRIC]', JSON.stringify({ durationMs, error: true }))
             capturePostgresQueryMetric({
               operation: 'execute',
-              durationMs: Math.round(performance.now() - startTime),
+              durationMs,
               retried: false,
             })
           })
