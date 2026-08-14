@@ -332,6 +332,112 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(messages[1]?.content, 'hello back')
       assert.equal(messages[1]?.status, 'completed')
 
+      const agentUserMessageId = await backend.conversations.addMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_agent_run',
+        role: 'user',
+        mode: 'act',
+        content: 'run through the AgentRun contract',
+        contentType: 'text',
+        parts: [{ type: 'text', text: 'run through the AgentRun contract' }],
+        modelId: 'openrouter/free',
+        skipMemoryExtraction: true,
+      })
+      assert.ok(agentUserMessageId)
+      const agentRun = await backend.conversations.startAgentRun({
+        conversationId,
+        userId,
+        userMessageId: agentUserMessageId,
+        turnId: 'turn_agent_run',
+        mode: 'chat',
+        runner: 'tool_loop',
+        modelId: 'openrouter/free',
+        leaseExpiresAt: Date.now() + 60_000,
+      })
+      assert.ok(agentRun)
+      assert.equal(agentRun.status, 'queued')
+      await assert.rejects(() => backend.conversations.transitionAgentRun({
+        runId: agentRun.id,
+        userId,
+        status: 'completed',
+      }), /Invalid AgentRun transition/)
+      const runningAgentRun = await backend.conversations.transitionAgentRun({
+        runId: agentRun.id,
+        userId,
+        status: 'running',
+        leaseExpiresAt: Date.now() + 60_000,
+      })
+      assert.equal(runningAgentRun?.status, 'running')
+      assert.equal((await backend.conversations.getLatestAgentRun({ conversationId, userId }))?.id, agentRun.id)
+      const completedAgentRun = await backend.conversations.completeAgentRun({
+        runId: agentRun.id,
+        userId,
+        content: 'final-only persisted answer',
+        parts: [{ type: 'text', text: 'final-only persisted answer' }],
+        tokens: { input: 3, output: 4 },
+      })
+      assert.equal(completedAgentRun?.status, 'completed')
+      assert.equal(completedAgentRun?.completedAt !== undefined, true)
+      const afterAgentRunComplete = await backend.conversations.getConversationMessages({
+        conversationId,
+        userId,
+      })
+      const agentAssistant = afterAgentRunComplete.find((message) => message._id === agentRun.assistantMessageId)
+      assert.equal(agentAssistant?.content, 'final-only persisted answer')
+      assert.equal(agentAssistant?.status, 'completed')
+
+      const cancelledUserMessageId = await backend.conversations.addMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_agent_cancel',
+        role: 'user',
+        mode: 'act',
+        content: 'cancel this run',
+        contentType: 'text',
+        modelId: 'openrouter/free',
+        skipMemoryExtraction: true,
+      })
+      assert.ok(cancelledUserMessageId)
+      const cancellableRun = await backend.conversations.startAgentRun({
+        conversationId,
+        userId,
+        userMessageId: cancelledUserMessageId,
+        turnId: 'turn_agent_cancel',
+        mode: 'chat',
+        runner: 'tool_loop',
+        modelId: 'openrouter/free',
+        leaseExpiresAt: Date.now() + 60_000,
+      })
+      assert.ok(cancellableRun)
+      await backend.conversations.transitionAgentRun({
+        runId: cancellableRun.id,
+        userId,
+        status: 'running',
+      })
+      const cancelled = await backend.conversations.cancelAgentRuns({
+        conversationId,
+        messageId: cancellableRun.assistantMessageId as never,
+        userId,
+      })
+      assert.deepEqual(cancelled.cancelledRunIds, [cancellableRun.id])
+      const lateCompletion = await backend.conversations.completeAgentRun({
+        runId: cancellableRun.id,
+        userId,
+        content: 'must not overwrite cancellation',
+        parts: [{ type: 'text', text: 'must not overwrite cancellation' }],
+        tokens: { input: 1, output: 1 },
+      })
+      assert.equal(lateCompletion?.status, 'cancelled')
+      const afterAgentRunCancel = await backend.conversations.getConversationMessages({
+        conversationId,
+        userId,
+      })
+      const cancelledAssistant = afterAgentRunCancel.find(
+        (message) => message._id === cancellableRun.assistantMessageId,
+      )
+      assert.match(cancelledAssistant?.content ?? '', /Interrupted by user/)
+
       const publicShare = await backend.conversations.setShare({
         conversationId,
         userId,

@@ -14,6 +14,7 @@ import {
 } from '@/server/storage/storage-keys'
 
 const ZERO_COUNTS: AccountDataDeletionCounts = {
+  agentRuns: 0,
   apiIdempotencyKeys: 0,
   apiKeys: 0,
   administrativePrincipals: 0,
@@ -156,6 +157,7 @@ async function selectStorageIds(tx: Transaction, userId: string): Promise<string
 
 async function countUserRows(tx: Transaction, userId: string): Promise<AccountDataDeletionCounts> {
   const result = await tx.execute<{
+    agent_runs: number
     api_idempotency_keys: number
     api_keys: number
     administrative_principals: number
@@ -195,6 +197,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     webhook_subscriptions: number
   }>(sql`
     SELECT
+      (SELECT count(*)::int FROM agent_runs WHERE user_id = ${userId}) AS agent_runs,
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
       (SELECT count(*)::int FROM api_keys WHERE user_id = ${userId}) AS api_keys,
       (SELECT count(*)::int FROM administrative_principals WHERE user_id = ${userId}) AS administrative_principals,
@@ -237,6 +240,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
   if (!row) return { ...ZERO_COUNTS }
 
   return {
+    agentRuns: Number(row.agent_runs ?? 0),
     apiIdempotencyKeys: Number(row.api_idempotency_keys ?? 0),
     apiKeys: Number(row.api_keys ?? 0),
     administrativePrincipals: Number(row.administrative_principals ?? 0),

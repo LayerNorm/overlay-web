@@ -41,6 +41,30 @@ archived through workspace lifecycle APIs, and its creating principal remains
 the canonical active owner. Permanent account-deletion erasure is a separate
 audited compliance path.
 
+## Personal Chat execution lifecycle
+
+Interactive Personal Chat runs use the provider-neutral `AgentRun` contract in
+`src/shared/agents/agent-run.ts`. `AgentRun.status` is the only persisted
+authority for queued, running, approval-waiting, completed, failed, or cancelled
+execution; `conversationMessages.status` is a rendering projection. Convex and
+Postgres create the assistant placeholder and AgentRun together, and complete,
+fail, or cancel both records in one storage transaction.
+
+Chat mode continues to use the AI SDK `ToolLoopAgent`. It streams directly to
+the connected browser, while Next `after()` drains a tee of the stream for a
+persistent conversation. Overlay does not write token deltas for this path and
+does not use the Cloudflare chat relay. The final assistant content, parts,
+usage, routed model, and terminal AgentRun state are written once when the run
+ends. On reconnect, the client polls `GET /api/v1/conversations/run` and reloads
+the final message; a non-terminal run shows the disconnected generating state.
+
+ToolLoop runs tolerate browser disconnection but not a process crash. Their
+lease expires to a structured `tool_loop_lease_expired` failure through the
+Convex cron or Postgres maintenance worker. Stop first cancels AgentRun, then
+best-effort aborts the in-process `AbortController`; late completion cannot
+overwrite cancellation. Work mode remains unavailable until its durable
+WorkflowAgent runner is added behind the same contract.
+
 ## Auth
 
 - Browser auth uses the signed httpOnly `overlay_session` cookie.

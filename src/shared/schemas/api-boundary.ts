@@ -113,6 +113,10 @@ const ModelCatalogQuery = z.object({
   refresh: z.enum(['1']).optional(),
 })
 
+const ConversationRunQuery = z.object({
+  conversationId: z.string().trim().min(1),
+})
+
 export const webApiBoundaryDefinitions = [
   {
     method: 'GET',
@@ -261,6 +265,13 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/stop',
     schema: { json: StopConversationRequest },
     summary: 'Stop a running conversation turn',
+    tag: 'Conversations',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/run',
+    schema: { query: ConversationRunQuery },
+    summary: 'Read the authoritative AgentRun for a conversation',
     tag: 'Conversations',
   },
   {

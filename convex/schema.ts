@@ -888,6 +888,44 @@ export default defineSchema({
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey']),
 
+  agentRuns: defineTable({
+    conversationId: v.id('conversations'),
+    turnId: v.string(),
+    userId: v.string(),
+    userMessageId: v.id('conversationMessages'),
+    assistantMessageId: v.id('conversationMessages'),
+    mode: v.union(v.literal('chat'), v.literal('work')),
+    runner: v.union(v.literal('tool_loop'), v.literal('workflow')),
+    status: v.union(
+      v.literal('queued'),
+      v.literal('running'),
+      v.literal('waiting_for_approval'),
+      v.literal('completed'),
+      v.literal('failed'),
+      v.literal('cancelled'),
+    ),
+    variantIndex: v.optional(v.number()),
+    workflowRunId: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()),
+    terminalError: v.optional(v.object({
+      code: v.string(),
+      message: v.string(),
+      retryable: v.boolean(),
+    })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
+    .index('by_assistantMessageId', ['assistantMessageId'])
+    .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
+
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),

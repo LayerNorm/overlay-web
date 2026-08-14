@@ -8,6 +8,7 @@ import { ActEntitlementService, ActConversationServiceError } from './ActEntitle
 import { ActGeneratingMessageService } from './ActGeneratingMessageService'
 import { ActMessagePersistenceService } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
+import { AgentRunService } from './AgentRunService'
 import type { ActConversationRepository } from './ActConversationRepository'
 
 export const actConversationRepository = repositoryProxy<ActConversationRepository>(
@@ -33,6 +34,8 @@ export const actEntitlementService = new ActEntitlementService({
 export const actGeneratingMessageService = new ActGeneratingMessageService({
   repository: actConversationRepository,
 })
+
+export const agentRunService = new AgentRunService(actConversationRepository)
 
 export const actMessagePersistenceService = new ActMessagePersistenceService({
   generatingMessages: actGeneratingMessageService,

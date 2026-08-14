@@ -75,6 +75,31 @@ const messagePart = v.union(
 
 const messageParts = v.optional(v.array(messagePart))
 
+const agentRunStatus = v.union(
+  v.literal('queued'),
+  v.literal('running'),
+  v.literal('waiting_for_approval'),
+  v.literal('completed'),
+  v.literal('failed'),
+  v.literal('cancelled'),
+)
+
+const ACTIVE_AGENT_RUN_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
+const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
+  queued: new Set(['running', 'failed', 'cancelled']),
+  running: new Set(['waiting_for_approval', 'completed', 'failed', 'cancelled']),
+  waiting_for_approval: new Set(['running', 'failed', 'cancelled']),
+  completed: new Set(),
+  failed: new Set(),
+  cancelled: new Set(),
+}
+
+function assertAgentRunTransition(from: string, to: string): void {
+  if (!AGENT_RUN_TRANSITIONS[from]?.has(to)) {
+    throw new Error(`Invalid AgentRun transition: ${from} -> ${to}`)
+  }
+}
+
 function isGeneratedUiPart(candidate: MessagePart): candidate is Extract<MessagePart, { dataType: 'overlay.generated_ui' }> {
   return candidate.type === 'data' && 'dataType' in candidate && candidate.dataType === 'overlay.generated_ui'
 }
@@ -896,6 +921,276 @@ export const startGeneratingMessage = mutation({
   },
 })
 
+export const startAgentRun = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    leaseExpiresAt: v.optional(v.number()),
+    mode: v.union(v.literal('chat'), v.literal('work')),
+    modelId: v.string(),
+    runner: v.union(v.literal('tool_loop'), v.literal('workflow')),
+    serverSecret: v.string(),
+    turnId: v.string(),
+    userId: v.string(),
+    userMessageId: v.id('conversationMessages'),
+    variantIndex: v.optional(v.number()),
+    workflowRunId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const conversation = await ctx.db.get(args.conversationId)
+    const userMessage = await ctx.db.get(args.userMessageId)
+    if (
+      !conversation || conversation.userId !== args.userId || conversation.deletedAt ||
+      !userMessage || userMessage.conversationId !== args.conversationId ||
+      userMessage.userId !== args.userId || userMessage.turnId !== args.turnId ||
+      userMessage.role !== 'user'
+    ) {
+      throw new Error('Unauthorized')
+    }
+
+    const existing = await ctx.db
+      .query('agentRuns')
+      .withIndex('by_turn_variant', (q) => q
+        .eq('conversationId', args.conversationId)
+        .eq('turnId', args.turnId)
+        .eq('variantIndex', args.variantIndex))
+      .unique()
+    if (existing) return existing
+
+    const now = Date.now()
+    const assistantMessageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId,
+      userId: args.userId,
+      turnId: args.turnId,
+      role: 'assistant',
+      mode: 'act',
+      content: '',
+      contentType: 'text',
+      parts: [{ type: 'text', text: '' }],
+      modelId: args.modelId,
+      variantIndex: args.variantIndex,
+      status: 'generating',
+      updatedAt: now,
+      createdAt: now,
+    })
+    const runId = await ctx.db.insert('agentRuns', {
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      userId: args.userId,
+      userMessageId: args.userMessageId,
+      assistantMessageId,
+      mode: args.mode,
+      runner: args.runner,
+      status: 'queued',
+      variantIndex: args.variantIndex,
+      workflowRunId: args.workflowRunId,
+      leaseExpiresAt: args.leaseExpiresAt,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    return await ctx.db.get(runId)
+  },
+})
+
+export const transitionAgentRun = mutation({
+  args: {
+    leaseExpiresAt: v.optional(v.number()),
+    runId: v.id('agentRuns'),
+    serverSecret: v.string(),
+    status: agentRunStatus,
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    assertAgentRunTransition(run.status, args.status)
+    const now = Date.now()
+    await ctx.db.patch(run._id, {
+      status: args.status,
+      leaseExpiresAt: args.leaseExpiresAt ?? run.leaseExpiresAt,
+      startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
+      updatedAt: now,
+    })
+    return await ctx.db.get(run._id)
+  },
+})
+
+export const completeAgentRun = mutation({
+  args: {
+    content: v.string(),
+    parts: v.array(messagePart),
+    routedModelId: v.optional(v.string()),
+    runId: v.id('agentRuns'),
+    serverSecret: v.string(),
+    tokens: v.object({ input: v.number(), output: v.number() }),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    assertAgentRunTransition(run.status, 'completed')
+    const now = Date.now()
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (message?.status === 'generating') {
+      await ctx.db.patch(message._id, {
+        content: args.content,
+        parts: args.parts,
+        routedModelId: args.routedModelId,
+        tokens: args.tokens,
+        status: 'completed',
+        updatedAt: now,
+      })
+      await deleteMessageDeltas(ctx, message._id)
+    }
+    await ctx.db.patch(run._id, {
+      status: 'completed',
+      completedAt: now,
+      leaseExpiresAt: undefined,
+      updatedAt: now,
+    })
+    await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
+    return await ctx.db.get(run._id)
+  },
+})
+
+export const failAgentRun = mutation({
+  args: {
+    error: v.object({ code: v.string(), message: v.string(), retryable: v.boolean() }),
+    errorText: v.string(),
+    runId: v.id('agentRuns'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    assertAgentRunTransition(run.status, 'failed')
+    const now = Date.now()
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (message?.status === 'generating') {
+      await ctx.db.patch(message._id, {
+        content: args.errorText,
+        parts: [{ type: 'text', text: args.errorText }],
+        status: 'error',
+        updatedAt: now,
+      })
+      await deleteMessageDeltas(ctx, message._id)
+    }
+    await ctx.db.patch(run._id, {
+      status: 'failed',
+      failedAt: now,
+      leaseExpiresAt: undefined,
+      terminalError: args.error,
+      updatedAt: now,
+    })
+    await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
+    return await ctx.db.get(run._id)
+  },
+})
+
+export const getLatestAgentRun = query({
+  args: {
+    conversationId: v.id('conversations'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    const active: Doc<'agentRuns'>[] = []
+    for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
+      const run = await ctx.db
+        .query('agentRuns')
+        .withIndex('by_conversationId_status_updatedAt', (q) => q
+          .eq('conversationId', args.conversationId)
+          .eq('status', status))
+        .order('desc')
+        .first()
+      if (run) active.push(run)
+    }
+    if (active.length > 0) {
+      return active.sort((left, right) => right.updatedAt - left.updatedAt)[0]
+    }
+    return await ctx.db
+      .query('agentRuns')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+      .order('desc')
+      .first()
+  },
+})
+
+export const cancelAgentRuns = mutation({
+  args: {
+    conversationId: v.id('conversations'),
+    messageId: v.optional(v.id('conversationMessages')),
+    partialContent: v.optional(v.string()),
+    partialParts: v.optional(v.array(messagePart)),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+      throw new Error('Unauthorized')
+    }
+    const runs = await ctx.db
+      .query('agentRuns')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const activeRuns = runs.filter((run) =>
+      ACTIVE_AGENT_RUN_STATUSES.has(run.status) &&
+      (!args.messageId || run.assistantMessageId === args.messageId),
+    )
+    const now = Date.now()
+    const sentinel = '\n\n[Interrupted by user. Continue?]'
+    for (const run of activeRuns) {
+      assertAgentRunTransition(run.status, 'cancelled')
+      const message = await ctx.db.get(run.assistantMessageId)
+      if (message?.status === 'generating') {
+        const baseContent = args.partialContent ?? message.content
+        const baseParts = args.partialParts?.length
+          ? args.partialParts
+          : message.parts ?? [{ type: 'text', text: baseContent }]
+        await ctx.db.patch(message._id, {
+          content: `${baseContent.trimEnd()}${sentinel}`,
+          parts: [...baseParts, { type: 'text', text: sentinel }],
+          status: 'completed',
+          updatedAt: now,
+        })
+        await deleteMessageDeltas(ctx, message._id)
+      }
+      await ctx.db.patch(run._id, {
+        status: 'cancelled',
+        cancelledAt: now,
+        leaseExpiresAt: undefined,
+        terminalError: {
+          code: 'cancelled_by_user',
+          message: 'The run was cancelled by the user.',
+          retryable: true,
+        },
+        updatedAt: now,
+      })
+    }
+    if (activeRuns.length > 0) {
+      await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    }
+    return {
+      cancelledRunIds: activeRuns.map((run) => run._id),
+      stoppedCount: activeRuns.length,
+    }
+  },
+})
+
 export const appendToGeneratingMessage = mutation({
   args: {
     messageId: v.id('conversationMessages'),
@@ -1244,6 +1539,11 @@ export const runStaleGeneratingCleanup = internalMutation({
     let finalizedCount = 0
     let deletedDeltas = 0
     for (const message of stale) {
+      const agentRun = await ctx.db
+        .query('agentRuns')
+        .withIndex('by_assistantMessageId', (q) => q.eq('assistantMessageId', message._id))
+        .unique()
+      if (agentRun && ACTIVE_AGENT_RUN_STATUSES.has(agentRun.status)) continue
       const deltas = await ctx.db
         .query('conversationMessageDeltas')
         .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
@@ -1267,6 +1567,54 @@ export const runStaleGeneratingCleanup = internalMutation({
     }
 
     return { finalizedCount, deletedDeltas }
+  },
+})
+
+export const expireToolLoopAgentRunLeases = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const expired = []
+    for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
+      const remaining = 100 - expired.length
+      if (remaining <= 0) break
+      const rows = await ctx.db
+        .query('agentRuns')
+        .withIndex('by_runner_status_leaseExpiresAt', (q) => q
+          .eq('runner', 'tool_loop')
+          .eq('status', status)
+          .lt('leaseExpiresAt', now))
+        .take(remaining)
+      expired.push(...rows)
+    }
+
+    const errorText = 'Generation was interrupted because the chat process stopped before completion.'
+    for (const run of expired) {
+      if (!AGENT_RUN_TRANSITIONS[run.status]?.has('failed')) continue
+      const message = await ctx.db.get(run.assistantMessageId)
+      if (message?.status === 'generating') {
+        await ctx.db.patch(message._id, {
+          content: errorText,
+          parts: [{ type: 'text', text: errorText }],
+          status: 'error',
+          updatedAt: now,
+        })
+        await deleteMessageDeltas(ctx, message._id)
+      }
+      await ctx.db.patch(run._id, {
+        status: 'failed',
+        failedAt: now,
+        leaseExpiresAt: undefined,
+        terminalError: {
+          code: 'tool_loop_lease_expired',
+          message: errorText,
+          retryable: true,
+        },
+        updatedAt: now,
+      })
+      await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
+    }
+    return { expiredCount: expired.length }
   },
 })
 

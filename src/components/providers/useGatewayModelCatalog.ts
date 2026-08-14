@@ -87,7 +87,10 @@ async function loadCatalog(force = false): Promise<GatewayCatalogModel[]> {
 /** Start the catalog fetch as early as possible (app shell), before chat mounts. */
 export function prefetchGatewayModelCatalog(): void {
   if (typeof window === 'undefined') return
-  void loadCatalog()
+  // Prefetching is opportunistic. Authentication can expire between the shell
+  // deciding to prefetch and this request reaching the server, so never turn a
+  // background catalog miss into an unhandled runtime error.
+  void loadCatalog().catch(() => undefined)
 }
 
 export function useGatewayModelCatalog({ enabled = true }: { enabled?: boolean } = {}) {

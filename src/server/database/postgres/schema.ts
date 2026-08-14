@@ -52,6 +52,17 @@ export const messageStatus = pgEnum('overlay_message_status', [
   'error',
 ])
 
+export const agentRunMode = pgEnum('overlay_agent_run_mode', ['chat', 'work'])
+export const agentRunRunner = pgEnum('overlay_agent_run_runner', ['tool_loop', 'workflow'])
+export const agentRunStatus = pgEnum('overlay_agent_run_status', [
+  'queued',
+  'running',
+  'waiting_for_approval',
+  'completed',
+  'failed',
+  'cancelled',
+])
+
 export const messageAuthorKind = pgEnum('overlay_message_author_kind', [
   'human',
   'agent',
@@ -688,6 +699,47 @@ export const conversationMessages = pgTable('conversation_messages', {
     .on(table.conversationId, table.clientNonce),
   index('conversation_messages_thread_root_created_at_idx')
     .on(table.threadRootMessageId, table.createdAt),
+])
+
+export const agentRuns = pgTable('agent_runs', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  turnId: text('turn_id').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  userMessageId: text('user_message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  assistantMessageId: text('assistant_message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  mode: agentRunMode('mode').notNull(),
+  runner: agentRunRunner('runner').notNull(),
+  status: agentRunStatus('status').notNull(),
+  variantIndex: integer('variant_index'),
+  workflowRunId: text('workflow_run_id'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  failedAt: timestamp('failed_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  terminalError: jsonb('terminal_error').$type<{ code: string; message: string; retryable: boolean }>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('agent_runs_conversation_created_idx').on(table.conversationId, table.createdAt),
+  index('agent_runs_conversation_status_updated_idx').on(table.conversationId, table.status, table.updatedAt),
+  index('agent_runs_user_created_idx').on(table.userId, table.createdAt),
+  index('agent_runs_runner_status_lease_idx').on(table.runner, table.status, table.leaseExpiresAt),
+  uniqueIndex('agent_runs_assistant_message_idx').on(table.assistantMessageId),
+  uniqueIndex('agent_runs_turn_variant_idx').on(
+    table.conversationId,
+    table.turnId,
+    sql`COALESCE(${table.variantIndex}, -1)`,
+  ),
 ])
 
 export const conversationMessageDeltas = pgTable('conversation_message_deltas', {

@@ -91,6 +91,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     prefixes: [
       '/api/v1/conversations/events',
       '/api/v1/conversations/message',
+      '/api/v1/conversations/run',
       '/api/v1/conversations/share',
       '/api/v1/conversations/stop',
       '/api/v1/conversations/stream-auth',

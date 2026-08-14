@@ -1,10 +1,11 @@
 import 'server-only'
 
-import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, lt, notExists, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { CONVERSATION_EVENT_NOTIFY_CHANNEL } from '@/server/conversations/PostgresConversationEventNotifier'
 import {
   conversationEvents,
+  agentRuns,
   conversationMessageDeltas,
   conversationMessages,
   conversations,
@@ -19,6 +20,9 @@ const MAX_LIMIT = 1000
 const STALE_GENERATION_ERROR_TEXT = 'Generation was interrupted before the assistant finished responding.'
 
 export interface PostgresBackgroundMaintenanceSummary {
+  expiredAgentRuns: {
+    failed: number
+  }
   staleGeneratingMessages: {
     finalized: number
     deletedDeltas: number
@@ -48,6 +52,10 @@ export class PostgresBackgroundMaintenanceService {
     staleGeneratingCutoffMinutes?: number
   } = {}): Promise<PostgresBackgroundMaintenanceSummary> {
     const limit = normalizeLimit(options.limit)
+    const expiredAgentRuns = await this.expireToolLoopAgentRunLeases({
+      limit,
+      now: options.now,
+    })
     const staleGeneratingMessages = await this.finalizeStaleGeneratingMessages({
       cutoffMinutes: options.staleGeneratingCutoffMinutes,
       limit,
@@ -70,6 +78,7 @@ export class PostgresBackgroundMaintenanceService {
     })
 
     return {
+      expiredAgentRuns,
       staleGeneratingMessages,
       inactiveMessageDeltas,
       oldMessageDeltas,
@@ -92,6 +101,15 @@ export class PostgresBackgroundMaintenanceService {
       .where(and(
         eq(conversationMessages.status, 'generating'),
         lt(conversationMessages.updatedAt, cutoff),
+        notExists(
+          this.db
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
+            .where(and(
+              eq(agentRuns.assistantMessageId, conversationMessages.id),
+              inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+            )),
+        ),
       ))
       .orderBy(asc(conversationMessages.updatedAt))
       .limit(limit)
@@ -168,6 +186,67 @@ export class PostgresBackgroundMaintenanceService {
     }
 
     return { finalized, deletedDeltas }
+  }
+
+  async expireToolLoopAgentRunLeases(options: {
+    limit?: number
+    now?: Date
+  } = {}): Promise<{ failed: number }> {
+    const now = options.now ?? new Date()
+    const limit = normalizeLimit(options.limit)
+    const expired = await this.db
+      .select()
+      .from(agentRuns)
+      .where(and(
+        eq(agentRuns.runner, 'tool_loop'),
+        inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+        lt(agentRuns.leaseExpiresAt, now),
+      ))
+      .orderBy(asc(agentRuns.leaseExpiresAt))
+      .limit(limit)
+    const errorText = 'Generation was interrupted because the chat process stopped before completion.'
+    let failed = 0
+    for (const run of expired) {
+      const updated = await this.db.transaction(async (tx) => {
+        const [failedRun] = await tx.update(agentRuns).set({
+          status: 'failed',
+          failedAt: now,
+          leaseExpiresAt: null,
+          terminalError: {
+            code: 'tool_loop_lease_expired',
+            message: errorText,
+            retryable: true,
+          },
+          updatedAt: now,
+        }).where(and(
+          eq(agentRuns.id, run.id),
+          inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+        )).returning({ id: agentRuns.id })
+        if (!failedRun) return false
+        await tx.update(conversationMessages).set({
+          content: errorText,
+          parts: [{ type: 'text', text: errorText }],
+          status: 'error',
+          updatedAt: now,
+        }).where(and(
+          eq(conversationMessages.id, run.assistantMessageId),
+          eq(conversationMessages.status, 'generating'),
+        ))
+        await tx.delete(conversationMessageDeltas)
+          .where(eq(conversationMessageDeltas.messageId, run.assistantMessageId))
+        await tx.insert(conversationEvents).values({
+          userId: run.userId,
+          conversationId: run.conversationId,
+          type: 'message.failed',
+          messageId: run.assistantMessageId,
+          payload: { agentRunId: run.id, reason: 'tool-loop-lease-expired' },
+          createdAt: now,
+        })
+        return true
+      })
+      if (updated) failed += 1
+    }
+    return { failed }
   }
 
   async cleanupInactiveMessageDeltas(options: {

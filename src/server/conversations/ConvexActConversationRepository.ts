@@ -18,6 +18,13 @@ import type {
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import type { Id } from '../../../convex/_generated/dataModel'
+import type {
+  AgentRun,
+  AgentRunMode,
+  AgentRunRunner,
+  AgentRunStatus,
+  AgentRunTerminalError,
+} from '@/shared/agents/agent-run'
 
 export class ConvexActConversationRepository implements ActConversationRepository {
   private get serverSecret(): string {
@@ -334,6 +341,94 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     }, { throwOnError: true }) ?? { stoppedCount: 0 }
   }
 
+  async startAgentRun(args: {
+    conversationId: Id<'conversations'>
+    leaseExpiresAt?: number
+    mode: AgentRunMode
+    modelId: string
+    runner: AgentRunRunner
+    turnId: string
+    userId: string
+    userMessageId: Id<'conversationMessages'>
+    variantIndex?: number
+    workflowRunId?: string
+  }): Promise<AgentRun | null> {
+    const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:startAgentRun', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return run ? mapConvexAgentRun(run) : null
+  }
+
+  async transitionAgentRun(args: {
+    leaseExpiresAt?: number
+    runId: string
+    status: AgentRunStatus
+    userId: string
+  }): Promise<AgentRun | null> {
+    const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:transitionAgentRun', {
+      ...args,
+      runId: args.runId as Id<'agentRuns'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return run ? mapConvexAgentRun(run) : null
+  }
+
+  async completeAgentRun(args: {
+    content: string
+    parts: Array<Record<string, unknown>>
+    routedModelId?: string
+    runId: string
+    tokens: { input: number; output: number }
+    userId: string
+  }): Promise<AgentRun | null> {
+    const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:completeAgentRun', {
+      ...args,
+      runId: args.runId as Id<'agentRuns'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return run ? mapConvexAgentRun(run) : null
+  }
+
+  async failAgentRun(args: {
+    error: AgentRunTerminalError
+    errorText: string
+    runId: string
+    userId: string
+  }): Promise<AgentRun | null> {
+    const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:failAgentRun', {
+      ...args,
+      runId: args.runId as Id<'agentRuns'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return run ? mapConvexAgentRun(run) : null
+  }
+
+  async cancelAgentRuns(args: {
+    conversationId: Id<'conversations'>
+    messageId?: Id<'conversationMessages'>
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ cancelledRunIds: string[]; stoppedCount: number }> {
+    return await convex.mutation<{ cancelledRunIds: string[]; stoppedCount: number }>(
+      'chat/conversations:cancelAgentRuns',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    ) ?? { cancelledRunIds: [], stoppedCount: 0 }
+  }
+
+  async getLatestAgentRun(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<AgentRun | null> {
+    const run = await convex.query<ConvexAgentRunDoc | null>('chat/conversations:getLatestAgentRun', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return run ? mapConvexAgentRun(run) : null
+  }
+
   async deleteTurn(args: {
     conversationId: Id<'conversations'>
     turnId: string
@@ -407,4 +502,11 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       serverSecret: this.serverSecret,
     })
   }
+}
+
+type ConvexAgentRunDoc = Omit<AgentRun, 'id'> & { _id: string }
+
+function mapConvexAgentRun(run: ConvexAgentRunDoc): AgentRun {
+  const { _id, ...rest } = run
+  return { id: _id, ...rest }
 }

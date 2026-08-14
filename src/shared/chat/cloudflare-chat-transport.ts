@@ -234,6 +234,16 @@ export function createPersistentChatTransport<UI_MESSAGE extends UIMessage>(
   return isTtftClientDebugEnabled() ? wrapTransportForTtftDebug(base) : base
 }
 
+export function createDirectChatTransport<UI_MESSAGE extends UIMessage>(
+  options: HttpChatTransportInitOptions<UI_MESSAGE>,
+): ChatTransport<UI_MESSAGE> {
+  const transport = new DefaultChatTransport({
+    ...options,
+    fetch: createChatDiagnosticFetch(options.fetch as ChatFetch | undefined),
+  })
+  return isTtftClientDebugEnabled() ? wrapTransportForTtftDebug(transport) : transport
+}
+
 class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
   extends DefaultChatTransport<UI_MESSAGE>
   implements ChatTransport<UI_MESSAGE>

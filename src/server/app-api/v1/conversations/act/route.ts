@@ -39,10 +39,6 @@ import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
-import {
-  canMirrorToCloudflareStream,
-  mirrorChatStreamToCloudflare,
-} from '@/server/chat/cloudflare-stream-mirror'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
@@ -50,6 +46,7 @@ import {
   actConversationErrorResponse,
   actEntitlementService,
   actGeneratingMessageService,
+  agentRunService,
   actMessagePersistenceService,
   actUsageBudgetService,
 } from '@/server/conversations/http'
@@ -62,7 +59,7 @@ import {
 } from '@/server/tools/media-tool-intent'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
-import { createPersistedTextDeltaTransform } from '@/server/conversations/chat-stream-persistence'
+import { registerToolLoopRun } from '@/server/conversations/tool-loop-run-registry'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
   MAX_ACT_MODEL_ATTEMPTS,
@@ -71,7 +68,6 @@ import {
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
   resolveActMultiModelState,
-  resolveActStreamPersistence,
   resolveActTurnId,
   resolveEffectiveActModelId,
   runActModelAttempts,
@@ -114,6 +110,7 @@ export async function POST(
 ) {
   const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
+  let pendingAgentRunId: string | undefined
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
   let currentUserId: string | undefined
@@ -174,7 +171,6 @@ export async function POST(
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
       actAbortTimeoutMs,
-      streamPersistenceMode,
       mentions: rawMentions,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
@@ -211,14 +207,9 @@ export async function POST(
       return concurrentRequestLimitResponse('act')
     }
     const accessToken = auth.accessToken || undefined
-	    const streamPersistence = resolveActStreamPersistence({
-	      requestedMode: streamPersistenceMode,
-	    })
-	    const useCloudflareStreamMirror = streamPersistence.useCloudflareStreamMirror
-	    const resolvedStreamPersistenceMode = streamPersistence.mode
     logger.info('[conversations/act] streamPersistence', {
       requestId,
-      mode: resolvedStreamPersistenceMode,
+      mode: 'direct-with-background-drain',
       conversationMode: mode,
       automationMode: automationMode === true,
       automationExecution: automationExecution === true,
@@ -402,7 +393,7 @@ export async function POST(
       billingSpendSubjectId: resolvedBillingPayer.subject.id,
       billingSpendSubjectKind: resolvedBillingPayer.subject.kind,
       skip: isMultiModelFollowUpSlot,
-    }).catch((error) => {
+    }).catch((error): undefined => {
       // History loading remains the authoritative preparation failure. A
       // transient user-message write must not mask a later fatal context error
       // or turn a recoverable stream start into an unrelated 500 response.
@@ -410,6 +401,7 @@ export async function POST(
         requestId,
         error: summarizeErrorForLog(error),
       })
+      return undefined
     })
     const turnContextTask = actContextService.loadTurnContext({
       accessToken,
@@ -452,7 +444,7 @@ export async function POST(
     })()
 
     const [
-      ,
+      userMessageId,
       turnContext,
       resolvedMediaToolIntent,
       accountAllowedToolIds,
@@ -572,15 +564,35 @@ export async function POST(
 	    if (_ttftDebug) _tPrep = performance.now()
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
-	    const [generatingMessageId, actTooling] = await Promise.all([
-	      actGeneratingMessageService.start({
-	        conversationId: cid,
-	        userId: conversationUserId,
-	        turnId: tid,
-	        modelId: effectiveModelId,
-	        multiModelTotal,
-	        multiModelSlotIndex,
-	      }),
+    const actAbortTimeoutMsResolved = resolveActAbortTimeoutMs({
+      requestedTimeoutMs: actAbortTimeoutMs,
+      automationExecution: automationExecution === true,
+    })
+    const agentRunLeaseExpiresAt = Date.now() + actAbortTimeoutMsResolved + 60_000
+    const agentRunEligible = Boolean(cid) && automationExecution !== true && automationMode !== true
+    const persistenceStartTask = agentRunEligible
+      ? agentRunService.startChat({
+          conversationId: cid,
+          leaseExpiresAt: agentRunLeaseExpiresAt,
+          modelId: effectiveModelId,
+          turnId: tid,
+          userId: conversationUserId,
+          userMessageId,
+          variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
+        }).then((run) => ({
+          agentRun: run,
+          messageId: run?.assistantMessageId as Id<'conversationMessages'> | undefined,
+        }))
+      : actGeneratingMessageService.start({
+          conversationId: cid,
+          userId: conversationUserId,
+          turnId: tid,
+          modelId: effectiveModelId,
+          multiModelTotal,
+          multiModelSlotIndex,
+        }).then((messageId) => ({ agentRun: undefined, messageId }))
+	    const [persistenceStart, actTooling] = await Promise.all([
+        persistenceStartTask,
 		      prepareActTooling({
 		        accountAllowedConnectorIds,
 		        accountAllowedToolIds,
@@ -611,8 +623,23 @@ export async function POST(
 	        workspaceId: billingWorkspaceId,
 	        billingProgrammaticSubjectId,
 	      }),
-	    ])
+		    ])
+    const generatingMessageId = persistenceStart.messageId
+    const agentRun = persistenceStart.agentRun
+    if (agentRunEligible && !agentRun) {
+      throw new Error('Failed to establish AgentRun before generation')
+    }
+    pendingAgentRunId = agentRun?.id
     pendingGeneratingMessageId = generatingMessageId
+    if (agentRun?.status === 'queued') {
+      await agentRunService.markRunning({
+        leaseExpiresAt: agentRunLeaseExpiresAt,
+        runId: agentRun.id,
+        userId: conversationUserId,
+      })
+    } else if (agentRun && agentRun.status !== 'running') {
+      throw new Error(`AgentRun ${agentRun.id} is already ${agentRun.status}`)
+    }
     if (_ttftDebug) _tTools = performance.now()
     logActTooling(actTooling)
     const tools = actTooling.tools
@@ -714,12 +741,9 @@ export async function POST(
     const finishedToolCallIds = new Set<string>()
 
     // Abort before Vercel's hard kill so onFinish can finalize gracefully.
-    const actAbortTimeoutMsResolved = resolveActAbortTimeoutMs({
-      requestedTimeoutMs: actAbortTimeoutMs,
-      automationExecution: automationExecution === true,
-    })
     let wasAbortedByTimeout = false
     const abortController = new AbortController()
+    const unregisterToolLoopRun = registerToolLoopRun(agentRun?.id, abortController)
     const hardTimeout = setTimeout(() => {
       wasAbortedByTimeout = true
       abortController.abort()
@@ -732,16 +756,6 @@ export async function POST(
       result = await agent.stream({
       messages: modelMessages,
       abortSignal: abortController.signal,
-      ...(generatingMessageId ? {
-        experimental_transform: createPersistedTextDeltaTransform({
-          appendTextDelta: async (textDelta) => {
-            return await actGeneratingMessageService.appendTextDelta({
-              messageId: generatingMessageId,
-              textDelta,
-            })
-          },
-        }),
-      } : {}),
       onToolExecutionStart: ({ toolCall }) => {
         if (!toolCall) return
         if (_ttftDebug && !_firstToolCallLogged) {
@@ -807,6 +821,7 @@ export async function POST(
         }
       },
       onEnd: async (event) => {
+        try {
         const usage = event.usage
         const totalInputTokens = usage?.inputTokens ?? 0
         const totalOutputTokens = usage?.outputTokens ?? 0
@@ -844,6 +859,7 @@ export async function POST(
           fallbackNotice: params.fallbackNotice,
           finishedToolCallIds,
           generatingMessageId,
+          agentRunId: agentRun?.id,
           multiModelSlotIndex,
           multiModelTotal,
           routedModelId: streamedRoutedModelId,
@@ -854,14 +870,18 @@ export async function POST(
           turnId: tid,
           userId: conversationUserId,
         })
+        } finally {
+          clearTimeout(hardTimeout)
+          unregisterToolLoopRun()
+        }
       },
       })
     } catch (err) {
       clearTimeout(hardTimeout)
+      unregisterToolLoopRun()
       throw err
     }
 
-    clearTimeout(hardTimeout)
     if (_ttftDebug) _tModelStreamReady = performance.now()
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
@@ -898,13 +918,9 @@ export async function POST(
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
     responseHeaders.set('x-request-id', requestId)
-    if (useCloudflareStreamMirror) {
-      responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
-      responseHeaders.set('x-overlay-auth-user-id', userId)
-      responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
-    }
+    if (agentRun?.id) responseHeaders.set('x-overlay-agent-run-id', agentRun.id)
     if (responseBody) {
-      if (isPostgresAppData || resolvedStreamPersistenceMode !== 'direct') {
+      if (cid) {
         const [clientBody, backgroundBody] = responseBody.tee()
         responseBody = clientBody
         after(async () => {
@@ -922,58 +938,33 @@ export async function POST(
               }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
               budgetReservationId = null
             }
-            await actGeneratingMessageService.fail({
-              conversationId: actWebhookConversationId,
-              emitWebhook: !actWebhookSkip,
-              error: isAbort
-                ? new Error('generation_interrupted_server_timeout')
-                : err,
-              messageId: generatingMessageId,
-              turnId: actWebhookTurnId,
-              userId: conversationUserId,
-            })
-          }
-        })
-      }
-      if (useCloudflareStreamMirror) {
-        if (cid && canMirrorToCloudflareStream(request)) {
-          const [clientBody, mirrorBody] = responseBody.tee()
-          responseBody = clientBody
-          after(async () => {
-            try {
-              await mirrorChatStreamToCloudflare({
-                request,
-                stream: mirrorBody,
-                metadata: {
-                  conversationId: cid,
-                  messageId: generatingMessageId,
-                  mode,
-                  modelId: attemptModelId,
-                  requestId,
-                  turnId: tid,
-                  userId: conversationUserId,
-                  variantIndex: multiModelSlotIndex,
+            const failure = isAbort
+              ? new Error('generation_interrupted_server_timeout')
+              : err
+            if (agentRun?.id) {
+              const errorText = userFacingOpenRouterError(failure)
+              await agentRunService.fail({
+                error: {
+                  code: isAbort ? 'generation_interrupted' : 'stream_drain_failed',
+                  message: errorText,
+                  retryable: true,
                 },
-              })
-            } catch (err) {
-              logger.warn('[chat-stream] cloudflare mirror failed', {
-                requestId,
-                conversationId: cid,
-                turnId: tid,
-                variantIndex: multiModelSlotIndex,
-                reason: summarizeErrorForLog(err),
+                errorText,
+                runId: agentRun.id,
+                userId: conversationUserId,
+              }).catch((_error) => undefined)
+            } else {
+              await actGeneratingMessageService.fail({
+                conversationId: actWebhookConversationId,
+                emitWebhook: !actWebhookSkip,
+                error: failure,
+                messageId: generatingMessageId,
+                turnId: actWebhookTurnId,
+                userId: conversationUserId,
               })
             }
-          })
-        } else {
-          logger.warn('[chat-stream] cloudflare mirror unavailable', {
-            requestId,
-            conversationId: cid,
-            hasConversationId: Boolean(cid),
-            turnId: tid,
-            variantIndex: multiModelSlotIndex,
-          })
-        }
+          }
+        })
       }
     }
     if (_ttftDebug && responseBody) {
@@ -1203,14 +1194,28 @@ export async function POST(
 	      budgetReservationId = null
 	    }
     concurrencySlot?.release()
-	    await actGeneratingMessageService.fail({
-      conversationId: actWebhookConversationId,
-      emitWebhook: !actWebhookSkip,
-      error,
-      messageId: pendingGeneratingMessageId,
-      turnId: actWebhookTurnId,
-      userId: currentResourceUserId,
-    })
+    if (pendingAgentRunId) {
+      const errorText = userFacingOpenRouterError(error)
+      await agentRunService.fail({
+        error: {
+          code: 'generation_failed',
+          message: errorText,
+          retryable: true,
+        },
+        errorText,
+        runId: pendingAgentRunId,
+        userId: currentResourceUserId,
+      }).catch((_error) => undefined)
+    } else {
+      await actGeneratingMessageService.fail({
+        conversationId: actWebhookConversationId,
+        emitWebhook: !actWebhookSkip,
+        error,
+        messageId: pendingGeneratingMessageId,
+        turnId: actWebhookTurnId,
+        userId: currentResourceUserId,
+      })
+    }
     return NextResponse.json(
       { error: userFacingOpenRouterError(error), requestId },
       { status: 500, headers: { 'x-request-id': requestId } },

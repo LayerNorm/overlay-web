@@ -4,18 +4,25 @@ import { Suspense, useEffect, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { AuthProvider, type AuthUser } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth, type AuthUser } from '@/contexts/AuthContext'
 import ObservabilityClient from '@/components/providers/ObservabilityClient'
 import { AppSettingsProvider } from '@/components/providers/AppSettingsProvider'
 import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
 import { prefetchGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 
 function GatewayModelCatalogPrefetch() {
   const searchParams = useSearchParams()
   const publicShowcase = searchParams?.get('showcase') === '1'
+  const { user, isLoading } = useAuth()
+  const enabled = shouldLoadGatewayModelCatalog({
+    isAuthenticated: Boolean(user),
+    isAuthLoading: isLoading,
+    isPublicShowcase: publicShowcase,
+  })
   useEffect(() => {
-    if (!publicShowcase) prefetchGatewayModelCatalog()
-  }, [publicShowcase])
+    if (enabled) prefetchGatewayModelCatalog()
+  }, [enabled])
   return null
 }
 

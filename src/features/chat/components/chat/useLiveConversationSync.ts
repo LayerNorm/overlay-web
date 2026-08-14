@@ -17,15 +17,10 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 import type {
   ConversationRuntime,
   LiveConversationMessage,
-  LiveMessageDelta,
 } from '../chat-interface/types'
-import { shouldResumeChatStreamIntoAskSlot } from './chatStreamResume'
 import {
-  applyLiveDeltasToRuntime,
   cloneRuntimeMessageArrays,
   getLiveGeneratingAssistantMessages,
-  hasGeneratingRuntimeMessage,
-  liveMessagesHaveGeneratingAssistant,
   patchLiveMessagesIntoRuntime,
   patchServerAssistantRowsIntoRuntime,
   type ServerAssistantMessageRow,
@@ -46,24 +41,21 @@ type AsyncSession = {
 type UseLiveConversationSyncParams = {
   activeChatId: string | null
   activeChatIdRef: MutableRefObject<string | null>
-  activeRuntime: ConversationRuntime
   actChat: ChatView
   authUserId: string | null | undefined
   chatInstances: ChatView[]
-  chatStreamRelayApi: string | null | undefined
   completeSession: (chatId: string, isActive: boolean) => void
   convexAccessToken: string | null | undefined
   enableConvexLiveSync: boolean
-  lastStreamChunkAtRef: MutableRefObject<number>
   loadChats: () => Promise<void>
   onRuntimeMessagesChanged: () => void
   runtimeHydrationVersion: number
   runtimesRef: MutableRefObject<Map<string, ConversationRuntime>>
   sessions: Record<string, AsyncSession | undefined>
+  shouldSyncMessages: boolean
 }
 
 type ConvexLiveQueryState = {
-  liveMessageDeltas: Array<LiveMessageDelta> | undefined
   liveMessages: Array<LiveConversationMessage> | undefined
 }
 
@@ -86,17 +78,13 @@ function ConvexLiveQueryBridge({
       }
     : 'skip'
   const liveMessages = useQuery(
-    api.chat.conversations.watchGeneratingMessages,
+    api.chat.conversations.watchMessages,
     queryArgs,
   ) as Array<LiveConversationMessage> | undefined
-  const liveMessageDeltas = useQuery(
-    api.chat.conversations.watchGeneratingMessageDeltas,
-    queryArgs,
-  ) as Array<LiveMessageDelta> | undefined
 
   useEffect(() => {
-    onUpdate({ liveMessages, liveMessageDeltas })
-  }, [liveMessageDeltas, liveMessages, onUpdate])
+    onUpdate({ liveMessages })
+  }, [liveMessages, onUpdate])
 
   return null
 }
@@ -140,83 +128,35 @@ function syncRuntimeMessagesToChatViews({
   }
 }
 
-function collectResumeTargets({
-  liveMessages,
-  runtime,
-}: {
-  liveMessages: readonly LiveConversationMessage[] | undefined
-  runtime: ConversationRuntime
-}) {
-  const targets = new Map<string, { turnId: string; variantIndex: number }>()
-  const collect = (messages: UIMessage[]) => {
-    for (const message of messages) {
-      const m = message as unknown as {
-        role?: string
-        status?: string
-        turnId?: string
-        variantIndex?: number
-      }
-      if (m.role !== 'assistant' || m.status !== 'generating') continue
-      const turnId = m.turnId?.trim() || ''
-      if (!turnId) continue
-      const variantIndex = m.variantIndex ?? 0
-      targets.set(`${turnId}:${variantIndex}`, { turnId, variantIndex })
-    }
-  }
-
-  for (const message of liveMessages ?? []) {
-    if (message.role !== 'assistant' || message.status !== 'generating') continue
-    const turnId = message.turnId?.trim() || ''
-    if (!turnId) continue
-    const variantIndex = message.variantIndex ?? 0
-    targets.set(`${turnId}:${variantIndex}`, { turnId, variantIndex })
-  }
-  collect(runtime.actChat.messages as UIMessage[])
-  for (const chat of runtime.askChats) collect(chat.messages as UIMessage[])
-
-  return targets
-}
-
 export function useLiveConversationSync({
   activeChatId,
   activeChatIdRef,
-  activeRuntime,
   actChat,
   authUserId,
   chatInstances,
-  chatStreamRelayApi,
   completeSession,
   convexAccessToken,
   enableConvexLiveSync,
-  lastStreamChunkAtRef,
   loadChats,
   onRuntimeMessagesChanged,
   runtimeHydrationVersion,
   runtimesRef,
   sessions,
+  shouldSyncMessages,
 }: UseLiveConversationSyncParams) {
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
-  const appliedLiveDeltaIdsRef = useRef(new Set<string>())
-  const resumedCloudflareStreamsRef = useRef(new Set<string>())
   const [liveQueryState, setLiveQueryState] = useState<ConvexLiveQueryState>({
     liveMessages: undefined,
-    liveMessageDeltas: undefined,
   })
   const onLiveQueryUpdate = useCallback((next: ConvexLiveQueryState) => {
     setLiveQueryState((current) => (
-      current.liveMessages === next.liveMessages &&
-      current.liveMessageDeltas === next.liveMessageDeltas
+      current.liveMessages === next.liveMessages
         ? current
         : next
     ))
   }, [])
 
-  useEffect(() => {
-    appliedLiveDeltaIdsRef.current.clear()
-  }, [activeChatId])
-
   const liveMessages = liveQueryState.liveMessages
-  const liveMessageDeltas = liveQueryState.liveMessageDeltas
   const liveQueryBridge: ReactNode = enableConvexLiveSync
     ? createElement(ConvexLiveQueryBridge, {
         activeChatId,
@@ -225,82 +165,6 @@ export function useLiveConversationSync({
         onUpdate: onLiveQueryUpdate,
       })
     : null
-
-  const activePersistedGenerating =
-    liveMessagesHaveGeneratingAssistant(liveMessages) ||
-    hasGeneratingRuntimeMessage(activeRuntime)
-
-  useEffect(() => {
-    if (!activeChatId || !chatStreamRelayApi) return
-    const hasLocalHttpStream =
-      hasStreamingChat(actChat) ||
-      chatInstances.some(hasStreamingChat)
-    if (hasLocalHttpStream) return
-
-    const targets = collectResumeTargets({
-      liveMessages,
-      runtime: activeRuntime,
-    })
-
-    const activeVariantCountByTurn = new Map<string, number>()
-    for (const target of targets.values()) {
-      activeVariantCountByTurn.set(
-        target.turnId,
-        (activeVariantCountByTurn.get(target.turnId) ?? 0) + 1,
-      )
-    }
-
-    for (const target of targets.values()) {
-      const key = `${activeChatId}:${target.turnId}:${target.variantIndex}`
-      if (resumedCloudflareStreamsRef.current.has(key)) continue
-      const slotChat = chatInstances[target.variantIndex]
-      const resumeIntoAskSlot = shouldResumeChatStreamIntoAskSlot({
-        runtime: activeRuntime,
-        turnId: target.turnId,
-        variantIndex: target.variantIndex,
-        activeVariantCount: activeVariantCountByTurn.get(target.turnId) ?? 1,
-      })
-      const targetChat = resumeIntoAskSlot && slotChat ? slotChat : actChat
-      console.info('[chat-stream] resume dispatch', {
-        conversationId: activeChatId,
-        turnId: target.turnId,
-        variantIndex: target.variantIndex,
-        targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
-      })
-      resumedCloudflareStreamsRef.current.add(key)
-      void (async () => {
-        try {
-          await targetChat.resumeStream({
-            body: {
-              conversationId: activeChatId,
-              turnId: target.turnId,
-              variantIndex: target.variantIndex,
-              multiModelSlotIndex: target.variantIndex,
-            },
-          })
-          if (targetChat.status === 'error') {
-            console.error('[chat-stream] resume failed', {
-              conversationId: activeChatId,
-              turnId: target.turnId,
-              variantIndex: target.variantIndex,
-              targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
-              reason: targetChat.error?.message ?? 'Chat runtime entered an error state',
-            })
-            resumedCloudflareStreamsRef.current.delete(key)
-          }
-        } catch (error) {
-          console.error('[chat-stream] resume failed', {
-            conversationId: activeChatId,
-            turnId: target.turnId,
-            variantIndex: target.variantIndex,
-            targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
-            reason: error instanceof Error ? error.message : String(error),
-          })
-          resumedCloudflareStreamsRef.current.delete(key)
-        }
-      })()
-    }
-  }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
   useEffect(() => {
     if (!activeChatId || !liveMessages) return
@@ -344,40 +208,11 @@ export function useLiveConversationSync({
   ])
 
   useEffect(() => {
-    if (!activeChatId || !liveMessageDeltas?.length) return
-    if (hasActiveLocalHttpStream({ activeChatId, activeChatIdRef, actChat, chatInstances })) return
-    const runtime = runtimesRef.current.get(activeChatId)
-    if (!runtime) return
-
-    const changed = applyLiveDeltasToRuntime(
-      runtime,
-      liveMessageDeltas,
-      appliedLiveDeltaIdsRef.current,
-    )
-    if (!changed) return
-    cloneRuntimeMessageArrays(runtime)
-    if (activeChatIdRef.current === activeChatId) {
-      syncRuntimeMessagesToChatViews({ runtime, actChat, chatInstances })
-    }
-    onRuntimeMessagesChanged()
-    lastStreamChunkAtRef.current = Date.now()
-  }, [
-    activeChatId,
-    activeChatIdRef,
-    actChat,
-    chatInstances,
-    lastStreamChunkAtRef,
-    liveMessageDeltas,
-    onRuntimeMessagesChanged,
-    runtimesRef,
-  ])
-
-  useEffect(() => {
     if (!activeChatId) return
     if (hasActiveLocalHttpStream({ activeChatId, activeChatIdRef, actChat, chatInstances })) return
     const sessionIsStreaming = sessions[activeChatId]?.status === 'streaming'
     const liveQuerySawGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
-    if (!sessionIsStreaming && !liveQuerySawGenerating && !activePersistedGenerating) return
+    if (!sessionIsStreaming && !liveQuerySawGenerating && !shouldSyncMessages) return
 
     let cancelled = false
     const patchFromServer = async () => {
@@ -435,17 +270,16 @@ export function useLiveConversationSync({
     activeChatId,
     activeChatIdRef,
     actChat,
-    activePersistedGenerating,
     chatInstances,
     completeSession,
     loadChats,
     onRuntimeMessagesChanged,
     runtimesRef,
     sessions,
+    shouldSyncMessages,
   ])
 
   return {
-    activePersistedGenerating,
     liveQueryBridge,
     liveMessages,
   }

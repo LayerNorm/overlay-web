@@ -2,6 +2,8 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
+import { abortToolLoopRuns } from '@/server/conversations/tool-loop-run-registry'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -15,8 +17,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
 
-    const { auth } = context
-
     const conversationId = body.conversationId?.trim()
     if (!conversationId) {
       return NextResponse.json(
@@ -25,15 +25,32 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const result = await getOverlayServerContext().appData.repositories.conversations.stopGeneratingMessages({
+    const repository = getOverlayServerContext().appData.repositories.conversations
+    const resourceUserId = getAuthorizedResourceUserId(context)
+    const cancelled = await repository.cancelAgentRuns({
       conversationId: conversationId as Id<'conversations'>,
       ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
       ...(body.partialContent !== undefined ? { partialContent: body.partialContent } : {}),
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
-      userId: auth.userId,
+      userId: resourceUserId,
     })
+    const abortedLocalCount = abortToolLoopRuns(cancelled.cancelledRunIds)
+    const legacy = cancelled.stoppedCount === 0
+      ? await repository.stopGeneratingMessages({
+          conversationId: conversationId as Id<'conversations'>,
+          ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
+          ...(body.partialContent !== undefined ? { partialContent: body.partialContent } : {}),
+          ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
+          userId: resourceUserId,
+        })
+      : { stoppedCount: 0 }
 
-    return NextResponse.json({ success: true, stoppedCount: result.stoppedCount })
+    return NextResponse.json({
+      success: true,
+      stoppedCount: cancelled.stoppedCount + legacy.stoppedCount,
+      cancelledRunIds: cancelled.cancelledRunIds,
+      abortedLocalCount,
+    })
   } catch (e) {
     logger.error('[conversations/stop POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to stop generating message'

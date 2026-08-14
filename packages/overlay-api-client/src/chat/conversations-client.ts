@@ -19,6 +19,7 @@ import type { MutationRequestInit } from '../shared/mutation'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type {
   ActConversationRequest,
+  AgentRunResource,
   ConversationGetResponse,
   ConversationMessageRequest,
   ConversationQuery,
@@ -163,6 +164,11 @@ export class ConversationsClient {
     init?: MutationRequestInit,
   ) {
     return this.http.request('/api/v1/conversations/stop', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+
+  currentRun(conversationId: string, init?: RequestInit) {
+    const path = this.http.appendQuery('/api/v1/conversations/run', { conversationId })
+    return this.http.json<{ run: AgentRunResource | null }>(path, init)
   }
 
   // ---------------------------------------------------------------------------

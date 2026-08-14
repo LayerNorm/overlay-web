@@ -122,9 +122,27 @@ export class ActMessagePersistenceService {
     turnId: string
     userId: string
     attachmentNames?: string[]
-  }): Promise<void> {
-    if (args.skip || !args.conversationId || !args.latestUserContent) return
-    await this.deps.repository.addMessage({
+  }): Promise<Id<'conversationMessages'> | undefined> {
+    if (!args.conversationId) return undefined
+    if (args.skip) {
+      // Multi-model requests start concurrently. Secondary slots reuse the
+      // primary slot's user message, so briefly wait for that idempotent write
+      // instead of racing it and creating duplicate user rows.
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const messages = await this.deps.repository.getMessages({
+          conversationId: args.conversationId,
+          userId: args.userId,
+        })
+        const existing = messages.find(
+          (message) => message.turnId === args.turnId && message.role === 'user',
+        )?._id as Id<'conversationMessages'> | undefined
+        if (existing) return existing
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      return undefined
+    }
+    if (!args.latestUserContent) return undefined
+    return await this.deps.repository.addMessage({
       conversationId: args.conversationId,
       userId: args.userId,
       turnId: args.turnId,
@@ -141,7 +159,7 @@ export class ActMessagePersistenceService {
       billingActorUserId: args.billingActorUserId,
       billingSpendSubjectId: args.billingSpendSubjectId,
       billingSpendSubjectKind: args.billingSpendSubjectKind,
-    })
+    }) ?? undefined
   }
 
   async persistAssistantFinish(args: {
@@ -153,6 +171,7 @@ export class ActMessagePersistenceService {
     fallbackNotice?: string
     finishedToolCallIds: Set<string>
     generatingMessageId?: Id<'conversationMessages'>
+    agentRunId?: string
     multiModelSlotIndex: number
     multiModelTotal: number
     routedModelId?: string
@@ -281,7 +300,18 @@ export class ActMessagePersistenceService {
           ? normalizedPersistParts
           : [{ type: 'text', text: persistContent }]
       )
-      if (args.generatingMessageId) {
+      let assistantCompleted = true
+      if (args.agentRunId) {
+        const completedRun = await this.deps.repository.completeAgentRun({
+          runId: args.agentRunId,
+          userId: args.userId,
+          content: persistContent,
+          parts: finalParts,
+          routedModelId,
+          tokens: { input: totalInputTokens, output: totalOutputTokens },
+        })
+        assistantCompleted = completedRun?.status === 'completed'
+      } else if (args.generatingMessageId) {
         await this.deps.generatingMessages.finalize({
           messageId: args.generatingMessageId,
           content: persistContent,
@@ -305,7 +335,7 @@ export class ActMessagePersistenceService {
           variantIndex: args.multiModelTotal > 1 ? args.multiModelSlotIndex : undefined,
         })
       }
-      if (args.emitWebhook) {
+      if (args.emitWebhook && assistantCompleted) {
         this.events.completed({
           userId: args.userId,
           conversationId: args.conversationId,

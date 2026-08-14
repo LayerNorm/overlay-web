@@ -1,6 +1,7 @@
 import 'server-only'
 
 export interface AccountDataDeletionCounts {
+  agentRuns: number
   apiIdempotencyKeys: number
   apiKeys: number
   administrativePrincipals: number

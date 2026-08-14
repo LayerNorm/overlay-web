@@ -79,6 +79,28 @@ export interface ConversationMessageRequest {
 
 export type ActConversationRequest = Record<string, unknown>
 
+export type AgentRunResource = {
+  id: string
+  conversationId: string
+  turnId: string
+  userId: string
+  userMessageId: string
+  assistantMessageId: string
+  mode: 'chat' | 'work'
+  runner: 'tool_loop' | 'workflow'
+  status: 'queued' | 'running' | 'waiting_for_approval' | 'completed' | 'failed' | 'cancelled'
+  variantIndex?: number
+  workflowRunId?: string
+  leaseExpiresAt?: number
+  startedAt?: number
+  completedAt?: number
+  failedAt?: number
+  cancelledAt?: number
+  terminalError?: { code: string; message: string; retryable: boolean }
+  createdAt: number
+  updatedAt: number
+}
+
 export interface StreamAuthRequest {
   conversationId?: string
   accessToken?: string

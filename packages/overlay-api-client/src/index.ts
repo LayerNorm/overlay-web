@@ -11,6 +11,7 @@ export type {
 } from './shared/types'
 export type {
   ActConversationRequest,
+  AgentRunResource,
   ConversationGetResponse,
   ConversationMessageRequest,
   ConversationQuery,

@@ -10,6 +10,7 @@ import {
   conversationEvents,
   conversationMessageDeltas,
   conversationMessages,
+  agentRuns,
   conversationParticipants,
   conversations,
   memories,
@@ -38,6 +39,14 @@ import type {
   ConversationMessageRow,
   SharedConversationRow,
 } from './ActConversationRepository'
+import {
+  canTransitionAgentRun,
+  type AgentRun,
+  type AgentRunMode,
+  type AgentRunRunner,
+  type AgentRunStatus,
+  type AgentRunTerminalError,
+} from '@/shared/agents/agent-run'
 import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
 import type { PostgresConversationEventNotifier } from './PostgresConversationEventNotifier'
 import { enqueueMemoryExtractionJob } from '@/server/memory/PostgresMemoryExtractionJobs'
@@ -971,6 +980,331 @@ export class PostgresActConversationRepository implements ActConversationReposit
     })
   }
 
+  async startAgentRun(args: {
+    conversationId: ConversationId
+    leaseExpiresAt?: number
+    mode: AgentRunMode
+    modelId: string
+    runner: AgentRunRunner
+    turnId: string
+    userId: string
+    userMessageId: ConversationMessageId
+    variantIndex?: number
+    workflowRunId?: string
+  }): Promise<AgentRun | null> {
+    return await this.db.transaction(async (tx) => {
+      const [conversation] = await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        ))
+        .limit(1)
+      const [userMessage] = await tx
+        .select({ id: conversationMessages.id })
+        .from(conversationMessages)
+        .where(and(
+          eq(conversationMessages.id, args.userMessageId),
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.userId, args.userId),
+          eq(conversationMessages.turnId, args.turnId),
+          eq(conversationMessages.role, 'user'),
+        ))
+        .limit(1)
+        .for('update')
+      if (!conversation || !userMessage) throw new Error('Unauthorized')
+
+      const [existing] = await tx
+        .select()
+        .from(agentRuns)
+        .where(and(
+          eq(agentRuns.conversationId, args.conversationId),
+          eq(agentRuns.turnId, args.turnId),
+          args.variantIndex === undefined
+            ? isNull(agentRuns.variantIndex)
+            : eq(agentRuns.variantIndex, args.variantIndex),
+        ))
+        .limit(1)
+      if (existing) return mapAgentRun(existing)
+
+      const now = new Date()
+      const assistantMessageId = messageId()
+      const runId = agentRunId()
+      await tx.insert(conversationMessages).values({
+        id: assistantMessageId,
+        conversationId: args.conversationId,
+        userId: args.userId,
+        turnId: args.turnId,
+        role: 'assistant',
+        mode: 'act',
+        content: '',
+        contentType: 'text',
+        parts: [{ type: 'text', text: '' }],
+        modelId: args.modelId,
+        variantIndex: args.variantIndex,
+        status: 'generating',
+        authorKind: 'model',
+        createdAt: now,
+        updatedAt: now,
+      })
+      const [run] = await tx.insert(agentRuns).values({
+        id: runId,
+        conversationId: args.conversationId,
+        turnId: args.turnId,
+        userId: args.userId,
+        userMessageId: args.userMessageId,
+        assistantMessageId,
+        mode: args.mode,
+        runner: args.runner,
+        status: 'queued',
+        variantIndex: args.variantIndex,
+        workflowRunId: args.workflowRunId,
+        leaseExpiresAt: finiteDate(args.leaseExpiresAt),
+        createdAt: now,
+        updatedAt: now,
+      }).returning()
+      await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: assistantMessageId,
+        payload: { agentRunId: runId },
+        type: 'message.created',
+        userId: args.userId,
+      })
+      return run ? mapAgentRun(run) : null
+    })
+  }
+
+  async transitionAgentRun(args: {
+    leaseExpiresAt?: number
+    runId: string
+    status: AgentRunStatus
+    userId: string
+  }): Promise<AgentRun | null> {
+    return await this.db.transaction(async (tx) => {
+      const [run] = await tx
+        .select()
+        .from(agentRuns)
+        .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.userId, args.userId)))
+        .limit(1)
+        .for('update')
+      if (!run) throw new Error('Unauthorized')
+      if (!canTransitionAgentRun(run.status, args.status)) {
+        throw new Error(`Invalid AgentRun transition: ${run.status} -> ${args.status}`)
+      }
+      const now = new Date()
+      const [updated] = await tx
+        .update(agentRuns)
+        .set({
+          status: args.status,
+          leaseExpiresAt: finiteDate(args.leaseExpiresAt) ?? run.leaseExpiresAt,
+          startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
+          updatedAt: now,
+        })
+        .where(eq(agentRuns.id, run.id))
+        .returning()
+      return updated ? mapAgentRun(updated) : null
+    })
+  }
+
+  async completeAgentRun(args: {
+    content: string
+    parts: Array<Record<string, unknown>>
+    routedModelId?: string
+    runId: string
+    tokens: { input: number; output: number }
+    userId: string
+  }): Promise<AgentRun | null> {
+    return await this.db.transaction(async (tx) => {
+      const [run] = await tx
+        .select()
+        .from(agentRuns)
+        .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.userId, args.userId)))
+        .limit(1)
+        .for('update')
+      if (!run) throw new Error('Unauthorized')
+      if (!canTransitionAgentRun(run.status, 'completed')) return mapAgentRun(run)
+      const now = new Date()
+      await tx.update(conversationMessages).set({
+        content: args.content,
+        parts: args.parts,
+        routedModelId: args.routedModelId,
+        tokens: args.tokens,
+        status: 'completed',
+        updatedAt: now,
+      }).where(and(
+        eq(conversationMessages.id, run.assistantMessageId),
+        eq(conversationMessages.status, 'generating'),
+      ))
+      await tx.delete(conversationMessageDeltas)
+        .where(eq(conversationMessageDeltas.messageId, run.assistantMessageId))
+      const [updated] = await tx.update(agentRuns).set({
+        status: 'completed',
+        completedAt: now,
+        leaseExpiresAt: null,
+        updatedAt: now,
+      }).where(eq(agentRuns.id, run.id)).returning()
+      await touchConversation(tx, run.conversationId as ConversationId, run.userId, now, 'act')
+      await emitConversationEvent(tx, {
+        conversationId: run.conversationId,
+        messageId: run.assistantMessageId,
+        payload: { agentRunId: run.id },
+        type: 'message.completed',
+        userId: run.userId,
+      })
+      return updated ? mapAgentRun(updated) : null
+    })
+  }
+
+  async failAgentRun(args: {
+    error: AgentRunTerminalError
+    errorText: string
+    runId: string
+    userId: string
+  }): Promise<AgentRun | null> {
+    return await this.db.transaction(async (tx) => {
+      const [run] = await tx
+        .select()
+        .from(agentRuns)
+        .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.userId, args.userId)))
+        .limit(1)
+        .for('update')
+      if (!run) throw new Error('Unauthorized')
+      if (!canTransitionAgentRun(run.status, 'failed')) return mapAgentRun(run)
+      const now = new Date()
+      await tx.update(conversationMessages).set({
+        content: args.errorText,
+        parts: [{ type: 'text', text: args.errorText }],
+        status: 'error',
+        updatedAt: now,
+      }).where(and(
+        eq(conversationMessages.id, run.assistantMessageId),
+        eq(conversationMessages.status, 'generating'),
+      ))
+      await tx.delete(conversationMessageDeltas)
+        .where(eq(conversationMessageDeltas.messageId, run.assistantMessageId))
+      const [updated] = await tx.update(agentRuns).set({
+        status: 'failed',
+        failedAt: now,
+        leaseExpiresAt: null,
+        terminalError: args.error,
+        updatedAt: now,
+      }).where(eq(agentRuns.id, run.id)).returning()
+      await touchConversation(tx, run.conversationId as ConversationId, run.userId, now, 'act')
+      await emitConversationEvent(tx, {
+        conversationId: run.conversationId,
+        messageId: run.assistantMessageId,
+        payload: { agentRunId: run.id, error: args.error },
+        type: 'message.failed',
+        userId: run.userId,
+      })
+      return updated ? mapAgentRun(updated) : null
+    })
+  }
+
+  async cancelAgentRuns(args: {
+    conversationId: ConversationId
+    messageId?: ConversationMessageId
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ cancelledRunIds: string[]; stoppedCount: number }> {
+    return await this.db.transaction(async (tx) => {
+      const [conversation] = await tx.select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        ))
+        .limit(1)
+      if (!conversation) throw new Error('Unauthorized')
+      const runs = await tx.select().from(agentRuns).where(and(
+        eq(agentRuns.conversationId, args.conversationId),
+        eq(agentRuns.userId, args.userId),
+        inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+        args.messageId ? eq(agentRuns.assistantMessageId, args.messageId) : undefined,
+      )).for('update')
+      if (runs.length === 0) return { cancelledRunIds: [], stoppedCount: 0 }
+      const now = new Date()
+      const sentinel = '\n\n[Interrupted by user. Continue?]'
+      for (const run of runs) {
+        if (!canTransitionAgentRun(run.status, 'cancelled')) continue
+        const [message] = await tx.select().from(conversationMessages)
+          .where(eq(conversationMessages.id, run.assistantMessageId)).limit(1).for('update')
+        if (message?.status === 'generating') {
+          const baseContent = args.partialContent ?? message.content
+          const baseParts = args.partialParts?.length
+            ? args.partialParts
+            : (message.parts as Array<Record<string, unknown>> | null) ?? [{ type: 'text', text: baseContent }]
+          await tx.update(conversationMessages).set({
+            content: `${baseContent.trimEnd()}${sentinel}`,
+            parts: [...baseParts, { type: 'text', text: sentinel }],
+            status: 'completed',
+            updatedAt: now,
+          }).where(eq(conversationMessages.id, message.id))
+          await tx.delete(conversationMessageDeltas)
+            .where(eq(conversationMessageDeltas.messageId, message.id))
+        }
+        await tx.update(agentRuns).set({
+          status: 'cancelled',
+          cancelledAt: now,
+          leaseExpiresAt: null,
+          terminalError: {
+            code: 'cancelled_by_user',
+            message: 'The run was cancelled by the user.',
+            retryable: true,
+          },
+          updatedAt: now,
+        }).where(eq(agentRuns.id, run.id))
+        await emitConversationEvent(tx, {
+          conversationId: run.conversationId,
+          messageId: run.assistantMessageId,
+          payload: { agentRunId: run.id },
+          type: 'message.stopped',
+          userId: run.userId,
+        })
+      }
+      await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      return { cancelledRunIds: runs.map((run) => run.id), stoppedCount: runs.length }
+    })
+  }
+
+  async getLatestAgentRun(args: {
+    conversationId: ConversationId
+    userId: string
+  }): Promise<AgentRun | null> {
+    return await withTransientPostgresReadRetry(async () => {
+      const [conversation] = await this.db.select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        )).limit(1)
+      if (!conversation) throw new Error('Unauthorized')
+      const [activeRun] = await this.db.select().from(agentRuns)
+        .where(and(
+          eq(agentRuns.conversationId, args.conversationId),
+          eq(agentRuns.userId, args.userId),
+          inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+        ))
+        .orderBy(desc(agentRuns.updatedAt))
+        .limit(1)
+      if (activeRun) return mapAgentRun(activeRun)
+      const [run] = await this.db.select().from(agentRuns)
+        .where(and(
+          eq(agentRuns.conversationId, args.conversationId),
+          eq(agentRuns.userId, args.userId),
+        ))
+        .orderBy(desc(agentRuns.createdAt))
+        .limit(1)
+      return run ? mapAgentRun(run) : null
+    })
+  }
+
   async deleteTurn(args: {
     conversationId: ConversationId
     turnId: string
@@ -1291,6 +1625,30 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
   }
 }
 
+function mapAgentRun(row: typeof agentRuns.$inferSelect): AgentRun {
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    turnId: row.turnId,
+    userId: row.userId,
+    userMessageId: row.userMessageId,
+    assistantMessageId: row.assistantMessageId,
+    mode: row.mode,
+    runner: row.runner,
+    status: row.status,
+    variantIndex: row.variantIndex ?? undefined,
+    workflowRunId: row.workflowRunId ?? undefined,
+    leaseExpiresAt: row.leaseExpiresAt ? toMillis(row.leaseExpiresAt) : undefined,
+    startedAt: row.startedAt ? toMillis(row.startedAt) : undefined,
+    completedAt: row.completedAt ? toMillis(row.completedAt) : undefined,
+    failedAt: row.failedAt ? toMillis(row.failedAt) : undefined,
+    cancelledAt: row.cancelledAt ? toMillis(row.cancelledAt) : undefined,
+    terminalError: row.terminalError ?? undefined,
+    createdAt: toMillis(row.createdAt),
+    updatedAt: toMillis(row.updatedAt),
+  }
+}
+
 function finiteDate(value: number | undefined): Date | undefined {
   if (value === undefined || !Number.isFinite(value)) return undefined
   return new Date(value)
@@ -1319,6 +1677,10 @@ function messageId(): ConversationMessageId {
 
 function messageDeltaId(): string {
   return `delta_${randomUUID()}`
+}
+
+function agentRunId(): string {
+  return `run_${randomUUID()}`
 }
 
 function contextSummaryId(): string {

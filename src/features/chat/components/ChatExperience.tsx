@@ -49,6 +49,7 @@ import {
 import { useChatStopController } from './chat/useChatStopController'
 import { useChatTitleController } from './chat/useChatTitleController'
 import { useLiveConversationSync } from './chat/useLiveConversationSync'
+import { useAgentRunLifecycle } from './chat/useAgentRunLifecycle'
 import {
   getResponseForExchangeForModel as selectResponseForExchangeForModel,
   removeTurnFromConversationRuntime,
@@ -66,6 +67,7 @@ import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
@@ -160,11 +162,17 @@ export default function ChatExperience({
       ? rawEmbedProjectId
       : null
   const { settings, updateSettings } = useAppSettings()
+  const { user: authUser, isLoading: authLoading } = useAuth()
+  const gatewayCatalogEnabled = shouldLoadGatewayModelCatalog({
+    isAuthenticated: Boolean(authUser),
+    isAuthLoading: authLoading,
+    isPublicShowcase,
+  })
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
     revision: gatewayCatalogRevision,
-  } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
+  } = useGatewayModelCatalog({ enabled: gatewayCatalogEnabled })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const { activeWorkspaceId } = useWorkspace()
   const billingEnabled = capabilities.billing
@@ -174,7 +182,6 @@ export default function ChatExperience({
     appDataCapabilities.provider === 'postgres' && appDataCapabilities.supportsRealtime
   const titleGenerationEnabled = !isPublicShowcase && appDataCapabilities.supportsChatPersistence
   const generatedOutputsEnabled = !isPublicShowcase && appDataCapabilities.provider !== 'postgres'
-  const { user: authUser, isLoading: authLoading } = useAuth()
   const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
@@ -221,7 +228,6 @@ export default function ChatExperience({
     ensureConversationRuntime,
     replaceConversationRuntime,
     activeRuntime,
-    chatStreamRelayApi,
     chat0,
     chat1,
     chat2,
@@ -297,7 +303,6 @@ export default function ChatExperience({
     defaultMemoryEnabled({ temporary: false }),
   )
   const [isDragging, setIsDragging] = useState(false)
-  const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
   const {
     handleComposerInputChange,
@@ -686,35 +691,45 @@ export default function ChatExperience({
     forceLiveSyncRender((value) => value + 1)
   }, [])
 
+  const activeAskChats = activeRuntime.askChats
+  const localStreamActive =
+    activeAskChats.some((chat) => chat.status === 'streaming' || chat.status === 'submitted') ||
+    actChat.status === 'streaming' ||
+    actChat.status === 'submitted'
+  const agentRunLifecycle = useAgentRunLifecycle({
+    conversationId: activeChatId,
+    enabled: !isPublicShowcase && Boolean(authUser),
+    localStreamActive,
+  })
   const {
-    activePersistedGenerating,
     liveQueryBridge,
-    liveMessages,
   } = useLiveConversationSync({
     activeChatId,
     activeChatIdRef,
-    activeRuntime,
     actChat,
     authUserId: authUser?.id,
     chatInstances,
-    chatStreamRelayApi,
     completeSession,
     convexAccessToken,
     enableConvexLiveSync: convexLiveSyncEnabled,
-    lastStreamChunkAtRef,
     loadChats,
     onRuntimeMessagesChanged,
     runtimeHydrationVersion,
     runtimesRef,
     sessions,
+    shouldSyncMessages: agentRunLifecycle.shouldSyncMessages,
   })
 
-  const activeAskChats = activeRuntime.askChats
-  const isActiveLoading =
-    activeAskChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
-    actChat.status === 'streaming' ||
-    actChat.status === 'submitted' ||
-    activePersistedGenerating
+  const isActiveLoading = localStreamActive || agentRunLifecycle.active
+
+  useEffect(() => {
+    const disconnectedNotice = 'Still generating; the answer will appear when complete.'
+    if (agentRunLifecycle.active && !localStreamActive) {
+      setComposerNotice(disconnectedNotice)
+      return
+    }
+    setComposerNotice((current) => current === disconnectedNotice ? null : current)
+  }, [agentRunLifecycle.active, localStreamActive])
 
   // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
   // runtime's loaded messages to the current useChat instances so the greeting
@@ -1533,8 +1548,12 @@ export default function ChatExperience({
       setPersonalMentionConfirmationOpen(true)
       return
     }
+    if (personalChatMode === 'work') {
+      setComposerNotice('Work mode will be enabled when the durable WorkflowAgent runner ships.')
+      return
+    }
     await handleSend()
-  }, [handleSend, isPublicShowcase, personMentions.length, requireAuth])
+  }, [handleSend, isPublicShowcase, personMentions.length, personalChatMode, requireAuth, setComposerNotice])
 
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
@@ -1667,12 +1686,9 @@ export default function ChatExperience({
     chat1,
     chat2,
     chat3,
-    chatStreamRelayApi,
     forceLiveSyncRender: onRuntimeMessagesChanged,
     getActiveRuntime: getActiveRuntimeForStop,
     isActiveLoading,
-    lastStreamChunkAtRef,
-    liveMessages,
     onSend: effectiveHandleSend,
     primaryMessages,
     replaceConversationRuntime,

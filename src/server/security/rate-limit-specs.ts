@@ -41,6 +41,10 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'conversations:events:ip', limit: 1_200, windowMs: TEN_MINUTES },
     { bucket: 'conversations:events:user', limit: 600, windowMs: TEN_MINUTES },
   ],
+  'GET /api/v1/conversations/run': [
+    { bucket: 'conversations:run:ip', limit: 1_200, windowMs: TEN_MINUTES },
+    { bucket: 'conversations:run:user', limit: 600, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/chat-suggestions': [
     { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },

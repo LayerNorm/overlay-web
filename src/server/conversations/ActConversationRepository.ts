@@ -4,6 +4,13 @@ import type { UIMessage } from '@/server/ai/sdk'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import type { Id } from '../../../convex/_generated/dataModel'
+import type {
+  AgentRun,
+  AgentRunMode,
+  AgentRunRunner,
+  AgentRunStatus,
+  AgentRunTerminalError,
+} from '@/shared/agents/agent-run'
 
 export type ActPersistedMessage = {
   _id: string
@@ -293,6 +300,49 @@ export interface ActConversationRepository {
     partialParts?: Array<Record<string, unknown>>
     userId: string
   }): Promise<{ stoppedCount: number }>
+  startAgentRun(args: {
+    conversationId: Id<'conversations'>
+    leaseExpiresAt?: number
+    mode: AgentRunMode
+    modelId: string
+    runner: AgentRunRunner
+    turnId: string
+    userId: string
+    userMessageId: Id<'conversationMessages'>
+    variantIndex?: number
+    workflowRunId?: string
+  }): Promise<AgentRun | null>
+  transitionAgentRun(args: {
+    leaseExpiresAt?: number
+    runId: string
+    status: AgentRunStatus
+    userId: string
+  }): Promise<AgentRun | null>
+  completeAgentRun(args: {
+    content: string
+    parts: Array<Record<string, unknown>>
+    routedModelId?: string
+    runId: string
+    tokens: { input: number; output: number }
+    userId: string
+  }): Promise<AgentRun | null>
+  failAgentRun(args: {
+    error: AgentRunTerminalError
+    errorText: string
+    runId: string
+    userId: string
+  }): Promise<AgentRun | null>
+  cancelAgentRuns(args: {
+    conversationId: Id<'conversations'>
+    messageId?: Id<'conversationMessages'>
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ cancelledRunIds: string[]; stoppedCount: number }>
+  getLatestAgentRun(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<AgentRun | null>
   deleteTurn(args: {
     conversationId: Id<'conversations'>
     turnId: string

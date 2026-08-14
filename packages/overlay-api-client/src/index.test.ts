@@ -112,6 +112,18 @@ test('conversation participant removal uses the scoped participant endpoint', as
   assert.deepEqual(await jsonBody(calls[0]!), { principalId: 'principal_1' })
 })
 
+test('current AgentRun lookup uses the conversation run endpoint', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.conversations.currentRun('conversation_1')
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/conversations/run?conversationId=conversation_1',
+  )
+  assert.equal(calls[0]!.init?.method, undefined)
+})
+
 test('module feature methods use canonical app endpoints', async () => {
   const { calls, client } = createRecordedClient()
 
