@@ -492,6 +492,52 @@ export const getMessages = query({
   },
 })
 
+/**
+ * Load only messages created at or after `sinceCreatedAt`.
+ * Used by the act context service to load the unsummarized tail
+ * instead of the full conversation history every turn.
+ * When `sinceCreatedAt` is omitted, falls back to loading all messages.
+ */
+export const getMessagesSince = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    sinceCreatedAt: v.optional(v.number()),
+    compactToolPayloads: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken, serverSecret, sinceCreatedAt, compactToolPayloads }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+      return []
+    }
+    // When no cursor is provided, load all messages (backward compatible).
+    if (sinceCreatedAt === undefined || !Number.isFinite(sinceCreatedAt)) {
+      const messages = await ctx.db
+        .query('conversationMessages')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+        .order('asc')
+        .collect()
+      return compactToolPayloads ? messages.map((m) => compactMessageForHistory(m, true)) : messages
+    }
+    // Load only the unsummarized tail: messages at or after the summary cursor.
+    const messages = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', (q) =>
+        q.eq('conversationId', conversationId).gte('createdAt', sinceCreatedAt),
+      )
+      .order('asc')
+      .collect()
+    return compactToolPayloads ? messages.map((m) => compactMessageForHistory(m, true)) : messages
+  },
+})
+
 export const getRecentMessages = query({
   args: {
     conversationId: v.id('conversations'),

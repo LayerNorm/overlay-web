@@ -48,6 +48,56 @@ export const get = query({
   },
 })
 
+/**
+ * Lightweight skill directory: returns only _id, name, description, enabled.
+ * Full instructions are NOT included — they are loaded on demand via
+ * getInstructions. This keeps the skill context within a small token budget
+ * instead of injecting every skill's full instructions into every turn.
+ */
+export const listDirectory = query({
+  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()), projectId: v.optional(v.string()) },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const all = await ctx.db
+      .query('skills')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .order('desc')
+      .collect()
+    const filtered = (projectId !== undefined
+      ? all.filter((s) => s.projectId === projectId)
+      : all.filter((s) => !s.projectId)
+    ).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    return filtered.map((s) => ({
+      _id: s._id,
+      name: s.name,
+      description: s.description,
+      enabled: s.enabled ?? true,
+    }))
+  },
+})
+
+/**
+ * Load full instructions for a single skill on demand.
+ * Used by the list_skills tool when the agent decides a skill is relevant.
+ */
+export const getInstructions = query({
+  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { skillId, userId, accessToken, serverSecret }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const skill = await ctx.db.get(skillId)
+    if (!skill || skill.userId !== userId) return null
+    return { _id: skill._id, name: skill.name, instructions: skill.instructions }
+  },
+})
+
 export const create = mutation({
   args: {
     userId: v.string(),

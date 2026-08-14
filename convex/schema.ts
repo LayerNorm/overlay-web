@@ -753,6 +753,29 @@ export default defineSchema({
     .index('by_status_scheduledFor', ['status', 'scheduledFor'])
     .index('by_userId_createdAt', ['userId', 'createdAt']),
 
+  // Durable workflow step events projected from the Workflow SDK.
+  // Instead of polling the Workflow SDK's event log every 2 seconds via SSE,
+  // step events are written here as they occur, and the client subscribes
+  // via Convex subscription for realtime updates.
+  workflowStepEvents: defineTable({
+    userId: v.string(),
+    automationRunId: v.optional(v.id('automationRuns')),
+    workflowRunId: v.string(),
+    stepName: v.string(),
+    stepStatus: v.union(
+      v.literal('running'),
+      v.literal('completed'),
+      v.literal('failed'),
+    ),
+    attempt: v.optional(v.number()),
+    error: v.optional(v.string()),
+    stack: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_workflowRunId_createdAt', ['workflowRunId', 'createdAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt']),
+
   mcpServers: defineTable({
     workspaceId: v.optional(v.string()),
     userId: v.string(),
@@ -1265,6 +1288,37 @@ export default defineSchema({
   })
     .index('by_r2Key', ['r2Key'])
     .index('by_userId_status_expiresAt', ['userId', 'status', 'expiresAt']),
+
+  // Durable document ingestion jobs. The client uploads to R2 via a presigned
+  // URL, then creates an ingestion job. The job is processed asynchronously
+  // and the client subscribes to status updates via Convex subscription.
+  documentIngestionJobs: defineTable({
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    r2Key: v.string(),
+    fileName: v.string(),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    projectId: v.optional(v.string()),
+    parentId: v.optional(v.string()),
+    status: v.union(
+      v.literal('queued'),
+      v.literal('extracting'),
+      v.literal('indexing'),
+      v.literal('completed'),
+      v.literal('failed'),
+    ),
+    statusMessage: v.optional(v.string()),
+    fileIds: v.optional(v.array(v.id('files'))),
+    partCount: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index('by_userId_status', ['userId', 'status'])
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_status_createdAt', ['status', 'createdAt']),
 
   files: defineTable({
     workspaceId: v.optional(v.string()),

@@ -8,9 +8,9 @@ import {
   DeleteObjectsCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { GetObjectCommand } from '@aws-sdk/client-s3'
 import type { ObjectStore, ObjectSummary } from '@overlay/app-core'
 export { keyForFile, keyForOutput } from '@/server/storage/storage-keys'
 
@@ -186,6 +186,26 @@ export async function uploadBuffer(
   )
 
   logger.info(`[R2] uploadBuffer key=${key} mimeType=${mimeType} size=${sizeBytes}B duration=${Date.now() - t0}ms`)
+}
+
+// ── Server-side buffer download ────────────────────────────────────────────
+
+export async function downloadBuffer(key: string): Promise<Buffer | null> {
+  const client = getR2Client()
+  const bucket = getR2BucketName()
+  const t0 = Date.now()
+
+  try {
+    const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+    if (!response.Body) return null
+    const bytes = await response.Body.transformToByteArray()
+    const buffer = Buffer.from(bytes)
+    logger.info(`[R2] downloadBuffer key=${key} size=${buffer.byteLength}B duration=${Date.now() - t0}ms`)
+    return buffer
+  } catch (error) {
+    logger.warn(`[R2] downloadBuffer key=${key} failed: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
 }
 
 // ── Delete single object ─────────────────────────────────────────────────────

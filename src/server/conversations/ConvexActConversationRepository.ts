@@ -161,6 +161,21 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     }, { throwOnError: true }) ?? []
   }
 
+  async getMessagesSince(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+    sinceCreatedAt?: number
+    compactToolPayloads?: boolean
+  }): Promise<ActPersistedMessage[]> {
+    return await convex.query<ActPersistedMessage[]>('chat/conversations:getMessagesSince', {
+      conversationId: args.conversationId,
+      userId: args.userId,
+      serverSecret: this.serverSecret,
+      ...(args.sinceCreatedAt !== undefined ? { sinceCreatedAt: args.sinceCreatedAt } : {}),
+      ...(args.compactToolPayloads ? { compactToolPayloads: true } : {}),
+    }, { throwOnError: true }) ?? []
+  }
+
   async addMessage(args: {
     billingAccountId?: string
     billingActorUserId?: string
@@ -210,6 +225,15 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       userId: args.userId,
       serverSecret: this.serverSecret,
     }) ?? []
+  }
+
+  async listSkillDirectory(args: {
+    userId: string
+  }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>> {
+    return await convex.query<Array<{ _id: string; name: string; description: string; enabled: boolean }>>(
+      'integrations/skills:listDirectory',
+      { userId: args.userId, serverSecret: this.serverSecret },
+    ) ?? []
   }
 
   async getConversation(args: {
