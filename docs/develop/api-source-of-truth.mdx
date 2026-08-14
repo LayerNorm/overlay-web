@@ -108,6 +108,88 @@ Legacy migration-on-read patterns (e.g. knowledge-base workspace binding) are be
 
 The rate limit provider is selected at bootstrap. Redis is preferred when configured (TCP or Upstash REST), falling back to Convex. The Convex `takeManyByServer` mutation no longer prunes expired windows in the request path — pruning is handled by a periodic cron job (`pruneExpiredWindowsInternal`, every 5 minutes). This eliminates N extra deletes per authenticated BFF request.
 
+## Realtime and shared resource state (Phase C)
+
+### Versioned conversation list reconciliation
+
+Personal conversation mutations (`create`, `update`, `remove` in `convex/chat/conversations.ts`) now emit `conversationEvents` rows, just like collaboration conversations. The `conversationEvents` table has a new `by_userId_createdAt` index for user-scoped version queries.
+
+`watchPersonalConversationListVersion` (in `convex/chat/conversations.ts`) returns the latest event `_creationTime` for a user. `watchConversationListVersion` (in `convex/collaboration/directMessages.ts`) returns the latest event for a workspace. The `CollaborationRealtimeProvider` subscribes to both and merges them via `Math.max` — any personal or collaboration change triggers a single version bump.
+
+When the version changes, the client fetches only the delta via `GET /api/v1/conversations?updatedSince=<version-1000>` and upserts individual rows into the chat list cache (`upsertCachedChat` / `removeCachedChat`). This replaces the previous full-list reload on every version change.
+
+### Presence subscription
+
+`watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive.
+
+### Knowledge source ingestion subscription
+
+`watchKnowledgeSourceStatus` (in `convex/knowledge/bases.ts`) provides a Convex subscription for knowledge source status changes within a knowledge base. When Convex realtime is available, `KnowledgeBaseWorkspace` patches individual source statuses into local state instead of polling `listSources` every 2 seconds. The `useVisibleReconciliation` interval backs off from 15s to 120s when Convex is active.
+
+### Indexed mention and workspace search
+
+Convex search indexes have been added to:
+- `conversations.search_title` (searchField: `title`, filterFields: `userId`, `workspaceId`, `deletedAt`)
+- `files.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`, `deletedAt`)
+- `notes.search_title` (searchField: `title`, filterFields: `userId`, `workspaceId`, `deletedAt`)
+- `automations.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`, `deletedAt`)
+- `skills.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`)
+- `mcpServers.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`)
+
+`search/mentions:searchMentions` (in `convex/search/mentions.ts`) uses these indexes to return bounded top-10 results per category. `GET /api/v1/mention-search?q=<query>` is the BFF route that calls this query. The client `searchMentions` function tries the indexed endpoint first and falls back to scan-and-filter if unavailable. Knowledge bases and connectors remain client-side filtered (not in Convex search indexes).
+
+`searchWorkspaceChats` (in `convex/collaboration/channels.ts`) now uses the `conversations.search_title` index for title matching instead of iterating all participant conversations. Message content search is still scan-based but limited to accessible conversations with a reduced message scan window (50 instead of 200).
+
+## Agent and workflow efficiency (Phase D)
+
+### Summary + unsummarized tail context loading
+
+`ActContextService.buildMessagesForModel` now loads the conversation context summary first (via `getContextSummary`), then loads only messages at or after `summarizedThroughCreatedAt` using the new `getMessagesSince` Convex query. This replaces the previous behavior of loading the full conversation history via `getMessages` every turn and then compacting it. The summary is injected by `compactMessagesForContext` as before, but the initial load is bounded to the unsummarized tail.
+
+New Convex query: `chat/conversations:getMessagesSince` — accepts `sinceCreatedAt` and returns only messages at or after that timestamp. Falls back to full history when no cursor is provided.
+
+### Token-budgeted memory and skill context
+
+Memory context is now bounded by `MEMORY_CONTEXT_CHAR_BUDGET` (2,000 chars / ~500 tokens). The top-10 memories by importance + recency are selected, then truncated to fit the budget.
+
+Skill context uses a lightweight directory (name + description only, no full instructions) bounded by `SKILL_DIRECTORY_CHAR_BUDGET` (1,500 chars / ~375 tokens). The agent loads full instructions on demand via the existing `list_skills` tool.
+
+New Convex queries:
+- `integrations/skills:listDirectory` — returns `_id`, `name`, `description`, `enabled` only (no `instructions`)
+- `integrations/skills:getInstructions` — returns full instructions for a single skill on demand
+
+### Durable document ingestion jobs
+
+Document ingestion is now asynchronous via durable jobs instead of synchronous in the request path:
+
+1. Client requests a presigned upload URL via `POST /api/v1/files/presign`
+2. Client uploads the file directly to R2
+3. Client creates an ingestion job via `POST /api/v1/files/ingest-jobs` with the r2Key + metadata
+4. A cron-triggered Convex action (`files/ingestion/runner:runMinuteTick`) picks up queued jobs and calls the BFF processing endpoint
+5. The BFF downloads from R2, extracts text, creates file records, and updates the job status
+6. The client subscribes to job status via `files/ingestion/jobs:watchIngestionJob` or `watchIngestionJobs` Convex subscription
+
+New Convex table: `documentIngestionJobs` with indexes `by_userId_status`, `by_userId_createdAt`, `by_status_createdAt`.
+
+New BFF routes:
+- `POST /api/v1/files/ingest-jobs` — create a job after presigned upload
+- `GET /api/v1/files/ingest-jobs?jobId=<id>` — get job status
+- `POST /api/v1/files/ingest-jobs/process` — internal endpoint for the Convex runner
+
+The synchronous `POST /api/v1/files/ingest-document` endpoint remains for backward compatibility (FormData upload flow).
+
+### Durable workflow step events
+
+Workflow step events are now projected from the Workflow SDK into the Convex `workflowStepEvents` table by a cron-triggered action (`automations/workflowEventProjector:runProjectionTick`, every 10 seconds). Clients subscribe via `automations/workflowEvents:watchWorkflowStepEvents` or `watchAutomationRunStepEvents` Convex subscription for realtime updates.
+
+This replaces per-client SSE polling (every 2 seconds per client) with a single server-side poller. The SSE endpoint (`GET /api/v1/automations/{runId}/events`) remains as a fallback for non-Convex providers.
+
+New Convex table: `workflowStepEvents` with indexes `by_workflowRunId_createdAt`, `by_userId_createdAt`, `by_automationRunId_createdAt`.
+
+### Legacy cron removal
+
+The legacy automation scheduler cron (`automation_scheduler_legacy`) has been removed. Durable automations are now always enabled and use the sleep()-based workflow (`workflows/automation-schedule.ts`) for scheduling. The `OVERLAY_FEATURE_DURABLE_AUTOMATIONS` feature flag has been removed.
+
 ## Workspace Billing
 
 Workspace billing is exposed only through authenticated `/api/v1/workspaces/:workspaceId/billing*` routes. The transport contract lives in `@overlay/workspace-contracts` and `WorkspacesClient` provides summary, initialize, subscription checkout, top-up, portal, and verification methods. Summary responses expose rollout eligibility, credit buckets, subscription status, and manager-only operational data but not the billing-account identifier. Route handlers resolve membership before invoking `WorkspaceBillingService`; only owners/admins can initialize, fund, subscribe, or open the portal. Clients never submit or select a billing-account identifier.

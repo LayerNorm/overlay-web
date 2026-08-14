@@ -69,9 +69,23 @@ function ConvexCollaborationSubscriptions({
     args === 'skip' ? 'skip' : { ...args, filter: 'all' as const, limit: 100 },
   )
 
+  // Personal conversation list version subscription (user-scoped).
+  // Merged with the workspace version so the client detects both
+  // personal and collaboration conversation changes.
+  const personalArgs = enabled && accessToken && actorUserId
+    ? { userId: actorUserId, accessToken }
+    : 'skip'
+  const personalListVersion = useQuery(
+    api.chat.conversations.watchPersonalConversationListVersion,
+    personalArgs,
+  )
+
   useEffect(() => {
-    if (listVersion?.ok) onConversationListVersion(listVersion.version)
-  }, [listVersion, onConversationListVersion])
+    const workspaceVersion = listVersion?.ok ? listVersion.version : 0
+    const personalVersion = personalListVersion?.ok ? personalListVersion.version : 0
+    // Use the max of both versions so any change triggers a refresh.
+    onConversationListVersion(Math.max(workspaceVersion, personalVersion))
+  }, [listVersion, personalListVersion, onConversationListVersion])
 
   useEffect(() => {
     if (notificationResult?.ok) {

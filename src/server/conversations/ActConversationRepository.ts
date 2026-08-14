@@ -31,9 +31,14 @@ export type ActMemoryRow = {
 }
 
 export type ActSkillRow = {
+  _id?: string
   name: string
+  description?: string
   instructions: string
   enabled?: boolean
+  userId?: string
+  createdAt?: number
+  updatedAt?: number
 }
 
 export type ActConversationRow = {
@@ -204,6 +209,12 @@ export interface ActConversationRepository {
     conversationId: Id<'conversations'>
     userId: string
   }): Promise<ActPersistedMessage[]>
+  getMessagesSince(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+    sinceCreatedAt?: number
+    compactToolPayloads?: boolean
+  }): Promise<ActPersistedMessage[]>
   addMessage(args: {
     billingAccountId?: string
     billingActorUserId?: string
@@ -237,6 +248,9 @@ export interface ActConversationRepository {
   listSkills(args: {
     userId: string
   }): Promise<ActSkillRow[]>
+  listSkillDirectory(args: {
+    userId: string
+  }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>>
   getConversation(args: {
     conversationId: Id<'conversations'>
     userId: string

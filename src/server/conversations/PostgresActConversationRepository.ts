@@ -435,6 +435,36 @@ export class PostgresActConversationRepository implements ActConversationReposit
     }))
   }
 
+  async getMessagesSince(args: {
+    conversationId: ConversationId
+    userId: string
+    sinceCreatedAt?: number
+    compactToolPayloads?: boolean
+  }): Promise<ActPersistedMessage[]> {
+    if (args.sinceCreatedAt === undefined || !Number.isFinite(args.sinceCreatedAt)) {
+      return this.getMessages(args)
+    }
+    const since = new Date(args.sinceCreatedAt)
+    const rows = await this.db
+      .select()
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.userId, args.userId),
+        gte(conversationMessages.createdAt, since),
+      ))
+      .orderBy(conversationMessages.createdAt)
+    return rows.map((row) => ({
+      _id: row.id,
+      turnId: row.turnId,
+      role: row.role,
+      modelId: row.modelId ?? undefined,
+      content: row.content,
+      parts: row.parts as ActPersistedMessage['parts'],
+      routedModelId: row.routedModelId ?? undefined,
+    }))
+  }
+
   async addMessage(args: {
     billingAccountId?: string
     billingActorUserId?: string
@@ -604,6 +634,26 @@ export class PostgresActConversationRepository implements ActConversationReposit
       .where(and(eq(skills.userId, args.userId), isNull(skills.projectId)))
       .orderBy(desc(skills.updatedAt))
       .limit(200)
+  }
+
+  async listSkillDirectory(args: { userId: string }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>> {
+    const rows = await this.db
+      .select({
+        id: skills.id,
+        name: skills.name,
+        description: skills.description,
+        enabled: skills.enabled,
+      })
+      .from(skills)
+      .where(and(eq(skills.userId, args.userId), isNull(skills.projectId)))
+      .orderBy(desc(skills.updatedAt))
+      .limit(200)
+    return rows.map((row) => ({
+      _id: row.id,
+      name: row.name,
+      description: row.description,
+      enabled: row.enabled ?? true,
+    }))
   }
 
   async getConversation(args: {

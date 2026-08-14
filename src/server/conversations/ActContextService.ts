@@ -39,6 +39,11 @@ function toUiMessageFromPersisted(message: ActPersistedMessage): UIMessage {
   }
 }
 
+// Token budgets for context components. These keep non-message context
+// within explicit limits instead of growing unbounded with skill/memory count.
+const MEMORY_CONTEXT_CHAR_BUDGET = 2_000   // ~500 tokens
+const SKILL_DIRECTORY_CHAR_BUDGET = 1_500  // ~375 tokens
+
 function buildMemoryContext(memories: ActMemoryRow[]): string {
   if (memories.length === 0) return ''
   const topMemories = memories
@@ -52,15 +57,35 @@ function buildMemoryContext(memories: ActMemoryRow[]): string {
     })
     .slice(0, 10)
 
-  return '\n\nUser context:\n' + topMemories.map((m) => `- ${m.content}`).join('\n')
+  // Enforce a character budget by truncating the memory context.
+  const lines = topMemories.map((m) => `- ${m.content}`)
+  let context = lines.join('\n')
+  if (context.length > MEMORY_CONTEXT_CHAR_BUDGET) {
+    // Truncate at the budget, trying to end on a complete line.
+    const truncated = context.slice(0, MEMORY_CONTEXT_CHAR_BUDGET)
+    const lastNewline = truncated.lastIndexOf('\n')
+    context = (lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated) + '\n- [additional memories omitted to fit context budget]'
+  }
+  return '\n\nUser context:\n' + context
 }
 
-function buildSkillsContext(skills: ActSkillRow[]): string {
+/**
+ * Build a lightweight skill directory (name + description only, no full
+ * instructions). The agent can call list_skills to load full instructions
+ * on demand when a skill is relevant to the current task.
+ */
+function buildSkillDirectoryContext(skills: Array<{ name: string; description: string }>): string {
   if (skills.length === 0) return ''
+  let directory = skills.map((s) => `- ${s.name}: ${s.description}`).join('\n')
+  if (directory.length > SKILL_DIRECTORY_CHAR_BUDGET) {
+    const truncated = directory.slice(0, SKILL_DIRECTORY_CHAR_BUDGET)
+    const lastNewline = truncated.lastIndexOf('\n')
+    directory = (lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated) + '\n- [additional skills omitted to fit context budget]'
+  }
   return (
-    '\n\nIMPORTANT — User-configured skills below. Before acting, check whether any skill applies to this task and follow its instructions. You can also call list_skills to search them at runtime.\n<skills>\n' +
-    skills.map((s) => `## ${s.name}\n${s.instructions.trim()}`).join('\n\n') +
-    '\n</skills>'
+    '\n\nIMPORTANT — User-configured skills are available. Before acting, check whether any skill applies to this task. Call the list_skills tool to load full instructions for a relevant skill.\n<skill-directory>\n' +
+    directory +
+    '\n</skill-directory>'
   )
 }
 
@@ -122,10 +147,40 @@ export class ActContextService {
   }): Promise<UIMessage[]> {
     if (!params.conversationId) return params.requestMessages
 
-    const persisted = await this.deps.repository.getMessages({
-      conversationId: params.conversationId,
-      userId: params.userId,
+    // Load only the unsummarized tail instead of the full conversation history.
+    // If a context summary exists for this model scope, we use its
+    // summarizedThroughCreatedAt as the cursor and load only messages at or
+    // after that point. The summary itself is injected later in
+    // prepareExistingMessagesForModel via compactMessagesForContext.
+    const summaryScope = contextSummaryScope({
+      targetModelId: params.targetModelId ?? '',
+      historyBaseModelId: params.historyBaseModelId,
     })
+    let sinceCreatedAt: number | undefined
+    try {
+      const summary = await this.deps.repository.getContextSummary({
+        conversationId: params.conversationId,
+        userId: params.userId,
+        scope: summaryScope,
+      })
+      if (summary?.summarizedThroughCreatedAt && Number.isFinite(summary.summarizedThroughCreatedAt)) {
+        sinceCreatedAt = summary.summarizedThroughCreatedAt
+      }
+    } catch (_error) {
+      // If summary loading fails, fall back to loading full history.
+    }
+
+    const persisted = sinceCreatedAt !== undefined
+      ? await this.deps.repository.getMessagesSince({
+          conversationId: params.conversationId,
+          userId: params.userId,
+          sinceCreatedAt,
+          compactToolPayloads: true,
+        })
+      : await this.deps.repository.getMessages({
+          conversationId: params.conversationId,
+          userId: params.userId,
+        })
 
     const historyRows = params.latestTurnId
       ? persisted.filter((message) => message.turnId !== params.latestTurnId)
@@ -177,10 +232,31 @@ export class ActContextService {
 
     const skillsTask: Promise<ActSkillRow[]> = (async () => {
       try {
-        const allSkills = await this.deps.repository.listSkills({ userId: args.userId })
-        return allSkills.filter((s) => s.enabled !== false && s.instructions?.trim())
+        // Load the skill directory (name + description only, no full instructions).
+        // This keeps the skill context within a small token budget. The agent
+        // can load full instructions on demand via the list_skills tool.
+        const directory = await this.deps.repository.listSkillDirectory({ userId: args.userId })
+        const enabledDirectory = directory.filter((s) => s.enabled !== false)
+        // Return as ActSkillRow-shaped objects with empty instructions so the
+        // rest of the pipeline (mentionsContext, etc.) still works.
+        return enabledDirectory.map((s) => ({
+          _id: s._id as Id<'skills'>,
+          name: s.name,
+          description: s.description,
+          instructions: '', // Not loaded — use list_skills tool on demand
+          enabled: s.enabled,
+          userId: args.userId,
+          createdAt: 0,
+          updatedAt: 0,
+        }))
       } catch (_error) {
-        return []
+        // Fall back to full skill list if directory query fails.
+        try {
+          const allSkills = await this.deps.repository.listSkills({ userId: args.userId })
+          return allSkills.filter((s) => s.enabled !== false && s.instructions?.trim())
+        } catch (_error2) {
+          return []
+        }
       }
     })()
 
@@ -298,7 +374,12 @@ export class ActContextService {
       memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories) : '',
       mentionsContext,
       projectInstructions,
-      skillsContext: buildSkillsContext(enabledSkills),
+      // Use the lightweight skill directory (name + description only) instead
+      // of injecting full instructions for every skill into every turn.
+      // The agent loads full instructions on demand via the list_skills tool.
+      skillsContext: buildSkillDirectoryContext(
+        enabledSkills.map((s) => ({ name: s.name, description: s.description ?? '' })),
+      ),
       sourceCitationMap: autoRetrievalBundle.citations,
     }
   }

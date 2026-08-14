@@ -964,47 +964,94 @@ export const listPresence = query({
   },
   handler: async (ctx, args) => {
     await requireConversationAccess(ctx, args)
-    const participants = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_status', (q) => (
-        q.eq('conversationId', args.conversationId).eq('status', 'active')
-      )).collect()
-    const now = Date.now()
-    const sessionsByPrincipal = new Map<string, Array<Doc<'workspacePresence'>>>()
-    for (const participant of participants) {
-      const presenceRows = await ctx.db.query('workspacePresence')
-        .withIndex('by_workspaceId_principalId', (q) => (
-          q.eq('workspaceId', args.workspaceId).eq('principalId', participant.principalId)
-        )).collect()
-      const sessions = presenceRows
-        .filter((row) => !row.conversationId || row.conversationId === args.conversationId)
-      if (sessions.length > 0) sessionsByPrincipal.set(participant.principalId, sessions)
-    }
-    return [...sessionsByPrincipal.values()].map((sessions) => {
-      const active = sessions
-        .filter((session) => now - session.lastSeenAt <= 120_000)
-        .filter((session) => session.status !== 'offline')
-        .sort((left, right) => right.updatedAt - left.updatedAt)
-      const latest = [...sessions].sort((left, right) => right.updatedAt - left.updatedAt)[0]!
-      const representative = active[0] ?? latest
-      const status = active.some((session) => session.status === 'online')
-        ? 'online' as const
-        : active.length > 0 ? 'away' as const : 'offline' as const
-      const typing = active.some((session) => Boolean(
-        session.typingExpiresAt && session.typingExpiresAt > now,
-      ))
-      return {
-        workspaceId: representative.workspaceId,
-        principalId: representative.principalId,
-        sessionId: representative.sessionId,
-        conversationId: representative.conversationId,
-        status,
-        typing,
-        lastSeenAt: representative.lastSeenAt,
-        typingExpiresAt: typing ? representative.typingExpiresAt : undefined,
-      }
-    })
+    return await computePresence(ctx, args.conversationId, args.workspaceId)
   },
 })
+
+/**
+ * Live subscription for conversation presence.
+ * Uses accessToken auth so the browser can subscribe via useQuery
+ * and get realtime presence/typing updates without HTTP polling.
+ */
+export const watchPresence = query({
+  args: {
+    accessToken: v.string(),
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+  },
+  returns: v.union(
+    v.object({ ok: v.literal(false), presence: v.array(v.any()) }),
+    v.object({ ok: v.literal(true), presence: v.array(v.any()) }),
+  ),
+  handler: async (ctx, args) => {
+    try {
+      const presence = await computePresence(ctx, args.conversationId, args.workspaceId, args)
+      return { ok: true as const, presence }
+    } catch (error) {
+      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
+        return { ok: false as const, presence: [] }
+      }
+      throw error
+    }
+  },
+})
+
+async function computePresence(
+  ctx: CollaborationCtx,
+  conversationId: Id<'conversations'>,
+  workspaceId: string,
+  authArgs?: { accessToken?: string; actorUserId?: string; serverSecret?: string },
+) {
+  if (authArgs) {
+    await requireConversationAccess(ctx, {
+      conversationId,
+      workspaceId,
+      actorUserId: authArgs.actorUserId ?? '',
+      accessToken: authArgs.accessToken,
+      serverSecret: authArgs.serverSecret,
+    })
+  }
+  const participants = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_status', (q) => (
+      q.eq('conversationId', conversationId).eq('status', 'active')
+    )).collect()
+  const now = Date.now()
+  const sessionsByPrincipal = new Map<string, Array<Doc<'workspacePresence'>>>()
+  for (const participant of participants) {
+    const presenceRows = await ctx.db.query('workspacePresence')
+      .withIndex('by_workspaceId_principalId', (q) => (
+        q.eq('workspaceId', workspaceId).eq('principalId', participant.principalId)
+      )).collect()
+    const sessions = presenceRows
+      .filter((row) => !row.conversationId || row.conversationId === conversationId)
+    if (sessions.length > 0) sessionsByPrincipal.set(participant.principalId, sessions)
+  }
+  return [...sessionsByPrincipal.values()].map((sessions) => {
+    const active = sessions
+      .filter((session) => now - session.lastSeenAt <= 120_000)
+      .filter((session) => session.status !== 'offline')
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+    const latest = [...sessions].sort((left, right) => right.updatedAt - left.updatedAt)[0]!
+    const representative = active[0] ?? latest
+    const status = active.some((session) => session.status === 'online')
+      ? 'online' as const
+      : active.length > 0 ? 'away' as const : 'offline' as const
+    const typing = active.some((session) => Boolean(
+      session.typingExpiresAt && session.typingExpiresAt > now,
+    ))
+    return {
+      workspaceId: representative.workspaceId,
+      principalId: representative.principalId,
+      sessionId: representative.sessionId,
+      conversationId: representative.conversationId,
+      status,
+      typing,
+      lastSeenAt: representative.lastSeenAt,
+      typingExpiresAt: typing ? representative.typingExpiresAt : undefined,
+    }
+  })
+}
 
 export const recordMessageActivity = mutation({
   args: {

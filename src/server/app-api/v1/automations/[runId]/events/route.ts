@@ -18,6 +18,14 @@ import { logger } from '@/server/observability/logger'
 // sends new events as SSE data lines. When the run reaches a terminal
 // state (completed, failed, cancelled), the stream closes.
 //
+// NOTE: As of Phase D, workflow step events are also projected into the
+// Convex `workflowStepEvents` table by a cron-triggered projector action
+// (every 10 seconds). Clients should prefer subscribing via the Convex
+// query `api.automations.workflowEvents.watchWorkflowStepEvents` for
+// realtime updates. This SSE endpoint remains as a fallback for non-Convex
+// providers and for clients that need lower-latency updates than the
+// 10-second projection interval.
+//
 // Query params:
 //   - cursor: Resume from a specific event cursor (for reconnection)
 // ---------------------------------------------------------------------------

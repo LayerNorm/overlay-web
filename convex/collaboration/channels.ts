@@ -396,31 +396,51 @@ export const searchWorkspaceChats = query({
     const { principal } = await requireActor(ctx, args)
     const needle = args.query.trim().toLowerCase()
     if (!needle) return []
+    // Use the Convex search index for title matching (bounded top-K).
+    // This replaces the previous scan-and-filter approach that loaded all
+    // participant conversations and iterated through them.
+    const titleMatchesRaw = await ctx.db
+      .query('conversations')
+      .withSearchIndex('search_title', (search) =>
+        search.search('title', needle).eq('workspaceId', args.workspaceId),
+      )
+      .take(Math.max(1, Math.min(50, args.limit ?? 30)) * 2)
+    const titleMatches = titleMatchesRaw.filter((c) => c.deletedAt === undefined)
+
+    // Build a set of conversation IDs the user can access.
     const participants = await ctx.db.query('conversationParticipants')
       .withIndex('by_workspaceId_principalId_status', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId).eq('status', 'active')
       )).collect()
-    const personal = await ctx.db.query('conversations')
-      .withIndex('by_workspaceId_conversationType_lastModified', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('conversationType', 'personal')
-      )).filter((q) => q.eq(q.field('userId'), args.actorUserId)).take(500)
-    const ids = new Set<Id<'conversations'>>([
+    const accessibleIds = new Set<Id<'conversations'>>([
       ...participants.map((row) => row.conversationId),
-      ...personal.map((row) => row._id),
+      ...titleMatches
+        .filter((c) => c.userId === args.actorUserId || c.conversationType === 'channel')
+        .map((c) => c._id),
     ])
+
     const results: Array<Record<string, unknown> & { createdAt: number }> = []
-    for (const conversationId of ids) {
-      const conversation = await ctx.db.get(conversationId)
-      if (!conversation || conversation.deletedAt) continue
-      if (conversation.title.toLowerCase().includes(needle)) {
+    for (const conversation of titleMatches) {
+      // Include channels (visible to all workspace members) and personal
+      // conversations owned by the actor.
+      if (conversation.conversationType === 'channel' || conversation.userId === args.actorUserId) {
         results.push({
-          conversationId, conversationType: conversation.conversationType ?? 'personal',
-          title: conversation.title, createdAt: conversation.createdAt,
+          conversationId: conversation._id,
+          conversationType: conversation.conversationType ?? 'personal',
+          title: conversation.title,
+          createdAt: conversation.createdAt,
         })
       }
+    }
+    // Also search message content for accessible conversations.
+    for (const conversationId of accessibleIds) {
+      const conversation = await ctx.db.get(conversationId)
+      if (!conversation || conversation.deletedAt) continue
+      // Skip if already matched by title.
+      if (results.some((r) => r.conversationId === conversationId)) continue
       const messages = await ctx.db.query('conversationMessages')
         .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
-        .order('desc').take(200)
+        .order('desc').take(50)
       for (const message of messages) {
         if (!message.deletedAt && message.content.toLowerCase().includes(needle)) {
           results.push({
@@ -428,6 +448,7 @@ export const searchWorkspaceChats = query({
             title: conversation.title, messageId: message._id,
             snippet: message.content.slice(0, 240), createdAt: message.createdAt,
           })
+          break // One message match per conversation is enough for search.
         }
       }
     }

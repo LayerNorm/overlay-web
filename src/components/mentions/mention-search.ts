@@ -265,9 +265,175 @@ function scoreMatch(item: MentionItem, query: string): number {
 }
 
 export async function searchMentions(query: string): Promise<MentionCategory[]> {
+  const q = query.trim().toLowerCase()
+  if (!q) {
+    // Empty query: return all items (existing behavior for initial dropdown).
+    const data = await fetchAll()
+    const capabilities = await getMentionCapabilities()
+    return CATEGORY_META.filter((cat) => {
+      switch (cat.type) {
+        case 'file':
+          return capabilities.files
+        case 'knowledge':
+          return capabilities.knowledge
+        case 'connector':
+          return capabilities.integrations
+        case 'automation':
+          return capabilities.automations
+        case 'skill':
+          return capabilities.skills
+        case 'mcp':
+          return capabilities.mcpServers
+        case 'chat':
+          return capabilities.chat
+      }
+    }).map((cat) => {
+      const items = data[mentionListKey(cat.type)]
+      return {
+        type: cat.type,
+        label: cat.label,
+        icon: cat.icon,
+        items: items.slice(0, 10),
+      }
+    }).filter((cat) => cat.items.length > 0)
+  }
+
+  // Try the indexed Convex search endpoint first (bounded top-K results).
+  // Falls back to the scan-and-filter approach if the endpoint is unavailable.
+  try {
+    const response = await fetch(`/api/v1/mention-search?q=${encodeURIComponent(q)}`, {
+      credentials: 'same-origin',
+    })
+    if (response.ok) {
+      const result = await response.json() as {
+        conversations: Array<{ _id: string; title: string }>
+        files: Array<{ _id: string; name: string; kind?: string; mimeType?: string }>
+        notes: Array<{ _id: string; title: string }>
+        automations: Array<{ _id: string; name?: string; description?: string }>
+        skills: Array<{ _id: string; name: string; description: string }>
+        mcpServers: Array<{ _id: string; name: string; description?: string }>
+      }
+      const categories: MentionCategory[] = []
+      if (result.conversations.length > 0) {
+        categories.push({
+          type: 'chat',
+          label: 'Chats',
+          icon: 'MessageSquare',
+          items: result.conversations.map((c) => ({
+            type: 'chat' as const,
+            id: c._id,
+            name: c.title || 'Untitled chat',
+            icon: 'MessageSquare',
+          })),
+        })
+      }
+      const fileItems = [
+        ...result.files.map((f) => ({
+          type: 'file' as const,
+          id: f._id,
+          name: f.name || 'Untitled',
+          description: f.kind || f.mimeType || 'file',
+          icon: 'FileText',
+        })),
+        ...result.notes.map((n) => ({
+          type: 'file' as const,
+          id: n._id,
+          name: n.title || 'Untitled',
+          description: 'note',
+          icon: 'FileText',
+        })),
+      ]
+      if (fileItems.length > 0) {
+        categories.push({
+          type: 'file',
+          label: 'Files',
+          icon: 'FileText',
+          items: fileItems.slice(0, 10),
+        })
+      }
+      if (result.automations.length > 0) {
+        categories.push({
+          type: 'automation',
+          label: 'Automations',
+          icon: 'Zap',
+          items: result.automations.map((a) => ({
+            type: 'automation' as const,
+            id: a._id,
+            name: a.name || 'Untitled automation',
+            description: a.description || '',
+            icon: 'Zap',
+          })),
+        })
+      }
+      if (result.skills.length > 0) {
+        categories.push({
+          type: 'skill',
+          label: 'Skills',
+          icon: 'Sparkles',
+          items: result.skills.map((s) => ({
+            type: 'skill' as const,
+            id: s._id,
+            name: s.name,
+            description: s.description || '',
+            icon: 'Sparkles',
+          })),
+        })
+      }
+      if (result.mcpServers.length > 0) {
+        categories.push({
+          type: 'mcp',
+          label: 'MCP Servers',
+          icon: 'Server',
+          items: result.mcpServers.map((m) => ({
+            type: 'mcp' as const,
+            id: m._id,
+            name: m.name,
+            description: m.description || '',
+            icon: 'Server',
+          })),
+        })
+      }
+      // Knowledge bases and connectors are not in the Convex search index;
+      // fall back to client-side filtering for those categories.
+      const data = await fetchAll()
+      const capabilities = await getMentionCapabilities()
+      if (capabilities.knowledge) {
+        const knowledgeItems = data.knowledge
+          .filter((item) => item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q))
+          .sort((a, b) => scoreMatch(b, q) - scoreMatch(a, q))
+          .slice(0, 10)
+        if (knowledgeItems.length > 0) {
+          categories.push({
+            type: 'knowledge',
+            label: 'Knowledge Bases',
+            icon: 'BookOpen',
+            items: knowledgeItems,
+          })
+        }
+      }
+      if (capabilities.integrations) {
+        const connectorItems = data.connectors
+          .filter((item) => item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q))
+          .sort((a, b) => scoreMatch(b, q) - scoreMatch(a, q))
+          .slice(0, 10)
+        if (connectorItems.length > 0) {
+          categories.push({
+            type: 'connector',
+            label: 'Connectors',
+            icon: 'Plug',
+            items: connectorItems,
+          })
+        }
+      }
+      return categories
+    }
+  } catch {
+    // Fall through to scan-and-filter fallback.
+  }
+
+  // Fallback: scan-and-filter (existing behavior).
   const data = await fetchAll()
   const capabilities = await getMentionCapabilities()
-  const q = query.trim().toLowerCase()
   return CATEGORY_META.filter((cat) => {
     switch (cat.type) {
       case 'file':
