@@ -701,6 +701,9 @@ export default function ChatExperience({
     conversationId: activeChatId,
     enabled: !isPublicShowcase && Boolean(authUser),
     localStreamActive,
+    convexAccessToken,
+    enableConvexLiveSync: convexLiveSyncEnabled,
+    userId: authUser?.id,
   })
   const {
     liveQueryBridge,

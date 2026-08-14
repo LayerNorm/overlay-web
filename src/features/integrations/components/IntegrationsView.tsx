@@ -150,10 +150,14 @@ export default function IntegrationsView({
   }, [rememberLogos])
 
   useEffect(() => {
+    // Skip the initial mount fetch when server-rendered data is already
+    // present.  The three BFF requests would duplicate what the server
+    // already fetched.  We still listen for mutation events below.
+    if (hasInitialData) return
     void loadRegistry()
     void loadConnected()
     void loadCatalog()
-  }, [loadCatalog, loadConnected, loadRegistry])
+  }, [hasInitialData, loadCatalog, loadConnected, loadRegistry])
 
   useWorkspaceChanged(useCallback(() => {
     loadConnected()
@@ -161,7 +165,12 @@ export default function IntegrationsView({
   }, [loadConnected, loadCatalog]))
 
   useEffect(() => {
+    let lastFetchAt = Date.now()
     const onFocus = () => {
+      // Only refetch on focus if at least 60 seconds have passed since
+      // the last fetch.  Prevents redundant requests when rapidly switching tabs.
+      if (Date.now() - lastFetchAt < 60_000) return
+      lastFetchAt = Date.now()
       void loadConnected()
       void loadCatalog()
     }

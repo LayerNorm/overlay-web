@@ -4,6 +4,16 @@ import { useEffect, useState } from 'react'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { sanitizeEmptyChatStarters } from '@overlay/chat-core'
+import { coalesceRequest } from '@/shared/observability/request-coalescer'
+
+type ChatSuggestionsResponse = { prompts?: string[]; stale?: boolean }
+
+function fetchChatSuggestions(): Promise<ChatSuggestionsResponse> {
+  return coalesceRequest('chat-suggestions', async () => {
+    const response = await overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
+    return await response.json() as ChatSuggestionsResponse
+  })
+}
 
 const DEFAULT_AUTOMATE_SUGGESTIONS = [
   'Email me a daily digest of my top priorities',
@@ -31,7 +41,7 @@ export function useEmptyChatStarters({
     let cancelled = false
     let refetchTimer: number | undefined
 
-    const apply = (data: { prompts?: string[]; stale?: boolean }) => {
+    const apply = (data: ChatSuggestionsResponse) => {
       if (cancelled) return
       if (Array.isArray(data.prompts) && data.prompts.length === 4) {
         setEmptyChatStarters(sanitizeEmptyChatStarters(data.prompts, firstName))
@@ -39,9 +49,8 @@ export function useEmptyChatStarters({
       if (data.stale) {
         refetchTimer = window.setTimeout(() => {
           if (cancelled) return
-          void overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
-            .then((response) => response.json())
-            .then((payload: { prompts?: string[] }) => {
+          void fetchChatSuggestions()
+            .then((payload: ChatSuggestionsResponse) => {
               if (cancelled) return
               if (Array.isArray(payload.prompts) && payload.prompts.length === 4) {
                 setEmptyChatStarters(sanitizeEmptyChatStarters(payload.prompts, firstName))
@@ -54,8 +63,7 @@ export function useEmptyChatStarters({
       }
     }
 
-    overlayAppClient.chat.suggestionsResponse({ credentials: 'same-origin' })
-      .then((response) => response.json())
+    fetchChatSuggestions()
       .then(apply)
       .catch(() => {
         /* keep defaults */

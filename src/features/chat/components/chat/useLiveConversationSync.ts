@@ -200,6 +200,9 @@ export function useLiveConversationSync({
 
   useEffect(() => {
     if (!activeChatId) return
+    // When Convex live sync is active, the subscription is the sole source of
+    // truth for message updates — do not run the HTTP polling fallback.
+    if (enableConvexLiveSync && convexAccessToken) return
     if (hasActiveLocalHttpStream({ activeChatId, activeChatIdRef, actChat, chatInstances })) return
     const sessionIsStreaming = sessions[activeChatId]?.status === 'streaming'
     if (!sessionIsStreaming && !shouldSyncMessages) return
@@ -261,6 +264,8 @@ export function useLiveConversationSync({
     actChat,
     chatInstances,
     completeSession,
+    convexAccessToken,
+    enableConvexLiveSync,
     loadChats,
     onRuntimeMessagesChanged,
     runtimesRef,

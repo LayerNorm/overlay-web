@@ -642,13 +642,18 @@ export default function ProjectsView({
   }, [initialProjects])
 
   useEffect(() => {
-    void loadProjects()
+    // Skip the initial mount fetch when server-rendered data is already present.
+    // The loadProjects() call would duplicate the BFF request that the server
+    // already made.  We still listen for mutation events.
+    if (initialProjects.length === 0) {
+      void loadProjects()
+    }
     function onProjectsChanged() {
       void loadProjects()
     }
     window.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
-  }, [loadProjects])
+  }, [initialProjects.length, loadProjects])
 
   useWorkspaceChanged(loadProjects)
 

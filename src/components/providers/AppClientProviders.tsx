@@ -36,7 +36,10 @@ export function AppClientProviders({
   requiresConvexClient?: boolean
 }) {
   return (
-    <AuthProvider initialUser={initialUser}>
+    <AuthProvider
+      initialUser={initialUser}
+      initialSessionResolved={Boolean(initialUser)}
+    >
       <AppSettingsProvider>
         <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
           <GatewayModelCatalogPrefetch />

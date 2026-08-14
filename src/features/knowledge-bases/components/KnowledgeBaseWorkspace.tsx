@@ -147,7 +147,9 @@ export function KnowledgeBaseWorkspace({
       setSources(sourcesResult.value.sources)
     }
   }, [knowledgeBase.id, router])
-  useVisibleReconciliation(reconcileWorkspace)
+  // Reconcile every 15s while sources are active, but back off to 60s
+  // when idle to avoid unnecessary BFF calls.
+  useVisibleReconciliation(reconcileWorkspace, hasActiveSources ? 15_000 : 60_000)
 
   async function uploadFiles(files: File[]) {
     if (!canEdit || files.length === 0 || uploading) return

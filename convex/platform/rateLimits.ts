@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { mutation } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { withMetrics } from '../lib/metrics'
 
 const PRUNE_BATCH_SIZE = 25
 
@@ -21,7 +20,7 @@ export const takeManyByServer = mutation({
     remaining: v.number(),
     retryAfterSeconds: v.number(),
   })),
-  handler: withMetrics('platform.rateLimits.takeManyByServer', async (ctx, args) => {
+  handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
     const now = Date.now()
@@ -113,5 +112,5 @@ export const takeManyByServer = mutation({
     }
 
     return results
-  }),
+  },
 })
