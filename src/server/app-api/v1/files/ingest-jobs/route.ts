@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json({ error: 'Durable ingestion jobs require Convex provider' }, { status: 501 })
   }
 
-  const result = await convex.query<{ jobId: string }>('files/ingestion/jobs:createJob', {
+  const result = await convex.mutation<{ jobId: string }>('files/ingestion/jobs:createJob', {
     userId: context.auth.userId,
     r2Key: body.r2Key,
     fileName: body.fileName,
