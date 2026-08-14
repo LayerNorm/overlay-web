@@ -173,7 +173,7 @@ export function RoomMessageItem({
   /** Human and agent messages share the same safe GFM renderer. */
   const humanBody = message.text ? (
     <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
-      <MarkdownMessage text={message.text} isStreaming={false} />
+      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
     </div>
   ) : null
 
@@ -352,7 +352,7 @@ export function RoomMessageItem({
           {attachments}
           {editing ? editor : message.text ? (
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-              <MarkdownMessage text={message.text} isStreaming={false} />
+              <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
             </UserMessageBubble>
           ) : null}
           {message.delivery === 'failed' ? (

@@ -99,6 +99,19 @@ test('file mutations accept null parent and project IDs', async () => {
   })
 })
 
+test('conversation participant removal uses the scoped participant endpoint', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.conversations.removeParticipant('conversation_1', 'principal_1')
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/conversations/conversation_1/participants',
+  )
+  assert.equal(calls[0]!.init?.method, 'DELETE')
+  assert.deepEqual(await jsonBody(calls[0]!), { principalId: 'principal_1' })
+})
+
 test('module feature methods use canonical app endpoints', async () => {
   const { calls, client } = createRecordedClient()
 

@@ -210,6 +210,13 @@ export class ConversationsClient {
     )
   }
 
+  removeParticipant(conversationId: string, principalId: string, init?: MutationRequestInit) {
+    return this.http.json<{ removed: boolean }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/participants`,
+      this.http.jsonRequest({ principalId }, { ...init, method: 'DELETE' }),
+    )
+  }
+
   updateParticipantState(
     conversationId: string,
     state: ConversationParticipantStateInput,

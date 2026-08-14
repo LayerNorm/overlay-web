@@ -167,8 +167,7 @@ test('agent replies render markdown and tool output through the shared block ren
 
 test('room members named in a message render as mention chips', () => {
   const html = render(record({ id: 'message_6', content: '@Maya Chen can you take this?' }))
-  assert.match(html, /@Maya Chen/)
-  assert.match(html, /inline-flex/)
+  assert.match(html, /class="mx-0\.5 inline-flex items-center rounded-md[^"]*">@Maya Chen<\/span>/)
 })
 
 test('human room messages render safe markdown like every other chat message', () => {

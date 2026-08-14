@@ -14,6 +14,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
+import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import {
   buildWorkspaceHref,
   readWorkspaceIdFromPath,
@@ -27,12 +28,12 @@ const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: 
   { value: 'reactions', label: 'Reactions', icon: Smile },
 ]
 
-const EMPTY_LABELS: Record<WorkspaceNotificationFilter, string> = {
-  all: 'You are all caught up.',
-  unread: 'Nothing unread.',
-  mentions: 'No one has mentioned you.',
-  threads: 'No replies in threads you follow.',
-  reactions: 'No reactions yet.',
+const EMPTY_STATES: Record<WorkspaceNotificationFilter, { title: string; description: string }> = {
+  all: { title: 'No activity yet', description: 'You are all caught up.' },
+  unread: { title: 'Nothing unread', description: 'New unread activity will appear here.' },
+  mentions: { title: 'No mentions', description: 'Mentions from people and agents will appear here.' },
+  threads: { title: 'No thread replies', description: 'Replies in threads you follow will appear here.' },
+  reactions: { title: 'No reactions', description: 'Reactions to your messages will appear here.' },
 }
 
 function notificationIcon(type: WorkspaceNotification['type']) {
@@ -132,23 +133,29 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       )}
     >
       <div className="h-full min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
-          {unreadCount > 0 ? (
-            <div className="mb-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => void markAllRead()}
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <BellOff size={13} /> Mark all read
-              </button>
-            </div>
-          ) : null}
-          {loading ? (
+        {loading ? (
+          <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
             <SidebarListSkeleton rows={8} />
-          ) : notifications.length === 0 ? (
-            <p className="px-2 py-16 text-center text-sm text-[var(--muted-light)]">{EMPTY_LABELS[filter]}</p>
-          ) : (
+          </div>
+        ) : notifications.length === 0 ? (
+          <ChatSurfaceEmptyState
+            icon={Inbox}
+            title={EMPTY_STATES[filter].title}
+            description={EMPTY_STATES[filter].description}
+          />
+        ) : (
+          <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
+            {unreadCount > 0 ? (
+              <div className="mb-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void markAllRead()}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <BellOff size={13} /> Mark all read
+                </button>
+              </div>
+            ) : null}
             <ul className="space-y-0.5">
               {notifications.map((notification) => (
                 <li key={notification.id}>
@@ -179,8 +186,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                 </li>
               ))}
             </ul>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </AppScreenShell>
   )

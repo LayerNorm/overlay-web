@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, Bell, Hash, Loader2, MessageSquare, RotateCcw, UsersRound } from 'lucide-react'
+import { Archive, Bell, Hash, Loader2, MessageSquare, RotateCcw, Trash2, UsersRound } from 'lucide-react'
 import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
 import {
   CHAT_ARCHIVED_EVENT,
+  dispatchChatDeleted,
   dispatchChatModified,
   type ChatArchivedDetail,
 } from '@/shared/chat/chat-title'
@@ -139,6 +140,8 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const [items, setItems] = useState<ArchivedConversation[] | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set())
   const activeId = searchParams?.get('id')
     ?? (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('id'))
   const archivedBase = (() => {
@@ -215,6 +218,39 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
     }
   }
 
+  async function deleteArchived(conversation: ArchivedConversation, event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    if (deletingIds.has(conversation._id)) return
+    setDeletingIds((current) => new Set(current).add(conversation._id))
+    try {
+      if (conversation.conversationType === 'channel' || conversation.conversationType === 'dm') {
+        const { currentPrincipalId } = await overlayAppClient.conversations.participants(conversation._id)
+        const { removed } = await overlayAppClient.conversations.removeParticipant(
+          conversation._id,
+          currentPrincipalId,
+        )
+        if (!removed) throw new Error('Conversation was not removed')
+      } else {
+        const response = await overlayAppClient.conversations.deleteResponse({
+          conversationId: conversation._id,
+        })
+        if (!response.ok) throw new Error('Conversation was not deleted')
+      }
+      setItems((current) => current?.filter((item) => item._id !== conversation._id) ?? null)
+      setPendingDeleteId(null)
+      dispatchChatDeleted({ chatId: conversation._id })
+      if (activeId === conversation._id) router.push(archivedBase)
+    } catch {
+      void load()
+    } finally {
+      setDeletingIds((current) => {
+        const next = new Set(current)
+        next.delete(conversation._id)
+        return next
+      })
+    }
+  }
+
   if (items === null) {
     return <PanelState icon={<Loader2 size={15} className="animate-spin" />} message="Loading archived…" />
   }
@@ -224,33 +260,66 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
 
   return (
     <SidebarResourceList>
-      {items.map((conversation) => (
-        <SidebarResourceRow
-          key={conversation._id}
-          active={activeId === conversation._id}
-          onClick={() => openArchived(conversation)}
-          className="cursor-pointer"
-        >
-          {conversation.conversationType === 'channel' ? (
-            <Hash size={12} className="shrink-0" aria-hidden />
-          ) : conversation.conversationType === 'dm' ? (
-            <UsersRound size={12} className="shrink-0" aria-hidden />
-          ) : (
-            <MessageSquare size={12} className="shrink-0" aria-hidden />
-          )}
-          <span className="min-w-0 flex-1 truncate">
-            {conversation.title?.trim() || 'Untitled conversation'}
-          </span>
-          <button
-            type="button"
-            onClick={(event) => void restore(conversation, event)}
-            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-            aria-label={`Restore ${conversation.title?.trim() || 'conversation'}`}
+      {items.map((conversation) => {
+        const isConfirmingDelete = pendingDeleteId === conversation._id
+        const isDeleting = deletingIds.has(conversation._id)
+        const label = conversation.title?.trim() || 'Untitled conversation'
+        return (
+          <SidebarResourceRow
+            key={conversation._id}
+            active={activeId === conversation._id}
+            onClick={() => openArchived(conversation)}
+            onMouseLeave={() => {
+              if (isConfirmingDelete && !isDeleting) setPendingDeleteId(null)
+            }}
+            className="cursor-pointer"
           >
-            <RotateCcw size={11} />
-          </button>
-        </SidebarResourceRow>
-      ))}
+            {conversation.conversationType === 'channel' ? (
+              <Hash size={12} className="shrink-0" aria-hidden />
+            ) : conversation.conversationType === 'dm' ? (
+              <UsersRound size={12} className="shrink-0" aria-hidden />
+            ) : (
+              <MessageSquare size={12} className="shrink-0" aria-hidden />
+            )}
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {isConfirmingDelete ? (
+              <button
+                type="button"
+                onClick={(event) => void deleteArchived(conversation, event)}
+                disabled={isDeleting}
+                className="inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25 disabled:opacity-30"
+                aria-label={`Confirm delete ${label}`}
+              >
+                {isDeleting ? <Loader2 size={11} className="animate-spin" /> : 'Confirm'}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => void restore(conversation, event)}
+                  disabled={isDeleting}
+                  className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] disabled:opacity-30 group-hover:opacity-100 focus-visible:opacity-100"
+                  aria-label={`Restore ${label}`}
+                >
+                  <RotateCcw size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setPendingDeleteId(conversation._id)
+                  }}
+                  disabled={isDeleting}
+                  className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-red-500 disabled:opacity-30 group-hover:opacity-100 focus-visible:opacity-100"
+                  aria-label={`Delete ${label}`}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </>
+            )}
+          </SidebarResourceRow>
+        )
+      })}
     </SidebarResourceList>
   )
 }

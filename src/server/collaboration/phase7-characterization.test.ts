@@ -126,10 +126,12 @@ test('Phase 7 keeps one contract for web, desktop, and mobile surfaces', async (
 })
 
 test('workspace rooms route to the collaboration experience and use participant-scoped persistence', async () => {
-  const [boundary, router, inlinePanel, conversationsRoute, messageRoute, activity, room, convexRooms, realtimeProvider] = await Promise.all([
+  const [boundary, router, emptyState, inlinePanel, archivedPanel, conversationsRoute, messageRoute, activity, room, convexRooms, realtimeProvider] = await Promise.all([
     readFile(`${root}/src/features/chat/components/ChatSuspenseBoundary.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ConversationExperienceRouter.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/ChatSurfaceEmptyState.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ChatInlinePanel.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/ChatSubviewInlinePanels.tsx`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/conversations/route.ts`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ChatActivityView.tsx`, 'utf8'),
@@ -141,10 +143,13 @@ test('workspace rooms route to the collaboration experience and use participant-
   assert.match(router, /view === 'dms'/)
   assert.match(router, /view === 'channels'/)
   assert.match(router, /overlay:chat-route-selected/)
-  assert.match(router, /items-center justify-center/)
+  assert.match(router, /ChatSurfaceEmptyState/)
+  assert.match(emptyState, /items-center justify-center/)
   assert.match(inlinePanel, /chat\.conversationType === 'channel'/)
   assert.match(inlinePanel, /view: targetView/)
   assert.match(inlinePanel, /overlay:collaboration-read/)
+  assert.match(archivedPanel, /Confirm delete/)
+  assert.match(archivedPanel, /removeParticipant/)
   assert.match(conversationsRoute, /listAccessibleConversations/)
   assert.match(conversationsRoute, /paginateArray/)
   assert.match(conversationsRoute, /view === 'dms'/)
@@ -153,6 +158,8 @@ test('workspace rooms route to the collaboration experience and use participant-
   assert.match(messageRoute, /recordMessageActivity/)
   assert.match(activity, /conversationType === 'channel'/)
   assert.match(activity, /conversationType === 'dm'/)
+  assert.match(activity, /ChatSurfaceEmptyState/)
+  assert.match(room, /mainMessages\.length === 0 \? 'justify-center'/)
   assert.match(room, /appDataCapabilities\.provider === 'convex'/)
   assert.match(room, /enabled: roomEventSyncEnabled/)
   assert.match(room, /markConversationNotificationsRead/)

@@ -1528,7 +1528,7 @@ export function DirectMessageExperience({
                 }}
                 className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
               >
-                <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col justify-end gap-1 sm:gap-1.5">
+                <div className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
                   {hasMoreMessages ? (
                     <button
                       type="button"
@@ -1546,7 +1546,7 @@ export function DirectMessageExperience({
                       ))}
                     </div>
                   ) : mainMessages.length === 0 ? (
-                    <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
+                    <div className="flex flex-col items-center justify-center text-center">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
                         {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
                       </span>
