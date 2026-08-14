@@ -56,6 +56,16 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         workspaceId: personalWorkspaceId,
         userId: invitedUserId,
       }), null)
+      const collaboration = new ConvexConversationCollaborationRepository()
+      const channel = await collaboration.createChannel({
+        actorUserId: ownerUserId,
+        workspaceId: personalWorkspaceId,
+        name: 'Agent Chat',
+        topic: 'Personal agent coordination',
+        visibility: 'public',
+      })
+      assert.equal(channel.slug, 'agent-chat')
+      assert.equal(channel.participantCount, 1)
     })
 
     await t.test('organization invitation and ownership lifecycle matches Postgres', async () => {

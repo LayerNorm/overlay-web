@@ -324,11 +324,11 @@ implements ConversationCollaborationRepository {
     const name = cleanTitle(args.name)
     const slug = channelSlug(name)
     if (!name || !slug) throw new Error('Channel name is required')
-    const [workspace] = await this.db.select({ kind: workspaces.kind }).from(workspaces).where(and(
+    const [workspace] = await this.db.select({ id: workspaces.id }).from(workspaces).where(and(
       eq(workspaces.id, args.workspaceId),
       eq(workspaces.status, 'active'),
     )).limit(1)
-    if (workspace?.kind !== 'organization') throw new Error('Channels require an organization workspace')
+    if (!workspace) throw new Error('Workspace is not active')
 
     const requestedIds = new Set([actor.id, ...(args.principalIds ?? [])])
     const eligible = await this.db

@@ -12,6 +12,7 @@ import { AgentEditorDialog } from './AgentEditorDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { dispatchAgentDirectoryChanged, NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
+import { dispatchChatCreated } from '@/shared/chat/chat-title'
 
 const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   ['showcase-research', 'Research partner', 'Finds primary evidence and challenges assumptions.', '#2563eb'],
@@ -112,6 +113,14 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     try {
       const { directMessage } = await overlayAppClient.conversations.createDirectMessage({
         principalIds: [agent.principalId],
+      })
+      dispatchChatCreated({
+        chat: {
+          _id: directMessage.conversationId,
+          title: directMessage.title,
+          lastModified: Date.now(),
+          conversationType: 'dm',
+        },
       })
       router.push(`${buildWorkspaceHref(activeWorkspaceId, '/app/chat')}?view=dms&id=${encodeURIComponent(directMessage.conversationId)}`)
     } catch (chatError) {

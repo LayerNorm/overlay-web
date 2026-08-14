@@ -49,6 +49,15 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       displayName: 'Owner',
       now: Date.now(),
     })
+    const personalChannel = await collaboration.createChannel({
+      actorUserId: ownerUserId,
+      workspaceId: personalWorkspaceId,
+      name: 'Agent Chat',
+      topic: 'Personal agent coordination',
+      visibility: 'public',
+    })
+    assert.equal(personalChannel.slug, 'agent-chat')
+    assert.equal(personalChannel.participantCount, 1)
     await workspacesRepository.createOrganization({
       workspaceId,
       ownerPrincipalId,

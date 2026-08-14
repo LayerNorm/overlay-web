@@ -50,8 +50,16 @@ test('Phase 3 exposes Personal-to-DM forking and a dedicated collaborative surfa
     readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/collaboration/RoomMessageItem.tsx`, 'utf8'),
   ])
-  assert.match(personal, /Continue with people/)
+  assert.match(personal, /PersonalMentionConversionPrompt/)
   assert.match(direct, /use @ to notify someone/)
   assert.match(message, /Failed to send · Retry/)
   assert.match(message, /Message deleted/)
+})
+
+test('agent chats immediately publish their DM into the sidebar list', async () => {
+  const directory = await readFile(`${root}/src/features/agents/components/AgentsDirectory.tsx`, 'utf8')
+
+  assert.match(directory, /createDirectMessage/)
+  assert.match(directory, /dispatchChatCreated/)
+  assert.match(directory, /conversationType: 'dm'/)
 })

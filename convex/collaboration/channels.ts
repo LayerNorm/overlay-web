@@ -85,8 +85,8 @@ export const createChannel = mutation({
     const workspace = await ctx.db.query('workspaces')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .unique()
-    if (!workspace || workspace.kind !== 'organization' || workspace.status !== 'active') {
-      throw new Error('Channels require an organization workspace')
+    if (!workspace || workspace.status !== 'active') {
+      throw new Error('Workspace is not active')
     }
     const name = args.name.trim().replace(/\s+/g, ' ').slice(0, 120)
     const slug = slugify(name)

@@ -14,6 +14,11 @@ import {
 } from '@/server/integrations'
 import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
 import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
+import {
+  CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+  CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
+  type BillingAccountRecord,
+} from '@/shared/billing/billing-account'
 
 const originalNextPhase = process.env.NEXT_PHASE
 const originalInternalApiSecret = process.env.INTERNAL_API_SECRET
@@ -126,6 +131,19 @@ function context(): AppApiRouteContext {
         updatedAt: 0,
       },
     },
+  }
+}
+
+function personalBillingAccountFixture(): BillingAccountRecord {
+  return {
+    billingAccountId: 'billing_account_user_1',
+    createdAt: 0,
+    markupBasisPoints: CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+    pricingVersion: CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
+    scope: 'personal',
+    status: 'active',
+    updatedAt: 0,
+    userId: 'user_1',
   }
 }
 
@@ -846,6 +864,12 @@ test('conversations act preserves premium gating response shape for free users',
     }
     throw new Error(`Unexpected Convex query: ${path}`)
   })
+  t.mock.method(convex, 'mutation', async (path: string) => {
+    if (path === 'billing/accounts:ensurePersonalByServer') {
+      return personalBillingAccountFixture()
+    }
+    throw new Error(`Unexpected Convex mutation: ${path}`)
+  })
 
   const route = await import('./conversations/act/route')
   const response = await route.POST(
@@ -892,6 +916,9 @@ test('conversations act swallows user-message persistence failure before later f
     throw new Error(`Unexpected Convex query: ${path}`)
   })
   t.mock.method(convex, 'mutation', async (path: string) => {
+    if (path === 'billing/accounts:ensurePersonalByServer') {
+      return personalBillingAccountFixture()
+    }
     if (path === 'chat/conversations:addMessage') {
       sawUserMessagePersist = true
       throw new Error('user message persistence failed')

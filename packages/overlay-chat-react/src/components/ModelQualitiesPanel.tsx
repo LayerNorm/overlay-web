@@ -23,7 +23,7 @@ function MetricRow({
         <Icon size={11} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
         <span>{label}</span>
       </div>
-      <span className="whitespace-nowrap text-[11px] font-medium tabular-nums text-[var(--foreground)]">
+      <span className="whitespace-nowrap text-[11px] font-normal tabular-nums text-[var(--muted)]">
         {value}
       </span>
     </div>
@@ -75,7 +75,7 @@ export function ModelQualitiesPanel({
         icon={ShieldCheck}
         label="ZDR"
         value={
-          <span className="inline-flex items-center gap-1 text-[var(--foreground)]">
+          <span className="inline-flex items-center gap-1">
             {model.supportsZeroDataRetention ? <Check size={11} strokeWidth={2} /> : <X size={11} strokeWidth={2} />}
           </span>
         }
@@ -94,10 +94,10 @@ export function ModelQualitiesPanel({
             portal
             className="min-w-0 max-w-[8.25rem] flex-1"
             // Reads like the metric values above it — no box, no fill, same
-            // 11px foreground text, right-aligned with a small chevron. The
+            // 11px muted text, right-aligned with a small chevron. The
             // border/background come from the ListboxSelect default; override
             // them to transparent so the control blends into the panel.
-            buttonClassName="h-6 w-full justify-end gap-1 rounded-md border-transparent bg-transparent px-1 py-0 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+            buttonClassName="h-6 min-h-0 w-full justify-end gap-1 rounded-none border-transparent bg-transparent px-0 py-0 text-[11px] font-normal text-[var(--muted)] hover:bg-transparent hover:text-[var(--foreground)]"
             menuClassName="min-w-[8.25rem] rounded-lg py-0.5"
           />
         </div>

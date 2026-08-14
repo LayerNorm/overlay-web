@@ -244,6 +244,8 @@ export function DirectMessageExperience({
     text: string
     threadRootMessageId?: string
   }>>({})
+  const streamingAgentTextLength = Object.values(streamingAgentReplies)
+    .reduce((length, reply) => length + reply.text.length, 0)
   const [shareOpen, setShareOpen] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -581,7 +583,7 @@ export function DirectMessageExperience({
       window.requestAnimationFrame(pin)
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [conversationId, loading, messages.length])
+  }, [agentResponding, conversationId, loading, messages.length, streamingAgentTextLength])
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -1594,7 +1596,7 @@ export function DirectMessageExperience({
                   )}
                   {mainStreamingReplies.map((reply) => renderStreamingAgentReply(reply))}
                   {agentResponding && mainStreamingReplies.length === 0 ? (
-                    <div className="flex items-center gap-2 px-1" aria-label={`${agentResponding} is responding`}>
+                    <div className="flex items-center gap-2 px-1" aria-label={`${agentResponding} response pending`}>
                       <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
                       <span className="flex items-center gap-1">
                         {[0, 1, 2].map((dot) => (
@@ -1618,7 +1620,7 @@ export function DirectMessageExperience({
             >
               {typingNames.length > 0
                 ? `${typingNames.join(', ')} ${typingNames.length === 1 ? 'is' : 'are'} typing`
-                : agentResponding ? `${agentResponding} is responding` : ''}
+                : ''}
             </p>
             <ChatComposer
               mode="chat"
