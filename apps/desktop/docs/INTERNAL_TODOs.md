@@ -1,7 +1,7 @@
-# Desktop release todo
+# Internal TODOs
 
 **Status:** open  
-**Last updated:** 2026-07-25  
+**Last updated:** 2026-08-04  
 **Context:** Public history-free source is live at [LayerNorm/overlay-desktop](https://github.com/LayerNorm/overlay-desktop) (`main` tip after Dependabot batch). Official macOS downloads remain frozen until Gate B. Do not paste secrets into chat, issues, or commits.
 
 Ownership legend:
@@ -206,6 +206,64 @@ Publish freeze (`if: ${{ false }}`) remains until you confirm Apple credentials.
 
 ---
 
+## Cache Components migration — verification
+
+The web app (`overlay-landing-workspaces`) is progressively migrating routes to
+Cache Components (`cacheComponents: true` + `partialPrefetching: true` in
+`next.config.ts`). Each batch removes `export const instant = false` from routes
+and verifies that instant navigation works without breaking changes.
+
+### Dev-only validation warning (expected, not a bug)
+
+**Symptom:** In development (`npm run dev`), navigating to `/app/chat` and all
+other `/app/*` routes produces a console warning:
+
+> Could not validate that a segment in your UI has instant navigation.
+> Dropped segment: `src/app/app/chat/page.tsx`
+
+**Why this is expected:** The `/app` layout wraps `AppLayoutContent` (which
+includes `{children}`) in `<Suspense fallback={<AppShellLoadingFallback />}>`.
+During prerender, `getOverlaySession()` reads `cookies()`, causing the Suspense
+boundary to suspend. The page segment is dropped from the prerender, so Next.js
+cannot validate it for instant navigation. This is the normal PPR pattern — the
+static shell (`AppShellLoadingFallback`) renders immediately from the CDN, and
+the full content (including the page segment) streams in via the Suspense
+boundary after the session check resolves.
+
+**Verification that this is not a regression:**
+
+- [x] The warning does **not** appear in production (staging.getoverlay.io
+      confirmed — only the pre-existing `vercel.live` CSP error is present).
+- [x] The static shell (`app-brand-loader` / "Loading overlay") is present in
+      the raw HTML of `/app/chat` on staging.
+- [x] The dynamic content ("New conversation", chat input, model selector)
+      streams in and renders correctly after hydration.
+- [x] `<Activity>` UI state (sidebar collapse) is preserved across navigations
+      (Files → Chats confirmed on staging).
+- [x] All `/app/*` routes return 200 on staging with no new console errors.
+- [x] Security headers (CSP, X-Content-Type-Options, X-Frame-Options,
+      Referrer-Policy) are present on all converted routes.
+
+**When to worry:** If the warning appears in production, or if the static shell
+is missing from the HTML, or if the dynamic content never streams in, that
+indicates a real regression. The dev-only warning itself is safe to ignore.
+
+**Reference:** [Next.js instant-unrendered-segment docs](https://nextjs.org/docs/messages/instant-unrendered-segment)
+
+### Migration progress
+
+| Batch | Routes | Status |
+| --- | --- | --- |
+| 1 | `/privacy`, `/terms`, `/manifesto`, `/about`, `/pricing` | Done |
+| 2 | Root layout (`/`), home page (`/`) | Done |
+| 3 | `/app` layout, `/app/chat`, `/app/home`, `/app/pricing`, `/app/manifesto`, `/download` | Done |
+| 4+ | Remaining dynamic routes | Pending |
+
+See `docs/develop/browser-testing-with-playwright-mcp.md` for the QA workflow
+used to verify each batch.
+
+---
+
 ## Decisions log
 
 | Date | Decision | Owner |
@@ -218,6 +276,74 @@ Publish freeze (`if: ${{ false }}`) remains until you confirm Apple credentials.
 | 2026-07-25 | Session revocation scheduled Tue 2026-07-28 09:00–09:30 PT | owner |
 | 2026-07-25 | P1 docs/Mintlify/download UX landed; publish freeze kept | agent |
 | 2026-07-25 | Gate A checklist candidate SHA + history-free root filled | agent |
+| 2026-08-04 | Renamed RELEASE_TODO.md → INTERNAL_TODOs.md; added Cache Components verification section | agent |
 | _unset_ | Gate A signed | _unset_ |
 | _unset_ | Gate B signed | _unset_ |
 | _unset_ | Apple signing/notarization creds confirmed → unfreeze publish | _unset_ |
+
+---
+
+## Postgres parity — deferred from optimization plan
+
+**Status:** deferred  
+**Last updated:** 2026-08-14  
+**Context:** The active optimization plan (`overlay-landing-workspaces/optimizations.md`)
+targets Convex-mode deployments only. These Postgres-mode parity items were
+identified in the same audit but are not being implemented until Postgres-mode
+deployments are prioritized. Each item mirrors a Convex optimization that
+already has (or will have) a Convex-side implementation.
+
+### P0 — highest-impact Postgres fixes
+
+- [ ] **Replace the 250ms polling loop in the conversation-events route
+      with `waitForConversationEvents`.** The route currently queries
+      Postgres every 250ms during each 15-second long-poll request
+      (`src/server/app-api/v1/conversations/events/route.ts:40`). A
+      proper notifier-backed waiter already exists in
+      `PostgresActConversationRepository.ts:1309`. This is likely the
+      clearest immediate database-cost win for Postgres mode.
+
+- [ ] **Publish AgentRun status changes through LISTEN/NOTIFY or SSE**
+      instead of the current 2-second BFF polling loop. The Convex
+      side will use a subscription on the AgentRun document; Postgres
+      needs an equivalent realtime transport.
+
+- [ ] **Remove simultaneous Postgres transcript polling when a Convex
+      subscription is active.** If both transports are running, use
+      only the provider-appropriate one.
+
+### P1 — data-layer and search parity
+
+- [ ] **Add Postgres full-text or trigram indexes** for workspace chat
+      search. The Convex side will build search indexes for conversation
+      titles and message content; Postgres needs the equivalent.
+
+- [ ] **Implement Postgres-side pagination** for conversations, projects,
+      notes, automations and knowledge bases. The BFF pagination helper
+      currently parses, clones, sorts and repaginates full JSON arrays
+      in memory (`src/server/app-api/pagination.ts:8`). Pagination
+      belongs in the repository/database layer.
+
+- [ ] **Move presence to the Postgres realtime transport** instead of
+      15-second polling + 45-second heartbeat per room.
+
+### P1/P2 — rate-limiting and uploads
+
+- [ ] **Ensure Postgres enforces the same rate-limit contracts as Convex.**
+      If Convex request-rate mutation buckets are replaced with Redis/edge
+      enforcement, Postgres mode should use the same edge/Redis layer
+      rather than its own per-request database checks.
+
+- [ ] **Move Postgres document/media ingestion to durable direct-upload
+      jobs** matching the Convex-side pattern: presigned upload →
+      ingestion job → subscribe to job status.
+
+### P2 — enforcement parity
+
+- [ ] **Ensure Postgres enforces the same Personal workspace invariant**
+      as Convex (no invitations, members, roles, or collaborative
+      mutations in Personal workspaces).
+
+- [ ] **Ensure Postgres enforces row-level event delivery** matching
+      the Convex subscription model so the client can upsert one row
+      instead of reloading the full list.
