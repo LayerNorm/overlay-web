@@ -166,29 +166,40 @@ export const list = query({
     serverSecret: v.optional(v.string()),
     includeDeleted: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
+    limit: v.optional(v.number()),
+    beforeUpdatedAt: v.optional(v.number()),
   },
   returns: v.array(automationDoc),
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, projectId, limit, beforeUpdatedAt }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
+    const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
+    // Over-fetch by 3x to account for in-memory filters (deletedAt, workspaceId).
+    const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
     const rows = projectId
       ? await ctx.db
         .query('automations')
         .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
         .order('desc')
-        .take(200)
+        .take(scanLimit)
       : await ctx.db
         .query('automations')
-        .withIndex('by_userId_updatedAt', (q) => q.eq('userId', userId))
+        .withIndex('by_userId_updatedAt', (q) => {
+          const scoped = q.eq('userId', userId)
+          return beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt)
+            ? scoped.lt('updatedAt', beforeUpdatedAt)
+            : scoped
+        })
         .order('desc')
-        .take(200)
+        .take(scanLimit)
     return rows
       .filter((row) => row.userId === userId)
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
       .filter((row) => (workspaceId !== undefined ? row.workspaceId === workspaceId : true))
+      .slice(0, pageLimit)
   },
 })
 

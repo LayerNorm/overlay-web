@@ -79,4 +79,12 @@ crons.interval(
   {},
 )
 
+// Prune expired rate-limit windows periodically instead of in the request path.
+crons.interval(
+  'rate limit window pruning',
+  { minutes: 5 },
+  internal.platform.rateLimits.pruneExpiredWindowsInternal,
+  {},
+)
+
 export default crons

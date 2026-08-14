@@ -18,17 +18,18 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       )
     }
 
-    const access = await getOverlayServerContext().workspaceService.setActiveWorkspace(
+    const service = getOverlayServerContext().workspaceService
+    const access = await service.setActiveWorkspace(
       context.auth.userId,
       workspaceId,
     )
-    const members = await getOverlayServerContext().workspaceService.listMembers({
+    const memberCount = await service.countMembers({
       actorUserId: context.auth.userId,
       workspaceId: access.workspace.id,
     })
     const response: WorkspaceActivateResponse = {
       activeWorkspaceId: access.workspace.id,
-      workspace: toWorkspaceSummary(access, { memberCount: members.length }),
+      workspace: toWorkspaceSummary(access, { memberCount }),
     }
     const result = NextResponse.json(response)
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

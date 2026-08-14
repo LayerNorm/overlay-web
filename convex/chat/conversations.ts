@@ -253,19 +253,31 @@ export const list = query({
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+    beforeLastModified: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, limit, beforeLastModified }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
+    const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
+    // Over-fetch by 3x to account for in-memory filters (projectId, isAutomation,
+    // automation-linked, deletedAt, workspaceId).  This is still far less than
+    // the previous take(200) → slice(100) pattern.
+    const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
     const [all, automationConversationIds] = await Promise.all([
       ctx.db
         .query('conversations')
-        .withIndex('by_userId_lastModified', (q) => q.eq('userId', userId))
+        .withIndex('by_userId_lastModified', (q) => {
+          const scoped = q.eq('userId', userId)
+          return beforeLastModified !== undefined && Number.isFinite(beforeLastModified)
+            ? scoped.lt('lastModified', beforeLastModified)
+            : scoped
+        })
         .order('desc')
-        .take(200),
+        .take(scanLimit),
       getLinkedAutomationConversationIds(ctx, userId),
     ])
     return all
@@ -276,7 +288,7 @@ export const list = query({
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
       .filter((c) => (workspaceId !== undefined ? c.workspaceId === workspaceId : true))
-      .slice(0, 100)
+      .slice(0, pageLimit)
   },
 })
 
@@ -1236,8 +1248,9 @@ export const watchMessages = query({
     conversationId: v.id('conversations'),
     userId: v.string(),
     accessToken: v.string(),
+    limit: v.optional(v.number()),
   },
-  handler: async (ctx, { conversationId, userId, accessToken }) => {
+  handler: async (ctx, { conversationId, userId, accessToken, limit }) => {
     try {
       await authorizeUserAccess({ userId, accessToken })
     } catch {
@@ -1245,6 +1258,18 @@ export const watchMessages = query({
     }
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
+    // When a limit is provided, only watch the most recent N messages (the
+    // "tail").  This prevents loading the entire transcript for long
+    // conversations.  Older messages are loaded on demand via getRecentMessages.
+    const messageLimit = limit !== undefined ? Math.min(500, Math.max(1, Math.floor(limit))) : undefined
+    if (messageLimit !== undefined) {
+      const recent = await ctx.db
+        .query('conversationMessages')
+        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
+        .order('desc')
+        .take(messageLimit)
+      return recent.sort((a, b) => a.createdAt - b.createdAt)
+    }
     return await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))

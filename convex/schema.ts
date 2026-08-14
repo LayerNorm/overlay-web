@@ -498,6 +498,15 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_key', ['key']),
 
+  // Tracks one-time migrations that have been completed for a given scope
+  // (e.g. user, workspace).  Prevents migration-on-read patterns from
+  // running on every request after the migration has already been applied.
+  migrationMarkers: defineTable({
+    key: v.string(),
+    scope: v.string(),
+    completedAt: v.number(),
+  }).index('by_key_scope', ['key', 'scope']),
+
   daytonaUsageLedger: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),

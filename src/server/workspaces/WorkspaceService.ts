@@ -398,6 +398,23 @@ export class WorkspaceService {
     })
   }
 
+  /**
+   * Returns only the active member count for a workspace.
+   * Much cheaper than listMembers when the caller only needs the count —
+   * it skips loading principal rows entirely.
+   */
+  async countMembers(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<number> {
+    const actor = await this.requireActiveMember(args)
+    const memberships = await this.repository.listMemberships({
+      workspaceId: actor.workspace.id,
+      status: 'active',
+    })
+    return memberships.length
+  }
+
   async createTeam(args: {
     actorUserId: string
     workspaceId: string

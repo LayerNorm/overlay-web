@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { knowledgeBaseErrorResponse } from './errors'
 
 export async function GET(_request: NextRequest, context: AppApiRouteContext) {
@@ -8,13 +10,40 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
     const server = getOverlayServerContext()
     const service = server.knowledgeBaseService
     if (context.workspace.workspace.kind === 'personal') {
-      const legacyPersonalBases = await service.listPersonalKnowledgeBases(context.auth.userId)
-      await server.workspaceService.bindUnscopedResourcesToPersonalWorkspace({
-        actorUserId: context.auth.userId,
-        workspaceId: context.workspace.workspace.id,
-        resourceType: 'knowledge_base',
-        resourceIds: legacyPersonalBases.map(({ id }) => id),
-      })
+      // Only run the legacy workspace binding migration once per user.
+      // Subsequent requests skip the migration entirely.
+      const migrationKey = 'kb_personal_workspace_binding'
+      const migrationScope = context.auth.userId
+      const alreadyMigrated = await convex.query<boolean>(
+        'platform/migrations:isComplete',
+        {
+          serverSecret: getInternalApiSecret(),
+          key: migrationKey,
+          scope: migrationScope,
+        },
+        { throwOnError: false, timeoutMs: 5_000, suppressNetworkConsoleError: true },
+      ).catch((_error) => false)
+
+      if (!alreadyMigrated) {
+        const legacyPersonalBases = await service.listPersonalKnowledgeBases(context.auth.userId)
+        await server.workspaceService.bindUnscopedResourcesToPersonalWorkspace({
+          actorUserId: context.auth.userId,
+          workspaceId: context.workspace.workspace.id,
+          resourceType: 'knowledge_base',
+          resourceIds: legacyPersonalBases.map(({ id }) => id),
+        })
+        // Mark the migration as complete so it doesn't run again.
+        await convex.mutation(
+          'platform/migrations:markComplete',
+          {
+            serverSecret: getInternalApiSecret(),
+            key: migrationKey,
+            scope: migrationScope,
+            now: Date.now(),
+          },
+          { throwOnError: false, timeoutMs: 5_000, suppressNetworkConsoleError: true },
+        ).catch((_error) => undefined)
+      }
     }
     const workspaceResourceIds = new Set(
       await server.workspaceService.listResourceIdsByWorkspace({

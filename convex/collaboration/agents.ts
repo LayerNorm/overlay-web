@@ -140,7 +140,17 @@ export const updateByServer = mutation({
           && item.name.toLowerCase() === args.name!.trim().toLowerCase())
       if (duplicate) throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
     }
-    const patch = {
+    const patch: {
+      name?: string
+      description?: string
+      instructions?: string
+      harness?: 'overlay' | 'claude-code'
+      modelId?: string
+      avatarColor?: string
+      allowedToolIds?: string[]
+      teamIds?: string[]
+      updatedAt: number
+    } = {
       ...(args.name === undefined ? {} : { name: args.name.trim() }),
       ...(args.description === undefined ? {} : { description: cleanOptional(args.description) }),
       ...(args.instructions === undefined ? {} : { instructions: args.instructions.trim() }),
@@ -172,6 +182,9 @@ export const updateByServer = mutation({
           addedByPrincipalId: args.updatedByPrincipalId, createdAt: args.now,
         })
       }
+      // Store the updated teamIds projection on the definition row so
+      // listByServer can read it without N+1 queries.
+      patch.teamIds = unique(args.teamIds)
     }
     return await directoryValue(ctx, { ...row, ...patch })
   },
@@ -185,7 +198,7 @@ export const archiveByServer = mutation({
     const row = await ctx.db.query('workspaceAgentDefinitions')
       .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
     if (!row || row.workspaceId !== args.workspaceId || row.archivedAt) return false
-    await ctx.db.patch(row._id, { archivedAt: args.now, updatedAt: args.now })
+    await ctx.db.patch(row._id, { archivedAt: args.now, updatedAt: args.now, roomCount: 0, teamIds: [] })
     const principal = await ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
     if (principal) await ctx.db.patch(principal._id, { archivedAt: args.now, updatedAt: args.now })
@@ -229,14 +242,24 @@ async function directoryValue(
   ctx: QueryCtx | MutationCtx,
   row: Doc<'workspaceAgentDefinitions'>,
 ) {
+  const { _id, _creationTime, ...value } = row
+  void _id
+  void _creationTime
+
+  // Use stored projections when available (set transactionally by mutations).
+  // Fall back to live computation only for older rows that predate stored
+  // projections — this maintains backward compatibility while eliminating
+  // N+1 queries for the common case.
+  if (row.teamIds !== undefined && row.roomCount !== undefined) {
+    return { ...value, teamIds: row.teamIds, roomCount: row.roomCount }
+  }
+
+  // Legacy fallback: compute from related tables.
   const teams = await ctx.db.query('workspaceTeamMemberships')
     .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
   const rooms = await ctx.db.query('conversationParticipants')
     .withIndex('by_workspaceId_principalId_status', (q) =>
       q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
-  const { _id, _creationTime, ...value } = row
-  void _id
-  void _creationTime
   return { ...value, teamIds: teams.map((item) => item.teamId).sort(), roomCount: rooms.length }
 }
 

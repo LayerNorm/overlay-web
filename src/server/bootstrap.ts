@@ -592,9 +592,16 @@ function filterRuntimeModels(modelAllowlist: readonly string[] | undefined) {
 }
 
 function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {
-  const provider = config
+  // Prefer Redis when configured — it's cheaper than Convex for per-request
+  // rate limiting and doesn't add writes to the Convex deployment.
+  // Fall back to Convex when Redis is not configured.
+  const explicitProvider = config
     ? selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
     : 'convex'
+  const redisConfig = config?.rateLimit.redis
+  const hasRedisConfig = Boolean(redisConfig?.url || (redisConfig?.restUrl && redisConfig?.restToken))
+  const provider = explicitProvider === 'convex' && hasRedisConfig ? 'redis' : explicitProvider
+
   if (provider === 'memory' || provider === 'none') {
     return new InMemoryRateLimiter()
   }

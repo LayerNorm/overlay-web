@@ -94,6 +94,20 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 
 `GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web/desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.
 
+## Database pagination (Phase B)
+
+Convex list queries for conversations, projects, notes, and automations now accept `limit` and cursor parameters (`beforeLastModified` for conversations, `beforeUpdatedAt` for others). The default page size is 100 (down from unbounded/200/300). Over-fetch is bounded at 3x the page limit to account for in-memory filters. The BFF `paginateArray` helper still handles final client-facing pagination on the merged result.
+
+`watchMessages` now accepts an optional `limit` parameter. When provided, it watches only the most recent N messages (the "tail") instead of the entire transcript. The client passes `limit=200` by default; older history is loaded on demand via `getRecentMessages`.
+
+## One-time migrations
+
+Legacy migration-on-read patterns (e.g. knowledge-base workspace binding) are being replaced with one-time migrations tracked by the `migrationMarkers` Convex table. Each migration is identified by a `key` (e.g. `kb_personal_workspace_binding`) and scoped to a user or workspace. The BFF checks `platform/migrations:isComplete` before running the migration and calls `platform/migrations:markComplete` after. Subsequent requests skip the migration entirely.
+
+## Rate limiting
+
+The rate limit provider is selected at bootstrap. Redis is preferred when configured (TCP or Upstash REST), falling back to Convex. The Convex `takeManyByServer` mutation no longer prunes expired windows in the request path — pruning is handled by a periodic cron job (`pruneExpiredWindowsInternal`, every 5 minutes). This eliminates N extra deletes per authenticated BFF request.
+
 ## Workspace Billing
 
 Workspace billing is exposed only through authenticated `/api/v1/workspaces/:workspaceId/billing*` routes. The transport contract lives in `@overlay/workspace-contracts` and `WorkspacesClient` provides summary, initialize, subscription checkout, top-up, portal, and verification methods. Summary responses expose rollout eligibility, credit buckets, subscription status, and manager-only operational data but not the billing-account identifier. Route handlers resolve membership before invoking `WorkspaceBillingService`; only owners/admins can initialize, fund, subscribe, or open the portal. Clients never submit or select a billing-account identifier.
