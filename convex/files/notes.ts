@@ -34,25 +34,35 @@ export const list = query({
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+    beforeUpdatedAt: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, limit, beforeUpdatedAt }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
+    const pageLimit = Math.min(200, Math.max(1, Math.floor(limit ?? 200)))
+    // Over-fetch by 3x to account for in-memory filters (projectId, deletedAt, workspaceId).
+    const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
     const all = await ctx.db
       .query('notes')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .withIndex('by_userId_updatedAt', (q) => {
+        const scoped = q.eq('userId', userId)
+        return beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt)
+          ? scoped.lt('updatedAt', beforeUpdatedAt)
+          : scoped
+      })
       .order('desc')
-      .take(300)
+      .take(scanLimit)
     return all
       .map(normalizeNoteDoc)
       .filter((n) => !n.projectId)
       .filter((n) => (updatedSince !== undefined ? n.updatedAt > updatedSince : true))
       .filter((n) => (includeDeleted ? true : !n.deletedAt))
       .filter((n) => (workspaceId !== undefined ? n.workspaceId === workspaceId : true))
-      .slice(0, 200)
+      .slice(0, pageLimit)
   },
 })
 

@@ -1,8 +1,8 @@
 import { v } from 'convex/values'
-import { mutation } from '../_generated/server'
+import { internalMutation, mutation } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
-const PRUNE_BATCH_SIZE = 25
+const PRUNE_BATCH_SIZE = 100
 
 export const takeManyByServer = mutation({
   args: {
@@ -23,17 +23,12 @@ export const takeManyByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
+    // Pruning of expired rate-limit windows has been moved to a periodic
+    // cron job (pruneExpiredWindowsInternal).  The request path no longer
+    // does any pruning — it only reads and updates the bucket for the
+    // current rule.  This eliminates N extra deletes per request.
+
     const now = Date.now()
-    const expired = await ctx.db
-      .query('rateLimitWindows')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex('by_resetAt', (q: any) => q.lt('resetAt', now))
-      .take(PRUNE_BATCH_SIZE)
-
-    for (const row of expired) {
-      await ctx.db.delete(row._id)
-    }
-
     const results: Array<{
       bucket: string
       allowed: boolean
@@ -112,5 +107,28 @@ export const takeManyByServer = mutation({
     }
 
     return results
+  },
+})
+
+/**
+ * Periodic cleanup of expired rate-limit windows.
+ * Runs via cron every 5 minutes — not in the request path.
+ */
+export const pruneExpiredWindowsInternal = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const now = Date.now()
+    const expired = await ctx.db
+      .query('rateLimitWindows')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex('by_resetAt', (q: any) => q.lt('resetAt', now))
+      .take(PRUNE_BATCH_SIZE)
+
+    for (const row of expired) {
+      await ctx.db.delete(row._id)
+    }
+
+    return expired.length
   },
 })

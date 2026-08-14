@@ -18,11 +18,11 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       service.resolveActiveWorkspace(context.auth.userId),
     ])
     const workspaces = await Promise.all(accesses.map(async (access) => {
-      const members = await service.listMembers({
+      const memberCount = await service.countMembers({
         actorUserId: context.auth.userId,
         workspaceId: access.workspace.id,
       })
-      return toWorkspaceSummary(access, { memberCount: members.length })
+      return toWorkspaceSummary(access, { memberCount })
     }))
     const response: WorkspaceListResponse = {
       workspaces,

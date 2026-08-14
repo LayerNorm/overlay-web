@@ -57,6 +57,11 @@ type ConvexLiveQueryState = {
   liveMessages: Array<LiveConversationMessage> | undefined
 }
 
+// Watch only the tail of the conversation (most recent 200 messages).
+// This prevents loading the entire transcript for long conversations.
+// Older history is loaded on demand via getRecentMessages / HTTP snapshot.
+const WATCH_MESSAGES_TAIL_LIMIT = 200
+
 function ConvexLiveQueryBridge({
   activeChatId,
   authUserId,
@@ -73,6 +78,7 @@ function ConvexLiveQueryBridge({
         conversationId: activeChatId as Id<'conversations'>,
         userId: authUserId,
         accessToken: convexAccessToken,
+        limit: WATCH_MESSAGES_TAIL_LIMIT,
       }
     : 'skip'
   const liveMessages = useQuery(

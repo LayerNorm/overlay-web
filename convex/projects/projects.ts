@@ -23,22 +23,33 @@ export const list = query({
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+    beforeUpdatedAt: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, limit, beforeUpdatedAt }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
+    const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
+    // Over-fetch by 3x to account for in-memory filters (deletedAt, workspaceId).
+    const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
     const projects = await ctx.db
       .query('projects')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('asc')
-      .collect()
+      .withIndex('by_userId_updatedAt', (q) => {
+        const scoped = q.eq('userId', userId)
+        return beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt)
+          ? scoped.lt('updatedAt', beforeUpdatedAt)
+          : scoped
+      })
+      .order('desc')
+      .take(scanLimit)
     return projects
       .filter((project) => (updatedSince !== undefined ? project.updatedAt > updatedSince : true))
       .filter((project) => (includeDeleted ? true : !project.deletedAt))
       .filter((project) => (workspaceId !== undefined ? project.workspaceId === workspaceId : true))
+      .slice(0, pageLimit)
   },
 })
 
