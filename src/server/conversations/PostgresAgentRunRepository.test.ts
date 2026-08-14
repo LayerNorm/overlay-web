@@ -169,6 +169,66 @@ test('Postgres AgentRun lifecycle is atomic, cancellable, and lease-reconciled',
       tokens: { input: 1, output: 1 },
     })
 
+    const workUserMessageId = await repository.addMessage({
+      conversationId,
+      userId,
+      turnId: 'turn_work',
+      role: 'user',
+      mode: 'act',
+      content: 'run durable work',
+      contentType: 'text',
+      modelId: 'openrouter/free',
+      authorPrincipalId: principalId,
+      skipMemoryExtraction: true,
+    })
+    assert.ok(workUserMessageId)
+    const workRun = await repository.startAgentRun({
+      conversationId,
+      userId,
+      userMessageId: workUserMessageId,
+      turnId: 'turn_work',
+      mode: 'work',
+      runner: 'workflow',
+      modelId: 'openrouter/free',
+    })
+    assert.equal(workRun?.status, 'queued')
+    const attachedWorkRun = await repository.attachAgentRunWorkflow({
+      runId: workRun!.id,
+      userId,
+      workflowRunId: 'workflow-test-run',
+    })
+    assert.equal(attachedWorkRun?.status, 'running')
+    assert.equal(attachedWorkRun?.workflowRunId, 'workflow-test-run')
+    const waitingWorkRun = await repository.transitionAgentRun({
+      runId: workRun!.id,
+      userId,
+      status: 'waiting_for_approval',
+      approval: {
+        token: 'approval-test-token',
+        requestedAt: Date.now(),
+        requests: [{
+          approvalId: 'approval-call-work',
+          toolCallId: 'call-work',
+          toolName: 'send_email',
+          input: { subject: 'Approve me' },
+        }],
+      },
+    })
+    assert.equal(waitingWorkRun?.approval?.token, 'approval-test-token')
+    const resumedWorkRun = await repository.transitionAgentRun({
+      runId: workRun!.id,
+      userId,
+      status: 'running',
+    })
+    assert.equal(resumedWorkRun?.approval, undefined)
+    assert.equal((await repository.completeAgentRun({
+      runId: workRun!.id,
+      userId,
+      content: 'durable final-only result',
+      parts: [{ type: 'text', text: 'durable final-only result' }],
+      tokens: { input: 4, output: 5 },
+    }))?.status, 'completed')
+
     const cancelledUserMessageId = await repository.addMessage({
       conversationId,
       userId,
@@ -187,15 +247,16 @@ test('Postgres AgentRun lifecycle is atomic, cancellable, and lease-reconciled',
       userId,
       userMessageId: cancelledUserMessageId,
       turnId: 'turn_cancelled',
-      mode: 'chat',
-      runner: 'tool_loop',
+      mode: 'work',
+      runner: 'workflow',
       modelId: 'openrouter/free',
-      leaseExpiresAt: Date.now() + 60_000,
+      workflowRunId: 'workflow-test-cancel',
     })
     assert.ok(cancelledRun)
     await repository.transitionAgentRun({ runId: cancelledRun.id, userId, status: 'running' })
     const cancelled = await repository.cancelAgentRuns({ conversationId, userId })
     assert.deepEqual(cancelled.cancelledRunIds, [cancelledRun.id])
+    assert.deepEqual(cancelled.cancelledWorkflowRunIds, ['workflow-test-cancel'])
     assert.equal((await repository.completeAgentRun({
       runId: cancelledRun.id,
       userId,

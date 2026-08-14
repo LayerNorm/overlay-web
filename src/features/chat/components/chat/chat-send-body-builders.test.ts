@@ -143,10 +143,12 @@ test('builds pending-first and normal act bodies without null conversation ids',
     userMeta: {},
     selectedToolIdsSnapshot: [],
     memoryEnabledSnapshot: false,
+    personalChatMode: 'work',
   })
   const normalRecord = normalBody as Record<string, unknown>
   assert.equal(normalRecord.conversationId, 'chat-1')
   assert.equal(normalRecord.conversationClientId, undefined)
+  assert.equal(normalRecord.personalChatMode, 'work')
 })
 
 test('builds media prompt with reply context only when user text exists', () => {

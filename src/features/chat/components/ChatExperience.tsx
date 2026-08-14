@@ -327,6 +327,7 @@ export default function ChatExperience({
 
   const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false)
   const {
     attachedImages,
     setAttachedImages,
@@ -724,12 +725,26 @@ export default function ChatExperience({
 
   useEffect(() => {
     const disconnectedNotice = 'Still generating; the answer will appear when complete.'
-    if (agentRunLifecycle.active && !localStreamActive) {
+    const failedNotice = agentRunLifecycle.run?.status === 'failed'
+      ? `Work failed: ${agentRunLifecycle.run.terminalError?.message ?? 'The run could not be completed.'}`
+      : null
+    const cancelledNotice = agentRunLifecycle.run?.status === 'cancelled'
+      ? 'Work stopped.'
+      : null
+    if (agentRunLifecycle.active && !localStreamActive && agentRunLifecycle.run?.status !== 'waiting_for_approval') {
       setComposerNotice(disconnectedNotice)
       return
     }
-    setComposerNotice((current) => current === disconnectedNotice ? null : current)
-  }, [agentRunLifecycle.active, localStreamActive])
+    if (failedNotice || cancelledNotice) {
+      setComposerNotice(failedNotice ?? cancelledNotice)
+      return
+    }
+    setComposerNotice((current) => (
+      current === disconnectedNotice || current === 'Work stopped.' || current?.startsWith('Work failed:')
+        ? null
+        : current
+    ))
+  }, [agentRunLifecycle.active, agentRunLifecycle.run, localStreamActive])
 
   // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
   // runtime's loaded messages to the current useChat instances so the greeting
@@ -1502,6 +1517,7 @@ export default function ChatExperience({
     pendingChatDocuments,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
+    personalChatMode,
     persistActiveRuntimeUiState,
     refreshSelectedAutomation,
     replaceConversationRuntime,
@@ -1509,6 +1525,7 @@ export default function ChatExperience({
     requireAuth,
     resetComposerToolIds,
     reasoning,
+    refreshAgentRun: agentRunLifecycle.refresh,
     selectedActModel,
     selectedImageModels,
     selectedModels,
@@ -1548,12 +1565,8 @@ export default function ChatExperience({
       setPersonalMentionConfirmationOpen(true)
       return
     }
-    if (personalChatMode === 'work') {
-      setComposerNotice('Work mode will be enabled when the durable WorkflowAgent runner ships.')
-      return
-    }
     await handleSend()
-  }, [handleSend, isPublicShowcase, personMentions.length, personalChatMode, requireAuth, setComposerNotice])
+  }, [handleSend, isPublicShowcase, personMentions.length, requireAuth])
 
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
@@ -1566,29 +1579,91 @@ export default function ChatExperience({
     safeSetLocalStorage(PERSONAL_CHAT_MODE_KEY, nextMode)
   }, [setPersonalChatMode])
 
+  const handleGenerationModeChange = useCallback((nextMode: GenerationMode) => {
+    if (nextMode !== 'text' && personalChatMode === 'work') {
+      handlePersonalChatModeChange('chat')
+    }
+    handleModeChange(nextMode)
+  }, [handleModeChange, handlePersonalChatModeChange, personalChatMode])
+
+  const handleGenerationChipChange = useCallback((chip: 'image' | 'video' | null) => {
+    if (chip && personalChatMode === 'work') {
+      handlePersonalChatModeChange('chat')
+    }
+    setGenerationChip(chip)
+  }, [handlePersonalChatModeChange, personalChatMode, setGenerationChip])
+
+  const submitWorkApproval = useCallback(async (approved: boolean) => {
+    const run = agentRunLifecycle.run
+    if (!activeChatId || !run?.approval || run.status !== 'waiting_for_approval') return
+    setApprovalSubmitting(true)
+    try {
+      await overlayAppClient.conversations.submitRunApproval({
+        conversationId: activeChatId,
+        agentRunId: run.id,
+        token: run.approval.token,
+        approved,
+      })
+      await agentRunLifecycle.refresh()
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? error.message : 'Could not submit approval.')
+    } finally {
+      setApprovalSubmitting(false)
+    }
+  }, [activeChatId, agentRunLifecycle])
+
+  const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
+    ? (
+        <div className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 shadow-sm">
+          <p className="text-sm font-medium text-[var(--foreground)]">Work needs your approval</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={approvalSubmitting}
+              onClick={() => void submitWorkApproval(true)}
+              className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] disabled:opacity-50"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={approvalSubmitting}
+              onClick={() => void submitWorkApproval(false)}
+              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] disabled:opacity-50"
+            >
+              Deny
+            </button>
+          </div>
+        </div>
+      )
+    : undefined
+
   const handleEmptySuggestion = useCallback(
     (id: EmptyChatSuggestionId) => {
       if (id === 'image') {
-        handleModeChange('image')
-        setGenerationChip('image')
+        handleGenerationModeChange('image')
+        handleGenerationChipChange('image')
         setInput('')
         focusComposer()
         return
       }
       if (id === 'write') {
-        handleModeChange('text')
+        handleGenerationModeChange('text')
         setInput('Help me write or edit ')
         focusComposer()
         return
       }
-      handleModeChange('text')
+      handleGenerationModeChange('text')
       setSelectedToolIds((current) =>
         current.includes('web_search') ? current : [...current, 'web_search'],
       )
       setInput('Look up ')
       focusComposer()
     },
-    [focusComposer, handleModeChange, setGenerationChip, setInput],
+    [focusComposer, handleGenerationChipChange, handleGenerationModeChange, setInput],
   )
 
   const handleAutomateSuggestion = useCallback(
@@ -1992,7 +2067,7 @@ export default function ChatExperience({
         isTemporaryChat,
         isActiveLoading,
         onTemporaryChatToggle: handleTemporaryChatToggle,
-        onGenerationModeChange: handleModeChange,
+        onGenerationModeChange: handleGenerationModeChange,
         generationMode,
         personalChatMode,
         onPersonalChatModeChange: handlePersonalChatModeChange,
@@ -2120,7 +2195,7 @@ export default function ChatExperience({
                     sourceConversationId={activeChatId}
                     onCancel={() => setPersonalMentionConfirmationOpen(false)}
                   />
-                ) : undefined,
+                ) : workApprovalContent,
                 billingPromptContent: hasHistory ? null : usageExhaustedNotice,
                 isSendBlocked,
                 isActiveLoading,
@@ -2154,9 +2229,9 @@ export default function ChatExperience({
                 onRemoveTool: removeComposerTool,
               },
               modeState: {
-                onModeChange: handleModeChange,
+                onModeChange: handleGenerationModeChange,
                 generationChip,
-                setGenerationChip,
+                setGenerationChip: handleGenerationChipChange,
                 showModeMenu,
                 setShowModeMenu,
                 modeMenuRef,

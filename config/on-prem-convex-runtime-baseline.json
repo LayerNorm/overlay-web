@@ -23,6 +23,7 @@
     "src/app/api/checkout/route.ts",
     "src/app/api/checkout/verify/route.ts",
     "src/app/api/convex/[type]/route.ts",
+    "src/app/api/email/send/route.ts",
     "src/app/api/entitlements/route.ts",
     "src/app/api/latest-release/download/route.ts",
     "src/app/api/latest-release/route.ts",
@@ -84,6 +85,8 @@
     "src/app/api/v1/conversations/notification-preferences/route.ts",
     "src/app/api/v1/conversations/notifications/route.ts",
     "src/app/api/v1/conversations/route.ts",
+    "src/app/api/v1/conversations/run/approval/route.ts",
+    "src/app/api/v1/conversations/run/route.ts",
     "src/app/api/v1/conversations/saved-messages/route.ts",
     "src/app/api/v1/conversations/search/route.ts",
     "src/app/api/v1/conversations/share/route.ts",
@@ -147,6 +150,11 @@
     "src/app/api/v1/webhooks/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/billing/checkout/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/billing/portal/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/billing/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/billing/top-ups/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/billing/verify/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/governance/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/invitations/[invitationId]/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/invitations/route.ts",
@@ -166,7 +174,10 @@
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
     "src/features/chat/components/ChatExperience.tsx",
-    "src/features/chat/components/chat/useLiveConversationSync.ts"
+    "src/features/chat/components/DirectMessageExperience.tsx",
+    "src/features/chat/components/chat/useLiveConversationSync.ts",
+    "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
   ],
   "convexCronJobs": [
     {
@@ -210,6 +221,11 @@
       "target": "internal.chat.conversations.runStaleGeneratingCleanup"
     },
     {
+      "cadence": "{ minutes: 2 }",
+      "name": "tool loop agent run lease cleanup",
+      "target": "internal.chat.conversations.expireToolLoopAgentRunLeases"
+    },
+    {
       "cadence": "{ minutes: 1 }",
       "name": "transactional email delivery",
       "target": "internal.email.deliveryRunner.runMinuteTick"
@@ -222,6 +238,7 @@
   ],
   "convexRuntimeImportFiles": [
     "src/app/api/auth/callback/route.ts",
+    "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
     "src/app/api/share/file/[token]/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
@@ -231,7 +248,10 @@
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
     "src/features/chat/components/ChatExperience.tsx",
+    "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
+    "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAdministrativeRepository.ts",
     "src/server/admin/ConvexAuditRepository.ts",
@@ -249,6 +269,7 @@
     "src/server/app-data/repositories.ts",
     "src/server/auth/api-keys/ConvexApiKeyRepository.ts",
     "src/server/auth/api-keys/index.ts",
+    "src/server/auth/browser-convex-token.ts",
     "src/server/auth/providers/better-auth-provider.ts",
     "src/server/auth/providers/workos-auth-provider.ts",
     "src/server/auth/replay/ConvexServiceAuthReplayRepository.ts",

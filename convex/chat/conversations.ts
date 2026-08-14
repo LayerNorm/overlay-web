@@ -995,6 +995,16 @@ export const startAgentRun = mutation({
 
 export const transitionAgentRun = mutation({
   args: {
+    approval: v.optional(v.object({
+      token: v.string(),
+      requestedAt: v.number(),
+      requests: v.array(v.object({
+        approvalId: v.string(),
+        toolCallId: v.string(),
+        toolName: v.string(),
+        input: v.any(),
+      })),
+    })),
     leaseExpiresAt: v.optional(v.number()),
     runId: v.id('agentRuns'),
     serverSecret: v.string(),
@@ -1011,6 +1021,33 @@ export const transitionAgentRun = mutation({
       status: args.status,
       leaseExpiresAt: args.leaseExpiresAt ?? run.leaseExpiresAt,
       startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
+      approval: args.status === 'waiting_for_approval' ? args.approval : undefined,
+      updatedAt: now,
+    })
+    return await ctx.db.get(run._id)
+  },
+})
+
+export const attachAgentRunWorkflow = mutation({
+  args: {
+    runId: v.id('agentRuns'),
+    serverSecret: v.string(),
+    userId: v.string(),
+    workflowRunId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    if (run.workflowRunId && run.workflowRunId !== args.workflowRunId) {
+      throw new Error('AgentRun is already attached to another workflow')
+    }
+    if (run.status !== 'queued' && run.status !== 'running') return run
+    const now = Date.now()
+    await ctx.db.patch(run._id, {
+      workflowRunId: args.workflowRunId,
+      status: 'running',
+      startedAt: run.startedAt ?? now,
       updatedAt: now,
     })
     return await ctx.db.get(run._id)
@@ -1186,6 +1223,7 @@ export const cancelAgentRuns = mutation({
     }
     return {
       cancelledRunIds: activeRuns.map((run) => run._id),
+      cancelledWorkflowRunIds: activeRuns.flatMap((run) => run.workflowRunId ? [run.workflowRunId] : []),
       stoppedCount: activeRuns.length,
     }
   },

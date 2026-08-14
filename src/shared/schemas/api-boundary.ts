@@ -7,6 +7,7 @@ import {
 } from './webhooks'
 import {
   ActConversationRequest,
+  AgentRunApprovalRequest,
   AddConversationMessageRequest,
   AdminAuditListQuery,
   AdminPrincipalDeleteRequest,
@@ -272,6 +273,13 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/run',
     schema: { query: ConversationRunQuery },
     summary: 'Read the authoritative AgentRun for a conversation',
+    tag: 'Conversations',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/run/approval',
+    schema: { json: AgentRunApprovalRequest },
+    summary: 'Approve or deny a waiting AgentRun tool call',
     tag: 'Conversations',
   },
   {

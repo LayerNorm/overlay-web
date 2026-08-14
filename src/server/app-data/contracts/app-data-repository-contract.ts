@@ -387,6 +387,65 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(agentAssistant?.content, 'final-only persisted answer')
       assert.equal(agentAssistant?.status, 'completed')
 
+      const workUserMessageId = await backend.conversations.addMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_agent_work',
+        role: 'user',
+        mode: 'act',
+        content: 'run durable work',
+        contentType: 'text',
+        modelId: 'openrouter/free',
+        skipMemoryExtraction: true,
+      })
+      assert.ok(workUserMessageId)
+      const workRun = await backend.conversations.startAgentRun({
+        conversationId,
+        userId,
+        userMessageId: workUserMessageId,
+        turnId: 'turn_agent_work',
+        mode: 'work',
+        runner: 'workflow',
+        modelId: 'openrouter/free',
+      })
+      assert.ok(workRun)
+      const attachedWorkRun = await backend.conversations.attachAgentRunWorkflow({
+        runId: workRun.id,
+        userId,
+        workflowRunId: 'workflow_contract_1',
+      })
+      assert.equal(attachedWorkRun?.status, 'running')
+      assert.equal(attachedWorkRun?.workflowRunId, 'workflow_contract_1')
+      const waitingWorkRun = await backend.conversations.transitionAgentRun({
+        runId: workRun.id,
+        userId,
+        status: 'waiting_for_approval',
+        approval: {
+          token: 'approval_contract_1',
+          requestedAt: Date.now(),
+          requests: [{
+            approvalId: 'approval-call_1',
+            toolCallId: 'call_1',
+            toolName: 'send_email',
+            input: { subject: 'Contract' },
+          }],
+        },
+      })
+      assert.equal(waitingWorkRun?.approval?.token, 'approval_contract_1')
+      const resumedWorkRun = await backend.conversations.transitionAgentRun({
+        runId: workRun.id,
+        userId,
+        status: 'running',
+      })
+      assert.equal(resumedWorkRun?.approval, undefined)
+      await backend.conversations.completeAgentRun({
+        runId: workRun.id,
+        userId,
+        content: 'durable result',
+        parts: [{ type: 'text', text: 'durable result' }],
+        tokens: { input: 2, output: 2 },
+      })
+
       const cancelledUserMessageId = await backend.conversations.addMessage({
         conversationId,
         userId,

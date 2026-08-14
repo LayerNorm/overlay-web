@@ -57,6 +57,9 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
   persistent conversation, the server drains a second stream branch after a
   browser disconnect and performs one final assistant-message write; it does
   not persist token deltas or mirror the stream through Cloudflare.
+- The same endpoint accepts `personalChatMode: "work"`. It returns `202` with
+  `agentRunId` and `workflowRunId` after starting a durable WorkflowAgent. Work
+  mode is final-only in v1: no Workflow writable stream is exposed.
 - `GET /api/v1/conversations/run?conversationId=<id>` returns an active
   `AgentRun` when any model slot is non-terminal, otherwise the most recent
   terminal run. Clients use this response—not `conversationMessages.status`—to
@@ -64,11 +67,15 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - `POST /api/v1/conversations/stop` atomically transitions active AgentRuns to
   `cancelled`, projects the interrupted state into their assistant messages,
   and best-effort aborts ToolLoop executions running in the same server
-  process. The legacy generating-message stop remains only as a migration
-  fallback for runs created before AgentRun.
+  process, and cancels attached Workflow runs. The legacy generating-message
+  stop remains only as a migration fallback for runs created before AgentRun.
+- `POST /api/v1/conversations/run/approval` accepts the active conversation,
+  AgentRun and hook token plus an approve/deny decision. It rejects stale tokens
+  and resumes only the current `waiting_for_approval` Work run.
 - `@overlay/api-client` exposes `conversations.currentRun()` and
-  `conversations.stopResponse()` for these contracts. Both Convex and Postgres
-  repositories must preserve identical strict lifecycle transitions.
+  `conversations.stopResponse()` plus `conversations.submitRunApproval()` for
+  these contracts. Both Convex and Postgres repositories must preserve
+  identical strict lifecycle transitions.
 
 ## File listing
 

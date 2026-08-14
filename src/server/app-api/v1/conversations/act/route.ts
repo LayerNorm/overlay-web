@@ -95,6 +95,9 @@ import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { readProjectSettings } from '@/shared/projects/project-settings'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
+import { start } from 'workflow/api'
+import { personalChatWorkWorkflow } from '@/workflows/personal-chat-work'
+import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 
 export const maxDuration = 800
 
@@ -164,6 +167,7 @@ export async function POST(
       replyContextForModel,
       historyBaseModelId,
       mode,
+      personalChatMode,
       automationMode,
       automationExecution,
       automationId,
@@ -570,16 +574,25 @@ export async function POST(
     })
     const agentRunLeaseExpiresAt = Date.now() + actAbortTimeoutMsResolved + 60_000
     const agentRunEligible = Boolean(cid) && automationExecution !== true && automationMode !== true
+    const useWorkRunner = agentRunEligible && personalChatMode === 'work'
     const persistenceStartTask = agentRunEligible
-      ? agentRunService.startChat({
-          conversationId: cid,
-          leaseExpiresAt: agentRunLeaseExpiresAt,
-          modelId: effectiveModelId,
-          turnId: tid,
-          userId: conversationUserId,
-          userMessageId,
-          variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
-        }).then((run) => ({
+      ? (useWorkRunner
+          ? agentRunService.startWork({
+              conversationId: cid,
+              modelId: effectiveModelId,
+              turnId: tid,
+              userId: conversationUserId,
+              userMessageId,
+            })
+          : agentRunService.startChat({
+              conversationId: cid,
+              leaseExpiresAt: agentRunLeaseExpiresAt,
+              modelId: effectiveModelId,
+              turnId: tid,
+              userId: conversationUserId,
+              userMessageId,
+              variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
+            })).then((run) => ({
           agentRun: run,
           messageId: run?.assistantMessageId as Id<'conversationMessages'> | undefined,
         }))
@@ -631,13 +644,13 @@ export async function POST(
     }
     pendingAgentRunId = agentRun?.id
     pendingGeneratingMessageId = generatingMessageId
-    if (agentRun?.status === 'queued') {
+    if (!useWorkRunner && agentRun?.status === 'queued') {
       await agentRunService.markRunning({
         leaseExpiresAt: agentRunLeaseExpiresAt,
         runId: agentRun.id,
         userId: conversationUserId,
       })
-    } else if (agentRun && agentRun.status !== 'running') {
+    } else if (!useWorkRunner && agentRun && agentRun.status !== 'running') {
       throw new Error(`AgentRun ${agentRun.id} is already ${agentRun.status}`)
     }
     if (_ttftDebug) _tTools = performance.now()
@@ -673,6 +686,122 @@ export async function POST(
       automationExecution: automationExecution === true,
       automationMode: automationMode === true,
     })
+
+    if (useWorkRunner) {
+      if (!agentRun || !cid) throw new Error('Work mode requires an AgentRun and conversation')
+      await uploadFilePartsForModel(uiMessages as Array<{
+        role: string
+        parts?: Array<{
+          type: string
+          url?: string
+          mediaType?: string
+          fileName?: string
+          filename?: string
+          providerReference?: Record<string, string>
+        }>
+      }>, effectiveModelId)
+      const workMessages = await convertToModelMessages(messagesForModel)
+      const workMaxOutputTokens = 32_768
+      const workReservation = await actUsageBudgetService.reserveForAttempt({
+        userId,
+        entitlements: runtimeEntitlements,
+        idempotencyKey: context.requestIdempotencyKey,
+        modelId: effectiveModelId,
+        paid,
+        estimatedInputTokens: Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000,
+        maxOutputTokens: workMaxOutputTokens,
+        operationId: 'conversation.work',
+        programmaticSubjectId: billingProgrammaticSubjectId,
+        requestFingerprint: context.requestFingerprint,
+        workspaceId: billingWorkspaceId,
+      })
+      if (!workReservation.ok) {
+        const errorText = typeof workReservation.failure.payload.message === 'string'
+          ? workReservation.failure.payload.message
+          : 'Work mode could not reserve usage.'
+        await agentRunService.fail({
+          error: { code: 'budget_reservation_failed', message: errorText, retryable: true },
+          errorText,
+          runId: agentRun.id,
+          userId: conversationUserId,
+        })
+        concurrencySlot?.release()
+        concurrencySlot = null
+        return NextResponse.json(
+          workReservation.failure.payload,
+          { status: workReservation.failure.statusCode },
+        )
+      }
+      budgetReservationId = workReservation.reservationId
+      await actUsageBudgetService.markReservationStarted({
+        reservationId: budgetReservationId,
+        userId,
+      })
+      const toolDefinitions = await describePersonalChatWorkTools(
+        tools,
+        Boolean(actTooling.toolApproval),
+      )
+      const workReasoning = isKimiK3ModelId(effectiveModelId) && rawReasoning && rawReasoning !== 'provider-default'
+        ? 'xhigh'
+        : rawReasoning === 'provider-default'
+          ? undefined
+          : rawReasoning
+      const ownedReservationId = budgetReservationId
+      const workflowRun = await start(personalChatWorkWorkflow, [{
+        agentRunId: agentRun.id,
+        billingUserId: userId,
+        conversationId: cid,
+        emitWebhook: !actWebhookSkip,
+        gatewayModelId: getGatewayModelId(effectiveModelId),
+        instructions: actInstructions,
+        messages: workMessages,
+        modelId: effectiveModelId,
+        paid,
+        ...(modelSupportsZeroDataRetention(effectiveModelId)
+          ? { providerOptions: { gateway: { zeroDataRetention: true } } }
+          : {}),
+        ...(workReasoning ? { reasoning: workReasoning } : {}),
+        reservationId: ownedReservationId,
+        resourceUserId: conversationUserId,
+        sourceCitations: sourceCitationMap,
+        toolDefinitions,
+        toolingContext: {
+          accountAllowedConnectorIds: [...accountAllowedConnectorIds],
+          accountAllowedToolIds: [...accountAllowedToolIds],
+          activeKnowledgeBaseIds: [...turnKnowledgeBaseIds],
+          baseUrl: getInternalApiBaseUrl(request),
+          billingProgrammaticSubjectId,
+          conversationId: cid,
+          conversationProjectId,
+          effectiveModelId,
+          entitlements: runtimeEntitlements,
+          latestUserText,
+          memoryEnabled,
+          paid,
+          projectSettings,
+          requestFingerprint: context.requestFingerprint,
+          requestedToolIds: [...requestedToolIds],
+          turnId: tid,
+          userId,
+          workspaceId: billingWorkspaceId,
+        },
+        turnId: tid,
+      }])
+      await agentRunService.attachWorkflow({
+        runId: agentRun.id,
+        userId: conversationUserId,
+        workflowRunId: workflowRun.runId,
+      })
+      budgetReservationId = null
+      budgetReservationFinalized = true
+      concurrencySlot?.release()
+      concurrencySlot = null
+      return NextResponse.json({
+        accepted: true,
+        agentRunId: agentRun.id,
+        workflowRunId: workflowRun.runId,
+      }, { status: 202 })
+    }
 
     const runActStream = async (params: {
       languageModel: LanguageModel

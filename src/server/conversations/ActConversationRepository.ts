@@ -6,6 +6,7 @@ import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
   AgentRun,
+  AgentRunApproval,
   AgentRunMode,
   AgentRunRunner,
   AgentRunStatus,
@@ -313,10 +314,16 @@ export interface ActConversationRepository {
     workflowRunId?: string
   }): Promise<AgentRun | null>
   transitionAgentRun(args: {
+    approval?: AgentRunApproval
     leaseExpiresAt?: number
     runId: string
     status: AgentRunStatus
     userId: string
+  }): Promise<AgentRun | null>
+  attachAgentRunWorkflow(args: {
+    runId: string
+    userId: string
+    workflowRunId: string
   }): Promise<AgentRun | null>
   completeAgentRun(args: {
     content: string
@@ -338,7 +345,7 @@ export interface ActConversationRepository {
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
     userId: string
-  }): Promise<{ cancelledRunIds: string[]; stoppedCount: number }>
+  }): Promise<{ cancelledRunIds: string[]; cancelledWorkflowRunIds: string[]; stoppedCount: number }>
   getLatestAgentRun(args: {
     conversationId: Id<'conversations'>
     userId: string

@@ -20,6 +20,19 @@ export type AgentRunTerminalError = {
   retryable: boolean
 }
 
+export type AgentRunApprovalRequest = {
+  approvalId: string
+  toolCallId: string
+  toolName: string
+  input: unknown
+}
+
+export type AgentRunApproval = {
+  token: string
+  requestedAt: number
+  requests: AgentRunApprovalRequest[]
+}
+
 export type AgentRun = {
   id: string
   conversationId: string
@@ -38,6 +51,7 @@ export type AgentRun = {
   failedAt?: number
   cancelledAt?: number
   terminalError?: AgentRunTerminalError
+  approval?: AgentRunApproval
   createdAt: number
   updatedAt: number
 }

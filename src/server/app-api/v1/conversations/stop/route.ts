@@ -5,6 +5,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { abortToolLoopRuns } from '@/server/conversations/tool-loop-run-registry'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { getRun } from 'workflow/api'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -35,6 +36,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: resourceUserId,
     })
     const abortedLocalCount = abortToolLoopRuns(cancelled.cancelledRunIds)
+    const cancelledWorkflowCount = (await Promise.all(cancelled.cancelledWorkflowRunIds.map(async (runId) => {
+      try {
+        await getRun(runId).cancel()
+        return true
+      } catch (error) {
+        logger.warn('[conversations/stop POST] Failed to cancel workflow run', { runId, error })
+        return false
+      }
+    }))).filter(Boolean).length
     const legacy = cancelled.stoppedCount === 0
       ? await repository.stopGeneratingMessages({
           conversationId: conversationId as Id<'conversations'>,
@@ -50,6 +60,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       stoppedCount: cancelled.stoppedCount + legacy.stoppedCount,
       cancelledRunIds: cancelled.cancelledRunIds,
       abortedLocalCount,
+      cancelledWorkflowCount,
     })
   } catch (e) {
     logger.error('[conversations/stop POST]', e)

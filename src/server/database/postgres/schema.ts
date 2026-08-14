@@ -16,6 +16,7 @@ import {
   vector,
 } from 'drizzle-orm/pg-core'
 import type { AutomationGraph, AutomationSchedule } from '@overlay/app-core'
+import type { AgentRun } from '@/shared/agents/agent-run'
 
 export const overlayAppDataMetadata = pgTable('overlay_app_data_metadata', {
   key: text('key').primaryKey(),
@@ -727,6 +728,7 @@ export const agentRuns = pgTable('agent_runs', {
   failedAt: timestamp('failed_at', { withTimezone: true }),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   terminalError: jsonb('terminal_error').$type<{ code: string; message: string; retryable: boolean }>(),
+  approval: jsonb('approval').$type<AgentRun['approval']>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

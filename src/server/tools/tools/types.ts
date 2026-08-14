@@ -30,4 +30,6 @@ export interface OverlayToolsOptions {
   memoryEnabled?: boolean
   /** Knowledge base ids activated for the current turn. */
   activeKnowledgeBaseIds?: readonly string[]
+  /** Stable key supplied by durable runners for side-effecting internal API calls. */
+  idempotencyKey?: string
 }

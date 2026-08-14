@@ -437,3 +437,27 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Document new architecture
 
 **Gate:** Automation success rate equal or better than pre-migration. No new Sentry error categories. No billing discrepancies.
+
+---
+
+## Personal Chat Work mode
+
+Personal Chat now provides a second, durable execution policy using the same
+Workflow SDK infrastructure without coupling its lifecycle to automations.
+`workflows/personal-chat-work.ts` runs a real `WorkflowAgent`; the interactive
+request path supplies the already-authorized Personal Chat context, model,
+tools, and billing reservation as serializable input.
+
+- AgentRun remains the product lifecycle authority; Workflow is the execution
+  authority. `workflowRunId` links them.
+- Tool calls execute as imported `"use step"` functions. Each durable side
+  effect receives a stable AgentRun/tool-call idempotency key for Overlay APIs.
+- Approval pauses are represented by AgentRun plus a Workflow hook. The client
+  approves or denies through `/api/v1/conversations/run/approval`.
+- The first release intentionally omits Workflow's writable stream. It writes
+  the assistant message once at completion and relies on Convex/Postgres
+  conversation sync after reconnect.
+- Work mode is text generation only. Choosing Image or Video changes the next
+  Personal Chat turn back to Chat mode.
+- The Workflow, React, and core AI SDK packages must remain on a mutually
+  compatible release because their Tool schema symbols are version-specific.

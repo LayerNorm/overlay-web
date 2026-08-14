@@ -454,7 +454,6 @@ export function ChatExperienceHeader({
             <PersonalChatModeToggle
               mode={personalChatMode}
               onChange={onPersonalChatModeChange}
-              disabled={isActiveLoading}
             />
           ) : null}
           <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">

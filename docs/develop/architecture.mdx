@@ -62,8 +62,25 @@ ToolLoop runs tolerate browser disconnection but not a process crash. Their
 lease expires to a structured `tool_loop_lease_expired` failure through the
 Convex cron or Postgres maintenance worker. Stop first cancels AgentRun, then
 best-effort aborts the in-process `AbortController`; late completion cannot
-overwrite cancellation. Work mode remains unavailable until its durable
-WorkflowAgent runner is added behind the same contract.
+overwrite cancellation.
+
+Work mode uses `@ai-sdk/workflow`'s `WorkflowAgent` behind the same AgentRun
+contract. The request route performs the same authorization, context and memory
+construction, model policy, tool filtering, billing reservation, and user-message
+persistence as Chat mode, then starts `workflows/personal-chat-work.ts`. Model
+calls and tool executions are durable Workflow steps; the workflow ID is stored
+on AgentRun. Work mode does not expose a writable stream in its first version:
+the client renders AgentRun state and receives the single final message through
+the normal conversation data path.
+
+Approval-required tools transition AgentRun to `waiting_for_approval` with a
+durable hook token and tool-call summary. `POST
+/api/v1/conversations/run/approval` resumes the hook; the workflow returns the
+same run to `running`. Stop cancels both AgentRun and the Workflow run. Internal
+Overlay tool mutations receive `agent-run:<runId>:tool:<toolCallId>` as their
+idempotency key. Connector providers outside Overlay must still honor their own
+idempotency semantics; Workflow step replay alone cannot make an external API
+idempotent.
 
 ## Auth
 

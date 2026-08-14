@@ -276,6 +276,7 @@ export function buildCommonActBody({
   selectedToolIdsSnapshot,
   memoryEnabledSnapshot,
   reasoning,
+  personalChatMode,
 }: {
   chatId: string
   pendingConversationClientId: string | null
@@ -294,6 +295,7 @@ export function buildCommonActBody({
   selectedToolIdsSnapshot: ChatToolRequestId[]
   memoryEnabledSnapshot: boolean
   reasoning?: ReasoningLevel
+  personalChatMode?: 'chat' | 'work'
 }) {
   return {
     ...(temporaryChatSnapshot
@@ -326,5 +328,6 @@ export function buildCommonActBody({
     memoryEnabled: memoryEnabledSnapshot,
     ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
     ...(reasoning && reasoning !== 'provider-default' ? { reasoning } : {}),
+    ...(personalChatMode ? { personalChatMode } : {}),
   }
 }

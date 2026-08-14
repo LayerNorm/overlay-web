@@ -39,6 +39,8 @@ export function sendTextTurn({
   embedProjectId,
   knowledgeBaseId,
   reasoning,
+  personalChatMode,
+  refreshAgentRun,
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
@@ -82,6 +84,8 @@ export function sendTextTurn({
   replyContext: ReplyContext
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
+  personalChatMode: 'chat' | 'work'
+  refreshAgentRun: () => Promise<unknown>
   setComposerNotice: Dispatch<SetStateAction<string | null>>
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
@@ -101,8 +105,10 @@ export function sendTextTurn({
     turnId: textTurnId,
   })
 
-  const multiText = snapshot.textModelsForTurn.length > 1
-  const textSlotCount = Math.min(4, snapshot.textModelsForTurn.length)
+  const multiText = personalChatMode === 'chat' && snapshot.textModelsForTurn.length > 1
+  const textSlotCount = personalChatMode === 'work'
+    ? 1
+    : Math.min(4, snapshot.textModelsForTurn.length)
   let msgCountBeforeSend = 0
   let preparedFirstSendRuntime = false
   let textHistoryBaseModelId: string | undefined
@@ -266,6 +272,7 @@ export function sendTextTurn({
     selectedToolIdsSnapshot: snapshot.selectedToolIdsSnapshot,
     memoryEnabledSnapshot: snapshot.memoryEnabledSnapshot,
     reasoning,
+    personalChatMode,
   })
 
   const refreshAfterActTextTurn = async () => {
@@ -294,5 +301,7 @@ export function sendTextTurn({
     loadSubscription: refreshAfterActTextTurn,
     onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
     logPrefix: multiText ? 'Act multi' : 'Act',
+    personalChatMode,
+    onWorkAccepted: refreshAgentRun,
   })
 }

@@ -83,6 +83,7 @@ export function useChatSendController({
   pendingChatDocuments,
   pendingScrollChatIdRef,
   pendingScrollTurnIdRef,
+  personalChatMode,
   persistActiveRuntimeUiState,
   refreshSelectedAutomation,
   replaceConversationRuntime,
@@ -90,6 +91,7 @@ export function useChatSendController({
   requireAuth,
   resetComposerToolIds,
   reasoning,
+  refreshAgentRun,
   selectedActModel,
   selectedImageModels,
   selectedModels,
@@ -154,6 +156,7 @@ export function useChatSendController({
   pendingChatDocuments: PendingChatDocument[]
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
+  personalChatMode: 'chat' | 'work'
   persistActiveRuntimeUiState: () => void
   refreshSelectedAutomation: (options?: { showLoading?: boolean; conversationId?: string }) => Promise<void>
   replaceConversationRuntime: (
@@ -166,6 +169,7 @@ export function useChatSendController({
   requireAuth: (reason: 'send') => void
   resetComposerToolIds: (temporary: boolean) => void
   reasoning?: ReasoningLevel
+  refreshAgentRun: () => Promise<unknown>
   selectedActModel: string
   selectedImageModels: string[]
   selectedModels: string[]
@@ -433,6 +437,8 @@ export function useChatSendController({
       replyContext: replyCtxSnapshot,
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
       reasoning,
+      personalChatMode,
+      refreshAgentRun,
       setComposerNotice,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
@@ -475,11 +481,13 @@ export function useChatSendController({
     pendingChatDocuments,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
+    personalChatMode,
     refreshSelectedAutomation,
     replyContext,
     requireAuth,
     resetComposerToolIds,
     reasoning,
+    refreshAgentRun,
     selectedActModel,
     selectedImageModels,
     selectedModels,

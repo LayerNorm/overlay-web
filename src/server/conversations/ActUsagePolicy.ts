@@ -54,6 +54,7 @@ export interface ActUsagePolicy {
     outputTokens: number
     reservationId: string | null
     userId: string
+    operationId?: string
   }): Promise<{ finalized: boolean; reservationId: string | null }>
   markReservationStarted(args: {
     reservationId: string | null | undefined
@@ -119,6 +120,7 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
     outputTokens: number
     reservationId: string | null
     userId: string
+    operationId?: string
   }): Promise<{ finalized: boolean; reservationId: string | null }> {
     return { finalized: false, reservationId: null }
   }
@@ -284,6 +286,7 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     outputTokens: number
     reservationId: string | null
     userId: string
+    operationId?: string
   }): Promise<{ finalized: boolean; reservationId: string | null }> {
     const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
       args.modelId,
@@ -331,7 +334,7 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
       }
       if ('recordBatch' in this.deps.repository) {
         await this.deps.repository.recordBatch({
-          operationId: `act_${globalThis.crypto.randomUUID()}`,
+          operationId: args.operationId ?? `act_${globalThis.crypto.randomUUID()}`,
           userId: args.userId,
           forceFreeTierLimits: args.forceFreeTierLimits,
           events: events.map((event) => ({

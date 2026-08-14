@@ -11,6 +11,7 @@ export function toolAuthBody(options: OverlayToolsOptions): {
   serverSecret?: string
   automationId?: string
   workspaceId?: string
+  idempotencyKey?: string
 } {
   return {
     userId: options.userId,
@@ -18,6 +19,7 @@ export function toolAuthBody(options: OverlayToolsOptions): {
     serverSecret: options.serverSecret,
     automationId: options.automationId,
     workspaceId: options.workspaceId,
+    idempotencyKey: options.idempotencyKey,
   }
 }
 
@@ -36,7 +38,7 @@ export async function callInternalApi(
   const method = opts?.method ?? 'POST'
   const forwardCookie = opts?.forwardCookie
   const url = baseUrl ? `${baseUrl}${path}` : path
-  const { serverSecret, workspaceId, ...serializedBody } = body
+  const { serverSecret, workspaceId, idempotencyKey, ...serializedBody } = body
   const serviceAuthHeader =
     typeof serverSecret === 'string' && serverSecret && typeof body.userId === 'string'
       ? await buildServiceAuthToken({
@@ -55,7 +57,9 @@ export async function callInternalApi(
         ? { [ACTIVE_WORKSPACE_HEADER]: workspaceId.trim() }
         : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
-      'Idempotency-Key': randomUUID(),
+      'Idempotency-Key': typeof idempotencyKey === 'string' && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : randomUUID(),
     },
     body: JSON.stringify(serializedBody),
   })

@@ -361,12 +361,26 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async transitionAgentRun(args: {
+    approval?: AgentRun['approval']
     leaseExpiresAt?: number
     runId: string
     status: AgentRunStatus
     userId: string
   }): Promise<AgentRun | null> {
     const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:transitionAgentRun', {
+      ...args,
+      runId: args.runId as Id<'agentRuns'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return run ? mapConvexAgentRun(run) : null
+  }
+
+  async attachAgentRunWorkflow(args: {
+    runId: string
+    userId: string
+    workflowRunId: string
+  }): Promise<AgentRun | null> {
+    const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:attachAgentRunWorkflow', {
       ...args,
       runId: args.runId as Id<'agentRuns'>,
       serverSecret: this.serverSecret,
@@ -410,12 +424,12 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
     userId: string
-  }): Promise<{ cancelledRunIds: string[]; stoppedCount: number }> {
-    return await convex.mutation<{ cancelledRunIds: string[]; stoppedCount: number }>(
+  }): Promise<{ cancelledRunIds: string[]; cancelledWorkflowRunIds: string[]; stoppedCount: number }> {
+    return await convex.mutation<{ cancelledRunIds: string[]; cancelledWorkflowRunIds: string[]; stoppedCount: number }>(
       'chat/conversations:cancelAgentRuns',
       { ...args, serverSecret: this.serverSecret },
       { throwOnError: true },
-    ) ?? { cancelledRunIds: [], stoppedCount: 0 }
+    ) ?? { cancelledRunIds: [], cancelledWorkflowRunIds: [], stoppedCount: 0 }
   }
 
   async getLatestAgentRun(args: {

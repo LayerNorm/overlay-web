@@ -124,6 +124,29 @@ test('current AgentRun lookup uses the conversation run endpoint', async () => {
   assert.equal(calls[0]!.init?.method, undefined)
 })
 
+test('AgentRun approval posts the immutable run and approval token', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.conversations.submitRunApproval({
+    conversationId: 'conversation_1',
+    agentRunId: 'run_1',
+    token: 'approval_1',
+    approved: true,
+  })
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/conversations/run/approval',
+  )
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    conversationId: 'conversation_1',
+    agentRunId: 'run_1',
+    token: 'approval_1',
+    approved: true,
+  })
+})
+
 test('module feature methods use canonical app endpoints', async () => {
   const { calls, client } = createRecordedClient()
 

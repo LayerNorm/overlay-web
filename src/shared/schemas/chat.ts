@@ -59,6 +59,14 @@ export const StopConversationRequest = z.object({
   partialParts: z.array(z.record(z.unknown())).optional(),
 }).passthrough()
 
+export const AgentRunApprovalRequest = z.object({
+  conversationId: z.string().min(1),
+  agentRunId: z.string().min(1),
+  token: z.string().min(1),
+  approved: z.boolean(),
+  reason: z.string().max(1000).optional(),
+})
+
 export const StreamAuthRequest = z.object({
   ...AuthFields,
   conversationId: z.string().min(1).optional(),
@@ -87,6 +95,7 @@ export const ActConversationRequest = z.object({
   replyContextForModel: z.string().optional(),
   historyBaseModelId: z.string().optional(),
   mode: z.enum(['chat', 'automate']).optional(),
+  personalChatMode: z.enum(['chat', 'work']).optional(),
   automationMode: z.boolean().optional(),
   automationExecution: z.boolean().optional(),
   automationId: z.string().optional(),

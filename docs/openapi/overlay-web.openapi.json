@@ -2101,6 +2101,13 @@
                       "automate"
                     ]
                   },
+                  "personalChatMode": {
+                    "type": "string",
+                    "enum": [
+                      "chat",
+                      "work"
+                    ]
+                  },
                   "automationMode": {
                     "type": "boolean"
                   },
@@ -2170,6 +2177,18 @@
                   "multiModelTotal": {
                     "type": "integer",
                     "minimum": 1
+                  },
+                  "reasoning": {
+                    "type": "string",
+                    "enum": [
+                      "provider-default",
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
                   }
                 },
                 "additionalProperties": true
@@ -2309,6 +2328,13 @@
                       "automate"
                     ]
                   },
+                  "personalChatMode": {
+                    "type": "string",
+                    "enum": [
+                      "chat",
+                      "work"
+                    ]
+                  },
                   "automationMode": {
                     "type": "boolean"
                   },
@@ -2378,6 +2404,18 @@
                   "multiModelTotal": {
                     "type": "integer",
                     "minimum": 1
+                  },
+                  "reasoning": {
+                    "type": "string",
+                    "enum": [
+                      "provider-default",
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
                   }
                 },
                 "additionalProperties": true
@@ -2638,6 +2676,173 @@
                   "conversationId"
                 ],
                 "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/run": {
+      "get": {
+        "operationId": "getConversationsRun",
+        "summary": "Read the authoritative AgentRun for a conversation",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/conversations/run/approval": {
+      "post": {
+        "operationId": "postConversationsRunApproval",
+        "summary": "Approve or deny a waiting AgentRun tool call",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "agentRunId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "approved": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "conversationId",
+                  "agentRunId",
+                  "token",
+                  "approved"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -5227,7 +5432,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response. Stable response schemas are documented in workflow guides when available."
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid request.",
@@ -5288,7 +5500,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response. Stable response schemas are documented in workflow guides when available."
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid request.",
@@ -5327,9 +5546,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "mcpServerId"
-                ],
                 "properties": {
                   "mcpServerId": {
                     "type": "string",
@@ -5349,6 +5565,9 @@
                     ]
                   }
                 },
+                "required": [
+                  "mcpServerId"
+                ],
                 "additionalProperties": true
               }
             }

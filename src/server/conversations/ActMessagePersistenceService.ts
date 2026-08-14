@@ -181,6 +181,7 @@ export class ActMessagePersistenceService {
     toolFailuresByCallId: Map<string, ActToolFailure>
     turnId: string
     userId: string
+    throwOnError?: boolean
   }): Promise<void> {
     if (!args.conversationId) return
     const usage = args.event.usage
@@ -345,6 +346,7 @@ export class ActMessagePersistenceService {
       }
     } catch (err) {
       logger.error('[conversations/act] Failed to save assistant message:', summarizeErrorForLog(err))
+      if (args.throwOnError) throw err
     }
   }
 }

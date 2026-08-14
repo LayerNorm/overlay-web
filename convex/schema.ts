@@ -916,6 +916,16 @@ export default defineSchema({
       message: v.string(),
       retryable: v.boolean(),
     })),
+    approval: v.optional(v.object({
+      token: v.string(),
+      requestedAt: v.number(),
+      requests: v.array(v.object({
+        approvalId: v.string(),
+        toolCallId: v.string(),
+        toolName: v.string(),
+        input: v.any(),
+      })),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

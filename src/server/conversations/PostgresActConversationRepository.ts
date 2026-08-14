@@ -1078,6 +1078,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   }
 
   async transitionAgentRun(args: {
+    approval?: AgentRun['approval']
     leaseExpiresAt?: number
     runId: string
     status: AgentRunStatus
@@ -1101,10 +1102,39 @@ export class PostgresActConversationRepository implements ActConversationReposit
           status: args.status,
           leaseExpiresAt: finiteDate(args.leaseExpiresAt) ?? run.leaseExpiresAt,
           startedAt: args.status === 'running' ? (run.startedAt ?? now) : run.startedAt,
+          approval: args.status === 'waiting_for_approval' ? args.approval : null,
           updatedAt: now,
         })
         .where(eq(agentRuns.id, run.id))
         .returning()
+      return updated ? mapAgentRun(updated) : null
+    })
+  }
+
+  async attachAgentRunWorkflow(args: {
+    runId: string
+    userId: string
+    workflowRunId: string
+  }): Promise<AgentRun | null> {
+    return await this.db.transaction(async (tx) => {
+      const [run] = await tx.select().from(agentRuns).where(and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+      )).limit(1).for('update')
+      if (!run) throw new Error('Unauthorized')
+      if (run.workflowRunId && run.workflowRunId !== args.workflowRunId) {
+        throw new Error('AgentRun is already attached to another workflow')
+      }
+      if (run.status !== 'queued' && run.status !== 'running') {
+        return mapAgentRun(run)
+      }
+      const now = new Date()
+      const [updated] = await tx.update(agentRuns).set({
+        workflowRunId: args.workflowRunId,
+        status: 'running',
+        startedAt: run.startedAt ?? now,
+        updatedAt: now,
+      }).where(eq(agentRuns.id, run.id)).returning()
       return updated ? mapAgentRun(updated) : null
     })
   }
@@ -1210,7 +1240,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
     userId: string
-  }): Promise<{ cancelledRunIds: string[]; stoppedCount: number }> {
+  }): Promise<{ cancelledRunIds: string[]; cancelledWorkflowRunIds: string[]; stoppedCount: number }> {
     return await this.db.transaction(async (tx) => {
       const [conversation] = await tx.select({ id: conversations.id })
         .from(conversations)
@@ -1227,7 +1257,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
         args.messageId ? eq(agentRuns.assistantMessageId, args.messageId) : undefined,
       )).for('update')
-      if (runs.length === 0) return { cancelledRunIds: [], stoppedCount: 0 }
+      if (runs.length === 0) return { cancelledRunIds: [], cancelledWorkflowRunIds: [], stoppedCount: 0 }
       const now = new Date()
       const sentinel = '\n\n[Interrupted by user. Continue?]'
       for (const run of runs) {
@@ -1268,7 +1298,11 @@ export class PostgresActConversationRepository implements ActConversationReposit
         })
       }
       await touchConversation(tx, args.conversationId, args.userId, now, 'act')
-      return { cancelledRunIds: runs.map((run) => run.id), stoppedCount: runs.length }
+      return {
+        cancelledRunIds: runs.map((run) => run.id),
+        cancelledWorkflowRunIds: runs.flatMap((run) => run.workflowRunId ? [run.workflowRunId] : []),
+        stoppedCount: runs.length,
+      }
     })
   }
 
@@ -1644,6 +1678,7 @@ function mapAgentRun(row: typeof agentRuns.$inferSelect): AgentRun {
     failedAt: row.failedAt ? toMillis(row.failedAt) : undefined,
     cancelledAt: row.cancelledAt ? toMillis(row.cancelledAt) : undefined,
     terminalError: row.terminalError ?? undefined,
+    approval: row.approval ?? undefined,
     createdAt: toMillis(row.createdAt),
     updatedAt: toMillis(row.updatedAt),
   }

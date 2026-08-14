@@ -133,6 +133,7 @@ export async function prepareActTooling(params: {
   effectiveModelId: string
   forwardCookie?: string | null
   isMultiModelFollowUpSlot: boolean
+  idempotencyKey?: string
   latestUserText?: string
   memoryEnabled?: boolean
   mediaToolIntent: MediaToolIntent
@@ -208,6 +209,7 @@ export async function prepareActTooling(params: {
         memoryEnabled,
         workspaceId: params.workspaceId,
         activeKnowledgeBaseIds: params.activeKnowledgeBaseIds,
+        idempotencyKey: params.idempotencyKey,
       }),
     ),
     params.paid && capabilities.webSearch

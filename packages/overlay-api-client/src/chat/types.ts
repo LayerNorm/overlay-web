@@ -97,6 +97,16 @@ export type AgentRunResource = {
   failedAt?: number
   cancelledAt?: number
   terminalError?: { code: string; message: string; retryable: boolean }
+  approval?: {
+    token: string
+    requestedAt: number
+    requests: Array<{
+      approvalId: string
+      toolCallId: string
+      toolName: string
+      input: unknown
+    }>
+  }
   createdAt: number
   updatedAt: number
 }
