@@ -24,6 +24,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const SESSION_CHECK_INTERVAL_MS = 4 * 60 * 1000
 const SESSION_REFRESH_LOCK_NAME = 'overlay:auth-session-refresh'
+// Minimum time after a successful session check before a focus/visibility
+// refresh is allowed.  Prevents redundant checks when the user rapidly
+// switches tabs.
+const SESSION_MIN_STALE_BEFORE_FOCUS_MS = 30 * 1000
 
 type SessionCheckResult =
   | { status: 'authenticated'; user: AuthUser }
@@ -93,6 +97,7 @@ export function AuthProvider({
   const [user, setUser] = useState<AuthUser | null>(initialUser)
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
   const reconciledUserId = useRef(initialUser?.id ?? null)
+  const lastCheckAtRef = useRef(0)
 
   useEffect(() => {
     if (initialUser) {
@@ -114,7 +119,10 @@ export function AuthProvider({
   }, [isLoading, user?.id])
 
   const checkSession = useCallback(async (trigger: 'interval' | 'focus' | 'visibility' | 'manual' = 'manual') => {
+    // Skip focus/visibility refreshes if we checked very recently.
+    if ((trigger === 'focus' || trigger === 'visibility') && Date.now() - lastCheckAtRef.current < SESSION_MIN_STALE_BEFORE_FOCUS_MS) return
     const startTime = performance.now()
+    lastCheckAtRef.current = Date.now()
     try {
       const result = await requestSessionState()
       const success = result.status === 'authenticated' || result.status === 'unauthenticated'
@@ -160,7 +168,12 @@ export function AuthProvider({
   }, [checkSession])
 
   useEffect(() => {
-    void checkSession('manual')
+    // Skip the initial mount check if the server already resolved the session.
+    if (initialSessionResolved && initialUser) {
+      lastCheckAtRef.current = Date.now()
+    } else {
+      void checkSession('manual')
+    }
     const intervalId = window.setInterval(() => {
       void checkSession('interval')
     }, SESSION_CHECK_INTERVAL_MS)
@@ -177,7 +190,7 @@ export function AuthProvider({
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [checkSession])
+  }, [checkSession, initialSessionResolved, initialUser])
 
   return (
     <AuthContext.Provider

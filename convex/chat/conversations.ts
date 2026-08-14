@@ -1253,6 +1253,51 @@ export const watchMessages = query({
   },
 })
 
+/**
+ * Live subscription query for the latest AgentRun for a conversation.
+ * Uses accessToken auth (same pattern as watchMessages) so the client can
+ * subscribe via useQuery and get realtime updates without HTTP polling.
+ */
+export const watchAgentRun = query({
+  args: {
+    conversationId: v.id('conversations'),
+    userId: v.string(),
+    accessToken: v.string(),
+  },
+  handler: async (ctx, { conversationId, userId, accessToken }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken })
+    } catch {
+      return null
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return null
+
+    // Check for active runs first (queued, running, waiting_for_approval).
+    const activeStatuses = ['queued', 'running', 'waiting_for_approval'] as const
+    const active: Doc<'conversationAgentRuns'>[] = []
+    for (const status of activeStatuses) {
+      const run = await ctx.db
+        .query('conversationAgentRuns')
+        .withIndex('by_conversationId_status_updatedAt', (q) => q
+          .eq('conversationId', conversationId)
+          .eq('status', status))
+        .order('desc')
+        .first()
+      if (run) active.push(run)
+    }
+    if (active.length > 0) {
+      return active.sort((left, right) => right.updatedAt - left.updatedAt)[0]
+    }
+    // Fall back to the most recently created run (terminal state).
+    return await ctx.db
+      .query('conversationAgentRuns')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
+      .order('desc')
+      .first()
+  },
+})
+
 /** Batch insert for Ask multi-model assistant variants (same turn). */
 /** Remove one user turn and all associated assistant variants (same turnId), plus matching outputs. */
 export const deleteTurn = mutation({

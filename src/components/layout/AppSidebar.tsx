@@ -16,6 +16,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
+import { coalesceRequest } from '@/shared/observability/request-coalescer'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   SidebarShell,
@@ -389,14 +390,19 @@ export default function AppSidebar({
       setEntitlements(null)
       return
     }
+    const cacheKey = `billing:${activeWorkspaceId ?? 'personal'}`
     try {
-      const res = await overlayAppClient.subscription.getResponse({
-        cache: 'no-store',
-        ...(activeWorkspaceId
-          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
-          : {}),
+      const data = await coalesceRequest(cacheKey, async () => {
+        const res = await overlayAppClient.subscription.getResponse({
+          cache: 'no-store',
+          ...(activeWorkspaceId
+            ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
+            : {}),
+        })
+        if (!res.ok) return null
+        return await res.json()
       })
-      if (res.ok) setEntitlements(await res.json())
+      if (data) setEntitlements(data)
     } catch {
       // ignore
     }
@@ -418,7 +424,7 @@ export default function AppSidebar({
 
   useEffect(() => {
     if (!accountMenuOpen && !mobileAccountOpen && !filesSectionOpen) return
-    const intervalId = window.setInterval(() => { void loadEntitlements() }, 30_000)
+    const intervalId = window.setInterval(() => { void loadEntitlements() }, 60_000)
     return () => {
       window.clearInterval(intervalId)
     }

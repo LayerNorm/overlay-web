@@ -7,22 +7,13 @@ import {
   convexReactClientEnabled,
 } from '@/components/providers/convex-react-client'
 import { useAuth } from '@/contexts/AuthContext'
+import { fetchConvexToken } from '@/components/providers/convex-token-broker'
 
 type ConvexAuthContextValue = {
   accessToken: string | null
 }
 
 const ConvexAuthContext = createContext<ConvexAuthContextValue>({ accessToken: null })
-
-async function fetchConvexToken(): Promise<string | null> {
-  const response = await fetch('/api/auth/convex-token', {
-    credentials: 'same-origin',
-    cache: 'no-store',
-  })
-  if (!response.ok) return null
-  const data = await response.json() as { token?: string }
-  return data.token?.trim() || null
-}
 
 export function ConvexAuthProvider({
   children,
@@ -36,6 +27,9 @@ export function ConvexAuthProvider({
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const convexEnabled = requiresConvexClient && Boolean(convexReactClient)
 
+  // Single token refresh path: fetch via the shared broker and update state.
+  // The broker deduplicates in-flight requests so the interval refresh and
+  // the Convex client's on-demand callback share the same fetch.
   useEffect(() => {
     let alive = true
     if (!convexEnabled || isLoading || !userId) {
@@ -59,6 +53,8 @@ export function ConvexAuthProvider({
     }
   }, [convexEnabled, isLoading, userId])
 
+  // Register the auth callback with the Convex client.
+  // Uses the same shared broker — no duplicate fetch.
   useEffect(() => {
     if (!convexEnabled || !convexReactClient) return
     convexReactClient.setAuth(async () => {

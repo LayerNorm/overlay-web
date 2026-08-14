@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuth } from '@/contexts/AuthContext'
+import { coalesceRequest } from '@/shared/observability/request-coalescer'
 
 export default function BackgroundPollManager() {
   const { user, isLoading: authLoading } = useAuth()
@@ -23,7 +24,9 @@ export default function BackgroundPollManager() {
     if (authLoading || !authUserId) return
     if (appDataCapabilities.provider === 'postgres') return
     const run = () => {
-      void fetch('/api/v1/chat-suggestions', { credentials: 'same-origin' }).catch(() => {})
+      void coalesceRequest('chat-suggestions', () =>
+        fetch('/api/v1/chat-suggestions', { credentials: 'same-origin' }).then((r) => r.json()),
+      ).catch(() => {})
     }
     if (typeof window.requestIdleCallback === 'function') {
       const id = window.requestIdleCallback(run, { timeout: 8000 })
@@ -35,6 +38,10 @@ export default function BackgroundPollManager() {
 
   useEffect(() => {
     if (authLoading || !authUserId) return
+    // When Convex realtime is available, live message updates arrive via
+    // Convex subscriptions — skip the HTTP polling fallback for streaming
+    // session detection.
+    if (appDataCapabilities.provider !== 'postgres' && appDataCapabilities.supportsRealtime) return
     const interval = setInterval(async () => {
       const pending = Object.values(sessionsRef.current).filter(
         (session) => session.status === 'streaming' && !session.id.startsWith('__overlay_'),
@@ -61,7 +68,7 @@ export default function BackgroundPollManager() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [authLoading, authUserId])
+  }, [appDataCapabilities.provider, appDataCapabilities.supportsRealtime, authLoading, authUserId])
 
   return null
 }
