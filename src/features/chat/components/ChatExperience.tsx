@@ -78,7 +78,9 @@ import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorAc
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
+  PERSONAL_CHAT_MODE_KEY,
 } from './chat-interface/constants'
+import type { PersonalChatMode } from '@overlay/ui/chat'
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSequence,
@@ -263,6 +265,8 @@ export default function ChatExperience({
     chatPrefsHydrated,
     generationMode,
     setGenerationMode,
+    personalChatMode,
+    setPersonalChatMode,
     generationChip,
     setGenerationChip,
     selectedImageModels,
@@ -1538,6 +1542,11 @@ export default function ChatExperience({
     }, 0)
   }, [])
 
+  const handlePersonalChatModeChange = useCallback((nextMode: PersonalChatMode) => {
+    setPersonalChatMode(nextMode)
+    safeSetLocalStorage(PERSONAL_CHAT_MODE_KEY, nextMode)
+  }, [setPersonalChatMode])
+
   const handleEmptySuggestion = useCallback(
     (id: EmptyChatSuggestionId) => {
       if (id === 'image') {
@@ -1969,6 +1978,8 @@ export default function ChatExperience({
         onTemporaryChatToggle: handleTemporaryChatToggle,
         onGenerationModeChange: handleModeChange,
         generationMode,
+        personalChatMode,
+        onPersonalChatModeChange: handlePersonalChatModeChange,
         renderExportMenu,
         ...headerModelProps,
         automationHeaderModelId,

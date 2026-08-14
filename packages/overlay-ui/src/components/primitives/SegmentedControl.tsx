@@ -19,6 +19,7 @@ export interface SegmentedControlProps<T extends string> {
   disabled?: boolean
   className?: string
   compactLabels?: boolean
+  layout?: 'default' | 'stretch'
 }
 
 export function SegmentedControl<T extends string>({
@@ -29,13 +30,17 @@ export function SegmentedControl<T extends string>({
   disabled = false,
   className,
   compactLabels = false,
+  layout = 'default',
 }: SegmentedControlProps<T>) {
+  const stretch = layout === 'stretch'
+
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
         'flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5',
+        stretch && 'w-full min-w-0',
         className,
       )}
     >
@@ -54,7 +59,10 @@ export function SegmentedControl<T extends string>({
               if (!optionDisabled) onChange(option.value)
             }}
             className={cn(
-              'inline-flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors',
+              'inline-flex min-w-0 items-center justify-center rounded-md font-medium transition-colors',
+              stretch
+                ? 'flex-1 flex-col gap-0.5 px-0.5 py-1.5 text-[10px] leading-none sm:h-7 sm:flex-row sm:gap-1.5 sm:px-2 sm:py-0 sm:text-[11px]'
+                : 'h-7 gap-1.5 px-2.5 text-[11px]',
               active
                 ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
                 : 'text-[var(--muted)] hover:text-[var(--foreground)]',
@@ -62,7 +70,14 @@ export function SegmentedControl<T extends string>({
             )}
           >
             {Icon ? <Icon size={12} strokeWidth={1.75} className="shrink-0" /> : null}
-            <span className={compactLabels ? 'hidden sm:inline' : undefined}>{option.label}</span>
+            <span
+              className={cn(
+                compactLabels && 'hidden sm:inline',
+                stretch && 'whitespace-nowrap text-center',
+              )}
+            >
+              {option.label}
+            </span>
           </button>
         )
       })}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AskModelSelectionMode } from '../chat-interface/types'
 import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import type { ReasoningLevel } from '@overlay/chat-core'
+import type { PersonalChatMode } from '@overlay/ui/chat'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
@@ -19,6 +20,7 @@ import {
   IMAGE_MODEL_SELECTION_MODE_KEY,
   SELECTED_IMAGE_MODELS_KEY,
   SELECTED_VIDEO_MODELS_KEY,
+  PERSONAL_CHAT_MODE_KEY,
   VIDEO_MODEL_SELECTION_MODE_KEY,
   VIDEO_SUB_MODE_KEY,
 } from '../chat-interface/constants'
@@ -29,6 +31,7 @@ export function useChatPreferences() {
   const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
+  const [personalChatMode, setPersonalChatMode] = useState<PersonalChatMode>('chat')
   const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
   const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
@@ -49,6 +52,11 @@ export function useChatPreferences() {
     try {
       const savedMode = localStorage.getItem(CHAT_GEN_MODE_KEY) as GenerationMode | null
       if (savedMode && ['text', 'image', 'video'].includes(savedMode)) setGenerationMode(savedMode)
+
+      const savedPersonalChatMode = localStorage.getItem(PERSONAL_CHAT_MODE_KEY)
+      if (savedPersonalChatMode === 'chat' || savedPersonalChatMode === 'work') {
+        setPersonalChatMode(savedPersonalChatMode)
+      }
 
       const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
       if (imgMode === 'single' || imgMode === 'multiple') {
@@ -111,6 +119,8 @@ export function useChatPreferences() {
     chatPrefsHydrated,
     generationMode,
     setGenerationMode,
+    personalChatMode,
+    setPersonalChatMode,
     generationChip,
     setGenerationChip,
     selectedImageModels,

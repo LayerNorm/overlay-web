@@ -22,7 +22,11 @@ import type {
   VideoSubMode,
 } from '@overlay/chat-core'
 import { VIDEO_SUB_MODES, VIDEO_SUB_MODE_LABELS } from '@overlay/chat-core'
-import { GenerationModeSelect, GenerationModeToggle } from '@overlay/ui/chat'
+import {
+  GenerationModeToggle,
+  PersonalChatModeToggle,
+  type PersonalChatMode,
+} from '@overlay/ui/chat'
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { ModelBadges } from './ModelIndicators'
@@ -123,6 +127,8 @@ export interface ChatExperienceHeaderProps {
   onTemporaryChatToggle: () => void
   onGenerationModeChange: (mode: GenerationMode) => void
   generationMode: GenerationMode
+  personalChatMode: PersonalChatMode
+  onPersonalChatModeChange: (mode: PersonalChatMode) => void
   renderExportMenu: () => ReactNode
   modelPickerRef: RefObject<HTMLDivElement | null>
   videoSubModePickerRef: RefObject<HTMLDivElement | null>
@@ -191,6 +197,8 @@ export function ChatExperienceHeader({
   onTemporaryChatToggle,
   onGenerationModeChange,
   generationMode,
+  personalChatMode,
+  onPersonalChatModeChange,
   renderExportMenu,
   modelPickerRef,
   videoSubModePickerRef,
@@ -442,6 +450,13 @@ export function ChatExperienceHeader({
           </div>
         ) : null}
         <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
+          {!hasAutomationContext ? (
+            <PersonalChatModeToggle
+              mode={personalChatMode}
+              onChange={onPersonalChatModeChange}
+              disabled={isActiveLoading}
+            />
+          ) : null}
           <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
             <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
               <button
@@ -479,6 +494,18 @@ export function ChatExperienceHeader({
                   data-tour="model-picker"
                   className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
                 >
+                  <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
+                    <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="left">
+                      <span data-tour="generation-mode-toggle" className="block w-full">
+                        <GenerationModeToggle
+                          mode={generationMode}
+                          onChange={onGenerationModeChange}
+                          disabled={isActiveLoading}
+                          layout="stretch"
+                        />
+                      </span>
+                    </DelayedTooltip>
+                  </div>
                   <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                     {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
                       <PremiumModelsLoadingRows />
@@ -661,11 +688,6 @@ export function ChatExperienceHeader({
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1.5 md:hidden">
-            <GenerationModeSelect
-              mode={generationMode}
-              onChange={onGenerationModeChange}
-              disabled={isActiveLoading}
-            />
             {appMode === 'chat' ? (
               <TemporaryChatButton
                 active={isTemporaryChat}
@@ -677,11 +699,6 @@ export function ChatExperienceHeader({
           </div>
         </div>
         <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-          <DelayedTooltip label="Cycle text / image / video (⇧⌘.)" side="bottom">
-            <span data-tour="generation-mode-toggle" className="inline-flex">
-              <GenerationModeToggle mode={generationMode} onChange={onGenerationModeChange} disabled={isActiveLoading} />
-            </span>
-          </DelayedTooltip>
           {appMode === 'chat' ? (
             <TemporaryChatButton
               active={isTemporaryChat}
