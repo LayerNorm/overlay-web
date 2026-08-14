@@ -490,6 +490,24 @@ implements ConversationCollaborationRepository {
       ))
       .limit(1)
     if (existing) {
+      const now = new Date()
+      const restored = await this.db.update(conversationParticipants).set({
+        archivedAt: null,
+        updatedAt: now,
+      }).where(and(
+        eq(conversationParticipants.conversationId, existing.id),
+        eq(conversationParticipants.principalId, actor.id),
+        eq(conversationParticipants.status, 'active'),
+        isNotNull(conversationParticipants.archivedAt),
+      )).returning({ principalId: conversationParticipants.principalId })
+      if (restored.length > 0) {
+        await this.db.insert(conversationEvents).values({
+          userId: args.actorUserId,
+          conversationId: existing.id,
+          type: 'conversation.updated',
+          createdAt: now,
+        })
+      }
       return {
         conversationId: existing.id,
         workspaceId: args.workspaceId,

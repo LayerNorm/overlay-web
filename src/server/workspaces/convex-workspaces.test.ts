@@ -244,6 +244,26 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         workspaceId: orgWorkspaceId,
         principalIds: [invitedPrincipalId],
       })).conversationId, directMessage.conversationId)
+      await collaboration.updateParticipantState({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+        archived: true,
+      })
+      assert.equal((await collaboration.listAccessibleConversations({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+      })).some((conversation) => conversation._id === directMessage.conversationId), false)
+      const reopened = await collaboration.createDirectMessage({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        principalIds: [invitedPrincipalId],
+      })
+      assert.equal(reopened.created, false)
+      assert.equal((await collaboration.listAccessibleConversations({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+      })).some((conversation) => conversation._id === directMessage.conversationId), true)
       const messageId = await conversations.addMessage({
         workspaceId: orgWorkspaceId,
         conversationId: directMessage.conversationId as never,

@@ -57,9 +57,17 @@ test('Phase 3 exposes Personal-to-DM forking and a dedicated collaborative surfa
 })
 
 test('agent chats immediately publish their DM into the sidebar list', async () => {
-  const directory = await readFile(`${root}/src/features/agents/components/AgentsDirectory.tsx`, 'utf8')
+  const [directory, convexDirectMessages, postgresDirectMessages] = await Promise.all([
+    readFile(`${root}/src/features/agents/components/AgentsDirectory.tsx`, 'utf8'),
+    readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
+    readFile(`${root}/src/server/conversations/PostgresConversationCollaborationRepository.ts`, 'utf8'),
+  ])
 
   assert.match(directory, /createDirectMessage/)
   assert.match(directory, /dispatchChatCreated/)
   assert.match(directory, /conversationType: 'dm'/)
+  assert.match(convexDirectMessages, /actorParticipant\?\.archivedAt/)
+  assert.match(convexDirectMessages, /unarchived: true/)
+  assert.match(postgresDirectMessages, /isNotNull\(conversationParticipants\.archivedAt\)/)
+  assert.match(postgresDirectMessages, /type: 'conversation\.updated'/)
 })

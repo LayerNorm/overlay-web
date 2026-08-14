@@ -195,6 +195,26 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       workspaceId,
       principalIds: [memberPrincipalId],
     })).conversationId, created.conversationId)
+    await collaboration.updateParticipantState({
+      actorUserId: ownerUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      archived: true,
+    })
+    assert.equal((await collaboration.listAccessibleConversations({
+      actorUserId: ownerUserId,
+      workspaceId,
+    })).some((conversation) => conversation._id === created.conversationId), false)
+    const reopened = await collaboration.createDirectMessage({
+      actorUserId: ownerUserId,
+      workspaceId,
+      principalIds: [memberPrincipalId],
+    })
+    assert.equal(reopened.created, false)
+    assert.equal((await collaboration.listAccessibleConversations({
+      actorUserId: ownerUserId,
+      workspaceId,
+    })).some((conversation) => conversation._id === created.conversationId), true)
     assert.equal(await collaboration.canAccessConversation({
       actorUserId: memberUserId,
       workspaceId,

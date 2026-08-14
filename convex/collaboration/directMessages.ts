@@ -582,6 +582,22 @@ export const createDirectMessage = mutation({
       .filter((q) => q.eq(q.field('deletedAt'), undefined))
       .first()
     if (existing) {
+      const actorParticipant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
+        ))
+        .unique()
+      if (actorParticipant?.archivedAt) {
+        const now = Date.now()
+        await ctx.db.patch(actorParticipant._id, { archivedAt: undefined, updatedAt: now })
+        await recordConversationEvent(ctx, {
+          conversationId: existing._id,
+          workspaceId: args.workspaceId,
+          userId: args.actorUserId,
+          type: 'conversation.updated',
+          payload: { conversationType: 'dm', unarchived: true },
+        })
+      }
       return {
         conversationId: existing._id,
         workspaceId: args.workspaceId,
