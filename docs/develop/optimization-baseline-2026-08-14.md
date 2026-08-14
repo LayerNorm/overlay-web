@@ -20,44 +20,45 @@ compare against after each optimization phase.
 - Chat activity is bursty — peaks of 25-26 messages/day vs median of ~5.
 - DAU ranges from 5 to 53, median ~24.
 
-## 2. BFF request metrics (first hour after deployment)
+## 2. BFF request metrics (from Vercel runtime logs)
 
-`overlay.metrics.bff_request` events confirmed flowing to PostHog.
+`[BFF_METRIC]` console logs confirmed in Vercel logs. Data below is from
+24 BFF requests generated against staging.
 
-| Route | Count | Avg duration (ms) | P95 duration (ms) |
-| --- | --- | --- | --- |
-| `/api/v1/conversations` | 11 | 228 | 461 |
-| `/api/v1/integrations` | 1 | 1,602 | — |
-| `/api/v1/knowledge-bases` | 1 | 684 | — |
-| `/api/v1/workspaces` | 1 | 346 | — |
-| `/api/v1/workspaces/{id}/management` | 1 | 303 | — |
-| `/api/v1/model-catalog` | 1 | 229 | — |
-| `/api/v1/subscription` | 1 | 168 | — |
-| `/api/v1/workspaces/{id}/management` | 1 | 303 | — |
-| `/api/v1/settings` | 1 | 135 | — |
-| `/api/v1/chat-suggestions` | 1 | 134 | — |
-
-**Overall:** 19 requests, avg 322ms, P95 776ms.
+| Route | Count | Avg ms | Min ms | Max ms |
+| --- | --- | --- | --- | --- |
+| `/api/v1/conversations` | 9 | 190 | 106 | 420 |
+| `/api/v1/model-catalog` | 3 | 245 | 197 | 274 |
+| `/api/v1/workspaces` | 3 | 247 | 186 | 347 |
+| `/api/v1/settings` | 3 | 97 | 95 | 99 |
+| `/api/v1/chat-suggestions` | 2 | 133 | 108 | 159 |
+| `/api/v1/knowledge-bases` | 2 | 415 | 326 | 505 |
+| `/api/v1/subscription` | 2 | 178 | 144 | 213 |
 
 **Auth type:** 100% session auth.
-**Status codes:** 100% 200 OK (no 429s or errors in sample).
-**Workspaces:** `personal-1s8jk8y` (17 requests), `a5166906-...` (2 requests).
+**Status codes:** 100% 200 OK (no 429s or errors).
+**Workspaces:** `personal-1s8jk8y` (most), `a5166906-...` (1).
 
 **Key observations:**
-- `/api/v1/conversations` is the highest-frequency BFF route (58% of traffic).
-- `/api/v1/integrations` is the slowest route at 1.6s — likely a candidate for optimization.
-- `/api/v1/knowledge-bases` at 684ms is also slow.
-- No rate-limit hits (429s) observed in the first hour.
+- `/api/v1/conversations` is the highest-frequency BFF route (38% of traffic).
+- `/api/v1/knowledge-bases` is the slowest route at 415-505ms.
+- `/api/v1/settings` is the fastest at 95-99ms (likely cached/simple).
+- `/api/v1/conversations` has high variance (106-420ms) — cold start vs warm?
+- No rate-limit hits (429s) observed.
+- `/api/v1/integrations` was 1,602ms in the earlier PostHog sample but did
+  not appear in this Vercel log batch (may not have been called).
 
-## 3. Convex function metrics
+## 3. Convex function metrics (from Convex logs)
 
-The `withMetrics` wrapper is deployed on `rateLimits.takeManyByServer`,
-which is called on every authenticated BFF request. Metrics are written
-to the Convex `functionMetrics` table (7-day TTL, cleanup cron every 6h).
+`[CVX_METRIC]` logs confirmed in Convex dev deployment logs.
 
-Data is being collected in Convex storage. A public query endpoint or
-scheduled export to PostHog is needed to surface this data — not yet
-implemented.
+```
+platform.rateLimits.takeManyByServer: 7 calls, all 0ms, 0 errors
+```
+
+The rate limit function is called on every authenticated BFF request
+and completes in <1ms. This is the only Convex function instrumented
+with `withMetrics` so far.
 
 ## 4. Client-side metrics
 
