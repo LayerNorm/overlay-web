@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { withMetrics } from '../lib/metrics'
 
 const PRUNE_BATCH_SIZE = 25
 
@@ -20,13 +21,14 @@ export const takeManyByServer = mutation({
     remaining: v.number(),
     retryAfterSeconds: v.number(),
   })),
-  handler: async (ctx, args) => {
+  handler: withMetrics('platform.rateLimits.takeManyByServer', async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
     const now = Date.now()
     const expired = await ctx.db
       .query('rateLimitWindows')
-      .withIndex('by_resetAt', (q) => q.lt('resetAt', now))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex('by_resetAt', (q: any) => q.lt('resetAt', now))
       .take(PRUNE_BATCH_SIZE)
 
     for (const row of expired) {
@@ -54,7 +56,8 @@ export const takeManyByServer = mutation({
 
       const existing = await ctx.db
         .query('rateLimitWindows')
-        .withIndex('by_bucketKey', (q) => q.eq('bucketKey', bucketKey))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex('by_bucketKey', (q: any) => q.eq('bucketKey', bucketKey))
         .first()
 
       if (!existing || existing.resetAt <= now) {
@@ -110,5 +113,5 @@ export const takeManyByServer = mutation({
     }
 
     return results
-  },
+  }),
 })

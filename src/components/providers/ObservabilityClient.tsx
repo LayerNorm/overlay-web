@@ -6,6 +6,7 @@ import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { addMetricsListener } from '@/shared/observability/client-metrics'
 import { redactUrlForTelemetry, routeForTelemetry } from '@/shared/security/safe-url'
 
 function posthogConfigured(): boolean {
@@ -104,6 +105,19 @@ export default function ObservabilityClient() {
       // ignore
     }
   }, [capabilities.analytics, capabilities.errorReporting, pathname, user])
+
+  // Forward client-side metrics events (cache, latency, duplicates, polling)
+  // from the shared event bus to PostHog.
+  useEffect(() => {
+    if (!capabilities.analytics || !posthogConfigured()) return
+    return addMetricsListener(({ event, properties }) => {
+      try {
+        posthog.capture(event, properties)
+      } catch {
+        // ignore
+      }
+    })
+  }, [capabilities.analytics])
 
   return null
 }

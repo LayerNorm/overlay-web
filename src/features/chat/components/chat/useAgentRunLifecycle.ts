@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentRunResource } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { trackAgentRunRecovery } from '@/shared/observability/client-metrics'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
 const POLL_INTERVAL_MS = 2_000
@@ -47,6 +48,21 @@ export function useAgentRunLifecycle({
       if (wasActive && !isActive) {
         setTerminalSyncUntil(Date.now() + TERMINAL_SYNC_GRACE_MS)
         setTerminalSyncConversationId(conversationId)
+        // Export recovery metrics when a run transitions to terminal.
+        const prevRun = currentRun
+        if (prevRun) {
+          const disconnected = prevRun.metrics?.browserDisconnectedAt !== undefined
+          const reconnectedAt = prevRun.metrics?.browserReconnectedAt
+          const disconnectDuration = disconnected && reconnectedAt && reconnectedAt >= (prevRun.metrics?.browserDisconnectedAt ?? 0)
+            ? reconnectedAt - (prevRun.metrics?.browserDisconnectedAt ?? 0)
+            : undefined
+          trackAgentRunRecovery({
+            runId: prevRun.id,
+            disconnected,
+            disconnectDurationMs: disconnectDuration,
+            completedAfterReconnect: disconnected && (next.run?.status === 'completed'),
+          })
+        }
       }
       const nextSnapshot = { conversationId, run: next.run }
       snapshotRef.current = nextSnapshot

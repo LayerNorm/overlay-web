@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool, type PoolConfig } from 'pg'
 import { logger } from '@/server/observability/logger'
+import { capturePostgresQueryMetric } from '@/server/observability/metrics'
 
 import * as schema from './schema'
 
@@ -26,6 +27,39 @@ export function createOverlayPostgresPool(options: CreateOverlayPostgresPoolOpti
 
   const pool = new Pool(poolConfig)
   pool.on('connect', (client) => {
+    // Wrap the client query method to capture per-query timing metrics.
+    // We use `any` casts because the `pg` query method has complex overloads
+    // (callback, promise, stream) that are difficult to type generically.
+    const originalQuery = client.query.bind(client) as unknown as (...args: unknown[]) => unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const instrumented = function instrumentedQuery(...args: any[]) {
+      const startTime = performance.now()
+      const result = originalQuery(...args)
+      // Only instrument promise-returning calls (not callback or stream calls).
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        ;(result as Promise<{ rowCount?: number } | Array<{ rowCount?: number }>>)
+          .then((res) => {
+            const rows = Array.isArray(res)
+              ? res.reduce((sum, r) => sum + (r.rowCount ?? 0), 0)
+              : res?.rowCount ?? 0
+            capturePostgresQueryMetric({
+              operation: 'execute',
+              durationMs: Math.round(performance.now() - startTime),
+              rowsReturned: rows,
+            })
+          })
+          .catch((_error) => {
+            capturePostgresQueryMetric({
+              operation: 'execute',
+              durationMs: Math.round(performance.now() - startTime),
+              retried: false,
+            })
+          })
+      }
+      return result
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(client as any).query = instrumented
     client.on('error', (error) => {
       logger.error('[Postgres] Client connection error', {
         code: typeof error === 'object' && error && 'code' in error ? error.code : undefined,

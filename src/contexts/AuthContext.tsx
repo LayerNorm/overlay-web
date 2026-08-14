@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
+import { trackSessionRefresh } from '@/shared/observability/client-metrics'
 
 export interface AuthUser {
   id: string
@@ -112,9 +113,16 @@ export function AuthProvider({
     }))
   }, [isLoading, user?.id])
 
-  const checkSession = useCallback(async () => {
+  const checkSession = useCallback(async (trigger: 'interval' | 'focus' | 'visibility' | 'manual' = 'manual') => {
+    const startTime = performance.now()
     try {
       const result = await requestSessionState()
+      const success = result.status === 'authenticated' || result.status === 'unauthenticated'
+      trackSessionRefresh({
+        trigger,
+        durationMs: Math.round(performance.now() - startTime),
+        success,
+      })
       if (result.status === 'authenticated') {
         setUser(result.user)
       } else if (result.status === 'unauthenticated') {
@@ -148,19 +156,19 @@ export function AuthProvider({
   }, [])
 
   const refreshSession = useCallback(async () => {
-    await checkSession()
+    await checkSession('manual')
   }, [checkSession])
 
   useEffect(() => {
-    void checkSession()
+    void checkSession('manual')
     const intervalId = window.setInterval(() => {
-      void checkSession()
+      void checkSession('interval')
     }, SESSION_CHECK_INTERVAL_MS)
     const handleFocus = () => {
-      void checkSession()
+      void checkSession('focus')
     }
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') void checkSession()
+      if (document.visibilityState === 'visible') void checkSession('visibility')
     }
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleVisibilityChange)

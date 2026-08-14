@@ -37,6 +37,7 @@ import {
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
+import { captureBffRequestMetric } from '@/server/observability/metrics'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
@@ -72,11 +73,36 @@ export async function handleBffRoute(
   context: unknown,
   service: BffDomainService,
 ): Promise<Response> {
+  const startTime = performance.now()
+  const route = request.nextUrl.pathname
+
+  // Helper to emit BFF metrics on every exit path (early returns + final return).
+  function emitMetric(
+    response: Response,
+    authType: 'api-key' | 'service' | 'session' | 'access-token' | 'anonymous' = 'anonymous',
+    workspaceId?: string,
+  ): void {
+    const durationMs = Math.round(performance.now() - startTime)
+    const retryAfter = response.headers.get('Retry-After')
+    captureBffRequestMetric({
+      route,
+      method: request.method,
+      statusCode: response.status,
+      durationMs,
+      authType,
+      workspaceId,
+      responseBytes: Number(response.headers.get('Content-Length')) || undefined,
+      retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
+    })
+  }
+
   let capabilities: CapabilityCheck
   try {
     capabilities = await getOverlayCapabilities()
   } catch (error) {
-    return runtimeConfigErrorResponse(error)
+    const response = runtimeConfigErrorResponse(error)
+    emitMetric(response)
+    return response
   }
   let appDataCapabilities
   let idempotencyRepository
@@ -86,7 +112,9 @@ export async function handleBffRoute(
     appDataCapabilities = serverContext.appDataCapabilities
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
-    return runtimeConfigErrorResponse(error)
+    const response = runtimeConfigErrorResponse(error)
+    emitMetric(response)
+    return response
   }
   const appDataRouteSupport = getAppDataRouteSupport({
     appDataCapabilities,
@@ -94,39 +122,60 @@ export async function handleBffRoute(
     pathname: request.nextUrl.pathname,
   })
   if (appDataRouteSupport.status === 'unsupported') {
-    return appDataRouteUnsupportedResponse({
+    const response = appDataRouteUnsupportedResponse({
       databaseProvider: appDataCapabilities.provider,
       method: request.method,
       pathname: request.nextUrl.pathname,
       support: appDataRouteSupport,
     })
+    emitMetric(response)
+    return response
   }
   const requiredCapability = getRequiredCapabilityForRoute(request.method, request.nextUrl.pathname)
   if (requiredCapability && !capabilities[requiredCapability]) {
-    return capabilityDisabledResponse(requiredCapability)
+    const response = capabilityDisabledResponse(requiredCapability)
+    emitMetric(response)
+    return response
   }
 
   const parsedInput = await parseApiBoundaryInput(request)
-  if (parsedInput.error) return parsedInput.error
+  if (parsedInput.error) {
+    emitMetric(parsedInput.error)
+    return parsedInput.error
+  }
   const clientIp = getClientIp(request)
   const bearer = getBearerToken(request)
   const apiKeyCandidateLimit = await enforceApiKeyCandidateRateLimit(request, bearer, clientIp)
-  if (apiKeyCandidateLimit) return apiKeyCandidateLimit
+  if (apiKeyCandidateLimit) {
+    emitMetric(apiKeyCandidateLimit)
+    return apiKeyCandidateLimit
+  }
 
   const authResult = await resolveBffRouteAuth(request, parsedInput.parsedJson, bearer, clientIp)
-  if (authResult instanceof Response) return authResult
+  if (authResult instanceof Response) {
+    emitMetric(authResult)
+    return authResult
+  }
   const auth = authResult
 
   let bffSafety
   try {
     bffSafety = await resolveBffSafety(request, auth)
   } catch (error) {
-    return runtimeConfigErrorResponse(error)
+    const response = runtimeConfigErrorResponse(error)
+    emitMetric(response, auth.authType)
+    return response
   }
-  if (bffSafety.originResponse) return bffSafety.originResponse
+  if (bffSafety.originResponse) {
+    emitMetric(bffSafety.originResponse, auth.authType)
+    return bffSafety.originResponse
+  }
 
   const ownerFundedIdempotencyResponse = requireOwnerFundedIdempotency(request, auth)
-  if (ownerFundedIdempotencyResponse) return ownerFundedIdempotencyResponse
+  if (ownerFundedIdempotencyResponse) {
+    emitMetric(ownerFundedIdempotencyResponse, auth.authType)
+    return ownerFundedIdempotencyResponse
+  }
 
   const rateLimits = getEndpointRateLimitSpecs({
     ...(clientIp !== 'unknown'
@@ -153,7 +202,10 @@ export async function handleBffRoute(
     rateLimits.push({ ...API_KEY_REQUEST_RATE_LIMIT, key: auth.apiKeyId })
   }
   const rateLimitResponse = await enforceBffRouteRateLimits(request, rateLimits)
-  if (rateLimitResponse) return rateLimitResponse
+  if (rateLimitResponse) {
+    emitMetric(rateLimitResponse, auth.authType)
+    return rateLimitResponse
+  }
 
   // Resolve the active workspace for this request. The client may pass an
   // explicit workspace ID via the x-overlay-workspace-id header; otherwise the
@@ -167,7 +219,11 @@ export async function handleBffRoute(
       requestedWorkspaceId,
     )
   } catch (error) {
-    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+    if (isOverlayConfigError(error)) {
+      const response = runtimeConfigErrorResponse(error)
+      emitMetric(response, auth.authType)
+      return response
+    }
     throw error
   }
 
@@ -206,7 +262,16 @@ export async function handleBffRoute(
     response: standardizedResponse,
     serverContext,
   })
+  emitMetric(standardizedResponse, auth.authType, workspace?.workspace.id)
   return standardizedResponse
+}
+
+function parseRetryAfterMs(value: string): number | undefined {
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000)
+  const retryAt = Date.parse(value)
+  if (Number.isFinite(retryAt)) return Math.max(1_000, retryAt - Date.now())
+  return undefined
 }
 
 async function resolveBffSafety(

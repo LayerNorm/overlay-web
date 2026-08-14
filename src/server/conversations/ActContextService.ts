@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import { captureModelTokenBreakdown } from '@/server/observability/metrics'
 import type {
   DocumentContextBundle,
   DocumentContextFileLoader,
@@ -423,5 +424,53 @@ export class ActContextService {
     }
 
     return messagesForModel
+  }
+
+  /**
+   * Estimate the token breakdown for a model turn and emit it to the metrics
+   * pipeline.  Called after the model call completes with the actual provider
+   * token counts and the context that was assembled for the turn.
+   */
+  emitTokenBreakdown(args: {
+    runId: string
+    modelId: string
+    userId: string
+    context: ActTurnContext
+    messagesForModel: UIMessage[]
+    totalInputTokens: number
+    totalOutputTokens: number
+    providerCostMicros?: number
+  }): void {
+    // Rough estimate: ~4 characters per token for English text.
+    const estimateTokens = (text: string): number => Math.ceil(text.length / 4)
+
+    const historyTokens = args.messagesForModel.reduce(
+      (sum, msg) => sum + estimateTokens(
+        msg.parts?.map((p) => ('text' in p ? p.text ?? '' : '')).join(' ') ?? '',
+      ),
+      0,
+    )
+    const memoryTokens = estimateTokens(args.context.memoryContext)
+    const skillTokens = estimateTokens(args.context.skillsContext)
+    const toolTokens = 0 // Tool definitions are injected by the agent runtime, not the context service.
+    const attachmentTokens = args.context.docContextBundle.totalChars > 0
+      ? estimateTokens(args.context.docContextBundle.contextText)
+      : estimateTokens(args.context.autoRetrieval)
+    const systemTokens = estimateTokens(args.context.projectInstructions + args.context.mentionsContext)
+
+    captureModelTokenBreakdown({
+      runId: args.runId,
+      modelId: args.modelId,
+      userId: args.userId,
+      historyTokens,
+      memoryTokens,
+      skillTokens,
+      toolTokens,
+      attachmentTokens,
+      systemTokens,
+      totalInputTokens: args.totalInputTokens,
+      totalOutputTokens: args.totalOutputTokens,
+      providerCostMicros: args.providerCostMicros,
+    })
   }
 }

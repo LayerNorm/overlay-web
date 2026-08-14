@@ -157,6 +157,68 @@ Important code:
 
 Uploaded files and generated assets are stored through server-mediated flows. R2 and S3-compatible object access must remain private and owner-scoped; users should only receive short-lived, validated access.
 
+## Observability and Metrics
+
+The measurement layer uses PostHog as the unified metrics sink, emitting
+`overlay.metrics.*` events from both server and client. All emission is
+fire-and-forget — a metrics failure must never break a customer-facing
+request or crash the UI.
+
+### Server-side metrics
+
+- `src/server/observability/metrics.ts` — typed emission contract for BFF
+  requests, Postgres queries, Convex functions, model token breakdowns,
+  AgentRun lifecycle, workflow events, uploads, and business rollups.
+- `src/server/observability/business-rollup.ts` — periodic aggregation of
+  cost-per-active-user-hour, cost-per-chat-turn, and cost-per-automation.
+- `src/app/api/v1/_utils/bff.ts` — `handleBffRoute` emits a
+  `overlay.metrics.bff_request` event on every exit path (early returns +
+  final return) with route, method, status, duration, auth type, workspace,
+  payload size, and Retry-After.
+- `src/server/database/postgres/client.ts` — pool wraps each client's
+  `query` method to emit `overlay.metrics.postgres_query` with duration and
+  rows returned.
+- `src/server/conversations/ActContextService.ts` — `emitTokenBreakdown`
+  estimates per-source token counts (history, memory, skills, tools,
+  attachments, system) and emits `overlay.metrics.model_tokens`.
+
+### Client-side metrics
+
+- `src/shared/observability/client-metrics.ts` — isomorphic event bus using
+  `window.dispatchEvent(CustomEvent)`. No PostHog import; the
+  `ObservabilityClient` component listens and forwards to PostHog.
+- `src/shared/observability/duplicate-tracker.ts` — windowed duplicate
+  request detection (1s, 5s, 15s windows) emitting
+  `overlay.metrics.duplicate_request`.
+- `src/components/providers/ObservabilityClient.tsx` — forwards client
+  metrics events to PostHog via `addMetricsListener`.
+- `src/shared/chat/chat-list-cache.ts` — emits cache hit/stale/miss events.
+- `src/features/chat/components/chat/chatTransport.ts` — emits chat-open
+  latency, transcript bytes, and message count.
+- `src/features/chat/components/chat/useAgentRunLifecycle.ts` — emits
+  AgentRun recovery metrics on terminal transitions.
+- `src/contexts/AuthContext.tsx` — emits session refresh metrics with
+  trigger source (interval, focus, visibility, manual).
+
+### Convex function metrics
+
+- `convex/lib/metrics.ts` — `withMetrics` wrapper for mutation handlers,
+  records function name, duration, and error status to the
+  `functionMetrics` table.
+- `convex/platform/metrics.ts` — cleanup cron (7-day TTL) and aggregation
+  query for export to PostHog.
+- `convex/schema.ts` — `functionMetrics` table with indexes by function
+  name and timestamp.
+- `convex/platform/rateLimits.ts` — instrumented with `withMetrics` as the
+  highest-frequency Convex mutation.
+
+### Privacy
+
+Metrics events contain only: route names, opaque IDs, sizes, counts,
+durations, auth type, workspace ID, and categorized metadata. No
+conversation content, message bodies, authorization tokens, private
+workspace JSON, or raw user data is sent to analytics.
+
 ## Convex
 
 Development commonly uses a separate dev deployment from production. Follow

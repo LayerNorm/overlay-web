@@ -1951,4 +1951,17 @@ export default defineSchema({
     .index('by_workspaceId_providerKey', ['workspaceId', 'providerKey'])
     .index('by_workspaceId_userId_providerKey', ['workspaceId', 'userId', 'providerKey'])
     .index('by_userId', ['userId']),
+
+  /** Function-level metrics for Convex observability. TTL-cleaned. */
+  functionMetrics: defineTable({
+    functionName: v.string(),
+    durationMs: v.number(),
+    docsRead: v.optional(v.number()),
+    docsWritten: v.optional(v.number()),
+    responseBytes: v.optional(v.number()),
+    error: v.optional(v.boolean()),
+    timestamp: v.number(),
+  })
+    .index('by_functionName_timestamp', ['functionName', 'timestamp'])
+    .index('by_timestamp', ['timestamp']),
 })

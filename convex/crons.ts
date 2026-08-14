@@ -68,4 +68,15 @@ crons.interval(
   internal.email.deliveryRunner.runMinuteTick,
 )
 
+// Clean up function metrics older than 7 days to bound table growth.
+// The `internal.platform.metrics` reference is resolved when Convex
+// regenerates _generated/api.d.ts during the next `convex dev`/`convex push`.
+crons.interval(
+  'function metrics cleanup',
+  { hours: 6 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).platform.metrics.cleanupOldMetricsInternal,
+  {},
+)
+
 export default crons
