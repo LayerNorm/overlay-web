@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
-import type { WorkspaceKind } from '@overlay/workspace-contracts'
 
 export interface AppSidebarNavigateContext {
   onNavigate: () => void
@@ -18,7 +17,6 @@ export interface AppSidebarChatPanelContext extends AppSidebarNavigateContext {
 
 export interface AppSidebarWorkspaceAdapter {
   activeWorkspaceId: string | null
-  activeWorkspaceKind?: WorkspaceKind | null
   resolveSurface?: (path: string) => string | null
   buildHref?: (workspaceId: string, href: string) => string
   renderSwitcher?: (props: {

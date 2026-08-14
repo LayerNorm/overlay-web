@@ -84,11 +84,11 @@ export type InvitationAcceptanceResult =
 
 export type MembershipMutationResult =
   | { status: 'updated'; membership: WorkspaceMembership }
-  | { status: 'not_found' | 'last_owner' | 'owner_must_be_human' }
+  | { status: 'not_found' | 'last_owner' | 'owner_must_be_human' | 'personal_owner_bound' }
 
 export type MembershipRemovalResult =
   | { status: 'removed' }
-  | { status: 'not_found' | 'last_owner' }
+  | { status: 'not_found' | 'last_owner' | 'personal_owner_bound' }
 
 export type OwnershipTransferResult =
   | {
@@ -96,7 +96,14 @@ export type OwnershipTransferResult =
     previousOwnerMembership: WorkspaceMembership
     newOwnerMembership: WorkspaceMembership
   }
-  | { status: 'not_found' | 'source_not_owner' | 'target_not_human' | 'target_inactive' }
+  | {
+    status:
+      | 'not_found'
+      | 'source_not_owner'
+      | 'target_not_human'
+      | 'target_inactive'
+      | 'personal_owner_bound'
+  }
 
 export interface WorkspaceRepository {
   ensurePersonalWorkspace(input: EnsurePersonalWorkspaceInput): Promise<WorkspaceAccess>

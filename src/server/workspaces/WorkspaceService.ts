@@ -26,10 +26,6 @@ import {
   isWorkspaceInRollout,
   parseDeploymentRolloutStage,
 } from '@/shared/workspaces/collaboration-rollout'
-import {
-  PERSONAL_WORKSPACE_NOT_COLLABORATIVE_CODE,
-  PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE,
-} from '@/shared/workspaces/personal-workspace-boundary'
 import type { WorkspaceRepository } from './WorkspaceRepository'
 import type { LifecycleEventPublisher } from '@/server/lifecycle-events/LifecycleEventPublisher'
 
@@ -53,7 +49,6 @@ export class WorkspaceServiceError extends Error {
       | 'invitation_invalid'
       | 'last_owner'
       | 'not_found'
-      | 'personal_workspace_not_collaborative'
       | 'validation',
   ) {
     super(message)
@@ -213,39 +208,6 @@ export class WorkspaceService {
     })
   }
 
-  /**
-   * Personal is a private tenant boundary, not a one-person organization.
-   * Collaborative routes call this before reading or mutating shared state so
-   * every repository provider exposes the same product invariant.
-   */
-  async assertCollaborativeWorkspace(args: {
-    actorUserId: string
-    workspaceId: string
-  }): Promise<WorkspaceAccess> {
-    const access = await this.requireActiveMember(args)
-    this.requireCollaborativeWorkspace(access)
-    return access
-  }
-
-  /** Personal may use private named agents, but it may not start human DMs. */
-  async assertDirectMessageParticipantsAllowed(args: {
-    actorUserId: string
-    workspaceId: string
-    principalIds: string[]
-  }): Promise<void> {
-    const access = await this.requireActiveMember(args)
-    if (access.workspace.kind === 'organization') return
-    const principals = await Promise.all(
-      [...new Set(args.principalIds.map((id) => id.trim()).filter(Boolean))]
-        .map((principalId) => this.repository.getPrincipal(principalId)),
-    )
-    if (principals.some((principal) => (
-      principal?.workspaceId === access.workspace.id && principal.type === 'human'
-    ))) {
-      throw personalWorkspaceNotCollaborative()
-    }
-  }
-
   async archiveWorkspace(args: {
     actorUserId: string
     workspaceId: string
@@ -298,12 +260,20 @@ export class WorkspaceService {
     role: WorkspaceMembershipRole
   }): Promise<WorkspaceMembership> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     const target = await this.repository.getMembership({
       workspaceId: actor.workspace.id,
       principalId: required(args.principalId, 'principalId'),
     })
     if (!target) throw notFound()
+    if (
+      actor.workspace.kind === 'personal'
+      && (
+        (isCanonicalPersonalOwner(actor, target) && args.role !== 'owner')
+        || (!isCanonicalPersonalOwner(actor, target) && args.role === 'owner')
+      )
+    ) {
+      throw personalOwnerBound()
+    }
     if (
       (target.role === 'owner' || args.role === 'owner')
       && actor.membership.role !== 'owner'
@@ -317,6 +287,7 @@ export class WorkspaceService {
       now: this.now(),
     })
     if (result.status === 'updated') return result.membership
+    if (result.status === 'personal_owner_bound') throw personalOwnerBound()
     if (result.status === 'last_owner') throw lastOwner()
     if (result.status === 'owner_must_be_human') {
       throw validation('Only human principals can own a workspace')
@@ -331,12 +302,18 @@ export class WorkspaceService {
     status: WorkspaceMembership['status']
   }): Promise<WorkspaceMembership> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     const target = await this.repository.getMembership({
       workspaceId: actor.workspace.id,
       principalId: required(args.principalId, 'principalId'),
     })
     if (!target) throw notFound()
+    if (
+      actor.workspace.kind === 'personal'
+      && isCanonicalPersonalOwner(actor, target)
+      && args.status !== 'active'
+    ) {
+      throw personalOwnerBound()
+    }
     if (target.role === 'owner' && actor.membership.role !== 'owner') throw forbidden()
     const result = await this.repository.setMembershipStatus({
       workspaceId: args.workspaceId,
@@ -345,6 +322,7 @@ export class WorkspaceService {
       now: this.now(),
     })
     if (result.status === 'updated') return result.membership
+    if (result.status === 'personal_owner_bound') throw personalOwnerBound()
     if (result.status === 'last_owner') throw lastOwner()
     throw notFound()
   }
@@ -355,18 +333,21 @@ export class WorkspaceService {
     principalId: string
   }): Promise<void> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     const target = await this.repository.getMembership({
       workspaceId: actor.workspace.id,
       principalId: required(args.principalId, 'principalId'),
     })
     if (!target) throw notFound()
+    if (actor.workspace.kind === 'personal' && isCanonicalPersonalOwner(actor, target)) {
+      throw personalOwnerBound()
+    }
     if (target.role === 'owner' && actor.membership.role !== 'owner') throw forbidden()
     const result = await this.repository.removeMembership({
       workspaceId: args.workspaceId,
       principalId: target.principalId,
     })
     if (result.status === 'removed') return
+    if (result.status === 'personal_owner_bound') throw personalOwnerBound()
     if (result.status === 'last_owner') throw lastOwner()
     throw notFound()
   }
@@ -377,7 +358,7 @@ export class WorkspaceService {
     toPrincipalId: string
   }): Promise<WorkspaceMembership> {
     const actor = await this.requireActor(args, ['owner'])
-    this.requireCollaborativeWorkspace(actor)
+    if (actor.workspace.kind === 'personal') throw personalOwnerBound()
     const result = await this.repository.transferOwnership({
       workspaceId: actor.workspace.id,
       fromPrincipalId: actor.principal.id,
@@ -385,6 +366,7 @@ export class WorkspaceService {
       now: this.now(),
     })
     if (result.status === 'transferred') return result.newOwnerMembership
+    if (result.status === 'personal_owner_bound') throw personalOwnerBound()
     if (result.status === 'target_not_human') {
       throw validation('Ownership can be transferred only to a human member')
     }
@@ -410,13 +392,7 @@ export class WorkspaceService {
       }),
     ])
     const principalsById = new Map(principals.map((principal) => [principal.id, principal]))
-    const visibleMemberships = actor.workspace.kind === 'personal'
-      ? memberships.filter((membership) => (
-        membership.principalId === actor.principal.id
-        || principalsById.get(membership.principalId)?.type === 'agent'
-      ))
-      : memberships
-    return visibleMemberships.flatMap((membership) => {
+    return memberships.flatMap((membership) => {
       const principal = principalsById.get(membership.principalId)
       return principal ? [{ principal, membership }] : []
     })
@@ -429,7 +405,6 @@ export class WorkspaceService {
     description?: string
   }): Promise<WorkspaceTeam> {
     const actor = await this.requireWorkspaceCreator(args)
-    this.requireCollaborativeWorkspace(actor)
     return await this.repository.createTeam({
       id: this.id(),
       workspaceId: actor.workspace.id,
@@ -447,7 +422,6 @@ export class WorkspaceService {
     principalId: string
   }): Promise<WorkspaceTeamMember> {
     const actor = await this.requireActiveMember(args)
-    this.requireCollaborativeWorkspace(actor)
     const [team, principal] = await Promise.all([
       this.repository.getTeam(required(args.teamId, 'teamId')),
       this.repository.getPrincipal(required(args.principalId, 'principalId')),
@@ -475,7 +449,6 @@ export class WorkspaceService {
     workspaceId: string
   }): Promise<WorkspaceTeamWithMembers[]> {
     const actor = await this.requireActiveMember(args)
-    this.requireCollaborativeWorkspace(actor)
     const teams = await this.repository.listTeams({
       workspaceId: actor.workspace.id,
       includeArchived: false,
@@ -492,7 +465,6 @@ export class WorkspaceService {
     teamId: string
   }): Promise<void> {
     const actor = await this.requireActiveMember(args)
-    this.requireCollaborativeWorkspace(actor)
     const team = await this.repository.getTeam(required(args.teamId, 'teamId'))
     if (!team || team.workspaceId !== actor.workspace.id || team.archivedAt) throw notFound()
     this.requireTeamManager(actor, team)
@@ -506,7 +478,6 @@ export class WorkspaceService {
     principalId: string
   }): Promise<void> {
     const actor = await this.requireActiveMember(args)
-    this.requireCollaborativeWorkspace(actor)
     const team = await this.repository.getTeam(required(args.teamId, 'teamId'))
     if (!team || team.workspaceId !== actor.workspace.id || team.archivedAt) throw notFound()
     this.requireTeamManager(actor, team)
@@ -602,13 +573,6 @@ export class WorkspaceService {
   }): Promise<WorkspaceAccess> {
     const now = this.now()
     const email = normalizeEmail(args.email)
-    const existingInvitation = await this.repository.getInvitation(
-      required(args.invitationId, 'invitationId'),
-    )
-    if (existingInvitation) {
-      const workspace = await this.repository.getWorkspace(existingInvitation.workspaceId)
-      if (workspace?.kind === 'personal') throw personalWorkspaceNotCollaborative()
-    }
     const result = await this.repository.acceptInvitation({
       invitationId: required(args.invitationId, 'invitationId'),
       principalId: this.id(),
@@ -640,7 +604,6 @@ export class WorkspaceService {
     invitationId: string
   }): Promise<WorkspaceInvitation> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     const invitation = await this.repository.getInvitation(
       required(args.invitationId, 'invitationId'),
     )
@@ -661,7 +624,6 @@ export class WorkspaceService {
     workspaceId: string
   }): Promise<WorkspaceInvitation[]> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     await this.repository.expireInvitations({
       workspaceId: actor.workspace.id,
       now: this.now(),
@@ -675,7 +637,6 @@ export class WorkspaceService {
     invitationId: string
   }): Promise<WorkspaceInvitation> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     const existing = await this.repository.getInvitation(
       required(args.invitationId, 'invitationId'),
     )
@@ -711,7 +672,6 @@ export class WorkspaceService {
     expiresAt?: number
   }): Promise<WorkspaceResourceGuest> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     await this.assertResourceWorkspace({
       actorUserId: args.actorUserId,
       workspaceId: actor.workspace.id,
@@ -844,7 +804,6 @@ export class WorkspaceService {
     patch: WorkspaceSharingPolicyPatch
   }): Promise<WorkspaceSharingPolicy> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     return await this.repository.setSharingPolicy({
       workspaceId: actor.workspace.id,
       patch: validatePolicyPatch(args.patch),
@@ -863,7 +822,6 @@ export class WorkspaceService {
     capability: 'channel' | 'agent' | 'invitation'
   }): Promise<void> {
     const access = await this.requireActiveMember(args)
-    if (args.capability !== 'agent') this.requireCollaborativeWorkspace(access)
     if (canManageWorkspace(access.membership.role)) return
     if (access.membership.role === 'guest') throw forbidden()
     const policy = await this.resolveSharingPolicy(access.workspace.id)
@@ -917,8 +875,7 @@ export class WorkspaceService {
       this.options.deploymentRolloutStage ?? process.env.OVERLAY_COLLABORATION_ROLLOUT,
     )
     return {
-      enabled: access.workspace.kind === 'organization'
-        && isWorkspaceInRollout({ deploymentStage, workspaceStage: policy.rolloutStage }),
+      enabled: isWorkspaceInRollout({ deploymentStage, workspaceStage: policy.rolloutStage }),
       deploymentStage,
       workspaceStage: policy.rolloutStage,
     }
@@ -930,7 +887,6 @@ export class WorkspaceService {
     workspaceId: string
   }): Promise<number | undefined> {
     const access = await this.requireActiveMember(args)
-    this.requireCollaborativeWorkspace(access)
     const policy = await this.resolveSharingPolicy(access.workspace.id)
     if (!policy.guestExpirationDays) return undefined
     return this.now() + policy.guestExpirationDays * 24 * 60 * 60 * 1_000
@@ -969,7 +925,6 @@ export class WorkspaceService {
     workspaceId: string
   }): Promise<WorkspaceResourceGuest[]> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     return await this.repository.listResourceGuests({
       workspaceId: actor.workspace.id,
       includeInactive: true,
@@ -982,7 +937,6 @@ export class WorkspaceService {
     resourceGuestId: string
   }): Promise<WorkspaceResourceGuest> {
     const actor = await this.requireManager(args)
-    this.requireCollaborativeWorkspace(actor)
     const guests = await this.repository.listResourceGuests({
       workspaceId: actor.workspace.id,
       includeInactive: true,
@@ -1025,10 +979,6 @@ export class WorkspaceService {
     }
   }
 
-  private requireCollaborativeWorkspace(access: WorkspaceAccess): void {
-    if (access.workspace.kind === 'personal') throw personalWorkspaceNotCollaborative()
-  }
-
   private async requireActor(
     args: { actorUserId: string; workspaceId: string },
     roles: WorkspaceMembershipRole[],
@@ -1063,13 +1013,7 @@ function isUsableAccess(access: WorkspaceAccess | null): access is WorkspaceAcce
     access
     && access.workspace.status === 'active'
     && !access.principal.archivedAt
-    && access.membership.status === 'active'
-    && (
-      access.workspace.kind !== 'personal'
-      || (access.workspace.createdByPrincipalId
-        ? access.workspace.createdByPrincipalId === access.principal.id
-        : access.membership.role === 'owner')
-    ),
+    && access.membership.status === 'active',
   )
 }
 
@@ -1165,12 +1109,18 @@ function forbidden(): WorkspaceServiceError {
   return new WorkspaceServiceError('Forbidden', 403, 'forbidden')
 }
 
-function personalWorkspaceNotCollaborative(): WorkspaceServiceError {
-  return new WorkspaceServiceError(
-    PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE,
-    409,
-    PERSONAL_WORKSPACE_NOT_COLLABORATIVE_CODE,
-  )
+function personalOwnerBound(): WorkspaceServiceError {
+  return validation('Personal workspace ownership cannot be changed')
+}
+
+function isCanonicalPersonalOwner(
+  access: WorkspaceAccess,
+  membership: WorkspaceMembership,
+): boolean {
+  if (access.workspace.kind !== 'personal') return false
+  return access.workspace.createdByPrincipalId
+    ? membership.principalId === access.workspace.createdByPrincipalId
+    : membership.role === 'owner'
 }
 
 function notFound(message = 'Workspace resource not found'): WorkspaceServiceError {

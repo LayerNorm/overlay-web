@@ -164,7 +164,7 @@ export default function ChatExperience({
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
-  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
+  const { activeWorkspaceId } = useWorkspace()
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
@@ -513,9 +513,7 @@ export default function ChatExperience({
     }
     let cancelled = false
     void Promise.allSettled([
-      activeWorkspace?.kind === 'organization'
-        ? overlayAppClient.workspaces.management(activeWorkspaceId, 'people')
-        : Promise.resolve({ items: [], currentPrincipalId: undefined }),
+      overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
       overlayAppClient.workspaces.management(activeWorkspaceId, 'chats-agents'),
       overlayAppClient.knowledgeBases.list(),
     ]).then(([peopleResult, agentsResult, knowledgeResult]) => {
@@ -571,7 +569,7 @@ export default function ChatExperience({
       if (!cancelled) setMentionCategories([])
     })
     return () => { cancelled = true }
-  }, [activeWorkspace?.kind, activeWorkspaceId, isPublicShowcase])
+  }, [activeWorkspaceId, isPublicShowcase])
 
   const personMentions = useMemo(
     () => mentions.filter((mention) => mention.type === 'person'),

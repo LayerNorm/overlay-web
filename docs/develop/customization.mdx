@@ -82,12 +82,10 @@ Capability gates are evaluated per registry entry. Memory management in Settings
 
 Memories are shared workspace resources with member attribution. Settings > Memories defaults to `All` and uses one dropdown containing `All` plus every active human member; selecting a member reloads only memories attributed to that member. Creator names are shown on memory cards. Members may copy any visible workspace memory, while selection and delete controls appear only on memories they created.
 
-In Personal, the same workspace scope remains the private storage boundary and
-the only human attribution is the account owner. Personal does not expose
-People, Guests, Roles, Sharing, Channels, Activity, or workspace Billing. Its
-workspace settings surface explains the privacy boundary and offers Create
-workspace. Private named agents and agent chats remain available; collaborative
-controls appear only after switching to an organization workspace.
+Personal workspace settings expose the same collaboration controls as other
+workspaces. The archive action and ownership-transfer option remain unavailable
+because the Personal workspace and its creating owner are permanent account
+lifecycle anchors.
 
 ## Account Settings
 
@@ -95,7 +93,7 @@ The account panel contains identity, desktop handoff, and deployment-supported b
 
 `workspaceWallets` is disabled by default. It requires `OVERLAY_FEATURE_WORKSPACE_WALLETS=1` plus `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE=internal|selected|general`. `internal` enables only `OVERLAY_WORKSPACE_BILLING_INTERNAL_WORKSPACE_IDS`; `selected` adds `OVERLAY_WORKSPACE_BILLING_SELECTED_WORKSPACE_IDS`; `general` enables every organization workspace. Non-selected workspaces preserve personal compatibility. A selected organization workspace requires its own active, funded account and never falls back to a member's personal wallet. Next.js and hosted Convex use the same rollout parser so background indexing cannot diverge from interactive work.
 
-The organization workspace Billing tab is visible throughout rollout. It shows rollout status before eligibility, wallet setup for selected owners/admins, separate allowance and top-up balances, recurring checkout, one-time direct workspace top-ups, the Stripe portal, and an owner/admin margin and reconciliation report. Members are read-only. Personal billing remains in Account; personal-wallet transfers and member contributions are intentionally absent.
+The workspace Billing tab is visible throughout rollout. It shows rollout status before eligibility, wallet setup for selected owners/admins, separate allowance and top-up balances, recurring checkout, one-time direct workspace top-ups, the Stripe portal, and an owner/admin margin and reconciliation report. Members are read-only. Personal-wallet transfers and member contributions are intentionally absent.
 
 ## Model Providers
 

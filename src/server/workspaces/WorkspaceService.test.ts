@@ -14,7 +14,7 @@ function access(overrides: {
   role?: WorkspaceAccess['membership']['role']
   status?: WorkspaceAccess['membership']['status']
   workspaceStatus?: WorkspaceAccess['workspace']['status']
-  personalOwnerUserId?: string
+  createdByPrincipalId?: string
 } = {}): WorkspaceAccess {
   const workspaceId = overrides.workspaceId ?? 'workspace_personal'
   const userId = overrides.userId ?? 'user_1'
@@ -25,7 +25,7 @@ function access(overrides: {
       name: workspaceId.includes('personal') ? 'Personal' : 'Acme',
       slug: workspaceId,
       status: overrides.workspaceStatus ?? 'active',
-      createdByPrincipalId: `principal_${overrides.personalOwnerUserId ?? userId}`,
+      createdByPrincipalId: overrides.createdByPrincipalId ?? `principal_${userId}`,
       createdAt: 1,
       updatedAt: 1,
     },
@@ -99,22 +99,6 @@ test('resolveActiveWorkspace persists a usable fallback and rejects inaccessible
   assert.deepEqual(selections, ['workspace_org'])
   await assert.rejects(
     () => service.resolveActiveWorkspace('user_1', 'workspace_other'),
-    (error) => assertServiceError(error, 'not_found'),
-  )
-})
-
-test('Personal access is limited to its creating principal', async () => {
-  const invitedMember = access({
-    userId: 'user_2',
-    role: 'member',
-    personalOwnerUserId: 'user_1',
-  })
-  const service = new WorkspaceService(repository({
-    async getAccess() { return invitedMember },
-  }))
-
-  await assert.rejects(
-    () => service.resolveActiveWorkspace('user_2', invitedMember.workspace.id),
     (error) => assertServiceError(error, 'not_found'),
   )
 })
@@ -221,116 +205,130 @@ test('workspace management is role-gated and final-owner failures remain explici
   )
 })
 
-test('Personal rejects collaboration while preserving private agents and agent chats', async () => {
-  const personal = access()
-  const agent: WorkspacePrincipal = {
-    id: 'principal_agent',
-    workspaceId: personal.workspace.id,
-    type: 'agent',
-    agentId: 'agent_1',
-    displayName: 'Scout',
-    createdAt: 1,
-    updatedAt: 1,
-  }
-  const teammate: WorkspacePrincipal = {
-    id: 'principal_teammate',
-    workspaceId: personal.workspace.id,
+test('Personal supports collaborators while its canonical owner remains bound', async () => {
+  const owner = access()
+  const friend: WorkspacePrincipal = {
+    id: 'principal_friend',
+    workspaceId: owner.workspace.id,
     type: 'human',
-    userId: 'user_2',
-    displayName: 'Teammate',
+    userId: 'user_friend',
+    displayName: 'Friend',
+    email: 'friend@example.com',
     createdAt: 1,
     updatedAt: 1,
   }
+  const friendMembership = {
+    ...owner.membership,
+    principalId: friend.id,
+    role: 'member' as const,
+  }
+  let ownershipMutationCalls = 0
+  let friendActive = false
   const service = new WorkspaceService(repository({
-    async getAccess() { return personal },
-    async getPrincipal(principalId) {
-      if (principalId === agent.id) return agent
-      if (principalId === teammate.id) return teammate
-      return null
-    },
-    async listPrincipals() {
-      return [personal.principal, teammate, agent]
-    },
+    async getAccess() { return owner },
+    async listPrincipals() { return [owner.principal, friend] },
     async listMemberships() {
-      return [
-        personal.membership,
-        { ...personal.membership, principalId: teammate.id, role: 'member' },
-        { ...personal.membership, principalId: agent.id, role: 'member' },
-      ]
+      return friendActive ? [owner.membership, friendMembership] : [owner.membership]
     },
-    async createPrincipal(input) {
+    async createInvitationReplacingPending(input) {
+      friendActive = true
       return {
         id: input.id,
         workspaceId: input.workspaceId,
-        type: input.type,
-        agentId: input.agentId,
-        serviceId: input.serviceId,
-        displayName: input.displayName,
+        email: input.email,
+        role: input.role,
+        status: 'pending',
+        invitedByPrincipalId: input.invitedByPrincipalId,
+        expiresAt: input.expiresAt,
         createdAt: input.now,
         updatedAt: input.now,
       }
     },
-  }), { createId: () => 'principal_new_agent', now: () => 10 })
+    async getMembership({ principalId }) {
+      return principalId === owner.principal.id ? owner.membership : friendMembership
+    },
+    async setMembershipRole(input) {
+      ownershipMutationCalls += 1
+      return { status: 'updated', membership: { ...friendMembership, role: input.role } }
+    },
+    async setMembershipStatus(input) {
+      ownershipMutationCalls += 1
+      return { status: 'updated', membership: { ...owner.membership, status: input.status } }
+    },
+    async removeMembership() {
+      ownershipMutationCalls += 1
+      return { status: 'removed' }
+    },
+    async transferOwnership() {
+      ownershipMutationCalls += 1
+      return { status: 'transferred', previousOwnerMembership: owner.membership, newOwnerMembership: friendMembership }
+    },
+  }), { createId: () => 'invite_friend', now: () => 10 })
+
+  assert.equal((await service.invite({
+    actorUserId: 'user_1',
+    workspaceId: owner.workspace.id,
+    email: friend.email!,
+    role: 'member',
+  })).workspaceId, owner.workspace.id)
+  assert.deepEqual(
+    (await service.listMembers({
+      actorUserId: 'user_1',
+      workspaceId: owner.workspace.id,
+    })).map(({ principal }) => principal.id),
+    [owner.principal.id, friend.id],
+  )
+  assert.equal((await service.setMembershipRole({
+    actorUserId: 'user_1',
+    workspaceId: owner.workspace.id,
+    principalId: friend.id,
+    role: 'admin',
+  })).role, 'admin')
+  assert.equal(ownershipMutationCalls, 1)
 
   for (const operation of [
-    () => service.invite({
+    () => service.setMembershipRole({
       actorUserId: 'user_1',
-      workspaceId: personal.workspace.id,
-      email: 'teammate@example.com',
-      role: 'member',
+      workspaceId: owner.workspace.id,
+      principalId: owner.principal.id,
+      role: 'admin',
     }),
-    () => service.createTeam({
+    () => service.setMembershipRole({
       actorUserId: 'user_1',
-      workspaceId: personal.workspace.id,
-      name: 'Product',
+      workspaceId: owner.workspace.id,
+      principalId: friend.id,
+      role: 'owner',
     }),
-    () => service.setSharingPolicy({
+    () => service.setMembershipStatus({
       actorUserId: 'user_1',
-      workspaceId: personal.workspace.id,
-      patch: { memberCanInvite: true },
+      workspaceId: owner.workspace.id,
+      principalId: owner.principal.id,
+      status: 'suspended',
     }),
-    () => service.assertDirectMessageParticipantsAllowed({
+    () => service.removeMember({
       actorUserId: 'user_1',
-      workspaceId: personal.workspace.id,
-      principalIds: [teammate.id],
+      workspaceId: owner.workspace.id,
+      principalId: owner.principal.id,
+    }),
+    () => service.transferOwnership({
+      actorUserId: 'user_1',
+      workspaceId: owner.workspace.id,
+      toPrincipalId: friend.id,
     }),
   ]) {
     await assert.rejects(
       operation,
-      (error) => assertServiceError(error, 'personal_workspace_not_collaborative')
-        && (error as WorkspaceServiceError).statusCode === 409,
+      (error) => assertServiceError(error, 'validation')
+        && /ownership cannot be changed/.test((error as Error).message),
     )
   }
-
-  await service.assertDirectMessageParticipantsAllowed({
-    actorUserId: 'user_1',
-    workspaceId: personal.workspace.id,
-    principalIds: [agent.id],
-  })
-  assert.deepEqual(
-    (await service.listMembers({
-      actorUserId: 'user_1',
-      workspaceId: personal.workspace.id,
-    })).map((member) => member.principal.id),
-    [personal.principal.id, agent.id],
-  )
-  const created = await service.createPrincipal({
-    actorUserId: 'user_1',
-    workspaceId: personal.workspace.id,
-    type: 'agent',
-    agentId: 'agent_new',
-    displayName: 'Private agent',
-  })
-  assert.equal(created.type, 'agent')
+  assert.equal(ownershipMutationCalls, 1)
 })
 
 test('invitation acceptance preserves expired, email mismatch, and consumed states', async () => {
   const outcomes = ['expired', 'email_mismatch', 'not_pending'] as const
   let index = 0
   const service = new WorkspaceService(repository({
-    async getInvitation() {
-      return null
-    },
     async acceptInvitation() {
       return { status: outcomes[index++]! }
     },
@@ -361,34 +359,6 @@ test('invitation acceptance preserves expired, email mismatch, and consumed stat
     }),
     (error) => assertServiceError(error, 'invitation_invalid')
       && (error as WorkspaceServiceError).statusCode === 409,
-  )
-})
-
-test('an old Personal invitation cannot be accepted', async () => {
-  const personal = access()
-  const invitation = {
-    id: 'invite_personal',
-    workspaceId: personal.workspace.id,
-    email: 'person@example.com',
-    role: 'member' as const,
-    status: 'pending' as const,
-    invitedByPrincipalId: personal.principal.id,
-    expiresAt: 100,
-    createdAt: 1,
-    updatedAt: 1,
-  }
-  const service = new WorkspaceService(repository({
-    async getInvitation() { return invitation },
-    async getWorkspace() { return personal.workspace },
-  }))
-
-  await assert.rejects(
-    () => service.acceptInvitation({
-      invitationId: invitation.id,
-      userId: 'user_2',
-      email: invitation.email,
-    }),
-    (error) => assertServiceError(error, 'personal_workspace_not_collaborative'),
   )
 })
 

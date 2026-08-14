@@ -191,6 +191,9 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       })
       return { status: 'updated', membership: membership(row) }
     } catch (error) {
+      if (hasCode(error, 'WORKSPACE_PERSONAL_OWNER_BOUND')) {
+        return { status: 'personal_owner_bound' }
+      }
       if (hasCode(error, 'WORKSPACE_LAST_OWNER_REQUIRED')) return { status: 'last_owner' }
       if (hasCode(error, 'WORKSPACE_OWNER_MUST_BE_HUMAN')) {
         return { status: 'owner_must_be_human' }
@@ -214,6 +217,9 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       })
       return { status: 'updated', membership: membership(row) }
     } catch (error) {
+      if (hasCode(error, 'WORKSPACE_PERSONAL_OWNER_BOUND')) {
+        return { status: 'personal_owner_bound' }
+      }
       if (hasCode(error, 'WORKSPACE_LAST_OWNER_REQUIRED')) return { status: 'last_owner' }
       if (hasCode(error, 'WORKSPACE_MEMBERSHIP_NOT_FOUND')) return { status: 'not_found' }
       throw error
@@ -232,6 +238,9 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       })
       return { status: 'removed' }
     } catch (error) {
+      if (hasCode(error, 'WORKSPACE_PERSONAL_OWNER_BOUND')) {
+        return { status: 'personal_owner_bound' }
+      }
       if (hasCode(error, 'WORKSPACE_LAST_OWNER_REQUIRED')) return { status: 'last_owner' }
       if (hasCode(error, 'WORKSPACE_MEMBERSHIP_NOT_FOUND')) return { status: 'not_found' }
       throw error
@@ -265,6 +274,9 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
         newOwnerMembership: membership(result.owner),
       }
     } catch (error) {
+      if (hasCode(error, 'WORKSPACE_PERSONAL_OWNER_BOUND')) {
+        return { status: 'personal_owner_bound' }
+      }
       if (hasCode(error, 'WORKSPACE_TRANSFER_TARGET_NOT_HUMAN')) {
         return { status: 'target_not_human' }
       }

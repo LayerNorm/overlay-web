@@ -436,8 +436,17 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
   }): Promise<MembershipMutationResult> {
     return await this.db.transaction(async (tx) => {
       await lockWorkspace(tx, args.workspaceId)
+      const workspace = await selectWorkspaceForUpdate(tx, args.workspaceId)
+      if (!workspace) return { status: 'not_found' }
       const current = await selectMembershipForUpdate(tx, args)
       if (!current) return { status: 'not_found' }
+      if (
+        workspace.kind === 'personal'
+        && (
+          (isCanonicalPersonalOwner(workspace, current) && args.role !== 'owner')
+          || (!isCanonicalPersonalOwner(workspace, current) && args.role === 'owner')
+        )
+      ) return { status: 'personal_owner_bound' }
       if (args.role === 'owner') {
         const principal = await selectPrincipalForUpdate(tx, args.principalId)
         if (!principal || principal.type !== 'human') return { status: 'owner_must_be_human' }
@@ -466,8 +475,15 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
   }): Promise<MembershipMutationResult> {
     return await this.db.transaction(async (tx) => {
       await lockWorkspace(tx, args.workspaceId)
+      const workspace = await selectWorkspaceForUpdate(tx, args.workspaceId)
+      if (!workspace) return { status: 'not_found' }
       const current = await selectMembershipForUpdate(tx, args)
       if (!current) return { status: 'not_found' }
+      if (
+        workspace.kind === 'personal'
+        && isCanonicalPersonalOwner(workspace, current)
+        && args.status !== 'active'
+      ) return { status: 'personal_owner_bound' }
       if (
         current.role === 'owner'
         && current.status === 'active'
@@ -493,8 +509,13 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
   }): Promise<MembershipRemovalResult> {
     return await this.db.transaction(async (tx) => {
       await lockWorkspace(tx, args.workspaceId)
+      const workspace = await selectWorkspaceForUpdate(tx, args.workspaceId)
+      if (!workspace) return { status: 'not_found' }
       const current = await selectMembershipForUpdate(tx, args)
       if (!current) return { status: 'not_found' }
+      if (workspace.kind === 'personal' && isCanonicalPersonalOwner(workspace, current)) {
+        return { status: 'personal_owner_bound' }
+      }
       if (
         current.role === 'owner'
         && current.status === 'active'
@@ -516,6 +537,9 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
   }): Promise<OwnershipTransferResult> {
     return await this.db.transaction(async (tx) => {
       await lockWorkspace(tx, args.workspaceId)
+      const workspace = await selectWorkspaceForUpdate(tx, args.workspaceId)
+      if (!workspace) return { status: 'not_found' }
+      if (workspace.kind === 'personal') return { status: 'personal_owner_bound' }
       // A Drizzle transaction shares one pg client. Issue locking reads
       // sequentially so ownership transfer never overlaps queries on that client.
       const source = await selectMembershipForUpdate(tx, {
@@ -1270,6 +1294,29 @@ async function selectMembershipForUpdate(
     FOR UPDATE
   `)
   return result.rows[0] ? membershipFromRow(result.rows[0]) : null
+}
+
+async function selectWorkspaceForUpdate(
+  db: Pick<OverlayPostgresDb, 'execute'>,
+  workspaceId: string,
+): Promise<Workspace | null> {
+  const result = await db.execute<WorkspaceRow>(sql`
+    SELECT ${workspaceColumns}
+    FROM workspaces
+    WHERE id = ${workspaceId}
+    FOR UPDATE
+  `)
+  return result.rows[0] ? workspaceFromRow(result.rows[0]) : null
+}
+
+function isCanonicalPersonalOwner(
+  workspace: Workspace,
+  membership: WorkspaceMembership,
+): boolean {
+  if (workspace.kind !== 'personal') return false
+  return workspace.createdByPrincipalId
+    ? membership.principalId === workspace.createdByPrincipalId
+    : membership.role === 'owner'
 }
 
 async function selectPrincipalForUpdate(

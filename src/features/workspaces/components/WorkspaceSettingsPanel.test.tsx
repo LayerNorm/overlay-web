@@ -90,6 +90,33 @@ test('people list does not render a standalone invite toolbar row', () => {
   assert.doesNotMatch(html, /Invite people/)
 })
 
+test('Personal members can be managed without exposing ownership transfer', () => {
+  const html = renderToStaticMarkup(
+    <WorkspaceManagementContent
+      tab="people"
+      state={{
+        ...READY_STATE,
+        workspaceKind: 'personal',
+        items: [{
+          id: 'member_friend',
+          kind: 'member',
+          name: 'Friend',
+          principalId: 'principal_friend',
+          principalType: 'human',
+          role: 'member',
+          status: 'active',
+        }],
+      }}
+      onMemberRoleChange={() => undefined}
+      onRemoveMember={() => undefined}
+    />,
+  )
+
+  assert.match(html, /Role for Friend/)
+  assert.match(html, /Remove Friend/)
+  assert.doesNotMatch(html, />Owner</)
+})
+
 test('sharing & links renders policy lifecycle states', () => {
   const loading = renderToStaticMarkup(
     <WorkspaceSharingPolicySection state={{ status: 'loading' }} />,

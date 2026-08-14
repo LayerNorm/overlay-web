@@ -27,8 +27,7 @@ const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
 
 export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
-  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
-  const collaborativeWorkspace = showcase || activeWorkspace?.kind === 'organization'
+  const { activeWorkspaceId } = useWorkspace()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>(showcase ? SHOWCASE_AGENTS : [])
   const [canCreate, setCanCreate] = useState(showcase)
   const [loading, setLoading] = useState(!showcase)
@@ -170,7 +169,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                 <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-5">
                   <div className="min-w-0 flex-1 text-[10px] text-[var(--muted-light)]"><span className="block truncate" title={agent.modelId}>{agent.modelId}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
                   <div className="flex shrink-0 items-center gap-1">
-                    {!showcase && collaborativeWorkspace ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
+                    {!showcase ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
                     <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
                   </div>
                 </div>
@@ -186,7 +185,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
       {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input) => void save(input)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
       <ShareDialog
         workspaceId={activeWorkspaceId}
-        isOpen={collaborativeWorkspace && Boolean(sharingAgent)}
+        isOpen={Boolean(sharingAgent)}
         onClose={() => setSharingAgent(null)}
         resource={sharingAgent ? {
           id: sharingAgent.id,

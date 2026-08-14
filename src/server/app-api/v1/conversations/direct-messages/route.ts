@@ -3,7 +3,6 @@ import type { DirectMessageCreateInput } from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
-import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function POST(_request: Request, context: AppApiRouteContext) {
   const input = context.parsedJson as Partial<DirectMessageCreateInput>
@@ -15,11 +14,6 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
   }
   try {
     const server = getOverlayServerContext()
-    await server.workspaceService.assertDirectMessageParticipantsAllowed({
-      actorUserId: context.auth.userId,
-      workspaceId: context.workspace.workspace.id,
-      principalIds,
-    })
     const directMessage = await server.appData.repositories
       .conversationCollaboration.createDirectMessage({
         actorUserId: context.auth.userId,
@@ -65,11 +59,6 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
 
     return NextResponse.json({ directMessage }, { status: directMessage.created ? 201 : 200 })
   } catch (error) {
-    if (error instanceof WorkspaceServiceError) {
-      return NextResponse.json({ error: error.message, code: error.code }, {
-        status: error.statusCode,
-      })
-    }
     const message = error instanceof Error ? error.message : 'Could not create the direct message'
     return NextResponse.json({ error: message }, {
       status: message.includes('ACCESS_DENIED') ? 404 : 400,

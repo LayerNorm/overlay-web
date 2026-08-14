@@ -5,9 +5,6 @@ import type { Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
-import {
-  PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE,
-} from '../../src/shared/workspaces/personal-workspace-boundary'
 
 type Ctx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -28,12 +25,6 @@ async function requireActor(
       q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
     )).unique()
   if (!membership || membership.status !== 'active') throw new Error('WORKSPACE_ACCESS_DENIED')
-  const workspace = await ctx.db.query('workspaces')
-    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
-    .unique()
-  if (workspace?.kind === 'personal') {
-    throw new Error(PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE)
-  }
   return { principal, membership }
 }
 

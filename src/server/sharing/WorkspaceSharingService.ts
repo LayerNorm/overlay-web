@@ -23,7 +23,6 @@ import type { WorkspaceAgentRepository } from '@/server/agents/WorkspaceAgentRep
 import type { WorkspaceRepository } from '@/server/workspaces/WorkspaceRepository'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceSharingRepository } from './WorkspaceSharingRepository'
-import { PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE } from '@/shared/workspaces/personal-workspace-boundary'
 
 /** A resource the actor reaches through sharing, plus how it reaches them. */
 export type AccessibleResource = {
@@ -35,12 +34,7 @@ export type AccessibleResource = {
 
 export class WorkspaceSharingServiceError extends Error {
   constructor(
-    public readonly code:
-      | 'forbidden'
-      | 'not_found'
-      | 'confirmation_required'
-      | 'personal_workspace_not_collaborative'
-      | 'validation',
+    public readonly code: 'forbidden' | 'not_found' | 'confirmation_required' | 'validation',
     message: string,
   ) {
     super(message)
@@ -68,7 +62,6 @@ export class WorkspaceSharingService {
     resourceId: string
   }): Promise<WorkspaceResourceShareResponse> {
     const access = await this.requireManager(args)
-    if (access.workspace.kind === 'personal') throw personalWorkspaceNotCollaborative()
     const [grants, directory, policy] = await Promise.all([
       this.deps.repository.listForResource({ ...args, workspaceId: access.workspace.id }),
       this.directory(args.actorUserId, access.workspace.id),
@@ -104,7 +97,6 @@ export class WorkspaceSharingService {
       this.resolveTarget({ ...args, workspaceId: access.workspace.id }),
       this.deps.repository.listForResource({ ...args, workspaceId: access.workspace.id }),
     ])
-    this.assertPersonalTargetRemainsPrivate(access, target)
     const alreadyReached = await this.principalsReachedByGrants({
       grants: existing.filter((grant) => grant.resourceId === args.resourceId),
       workspaceId: access.workspace.id,
@@ -174,12 +166,6 @@ export class WorkspaceSharingService {
     const access = await this.requireManager(args)
     validateRole(args.resourceType, args.accessRole)
     await this.requireTarget({ ...args, workspaceId: access.workspace.id })
-    if (access.workspace.kind === 'personal') {
-      this.assertPersonalTargetRemainsPrivate(
-        access,
-        await this.resolveTarget({ ...args, workspaceId: access.workspace.id }),
-      )
-    }
     if (
       args.targetType === 'room'
       && ['conversation', 'project', 'knowledge_base'].includes(args.resourceType)
@@ -234,7 +220,6 @@ export class WorkspaceSharingService {
     if (!scope || scope.workspaceId !== access.workspace.id) return { allowed: false }
     const ownerUserId = await this.deps.resourceOwners.getOwner(args)
     if (ownerUserId === args.actorUserId) return { allowed: true, accessRole: 'editor', ownerUserId }
-    if (access.workspace.kind === 'personal') return { allowed: false, ownerUserId: ownerUserId ?? undefined }
     const targets = await this.effectiveTargets(args.actorUserId, access.workspace.id, access.principal.id)
     const grants = await this.deps.repository.listForTargets({
       workspaceId: access.workspace.id,
@@ -258,7 +243,6 @@ export class WorkspaceSharingService {
     resourceType: WorkspaceShareResourceType
   }): Promise<AccessibleResource[]> {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind === 'personal') return []
     const targets = await this.effectiveTargets(args.actorUserId, access.workspace.id, access.principal.id)
     const grants = await this.deps.repository.listForTargets({
       workspaceId: access.workspace.id,
@@ -362,17 +346,6 @@ export class WorkspaceSharingService {
     }
     if (scope.workspaceId !== access.workspace.id) throw notFound()
     return access
-  }
-
-  private assertPersonalTargetRemainsPrivate(
-    access: Awaited<ReturnType<WorkspaceService['resolveActiveWorkspace']>>,
-    target: { principals: WorkspaceShareImpactPrincipal[] },
-  ): void {
-    if (access.workspace.kind !== 'personal') return
-    const reachesAnotherHuman = target.principals.some((principal) => (
-      principal.kind === 'human' && principal.principalId !== access.principal.id
-    ))
-    if (reachesAnotherHuman) throw personalWorkspaceNotCollaborative()
   }
 
   private async requireTarget(args: {
@@ -527,11 +500,4 @@ function required(value: string, field: string) {
 
 function notFound(message = 'Shared resource not found') {
   return new WorkspaceSharingServiceError('not_found', message)
-}
-
-function personalWorkspaceNotCollaborative() {
-  return new WorkspaceSharingServiceError(
-    'personal_workspace_not_collaborative',
-    PERSONAL_WORKSPACE_NOT_COLLABORATIVE_MESSAGE,
-  )
 }

@@ -18,8 +18,6 @@ import {
   buildWorkspaceHref,
   readWorkspaceIdFromPath,
 } from '@/features/workspaces/lib/workspace-routing'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
-import { PersonalCollaborationBoundary } from '@/features/workspaces/components/PersonalCollaborationBoundary'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -49,7 +47,6 @@ function notificationIcon(type: WorkspaceNotification['type']) {
  * body is only ever the list for the selected filter.
  */
 export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string }) {
-  const { activeWorkspace } = useWorkspace()
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
@@ -69,14 +66,6 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const loading = !notificationsReady
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
-
-  if (activeWorkspace?.kind === 'personal') {
-    return (
-      <AppScreenShell className="h-full">
-        <PersonalCollaborationBoundary className="min-h-full px-6 py-16" />
-      </AppScreenShell>
-    )
-  }
 
   async function openNotification(notification: WorkspaceNotification) {
     const conversationPromise = notification.conversationId

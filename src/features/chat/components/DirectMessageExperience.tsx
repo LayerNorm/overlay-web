@@ -170,8 +170,7 @@ export function DirectMessageExperience({
   showcase?: boolean
   conversationType?: 'dm' | 'channel'
 }) {
-  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
-  const collaborativeWorkspace = showcase || activeWorkspace?.kind === 'organization'
+  const { activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexAuthToken()
@@ -1282,7 +1281,7 @@ export function DirectMessageExperience({
       participants={participants}
       presence={presence}
       currentPrincipalId={currentPrincipalId}
-      onAddPeople={!showcase && collaborativeWorkspace ? () => setAddPeopleOpen(true) : undefined}
+      onAddPeople={showcase ? undefined : () => setAddPeopleOpen(true)}
       onClose={() => setRoomPanel(null)}
     />
   ) : roomPanel === 'pinned' ? (
@@ -1410,7 +1409,7 @@ export function DirectMessageExperience({
                     <span className="hidden sm:inline">Attach</span>
                   </button>
                 ) : null}
-                {!showcase && collaborativeWorkspace && currentParticipant?.role === 'moderator' ? (
+                {!showcase && currentParticipant?.role === 'moderator' ? (
                   <button
                     type="button"
                     onClick={() => setShareOpen(true)}
@@ -1700,7 +1699,7 @@ export function DirectMessageExperience({
 
       <ShareDialog
         workspaceId={activeWorkspaceId}
-        isOpen={collaborativeWorkspace && shareOpen}
+        isOpen={shareOpen}
         onClose={() => setShareOpen(false)}
         resource={{
           id: conversationId,
@@ -1720,7 +1719,7 @@ export function DirectMessageExperience({
         />
       ) : null}
 
-      {addPeopleOpen && collaborativeWorkspace ? (
+      {addPeopleOpen ? (
         <NewDirectMessageDialog
           open
           showcase={showcase}

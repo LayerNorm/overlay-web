@@ -965,10 +965,21 @@ export const updateMemberByServer = mutation({
   returns: membershipValidator,
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const membership = await getMembershipForPrincipal(ctx, args.workspaceId, args.principalId)
     if (!membership) throw new Error('WORKSPACE_MEMBERSHIP_NOT_FOUND')
     const nextRole = args.role ?? membership.role
     const nextStatus = args.status ?? membership.status
+    if (
+      workspace.kind === 'personal'
+      && (
+        (isCanonicalPersonalOwner(workspace, membership)
+          && (nextRole !== 'owner' || nextStatus !== 'active'))
+        || (!isCanonicalPersonalOwner(workspace, membership) && nextRole === 'owner')
+      )
+    ) {
+      throw new Error('WORKSPACE_PERSONAL_OWNER_BOUND')
+    }
     if (
       membership.role === 'owner'
       && membership.status === 'active'
@@ -995,8 +1006,12 @@ export const removeMemberByServer = mutation({
   returns: v.object({ removed: v.boolean() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const membership = await getMembershipForPrincipal(ctx, args.workspaceId, args.principalId)
     if (!membership) throw new Error('WORKSPACE_MEMBERSHIP_NOT_FOUND')
+    if (workspace.kind === 'personal' && isCanonicalPersonalOwner(workspace, membership)) {
+      throw new Error('WORKSPACE_PERSONAL_OWNER_BOUND')
+    }
     if (membership.role === 'owner' && membership.status === 'active') {
       await requireAnotherActiveOwner(ctx, args.workspaceId, membership.principalId)
     }
@@ -1019,7 +1034,8 @@ export const transferOwnershipByServer = mutation({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    await requireActiveWorkspace(ctx, args.workspaceId)
+    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
+    if (workspace.kind === 'personal') throw new Error('WORKSPACE_PERSONAL_OWNER_BOUND')
     const previousOwner = await getMembershipForPrincipal(
       ctx,
       args.workspaceId,
@@ -1060,6 +1076,7 @@ export const archiveByServer = mutation({
     requireServerSecret(args.serverSecret)
     const workspace = await requireWorkspace(ctx, args.workspaceId)
     await requirePrincipal(ctx, args.workspaceId, args.archivedByPrincipalId)
+    if (workspace.kind === 'personal') throw new Error('WORKSPACE_PERSONAL_OWNER_BOUND')
     if (workspace.status === 'archived') return workspaceValue(workspace)
     const now = args.now
     await ctx.db.patch(workspace._id, { status: 'archived', archivedAt: now, updatedAt: now })
@@ -2082,6 +2099,16 @@ async function requireAnotherActiveOwner(
   if (!owners.some((owner) => owner.principalId !== excludedPrincipalId)) {
     throw new Error('WORKSPACE_LAST_OWNER_REQUIRED')
   }
+}
+
+function isCanonicalPersonalOwner(
+  workspace: Doc<'workspaces'>,
+  membership: Doc<'workspaceMemberships'>,
+): boolean {
+  if (workspace.kind !== 'personal') return false
+  return workspace.createdByPrincipalId
+    ? membership.principalId === workspace.createdByPrincipalId
+    : membership.role === 'owner'
 }
 
 async function upsertActivePreference(

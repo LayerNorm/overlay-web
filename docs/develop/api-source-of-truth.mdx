@@ -41,13 +41,10 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 
 ## Collaboration message contracts
 
-- Personal workspaces are private capability boundaries. Human invitations,
-  teams, channels, human/group DMs, workspace grants that reach another human,
-  and sharing-policy mutations return HTTP `409` with
-  `code: "personal_workspace_not_collaborative"`. Workspace billing separately
-  requires an organization workspace. Private user-agent DMs
-  remain supported, including private resource attachments that reach no other
-  human. Public chat/file link sharing remains a separate personal feature.
+- Personal and organization workspaces expose the same collaboration routes.
+  Personal lifecycle mutations reject archive, ownership transfer, promotion of
+  another owner, and removal, suspension, or demotion of the creating owner.
+  Other Personal members may be invited, managed, and removed normally.
 - `POST /api/v1/conversations/message` returns the persisted `messageId`. Agent-invocation callers use that ID directly; transcript refetch state is not an identity source.
 - `POST /api/v1/conversations/agent-reply` loads collaboration-room metadata and history through `ConversationCollaborationRepository`, streams SSE deltas, and persists the completed assistant row through `addAgentMessage`. The repository must validate both the human actor's room access and the agent principal's active participation; owner-scoped personal-chat repositories are not valid for this path.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Both Convex and Postgres append the replaced body before an edit.

@@ -33,18 +33,13 @@ and dialog presentation. Postgres workspace governance writes build their SQL in
 `src/server/workspaces/workspace-sharing-policy-sql.ts`, keeping policy patch
 semantics separate from repository orchestration without changing the contract.
 
-`workspace.kind` is also a capability boundary. `personal` remains the mandatory
-tenant scope for private chats, memory, files, integrations, automations, and
-named agents, but it is never a one-person organization: human invitations,
-teams, channels, human/group DMs, workspace sharing policy, resource disclosure
-to another human, and workspace billing are rejected server-side. Organization
-workspaces retain those capabilities. A Personal user may still chat with a
-private named agent and attach a resource to that private user-agent room; the
-grant machinery may support that implementation detail only when it reaches no
-other human. Web surfaces derive visibility from the same kind and show the
-workspace-creation boundary for stale collaboration links. Personal directory
-reads expose only the owner and private named agents; the people view therefore
-keeps Memories attribution private without deleting any legacy rows.
+Personal and organization workspaces use the same collaboration capabilities:
+people, agents, direct messages, channels, teams, invitations, and resource
+grants all follow the same service and repository contracts. Personal differs
+only in lifecycle: it is the account's permanent default workspace, cannot be
+archived through workspace lifecycle APIs, and its creating principal remains
+the canonical active owner. Permanent account-deletion erasure is a separate
+audited compliance path.
 
 ## Auth
 

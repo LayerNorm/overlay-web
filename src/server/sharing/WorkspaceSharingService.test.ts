@@ -87,8 +87,6 @@ function createService(options: {
   ownerUserId?: string | null
   publicLinksEnabled?: boolean
   agentCreatedBy?: string
-  workspaceKind?: 'personal' | 'organization'
-  privateAgentRoom?: boolean
 } = {}) {
   const { repository, grants } = fakeRepository(options.seed)
   let scope = options.resourceWorkspace === undefined
@@ -114,14 +112,7 @@ function createService(options: {
         return actorUserId === OUTSIDER_USER ? [] : [ROOM]
       },
       async listParticipants() {
-        return options.privateAgentRoom ? [
-          {
-            principalId: AGENT_PRINCIPAL,
-            principalType: 'agent' as const,
-            displayName: 'Scout',
-            status: 'active' as const,
-          },
-        ] : [
+        return [
           {
             principalId: MEMBER_PRINCIPAL,
             principalType: 'human' as const,
@@ -163,7 +154,7 @@ function createService(options: {
         }
         const member = actorUserId === OWNER_USER ? members[0]! : members[1]!
         return {
-          workspace: { id: WORKSPACE, kind: options.workspaceKind ?? 'organization', name: 'Acme', slug: 'acme', status: 'active' },
+          workspace: { id: WORKSPACE, kind: 'organization', name: 'Acme', slug: 'acme', status: 'active' },
           principal: member.principal,
           membership: member.membership,
         }
@@ -247,47 +238,6 @@ test('the share response reports workspace public-link policy', async () => {
     ...FILE,
   })
   assert.equal(response.publicLinksEnabled, false)
-})
-
-test('Personal owners retain their resources but cannot create workspace grants', async () => {
-  const { service } = createService({ workspaceKind: 'personal' })
-
-  await assert.rejects(
-    () => service.getResourceShares({
-      actorUserId: OWNER_USER,
-      workspaceId: WORKSPACE,
-      ...FILE,
-    }),
-    (error: unknown) => error instanceof WorkspaceSharingServiceError
-      && error.code === 'personal_workspace_not_collaborative',
-  )
-  assert.deepEqual(await service.checkAccess({
-    action: 'read',
-    actorUserId: OWNER_USER,
-    workspaceId: WORKSPACE,
-    ...FILE,
-  }), { allowed: true, accessRole: 'editor', ownerUserId: OWNER_USER })
-  assert.deepEqual(await service.listAccessibleResources({
-    action: 'read',
-    actorUserId: OWNER_USER,
-    workspaceId: WORKSPACE,
-    resourceType: 'file',
-  }), [])
-})
-
-test('Personal may attach a resource to its private agent room', async () => {
-  const { service } = createService({ workspaceKind: 'personal', privateAgentRoom: true })
-  const grant = await service.upsertGrant({
-    actorUserId: OWNER_USER,
-    workspaceId: WORKSPACE,
-    ...FILE,
-    targetType: 'room',
-    targetId: ROOM,
-    accessRole: 'viewer',
-    confirmRoomExpansion: true,
-  })
-  assert.equal(grant.targetType, 'room')
-  assert.equal(grant.targetId, ROOM)
 })
 
 test('a resource in another workspace is not shareable from this one', async () => {
