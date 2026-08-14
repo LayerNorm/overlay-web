@@ -41,7 +41,11 @@ import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
+import { useAuth } from '@/contexts/AuthContext'
+import { useQuery } from '@/components/providers/convex-hooks'
 import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
+import { api } from '../../../../convex/_generated/api'
 import {
   buildConnectedKnowledgeSourceRef,
   type ConnectedKnowledgeSourceRecipe,
@@ -69,8 +73,13 @@ export function KnowledgeBaseWorkspace({
 }) {
   const { activeWorkspaceId } = useWorkspace()
   const router = useRouter()
-  const { capabilities, integrationProvider } = useOverlayCapabilities()
+  const { capabilities, integrationProvider, appDataCapabilities } = useOverlayCapabilities()
   const { can } = useAuthorization()
+  const convexAccessToken = useConvexAuthToken()
+  const { user } = useAuth()
+  const convexLiveSyncEnabled = appDataCapabilities.provider === 'convex'
+    && appDataCapabilities.requiresConvexClient
+    && appDataCapabilities.supportsRealtime
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeBase)
   const [sources, setSources] = useState(initialSources)
@@ -122,13 +131,48 @@ export function KnowledgeBaseWorkspace({
     setSources(response.sources)
   }, [knowledgeBase.id])
 
+  // Convex subscription for knowledge source status: when realtime is
+  // available, source status updates arrive via the subscription and the
+  // HTTP polling fallback is skipped.
+  const convexSourceStatusArgs = useMemo(
+    () => convexLiveSyncEnabled && convexAccessToken && user?.id
+      ? { accessToken: convexAccessToken, userId: user.id, knowledgeBaseId: knowledgeBase.id }
+      : 'skip' as const,
+    [convexLiveSyncEnabled, convexAccessToken, user?.id, knowledgeBase.id],
+  )
+  const convexSourceStatus = useQuery(
+    api.knowledge.bases.watchKnowledgeSourceStatus,
+    convexSourceStatusArgs,
+  ) as Array<{ sourceId: string; status: string; statusMessage?: string; updatedAt: number }> | undefined
+
   useEffect(() => {
-    if (!hasActiveSources) return
+    if (!convexSourceStatus || convexSourceStatusArgs === 'skip') return
+    // Patch individual source statuses into the local state instead of
+    // reloading the full source list from the BFF.
+    setSources((current) => current.map((item) => {
+      const update = convexSourceStatus.find((s) => s.sourceId === item.source.id)
+      if (!update) return item
+      if (item.source.status === update.status) return item
+      return {
+        ...item,
+        source: {
+          ...item.source,
+          status: update.status as typeof item.source.status,
+          statusMessage: update.statusMessage,
+        },
+      }
+    }))
+  }, [convexSourceStatus, convexSourceStatusArgs])
+
+  // Only poll via HTTP when Convex subscription is unavailable.
+  const usePollingForSources = hasActiveSources && !convexLiveSyncEnabled
+  useEffect(() => {
+    if (!usePollingForSources) return
     const interval = window.setInterval(() => {
       void loadSources().catch(() => undefined)
     }, 2000)
     return () => window.clearInterval(interval)
-  }, [hasActiveSources, loadSources])
+  }, [usePollingForSources, loadSources])
 
   const reconcileWorkspace = useCallback(async () => {
     const [basesResult, sourcesResult] = await Promise.allSettled([
@@ -148,8 +192,13 @@ export function KnowledgeBaseWorkspace({
     }
   }, [knowledgeBase.id, router])
   // Reconcile every 15s while sources are active, but back off to 60s
-  // when idle to avoid unnecessary BFF calls.
-  useVisibleReconciliation(reconcileWorkspace, hasActiveSources ? 15_000 : 60_000)
+  // when idle to avoid unnecessary BFF calls. When Convex realtime is
+  // available, source status arrives via subscription so we can back off
+  // to 120s even when active.
+  const reconcileInterval = convexLiveSyncEnabled
+    ? 120_000
+    : hasActiveSources ? 15_000 : 60_000
+  useVisibleReconciliation(reconcileWorkspace, reconcileInterval)
 
   async function uploadFiles(files: File[]) {
     if (!canEdit || files.length === 0 || uploading) return

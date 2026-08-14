@@ -626,7 +626,11 @@ export default defineSchema({
     version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
+  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId']).index('by_projectId', ['projectId'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['userId', 'workspaceId'],
+    }),
 
   automations: defineTable({
     workspaceId: v.optional(v.string()),
@@ -694,7 +698,11 @@ export default defineSchema({
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
-    .index('by_projectId', ['projectId']),
+    .index('by_projectId', ['projectId'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['userId', 'workspaceId', 'deletedAt'],
+    }),
 
   automationRuns: defineTable({
     automationId: v.id('automations'),
@@ -808,7 +816,11 @@ export default defineSchema({
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_enabled', ['userId', 'enabled'])
-    .index('by_projectId', ['projectId']),
+    .index('by_projectId', ['projectId'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['userId', 'workspaceId'],
+    }),
 
   /**
    * Pending MCP OAuth authorizations. One row per in-flight Connect, consumed exactly once by the
@@ -895,7 +907,11 @@ export default defineSchema({
     .index('by_createdAt', ['createdAt'])
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
-    .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey']),
+    .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
+    .searchIndex('search_title', {
+      searchField: 'title',
+      filterFields: ['userId', 'workspaceId', 'deletedAt'],
+    }),
 
   conversationAgentRuns: defineTable({
     conversationId: v.id('conversations'),
@@ -1108,7 +1124,11 @@ export default defineSchema({
   }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_projectId', ['projectId']),
+    .index('by_projectId', ['projectId'])
+    .searchIndex('search_title', {
+      searchField: 'title',
+      filterFields: ['userId', 'workspaceId', 'deletedAt'],
+    }),
 
   memories: defineTable({
     workspaceId: v.optional(v.string()),
@@ -1321,7 +1341,11 @@ export default defineSchema({
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
     .index('by_outputExpiry', ['kind', 'outputStatus', 'expiresAt'])
-    .index('by_shareToken', ['shareToken']),
+    .index('by_shareToken', ['shareToken'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['userId', 'workspaceId', 'deletedAt'],
+    }),
 
   webhookSubscriptions: defineTable({
     workspaceId: v.optional(v.string()),
@@ -1843,7 +1867,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
-    .index('by_workspaceId', ['workspaceId']),
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
 
   conversationParticipants: defineTable({
     conversationId: v.id('conversations'),

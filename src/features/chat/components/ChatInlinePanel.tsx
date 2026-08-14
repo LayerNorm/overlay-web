@@ -30,6 +30,7 @@ import {
   removeCachedChat,
   setActiveChatListView,
   upsertCachedChat,
+  type CachedConversation,
 } from '@/shared/chat/chat-list-cache'
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -288,7 +289,45 @@ export function ChatInlinePanel({
     const previous = lastConversationListVersionRef.current
     lastConversationListVersionRef.current = conversationListVersion
     if (previous === null || previous === conversationListVersion) return
-    void loadChats()
+    // Versioned reconciliation: fetch only the delta (conversations updated
+    // since the last known version) and upsert individual rows instead of
+    // reloading the full list.  Fall back to full reload on error.
+    const reconcileDelta = async () => {
+      try {
+        // Use updatedSince to fetch only changed conversations.
+        // The _creationTime of the event is approximately when the change
+        // happened, so we subtract a small buffer to avoid missing events
+        // that were committed in the same millisecond.
+        const since = Math.max(0, previous - 1000)
+        const response = await overlayAppClient.conversations.getResponse({
+          updatedSince: since,
+          limit: 100,
+        }, { credentials: 'same-origin', cache: 'no-store' })
+        if (!response.ok) {
+          void loadChats()
+          return
+        }
+        const data = await response.json() as { data?: Array<Record<string, unknown>>; conversations?: Array<Record<string, unknown>> }
+        const changed = data.data ?? data.conversations ?? []
+        if (changed.length === 0) return
+        // Upsert each changed conversation into the cache and state.
+        for (const conv of changed) {
+          if (!conv._id) continue
+          if (conv.deletedAt) {
+            removeCachedChat(conv._id as string)
+          } else {
+            upsertCachedChat(conv as CachedConversation)
+          }
+        }
+        // Refresh state from cache to reflect the upserts.
+        const cached = getCachedChatList()
+        if (cached) setChats(cached)
+      } catch {
+        // Fall back to full reload if delta reconciliation fails.
+        void loadChats()
+      }
+    }
+    void reconcileDelta()
   }, [appDataCapabilities.provider, conversationListVersion, loadChats])
 
   useEffect(() => {

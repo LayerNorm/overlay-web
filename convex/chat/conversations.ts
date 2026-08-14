@@ -6,6 +6,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
+import { recordConversationEvent } from '../collaboration/events'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -377,7 +378,7 @@ export const create = mutation({
     const ask = clampAskModels(askModelIds ?? [DEFAULT_MODEL_ID])
     const act = actModelId?.trim() || ask[0] || DEFAULT_MODEL_ID
     const now = Date.now()
-    return await ctx.db.insert('conversations', {
+    const conversationId = await ctx.db.insert('conversations', {
       userId,
       workspaceId,
       clientId: clientId?.trim() || undefined,
@@ -391,6 +392,15 @@ export const create = mutation({
       actModelId: act,
       isAutomation: isAutomation ?? false,
     })
+    // Emit a conversation event so personal conversation list version
+    // subscriptions can detect the change without a full reload.
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId,
+      userId,
+      type: 'conversation.created',
+    })
+    return conversationId
   },
 })
 
@@ -427,6 +437,13 @@ export const update = mutation({
     if (actModelId !== undefined) updates.actModelId = actModelId
     if (lastMode !== undefined) updates.lastMode = lastMode
     await ctx.db.patch(conversationId, updates)
+    // Emit a conversation event so list version subscriptions detect the change.
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: conversation.workspaceId,
+      userId,
+      type: 'conversation.updated',
+    })
   },
 })
 
@@ -443,6 +460,13 @@ export const remove = mutation({
       deletedAt: now,
       updatedAt: now,
       lastModified: now,
+    })
+    // Emit a conversation event so list version subscriptions detect the deletion.
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: conversation.workspaceId,
+      userId,
+      type: 'conversation.deleted',
     })
   },
 })
@@ -1320,6 +1344,36 @@ export const watchAgentRun = query({
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
       .order('desc')
       .first()
+  },
+})
+
+/**
+ * Lightweight browser-facing invalidation signal for the personal conversation
+ * list.  Returns the _creationTime of the latest conversationEvent for the
+ * user.  When the version changes, the client fetches the delta (updatedSince)
+ * and upserts individual rows instead of reloading the full list.
+ */
+export const watchPersonalConversationListVersion = query({
+  args: {
+    userId: v.string(),
+    accessToken: v.string(),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    version: v.number(),
+  }),
+  handler: async (ctx, { userId, accessToken }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken })
+    } catch {
+      return { ok: false, version: 0 }
+    }
+    const latest = await ctx.db
+      .query('conversationEvents')
+      .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+      .order('desc')
+      .first()
+    return { ok: true, version: latest?._creationTime ?? 0 }
   },
 })
 

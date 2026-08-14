@@ -58,6 +58,9 @@ import { usePostgresConversationEvents } from './chat/usePostgresConversationEve
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
+import { useQuery } from '@/components/providers/convex-hooks'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
 import {
   compareRoomMessageRecords,
@@ -506,10 +509,16 @@ export function DirectMessageExperience({
   useEffect(() => {
     if (showcase) return
     let cancelled = false
+    // When Convex realtime presence subscription is active, skip the initial
+    // HTTP presence load — the subscription will deliver presence state.
+    const skipPresencePolling = convexRoomSubscriptionEnabled
     const initialLoadTimer = window.setTimeout(() => {
       // Presence, reactions, pins, and saved state enrich a room, but must not
       // decide whether its critical transcript can open.
-      void Promise.allSettled([loadPresence(), loadCollaboration()])
+      void Promise.allSettled([
+        skipPresencePolling ? Promise.resolve() : loadPresence(),
+        loadCollaboration(),
+      ])
       void Promise.all([loadParticipants(), loadMessages()])
         // A room can receive its transcript through the realtime transport
         // while one of these initial BFF reads is transiently unavailable.
@@ -524,7 +533,10 @@ export function DirectMessageExperience({
     void overlayAppClient.conversations
       .updatePresence(conversationId, { status: 'online', sessionId })
       .catch(() => undefined)
-    const presenceTimer = window.setInterval(() => void loadPresence().catch(() => undefined), 15_000)
+    // Only poll presence via HTTP when Convex subscription is unavailable.
+    const presenceTimer = skipPresencePolling
+      ? undefined
+      : window.setInterval(() => void loadPresence().catch(() => undefined), 15_000)
     const heartbeatTimer = window.setInterval(() => {
       void overlayAppClient.conversations
         .updatePresence(conversationId, { status: 'online', sessionId })
@@ -533,13 +545,34 @@ export function DirectMessageExperience({
     return () => {
       cancelled = true
       window.clearTimeout(initialLoadTimer)
-      window.clearInterval(presenceTimer)
+      if (presenceTimer !== undefined) window.clearInterval(presenceTimer)
       window.clearInterval(heartbeatTimer)
       void overlayAppClient.conversations
         .updatePresence(conversationId, { status: 'offline', sessionId })
         .catch(() => undefined)
     }
-  }, [conversationId, loadCollaboration, loadMessages, loadParticipants, loadPresence, showcase])
+  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, showcase])
+
+  // Convex presence subscription: when realtime is available, presence updates
+  // arrive via the subscription and the HTTP polling fallback is skipped.
+  const convexPresenceArgs = convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId
+    ? {
+        accessToken: convexAccessToken,
+        actorUserId: authUser.id,
+        conversationId: conversationId as Id<'conversations'>,
+        workspaceId: activeWorkspaceId,
+      }
+    : 'skip'
+  const convexPresence = useQuery(
+    api.collaboration.directMessages.watchPresence,
+    convexPresenceArgs,
+  ) as { ok: boolean; presence: typeof presence } | undefined
+
+  useEffect(() => {
+    if (convexPresence?.ok && Array.isArray(convexPresence.presence)) {
+      setPresence(convexPresence.presence as typeof presence)
+    }
+  }, [convexPresence])
 
   useEffect(() => {
     if (loading) return

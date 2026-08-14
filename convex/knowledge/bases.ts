@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
-import { requireServerSecret } from '../lib/auth'
+import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 
 const baseKind = v.union(v.literal('personal'), v.literal('organization'))
 const sourceKind = v.union(
@@ -423,6 +423,58 @@ export const listSourcesForBaseByServer = query({
     requireServerSecret(args.serverSecret)
     return await ctx.db.query('knowledgeBaseSources')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+  },
+})
+
+/**
+ * Live subscription for knowledge source statuses within a knowledge base.
+ * Uses accessToken auth so the browser can subscribe via useQuery and get
+ * realtime ingestion status updates without HTTP polling.
+ * Returns source IDs with their current status so the client can detect
+ * when sources transition from pending/extracting/indexing → ready/failed.
+ */
+export const watchKnowledgeSourceStatus = query({
+  args: {
+    accessToken: v.string(),
+    userId: v.string(),
+    knowledgeBaseId: v.string(),
+  },
+  returns: v.array(v.object({
+    sourceId: v.string(),
+    status: v.string(),
+    statusMessage: v.optional(v.string()),
+    updatedAt: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    try {
+      if (!validateServerSecret(undefined)) {
+        await requireAccessToken(args.accessToken, args.userId)
+      }
+    } catch {
+      return []
+    }
+    // Get source IDs for this knowledge base
+    const baseSources = await ctx.db.query('knowledgeBaseSources')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId))
+      .collect()
+    const sourceIds = baseSources
+      .filter((row) => row.enabled)
+      .map((row) => row.sourceId)
+    // Fetch current status for each source
+    const results: Array<{ sourceId: string; status: string; statusMessage?: string; updatedAt: number }> = []
+    for (const sourceId of sourceIds) {
+      const source = await ctx.db.query('knowledgeSources')
+        .withIndex('by_sourceId', (q) => q.eq('sourceId', sourceId))
+        .unique()
+      if (!source || source.deletedAt || source.ownerUserId !== args.userId) continue
+      results.push({
+        sourceId: source.sourceId,
+        status: source.status,
+        statusMessage: source.statusMessage,
+        updatedAt: source.updatedAt,
+      })
+    }
+    return results
   },
 })
 
