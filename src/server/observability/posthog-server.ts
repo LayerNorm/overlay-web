@@ -93,6 +93,21 @@ export function captureProductEvent(event: ProductEvent): void {
   })
 }
 
+/**
+ * Flush pending PostHog events.  Must be called before a Vercel serverless
+ * function exits, otherwise captured events are lost when the runtime tears
+ * down the process.  Returns a promise that resolves when the flush completes.
+ */
+export async function flushPostHog(): Promise<void> {
+  const posthog = getPostHogClient()
+  if (!posthog) return
+  try {
+    await posthog.flush()
+  } catch (_error) {
+    // flush failure must not break the request
+  }
+}
+
 export function createPostHogLifecycleSink(): LifecycleEventSink {
   return {
     destination: 'analytics',

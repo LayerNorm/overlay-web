@@ -38,6 +38,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
 import { captureBffRequestMetric } from '@/server/observability/metrics'
+import { flushPostHog } from '@/server/observability/posthog-server'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
@@ -77,11 +78,13 @@ export async function handleBffRoute(
   const route = request.nextUrl.pathname
 
   // Helper to emit BFF metrics on every exit path (early returns + final return).
-  function emitMetric(
+  // Flushes PostHog before returning so events aren't lost when the serverless
+  // function exits.
+  async function emitMetric(
     response: Response,
     authType: 'api-key' | 'service' | 'session' | 'access-token' | 'anonymous' = 'anonymous',
     workspaceId?: string,
-  ): void {
+  ): Promise<void> {
     const durationMs = Math.round(performance.now() - startTime)
     const retryAfter = response.headers.get('Retry-After')
     captureBffRequestMetric({
@@ -94,6 +97,7 @@ export async function handleBffRoute(
       responseBytes: Number(response.headers.get('Content-Length')) || undefined,
       retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
     })
+    await flushPostHog()
   }
 
   let capabilities: CapabilityCheck
@@ -101,7 +105,7 @@ export async function handleBffRoute(
     capabilities = await getOverlayCapabilities()
   } catch (error) {
     const response = runtimeConfigErrorResponse(error)
-    emitMetric(response)
+    await emitMetric(response)
     return response
   }
   let appDataCapabilities
@@ -113,7 +117,7 @@ export async function handleBffRoute(
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
     const response = runtimeConfigErrorResponse(error)
-    emitMetric(response)
+    await emitMetric(response)
     return response
   }
   const appDataRouteSupport = getAppDataRouteSupport({
@@ -128,32 +132,32 @@ export async function handleBffRoute(
       pathname: request.nextUrl.pathname,
       support: appDataRouteSupport,
     })
-    emitMetric(response)
+    await emitMetric(response)
     return response
   }
   const requiredCapability = getRequiredCapabilityForRoute(request.method, request.nextUrl.pathname)
   if (requiredCapability && !capabilities[requiredCapability]) {
     const response = capabilityDisabledResponse(requiredCapability)
-    emitMetric(response)
+    await emitMetric(response)
     return response
   }
 
   const parsedInput = await parseApiBoundaryInput(request)
   if (parsedInput.error) {
-    emitMetric(parsedInput.error)
+    await emitMetric(parsedInput.error)
     return parsedInput.error
   }
   const clientIp = getClientIp(request)
   const bearer = getBearerToken(request)
   const apiKeyCandidateLimit = await enforceApiKeyCandidateRateLimit(request, bearer, clientIp)
   if (apiKeyCandidateLimit) {
-    emitMetric(apiKeyCandidateLimit)
+    await emitMetric(apiKeyCandidateLimit)
     return apiKeyCandidateLimit
   }
 
   const authResult = await resolveBffRouteAuth(request, parsedInput.parsedJson, bearer, clientIp)
   if (authResult instanceof Response) {
-    emitMetric(authResult)
+    await emitMetric(authResult)
     return authResult
   }
   const auth = authResult
@@ -163,17 +167,17 @@ export async function handleBffRoute(
     bffSafety = await resolveBffSafety(request, auth)
   } catch (error) {
     const response = runtimeConfigErrorResponse(error)
-    emitMetric(response, auth.authType)
+    await emitMetric(response, auth.authType)
     return response
   }
   if (bffSafety.originResponse) {
-    emitMetric(bffSafety.originResponse, auth.authType)
+    await emitMetric(bffSafety.originResponse, auth.authType)
     return bffSafety.originResponse
   }
 
   const ownerFundedIdempotencyResponse = requireOwnerFundedIdempotency(request, auth)
   if (ownerFundedIdempotencyResponse) {
-    emitMetric(ownerFundedIdempotencyResponse, auth.authType)
+    await emitMetric(ownerFundedIdempotencyResponse, auth.authType)
     return ownerFundedIdempotencyResponse
   }
 
@@ -203,7 +207,7 @@ export async function handleBffRoute(
   }
   const rateLimitResponse = await enforceBffRouteRateLimits(request, rateLimits)
   if (rateLimitResponse) {
-    emitMetric(rateLimitResponse, auth.authType)
+    await emitMetric(rateLimitResponse, auth.authType)
     return rateLimitResponse
   }
 
@@ -221,7 +225,7 @@ export async function handleBffRoute(
   } catch (error) {
     if (isOverlayConfigError(error)) {
       const response = runtimeConfigErrorResponse(error)
-      emitMetric(response, auth.authType)
+      await emitMetric(response, auth.authType)
       return response
     }
     throw error
@@ -262,7 +266,7 @@ export async function handleBffRoute(
     response: standardizedResponse,
     serverContext,
   })
-  emitMetric(standardizedResponse, auth.authType, workspace?.workspace.id)
+  await emitMetric(standardizedResponse, auth.authType, workspace?.workspace.id)
   return standardizedResponse
 }
 
