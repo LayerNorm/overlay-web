@@ -3,8 +3,10 @@ import 'server-only'
 import type { Pool } from 'pg'
 import { createOverlayPostgresPool } from './client'
 
-export const APP_DATA_SCHEMA_VERSION = 59
-export const APP_DATA_MINIMUM_SCHEMA_VERSION = 43
+export const APP_DATA_SCHEMA_VERSION = 60
+// Schema 60 drops conversation_message_deltas. Runtimes below 60 still query
+// that table, so this is an intentional rollback boundary.
+export const APP_DATA_MINIMUM_SCHEMA_VERSION = 60
 export const APP_DATA_MIGRATION_LOCK_ID = 6_849_331_027
 
 export type AppDataSchemaCompatibility = {

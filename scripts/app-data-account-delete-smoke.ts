@@ -155,25 +155,19 @@ async function main() {
       parts: [{ type: 'text', text: 'delete smoke' }],
       modelId: 'openrouter/free',
     })
-    const assistantMessageId = await conversationsRepository.startGeneratingMessage({
+    const assistantMessageId = await conversationsRepository.addMessage({
       conversationId,
       userId,
       turnId: 'turn_1',
+      role: 'assistant',
       mode: 'act',
-      modelId: 'openrouter/free',
-    })
-    assert.ok(assistantMessageId)
-    await conversationsRepository.appendGeneratingMessageDelta({
-      messageId: assistantMessageId,
-      textDelta: 'ok',
-      newParts: [{ type: 'text', text: 'ok' }],
-    })
-    await conversationsRepository.finalizeGeneratingMessage({
-      messageId: assistantMessageId,
       content: 'ok',
+      contentType: 'text',
       parts: [{ type: 'text', text: 'ok' }],
+      modelId: 'openrouter/free',
       tokens: { input: 1, output: 1 },
     })
+    assert.ok(assistantMessageId)
     await conversationsRepository.upsertContextSummary({
       conversationId,
       userId,

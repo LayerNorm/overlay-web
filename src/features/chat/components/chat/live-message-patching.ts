@@ -1,9 +1,7 @@
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
-import { applyLiveMessageDeltaParts } from '@overlay/chat-core'
 import type {
   ConversationRuntime,
   LiveConversationMessage,
-  LiveMessageDelta,
 } from '../chat-interface/types'
 import { sameAssistantSnapshot } from './chat-runtime-helpers'
 
@@ -17,36 +15,6 @@ export type ServerAssistantMessageRow = {
   variantIndex?: number
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
-}
-
-export function hasGeneratingAssistantMessage(messages: readonly UIMessage[]) {
-  return messages.some((message) => {
-    const m = message as unknown as { role?: string; status?: string }
-    return m.role === 'assistant' && m.status === 'generating'
-  })
-}
-
-export function hasGeneratingRuntimeMessage(runtime: ConversationRuntime) {
-  return (
-    hasGeneratingAssistantMessage(runtime.actChat.messages as UIMessage[]) ||
-    runtime.askChats.some((chat) => hasGeneratingAssistantMessage(chat.messages as UIMessage[]))
-  )
-}
-
-export function liveMessagesHaveGeneratingAssistant(
-  liveMessages: readonly LiveConversationMessage[] | undefined,
-) {
-  return (liveMessages ?? []).some(
-    (message) => message.role === 'assistant' && message.status === 'generating',
-  )
-}
-
-export function getLiveGeneratingAssistantMessages(
-  liveMessages: readonly LiveConversationMessage[] | undefined,
-) {
-  return (liveMessages ?? []).filter(
-    (message) => message.role === 'assistant' && message.status === 'generating',
-  )
 }
 
 function patchMessageIntoList(messages: UIMessage[], incoming: LiveConversationMessage) {
@@ -106,43 +74,6 @@ export function patchLiveMessagesIntoRuntime(
     const slot = incoming.variantIndex ?? 0
     if (slot >= 0 && slot < runtime.askChats.length) {
       changed = patchMessageIntoList(runtime.askChats[slot]!.messages as UIMessage[], incoming) || changed
-    }
-  }
-  return changed
-}
-
-function applyDeltaToList(messages: UIMessage[], delta: LiveMessageDelta) {
-  const existingIdx = messages.findIndex((message) => {
-    const m = message as unknown as { id?: string; role?: string }
-    return m.role === 'assistant' && m.id === delta.messageId
-  })
-  if (existingIdx < 0) return false
-  const existing = messages[existingIdx] as unknown as {
-    parts?: Array<Record<string, unknown>>
-  }
-  messages[existingIdx] = {
-    ...messages[existingIdx],
-    parts: applyLiveMessageDeltaParts(existing.parts ?? [], delta),
-  } as UIMessage
-  return true
-}
-
-export function applyLiveDeltasToRuntime(
-  runtime: ConversationRuntime,
-  liveMessageDeltas: readonly LiveMessageDelta[],
-  appliedDeltaIds: Set<string>,
-) {
-  let changed = false
-  for (const delta of liveMessageDeltas) {
-    if (appliedDeltaIds.has(delta._id)) continue
-    let applied = false
-    applied = applyDeltaToList(runtime.actChat.messages as UIMessage[], delta) || applied
-    for (const chat of runtime.askChats) {
-      applied = applyDeltaToList(chat.messages as UIMessage[], delta) || applied
-    }
-    if (applied) {
-      appliedDeltaIds.add(delta._id)
-      changed = true
     }
   }
   return changed

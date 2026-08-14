@@ -614,13 +614,6 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-
     // 4. Subscription row last so Stripe linkage stays available above. After
     //    this, the user has no rows left in Convex.
     if (subscription) {

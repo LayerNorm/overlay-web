@@ -1,10 +1,8 @@
-import { isDevelopmentBuild, publicEnv } from '@/shared/env/public-env'
 import {
   DefaultChatTransport,
   type ChatTransport,
   type HttpChatTransportInitOptions,
   type UIMessage,
-  type UIMessageChunk,
 } from 'ai'
 import {
   isTtftClientDebugEnabled,
@@ -47,15 +45,6 @@ export class ChatTransportHttpError extends Error {
     this.requestId = params.requestId
     this.status = params.status
   }
-}
-
-type CloudflareChatTransportOptions<UI_MESSAGE extends UIMessage> =
-  HttpChatTransportInitOptions<UI_MESSAGE> & {
-    relayApi: string
-  }
-
-function normalizeRelayApi(value: string): string {
-  return value.replace(/\/+$/, '')
 }
 
 function requestEndpoint(input: Parameters<ChatFetch>[0]): string {
@@ -149,15 +138,6 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
   }
 }
 
-export function getCloudflareChatStreamRelayApi(): string | null {
-  const configured = publicEnv.chatStreamRelayUrl
-  if (!configured) return null
-  if (isDevelopmentBuild() && !publicEnv.chatStreamRelayLocal) {
-    return null
-  }
-  return normalizeRelayApi(configured)
-}
-
 function streamLogFields(body: ChatBody): Record<string, unknown> {
   const record = body as Record<string, unknown> | undefined
   return {
@@ -173,34 +153,6 @@ function streamLogFields(body: ChatBody): Record<string, unknown> {
   }
 }
 
-function shouldUseDirectStream(body: ChatBody): boolean {
-  const record = body as Record<string, unknown> | undefined
-  return record?.temporaryChat === true || record?.streamPersistenceMode === 'direct'
-}
-
-export function resolvePersistentChatStreamMode(body: ChatBody): 'cloudflare-mirror' | 'direct' {
-  if (shouldUseDirectStream(body)) return 'direct'
-  return 'cloudflare-mirror'
-}
-
-function logStreamCompletion(
-  stream: ReadableStream<UIMessageChunk>,
-  path: 'cloudflare' | 'cloudflare-mirror' | 'direct',
-  body: ChatBody,
-): ReadableStream<UIMessageChunk> {
-  const withTtft = isTtftClientDebugEnabled()
-    ? wrapUiMessageStreamForTtft(stream)
-    : stream
-  return withTtft.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
-    transform(chunk, controller) {
-      controller.enqueue(chunk)
-    },
-    flush() {
-      console.info(`[chat-stream] path=${path} complete`, streamLogFields(body))
-    },
-  }))
-}
-
 function wrapTransportForTtftDebug<UI_MESSAGE extends UIMessage>(
   transport: ChatTransport<UI_MESSAGE>,
 ): ChatTransport<UI_MESSAGE> {
@@ -212,26 +164,7 @@ function wrapTransportForTtftDebug<UI_MESSAGE extends UIMessage>(
       return wrapUiMessageStreamForTtft(stream)
     },
   }
-  if (transport.reconnectToStream) {
-    wrapped.reconnectToStream = async (options) => {
-      const stream = await transport.reconnectToStream!(options)
-      return stream ? wrapUiMessageStreamForTtft(stream) : null
-    }
-  }
   return wrapped
-}
-
-export function createPersistentChatTransport<UI_MESSAGE extends UIMessage>(
-  options: HttpChatTransportInitOptions<UI_MESSAGE>,
-): ChatTransport<UI_MESSAGE> {
-  const relayApi = getCloudflareChatStreamRelayApi()
-  const base = relayApi
-    ? new CloudflareChatTransport({ ...options, relayApi })
-    : new DefaultChatTransport({
-        ...options,
-        fetch: createChatDiagnosticFetch(options.fetch as ChatFetch | undefined),
-      })
-  return isTtftClientDebugEnabled() ? wrapTransportForTtftDebug(base) : base
 }
 
 export function createDirectChatTransport<UI_MESSAGE extends UIMessage>(
@@ -242,89 +175,4 @@ export function createDirectChatTransport<UI_MESSAGE extends UIMessage>(
     fetch: createChatDiagnosticFetch(options.fetch as ChatFetch | undefined),
   })
   return isTtftClientDebugEnabled() ? wrapTransportForTtftDebug(transport) : transport
-}
-
-class CloudflareChatTransport<UI_MESSAGE extends UIMessage>
-  extends DefaultChatTransport<UI_MESSAGE>
-  implements ChatTransport<UI_MESSAGE>
-{
-  private readonly fallbackTransport: DefaultChatTransport<UI_MESSAGE>
-  private readonly relayApi: string
-  private readonly diagnosticFetch: ChatFetch
-
-  constructor(options: CloudflareChatTransportOptions<UI_MESSAGE>) {
-    const { relayApi, prepareSendMessagesRequest, api = '/api/v1/conversations/act', ...rest } = options
-    const diagnosticFetch = createChatDiagnosticFetch(rest.fetch as ChatFetch | undefined)
-    super({ api, ...rest, fetch: diagnosticFetch })
-    this.relayApi = normalizeRelayApi(relayApi)
-    this.diagnosticFetch = diagnosticFetch
-    this.fallbackTransport = new DefaultChatTransport({
-      api,
-      prepareSendMessagesRequest,
-      ...rest,
-      fetch: diagnosticFetch,
-    })
-  }
-
-  async sendMessages(
-    options: Parameters<ChatTransport<UI_MESSAGE>['sendMessages']>[0],
-  ): Promise<ReadableStream<UIMessageChunk>> {
-    const streamMode = resolvePersistentChatStreamMode(options.body)
-    if (streamMode === 'direct') {
-      console.info('[chat-stream] path=direct start', streamLogFields(options.body))
-      const body = {
-        ...(options.body ?? {}),
-        streamPersistenceMode: 'direct',
-      }
-      const stream = await this.fallbackTransport.sendMessages({ ...options, body })
-      return logStreamCompletion(stream, 'direct', body)
-    }
-
-    const body = {
-      ...(options.body ?? {}),
-      streamPersistenceMode: 'cloudflare-mirror',
-    }
-    console.info('[chat-stream] path=cloudflare-mirror start', streamLogFields(body))
-    const stream = await this.fallbackTransport.sendMessages({ ...options, body })
-    return logStreamCompletion(stream, 'cloudflare-mirror', body)
-  }
-
-  async reconnectToStream(
-    options: Parameters<ChatTransport<UI_MESSAGE>['reconnectToStream']>[0],
-  ): Promise<ReadableStream<UIMessageChunk> | null> {
-    const requestId = crypto.randomUUID()
-    const fields = streamLogFields(options.body)
-    console.info('[chat-stream] path=cloudflare resume', { ...fields, requestId })
-    const response = await this.diagnosticFetch(`${this.relayApi}/resume`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-request-id': requestId,
-      },
-      credentials: 'same-origin',
-      body: JSON.stringify({
-        ...(options.body ?? {}),
-        id: options.chatId,
-      }),
-    })
-
-    if (response.status === 204) {
-      console.info('[chat-stream] path=cloudflare resume-empty', { ...fields, requestId })
-      return null
-    }
-
-    if (!response.ok) {
-      throw new Error((await response.text()) || 'Failed to resume chat stream.')
-    }
-
-    if (!response.body) {
-      throw new Error('The response body is empty.')
-    }
-
-    console.info('[chat-stream] path=cloudflare resume-connected', {
-      ...fields,
-      requestId: response.headers.get('x-request-id') ?? requestId,
-    })
-    return logStreamCompletion(this.processResponseStream(response.body), 'cloudflare', options.body)
-  }
 }

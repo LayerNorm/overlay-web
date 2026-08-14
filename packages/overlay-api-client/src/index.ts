@@ -17,8 +17,6 @@ export type {
   ConversationQuery,
   CreateConversationRequest,
   CreateConversationResponse,
-  StreamAuthRequest,
-  StreamAuthResponse,
   UpdateConversationRequest,
 } from './chat/types'
 export type { FileQuery } from './files/types'

@@ -4,7 +4,6 @@ import {
   createElement,
   useCallback,
   useEffect,
-  useRef,
   useState,
   type MutableRefObject,
   type ReactNode,
@@ -20,7 +19,6 @@ import type {
 } from '../chat-interface/types'
 import {
   cloneRuntimeMessageArrays,
-  getLiveGeneratingAssistantMessages,
   patchLiveMessagesIntoRuntime,
   patchServerAssistantRowsIntoRuntime,
   type ServerAssistantMessageRow,
@@ -31,7 +29,6 @@ type ChatView = {
   setMessages: (messages: UIMessage[]) => void
   status?: string
   error?: Error | null
-  resumeStream: (options: { body: Record<string, unknown> }) => Promise<unknown>
 }
 
 type AsyncSession = {
@@ -50,6 +47,7 @@ type UseLiveConversationSyncParams = {
   loadChats: () => Promise<void>
   onRuntimeMessagesChanged: () => void
   runtimeHydrationVersion: number
+  runActive: boolean
   runtimesRef: MutableRefObject<Map<string, ConversationRuntime>>
   sessions: Record<string, AsyncSession | undefined>
   shouldSyncMessages: boolean
@@ -140,11 +138,11 @@ export function useLiveConversationSync({
   loadChats,
   onRuntimeMessagesChanged,
   runtimeHydrationVersion,
+  runActive,
   runtimesRef,
   sessions,
   shouldSyncMessages,
 }: UseLiveConversationSyncParams) {
-  const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const [liveQueryState, setLiveQueryState] = useState<ConvexLiveQueryState>({
     liveMessages: undefined,
   })
@@ -170,17 +168,8 @@ export function useLiveConversationSync({
     if (!activeChatId || !liveMessages) return
     if (hasActiveLocalHttpStream({ activeChatId, activeChatIdRef, actChat, chatInstances })) return
 
-    const liveGeneratingMessages = getLiveGeneratingAssistantMessages(liveMessages)
-    const hadGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
-    liveGeneratingByChatRef.current.set(activeChatId, liveGeneratingMessages.length > 0)
     const runtime = runtimesRef.current.get(activeChatId)
-    if (!runtime) {
-      if (hadGenerating && liveGeneratingMessages.length === 0) {
-        completeSession(activeChatId, activeChatIdRef.current === activeChatId)
-        void loadChats()
-      }
-      return
-    }
+    if (!runtime) return
 
     const changed = patchLiveMessagesIntoRuntime(runtime, liveMessages)
     if (changed) {
@@ -190,7 +179,7 @@ export function useLiveConversationSync({
       }
       onRuntimeMessagesChanged()
     }
-    if (hadGenerating && liveGeneratingMessages.length === 0) {
+    if (changed && shouldSyncMessages && !runActive) {
       completeSession(activeChatId, activeChatIdRef.current === activeChatId)
       void loadChats()
     }
@@ -205,14 +194,15 @@ export function useLiveConversationSync({
     onRuntimeMessagesChanged,
     runtimeHydrationVersion,
     runtimesRef,
+    runActive,
+    shouldSyncMessages,
   ])
 
   useEffect(() => {
     if (!activeChatId) return
     if (hasActiveLocalHttpStream({ activeChatId, activeChatIdRef, actChat, chatInstances })) return
     const sessionIsStreaming = sessions[activeChatId]?.status === 'streaming'
-    const liveQuerySawGenerating = liveGeneratingByChatRef.current.get(activeChatId) === true
-    if (!sessionIsStreaming && !liveQuerySawGenerating && !shouldSyncMessages) return
+    if (!sessionIsStreaming && !shouldSyncMessages) return
 
     let cancelled = false
     const patchFromServer = async () => {
@@ -248,8 +238,7 @@ export function useLiveConversationSync({
         cloneRuntimeMessageArrays(runtime)
         syncRuntimeMessagesToChatViews({ runtime, actChat, chatInstances })
         onRuntimeMessagesChanged()
-        if (!assistantRows.some((message) => message.status === 'generating')) {
-          liveGeneratingByChatRef.current.set(activeChatId, false)
+        if (!runActive) {
           completeSession(activeChatId, true)
           void loadChats()
         }
@@ -275,6 +264,7 @@ export function useLiveConversationSync({
     loadChats,
     onRuntimeMessagesChanged,
     runtimesRef,
+    runActive,
     sessions,
     shouldSyncMessages,
   ])

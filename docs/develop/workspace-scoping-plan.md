@@ -36,7 +36,6 @@ Every user-facing resource is scoped to exactly one workspace. Switching workspa
 | Resource | Convex table | Scoped via |
 |----------|-------------|------------|
 | Conversation messages | `conversationMessages` | `conversationId` → `conversations.workspaceId` |
-| Conversation message deltas | `conversationMessageDeltas` | `conversationId` → `conversations.workspaceId` |
 | Conversation context summaries | `conversationContextSummaries` | `conversationId` → `conversations.workspaceId` |
 | Automation runs | `automationRuns` | `automationId` → `automations.workspaceId` |
 | MCP OAuth sessions | `mcpOAuthSessions` | `mcpServerId` → `mcpServers.workspaceId` |

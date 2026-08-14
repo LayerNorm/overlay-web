@@ -6,8 +6,6 @@ import {
   createOverlayPostgresPool,
 } from '../src/server/database/postgres/client'
 import {
-  conversationMessageDeltas,
-  conversationMessages,
   conversations,
   r2UploadIntents,
   users,
@@ -23,7 +21,6 @@ import { PostgresUserRepository } from '../src/server/users'
 const REQUIRED_TABLES = [
   'auth_identities',
   'conversation_context_summaries',
-  'conversation_message_deltas',
   'conversation_messages',
   'conversations',
   'files',
@@ -165,22 +162,19 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
       parts: [{ type: 'text', text: 'hello' }],
       modelId: 'openrouter/free',
     })
-    const assistantMessageId = await conversationsRepository.startGeneratingMessage({
+    const assistantMessageId = await conversationsRepository.addMessage({
       conversationId,
       userId,
       turnId: 'turn_1',
+      role: 'assistant',
       mode: 'act',
-      modelId: 'openrouter/free',
-    })
-    if (!assistantMessageId) {
-      throw new Error('Failed to create generating assistant message')
-    }
-    await conversationsRepository.finalizeGeneratingMessage({
-      messageId: assistantMessageId,
       content: 'hello back',
+      contentType: 'text',
       parts: [{ type: 'text', text: 'hello back' }],
+      modelId: 'openrouter/free',
       tokens: { input: 1, output: 2 },
     })
+    if (!assistantMessageId) throw new Error('Failed to create assistant message')
     const messages = await conversationsRepository.getConversationMessages({
       conversationId,
       userId,
@@ -377,43 +371,29 @@ async function smokeBackgroundMaintenance(args: {
     lastMode: 'act',
     clientId: `smoke_maintenance_${randomUUID()}`,
   })
-  const staleMessageId = await args.conversationsRepository.startGeneratingMessage({
+  const userMessageId = await args.conversationsRepository.addMessage({
     conversationId,
     userId: args.userId,
-    turnId: 'maintenance_stale',
+    turnId: 'maintenance_expired_run',
+    role: 'user',
     mode: 'act',
+    content: 'expire this run',
+    contentType: 'text',
+    parts: [{ type: 'text', text: 'expire this run' }],
     modelId: 'openrouter/free',
   })
-  if (!staleMessageId) throw new Error('Failed to create stale generating message')
-  await args.conversationsRepository.appendGeneratingMessageDelta({
-    messageId: staleMessageId,
-    textDelta: 'partial',
-    newParts: [{ type: 'text', text: 'partial' }],
-  })
-  await args.db
-    .update(conversationMessages)
-    .set({ updatedAt: oldDate })
-    .where(eq(conversationMessages.id, staleMessageId))
-
-  const completedWithDeltaId = await args.conversationsRepository.startGeneratingMessage({
+  if (!userMessageId) throw new Error('Failed to create maintenance user message')
+  const expiredRun = await args.conversationsRepository.startAgentRun({
     conversationId,
     userId: args.userId,
-    turnId: 'maintenance_completed',
-    mode: 'act',
+    userMessageId,
+    turnId: 'maintenance_expired_run',
+    mode: 'chat',
+    runner: 'tool_loop',
     modelId: 'openrouter/free',
+    leaseExpiresAt: oldDate.getTime(),
   })
-  if (!completedWithDeltaId) throw new Error('Failed to create completed maintenance message')
-  await args.conversationsRepository.appendGeneratingMessageDelta({
-    messageId: completedWithDeltaId,
-    textDelta: 'done',
-    newParts: [{ type: 'text', text: 'done' }],
-  })
-  await args.conversationsRepository.finalizeGeneratingMessage({
-    messageId: completedWithDeltaId,
-    content: 'done',
-    parts: [{ type: 'text', text: 'done' }],
-    tokens: { input: 1, output: 1 },
-  })
+  if (!expiredRun) throw new Error('Failed to create expired AgentRun')
 
   const emptyConversationId = await args.conversationsRepository.createConversation({
     userId: args.userId,
@@ -436,32 +416,20 @@ async function smokeBackgroundMaintenance(args: {
     emptyConversationCutoffMinutes: 5,
     limit: 20,
     now,
-    staleGeneratingCutoffMinutes: 5,
   })
-  if (summary.staleGeneratingMessages.finalized < 1) {
-    throw new Error('Postgres background maintenance did not finalize stale generating messages')
-  }
-  if (summary.inactiveMessageDeltas.deleted < 1) {
-    throw new Error('Postgres background maintenance did not remove inactive message deltas')
+  if (summary.expiredAgentRuns.failed < 1) {
+    throw new Error('Postgres background maintenance did not fail the expired AgentRun')
   }
   if (summary.emptyConversations.deleted < 1) {
     throw new Error('Postgres background maintenance did not remove empty conversations')
   }
 
-  const [staleAfter] = await args.db
-    .select()
-    .from(conversationMessages)
-    .where(eq(conversationMessages.id, staleMessageId))
-    .limit(1)
-  if (staleAfter?.status !== 'error') {
-    throw new Error('Postgres stale generating message was not marked as error')
-  }
-  const remainingDeltas = await args.db
-    .select()
-    .from(conversationMessageDeltas)
-    .where(eq(conversationMessageDeltas.messageId, completedWithDeltaId))
-  if (remainingDeltas.length > 0) {
-    throw new Error('Postgres inactive message deltas were not deleted')
+  const reconciledRun = await args.conversationsRepository.getLatestAgentRun({
+    conversationId,
+    userId: args.userId,
+  })
+  if (reconciledRun?.id !== expiredRun.id || reconciledRun.status !== 'failed') {
+    throw new Error('Postgres expired AgentRun did not reach failed state')
   }
   const [emptyAfter] = await args.db
     .select()

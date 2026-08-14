@@ -6,7 +6,6 @@ import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/s
 import { getBaseUrl } from '@/server/web/app-url'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { parseMentionTokens } from '@/shared/knowledge/mention-tokens'
-import type { Id } from '../../../convex/_generated/dataModel'
 
 export type ScheduledAutomationTurn = {
   automationId?: string
@@ -24,23 +23,6 @@ export type ScheduledAutomationTurn = {
 }
 
 const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
-
-async function settleScheduledAutomationTurn(params: {
-  conversationId: string
-  userId: string
-  turnId: string
-  status: 'completed' | 'error'
-  fallbackText: string
-}) {
-  await getOverlayServerContext().appData.repositories.conversations
-    .settleGeneratingMessagesForTurn({
-      conversationId: params.conversationId as Id<'conversations'>,
-      userId: params.userId,
-      turnId: params.turnId,
-      status: params.status,
-      fallbackText: params.fallbackText,
-    })
-}
 
 async function drainResponseBody(response: Response): Promise<void> {
   if (!response.body) return
@@ -155,23 +137,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
     }
 
     await drainResponseBody(response)
-    await settleScheduledAutomationTurn({
-      conversationId,
-      userId: input.userId,
-      turnId: input.turnId,
-      status: 'completed',
-      fallbackText: 'Automation run finished, but no final assistant response was saved.',
-    })
   } catch (error) {
-    await settleScheduledAutomationTurn({
-      conversationId,
-      userId: input.userId,
-      turnId: input.turnId,
-      status: 'error',
-      fallbackText: error instanceof Error
-        ? `Automation run failed: ${error.message}`
-        : 'Automation run failed before a final response was saved.',
-    }).catch((_error) => null)
     throw error
   }
   return { conversationId }

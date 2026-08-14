@@ -27,10 +27,14 @@ async function main(): Promise<void> {
       runtimeMaximumSchemaVersion: previousMaximum,
       runtimeMinimumSchemaVersion: previousMinimum,
     })
-    if (!previousRuntime.compatible) {
+    const expectPreviousRuntimeCompatibility = process.env.P5_EXPECT_ROLLBACK_COMPATIBLE === undefined
+      ? previousMaximum >= APP_DATA_MINIMUM_SCHEMA_VERSION
+      : process.env.P5_EXPECT_ROLLBACK_COMPATIBLE === '1'
+    if (previousRuntime.compatible !== expectPreviousRuntimeCompatibility) {
       throw new Error(
-        `Previous runtime schema range ${previousMinimum}-${previousMaximum} cannot roll back from database ` +
-          `${current.databaseSchemaVersion} (minimum runtime ${current.databaseMinimumRuntimeVersion})`,
+        `Previous runtime compatibility was ${previousRuntime.compatible}, expected ` +
+          `${expectPreviousRuntimeCompatibility}, for database ${current.databaseSchemaVersion} ` +
+          `(minimum runtime ${current.databaseMinimumRuntimeVersion})`,
       )
     }
 
@@ -49,7 +53,13 @@ async function main(): Promise<void> {
       second.release()
     }
 
-    console.log(JSON.stringify({ ok: true, current, previousRuntime, migrationLockExclusive: true }, null, 2))
+    console.log(JSON.stringify({
+      ok: true,
+      current,
+      previousRuntime,
+      expectPreviousRuntimeCompatibility,
+      migrationLockExclusive: true,
+    }, null, 2))
   } finally {
     await pool.end()
   }

@@ -27,7 +27,6 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   authIdentities: 0,
   conversationContextSummaries: 0,
   conversationEvents: 0,
-  conversationMessageDeltas: 0,
   conversationMessages: 0,
   conversations: 0,
   daytonaWorkspaces: 0,
@@ -170,7 +169,6 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     auth_identities: number
     conversation_context_summaries: number
     conversation_events: number
-    conversation_message_deltas: number
     conversation_messages: number
     conversations: number
     daytona_workspaces: number
@@ -210,7 +208,6 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM auth_identities WHERE user_id = ${userId}) AS auth_identities,
       (SELECT count(*)::int FROM conversation_context_summaries WHERE user_id = ${userId}) AS conversation_context_summaries,
       (SELECT count(*)::int FROM conversation_events WHERE user_id = ${userId}) AS conversation_events,
-      (SELECT count(*)::int FROM conversation_message_deltas WHERE user_id = ${userId}) AS conversation_message_deltas,
       (SELECT count(*)::int FROM conversation_messages WHERE user_id = ${userId}) AS conversation_messages,
       (SELECT count(*)::int FROM conversations WHERE user_id = ${userId}) AS conversations,
       (SELECT count(*)::int FROM daytona_workspaces WHERE user_id = ${userId}) AS daytona_workspaces,
@@ -253,7 +250,6 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     authIdentities: Number(row.auth_identities ?? 0),
     conversationContextSummaries: Number(row.conversation_context_summaries ?? 0),
     conversationEvents: Number(row.conversation_events ?? 0),
-    conversationMessageDeltas: Number(row.conversation_message_deltas ?? 0),
     conversationMessages: Number(row.conversation_messages ?? 0),
     conversations: Number(row.conversations ?? 0),
     daytonaWorkspaces: Number(row.daytona_workspaces ?? 0),

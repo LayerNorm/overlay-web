@@ -25,8 +25,6 @@ import type {
   ConversationQuery,
   CreateConversationRequest,
   CreateConversationResponse,
-  StreamAuthRequest,
-  StreamAuthResponse,
   UpdateConversationRequest,
 } from './types'
 
@@ -117,20 +115,6 @@ export class ConversationsClient {
   extensionPlanResponse(body: ActConversationRequest, init?: MutationRequestInit) {
     return this.http.request(
       '/api/v1/conversations/act/extension-plan',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  streamAuth<T = StreamAuthResponse>(body: StreamAuthRequest, init?: MutationRequestInit) {
-    return this.http.json<T>(
-      '/api/v1/conversations/stream-auth',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  streamAuthResponse(body: StreamAuthRequest, init?: MutationRequestInit) {
-    return this.http.request(
-      '/api/v1/conversations/stream-auth',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }

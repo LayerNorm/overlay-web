@@ -6,7 +6,6 @@ import type {
   ChatOutput,
   ConversationMessagePart,
   GenerationResult,
-  LiveMessageDelta,
   MessageImageAttachment,
   MessageReasoningPart,
   MessageTextPart,
@@ -321,111 +320,10 @@ export function replaceAssistantForTurn<TMessage extends { id?: string; role: st
   return next
 }
 
-function isToolInvocationPart(part: Record<string, unknown>): part is Record<string, unknown> & {
-  toolInvocation: {
-    toolCallId?: string
-    toolName?: string
-    toolInput?: unknown
-    toolOutput?: unknown
-    state?: string
-  }
-} {
-  return typeof part.toolInvocation === 'object' && part.toolInvocation !== null
-}
-
-export function mergeLiveStreamingParts(
-  existingParts: Array<Record<string, unknown>>,
-  newParts: Array<Record<string, unknown>>,
-) {
-  let nextParts = existingParts
-  for (const part of newParts) {
-    const last = nextParts[nextParts.length - 1]
-    if (
-      part.type === 'reasoning' &&
-      last?.type === 'reasoning' &&
-      typeof part.text === 'string'
-    ) {
-      nextParts = [
-        ...nextParts.slice(0, -1),
-        {
-          ...last,
-          text: `${typeof last.text === 'string' ? last.text : ''}${part.text}`,
-          state: part.state ?? last.state,
-        },
-      ]
-      continue
-    }
-
-    if (isToolInvocationPart(part)) {
-      const incoming = part.toolInvocation
-      const toolCallId = incoming.toolCallId
-      if (toolCallId) {
-        const existingIdx = nextParts.findIndex(
-          (candidate) =>
-            isToolInvocationPart(candidate) &&
-            candidate.toolInvocation.toolCallId === toolCallId,
-        )
-        if (existingIdx >= 0) {
-          const existing = nextParts[existingIdx]!
-          if (isToolInvocationPart(existing)) {
-            nextParts = [
-              ...nextParts.slice(0, existingIdx),
-              {
-                type: 'tool-invocation',
-                toolInvocation: {
-                  ...existing.toolInvocation,
-                  ...incoming,
-                  toolName:
-                    incoming.toolName === 'unknown_tool'
-                      ? existing.toolInvocation.toolName
-                      : incoming.toolName,
-                  toolInput: incoming.toolInput ?? existing.toolInvocation.toolInput,
-                  toolOutput: incoming.toolOutput ?? existing.toolInvocation.toolOutput,
-                },
-              },
-              ...nextParts.slice(existingIdx + 1),
-            ]
-            continue
-          }
-        }
-      }
-    }
-
-    nextParts = [...nextParts, part]
-  }
-  return nextParts
-}
-
-export function applyLiveMessageDeltaParts(
-  existingParts: Array<Record<string, unknown>>,
-  delta: LiveMessageDelta,
-) {
-  let nextParts = existingParts
-  if (delta.textDelta) {
-    const last = nextParts[nextParts.length - 1]
-    if (last?.type === 'text') {
-      nextParts = [
-        ...nextParts.slice(0, -1),
-        {
-          ...last,
-          text: `${typeof last.text === 'string' ? last.text : ''}${delta.textDelta}`,
-        },
-      ]
-    } else {
-      nextParts = [...nextParts, { type: 'text', text: delta.textDelta }]
-    }
-  }
-  if (delta.newParts?.length) {
-    nextParts = mergeLiveStreamingParts(nextParts, delta.newParts)
-  }
-  return nextParts
-}
-
 /**
  * Merge flattened {@link ConversationMessagePart} deltas into an existing part list.
  *
- * Unlike {@link mergeLiveStreamingParts} (which operates on AI SDK UI parts with
- * `tool-invocation` wrappers), this works on the flattened shared part shape used
+ * This works on the flattened shared part shape used
  * by desktop streaming and persistence:
  *   - text: append to the trailing text part when present, otherwise push a new one
  *   - reasoning: append to the trailing streaming reasoning part, otherwise push

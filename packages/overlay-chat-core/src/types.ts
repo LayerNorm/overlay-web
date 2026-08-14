@@ -195,13 +195,6 @@ export type ServerConversationMessage = {
   routedModelId?: string
 }
 
-export type LiveMessageDelta = {
-  _id: string
-  messageId: string
-  textDelta?: string
-  newParts?: Array<Record<string, unknown>>
-}
-
 export interface GenerationResult {
   type: 'image' | 'video'
   status: 'generating' | 'completed' | 'failed'

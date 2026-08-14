@@ -110,18 +110,3 @@ export type AgentRunResource = {
   createdAt: number
   updatedAt: number
 }
-
-export interface StreamAuthRequest {
-  conversationId?: string
-  accessToken?: string
-  userId?: string
-  [key: string]: unknown
-}
-
-export interface StreamAuthResponse {
-  token?: string
-  streamToken?: string
-  expiresAt?: number
-  expiresIn?: number
-  [key: string]: unknown
-}

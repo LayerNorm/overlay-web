@@ -67,7 +67,6 @@ import {
   ShareConversationRequest,
   ShareFileRequest,
   StopConversationRequest,
-  StreamAuthRequest,
   SubscriptionQuery,
   TestAutomationRequest,
   TranscribeRequest,
@@ -280,13 +279,6 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/run/approval',
     schema: { json: AgentRunApprovalRequest },
     summary: 'Approve or deny a waiting AgentRun tool call',
-    tag: 'Conversations',
-  },
-  {
-    method: 'POST',
-    path: '/api/v1/conversations/stream-auth',
-    schema: { json: StreamAuthRequest },
-    summary: 'Create a stream auth token',
     tag: 'Conversations',
   },
   {

@@ -14,7 +14,6 @@ export interface AccountDataDeletionCounts {
   authIdentities: number
   conversationContextSummaries: number
   conversationEvents: number
-  conversationMessageDeltas: number
   conversationMessages: number
   conversations: number
   daytonaWorkspaces: number

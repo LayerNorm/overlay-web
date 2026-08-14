@@ -24,7 +24,8 @@ Two workstreams converge on one shared prerequisite:
 | React Flow attribution | Keep the badge | MIT permits removal but maintainers ask for Pro subscription; we keep it |
 | On-prem parity | Hard requirement from day one | `@workflow/world-postgres` or extend existing durable job system — Step 7 |
 | Graph model scope | Full node kind set from day one, linear execution only in Step 3 | Schema supports branching/parallelism; execution wiring deferred to Step 5 |
-| Interactive chat | Not migrated | No durability problem; 290s is acceptable; resumable streams already exist |
+| Personal Chat Chat mode | ToolLoopAgent + AgentRun | Direct SSE while connected; final-only persistence; lease detects process loss |
+| Personal Chat Work mode | WorkflowAgent + AgentRun | Durable execution; final-only response publication in v1 |
 
 ## Vercel Workflows Pricing
 

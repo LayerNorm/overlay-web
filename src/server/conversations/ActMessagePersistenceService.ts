@@ -18,7 +18,6 @@ import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ActConversationRepository } from './ActConversationRepository'
-import type { ActGeneratingMessageService } from './ActGeneratingMessageService'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 type ActMessagePersistenceEvents = {
@@ -67,7 +66,6 @@ export class ActMessagePersistenceService {
 
   constructor(private readonly deps: {
     events?: ActMessagePersistenceEvents
-    generatingMessages: ActGeneratingMessageService
     repository: ActConversationRepository
   }) {
     this.events = deps.events ?? defaultEvents
@@ -170,7 +168,6 @@ export class ActMessagePersistenceService {
     event: ActAssistantFinishEvent
     fallbackNotice?: string
     finishedToolCallIds: Set<string>
-    generatingMessageId?: Id<'conversationMessages'>
     agentRunId?: string
     multiModelSlotIndex: number
     multiModelTotal: number
@@ -312,14 +309,6 @@ export class ActMessagePersistenceService {
           tokens: { input: totalInputTokens, output: totalOutputTokens },
         })
         assistantCompleted = completedRun?.status === 'completed'
-      } else if (args.generatingMessageId) {
-        await this.deps.generatingMessages.finalize({
-          messageId: args.generatingMessageId,
-          content: persistContent,
-          parts: finalParts,
-          routedModelId,
-          tokens: { input: totalInputTokens, output: totalOutputTokens },
-        })
       } else {
         await this.deps.repository.addMessage({
           conversationId: args.conversationId,

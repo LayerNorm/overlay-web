@@ -4,7 +4,6 @@ import type { UIMessage } from '@/server/ai/sdk'
 import { ActContextService } from './ActContextService'
 import type { ActConversationRepository } from './ActConversationRepository'
 import { ActConversationServiceError, ActEntitlementService } from './ActEntitlementService'
-import { ActGeneratingMessageService } from './ActGeneratingMessageService'
 import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
 import { isFreeTierAllocationExhausted, UnlimitedUsagePolicy } from './ActUsagePolicy'
@@ -45,12 +44,6 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
     getProject: () => unexpected('getProject'),
     getContextSummary: () => unexpected('getContextSummary'),
     upsertContextSummary: () => unexpected('upsertContextSummary'),
-    startGeneratingMessage: () => unexpected('startGeneratingMessage'),
-    appendGeneratingMessageDelta: () => unexpected('appendGeneratingMessageDelta'),
-    finalizeGeneratingMessage: () => unexpected('finalizeGeneratingMessage'),
-    failGeneratingMessage: () => unexpected('failGeneratingMessage'),
-    settleGeneratingMessagesForTurn: () => unexpected('settleGeneratingMessagesForTurn'),
-    stopGeneratingMessages: () => unexpected('stopGeneratingMessages'),
     deleteTurn: () => unexpected('deleteTurn'),
     updateMessageUiPart: () => unexpected('updateMessageUiPart'),
     setShare: () => unexpected('setShare'),
@@ -263,11 +256,7 @@ test('act context service preloads attached documents through the active file re
 
 test('act message persistence surfaces user-message persistence failures', async () => {
   let addMessageCalls = 0
-  const generatingMessages = new ActGeneratingMessageService({
-    repository: repository(),
-  })
   const service = new ActMessagePersistenceService({
-    generatingMessages,
     repository: repository({
       addMessage: async () => {
         addMessageCalls += 1
@@ -293,22 +282,19 @@ test('act message persistence surfaces user-message persistence failures', async
   assert.equal(addMessageCalls, 1)
 })
 
-test('act assistant persistence finalizes generating messages and emits completion', async () => {
+test('act assistant persistence writes one final message and emits completion', async () => {
   const completions: Array<{ conversationId: string; modelId: string; turnId: string; userId: string }> = []
   let finalized: { content: string; parts: Array<Record<string, unknown>> } | undefined
-  const generatingMessages = new ActGeneratingMessageService({
-    repository: repository({
-      finalizeGeneratingMessage: async (args) => {
-        finalized = { content: args.content, parts: args.parts }
-      },
-    }),
-  })
   const service = new ActMessagePersistenceService({
     events: {
       completed: (event) => completions.push(event),
     },
-    generatingMessages,
-    repository: repository(),
+    repository: repository({
+      addMessage: async (args) => {
+        finalized = { content: args.content, parts: args.parts }
+        return 'message_1' as Id<'conversationMessages'>
+      },
+    }),
   })
 
   await service.persistAssistantFinish({
@@ -321,7 +307,6 @@ test('act assistant persistence finalizes generating messages and emits completi
       usage: { inputTokens: 3, outputTokens: 4 },
     } as ActAssistantFinishEvent,
     finishedToolCallIds: new Set(),
-    generatingMessageId: 'message_1' as Id<'conversationMessages'>,
     multiModelSlotIndex: 0,
     multiModelTotal: 1,
     sourceCitations: {

@@ -267,7 +267,7 @@ export async function runAppDataRepositoryContractSuite(
       }) as Array<{ _id?: string }>).some((row) => row._id === fileId), true)
     })
 
-    await t.test(`${backend.name}: conversations, messages, and deltas preserve chat behavior`, async () => {
+    await t.test(`${backend.name}: conversations, messages, and AgentRuns preserve chat behavior`, async () => {
       const eventCursor = await backend.conversations.getConversationEventCursor({ userId })
       const clientId = `conversation_${randomUUID()}`
       const conversationId = await backend.conversations.createConversation({
@@ -301,26 +301,20 @@ export async function runAppDataRepositoryContractSuite(
         skipMemoryExtraction: true,
       })
 
-      const assistantMessageId = await backend.conversations.startGeneratingMessage({
+      const assistantMessageId = await backend.conversations.addMessage({
         conversationId,
         userId,
         turnId: 'turn_1',
+        role: 'assistant',
         mode: 'act',
-        modelId: 'openrouter/free',
-      })
-      assert.ok(assistantMessageId)
-      await backend.conversations.appendGeneratingMessageDelta({
-        messageId: assistantMessageId,
-        textDelta: 'hello',
-        newParts: [{ type: 'text', text: 'hello' }],
-      })
-      await backend.conversations.finalizeGeneratingMessage({
-        messageId: assistantMessageId,
         content: 'hello back',
+        contentType: 'text',
         parts: [{ type: 'text', text: 'hello back' }],
+        modelId: 'openrouter/free',
         tokens: { input: 1, output: 2 },
         routedModelId: 'openrouter/free',
       })
+      assert.ok(assistantMessageId)
 
       const messages = await backend.conversations.getConversationMessages({
         conversationId,
@@ -519,38 +513,6 @@ export async function runAppDataRepositoryContractSuite(
         token: publicShare!.token!,
       }), null)
 
-      const interruptedMessageId = await backend.conversations.startGeneratingMessage({
-        conversationId,
-        userId,
-        turnId: 'turn_interrupted',
-        mode: 'act',
-        modelId: 'openrouter/free',
-      })
-      assert.ok(interruptedMessageId)
-      await backend.conversations.appendGeneratingMessageDelta({
-        messageId: interruptedMessageId,
-        textDelta: 'partial response',
-      })
-      const stopped = await backend.conversations.stopGeneratingMessages({
-        conversationId,
-        messageId: interruptedMessageId,
-        userId,
-      })
-      assert.equal(stopped.stoppedCount, 1)
-      await backend.conversations.finalizeGeneratingMessage({
-        messageId: interruptedMessageId,
-        content: 'late completion must not overwrite stop',
-        parts: [{ type: 'text', text: 'late completion must not overwrite stop' }],
-        tokens: { input: 1, output: 1 },
-      })
-      const afterStop = await backend.conversations.getConversationMessages({
-        conversationId,
-        userId,
-      })
-      const interrupted = afterStop.find((message) => message._id === interruptedMessageId)
-      assert.equal(interrupted?.status, 'completed')
-      assert.match(interrupted?.content ?? '', /Interrupted by user/)
-
       await backend.conversations.addMessage({
         conversationId,
         userId,
@@ -583,8 +545,7 @@ export async function runAppDataRepositoryContractSuite(
           events.map((event) => event.sequence),
           [...events.map((event) => event.sequence)].sort((a, b) => a - b),
         )
-        assert.equal(events.some((event) => event.type === 'message.delta'), true)
-        assert.equal(events.some((event) => event.type === 'message.stopped'), true)
+        assert.equal(events.some((event) => event.type === 'message.completed'), true)
         assert.equal(events.some((event) => event.type === 'conversation.shared'), true)
         assert.equal(events.some((event) => event.type === 'message.deleted'), true)
 

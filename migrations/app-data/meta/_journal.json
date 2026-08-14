@@ -421,6 +421,13 @@
       "when": 1787166004000,
       "tag": "0059_agent_run_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1787166005000,
+      "tag": "0060_retire_conversation_message_deltas",
+      "breakpoints": true
     }
   ]
 }

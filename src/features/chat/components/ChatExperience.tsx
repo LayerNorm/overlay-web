@@ -716,6 +716,7 @@ export default function ChatExperience({
     loadChats,
     onRuntimeMessagesChanged,
     runtimeHydrationVersion,
+    runActive: agentRunLifecycle.active,
     runtimesRef,
     sessions,
     shouldSyncMessages: agentRunLifecycle.shouldSyncMessages,
@@ -945,7 +946,6 @@ export default function ChatExperience({
     setRuntimeHydrationVersion,
     setSourcesPanel,
     shouldScrollRef,
-    startSession,
     syncStandaloneChatUrl,
   })
 

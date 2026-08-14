@@ -22,23 +22,9 @@ crons.interval(
 )
 
 crons.interval(
-  'stale generating message cleanup',
-  { minutes: 2 },
-  internal.chat.conversations.runStaleGeneratingCleanup,
-)
-
-crons.interval(
   'tool loop agent run lease cleanup',
   { minutes: 2 },
   internal.chat.conversations.expireToolLoopAgentRunLeases,
-)
-
-// Defense-in-depth: catches stream delta rows whose parent message is no longer
-// `generating`. Do not age-expire deltas here; some tasks can legitimately run long.
-crons.interval(
-  'orphan message delta cleanup',
-  { hours: 6 },
-  internal.chat.conversations.runOrphanDeltaCleanup,
 )
 
 // Removes conversations that were created (e.g. user opened a new chat) but never

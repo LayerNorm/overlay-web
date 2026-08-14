@@ -173,9 +173,10 @@ function TextChatMessage(props: TextChatMessageProps) {
           ? (multiActInstance?.status === 'streaming' || multiActInstance?.status === 'submitted')
           : (actChat.status === 'streaming' || actChat.status === 'submitted'))
       : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
-    isOptimisticLoading
+    isOptimisticLoading ||
+    (isActExchange && isActiveLoading)
   )
-  const instLoading = activeHttpLoading || persistedStatus === 'generating'
+  const instLoading = activeHttpLoading
   const persistedErrorText = persistedStatus === 'error'
     ? persistedGenerationErrorMessage(responseText)
     : 'Generation failed'
@@ -206,7 +207,7 @@ function TextChatMessage(props: TextChatMessageProps) {
   })()
   const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
   const hasAssistantActivity = assistantVisualBlocks.length > 0
-  const isStreaming = (activeHttpLoading || persistedStatus === 'generating') && hasAssistantActivity
+  const isStreaming = activeHttpLoading && hasAssistantActivity
   const isTextStreaming = activeHttpLoading && hasAssistantText
   const rawUserText = getMessageText(message)
   const metaDocs = getUserMessageDocNames(message)

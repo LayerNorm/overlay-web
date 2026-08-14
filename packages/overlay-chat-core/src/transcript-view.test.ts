@@ -51,7 +51,7 @@ test('selects multi-model responses by model, then index, then first response', 
 
 test('derives loading, terminal, interruption, and error statuses with stable precedence', () => {
   assert.equal(deriveChatExchangeStatus({ runtimeStatus: 'submitted' }), 'submitted')
-  assert.equal(deriveChatExchangeStatus({ persistedStatus: 'generating' }), 'streaming')
+  assert.equal(deriveChatExchangeStatus({ persistedStatus: 'generating' }), 'idle')
   assert.equal(deriveChatExchangeStatus({ runtimeStatus: 'executing_tool' }), 'executing-tool')
   assert.equal(deriveChatExchangeStatus({ hasResponse: true }), 'completed')
   assert.equal(deriveChatExchangeStatus({ interrupted: true, hasResponse: true }), 'interrupted')

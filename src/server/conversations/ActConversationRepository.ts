@@ -263,44 +263,6 @@ export interface ActConversationRepository {
     targetModelId: string
     userId: string
   }): Promise<void>
-  startGeneratingMessage(args: {
-    conversationId: Id<'conversations'>
-    mode: 'act'
-    modelId: string
-    turnId: string
-    userId: string
-    variantIndex?: number
-  }): Promise<Id<'conversationMessages'> | null>
-  appendGeneratingMessageDelta(args: {
-    messageId: Id<'conversationMessages'>
-    newParts?: Array<Record<string, unknown>>
-    textDelta?: string
-  }): Promise<boolean>
-  finalizeGeneratingMessage(args: {
-    content: string
-    messageId: Id<'conversationMessages'>
-    parts: Array<Record<string, unknown>>
-    routedModelId?: string
-    tokens: { input: number; output: number }
-  }): Promise<void>
-  failGeneratingMessage(args: {
-    errorText: string
-    messageId: Id<'conversationMessages'>
-  }): Promise<void>
-  settleGeneratingMessagesForTurn(args: {
-    conversationId: Id<'conversations'>
-    fallbackText: string
-    status: 'completed' | 'error'
-    turnId: string
-    userId: string
-  }): Promise<void>
-  stopGeneratingMessages(args: {
-    conversationId: Id<'conversations'>
-    messageId?: Id<'conversationMessages'>
-    partialContent?: string
-    partialParts?: Array<Record<string, unknown>>
-    userId: string
-  }): Promise<{ stoppedCount: number }>
   startAgentRun(args: {
     conversationId: Id<'conversations'>
     leaseExpiresAt?: number

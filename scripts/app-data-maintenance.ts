@@ -19,10 +19,8 @@ async function main() {
 
   try {
     const summary = await service.runAll({
-      deltaCutoffMinutes: numberArg('delta-cutoff-minutes'),
       emptyConversationCutoffMinutes: numberArg('empty-conversation-cutoff-minutes'),
       limit: numberArg('limit'),
-      staleGeneratingCutoffMinutes: numberArg('stale-generating-cutoff-minutes'),
     })
     console.log(JSON.stringify({
       ok: true,

@@ -51,9 +51,8 @@ test('schema compatibility rejects a database older than the runtime minimum', (
   )
 })
 
-test('current schema keeps the previous runtime inside the rolling upgrade window', () => {
+test('current schema rejects the previous runtime after the delta-table retirement boundary', () => {
   const previousRuntimeMaximum = APP_DATA_SCHEMA_VERSION - 1
-  assert.ok(previousRuntimeMaximum >= APP_DATA_MINIMUM_SCHEMA_VERSION)
   assert.equal(
     evaluateAppDataSchemaCompatibility({
       databaseMinimumRuntimeVersion: APP_DATA_MINIMUM_SCHEMA_VERSION,
@@ -61,6 +60,6 @@ test('current schema keeps the previous runtime inside the rolling upgrade windo
       runtimeMaximumSchemaVersion: previousRuntimeMaximum,
       runtimeMinimumSchemaVersion: APP_DATA_MINIMUM_SCHEMA_VERSION - 1,
     }).compatible,
-    true,
+    false,
   )
 })

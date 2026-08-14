@@ -45,19 +45,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         return false
       }
     }))).filter(Boolean).length
-    const legacy = cancelled.stoppedCount === 0
-      ? await repository.stopGeneratingMessages({
-          conversationId: conversationId as Id<'conversations'>,
-          ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
-          ...(body.partialContent !== undefined ? { partialContent: body.partialContent } : {}),
-          ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
-          userId: resourceUserId,
-        })
-      : { stoppedCount: 0 }
-
     return NextResponse.json({
       success: true,
-      stoppedCount: cancelled.stoppedCount + legacy.stoppedCount,
+      stoppedCount: cancelled.stoppedCount,
       cancelledRunIds: cancelled.cancelledRunIds,
       abortedLocalCount,
       cancelledWorkflowCount,

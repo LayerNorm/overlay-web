@@ -67,8 +67,8 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - `POST /api/v1/conversations/stop` atomically transitions active AgentRuns to
   `cancelled`, projects the interrupted state into their assistant messages,
   and best-effort aborts ToolLoop executions running in the same server
-  process, and cancels attached Workflow runs. The legacy generating-message
-  stop remains only as a migration fallback for runs created before AgentRun.
+  process, and cancels attached Workflow runs. Assistant-message status is a
+  display projection and is never consulted to decide whether Stop is active.
 - `POST /api/v1/conversations/run/approval` accepts the active conversation,
   AgentRun and hook token plus an approve/deny decision. It rejects stale tokens
   and resumes only the current `waiting_for_approval` Work run.
@@ -76,6 +76,9 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
   `conversations.stopResponse()` plus `conversations.submitRunApproval()` for
   these contracts. Both Convex and Postgres repositories must preserve
   identical strict lifecycle transitions.
+- The retired `conversationMessageDeltas` table, delta hydration queries,
+  stream-auth route, and Cloudflare relay are not part of the API contract.
+  Both runners persist one terminal assistant-message snapshot.
 
 ## File listing
 

@@ -3,7 +3,7 @@ import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
-import type { MutationCtx, QueryCtx } from '../_generated/server'
+import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 
@@ -156,7 +156,6 @@ async function getLinkedAutomationConversationIds(
 }
 
 type MessageDoc = Doc<'conversationMessages'>
-type MessageDeltaDoc = Doc<'conversationMessageDeltas'>
 type MessagePart = NonNullable<MessageDoc['parts']>[number]
 type MessageParts = NonNullable<MessageDoc['parts']>
 const MAX_HISTORY_TOOL_VALUE_CHARS = 1000
@@ -224,270 +223,6 @@ function compactMessageForHistory(message: MessageDoc, compactToolPayloads?: boo
     parts: compactPartsForHistory(message.parts),
   }
 }
-
-function mergeStreamingParts(existingParts: MessageParts, newParts: MessageParts) {
-  let nextParts = existingParts
-  for (const part of newParts) {
-    const last = nextParts[nextParts.length - 1]
-    if (
-      part.type === 'reasoning' &&
-      last?.type === 'reasoning' &&
-      typeof part.text === 'string'
-    ) {
-      nextParts = [
-        ...nextParts.slice(0, -1),
-        {
-          ...last,
-          text: `${last.text ?? ''}${part.text}`,
-          state: part.state ?? last.state,
-        },
-      ]
-      continue
-    }
-    if (isToolInvocationPart(part)) {
-      const incoming = part.toolInvocation
-      const toolCallId = incoming.toolCallId
-      if (toolCallId) {
-        const existingIdx = nextParts.findIndex(
-          (candidate) => isToolInvocationPart(candidate) && candidate.toolInvocation.toolCallId === toolCallId,
-        )
-        if (existingIdx >= 0) {
-          const existing = nextParts[existingIdx]!
-          if (isToolInvocationPart(existing)) {
-            nextParts = [
-              ...nextParts.slice(0, existingIdx),
-              {
-                type: 'tool-invocation' as const,
-                toolInvocation: {
-                  ...existing.toolInvocation,
-                  ...incoming,
-                  toolName:
-                    incoming.toolName === 'unknown_tool'
-                      ? existing.toolInvocation.toolName
-                      : incoming.toolName,
-                  toolInput: incoming.toolInput ?? existing.toolInvocation.toolInput,
-                  toolOutput: incoming.toolOutput ?? existing.toolInvocation.toolOutput,
-                },
-              },
-              ...nextParts.slice(existingIdx + 1),
-            ]
-            continue
-          }
-        }
-      }
-    }
-    nextParts = [...nextParts, part]
-  }
-  return nextParts
-}
-
-function mergeMessageDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): MessageDoc {
-  if (deltas.length === 0) return message
-  let content = message.content ?? ''
-  let parts = Array.isArray(message.parts) ? message.parts : [{ type: 'text' as const, text: content }]
-  for (const delta of deltas) {
-    if (delta.textDelta) {
-      content += delta.textDelta
-      const last = parts[parts.length - 1]
-      if (last?.type === 'text') {
-        parts = [
-          ...parts.slice(0, -1),
-          { ...last, text: `${last.text ?? ''}${delta.textDelta}` },
-        ]
-      } else {
-        parts = [...parts, { type: 'text', text: delta.textDelta }]
-      }
-    }
-    if (delta.newParts?.length) {
-      parts = mergeStreamingParts(parts, delta.newParts)
-    }
-  }
-  return { ...message, content, parts }
-}
-
-function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): MessageDoc {
-  if (message.status !== 'generating') return message
-  return mergeMessageDeltas(message, deltas)
-}
-
-async function getMessageDeltas(
-  ctx: Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>,
-  messageId: Id<'conversationMessages'>,
-) {
-  return await ctx.db
-    .query('conversationMessageDeltas')
-    .withIndex('by_messageId', (q) => q.eq('messageId', messageId))
-    .order('asc')
-    .collect()
-}
-
-async function deleteMessageDeltas(
-  ctx: Pick<MutationCtx, 'db'>,
-  messageId: Id<'conversationMessages'>,
-) {
-  const deltas = await getMessageDeltas(ctx, messageId)
-  await deleteDeltaDocs(ctx, deltas)
-  return deltas.length
-}
-
-async function deleteDeltaDocs(
-  ctx: Pick<MutationCtx, 'db'>,
-  deltas: MessageDeltaDoc[],
-) {
-  for (const delta of deltas) {
-    await ctx.db.delete(delta._id)
-  }
-  return deltas.length
-}
-
-async function cleanupMessageDeltas(
-  ctx: Pick<MutationCtx, 'db'>,
-  cutoffMinutes = 60,
-  limit = 1000,
-) {
-  const cutoff = Date.now() - cutoffMinutes * 60 * 1000
-  const staleByAge = await ctx.db
-    .query('conversationMessageDeltas')
-    .withIndex('by_createdAt', (q) => q.lt('createdAt', cutoff))
-    .take(limit)
-  const scan = staleByAge.length > 0
-    ? staleByAge
-    : await ctx.db.query('conversationMessageDeltas').take(limit)
-  let deleted = 0
-  for (const delta of scan) {
-    const message = await ctx.db.get(delta.messageId)
-    if (delta.createdAt < cutoff || !message || message.status !== 'generating') {
-      await ctx.db.delete(delta._id)
-      deleted++
-    }
-  }
-  return {
-    deleted,
-    scanned: scan.length,
-    mode: staleByAge.length > 0 ? 'age' as const : 'orphan' as const,
-  }
-}
-
-async function cleanupInactiveMessageDeltas(
-  ctx: Pick<MutationCtx, 'db'>,
-  limit = 1000,
-) {
-  const scan = await ctx.db.query('conversationMessageDeltas').take(limit)
-  let deleted = 0
-  for (const delta of scan) {
-    const message = await ctx.db.get(delta.messageId)
-    if (!message || message.status !== 'generating') {
-      await ctx.db.delete(delta._id)
-      deleted++
-    }
-  }
-  return {
-    deleted,
-    scanned: scan.length,
-    mode: 'inactive' as const,
-  }
-}
-
-const legacyPersistenceMigrationPhase = v.union(
-  v.literal('deltas'),
-  v.literal('messages'),
-)
-
-/**
- * One-time, staged migration used before conversationMessageDeltas is removed
- * from the schema. Start it once with no arguments, wait for the scheduled
- * batches to finish, then deploy the phase-5 cleanup commit.
- */
-export const collapseLegacyConversationPersistence = internalMutation({
-  args: {
-    cursor: v.optional(v.string()),
-    phase: v.optional(legacyPersistenceMigrationPhase),
-  },
-  returns: v.object({
-    collapsedDeltas: v.number(),
-    interruptedMessages: v.number(),
-    nextPhase: v.optional(legacyPersistenceMigrationPhase),
-    scheduled: v.boolean(),
-  }),
-  handler: async (ctx, args) => {
-    const phase = args.phase ?? 'deltas'
-    if (phase === 'deltas') {
-      const page = await ctx.db
-        .query('conversationMessageDeltas')
-        .order('asc')
-        .paginate({ cursor: args.cursor ?? null, numItems: 100 })
-      const byMessage = new Map<Id<'conversationMessages'>, MessageDeltaDoc[]>()
-      for (const delta of page.page) {
-        const rows = byMessage.get(delta.messageId) ?? []
-        rows.push(delta)
-        byMessage.set(delta.messageId, rows)
-      }
-      for (const [messageId, deltas] of byMessage) {
-        const message = await ctx.db.get(messageId)
-        if (message) {
-          const merged = mergeMessageDeltas(message, deltas)
-          await ctx.db.patch(messageId, {
-            content: merged.content,
-            parts: merged.parts,
-            updatedAt: Date.now(),
-          })
-        }
-        await deleteDeltaDocs(ctx, deltas)
-      }
-      await ctx.scheduler.runAfter(
-        0,
-        internal.chat.conversations.collapseLegacyConversationPersistence,
-        page.isDone
-          ? { phase: 'messages' }
-          : { phase: 'deltas', cursor: page.continueCursor },
-      )
-      return {
-        collapsedDeltas: page.page.length,
-        interruptedMessages: 0,
-        nextPhase: page.isDone ? 'messages' as const : 'deltas' as const,
-        scheduled: true,
-      }
-    }
-
-    const page = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_status_updatedAt', (q) => q.eq('status', 'generating'))
-      .order('asc')
-      .paginate({ cursor: args.cursor ?? null, numItems: 100 })
-    const interruptedText = 'Generation was interrupted during the chat durability migration.'
-    let interruptedMessages = 0
-    for (const message of page.page) {
-      const run = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_assistantMessageId', (q) => q.eq('assistantMessageId', message._id))
-        .unique()
-      if (run && ACTIVE_AGENT_RUN_STATUSES.has(run.status)) continue
-      const content = message.content?.trim()
-        ? `${message.content.trimEnd()}\n\n[${interruptedText}]`
-        : interruptedText
-      await ctx.db.patch(message._id, {
-        content,
-        parts: [{ type: 'text', text: content }],
-        status: 'error',
-        updatedAt: Date.now(),
-      })
-      interruptedMessages += 1
-    }
-    if (!page.isDone) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.chat.conversations.collapseLegacyConversationPersistence,
-        { phase: 'messages', cursor: page.continueCursor },
-      )
-    }
-    return {
-      collapsedDeltas: 0,
-      interruptedMessages,
-      nextPhase: page.isDone ? undefined : 'messages' as const,
-      scheduled: !page.isDone,
-    }
-  },
-})
 
 export const list = query({
   args: {
@@ -696,15 +431,7 @@ export const getMessages = query({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
       .collect()
-    const generating = messages.filter((message) => message.status === 'generating')
-    if (generating.length === 0) return messages
-
-    const hydrated = await Promise.all(generating.map(async (message) => {
-      const deltas = await getMessageDeltas(ctx, message._id)
-      return applyStreamingDeltas(message, deltas)
-    }))
-    const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
-    return messages.map((message) => hydratedById.get(message._id) ?? message)
+    return messages
   },
 })
 
@@ -757,19 +484,7 @@ export const getRecentMessages = query({
     const messages = recentScan
       .filter((message) => selectedTurnIdSet.has(message.turnId?.trim() || message._id))
       .sort((a, b) => a.createdAt - b.createdAt)
-    const generating = messages.filter((message) => message.status === 'generating')
-    if (generating.length === 0) {
-      return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
-    }
-
-    const hydrated = await Promise.all(generating.map(async (message) => {
-      const deltas = await getMessageDeltas(ctx, message._id)
-      return applyStreamingDeltas(message, deltas)
-    }))
-    const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
-    return messages.map((message) =>
-      compactMessageForHistory(hydratedById.get(message._id) ?? message, compactToolPayloads)
-    )
+    return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
   },
 })
 
@@ -974,59 +689,6 @@ export const addMessage = mutation({
   },
 })
 
-export const startGeneratingMessage = mutation({
-  args: {
-    conversationId: v.id('conversations'),
-    userId: v.string(),
-    serverSecret: v.string(),
-    turnId: v.string(),
-    variantIndex: v.optional(v.number()),
-    modelId: v.string(),
-    mode: v.union(v.literal('ask'), v.literal('act')),
-  },
-  handler: async (ctx, args) => {
-    await authorizeUserAccess({ userId: args.userId, serverSecret: args.serverSecret })
-    const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
-      throw new Error('Unauthorized')
-    }
-
-    const now = Date.now()
-    const existing = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    const match = existing.find(
-      (message) => sameMessageVariant(message, {
-        turnId: args.turnId,
-        role: 'assistant',
-        variantIndex: args.variantIndex,
-        modelId: args.modelId,
-      }),
-    )
-    const payload = {
-      conversationId: args.conversationId,
-      userId: args.userId,
-      turnId: args.turnId,
-      role: 'assistant' as const,
-      mode: args.mode,
-      content: '',
-      contentType: 'text' as const,
-      parts: [{ type: 'text', text: '' }],
-      modelId: args.modelId,
-      variantIndex: args.variantIndex,
-      status: 'generating' as const,
-      updatedAt: now,
-      createdAt: match?.createdAt ?? now,
-    }
-    const id = match
-      ? (await ctx.db.patch(match._id, payload), match._id)
-      : await ctx.db.insert('conversationMessages', payload)
-    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
-    return id
-  },
-})
-
 export const startAgentRun = mutation({
   args: {
     conversationId: v.id('conversations'),
@@ -1187,7 +849,6 @@ export const completeAgentRun = mutation({
         status: 'completed',
         updatedAt: now,
       })
-      await deleteMessageDeltas(ctx, message._id)
     }
     await ctx.db.patch(run._id, {
       status: 'completed',
@@ -1223,7 +884,6 @@ export const failAgentRun = mutation({
         status: 'error',
         updatedAt: now,
       })
-      await deleteMessageDeltas(ctx, message._id)
     }
     await ctx.db.patch(run._id, {
       status: 'failed',
@@ -1310,7 +970,6 @@ export const cancelAgentRuns = mutation({
           status: 'completed',
           updatedAt: now,
         })
-        await deleteMessageDeltas(ctx, message._id)
       }
       await ctx.db.patch(run._id, {
         status: 'cancelled',
@@ -1332,68 +991,6 @@ export const cancelAgentRuns = mutation({
       cancelledWorkflowRunIds: activeRuns.flatMap((run) => run.workflowRunId ? [run.workflowRunId] : []),
       stoppedCount: activeRuns.length,
     }
-  },
-})
-
-export const appendToGeneratingMessage = mutation({
-  args: {
-    messageId: v.id('conversationMessages'),
-    textDelta: v.optional(v.string()),
-    newParts: messageParts,
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, { messageId, textDelta, newParts, serverSecret }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    const message = await ctx.db.get(messageId)
-    if (!message) throw new Error('Message not found')
-    if (message.status !== 'generating') {
-      return
-    }
-
-    if (!textDelta && !newParts?.length) return
-    const now = Date.now()
-    await ctx.db.insert('conversationMessageDeltas', {
-      conversationId: message.conversationId,
-      messageId,
-      userId: message.userId,
-      textDelta,
-      newParts,
-      createdAt: now,
-    })
-    await ctx.db.patch(messageId, { updatedAt: now })
-    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
-  },
-})
-
-export const appendGeneratingMessageDelta = appendToGeneratingMessage
-
-export const finalizeGeneratingMessage = mutation({
-  args: {
-    messageId: v.id('conversationMessages'),
-    content: v.string(),
-    parts: v.array(messagePart),
-    tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
-    routedModelId: v.optional(v.string()),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const message = await ctx.db.get(args.messageId)
-    if (!message) throw new Error('Message not found')
-    if (message.status !== 'generating') {
-      return
-    }
-    const now = Date.now()
-    await ctx.db.patch(args.messageId, {
-      content: args.content,
-      parts: args.parts,
-      tokens: args.tokens,
-      routedModelId: args.routedModelId,
-      status: 'completed',
-      updatedAt: now,
-    })
-    await deleteMessageDeltas(ctx, args.messageId)
-    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
   },
 })
 
@@ -1449,271 +1046,6 @@ export const updateMessageUiPart = mutation({
   },
 })
 
-export const failGeneratingMessage = mutation({
-  args: {
-    messageId: v.id('conversationMessages'),
-    errorText: v.optional(v.string()),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, { messageId, errorText, serverSecret }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    const message = await ctx.db.get(messageId)
-    if (!message) throw new Error('Message not found')
-    if (message.status !== 'generating') {
-      return
-    }
-    const now = Date.now()
-    const text = errorText?.trim() || 'Generation failed.'
-    await ctx.db.patch(messageId, {
-      content: text,
-      parts: [{ type: 'text', text }],
-      status: 'error',
-      updatedAt: now,
-    })
-    await deleteMessageDeltas(ctx, messageId)
-    await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
-  },
-})
-
-export const settleGeneratingMessagesForTurn = mutation({
-  args: {
-    conversationId: v.id('conversations'),
-    userId: v.string(),
-    turnId: v.string(),
-    status: v.union(v.literal('completed'), v.literal('error')),
-    fallbackText: v.optional(v.string()),
-    serverSecret: v.string(),
-  },
-  returns: v.object({
-    settledCount: v.number(),
-  }),
-  handler: async (ctx, args) => {
-    await authorizeUserAccess({ userId: args.userId, serverSecret: args.serverSecret })
-    const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
-      throw new Error('Unauthorized')
-    }
-
-    const messages = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    const targets = messages.filter((message) =>
-      message.role === 'assistant' &&
-      message.status === 'generating' &&
-      message.turnId === args.turnId
-    )
-
-    const now = Date.now()
-    let settledCount = 0
-    for (const message of targets) {
-      const deltas = await getMessageDeltas(ctx, message._id)
-      const hydrated = applyStreamingDeltas(message, deltas)
-      const fallbackText = args.fallbackText?.trim() ||
-        (args.status === 'error'
-          ? 'Automation run failed before a final response was saved.'
-          : 'Automation run finished before a final response was saved.')
-      const content = hydrated.content?.trim() ? hydrated.content : fallbackText
-      const hasVisiblePart = Array.isArray(hydrated.parts) && hydrated.parts.some((part) =>
-        'text' in part && typeof part.text === 'string'
-          ? part.text.trim().length > 0
-          : true
-      )
-      const parts = hasVisiblePart ? hydrated.parts : [{ type: 'text' as const, text: content }]
-
-      await ctx.db.patch(message._id, {
-        content,
-        parts,
-        status: args.status,
-        updatedAt: now,
-      })
-      await deleteDeltaDocs(ctx, deltas)
-      settledCount++
-    }
-
-    if (settledCount > 0) {
-      await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
-    }
-
-    return { settledCount }
-  },
-})
-
-export const finalizeStaleGeneratingMessages = mutation({
-  args: {
-    cutoffMinutes: v.optional(v.number()),
-    limit: v.optional(v.number()),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, { cutoffMinutes, limit, serverSecret }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    const thresholdMs = (cutoffMinutes ?? 5) * 60 * 1000
-    const cutoff = Date.now() - thresholdMs
-
-    const stale = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_status_updatedAt', (q) =>
-        q.eq('status', 'generating').lt('updatedAt', cutoff)
-      )
-      .take(limit ?? 50)
-
-    let finalizedCount = 0
-    let deletedDeltas = 0
-    for (const message of stale) {
-      const deltas = await getMessageDeltas(ctx, message._id)
-      const hydrated = applyStreamingDeltas(message, deltas)
-      const hasContent = (hydrated.content?.trim()?.length ?? 0) > 0
-      const fallbackText = 'generation_interrupted_server_timeout'
-      const content = hasContent ? hydrated.content : fallbackText
-      const parts = Array.isArray(hydrated.parts) && hydrated.parts.length > 0
-        ? hydrated.parts
-        : [{ type: 'text' as const, text: content }]
-      await ctx.db.patch(message._id, {
-        content,
-        parts,
-        status: 'error',
-        updatedAt: Date.now(),
-      })
-      deletedDeltas += await deleteDeltaDocs(ctx, deltas)
-      finalizedCount++
-    }
-
-    return { finalizedCount, deletedDeltas, remaining: stale.length - finalizedCount }
-  },
-})
-
-export const cleanupConversationMessageDeltas = mutation({
-  args: {
-    cutoffMinutes: v.optional(v.number()),
-    limit: v.optional(v.number()),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, { cutoffMinutes, limit, serverSecret }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    return await cleanupMessageDeltas(ctx, cutoffMinutes ?? 60, limit ?? 1000)
-  },
-})
-
-export const stopGeneratingMessage = mutation({
-  args: {
-    conversationId: v.id('conversations'),
-    messageId: v.optional(v.id('conversationMessages')),
-    partialContent: v.optional(v.string()),
-    partialParts: messageParts,
-    userId: v.string(),
-    serverSecret: v.string(),
-  },
-  handler: async (ctx, { conversationId, messageId, partialContent, partialParts, userId, serverSecret }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
-      throw new Error('Unauthorized')
-    }
-
-    const messages = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_conversationId_status_updatedAt', (q) =>
-        q.eq('conversationId', conversationId).eq('status', 'generating')
-      )
-      .collect()
-
-    const targets = messageId
-      ? messages.filter((m) => m._id === messageId)
-      : messages
-
-    for (const message of targets) {
-      const deltas = await getMessageDeltas(ctx, message._id)
-
-      const hydrated = applyStreamingDeltas(message, deltas)
-      const sentinel = '\n\n[Interrupted by user. Continue?]'
-      const baseContent = typeof partialContent === 'string' ? partialContent : hydrated.content
-      const finalContent = baseContent.trimEnd() + sentinel
-      const baseParts =
-        Array.isArray(partialParts) && partialParts.length > 0
-          ? partialParts
-          : Array.isArray(hydrated.parts)
-            ? hydrated.parts
-            : [{ type: 'text' as const, text: baseContent }]
-      const finalParts = [...baseParts, { type: 'text' as const, text: sentinel }]
-
-      await ctx.db.patch(message._id, {
-        content: finalContent,
-        parts: finalParts,
-        status: 'completed',
-        updatedAt: Date.now(),
-      })
-
-      await deleteDeltaDocs(ctx, deltas)
-
-      await ctx.db.patch(conversationId, { lastModified: Date.now(), updatedAt: Date.now() })
-    }
-
-    return { stoppedCount: targets.length }
-  },
-})
-
-export const runStaleGeneratingCleanup = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const thresholdMs = 5 * 60 * 1000
-    const cutoff = Date.now() - thresholdMs
-
-    // Convex caps a mutation at 4096 document reads and aborts the whole
-    // transaction when it is exceeded. Deltas per message are unbounded (a long
-    // stream writes hundreds), so a 50-message batch reading every delta blew
-    // the cap, rolled the batch back, and finalized nothing — leaving the very
-    // messages with the most deltas stuck in `generating` while the cron retried
-    // and failed identically forever.
-    //
-    // Bound both dimensions so the worst case fits the budget and every run
-    // makes progress. Reading only the first slice of deltas can truncate the
-    // salvaged content, which is an acceptable trade for a generation that was
-    // already interrupted; `runOrphanDeltaCleanup` sweeps whatever is left once
-    // the message is no longer `generating`.
-    const STALE_MESSAGE_BATCH = 10
-    const DELTAS_PER_MESSAGE_LIMIT = 300
-
-    const stale = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_status_updatedAt', (q) =>
-        q.eq('status', 'generating').lt('updatedAt', cutoff)
-      )
-      .take(STALE_MESSAGE_BATCH)
-
-    let finalizedCount = 0
-    let deletedDeltas = 0
-    for (const message of stale) {
-      const agentRun = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_assistantMessageId', (q) => q.eq('assistantMessageId', message._id))
-        .unique()
-      if (agentRun && ACTIVE_AGENT_RUN_STATUSES.has(agentRun.status)) continue
-      const deltas = await ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
-        .order('asc')
-        .take(DELTAS_PER_MESSAGE_LIMIT)
-      const hydrated = applyStreamingDeltas(message, deltas)
-      const hasContent = (hydrated.content?.trim()?.length ?? 0) > 0
-      const fallbackText = 'generation_interrupted_server_timeout'
-      const content = hasContent ? hydrated.content : fallbackText
-      const parts = Array.isArray(hydrated.parts) && hydrated.parts.length > 0
-        ? hydrated.parts
-        : [{ type: 'text' as const, text: content }]
-      await ctx.db.patch(message._id, {
-        content,
-        parts,
-        status: 'error',
-        updatedAt: Date.now(),
-      })
-      deletedDeltas += await deleteDeltaDocs(ctx, deltas)
-      finalizedCount++
-    }
-
-    return { finalizedCount, deletedDeltas }
-  },
-})
-
 export const expireToolLoopAgentRunLeases = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -1743,7 +1075,6 @@ export const expireToolLoopAgentRunLeases = internalMutation({
           status: 'error',
           updatedAt: now,
         })
-        await deleteMessageDeltas(ctx, message._id)
       }
       await ctx.db.patch(run._id, {
         status: 'failed',
@@ -1759,18 +1090,6 @@ export const expireToolLoopAgentRunLeases = internalMutation({
       await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
     }
     return { expiredCount: expired.length }
-  },
-})
-
-/**
- * Sweeps deltas that are no longer useful. Deltas are only needed while a stream is
- * actively in flight — once the message is completed/errored the client reads from
- * `parts`.
- */
-export const runOrphanDeltaCleanup = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    return await cleanupInactiveMessageDeltas(ctx, 1000)
   },
 })
 
@@ -1816,12 +1135,6 @@ export const runEmptyConversationCleanup = internalMutation({
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
         .first()
       if (firstMessage) continue
-      // Defensive: drop any orphan deltas that point at this conversation.
-      const deltas = await ctx.db
-        .query('conversationMessageDeltas')
-        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
-        .collect()
-      await deleteDeltaDocs(ctx, deltas)
       await ctx.db.delete(conversation._id)
       deleted++
     }
@@ -1838,73 +1151,6 @@ export const runEmptyConversationCleanup = internalMutation({
       complete: page.isDone,
       skipped: false,
     }
-  },
-})
-
-export const watchGeneratingMessages = query({
-  args: {
-    conversationId: v.id('conversations'),
-    userId: v.string(),
-    accessToken: v.string(),
-    compactToolPayloads: v.optional(v.boolean()),
-  },
-  handler: async (ctx, { conversationId, userId, accessToken, compactToolPayloads }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken })
-    } catch {
-      return []
-    }
-    const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
-    const messages = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_conversationId_status_updatedAt', (q) =>
-        q.eq('conversationId', conversationId).eq('status', 'generating')
-      )
-      .order('desc')
-      .collect()
-    const hydrated = await Promise.all(messages.map(async (message) => {
-      const deltas = await getMessageDeltas(ctx, message._id)
-      return applyStreamingDeltas(message, deltas)
-    }))
-    return hydrated.map((message) => compactMessageForHistory(message, compactToolPayloads))
-  },
-})
-
-export const watchGeneratingMessageDeltas = query({
-  args: {
-    conversationId: v.id('conversations'),
-    userId: v.string(),
-    accessToken: v.string(),
-    compactToolPayloads: v.optional(v.boolean()),
-  },
-  handler: async (ctx, { conversationId, userId, accessToken, compactToolPayloads }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken })
-    } catch {
-      return []
-    }
-    const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return []
-    const generatingMessages = await ctx.db
-      .query('conversationMessages')
-      .withIndex('by_conversationId_status_updatedAt', (q) =>
-        q.eq('conversationId', conversationId).eq('status', 'generating')
-      )
-      .collect()
-    if (generatingMessages.length === 0) return []
-    const generatingIds = new Set(generatingMessages.map((message) => message._id))
-    const deltas = await ctx.db
-      .query('conversationMessageDeltas')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
-      .order('asc')
-      .collect()
-    const filtered = deltas.filter((delta) => generatingIds.has(delta.messageId))
-    if (!compactToolPayloads) return filtered
-    return filtered.map((delta) => ({
-      ...delta,
-      newParts: Array.isArray(delta.newParts) ? compactPartsForHistory(delta.newParts) : delta.newParts,
-    }))
   },
 })
 

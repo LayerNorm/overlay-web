@@ -91,7 +91,6 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `mcpToolExecutions` | `userId` | Deployment boundary | Add `tenantId`; connector execution audit, authorization, and usage records must be tenant-scoped. |
 | `conversations` | `userId` | Deployment boundary | Add `tenantId`; share tokens need explicit cross-tenant policy. |
 | `conversationMessages` | `userId` | Deployment boundary | Add `tenantId`; conversation/message indexes must include tenant context. |
-| `conversationMessageDeltas` | `userId` | Deployment boundary | Add `tenantId`; streaming/delta cleanup queries must include tenant context. |
 | `conversationContextSummaries` | `userId` | Deployment boundary | Add `tenantId`; context summary indexes must include tenant context. |
 | `notes` | `userId` | Deployment boundary | Add `tenantId`; note/project indexes must include tenant context. |
 | `memories` | `userId` | Deployment boundary | Add `tenantId`; memory extraction and search must enforce tenant context. |

@@ -7,7 +7,6 @@ import { and, eq } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import {
   agentRuns,
-  conversationMessageDeltas,
   conversationMessages,
   conversations,
   users,
@@ -299,10 +298,6 @@ test('Postgres AgentRun lifecycle is atomic, cancellable, and lease-reconciled',
     const expiredAssistant = messages.find((message) => message._id === expiredRun.assistantMessageId)
     assert.equal(expiredAssistant?.status, 'error')
     assert.match(expiredAssistant?.content ?? '', /chat process stopped/)
-    const deltaRows = await db.select({ id: conversationMessageDeltas.id })
-      .from(conversationMessageDeltas)
-      .where(eq(conversationMessageDeltas.userId, userId))
-    assert.equal(deltaRows.length, 0)
   } finally {
     await db.delete(agentRuns).where(eq(agentRuns.userId, userId))
     await db.delete(conversationMessages).where(eq(conversationMessages.userId, userId))

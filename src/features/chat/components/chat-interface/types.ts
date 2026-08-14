@@ -155,13 +155,6 @@ export type LiveConversationMessage = {
   status?: 'generating' | 'completed' | 'error'
 }
 
-export type LiveMessageDelta = {
-  _id: Id<'conversationMessageDeltas'>
-  messageId: Id<'conversationMessages'>
-  textDelta?: string
-  newParts?: Array<Record<string, unknown>>
-}
-
 export interface GenerationResult {
   type: 'image' | 'video'
   status: 'generating' | 'completed' | 'failed'

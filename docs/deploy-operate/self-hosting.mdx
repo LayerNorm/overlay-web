@@ -358,7 +358,7 @@ Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a se
 
 Postgres chat realtime uses the `conversation_events` table and `/api/v1/conversations/events` long polling. Transactional `pg_notify` wakes one listener connection per web process; notifications are only an optimization because reconnects read from the durable cursor. It does not require sticky load-balancer sessions. Keep the worker running so expired event rows and message deltas are pruned. Each app tab holds at most one HTTP long-poll request, so account for concurrent tabs when setting ECS task count and reverse-proxy timeouts. The route waits up to 15 seconds; configure the ingress idle timeout above that value.
 
-The optional chat-stream relay provides exact SSE frame replay. It is not required for Postgres text durability: the web runtime continues consuming the model stream after a browser disconnect, persists batched text deltas, and reconnecting clients reload the authoritative message snapshot.
+Chat mode streams directly from the web runtime and persists one final assistant-message snapshot. After a browser disconnect, clients use the authoritative AgentRun status and reload the final response when it appears; exact SSE-frame replay is intentionally not part of the persistence contract.
 
 The migration shape is:
 

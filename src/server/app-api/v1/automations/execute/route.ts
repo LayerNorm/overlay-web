@@ -8,7 +8,6 @@ import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { logger } from '@/server/observability/logger'
 import { automationService } from '@/server/automations/http'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/automations/execute/prepare
@@ -132,7 +131,8 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
 // POST /api/v1/automations/execute/finalize
 //
 // Internal endpoint called by the automation-run workflow's finalizeRun step.
-// Settles generating messages for the turn. Service auth required.
+// Updates the automation run record. Assistant persistence is final-only in the
+// act route and is not inferred from message status here. Service auth required.
 // ---------------------------------------------------------------------------
 
 export async function PATCH(request: NextRequest, context?: AppApiRouteContext) {
@@ -145,9 +145,6 @@ export async function PATCH(request: NextRequest, context?: AppApiRouteContext) 
     const body = await request.json() as {
       conversationId?: string
       userId?: string
-      turnId?: string
-      status?: 'completed' | 'error'
-      fallbackText?: string
       runId?: string
       runStatus?: 'succeeded' | 'failed'
       error?: string
@@ -157,42 +154,26 @@ export async function PATCH(request: NextRequest, context?: AppApiRouteContext) 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Update automation_runs status if runId and runStatus are provided
-    if (body.runId && body.runStatus) {
-      if (body.runStatus === 'succeeded') {
-        await automationService.markRunCompleted({
-          runId: body.runId,
-          userId: body.userId,
-          conversationId: body.conversationId,
-        })
-      } else if (body.runStatus === 'failed') {
-        await automationService.markRunFailed({
-          runId: body.runId,
-          userId: body.userId,
-          error: body.error ?? 'Automation run failed',
-        })
-      }
-    }
-
-    if (!body.conversationId || !body.turnId) {
-      // If we already handled a run-status-only update, return ok
-      if (body.runId && body.runStatus) {
-        return NextResponse.json({ ok: true })
-      }
+    if (!body.runId || !body.runStatus) {
       return NextResponse.json(
-        { error: 'conversationId and turnId are required' },
+        { error: 'runId and runStatus are required' },
         { status: 400 },
       )
     }
 
-    await getOverlayServerContext().appData.repositories.conversations
-      .settleGeneratingMessagesForTurn({
-        conversationId: body.conversationId as Id<'conversations'>,
+    if (body.runStatus === 'succeeded') {
+      await automationService.markRunCompleted({
+        runId: body.runId,
         userId: body.userId,
-        turnId: body.turnId,
-        status: body.status ?? 'completed',
-        fallbackText: body.fallbackText ?? 'Automation run finished.',
+        conversationId: body.conversationId,
       })
+    } else {
+      await automationService.markRunFailed({
+        runId: body.runId,
+        userId: body.userId,
+        error: body.error ?? 'Automation run failed',
+      })
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {

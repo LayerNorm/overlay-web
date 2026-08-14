@@ -20,7 +20,6 @@ import {
   type RawConversationMessage,
 } from './chatTransport'
 import { clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
-import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import type { Conversation, ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
 export interface UseChatConversationLoaderParams {
@@ -50,12 +49,6 @@ export interface UseChatConversationLoaderParams {
   setRuntimeHydrationVersion: React.Dispatch<React.SetStateAction<number>>
   setSourcesPanel: (panel: null) => void
   shouldScrollRef: MutableRefObject<boolean>
-  startSession: (
-    chatId: string,
-    mode: 'act',
-    title: string,
-    exchangeIndex: number,
-  ) => void
   syncStandaloneChatUrl: (chatId: string | null, options?: { replaceUrl?: boolean }) => void
   clearTransientComposerState: () => void
   conversationSnapshots?: Readonly<Record<string, import('./chatTransport').ConversationLoadSnapshot>>
@@ -90,7 +83,6 @@ export function useChatConversationLoader({
   setRuntimeHydrationVersion,
   setSourcesPanel,
   shouldScrollRef,
-  startSession,
   syncStandaloneChatUrl,
 }: UseChatConversationLoaderParams) {
   const loadChatRequestRef = useRef(0)
@@ -296,9 +288,6 @@ export function useChatConversationLoader({
       })
       if (requestId !== loadChatRequestRef.current) return
       runtime.hydrated = true
-      if (rawMessages.some((msg) => msg.role === 'assistant' && msg.status === 'generating')) {
-        startSession(chatId, 'act', resolvedTitle ?? DEFAULT_CHAT_TITLE, Math.max(0, rawMessages.length - 1))
-      }
       shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
       setRuntimeHydrationVersion((value) => value + 1)
@@ -339,7 +328,6 @@ export function useChatConversationLoader({
     setRuntimeHydrationVersion,
     setSourcesPanel,
     shouldScrollRef,
-    startSession,
     syncStandaloneChatUrl,
   ])
 

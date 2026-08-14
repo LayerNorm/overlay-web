@@ -67,3 +67,9 @@ mark generating messages without an active AgentRun as interrupted. Confirm the
 scheduled chain has finished before deploying the following phase-5 cleanup
 revision, which removes the table, queries, and crons. Never skip directly to
 the cleanup revision on a deployment that may still contain delta rows.
+
+Postgres migration `0060_retire_conversation_message_deltas` performs the same
+collapse and table removal transactionally. Schema 60 raises the minimum
+compatible runtime to 60 because older runtimes still query the removed table;
+take a database backup and treat this migration as an explicit rollback
+boundary.

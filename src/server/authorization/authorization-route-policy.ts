@@ -370,11 +370,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
   {
-    path: '/api/v1/conversations/stream-auth',
-    methods: { POST: resource('conversation', 'view', {}, 'conversations.read') },
-  },
-
-  {
     path: '/api/v1/files',
     methods: {
       GET: resource('file', 'view', { optional: true }, 'files.read'),

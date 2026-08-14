@@ -8,7 +8,6 @@ import { withTransientPostgresReadRetry } from '@/server/database/postgres/trans
 import {
   conversationContextSummaries,
   conversationEvents,
-  conversationMessageDeltas,
   conversationMessages,
   agentRuns,
   conversationParticipants,
@@ -709,277 +708,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
       })
   }
 
-  async startGeneratingMessage(args: {
-    conversationId: ConversationId
-    mode: 'act'
-    modelId: string
-    turnId: string
-    userId: string
-    variantIndex?: number
-  }): Promise<ConversationMessageId | null> {
-    const now = new Date()
-    const id = messageId()
-    await this.db.transaction(async (tx) => {
-      await tx.insert(conversationMessages).values({
-        id,
-        conversationId: args.conversationId,
-        userId: args.userId,
-        turnId: args.turnId,
-        role: 'assistant',
-        mode: args.mode,
-        content: '',
-        contentType: 'text',
-        modelId: args.modelId,
-        variantIndex: args.variantIndex,
-        status: 'generating',
-        authorKind: 'model',
-        createdAt: now,
-        updatedAt: now,
-      })
-      await touchConversation(tx, args.conversationId, args.userId, now, args.mode)
-      await emitConversationEvent(tx, {
-        conversationId: args.conversationId,
-        messageId: id,
-        type: 'message.created',
-        userId: args.userId,
-      })
-    })
-    return id
-  }
-
-  async appendGeneratingMessageDelta(args: {
-    messageId: ConversationMessageId
-    newParts?: Array<Record<string, unknown>>
-    textDelta?: string
-  }): Promise<boolean> {
-    return await this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .select({
-          content: conversationMessages.content,
-          conversationId: conversationMessages.conversationId,
-          parts: conversationMessages.parts,
-          status: conversationMessages.status,
-          userId: conversationMessages.userId,
-        })
-        .from(conversationMessages)
-        .where(eq(conversationMessages.id, args.messageId))
-        .limit(1)
-        .for('update')
-      if (!row || row.status !== 'generating') return false
-
-      const now = new Date()
-      const nextParts = args.newParts?.length
-        ? [...((row.parts as Array<Record<string, unknown>> | null) ?? []), ...args.newParts]
-        : row.parts
-      const deltaId = messageDeltaId()
-      await tx.insert(conversationMessageDeltas).values({
-        id: deltaId,
-        conversationId: row.conversationId,
-        messageId: args.messageId,
-        userId: row.userId,
-        textDelta: args.textDelta,
-        newParts: args.newParts,
-        createdAt: now,
-      })
-      await tx
-        .update(conversationMessages)
-        .set({
-          content: `${row.content}${args.textDelta ?? ''}`,
-          parts: nextParts,
-          updatedAt: now,
-        })
-        .where(and(
-          eq(conversationMessages.id, args.messageId),
-          eq(conversationMessages.status, 'generating'),
-        ))
-      await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, 'act')
-      await emitConversationEvent(tx, {
-        conversationId: row.conversationId,
-        messageId: args.messageId,
-        payload: { deltaId },
-        type: 'message.delta',
-        userId: row.userId,
-      })
-      return true
-    })
-  }
-
-  async finalizeGeneratingMessage(args: {
-    content: string
-    messageId: ConversationMessageId
-    parts: Array<Record<string, unknown>>
-    routedModelId?: string
-    tokens: { input: number; output: number }
-  }): Promise<void> {
-    const now = new Date()
-    await this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(conversationMessages)
-        .set({
-          content: args.content,
-          parts: args.parts,
-          routedModelId: args.routedModelId,
-          tokens: args.tokens,
-          status: 'completed',
-          updatedAt: now,
-        })
-        .where(and(
-          eq(conversationMessages.id, args.messageId),
-          eq(conversationMessages.status, 'generating'),
-        ))
-        .returning({
-          conversationId: conversationMessages.conversationId,
-          mode: conversationMessages.mode,
-          userId: conversationMessages.userId,
-        })
-      if (row) {
-        await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, row.mode)
-        await emitConversationEvent(tx, {
-          conversationId: row.conversationId,
-          messageId: args.messageId,
-          type: 'message.completed',
-          userId: row.userId,
-        })
-      }
-    })
-  }
-
-  async failGeneratingMessage(args: {
-    errorText: string
-    messageId: ConversationMessageId
-  }): Promise<void> {
-    const now = new Date()
-    await this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(conversationMessages)
-        .set({
-          content: args.errorText,
-          parts: [{ type: 'text', text: args.errorText }],
-          status: 'error',
-          updatedAt: now,
-        })
-        .where(and(
-          eq(conversationMessages.id, args.messageId),
-          eq(conversationMessages.status, 'generating'),
-        ))
-        .returning({
-          conversationId: conversationMessages.conversationId,
-          mode: conversationMessages.mode,
-          userId: conversationMessages.userId,
-        })
-      if (row) {
-        await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, row.mode)
-        await emitConversationEvent(tx, {
-          conversationId: row.conversationId,
-          messageId: args.messageId,
-          type: 'message.failed',
-          userId: row.userId,
-        })
-      }
-    })
-  }
-
-  async settleGeneratingMessagesForTurn(args: {
-    conversationId: ConversationId
-    fallbackText: string
-    status: 'completed' | 'error'
-    turnId: string
-    userId: string
-  }): Promise<void> {
-    const now = new Date()
-    await this.db.transaction(async (tx) => {
-      const rows = await tx
-        .update(conversationMessages)
-        .set({
-          content: args.fallbackText,
-          parts: [{ type: 'text', text: args.fallbackText }],
-          status: args.status,
-          updatedAt: now,
-        })
-        .where(and(
-          eq(conversationMessages.conversationId, args.conversationId),
-          eq(conversationMessages.userId, args.userId),
-          eq(conversationMessages.turnId, args.turnId),
-          eq(conversationMessages.status, 'generating'),
-        ))
-        .returning({ id: conversationMessages.id })
-      for (const row of rows) {
-        await emitConversationEvent(tx, {
-          conversationId: args.conversationId,
-          messageId: row.id,
-          type: args.status === 'completed' ? 'message.completed' : 'message.failed',
-          userId: args.userId,
-        })
-      }
-      if (rows.length > 0) {
-        await touchConversation(tx, args.conversationId, args.userId, now, 'act')
-      }
-    })
-  }
-
-  async stopGeneratingMessages(args: {
-    conversationId: ConversationId
-    messageId?: ConversationMessageId
-    partialContent?: string
-    partialParts?: Array<Record<string, unknown>>
-    userId: string
-  }): Promise<{ stoppedCount: number }> {
-    return await this.db.transaction(async (tx) => {
-      const [conversation] = await tx
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(and(
-          eq(conversations.id, args.conversationId),
-          eq(conversations.userId, args.userId),
-          isNull(conversations.deletedAt),
-        ))
-        .limit(1)
-      if (!conversation) throw new Error('Unauthorized')
-
-      const rows = await tx
-        .select()
-        .from(conversationMessages)
-        .where(and(
-          eq(conversationMessages.conversationId, args.conversationId),
-          eq(conversationMessages.userId, args.userId),
-          eq(conversationMessages.status, 'generating'),
-          args.messageId ? eq(conversationMessages.id, args.messageId) : undefined,
-        ))
-        .for('update')
-      if (rows.length === 0) return { stoppedCount: 0 }
-
-      const now = new Date()
-      const sentinel = '\n\n[Interrupted by user. Continue?]'
-      for (const row of rows) {
-        const baseContent = args.partialContent ?? row.content
-        const content = `${baseContent.trimEnd()}${sentinel}`
-        const baseParts = args.partialParts?.length
-          ? args.partialParts
-          : (row.parts as Array<Record<string, unknown>> | null) ?? [{ type: 'text', text: baseContent }]
-        await tx
-          .update(conversationMessages)
-          .set({
-            content,
-            parts: [...baseParts, { type: 'text', text: sentinel }],
-            status: 'completed',
-            updatedAt: now,
-          })
-          .where(eq(conversationMessages.id, row.id))
-        await tx
-          .delete(conversationMessageDeltas)
-          .where(eq(conversationMessageDeltas.messageId, row.id))
-        await emitConversationEvent(tx, {
-          conversationId: args.conversationId,
-          messageId: row.id,
-          type: 'message.stopped',
-          userId: args.userId,
-        })
-      }
-      await touchConversation(tx, args.conversationId, args.userId, now, rows[0]?.mode ?? 'act')
-      return { stoppedCount: rows.length }
-    })
-  }
-
   async startAgentRun(args: {
     conversationId: ConversationId
     leaseExpiresAt?: number
@@ -1168,8 +896,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
         eq(conversationMessages.id, run.assistantMessageId),
         eq(conversationMessages.status, 'generating'),
       ))
-      await tx.delete(conversationMessageDeltas)
-        .where(eq(conversationMessageDeltas.messageId, run.assistantMessageId))
       const [updated] = await tx.update(agentRuns).set({
         status: 'completed',
         completedAt: now,
@@ -1213,8 +939,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
         eq(conversationMessages.id, run.assistantMessageId),
         eq(conversationMessages.status, 'generating'),
       ))
-      await tx.delete(conversationMessageDeltas)
-        .where(eq(conversationMessageDeltas.messageId, run.assistantMessageId))
       const [updated] = await tx.update(agentRuns).set({
         status: 'failed',
         failedAt: now,
@@ -1275,8 +999,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
             status: 'completed',
             updatedAt: now,
           }).where(eq(conversationMessages.id, message.id))
-          await tx.delete(conversationMessageDeltas)
-            .where(eq(conversationMessageDeltas.messageId, message.id))
         }
         await tx.update(agentRuns).set({
           status: 'cancelled',
@@ -1708,10 +1430,6 @@ function conversationId(): ConversationId {
 
 function messageId(): ConversationMessageId {
   return `msg_${randomUUID()}` as ConversationMessageId
-}
-
-function messageDeltaId(): string {
-  return `delta_${randomUUID()}`
 }
 
 function agentRunId(): string {

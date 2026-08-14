@@ -91,7 +91,6 @@
     "src/app/api/v1/conversations/search/route.ts",
     "src/app/api/v1/conversations/share/route.ts",
     "src/app/api/v1/conversations/stop/route.ts",
-    "src/app/api/v1/conversations/stream-auth/route.ts",
     "src/app/api/v1/daytona/run/route.ts",
     "src/app/api/v1/discovery/route.ts",
     "src/app/api/v1/extensions/[extensionId]/[...path]/route.ts",

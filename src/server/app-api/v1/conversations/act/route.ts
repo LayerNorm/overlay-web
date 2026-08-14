@@ -45,7 +45,6 @@ import {
   actConversationRepository,
   actConversationErrorResponse,
   actEntitlementService,
-  actGeneratingMessageService,
   agentRunService,
   actMessagePersistenceService,
   actUsageBudgetService,
@@ -112,14 +111,11 @@ export async function POST(
   dependencies: ActRouteDependencies = {},
 ) {
   const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
-  let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let pendingAgentRunId: string | undefined
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
   let currentUserId: string | undefined
   let currentResourceUserId: string | undefined
-  let actWebhookConversationId: Id<'conversations'> | undefined
-  let actWebhookTurnId: string | undefined
   let actWebhookSkip = false
   let concurrencySlot: { release: () => void } | null = null
   try {
@@ -341,8 +337,6 @@ export async function POST(
       }
     }
     const tid = resolveActTurnId(turnId)
-    actWebhookConversationId = cid
-    actWebhookTurnId = tid
 
     const {
       isMultiModelFollowUpSlot,
@@ -575,7 +569,7 @@ export async function POST(
     const agentRunLeaseExpiresAt = Date.now() + actAbortTimeoutMsResolved + 60_000
     const agentRunEligible = Boolean(cid) && automationExecution !== true && automationMode !== true
     const useWorkRunner = agentRunEligible && personalChatMode === 'work'
-    const persistenceStartTask = agentRunEligible
+    const agentRunTask = agentRunEligible
       ? (useWorkRunner
           ? agentRunService.startWork({
               conversationId: cid,
@@ -592,20 +586,10 @@ export async function POST(
               userId: conversationUserId,
               userMessageId,
               variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
-            })).then((run) => ({
-          agentRun: run,
-          messageId: run?.assistantMessageId as Id<'conversationMessages'> | undefined,
-        }))
-      : actGeneratingMessageService.start({
-          conversationId: cid,
-          userId: conversationUserId,
-          turnId: tid,
-          modelId: effectiveModelId,
-          multiModelTotal,
-          multiModelSlotIndex,
-        }).then((messageId) => ({ agentRun: undefined, messageId }))
-	    const [persistenceStart, actTooling] = await Promise.all([
-        persistenceStartTask,
+            }))
+      : Promise.resolve(undefined)
+	    const [agentRun, actTooling] = await Promise.all([
+        agentRunTask,
 		      prepareActTooling({
 		        accountAllowedConnectorIds,
 		        accountAllowedToolIds,
@@ -637,13 +621,10 @@ export async function POST(
 	        billingProgrammaticSubjectId,
 	      }),
 		    ])
-    const generatingMessageId = persistenceStart.messageId
-    const agentRun = persistenceStart.agentRun
     if (agentRunEligible && !agentRun) {
       throw new Error('Failed to establish AgentRun before generation')
     }
     pendingAgentRunId = agentRun?.id
-    pendingGeneratingMessageId = generatingMessageId
     if (!useWorkRunner && agentRun?.status === 'queued') {
       await agentRunService.markRunning({
         leaseExpiresAt: agentRunLeaseExpiresAt,
@@ -987,7 +968,6 @@ export async function POST(
           event,
           fallbackNotice: params.fallbackNotice,
           finishedToolCallIds,
-          generatingMessageId,
           agentRunId: agentRun?.id,
           multiModelSlotIndex,
           multiModelTotal,
@@ -1082,15 +1062,6 @@ export async function POST(
                 runId: agentRun.id,
                 userId: conversationUserId,
               }).catch((_error) => undefined)
-            } else {
-              await actGeneratingMessageService.fail({
-                conversationId: actWebhookConversationId,
-                emitWebhook: !actWebhookSkip,
-                error: failure,
-                messageId: generatingMessageId,
-                turnId: actWebhookTurnId,
-                userId: conversationUserId,
-              })
             }
           }
         })
@@ -1335,15 +1306,6 @@ export async function POST(
         runId: pendingAgentRunId,
         userId: currentResourceUserId,
       }).catch((_error) => undefined)
-    } else {
-      await actGeneratingMessageService.fail({
-        conversationId: actWebhookConversationId,
-        emitWebhook: !actWebhookSkip,
-        error,
-        messageId: pendingGeneratingMessageId,
-        turnId: actWebhookTurnId,
-        userId: currentResourceUserId,
-      })
     }
     return NextResponse.json(
       { error: userFacingOpenRouterError(error), requestId },

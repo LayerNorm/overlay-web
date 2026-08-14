@@ -104,18 +104,6 @@ const nextConfig: NextConfig = {
       );
     }
 
-    if (
-      process.env.NODE_ENV === "development" &&
-      process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_LOCAL === "true"
-    ) {
-      const relayOrigin =
-        process.env.CHAT_STREAM_RELAY_DEV_ORIGIN?.trim() || "http://127.0.0.1:8787";
-      rewrites.push({
-        source: "/api/chat-stream/:path*",
-        destination: `${relayOrigin}/api/chat-stream/:path*`,
-      });
-    }
-
     return rewrites;
   },
   async headers() {

@@ -744,27 +744,6 @@ export const agentRuns = pgTable('agent_runs', {
   ),
 ])
 
-export const conversationMessageDeltas = pgTable('conversation_message_deltas', {
-  id: text('id').primaryKey(),
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  messageId: text('message_id')
-    .notNull()
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  textDelta: text('text_delta'),
-  newParts: jsonb('new_parts').$type<unknown[]>(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  index('conversation_message_deltas_conversation_id_idx').on(table.conversationId),
-  index('conversation_message_deltas_message_id_idx').on(table.messageId),
-  index('conversation_message_deltas_user_id_idx').on(table.userId),
-  index('conversation_message_deltas_created_at_idx').on(table.createdAt),
-])
-
 export const conversationEvents = pgTable('conversation_events', {
   sequence: bigint('sequence', { mode: 'number' })
     .primaryKey()
