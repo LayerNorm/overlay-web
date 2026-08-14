@@ -99,7 +99,7 @@ crons.interval(
   'workflow step event projector',
   { seconds: 10 },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).automations.workflowEventProjector.runProjectionTick,
+  (internal as any).automations.workflowEventProjectorRunner.runProjectionTick,
   {},
 )
 
