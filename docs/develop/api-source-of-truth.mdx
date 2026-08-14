@@ -72,10 +72,20 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - `POST /api/v1/conversations/run/approval` accepts the active conversation,
   AgentRun and hook token plus an approve/deny decision. It rejects stale tokens
   and resumes only the current `waiting_for_approval` Work run.
+- `GET /api/v1/conversations/run/metrics?from=<epoch-ms>&to=<epoch-ms>&limit=<n>` returns
+  per-runner observations with explicit sample counts. It reports latency,
+  provider cost, Workflow step/storage observations, disconnect and recovery
+  outcomes, tool reliability, cancellation timing, and stale-run frequency. It
+  deliberately returns no runner recommendation.
+- `POST /api/v1/conversations/run/metrics-event` records the active browser's
+  `disconnected` or `reconnected` lifecycle observation for an exact AgentRun.
+  It cannot reliably observe every abrupt network loss, so report denominators
+  remain explicit.
 - `@overlay/api-client` exposes `conversations.currentRun()` and
-  `conversations.stopResponse()` plus `conversations.submitRunApproval()` for
-  these contracts. Both Convex and Postgres repositories must preserve
-  identical strict lifecycle transitions.
+  `conversations.stopResponse()` plus `conversations.submitRunApproval()`,
+  `conversations.runMetrics()`, and `conversations.recordRunMetricEvent()` for
+  these contracts. Both Convex and Postgres repositories must preserve identical
+  strict lifecycle transitions and metric merge behavior.
 - The retired `conversationMessageDeltas` table, delta hydration queries,
   stream-auth route, and Cloudflare relay are not part of the API contract.
   Both runners persist one terminal assistant-message snapshot.

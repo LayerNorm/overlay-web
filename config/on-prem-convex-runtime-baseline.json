@@ -86,6 +86,8 @@
     "src/app/api/v1/conversations/notifications/route.ts",
     "src/app/api/v1/conversations/route.ts",
     "src/app/api/v1/conversations/run/approval/route.ts",
+    "src/app/api/v1/conversations/run/metrics-event/route.ts",
+    "src/app/api/v1/conversations/run/metrics/route.ts",
     "src/app/api/v1/conversations/run/route.ts",
     "src/app/api/v1/conversations/saved-messages/route.ts",
     "src/app/api/v1/conversations/search/route.ts",
@@ -200,11 +202,6 @@
       "target": "internal.chat.conversations.runEmptyConversationCleanup"
     },
     {
-      "cadence": "{ hours: 6 }",
-      "name": "orphan message delta cleanup",
-      "target": "internal.chat.conversations.runOrphanDeltaCleanup"
-    },
-    {
       "cadence": "{ minutes: 1 }",
       "name": "outbound webhook delivery",
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
@@ -213,11 +210,6 @@
       "cadence": "{ hours: 1 }",
       "name": "service auth replay nonce cleanup",
       "target": "internal.auth.serviceAuth.cleanupExpiredReplayNoncesInternal"
-    },
-    {
-      "cadence": "{ minutes: 2 }",
-      "name": "stale generating message cleanup",
-      "target": "internal.chat.conversations.runStaleGeneratingCleanup"
     },
     {
       "cadence": "{ minutes: 2 }",

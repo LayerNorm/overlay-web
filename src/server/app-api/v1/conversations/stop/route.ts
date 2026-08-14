@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
-import { abortToolLoopRuns } from '@/server/conversations/tool-loop-run-registry'
+import { abortToolLoopRunIds } from '@/server/conversations/tool-loop-run-registry'
+import { agentRunService } from '@/server/conversations/http'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { getRun } from 'workflow/api'
 
@@ -35,22 +36,29 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
       userId: resourceUserId,
     })
-    const abortedLocalCount = abortToolLoopRuns(cancelled.cancelledRunIds)
-    const cancelledWorkflowCount = (await Promise.all(cancelled.cancelledWorkflowRunIds.map(async (runId) => {
+    const abortedLocalRunIds = abortToolLoopRunIds(cancelled.cancelledRunIds)
+    const cancelledWorkflowAgentRunIds = (await Promise.all(cancelled.cancelledWorkflows.map(async (run) => {
       try {
-        await getRun(runId).cancel()
-        return true
+        await getRun(run.workflowRunId).cancel()
+        return run.agentRunId
       } catch (error) {
-        logger.warn('[conversations/stop POST] Failed to cancel workflow run', { runId, error })
-        return false
+        logger.warn('[conversations/stop POST] Failed to cancel workflow run', { runId: run.workflowRunId, error })
+        return null
       }
-    }))).filter(Boolean).length
+    }))).filter((runId): runId is string => Boolean(runId))
+    const cancellationAcknowledgedAt = Date.now()
+    await Promise.all([...abortedLocalRunIds, ...cancelledWorkflowAgentRunIds].map((runId) =>
+      agentRunService.recordMetrics({
+        metrics: { cancellationAcknowledgedAt },
+        runId,
+        userId: resourceUserId,
+      }).catch((_error) => undefined)))
     return NextResponse.json({
       success: true,
       stoppedCount: cancelled.stoppedCount,
       cancelledRunIds: cancelled.cancelledRunIds,
-      abortedLocalCount,
-      cancelledWorkflowCount,
+      abortedLocalCount: abortedLocalRunIds.length,
+      cancelledWorkflowCount: cancelledWorkflowAgentRunIds.length,
     })
   } catch (e) {
     logger.error('[conversations/stop POST]', e)

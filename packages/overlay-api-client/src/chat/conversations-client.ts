@@ -20,6 +20,7 @@ import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type {
   ActConversationRequest,
   AgentRunResource,
+  AgentRunMetricsReport,
   ConversationGetResponse,
   ConversationMessageRequest,
   ConversationQuery,
@@ -153,6 +154,22 @@ export class ConversationsClient {
   currentRun(conversationId: string, init?: RequestInit) {
     const path = this.http.appendQuery('/api/v1/conversations/run', { conversationId })
     return this.http.json<{ run: AgentRunResource | null }>(path, init)
+  }
+
+  runMetrics(query?: { from?: number; to?: number; limit?: number }, init?: RequestInit) {
+    const path = this.http.appendQuery('/api/v1/conversations/run/metrics', query)
+    return this.http.json<AgentRunMetricsReport>(path, init)
+  }
+
+  recordRunMetricEvent(body: {
+    conversationId: string
+    agentRunId: string
+    event: 'browser_disconnected' | 'browser_reconnected'
+  }, init?: MutationRequestInit) {
+    return this.http.json<{ success: boolean }>(
+      '/api/v1/conversations/run/metrics-event',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
   }
 
   submitRunApproval(body: {

@@ -84,6 +84,27 @@ const agentRunStatus = v.union(
   v.literal('cancelled'),
 )
 
+const agentRunMetrics = v.object({
+  firstTokenAt: v.optional(v.number()),
+  inputTokens: v.optional(v.number()),
+  outputTokens: v.optional(v.number()),
+  providerCostMicros: v.optional(v.number()),
+  workflowStepCount: v.optional(v.number()),
+  workflowRetryCount: v.optional(v.number()),
+  workflowObservedStorageBytes: v.optional(v.number()),
+  toolCallCount: v.optional(v.number()),
+  toolSuccessCount: v.optional(v.number()),
+  toolFailureCount: v.optional(v.number()),
+  toolRetryCount: v.optional(v.number()),
+  browserDisconnectedAt: v.optional(v.number()),
+  browserReconnectedAt: v.optional(v.number()),
+  processFailureDetectedAt: v.optional(v.number()),
+  processFailureRecoveredAt: v.optional(v.number()),
+  cancellationRequestedAt: v.optional(v.number()),
+  cancellationAcknowledgedAt: v.optional(v.number()),
+  staleDetectedAt: v.optional(v.number()),
+})
+
 const ACTIVE_AGENT_RUN_STATUSES = new Set(['queued', 'running', 'waiting_for_approval'])
 const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   queued: new Set(['running', 'failed', 'cancelled']),
@@ -831,6 +852,7 @@ export const completeAgentRun = mutation({
     serverSecret: v.string(),
     tokens: v.object({ input: v.number(), output: v.number() }),
     userId: v.string(),
+    metrics: v.optional(agentRunMetrics),
   },
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
@@ -854,6 +876,7 @@ export const completeAgentRun = mutation({
       status: 'completed',
       completedAt: now,
       leaseExpiresAt: undefined,
+      metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
     })
     await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
@@ -868,6 +891,7 @@ export const failAgentRun = mutation({
     runId: v.id('conversationAgentRuns'),
     serverSecret: v.string(),
     userId: v.string(),
+    metrics: v.optional(agentRunMetrics),
   },
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
@@ -890,6 +914,7 @@ export const failAgentRun = mutation({
       failedAt: now,
       leaseExpiresAt: undefined,
       terminalError: args.error,
+      metrics: { ...run.metrics, ...args.metrics },
       updatedAt: now,
     })
     await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
@@ -928,6 +953,46 @@ export const getLatestAgentRun = query({
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .order('desc')
       .first()
+  },
+})
+
+export const recordAgentRunMetrics = mutation({
+  args: {
+    metrics: agentRunMetrics,
+    runId: v.id('conversationAgentRuns'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    await ctx.db.patch(run._id, {
+      metrics: { ...run.metrics, ...args.metrics },
+      updatedAt: Date.now(),
+    })
+    return await ctx.db.get(run._id)
+  },
+})
+
+export const listAgentRunsForMetrics = query({
+  args: {
+    from: v.number(),
+    limit: v.number(),
+    serverSecret: v.string(),
+    to: v.number(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    return await ctx.db
+      .query('conversationAgentRuns')
+      .withIndex('by_userId_createdAt', (q) => q
+        .eq('userId', args.userId)
+        .gte('createdAt', args.from)
+        .lte('createdAt', args.to))
+      .order('desc')
+      .take(Math.min(3_001, Math.max(1, Math.floor(args.limit))))
   },
 })
 
@@ -980,6 +1045,10 @@ export const cancelAgentRuns = mutation({
           message: 'The run was cancelled by the user.',
           retryable: true,
         },
+        metrics: {
+          ...run.metrics,
+          cancellationRequestedAt: now,
+        },
         updatedAt: now,
       })
     }
@@ -989,6 +1058,9 @@ export const cancelAgentRuns = mutation({
     return {
       cancelledRunIds: activeRuns.map((run) => run._id),
       cancelledWorkflowRunIds: activeRuns.flatMap((run) => run.workflowRunId ? [run.workflowRunId] : []),
+      cancelledWorkflows: activeRuns.flatMap((run) => run.workflowRunId
+        ? [{ agentRunId: run._id, workflowRunId: run.workflowRunId }]
+        : []),
       stoppedCount: activeRuns.length,
     }
   },
@@ -1084,6 +1156,11 @@ export const expireToolLoopAgentRunLeases = internalMutation({
           code: 'tool_loop_lease_expired',
           message: errorText,
           retryable: true,
+        },
+        metrics: {
+          ...run.metrics,
+          processFailureDetectedAt: now,
+          staleDetectedAt: now,
         },
         updatedAt: now,
       })

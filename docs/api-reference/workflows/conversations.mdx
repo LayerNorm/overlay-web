@@ -12,8 +12,17 @@ Typical flow:
 3. Run an Act turn with `/api/v1/conversations/act`.
 4. Read `/api/v1/conversations/run` after reconnecting; AgentRun is authoritative for whether a turn is still active.
 5. Stop an active turn with `/api/v1/conversations/stop`.
+6. Compare runner behavior with `/api/v1/conversations/run/metrics`; the report contains observations and sample counts, not a recommendation.
 
 Chat mode streams directly while the request is connected and persists the final assistant message once. If the connection closes, the client shows the active AgentRun and reloads the completed message through normal conversation synchronization. Work mode publishes its final response through the same AgentRun lifecycle.
+
+Runner metrics are available to the authenticated user:
+
+```http
+GET /api/v1/conversations/run/metrics?from=1785542400000&to=1788220800000&limit=1000
+```
+
+The response compares `tool_loop` and `workflow` using explicit denominators for latency, provider cost, Workflow observations, disconnect completion, process recovery, tools, cancellation, and stale runs. Work first-token latency remains unsampled while Work mode publishes only a final response. Workflow storage bytes are observational rather than invoice-billed bytes.
 
 Conversation messages may contain text, file references, generated UI data, and tool invocation parts. Keep generated and persisted message shapes aligned with `@overlay/app-core`.
 

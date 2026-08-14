@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomBytes, randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, notInArray, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, notInArray, or } from 'drizzle-orm'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { withTransientPostgresReadRetry } from '@/server/database/postgres/transient-errors'
@@ -42,6 +42,7 @@ import {
   canTransitionAgentRun,
   type AgentRun,
   type AgentRunMode,
+  type AgentRunMetrics,
   type AgentRunRunner,
   type AgentRunStatus,
   type AgentRunTerminalError,
@@ -874,6 +875,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     runId: string
     tokens: { input: number; output: number }
     userId: string
+    metrics?: Partial<AgentRunMetrics>
   }): Promise<AgentRun | null> {
     return await this.db.transaction(async (tx) => {
       const [run] = await tx
@@ -900,6 +902,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         status: 'completed',
         completedAt: now,
         leaseExpiresAt: null,
+        metrics: { ...run.metrics, ...args.metrics },
         updatedAt: now,
       }).where(eq(agentRuns.id, run.id)).returning()
       await touchConversation(tx, run.conversationId as ConversationId, run.userId, now, 'act')
@@ -919,6 +922,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     errorText: string
     runId: string
     userId: string
+    metrics?: Partial<AgentRunMetrics>
   }): Promise<AgentRun | null> {
     return await this.db.transaction(async (tx) => {
       const [run] = await tx
@@ -944,6 +948,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         failedAt: now,
         leaseExpiresAt: null,
         terminalError: args.error,
+        metrics: { ...run.metrics, ...args.metrics },
         updatedAt: now,
       }).where(eq(agentRuns.id, run.id)).returning()
       await touchConversation(tx, run.conversationId as ConversationId, run.userId, now, 'act')
@@ -964,7 +969,12 @@ export class PostgresActConversationRepository implements ActConversationReposit
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
     userId: string
-  }): Promise<{ cancelledRunIds: string[]; cancelledWorkflowRunIds: string[]; stoppedCount: number }> {
+  }): Promise<{
+    cancelledRunIds: string[]
+    cancelledWorkflowRunIds: string[]
+    cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    stoppedCount: number
+  }> {
     return await this.db.transaction(async (tx) => {
       const [conversation] = await tx.select({ id: conversations.id })
         .from(conversations)
@@ -981,7 +991,12 @@ export class PostgresActConversationRepository implements ActConversationReposit
         inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
         args.messageId ? eq(agentRuns.assistantMessageId, args.messageId) : undefined,
       )).for('update')
-      if (runs.length === 0) return { cancelledRunIds: [], cancelledWorkflowRunIds: [], stoppedCount: 0 }
+      if (runs.length === 0) return {
+        cancelledRunIds: [],
+        cancelledWorkflowRunIds: [],
+        cancelledWorkflows: [],
+        stoppedCount: 0,
+      }
       const now = new Date()
       const sentinel = '\n\n[Interrupted by user. Continue?]'
       for (const run of runs) {
@@ -1009,6 +1024,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
             message: 'The run was cancelled by the user.',
             retryable: true,
           },
+          metrics: {
+            ...run.metrics,
+            cancellationRequestedAt: now.getTime(),
+          },
           updatedAt: now,
         }).where(eq(agentRuns.id, run.id))
         await emitConversationEvent(tx, {
@@ -1023,6 +1042,9 @@ export class PostgresActConversationRepository implements ActConversationReposit
       return {
         cancelledRunIds: runs.map((run) => run.id),
         cancelledWorkflowRunIds: runs.flatMap((run) => run.workflowRunId ? [run.workflowRunId] : []),
+        cancelledWorkflows: runs.flatMap((run) => run.workflowRunId
+          ? [{ agentRunId: run.id, workflowRunId: run.workflowRunId }]
+          : []),
         stoppedCount: runs.length,
       }
     })
@@ -1059,6 +1081,39 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .limit(1)
       return run ? mapAgentRun(run) : null
     })
+  }
+
+  async recordAgentRunMetrics(args: {
+    metrics: Partial<AgentRunMetrics>
+    runId: string
+    userId: string
+  }): Promise<AgentRun | null> {
+    return await this.db.transaction(async (tx) => {
+      const [run] = await tx.select().from(agentRuns).where(and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+      )).limit(1).for('update')
+      if (!run) throw new Error('Unauthorized')
+      const [updated] = await tx.update(agentRuns).set({
+        metrics: { ...run.metrics, ...args.metrics },
+        updatedAt: new Date(),
+      }).where(eq(agentRuns.id, run.id)).returning()
+      return updated ? mapAgentRun(updated) : null
+    })
+  }
+
+  async listAgentRunsForMetrics(args: {
+    from: number
+    limit: number
+    to: number
+    userId: string
+  }): Promise<AgentRun[]> {
+    const rows = await this.db.select().from(agentRuns).where(and(
+      eq(agentRuns.userId, args.userId),
+      gte(agentRuns.createdAt, new Date(args.from)),
+      lte(agentRuns.createdAt, new Date(args.to)),
+    )).orderBy(desc(agentRuns.createdAt)).limit(Math.min(3_001, Math.max(1, Math.floor(args.limit))))
+    return rows.map(mapAgentRun)
   }
 
   async deleteTurn(args: {
@@ -1401,6 +1456,7 @@ function mapAgentRun(row: typeof agentRuns.$inferSelect): AgentRun {
     cancelledAt: row.cancelledAt ? toMillis(row.cancelledAt) : undefined,
     terminalError: row.terminalError ?? undefined,
     approval: row.approval ?? undefined,
+    metrics: row.metrics ?? undefined,
     createdAt: toMillis(row.createdAt),
     updatedAt: toMillis(row.updatedAt),
   }

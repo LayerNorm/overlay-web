@@ -462,3 +462,15 @@ tools, and billing reservation as serializable input.
   Personal Chat turn back to Chat mode.
 - The Workflow, React, and core AI SDK packages must remain on a mutually
   compatible release because their Tool schema symbols are version-specific.
+
+### Runner measurement
+
+Chat and Work publish a shared empirical report through
+`GET /api/v1/conversations/run/metrics`. The report includes first-token and
+completion latency, provider token cost, observed Workflow steps/retries and
+serialized step/event bytes, browser-disconnect completion, explicit
+process-failure recovery, tool outcomes, cancellation acknowledgement latency,
+and stale-run frequency. Work has no first-token sample while it remains
+final-only. Observed Workflow bytes are not billing bytes, and infrastructure
+cost remains unsampled until invoice allocation is available. The endpoint
+intentionally makes no Chat-versus-Work recommendation.

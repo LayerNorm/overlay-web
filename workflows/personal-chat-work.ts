@@ -89,6 +89,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
     workflowRunId,
   })
 
+  const allSteps: StepResult<ToolSet>[] = []
   try {
     const tools = buildWorkflowTools(input.toolDefinitions)
     const toolsContext = Object.fromEntries(input.toolDefinitions.map((definition) => [
@@ -114,7 +115,6 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
     } as never)
 
     let messages = input.messages
-    const allSteps: StepResult<ToolSet>[] = []
     for (let approvalCycle = 0; approvalCycle < 20; approvalCycle += 1) {
       const result = await agent.stream({ messages })
       allSteps.push(...result.steps)
@@ -143,6 +143,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
           resourceUserId: input.resourceUserId,
           sourceCitations: input.sourceCitations,
           turnId: input.turnId,
+          workflowRunId,
         })
         return { agentRunId: input.agentRunId, completed: true }
       }
@@ -187,8 +188,11 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
       agentRunId: input.agentRunId,
       billingUserId: input.billingUserId,
       errorMessage,
+      modelId: input.modelId,
       reservationId: input.reservationId,
       resourceUserId: input.resourceUserId,
+      steps: allSteps,
+      workflowRunId,
     })
     throw error
   }

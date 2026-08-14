@@ -82,6 +82,16 @@ idempotency key. Connector providers outside Overlay must still honor their own
 idempotency semantics; Workflow step replay alone cannot make an external API
 idempotent.
 
+Both runners write comparable observations onto the terminal AgentRun. Chat
+records first-token and completion latency from its direct stream; Work records
+completion latency and durable step observations but intentionally has no
+first-token sample while it remains final-only. Provider token usage and
+estimated provider cost, tool outcomes and retries, cancellation timing,
+browser-disconnect outcomes, lease/process-loss observations, and stale-run
+detection feed `GET /api/v1/conversations/run/metrics`. The report keeps raw
+sample counts and denominators and never recommends a runner; product decisions
+must be made from the resulting evidence.
+
 ## Auth
 
 - Browser auth uses the signed httpOnly `overlay_session` cookie.

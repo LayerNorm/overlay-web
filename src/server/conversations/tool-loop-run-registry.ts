@@ -20,15 +20,19 @@ export function registerToolLoopRun(runId: string | undefined, controller: Abort
   }
 }
 
-export function abortToolLoopRuns(runIds: readonly string[]): number {
+export function abortToolLoopRunIds(runIds: readonly string[]): string[] {
   const runs = getRegistry()
-  let aborted = 0
+  const aborted: string[] = []
   for (const runId of runIds) {
     const controller = runs.get(runId)
     if (!controller) continue
     controller.abort('cancelled_by_user')
     runs.delete(runId)
-    aborted += 1
+    aborted.push(runId)
   }
   return aborted
+}
+
+export function abortToolLoopRuns(runIds: readonly string[]): number {
+  return abortToolLoopRunIds(runIds).length
 }

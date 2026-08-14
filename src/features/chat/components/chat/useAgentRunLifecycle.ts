@@ -22,6 +22,8 @@ export function useAgentRunLifecycle({
     run: AgentRunResource | null
   }>({ conversationId: null, run: null })
   const snapshotRef = useRef(snapshot)
+  const activeRunRef = useRef<AgentRunResource | null>(null)
+  const reconnectedRunIdsRef = useRef(new Set<string>())
   const [terminalSyncUntil, setTerminalSyncUntil] = useState(0)
   const [terminalSyncConversationId, setTerminalSyncConversationId] = useState<string | null>(null)
   const run = snapshot.conversationId === conversationId ? snapshot.run : null
@@ -49,6 +51,19 @@ export function useAgentRunLifecycle({
       const nextSnapshot = { conversationId, run: next.run }
       snapshotRef.current = nextSnapshot
       setSnapshot(nextSnapshot)
+      if (
+        next.run && isActive &&
+        next.run.metrics?.browserDisconnectedAt !== undefined &&
+        (next.run.metrics.browserReconnectedAt ?? 0) < next.run.metrics.browserDisconnectedAt &&
+        !reconnectedRunIdsRef.current.has(next.run.id)
+      ) {
+        reconnectedRunIdsRef.current.add(next.run.id)
+        void overlayAppClient.conversations.recordRunMetricEvent({
+          conversationId,
+          agentRunId: next.run.id,
+          event: 'browser_reconnected',
+        }, { credentials: 'same-origin', keepalive: true }).catch(() => undefined)
+      }
       return next.run
     } catch {
       return null
@@ -61,6 +76,22 @@ export function useAgentRunLifecycle({
   }, [refresh])
 
   const active = Boolean(run && ACTIVE_STATUSES.has(run.status))
+  useEffect(() => {
+    activeRunRef.current = active ? run : null
+  }, [active, run])
+  useEffect(() => {
+    const recordDisconnect = () => {
+      const activeRun = activeRunRef.current
+      if (!activeRun) return
+      void overlayAppClient.conversations.recordRunMetricEvent({
+        conversationId: activeRun.conversationId,
+        agentRunId: activeRun.id,
+        event: 'browser_disconnected',
+      }, { credentials: 'same-origin', keepalive: true }).catch(() => undefined)
+    }
+    window.addEventListener('pagehide', recordDisconnect)
+    return () => window.removeEventListener('pagehide', recordDisconnect)
+  }, [])
   useEffect(() => {
     if (!enabled || !conversationId || (!localStreamActive && !active)) return
     const interval = window.setInterval(() => void refresh(), POLL_INTERVAL_MS)

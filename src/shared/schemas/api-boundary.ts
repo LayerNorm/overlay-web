@@ -8,6 +8,8 @@ import {
 import {
   ActConversationRequest,
   AgentRunApprovalRequest,
+  AgentRunMetricEventRequest,
+  AgentRunMetricsQuery,
   AddConversationMessageRequest,
   AdminAuditListQuery,
   AdminPrincipalDeleteRequest,
@@ -279,6 +281,20 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/run/approval',
     schema: { json: AgentRunApprovalRequest },
     summary: 'Approve or deny a waiting AgentRun tool call',
+    tag: 'Conversations',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/run/metrics',
+    schema: { query: AgentRunMetricsQuery },
+    summary: 'Read empirical AgentRun metrics grouped by runner',
+    tag: 'Conversations',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/run/metrics-event',
+    schema: { json: AgentRunMetricEventRequest },
+    summary: 'Record a browser lifecycle observation for an AgentRun',
     tag: 'Conversations',
   },
   {

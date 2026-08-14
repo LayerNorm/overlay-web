@@ -69,7 +69,8 @@ revision, which removes the table, queries, and crons. Never skip directly to
 the cleanup revision on a deployment that may still contain delta rows.
 
 Postgres migration `0060_retire_conversation_message_deltas` performs the same
-collapse and table removal transactionally. Schema 60 raises the minimum
-compatible runtime to 60 because older runtimes still query the removed table;
-take a database backup and treat this migration as an explicit rollback
-boundary.
+collapse and table removal transactionally. Migration `0061_agent_run_metrics`
+adds the runner-observation document used for Chat-versus-Work measurement.
+Schema 61 retains minimum compatible runtime 60 because its metrics column is
+nullable; runtimes older than 60 still query the removed delta table. Take a
+database backup and treat migration 0060 as an explicit rollback boundary.

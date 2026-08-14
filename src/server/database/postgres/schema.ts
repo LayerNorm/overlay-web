@@ -729,6 +729,7 @@ export const agentRuns = pgTable('agent_runs', {
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   terminalError: jsonb('terminal_error').$type<{ code: string; message: string; retryable: boolean }>(),
   approval: jsonb('approval').$type<AgentRun['approval']>(),
+  metrics: jsonb('metrics').$type<AgentRun['metrics']>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

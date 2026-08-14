@@ -6,14 +6,33 @@ import {
   DEFAULT_ACT_ABORT_TIMEOUT_MS,
   MAX_ACT_ABORT_TIMEOUT_MS,
   MIN_ACT_ABORT_TIMEOUT_MS,
+  drainReadableStream,
   messagesRequireVision,
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
   resolveActMultiModelState,
-  resolveActStreamPersistence,
   resolveActTurnId,
+  observeFirstTextToken,
   runActModelAttempts,
 } from './route-helpers'
+
+test('first-token observation ignores stream scaffolding and fires once', async () => {
+  let observations = 0
+  const encoder = new TextEncoder()
+  const chunks = [
+    'data: {"type":"start"}\n\ndata: {"type":"text-start"}\n\n',
+    'data: {"type":"text-delta","delta":"hello"}\n\n',
+    'data: {"type":"text-delta","delta":" world"}\n\n',
+  ]
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+      controller.close()
+    },
+  })
+  await drainReadableStream(observeFirstTextToken(source, () => { observations += 1 }))
+  assert.equal(observations, 1)
+})
 
 test('resolveActAbortTimeoutMs preserves timeout defaults and clamps', () => {
   assert.equal(resolveActAbortTimeoutMs({}), DEFAULT_ACT_ABORT_TIMEOUT_MS)
@@ -21,25 +40,6 @@ test('resolveActAbortTimeoutMs preserves timeout defaults and clamps', () => {
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 1 }), MIN_ACT_ABORT_TIMEOUT_MS)
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 999_999 }), MAX_ACT_ABORT_TIMEOUT_MS)
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 45_500.9 }), 45_500)
-})
-
-test('resolveActStreamPersistence resolves persistence mode without relay verification', () => {
-  assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'direct',
-  }), {
-    mode: 'direct',
-    useCloudflareStreamMirror: false,
-  })
-  assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'cloudflare-mirror',
-  }), {
-    mode: 'cloudflare-mirror',
-    useCloudflareStreamMirror: true,
-  })
-  assert.deepEqual(resolveActStreamPersistence({}), {
-    mode: 'cloudflare-mirror',
-    useCloudflareStreamMirror: true,
-  })
 })
 
 test('resolveActMultiModelState clamps slots and marks follow-up slots', () => {

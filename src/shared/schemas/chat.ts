@@ -67,6 +67,18 @@ export const AgentRunApprovalRequest = z.object({
   reason: z.string().max(1000).optional(),
 })
 
+export const AgentRunMetricEventRequest = z.object({
+  conversationId: z.string().min(1),
+  agentRunId: z.string().min(1),
+  event: z.enum(['browser_disconnected', 'browser_reconnected']),
+})
+
+export const AgentRunMetricsQuery = z.object({
+  from: z.coerce.number().finite().nonnegative().optional(),
+  to: z.coerce.number().finite().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(3000).optional(),
+})
+
 export const ShareConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().min(1),

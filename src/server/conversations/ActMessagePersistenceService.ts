@@ -15,6 +15,7 @@ import {
 } from '@/server/chat/chat-message-persistence'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import type { AgentRunMetrics } from '@/shared/agents/agent-run'
 import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ActConversationRepository } from './ActConversationRepository'
@@ -169,6 +170,7 @@ export class ActMessagePersistenceService {
     fallbackNotice?: string
     finishedToolCallIds: Set<string>
     agentRunId?: string
+    agentRunMetrics?: Partial<AgentRunMetrics>
     multiModelSlotIndex: number
     multiModelTotal: number
     routedModelId?: string
@@ -307,6 +309,7 @@ export class ActMessagePersistenceService {
           parts: finalParts,
           routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
+          metrics: args.agentRunMetrics,
         })
         assistantCompleted = completedRun?.status === 'completed'
       } else {

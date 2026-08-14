@@ -64,6 +64,7 @@ import {
   MAX_ACT_MODEL_ATTEMPTS,
   drainReadableStream,
   messagesRequireVision,
+  observeFirstTextToken,
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
   resolveActMultiModelState,
@@ -97,6 +98,10 @@ import { resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { start } from 'workflow/api'
 import { personalChatWorkWorkflow } from '@/workflows/personal-chat-work'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
+import {
+  calculateProviderCostMicros,
+  summarizeAgentToolMetrics,
+} from '@/server/conversations/agent-run-metrics'
 
 export const maxDuration = 800
 
@@ -950,6 +955,11 @@ export async function POST(
         })
         budgetReservationId = usageResult.reservationId
         budgetReservationFinalized = usageResult.finalized
+        const providerCostMicros = await calculateProviderCostMicros({
+          inputTokens: totalInputTokens,
+          modelId: attemptModelId,
+          outputTokens: totalOutputTokens,
+        })
         logger.info('[conversations/act] stream finish', {
           requestId,
           modelId: attemptModelId,
@@ -969,6 +979,13 @@ export async function POST(
           fallbackNotice: params.fallbackNotice,
           finishedToolCallIds,
           agentRunId: agentRun?.id,
+          agentRunMetrics: {
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            providerCostMicros,
+            ...summarizeAgentToolMetrics(event.steps),
+            toolRetryCount: 0,
+          },
           multiModelSlotIndex,
           multiModelTotal,
           routedModelId: streamedRoutedModelId,
@@ -1028,6 +1045,15 @@ export async function POST(
     const responseHeaders = new Headers(_uiResp.headers)
     responseHeaders.set('x-request-id', requestId)
     if (agentRun?.id) responseHeaders.set('x-overlay-agent-run-id', agentRun.id)
+    if (responseBody && agentRun?.id) {
+      responseBody = observeFirstTextToken(responseBody, () => {
+        void agentRunService.recordMetrics({
+          metrics: { firstTokenAt: Date.now() },
+          runId: agentRun.id,
+          userId: conversationUserId,
+        }).catch((_error) => undefined)
+      })
+    }
     if (responseBody) {
       if (cid) {
         const [clientBody, backgroundBody] = responseBody.tee()

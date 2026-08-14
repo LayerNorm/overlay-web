@@ -84,6 +84,11 @@ export class PostgresBackgroundMaintenanceService {
             message: errorText,
             retryable: true,
           },
+          metrics: {
+            ...run.metrics,
+            processFailureDetectedAt: now.getTime(),
+            staleDetectedAt: now.getTime(),
+          },
           updatedAt: now,
         }).where(and(
           eq(agentRuns.id, run.id),

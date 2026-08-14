@@ -12,6 +12,9 @@ export type {
 export type {
   ActConversationRequest,
   AgentRunResource,
+  AgentRunMetricsReport,
+  AgentRunNumericObservation,
+  AgentRunRateObservation,
   ConversationGetResponse,
   ConversationMessageRequest,
   ConversationQuery,

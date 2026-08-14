@@ -1,6 +1,13 @@
 import 'server-only'
 
-import type { AgentRun, AgentRunApproval, AgentRunTerminalError } from '@/shared/agents/agent-run'
+import {
+  isActiveAgentRunStatus,
+  type AgentRun,
+  type AgentRunApproval,
+  type AgentRunMetrics,
+  type AgentRunTerminalError,
+} from '@/shared/agents/agent-run'
+import { buildAgentRunMetricsReport } from '@/shared/agents/agent-run-metrics'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { ActConversationRepository } from './ActConversationRepository'
 
@@ -97,13 +104,69 @@ export class AgentRunService {
     errorText: string
     runId?: string
     userId?: string
+    metrics?: Partial<AgentRunMetrics>
   }): Promise<AgentRun | undefined> {
     if (!args.runId || !args.userId) return undefined
     return await this.repository.failAgentRun({
       error: args.error,
       errorText: args.errorText,
+      metrics: args.metrics,
       runId: args.runId,
       userId: args.userId,
     }) ?? undefined
+  }
+
+  async recordMetrics(args: {
+    metrics: Partial<AgentRunMetrics>
+    runId?: string
+    userId?: string
+  }): Promise<AgentRun | undefined> {
+    if (!args.runId || !args.userId) return undefined
+    return await this.repository.recordAgentRunMetrics({
+      metrics: args.metrics,
+      runId: args.runId,
+      userId: args.userId,
+    }) ?? undefined
+  }
+
+  async metricsReport(args: {
+    from: number
+    limit?: number
+    to: number
+    userId: string
+  }) {
+    const limit = Math.min(3_000, Math.max(1, Math.floor(args.limit ?? 1_000)))
+    const runs = await this.repository.listAgentRunsForMetrics({
+      ...args,
+      limit: limit + 1,
+    })
+    return buildAgentRunMetricsReport({
+      from: args.from,
+      runs: runs.slice(0, limit),
+      to: args.to,
+      truncated: runs.length > limit,
+    })
+  }
+
+  async recordBrowserEvent(args: {
+    conversationId: Id<'conversations'>
+    event: 'browser_disconnected' | 'browser_reconnected'
+    runId: string
+    userId: string
+  }): Promise<boolean> {
+    const run = await this.repository.getLatestAgentRun({
+      conversationId: args.conversationId,
+      userId: args.userId,
+    })
+    if (!run || run.id !== args.runId) return false
+    if (args.event === 'browser_disconnected' && !isActiveAgentRunStatus(run.status)) return false
+    const now = Date.now()
+    const metrics = args.event === 'browser_disconnected'
+      ? { browserDisconnectedAt: run.metrics?.browserDisconnectedAt ?? now }
+      : run.metrics?.browserDisconnectedAt === undefined
+        ? {}
+        : { browserReconnectedAt: now }
+    await this.repository.recordAgentRunMetrics({ metrics, runId: run.id, userId: args.userId })
+    return true
   }
 }

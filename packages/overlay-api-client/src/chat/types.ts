@@ -107,6 +107,62 @@ export type AgentRunResource = {
       input: unknown
     }>
   }
+  metrics?: {
+    firstTokenAt?: number
+    inputTokens?: number
+    outputTokens?: number
+    providerCostMicros?: number
+    workflowStepCount?: number
+    workflowRetryCount?: number
+    workflowObservedStorageBytes?: number
+    toolCallCount?: number
+    toolSuccessCount?: number
+    toolFailureCount?: number
+    toolRetryCount?: number
+    browserDisconnectedAt?: number
+    browserReconnectedAt?: number
+    processFailureDetectedAt?: number
+    processFailureRecoveredAt?: number
+    cancellationRequestedAt?: number
+    cancellationAcknowledgedAt?: number
+    staleDetectedAt?: number
+  }
   createdAt: number
   updatedAt: number
+}
+
+export type AgentRunNumericObservation = {
+  samples: number
+  mean: number | null
+  p50: number | null
+  p95: number | null
+}
+
+export type AgentRunRateObservation = {
+  samples: number
+  successes: number
+  rate: number | null
+}
+
+export type AgentRunMetricsReport = {
+  generatedAt: number
+  truncated: boolean
+  window: { from: number; to: number }
+  runners: Record<'tool_loop' | 'workflow', {
+    runs: number
+    firstTokenLatencyMs: AgentRunNumericObservation
+    totalCompletionLatencyMs: AgentRunNumericObservation
+    providerCostMicrosPerTurn: AgentRunNumericObservation
+    workflowStepCount: AgentRunNumericObservation
+    workflowRetryCount: AgentRunNumericObservation
+    workflowObservedStorageBytes: AgentRunNumericObservation
+    workflowInfrastructureCostMicros: AgentRunNumericObservation
+    browserDisconnectCompletion: AgentRunRateObservation
+    processFailureRecovery: AgentRunRateObservation
+    toolSuccess: AgentRunRateObservation
+    toolRetry: AgentRunRateObservation
+    cancellationLatencyMs: AgentRunNumericObservation
+    staleRunFrequency: AgentRunRateObservation
+  }>
+  caveats: string[]
 }

@@ -8,6 +8,7 @@ import type {
   AgentRun,
   AgentRunApproval,
   AgentRunMode,
+  AgentRunMetrics,
   AgentRunRunner,
   AgentRunStatus,
   AgentRunTerminalError,
@@ -294,12 +295,14 @@ export interface ActConversationRepository {
     runId: string
     tokens: { input: number; output: number }
     userId: string
+    metrics?: Partial<AgentRunMetrics>
   }): Promise<AgentRun | null>
   failAgentRun(args: {
     error: AgentRunTerminalError
     errorText: string
     runId: string
     userId: string
+    metrics?: Partial<AgentRunMetrics>
   }): Promise<AgentRun | null>
   cancelAgentRuns(args: {
     conversationId: Id<'conversations'>
@@ -307,11 +310,27 @@ export interface ActConversationRepository {
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
     userId: string
-  }): Promise<{ cancelledRunIds: string[]; cancelledWorkflowRunIds: string[]; stoppedCount: number }>
+  }): Promise<{
+    cancelledRunIds: string[]
+    cancelledWorkflowRunIds: string[]
+    cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    stoppedCount: number
+  }>
   getLatestAgentRun(args: {
     conversationId: Id<'conversations'>
     userId: string
   }): Promise<AgentRun | null>
+  recordAgentRunMetrics(args: {
+    metrics: Partial<AgentRunMetrics>
+    runId: string
+    userId: string
+  }): Promise<AgentRun | null>
+  listAgentRunsForMetrics(args: {
+    from: number
+    limit: number
+    to: number
+    userId: string
+  }): Promise<AgentRun[]>
   deleteTurn(args: {
     conversationId: Id<'conversations'>
     turnId: string

@@ -147,6 +147,30 @@ test('AgentRun approval posts the immutable run and approval token', async () =>
   })
 })
 
+test('AgentRun metrics expose runner observations and browser lifecycle events', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.conversations.runMetrics({ from: 100, to: 200, limit: 50 })
+  await client.conversations.recordRunMetricEvent({
+    conversationId: 'conversation_1',
+    agentRunId: 'run_1',
+    event: 'browser_disconnected',
+  }, { keepalive: true })
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/conversations/run/metrics?from=100&to=200&limit=50',
+  )
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/conversations/run/metrics-event')
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.equal(calls[1]!.init?.keepalive, true)
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    conversationId: 'conversation_1',
+    agentRunId: 'run_1',
+    event: 'browser_disconnected',
+  })
+})
+
 test('module feature methods use canonical app endpoints', async () => {
   const { calls, client } = createRecordedClient()
 

@@ -123,7 +123,27 @@ test('Postgres AgentRun lifecycle is atomic, cancellable, and lease-reconciled',
       content: 'final-only result',
       parts: [{ type: 'text', text: 'final-only result' }],
       tokens: { input: 2, output: 3 },
+      metrics: {
+        firstTokenAt: Date.now(),
+        inputTokens: 2,
+        outputTokens: 3,
+        providerCostMicros: 7,
+      },
     }))?.status, 'completed')
+    const measuredRun = await repository.recordAgentRunMetrics({
+      runId: run!.id,
+      userId,
+      metrics: { toolCallCount: 1, toolSuccessCount: 1 },
+    })
+    assert.equal(measuredRun?.metrics?.providerCostMicros, 7)
+    assert.equal(measuredRun?.metrics?.toolSuccessCount, 1)
+    const metricRuns = await repository.listAgentRunsForMetrics({
+      userId,
+      from: now.getTime() - 1_000,
+      to: Date.now() + 1_000,
+      limit: 10,
+    })
+    assert.ok(metricRuns.some((candidate) => candidate.id === run!.id))
 
     const duplicateUserMessageId = await repository.addMessage({
       conversationId,

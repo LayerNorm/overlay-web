@@ -4,6 +4,11 @@ import type { ModelMessage, StepResult, ToolSet } from 'ai'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { AgentRunApproval } from '@/shared/agents/agent-run'
 import {
+  calculateProviderCostMicros,
+  observeWorkflowRunMetrics,
+  summarizeAgentToolMetrics,
+} from '@/server/conversations/agent-run-metrics'
+import {
   agentRunService,
   actMessagePersistenceService,
   actUsageBudgetService,
@@ -62,6 +67,7 @@ export async function finalizePersonalChatWork(input: {
   resourceUserId: string
   sourceCitations?: SourceCitationMap
   turnId: string
+  workflowRunId: string
 }) {
   'use step'
 
@@ -82,8 +88,19 @@ export async function finalizePersonalChatWork(input: {
       if (result.toolCallId) finishedToolCallIds.add(result.toolCallId)
     }
   }
+  const [providerCostMicros, workflowMetrics] = await Promise.all([
+    calculateProviderCostMicros({ inputTokens, modelId: input.modelId, outputTokens }),
+    observeWorkflowRunMetrics(input.workflowRunId).catch((_error) => ({})),
+  ])
   await actMessagePersistenceService.persistAssistantFinish({
     agentRunId: input.agentRunId,
+    agentRunMetrics: {
+      inputTokens,
+      outputTokens,
+      providerCostMicros,
+      ...summarizeAgentToolMetrics(input.event.steps),
+      ...workflowMetrics,
+    },
     attemptModelId: input.modelId,
     conversationId: input.conversationId as never,
     emitWebhook: input.emitWebhook,
@@ -105,8 +122,11 @@ export async function failPersonalChatWork(input: {
   agentRunId: string
   billingUserId: string
   errorMessage: string
+  modelId: string
   reservationId: string | null
   resourceUserId: string
+  steps: StepResult<ToolSet>[]
+  workflowRunId: string
 }) {
   'use step'
 
@@ -115,6 +135,14 @@ export async function failPersonalChatWork(input: {
     reservationId: input.reservationId,
     userId: input.billingUserId,
   }).catch((_error) => undefined)
+  const usage = input.steps.reduce((total, step) => ({
+    inputTokens: total.inputTokens + (step.usage?.inputTokens ?? 0),
+    outputTokens: total.outputTokens + (step.usage?.outputTokens ?? 0),
+  }), { inputTokens: 0, outputTokens: 0 })
+  const [providerCostMicros, workflowMetrics] = await Promise.all([
+    calculateProviderCostMicros({ ...usage, modelId: input.modelId }),
+    observeWorkflowRunMetrics(input.workflowRunId).catch((_error) => ({})),
+  ])
   await agentRunService.fail({
     error: {
       code: 'workflow_failed',
@@ -124,6 +152,12 @@ export async function failPersonalChatWork(input: {
     errorText: `Work mode failed: ${input.errorMessage}`,
     runId: input.agentRunId,
     userId: input.resourceUserId,
+    metrics: {
+      ...usage,
+      providerCostMicros,
+      ...summarizeAgentToolMetrics(input.steps),
+      ...workflowMetrics,
+    },
   })
 }
 

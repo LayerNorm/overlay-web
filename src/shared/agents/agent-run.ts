@@ -33,6 +33,27 @@ export type AgentRunApproval = {
   requests: AgentRunApprovalRequest[]
 }
 
+export type AgentRunMetrics = {
+  firstTokenAt?: number
+  inputTokens?: number
+  outputTokens?: number
+  providerCostMicros?: number
+  workflowStepCount?: number
+  workflowRetryCount?: number
+  workflowObservedStorageBytes?: number
+  toolCallCount?: number
+  toolSuccessCount?: number
+  toolFailureCount?: number
+  toolRetryCount?: number
+  browserDisconnectedAt?: number
+  browserReconnectedAt?: number
+  processFailureDetectedAt?: number
+  processFailureRecoveredAt?: number
+  cancellationRequestedAt?: number
+  cancellationAcknowledgedAt?: number
+  staleDetectedAt?: number
+}
+
 export type AgentRun = {
   id: string
   conversationId: string
@@ -52,6 +73,7 @@ export type AgentRun = {
   cancelledAt?: number
   terminalError?: AgentRunTerminalError
   approval?: AgentRunApproval
+  metrics?: AgentRunMetrics
   createdAt: number
   updatedAt: number
 }
