@@ -48,6 +48,13 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       workspaceKind: access.workspace.kind,
     })
 
+    if (
+      access.workspace.kind === 'personal'
+      && (view === 'teams' || view === 'guests' || view === 'roles')
+    ) {
+      return NextResponse.json(response([]))
+    }
+
     if (view === 'sharing') return NextResponse.json(response([]))
 
     if (view === 'teams') {
@@ -166,7 +173,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       ))
     }
 
-    const invitations = canManage
+    const invitations = canManage && access.workspace.kind === 'organization'
       ? await service.listInvitations({ actorUserId: context.auth.userId, workspaceId })
       : []
     return NextResponse.json(response([

@@ -411,7 +411,10 @@ export class WorkspaceService {
     ])
     const principalsById = new Map(principals.map((principal) => [principal.id, principal]))
     const visibleMemberships = actor.workspace.kind === 'personal'
-      ? memberships.filter((membership) => membership.principalId === actor.principal.id)
+      ? memberships.filter((membership) => (
+        membership.principalId === actor.principal.id
+        || principalsById.get(membership.principalId)?.type === 'agent'
+      ))
       : memberships
     return visibleMemberships.flatMap((membership) => {
       const principal = principalsById.get(membership.principalId)

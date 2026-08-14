@@ -312,7 +312,7 @@ test('Personal rejects collaboration while preserving private agents and agent c
       actorUserId: 'user_1',
       workspaceId: personal.workspace.id,
     })).map((member) => member.principal.id),
-    [personal.principal.id],
+    [personal.principal.id, agent.id],
   )
   const created = await service.createPrincipal({
     actorUserId: 'user_1',
