@@ -197,9 +197,11 @@ export function deriveChatExchangeStatus(input: {
   if (input.runtimeStatus === 'cancelled') return 'cancelled'
   if (input.runtimeStatus === 'awaiting_approval') return 'awaiting-approval'
   if (input.runtimeStatus === 'executing_tool') return 'executing-tool'
+  if (input.persistedStatus === 'completed') return 'completed'
+  if (input.runtimeStatus === 'completed') return 'completed'
   if (input.runtimeStatus === 'streaming') return 'streaming'
   if (input.runtimeStatus === 'submitted') return 'submitted'
-  if (input.runtimeStatus === 'completed' || input.persistedStatus === 'completed' || input.hasResponse || input.hasVisibleContent) return 'completed'
+  if (input.hasResponse || input.hasVisibleContent) return 'completed'
   return 'idle'
 }
 

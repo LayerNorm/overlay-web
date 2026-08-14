@@ -54,6 +54,7 @@ type UseLiveConversationSyncParams = {
 }
 
 type ConvexLiveQueryState = {
+  chatId: string | null
   liveMessages: Array<LiveConversationMessage> | undefined
 }
 
@@ -71,7 +72,7 @@ function ConvexLiveQueryBridge({
   activeChatId: string | null
   authUserId: string | null | undefined
   convexAccessToken: string | null | undefined
-  onUpdate: (state: ConvexLiveQueryState) => void
+  onUpdate: (next: ConvexLiveQueryState) => void
 }) {
   const queryArgs = activeChatId && authUserId && convexAccessToken
     ? {
@@ -87,8 +88,8 @@ function ConvexLiveQueryBridge({
   ) as Array<LiveConversationMessage> | undefined
 
   useEffect(() => {
-    onUpdate({ liveMessages })
-  }, [liveMessages, onUpdate])
+    onUpdate({ chatId: activeChatId, liveMessages })
+  }, [activeChatId, liveMessages, onUpdate])
 
   return null
 }
@@ -150,17 +151,18 @@ export function useLiveConversationSync({
   shouldSyncMessages,
 }: UseLiveConversationSyncParams) {
   const [liveQueryState, setLiveQueryState] = useState<ConvexLiveQueryState>({
+    chatId: null,
     liveMessages: undefined,
   })
   const onLiveQueryUpdate = useCallback((next: ConvexLiveQueryState) => {
     setLiveQueryState((current) => (
-      current.liveMessages === next.liveMessages
+      current.chatId === next.chatId && current.liveMessages === next.liveMessages
         ? current
         : next
     ))
   }, [])
 
-  const liveMessages = liveQueryState.liveMessages
+  const liveMessages = liveQueryState.chatId === activeChatId ? liveQueryState.liveMessages : undefined
   const liveQueryBridge: ReactNode = enableConvexLiveSync
     ? createElement(ConvexLiveQueryBridge, {
         activeChatId,

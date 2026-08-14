@@ -728,27 +728,26 @@ export default function ChatExperience({
   const isActiveLoading = localStreamActive || agentRunLifecycle.active
 
   useEffect(() => {
-    const disconnectedNotice = 'Still generating; the answer will appear when complete.'
+    setIsOptimisticLoading(false)
+  }, [activeChatId])
+
+  useEffect(() => {
     const failedNotice = agentRunLifecycle.run?.status === 'failed'
       ? `Work failed: ${agentRunLifecycle.run.terminalError?.message ?? 'The run could not be completed.'}`
       : null
     const cancelledNotice = agentRunLifecycle.run?.status === 'cancelled'
       ? 'Work stopped.'
       : null
-    if (agentRunLifecycle.active && !localStreamActive && agentRunLifecycle.run?.status !== 'waiting_for_approval') {
-      setComposerNotice(disconnectedNotice)
-      return
-    }
     if (failedNotice || cancelledNotice) {
       setComposerNotice(failedNotice ?? cancelledNotice)
       return
     }
     setComposerNotice((current) => (
-      current === disconnectedNotice || current === 'Work stopped.' || current?.startsWith('Work failed:')
+      current === 'Work stopped.' || current?.startsWith('Work failed:')
         ? null
         : current
     ))
-  }, [agentRunLifecycle.active, agentRunLifecycle.run, localStreamActive])
+  }, [agentRunLifecycle.run])
 
   // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
   // runtime's loaded messages to the current useChat instances so the greeting

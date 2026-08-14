@@ -9,6 +9,7 @@ export const EXCHANGE_LOADING_LABELS = [
   'Reasoning',
   'Pondering',
   'Considering',
+  'Still generating; the answer will appear when complete',
 ] as const
 
 const ACTIVE_EXCHANGE_STATUSES = new Set<ChatExchangeStatus>([

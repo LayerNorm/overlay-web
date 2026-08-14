@@ -70,8 +70,8 @@ test('compact loading keeps the mark without adding the word reel', () => {
 })
 
 test('loading word reel holds each label for 2000ms and is not disabled by reduced motion', () => {
-  assert.match(chatSurfaceCss, /animation: overlayChatLoadingWordReel 12s linear infinite/)
-  assert.match(chatSurfaceCss, /0%,\s*15%\s*\{\s*transform: translate3d\(0, 0, 0\)/)
+  assert.match(chatSurfaceCss, /animation: overlayChatLoadingWordReel 14s linear infinite/)
+  assert.match(chatSurfaceCss, /0%,\s*12\.5%\s*\{\s*transform: translate3d\(0, 0, 0\)/)
   assert.doesNotMatch(
     chatSurfaceCss,
     /overlay-loading-word-track\s*\{\s*animation:\s*none/,

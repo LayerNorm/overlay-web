@@ -416,45 +416,45 @@ export function ChatExperienceHeader({
 
       {appMode === 'automate' || !showAutomationChatTab ? null : (
       <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
-        {generationMode === 'video' ? (
-          <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
-            <button
-              type="button"
-              onClick={onToggleVideoSubModePicker}
-              disabled={isActiveLoading}
-              className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
-                isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-              }`}
-            >
-              <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
-              <ChevronDown size={11} className="shrink-0" />
-            </button>
-            {showVideoSubModePicker ? (
-              <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
-                {VIDEO_SUB_MODES.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => {
-                      onVideoSubModeChange(value)
-                      onSetShowVideoSubModePicker(false)
-                    }}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                  >
-                    {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                    {label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
         <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
           {!hasAutomationContext ? (
             <PersonalChatModeToggle
               mode={personalChatMode}
               onChange={onPersonalChatModeChange}
             />
+          ) : null}
+          {generationMode === 'video' ? (
+            <div ref={videoSubModePickerRef} className="relative min-w-0 md:w-auto">
+              <button
+                type="button"
+                onClick={onToggleVideoSubModePicker}
+                disabled={isActiveLoading}
+                className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
+                  isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+                }`}
+              >
+                <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
+                <ChevronDown size={11} className="shrink-0" />
+              </button>
+              {showVideoSubModePicker ? (
+                <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
+                  {VIDEO_SUB_MODES.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        onVideoSubModeChange(value)
+                        onSetShowVideoSubModePicker(false)
+                      }}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+                    >
+                      {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : null}
           <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
             <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">

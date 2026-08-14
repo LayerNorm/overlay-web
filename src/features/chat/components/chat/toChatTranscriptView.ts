@@ -124,8 +124,10 @@ export function createWebChatTranscriptAdapter() {
         const response = responseSources[index]
         const persistedStatus = (response as { status?: PersistedResponseStatus } | null)?.status
         const runtime = input.getResponseRuntime?.(modelId, exchangeIndex)
+        const isResponseDone = persistedStatus === 'completed' || (!runtime?.status && Boolean(response && getMessageText(response).trim()))
+        const effectiveRuntimeStatus = isResponseDone ? runtimeStatusForCore(runtime?.status) : runtimeStatusForCore(runtime?.status ?? fallbackRuntimeStatus)
         return deriveChatExchangeStatus({
-          runtimeStatus: runtimeStatusForCore(runtime?.status ?? fallbackRuntimeStatus),
+          runtimeStatus: effectiveRuntimeStatus,
           persistedStatus,
           hasResponse: Boolean(response),
           hasVisibleContent: Boolean(response && getMessageText(response).trim()),

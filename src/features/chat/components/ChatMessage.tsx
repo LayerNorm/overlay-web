@@ -174,7 +174,7 @@ function TextChatMessage(props: TextChatMessageProps) {
           : (actChat.status === 'streaming' || actChat.status === 'submitted'))
       : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
     isOptimisticLoading ||
-    (isActExchange && isActiveLoading)
+    (isActExchange && isActiveLoading && persistedStatus !== 'completed')
   )
   const instLoading = activeHttpLoading
   const persistedErrorText = persistedStatus === 'error'

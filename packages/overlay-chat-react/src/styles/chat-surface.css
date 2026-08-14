@@ -432,31 +432,35 @@
    word makes the loop seam visually identical to its first frame. */
 @keyframes overlayChatLoadingWordReel {
   0%,
-  15% {
+  12.5% {
     transform: translate3d(0, 0, 0);
   }
-  16.667%,
-  31.667% {
+  14.286%,
+  26.786% {
     transform: translate3d(0, -1.125rem, 0);
   }
-  33.333%,
-  48.333% {
+  28.571%,
+  41.071% {
     transform: translate3d(0, -2.25rem, 0);
   }
-  50%,
-  65% {
+  42.857%,
+  55.357% {
     transform: translate3d(0, -3.375rem, 0);
   }
-  66.667%,
-  81.667% {
+  57.143%,
+  69.643% {
     transform: translate3d(0, -4.5rem, 0);
   }
-  83.333%,
-  98.333% {
+  71.429%,
+  83.929% {
     transform: translate3d(0, -5.625rem, 0);
   }
-  100% {
+  85.714%,
+  98.214% {
     transform: translate3d(0, -6.75rem, 0);
+  }
+  100% {
+    transform: translate3d(0, -7.875rem, 0);
   }
 }
 
@@ -504,6 +508,7 @@
   display: inline-block;
   height: 1.125rem;
   min-width: 8.75rem;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -511,7 +516,7 @@
   display: flex;
   flex-direction: column;
   will-change: transform;
-  animation: overlayChatLoadingWordReel 12s linear infinite;
+  animation: overlayChatLoadingWordReel 14s linear infinite;
 }
 
 :where(.overlay-chat-surface) .overlay-loading-word {
