@@ -56,3 +56,14 @@ Do not run `/api/v1/conversations/events` long-polls alongside those subscriptio
 ## Bounded maintenance and list queries
 
 Maintenance jobs and user-facing lists must advance through indexed, bounded pages. `runEmptyConversationCleanup` persists its pagination cursor in `maintenanceCursors`, and `files/files:listPage` is the cursor-based file listing source. Keep legacy list functions bounded during web/Convex deployment overlap; never restore a growing-table `.collect()` for compatibility.
+
+## Chat-delta retirement migration
+
+Removing `conversationMessageDeltas` requires a two-revision Convex rollout.
+From the dedicated `staging` worktree, deploy the phase-5 migration revision and
+run `internal.chat.conversations.collapseLegacyConversationPersistence` once.
+Its scheduled batches fold every remaining delta into its assistant message and
+mark generating messages without an active AgentRun as interrupted. Confirm the
+scheduled chain has finished before deploying the following phase-5 cleanup
+revision, which removes the table, queries, and crons. Never skip directly to
+the cleanup revision on a deployment that may still contain delta rows.

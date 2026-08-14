@@ -552,7 +552,7 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
-        .query('agentRuns')
+        .query('conversationAgentRuns')
         .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
         .collect(),
     )

@@ -281,8 +281,8 @@ function mergeStreamingParts(existingParts: MessageParts, newParts: MessageParts
   return nextParts
 }
 
-function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): MessageDoc {
-  if (message.status !== 'generating' || deltas.length === 0) return message
+function mergeMessageDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): MessageDoc {
+  if (deltas.length === 0) return message
   let content = message.content ?? ''
   let parts = Array.isArray(message.parts) ? message.parts : [{ type: 'text' as const, text: content }]
   for (const delta of deltas) {
@@ -303,6 +303,11 @@ function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): M
     }
   }
   return { ...message, content, parts }
+}
+
+function applyStreamingDeltas(message: MessageDoc, deltas: MessageDeltaDoc[]): MessageDoc {
+  if (message.status !== 'generating') return message
+  return mergeMessageDeltas(message, deltas)
 }
 
 async function getMessageDeltas(
@@ -382,6 +387,107 @@ async function cleanupInactiveMessageDeltas(
     mode: 'inactive' as const,
   }
 }
+
+const legacyPersistenceMigrationPhase = v.union(
+  v.literal('deltas'),
+  v.literal('messages'),
+)
+
+/**
+ * One-time, staged migration used before conversationMessageDeltas is removed
+ * from the schema. Start it once with no arguments, wait for the scheduled
+ * batches to finish, then deploy the phase-5 cleanup commit.
+ */
+export const collapseLegacyConversationPersistence = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    phase: v.optional(legacyPersistenceMigrationPhase),
+  },
+  returns: v.object({
+    collapsedDeltas: v.number(),
+    interruptedMessages: v.number(),
+    nextPhase: v.optional(legacyPersistenceMigrationPhase),
+    scheduled: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const phase = args.phase ?? 'deltas'
+    if (phase === 'deltas') {
+      const page = await ctx.db
+        .query('conversationMessageDeltas')
+        .order('asc')
+        .paginate({ cursor: args.cursor ?? null, numItems: 100 })
+      const byMessage = new Map<Id<'conversationMessages'>, MessageDeltaDoc[]>()
+      for (const delta of page.page) {
+        const rows = byMessage.get(delta.messageId) ?? []
+        rows.push(delta)
+        byMessage.set(delta.messageId, rows)
+      }
+      for (const [messageId, deltas] of byMessage) {
+        const message = await ctx.db.get(messageId)
+        if (message) {
+          const merged = mergeMessageDeltas(message, deltas)
+          await ctx.db.patch(messageId, {
+            content: merged.content,
+            parts: merged.parts,
+            updatedAt: Date.now(),
+          })
+        }
+        await deleteDeltaDocs(ctx, deltas)
+      }
+      await ctx.scheduler.runAfter(
+        0,
+        internal.chat.conversations.collapseLegacyConversationPersistence,
+        page.isDone
+          ? { phase: 'messages' }
+          : { phase: 'deltas', cursor: page.continueCursor },
+      )
+      return {
+        collapsedDeltas: page.page.length,
+        interruptedMessages: 0,
+        nextPhase: page.isDone ? 'messages' as const : 'deltas' as const,
+        scheduled: true,
+      }
+    }
+
+    const page = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_status_updatedAt', (q) => q.eq('status', 'generating'))
+      .order('asc')
+      .paginate({ cursor: args.cursor ?? null, numItems: 100 })
+    const interruptedText = 'Generation was interrupted during the chat durability migration.'
+    let interruptedMessages = 0
+    for (const message of page.page) {
+      const run = await ctx.db
+        .query('conversationAgentRuns')
+        .withIndex('by_assistantMessageId', (q) => q.eq('assistantMessageId', message._id))
+        .unique()
+      if (run && ACTIVE_AGENT_RUN_STATUSES.has(run.status)) continue
+      const content = message.content?.trim()
+        ? `${message.content.trimEnd()}\n\n[${interruptedText}]`
+        : interruptedText
+      await ctx.db.patch(message._id, {
+        content,
+        parts: [{ type: 'text', text: content }],
+        status: 'error',
+        updatedAt: Date.now(),
+      })
+      interruptedMessages += 1
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.chat.conversations.collapseLegacyConversationPersistence,
+        { phase: 'messages', cursor: page.continueCursor },
+      )
+    }
+    return {
+      collapsedDeltas: 0,
+      interruptedMessages,
+      nextPhase: page.isDone ? undefined : 'messages' as const,
+      scheduled: !page.isDone,
+    }
+  },
+})
 
 export const list = query({
   args: {
@@ -949,7 +1055,7 @@ export const startAgentRun = mutation({
     }
 
     const existing = await ctx.db
-      .query('agentRuns')
+      .query('conversationAgentRuns')
       .withIndex('by_turn_variant', (q) => q
         .eq('conversationId', args.conversationId)
         .eq('turnId', args.turnId)
@@ -973,7 +1079,7 @@ export const startAgentRun = mutation({
       updatedAt: now,
       createdAt: now,
     })
-    const runId = await ctx.db.insert('agentRuns', {
+    const runId = await ctx.db.insert('conversationAgentRuns', {
       conversationId: args.conversationId,
       turnId: args.turnId,
       userId: args.userId,
@@ -1006,7 +1112,7 @@ export const transitionAgentRun = mutation({
       })),
     })),
     leaseExpiresAt: v.optional(v.number()),
-    runId: v.id('agentRuns'),
+    runId: v.id('conversationAgentRuns'),
     serverSecret: v.string(),
     status: agentRunStatus,
     userId: v.string(),
@@ -1030,7 +1136,7 @@ export const transitionAgentRun = mutation({
 
 export const attachAgentRunWorkflow = mutation({
   args: {
-    runId: v.id('agentRuns'),
+    runId: v.id('conversationAgentRuns'),
     serverSecret: v.string(),
     userId: v.string(),
     workflowRunId: v.string(),
@@ -1059,7 +1165,7 @@ export const completeAgentRun = mutation({
     content: v.string(),
     parts: v.array(messagePart),
     routedModelId: v.optional(v.string()),
-    runId: v.id('agentRuns'),
+    runId: v.id('conversationAgentRuns'),
     serverSecret: v.string(),
     tokens: v.object({ input: v.number(), output: v.number() }),
     userId: v.string(),
@@ -1098,7 +1204,7 @@ export const failAgentRun = mutation({
   args: {
     error: v.object({ code: v.string(), message: v.string(), retryable: v.boolean() }),
     errorText: v.string(),
-    runId: v.id('agentRuns'),
+    runId: v.id('conversationAgentRuns'),
     serverSecret: v.string(),
     userId: v.string(),
   },
@@ -1143,10 +1249,10 @@ export const getLatestAgentRun = query({
     if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
       throw new Error('Unauthorized')
     }
-    const active: Doc<'agentRuns'>[] = []
+    const active: Doc<'conversationAgentRuns'>[] = []
     for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
       const run = await ctx.db
-        .query('agentRuns')
+        .query('conversationAgentRuns')
         .withIndex('by_conversationId_status_updatedAt', (q) => q
           .eq('conversationId', args.conversationId)
           .eq('status', status))
@@ -1158,7 +1264,7 @@ export const getLatestAgentRun = query({
       return active.sort((left, right) => right.updatedAt - left.updatedAt)[0]
     }
     return await ctx.db
-      .query('agentRuns')
+      .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .order('desc')
       .first()
@@ -1181,7 +1287,7 @@ export const cancelAgentRuns = mutation({
       throw new Error('Unauthorized')
     }
     const runs = await ctx.db
-      .query('agentRuns')
+      .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
     const activeRuns = runs.filter((run) =>
@@ -1578,7 +1684,7 @@ export const runStaleGeneratingCleanup = internalMutation({
     let deletedDeltas = 0
     for (const message of stale) {
       const agentRun = await ctx.db
-        .query('agentRuns')
+        .query('conversationAgentRuns')
         .withIndex('by_assistantMessageId', (q) => q.eq('assistantMessageId', message._id))
         .unique()
       if (agentRun && ACTIVE_AGENT_RUN_STATUSES.has(agentRun.status)) continue
@@ -1617,7 +1723,7 @@ export const expireToolLoopAgentRunLeases = internalMutation({
       const remaining = 100 - expired.length
       if (remaining <= 0) break
       const rows = await ctx.db
-        .query('agentRuns')
+        .query('conversationAgentRuns')
         .withIndex('by_runner_status_leaseExpiresAt', (q) => q
           .eq('runner', 'tool_loop')
           .eq('status', status)

@@ -888,7 +888,7 @@ export default defineSchema({
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey']),
 
-  agentRuns: defineTable({
+  conversationAgentRuns: defineTable({
     conversationId: v.id('conversations'),
     turnId: v.string(),
     userId: v.string(),

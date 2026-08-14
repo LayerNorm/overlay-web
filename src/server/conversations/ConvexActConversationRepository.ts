@@ -369,7 +369,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }): Promise<AgentRun | null> {
     const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:transitionAgentRun', {
       ...args,
-      runId: args.runId as Id<'agentRuns'>,
+      runId: args.runId as Id<'conversationAgentRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     return run ? mapConvexAgentRun(run) : null
@@ -382,7 +382,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }): Promise<AgentRun | null> {
     const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:attachAgentRunWorkflow', {
       ...args,
-      runId: args.runId as Id<'agentRuns'>,
+      runId: args.runId as Id<'conversationAgentRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     return run ? mapConvexAgentRun(run) : null
@@ -398,7 +398,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }): Promise<AgentRun | null> {
     const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:completeAgentRun', {
       ...args,
-      runId: args.runId as Id<'agentRuns'>,
+      runId: args.runId as Id<'conversationAgentRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     return run ? mapConvexAgentRun(run) : null
@@ -412,7 +412,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }): Promise<AgentRun | null> {
     const run = await convex.mutation<ConvexAgentRunDoc | null>('chat/conversations:failAgentRun', {
       ...args,
-      runId: args.runId as Id<'agentRuns'>,
+      runId: args.runId as Id<'conversationAgentRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     return run ? mapConvexAgentRun(run) : null
