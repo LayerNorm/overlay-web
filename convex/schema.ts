@@ -2053,4 +2053,60 @@ export default defineSchema({
   })
     .index('by_functionName_timestamp', ['functionName', 'timestamp'])
     .index('by_timestamp', ['timestamp']),
+
+  // ─── Slack import jobs ───────────────────────────────────────────────────
+  // Durable jobs for importing Slack workspace data into Overlay conversations
+  // via Composio's Slackbot toolkit. The client creates a job after selecting
+  // channels; a server worker processes it asynchronously and the client
+  // subscribes to status updates via watchSlackImportJob.
+  slackImportJobs: defineTable({
+    userId: v.string(),
+    workspaceId: v.string(),
+    connectedAccountId: v.string(),
+    status: v.union(
+      v.literal('queued'),
+      v.literal('listing_channels'),
+      v.literal('importing'),
+      v.literal('completed'),
+      v.literal('failed'),
+      v.literal('cancelled'),
+    ),
+    selectedChannelIds: v.array(v.string()),
+    totalChannels: v.optional(v.number()),
+    processedChannels: v.optional(v.number()),
+    totalMessages: v.optional(v.number()),
+    coverage: v.optional(v.object({
+      publicChannels: v.number(),
+      privateChannels: v.number(),
+      dms: v.number(),
+      mpims: v.number(),
+      messagesImported: v.number(),
+      filesDownloaded: v.number(),
+      threadsImported: v.number(),
+    })),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index('by_userId_status', ['userId', 'status'])
+    .index('by_workspaceId_status', ['workspaceId', 'status'])
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
+    .index('by_status_createdAt', ['status', 'createdAt']),
+
+  // Maps Slack source IDs to Overlay conversation/message IDs for dedup and
+  // resume support. Each (workspaceId, sourceChannelId, sourceMessageTs) tuple
+  // maps to exactly one Overlay conversation + message.
+  slackImportMappings: defineTable({
+    importJobId: v.id('slackImportJobs'),
+    workspaceId: v.string(),
+    sourceChannelId: v.string(),
+    sourceMessageTs: v.string(),
+    conversationId: v.id('conversations'),
+    messageId: v.optional(v.id('conversationMessages')),
+  })
+    .index('by_importJobId_sourceChannelId', ['importJobId', 'sourceChannelId'])
+    .index('by_workspaceId_sourceChannelId_sourceMessageTs', [
+      'workspaceId', 'sourceChannelId', 'sourceMessageTs',
+    ]),
 })
