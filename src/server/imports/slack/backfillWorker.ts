@@ -4,6 +4,7 @@ import { logger } from '@/server/observability/logger'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ComposioSlackClient } from './composioClient'
+import type { SlackChannel } from './composioClient'
 import { SlackUserCache, normalizeChannel, normalizeMessage, shouldSkipMessage } from './normalizer'
 import type { NormalizedChannel } from './normalizer'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -54,9 +55,13 @@ export class SlackBackfillWorker {
     logger.info(`[SlackBackfill] Starting job ${jobId} for user ${job.userId}, ${job.selectedChannelIds.length} channels`)
 
     try {
-      // Phase 1: Fetch users for name resolution
+      // Phase 1: Fetch users and channel metadata for name resolution
       await this.updateStatus(jobId, 'listing_channels')
       await this.fetchUsers(job.connectedAccountId, job.userId)
+
+      // Fetch all channels once (used for metadata lookup per channel)
+      const allChannels = await this.client.listAllChannels(job.connectedAccountId, job.userId)
+      logger.info(`[SlackBackfill] Fetched ${allChannels.length} channels from Slack`)
 
       // Phase 2: Import each selected channel
       await this.updateStatus(jobId, 'importing', {
@@ -96,6 +101,7 @@ export class SlackBackfillWorker {
             userId: job.userId,
             connectedAccountId: job.connectedAccountId,
             channelId,
+            allChannels,
           })
 
           // Update coverage
@@ -153,13 +159,21 @@ export class SlackBackfillWorker {
     userId: string
     connectedAccountId: string
     channelId: string
+    allChannels: SlackChannel[]
   }): Promise<{
     messagesImported: number
     filesDownloaded: number
     threadsImported: number
     channelType: NormalizedChannel['sourceType']
   }> {
-    const { jobId, workspaceId, userId, connectedAccountId, channelId } = args
+    const { jobId, workspaceId, userId, connectedAccountId, channelId, allChannels } = args
+
+    // Find channel metadata from the pre-fetched list
+    const channel = allChannels.find((c) => c.id === channelId)
+    if (!channel) {
+      throw new Error(`Channel ${channelId} not found`)
+    }
+    const channelType = channel.is_mpim ? 'mpim' : channel.is_im ? 'im' : channel.is_private || channel.is_group ? 'private_channel' : 'public_channel'
 
     // Check if we already have a conversation for this channel (resume support)
     const existing = await convex.query<{ conversationId: string } | null>(
@@ -173,13 +187,6 @@ export class SlackBackfillWorker {
       conversationId = existing.conversationId as Id<'conversations'>
       logger.info(`[SlackBackfill] Resuming channel ${channelId} → conversation ${conversationId}`)
     } else {
-      // Fetch channel metadata
-      const channels = await this.client.listAllChannels(connectedAccountId, userId)
-      const channel = channels.find((c) => c.id === channelId)
-      if (!channel) {
-        throw new Error(`Channel ${channelId} not found`)
-      }
-
       const normalized = normalizeChannel(channel, workspaceId, this.userCache)
 
       // Create Overlay conversation
@@ -202,13 +209,6 @@ export class SlackBackfillWorker {
 
       logger.info(`[SlackBackfill] Created conversation ${conversationId} for channel ${channelId} (${normalized.title})`)
     }
-
-    // Determine channel type for coverage
-    const channels = await this.client.listAllChannels(connectedAccountId, userId)
-    const channel = channels.find((c) => c.id === channelId)
-    const channelType = channel
-      ? (channel.is_mpim ? 'mpim' : channel.is_im ? 'im' : channel.is_private || channel.is_group ? 'private_channel' : 'public_channel')
-      : 'public_channel'
 
     // Fetch all messages and import them
     let messagesImported = 0

@@ -103,4 +103,16 @@ crons.interval(
   {},
 )
 
+// Process queued or stuck Slack import jobs. The cron picks up jobs that
+// are either newly queued or stuck in 'importing' status (worker was killed
+// by the serverless function timeout). Each job is processed by calling the
+// BFF backfill endpoint, which runs the full Slack backfill worker.
+crons.interval(
+  'slack import job processor',
+  { minutes: 1 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).imports.slackRunner.runMinuteTick,
+  {},
+)
+
 export default crons
