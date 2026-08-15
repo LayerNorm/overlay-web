@@ -267,3 +267,8 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
   HS256 tokens from `/api/auth/convex-token`. If console shows
   `Can't use fetch() in queries and mutations` from `watchRoomMessages`, the browser is
   still sending a WorkOS JWT or an old client bundle is cached — hard-refresh after deploy.
+- **PPR/edge cache can serve a stale app shell after a Vercel redeploy.** If the page stays
+  on "Loading overlay" and console shows API calls to a previous `overlay-web-staging-*.vercel.app`
+  deployment URL, the shell is pinned to an old build. A hard-refresh (`location.reload(true)`) or
+  a query-string cache-bust (`?cb=<random>`) may not clear it. In that case, open the direct
+  deployment URL in the same Chrome profile and sign in, or wait for the CDN/edge cache to expire.
