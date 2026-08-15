@@ -305,18 +305,27 @@ export function SlackImportPanel() {
         }),
       })
       if (!ok) {
-        throw new Error(String(data.error ?? 'Failed to start import'))
+        const errMsg = String(data.error ?? 'Failed to start import')
+        console.error('[SlackImport] Start import failed:', errMsg, data)
+        throw new Error(errMsg)
       }
+      // The POST response already includes job data — use it directly
+      // instead of making a second request to fetch the job.
       const jobId = data.jobId as string
-      // Fetch the job and switch to progress view
-      const jobRes = await fetchWithRetry(
-        `/api/v1/imports/slack?action=job&jobId=${jobId}`,
-      )
-      if (jobRes.ok) {
-        const job = jobRes.data as unknown as SlackImportJob
-        setActiveJob(job)
-        setView('progress')
+      if (!jobId) {
+        console.error('[SlackImport] No jobId in response:', data)
+        throw new Error('No job ID returned from server')
       }
+      setActiveJob({
+        _id: jobId,
+        status: String(data.status ?? 'queued'),
+        selectedChannelIds: [...selectedChannelIds],
+        totalChannels: selectedChannelIds.size,
+        processedChannels: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      setView('progress')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start import')
     } finally {
