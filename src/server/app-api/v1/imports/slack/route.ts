@@ -130,6 +130,7 @@ export async function GET(
           jobId: jobId as Id<'slackImportJobs'>,
           userId,
           accessToken: context.auth.accessToken,
+          serverSecret: getInternalApiSecret(),
         },
       )
       if (!job) {
@@ -155,6 +156,7 @@ export async function GET(
         workspaceId,
         userId,
         accessToken: context.auth.accessToken,
+        serverSecret: getInternalApiSecret(),
         limit: 20,
       },
     ) ?? []
@@ -208,6 +210,7 @@ export async function POST(
           jobId: jobId as Id<'slackImportJobs'>,
           userId,
           accessToken: context.auth.accessToken,
+          serverSecret: getInternalApiSecret(),
         },
       )
       if (!cancelled) {
