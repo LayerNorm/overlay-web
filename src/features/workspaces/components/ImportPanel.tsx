@@ -10,7 +10,7 @@ import { SlackImportPanel } from './SlackImportPanel'
  * disabled until their adapters land. The import flow itself is intentionally
  * service-agnostic — every adapter renders through the same stepped chrome.
  */
-type ImportServiceKey = 'slack' | 'discord' | 'teams' | 'telegram' | 'whatsapp'
+type ImportServiceKey = 'slack' | 'discord' | 'teams' | 'telegram' | 'whatsapp' | 'imessage'
 
 interface ImportService {
   key: ImportServiceKey
@@ -28,6 +28,7 @@ const IMPORT_SERVICES: ImportService[] = [
   { key: 'teams', name: 'Microsoft Teams', blurb: 'Teams and group chats', monogram: 'T', accent: '#4B53BC', available: false },
   { key: 'telegram', name: 'Telegram', blurb: 'Groups and chats', monogram: 'T', accent: '#229ED9', available: false },
   { key: 'whatsapp', name: 'WhatsApp', blurb: 'Chats and groups', monogram: 'W', accent: '#25D366', available: false },
+  { key: 'imessage', name: 'iMessage', blurb: 'Conversations and group chats', monogram: 'i', accent: '#34DA50', available: false },
 ]
 
 /**

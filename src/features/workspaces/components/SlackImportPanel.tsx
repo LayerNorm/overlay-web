@@ -895,7 +895,7 @@ function ImportFlow({
   const steps = ['People', 'Channels', 'Import']
   return (
     <div className="flex flex-col">
-      <div className="border-b border-[var(--border)] px-5 pb-3 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] px-5 pb-3 pt-4">
         <div className="flex items-center gap-2">
           {onBack ? (
             <button
@@ -910,7 +910,7 @@ function ImportFlow({
           <span className="text-sm font-semibold text-[var(--foreground)]">Import from {serviceLabel}</span>
         </div>
         {step !== null ? (
-          <ol className="mt-3 flex items-center gap-1.5">
+          <ol className="flex items-center gap-1.5">
             {steps.map((label, index) => {
               const done = index < step
               const active = index === step

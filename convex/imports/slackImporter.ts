@@ -38,6 +38,35 @@ function slugifyChannel(name: string): string {
 }
 
 /**
+ * Find a channel slug that is free within the workspace, appending a short,
+ * stable suffix (derived from the Slack channel id) if the base collides with a
+ * different live conversation. Prevents imports from hard-failing on a slug
+ * clash — a common case for DMs that share a generic title.
+ */
+async function findUniqueSlug(
+  ctx: { db: MutationCtx['db'] },
+  workspaceId: string,
+  base: string,
+  suffixSeed: string,
+  excludeId: string | undefined,
+): Promise<string> {
+  const candidates = [base]
+  if (suffixSeed) candidates.push(`${base}-${suffixSeed}`.slice(0, 120))
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const clash = await ctx.db
+      .query('conversations')
+      .withIndex('by_workspaceId_channelSlug', (q) => (
+        q.eq('workspaceId', workspaceId).eq('channelSlug', candidate)
+      ))
+      .filter((q) => q.eq(q.field('deletedAt'), undefined))
+      .first()
+    if (!clash || clash._id === excludeId) return candidate
+  }
+  return `${base}-${suffixSeed}`.slice(0, 120)
+}
+
+/**
  * Create a workspace channel for a Slack import. The importer becomes the
  * initial moderator participant. Additional participants can be added later
  * via addSlackChannelParticipants once users accept invitations.
@@ -54,30 +83,74 @@ export const createSlackChannel = mutation({
   returns: v.id('conversations'),
   handler: async (ctx, args) => {
     const actor = await requireActorForSlack(ctx, args)
+    const now = Date.now()
+    // Short, stable suffix from the Slack channel id (last segment of clientId)
+    // used to disambiguate slugs when a base name collides.
+    const suffixSeed = slugifyChannel((args.clientId.split(':').pop() ?? '').slice(-6))
 
-    // Resume support: if we already imported this Slack channel, reuse it.
+    const baseSlug = slugifyChannel(args.title)
+    if (!baseSlug) throw new Error('Channel name is required')
+
+    // Resume support: if we already imported this Slack channel, reuse it —
+    // self-healing along the way. A prior import may have left the conversation
+    // soft-deleted (the user cleaned up and re-imported) or, from an older
+    // importer, as a non-channel personal chat with no slug/visibility. Rather
+    // than hard-fail, resurrect and upgrade it so the re-import succeeds and the
+    // channel appears in the Channels tab.
     const existing = await ctx.db
       .query('conversations')
       .withIndex('by_userId_clientId', (q) => q.eq('userId', args.actorUserId).eq('clientId', args.clientId))
       .first()
     if (existing) {
-      if (existing.deletedAt) throw new Error('Channel was archived')
+      const isHealthyChannel =
+        existing.deletedAt === undefined
+        && existing.conversationType === 'channel'
+        && Boolean(existing.channelSlug)
+        && Boolean(existing.channelVisibility)
+      if (!isHealthyChannel) {
+        const slug = existing.conversationType === 'channel' && existing.channelSlug
+          ? existing.channelSlug
+          : await findUniqueSlug(ctx, args.workspaceId, baseSlug, suffixSeed, existing._id)
+        await ctx.db.patch(existing._id, {
+          deletedAt: undefined,
+          conversationType: 'channel',
+          channelVisibility: args.visibility,
+          channelSlug: slug,
+          createdByPrincipalId: existing.createdByPrincipalId ?? actor.principalId,
+          // Legacy personal-chat rows kept the old "#name" title; refresh those.
+          ...(existing.conversationType === 'channel' ? {} : { title: args.title }),
+          updatedAt: now,
+          lastModified: now,
+        })
+        // Ensure the importer is an active moderator participant.
+        const participant = await ctx.db
+          .query('conversationParticipants')
+          .withIndex('by_conversationId_principalId', (q) => (
+            q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
+          ))
+          .first()
+        if (!participant) {
+          await ctx.db.insert('conversationParticipants', {
+            conversationId: existing._id,
+            workspaceId: args.workspaceId,
+            principalId: actor.principalId,
+            principalType: 'human',
+            role: 'moderator',
+            status: 'active',
+            notificationLevel: 'all',
+            joinedAt: now,
+            updatedAt: now,
+          })
+        } else if (participant.status !== 'active') {
+          await ctx.db.patch(participant._id, { status: 'active', updatedAt: now })
+        }
+      }
       return existing._id
     }
 
-    // Also enforce unique slug per workspace
-    const slug = slugifyChannel(args.title)
-    if (!slug) throw new Error('Channel name is required')
-    const existingBySlug = await ctx.db
-      .query('conversations')
-      .withIndex('by_workspaceId_channelSlug', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('channelSlug', slug)
-      ))
-      .filter((q) => q.eq(q.field('deletedAt'), undefined))
-      .first()
-    if (existingBySlug) throw new Error('A channel with this name already exists')
+    // New channel: pick a collision-free slug rather than throwing on a clash.
+    const slug = await findUniqueSlug(ctx, args.workspaceId, baseSlug, suffixSeed, undefined)
 
-    const now = Date.now()
     const conversationId = await ctx.db.insert('conversations', {
       userId: args.actorUserId,
       workspaceId: args.workspaceId,
