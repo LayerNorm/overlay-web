@@ -181,6 +181,9 @@ export function SlackImportPanel() {
     } catch (err) {
       if (!mountedRef.current) return
       setChannelsError(err instanceof Error ? err.message : 'Failed to load channels')
+      // Mark as loaded to prevent the effect from re-firing infinitely.
+      // The user can click "Try again" to reset and retry.
+      setChannelsLoaded(true)
     } finally {
       if (mountedRef.current) setChannelsLoading(false)
     }

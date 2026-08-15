@@ -2,6 +2,9 @@ import type { NextRequest } from 'next/server'
 import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
 import { requireOverlayRouteCapability } from '@/server/capabilities'
 
+// Allow up to 60s for Composio API calls (channel listing, job polling).
+export const maxDuration = 60
+
 export async function GET(request: NextRequest) {
   const capabilityResponse = await requireOverlayRouteCapability(request)
   if (capabilityResponse) return capabilityResponse

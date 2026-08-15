@@ -89,10 +89,14 @@ export async function GET(
         )
       }
 
+      // Use single-page listing (200 channels) to avoid Vercel function timeouts.
+      // The Composio API can be slow, and paginating through all channels
+      // exceeds the serverless function timeout.
       const client = new ComposioSlackClient()
-      const channels = await client.listAllChannels(connectedAccountId)
+      const cursor = searchParams.get('cursor')?.trim() || undefined
+      const page = await client.listChannels(connectedAccountId, { cursor })
 
-      const mapped = channels.map((ch: SlackChannelResponse) => ({
+      const mapped = page.items.map((ch: SlackChannelResponse) => ({
         id: ch.id,
         name: ch.name || ch.id,
         type: ch.is_mpim
@@ -110,6 +114,8 @@ export async function GET(
         channels: mapped,
         total: mapped.length,
         connectedAccountId,
+        nextCursor: page.nextCursor,
+        hasMore: page.nextCursor !== null,
       })
     }
 
