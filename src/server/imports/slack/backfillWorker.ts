@@ -9,7 +9,6 @@ import { SlackUserCache, normalizeChannel, normalizeMessage, shouldSkipMessage }
 import type { NormalizedChannel } from './normalizer'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
-const DEFAULT_MODEL_ID = 'openrouter/free'
 const THREAD_DELAY_MS = 200
 
 interface BackfillJobRow {
@@ -189,17 +188,27 @@ export class SlackBackfillWorker {
     } else {
       const normalized = normalizeChannel(channel, workspaceId, this.userCache)
 
-      // Create Overlay conversation
+      if (channelType === 'im' || channelType === 'mpim') {
+        // DM/MPIM import is not supported in the first pass: we need the other
+        // participants to be active workspace members first, which requires the
+        // user-import step to complete and invitees to accept. Skip for now.
+        logger.info(`[SlackBackfill] Skipping DM/MPIM ${channelId} (${normalized.title}) — other participants are not workspace members yet`)
+        return { messagesImported: 0, filesDownloaded: 0, threadsImported: 0, channelType }
+      }
+
+      // Create a proper workspace channel (conversationType='channel') with the
+      // importer as the initial moderator. This is Phase A of the Slack import
+      // rework: imported channels must appear in the Channels tab, not as
+      // personal/direct-message chats.
+      const visibility = channel.is_private || channel.is_group ? 'private' : 'public'
       conversationId = await convex.mutation<Id<'conversations'>>(
-        'chat/conversations:create',
+        'imports/slackImporter:createSlackChannel',
         {
-          userId,
+          actorUserId: userId,
           workspaceId,
           title: normalized.title,
           clientId: normalized.clientId,
-          lastMode: 'ask',
-          askModelIds: [DEFAULT_MODEL_ID],
-          actModelId: DEFAULT_MODEL_ID,
+          visibility,
           serverSecret: this.serverSecret,
         },
         { throwOnError: true },
@@ -207,7 +216,8 @@ export class SlackBackfillWorker {
 
       if (!conversationId) throw new Error('Failed to create conversation')
 
-      logger.info(`[SlackBackfill] Created conversation ${conversationId} for channel ${channelId} (${normalized.title})`)
+      logger.info(`[SlackBackfill] Created workspace channel ${conversationId} for ${channelId} (${normalized.title})`)
+
     }
 
     // Fetch all messages and import them

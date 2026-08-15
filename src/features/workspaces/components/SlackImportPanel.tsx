@@ -26,6 +26,17 @@ interface SlackChannel {
   memberCount: number
 }
 
+interface SlackUser {
+  id: string
+  name: string
+  displayName: string
+  email: string | null
+  avatar: string | null
+  isBot: boolean
+  isDeleted: boolean
+  status: 'member' | 'invited' | 'new'
+}
+
 interface SlackImportJob {
   _id: string
   status: string
@@ -111,7 +122,13 @@ export function SlackImportPanel() {
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [view, setView] = useState<'picker' | 'progress'>('picker')
+  const [view, setView] = useState<'people' | 'picker' | 'progress'>('people')
+  const [users, setUsers] = useState<SlackUser[]>([])
+  const [usersLoaded, setUsersLoaded] = useState(false)
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [usersError, setUsersError] = useState<string | null>(null)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [inviting, setInviting] = useState(false)
   const [oauthPolling, setOauthPolling] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -131,6 +148,8 @@ export function SlackImportPanel() {
       if (active) {
         setActiveJob(active)
         setView('progress')
+      } else {
+        setView('people')
       }
       setConnectionState('connected')
       return true
@@ -195,6 +214,82 @@ export function SlackImportPanel() {
       void loadChannels()
     }
   }, [view, connectionState, channelsLoaded, channelsLoading, loadChannels])
+
+  // ─── Load Slack users and diff with workspace people ────────────────────────
+  const loadUsers = useCallback(async (force = false) => {
+    if (!workspaceId || connectionState !== 'connected') return
+    if (usersLoaded && !force) return
+    setUsersLoading(true)
+    setUsersError(null)
+    try {
+      const { ok: usersOk, data: usersData } = await fetchWithRetry('/api/v1/imports/slack?action=users')
+      if (!mountedRef.current) return
+      if (!usersOk) {
+        throw new Error(String(usersData.error ?? 'Failed to load Slack users'))
+      }
+
+      let mgmtData: { items: unknown[] } = { items: [] }
+      try {
+        mgmtData = await overlayAppClient.workspaces.management(activeWorkspace.id, 'people') as { items: unknown[] }
+      } catch (err) {
+        console.warn('[SlackImport] Failed to load workspace people:', err)
+      }
+
+      const slackUsers = (usersData.users ?? []) as Array<{
+        id: string
+        name: string
+        displayName: string
+        email: string | null
+        avatar: string | null
+        isBot: boolean
+        isDeleted: boolean
+      }>
+
+      const mgmtItems = (mgmtData.items ?? []) as Array<{
+        kind: string
+        name: string
+        description?: string
+        status?: string
+      }>
+
+      const memberEmails = new Set<string>()
+      const invitedEmails = new Set<string>()
+      for (const item of mgmtItems) {
+        const email = (item.kind === 'invitation' ? item.name : item.description)?.trim().toLowerCase()
+        if (!email) continue
+        if (item.kind === 'member' && item.status === 'active') memberEmails.add(email)
+        else if (item.kind === 'invitation' && item.status === 'pending') invitedEmails.add(email)
+      }
+
+      const merged = slackUsers
+        .filter((u) => !u.isBot && !u.isDeleted && u.email)
+        .map((u) => {
+          const email = u.email!.toLowerCase()
+          let status: SlackUser['status'] = 'new'
+          if (memberEmails.has(email)) status = 'member'
+          else if (invitedEmails.has(email)) status = 'invited'
+          return { ...u, email, status } as SlackUser
+        })
+        .sort((a, b) => a.displayName.localeCompare(b.displayName))
+
+      setUsers(merged)
+      setUsersLoaded(true)
+      // Auto-select all non-member users so the importer can invite them
+      setSelectedUserIds(new Set(merged.filter((u) => u.status === 'new').map((u) => u.id)))
+    } catch (err) {
+      if (!mountedRef.current) return
+      setUsersError(err instanceof Error ? err.message : 'Failed to load Slack users')
+      setUsersLoaded(true)
+    } finally {
+      if (mountedRef.current) setUsersLoading(false)
+    }
+  }, [workspaceId, connectionState, usersLoaded, activeWorkspace?.id])
+
+  useEffect(() => {
+    if (view === 'people' && connectionState === 'connected' && !usersLoaded && !usersLoading) {
+      void loadUsers()
+    }
+  }, [view, connectionState, usersLoaded, usersLoading, loadUsers])
 
   // ─── Poll active job for progress ─────────────────────────────────────────
   useEffect(() => {
@@ -289,6 +384,41 @@ export function SlackImportPanel() {
       setOauthPolling(false)
     }
   }, [checkConnection])
+
+  // ─── Invite selected Slack users ──────────────────────────────────────────
+  const handleInviteUsers = useCallback(async () => {
+    if (!workspaceId) return
+    const selected = users.filter((u) => selectedUserIds.has(u.id) && u.status === 'new' && u.email)
+    if (selected.length === 0) {
+      setView('picker')
+      return
+    }
+    setInviting(true)
+    setError(null)
+    let failed = 0
+    try {
+      await Promise.all(
+        selected.map((u) =>
+          overlayAppClient.workspaces
+            .invite(workspaceId, { email: u.email!, role: 'member' })
+            .catch((err) => {
+              console.error('[SlackImport] Failed to invite', u.email, err)
+              failed++
+            }),
+        ),
+      )
+      if (failed > 0) {
+        setError(`Failed to invite ${failed} user(s). You can continue and import channels for people already in the workspace.`)
+      }
+      // Refresh user list so newly-invited users appear as 'invited'
+      void loadUsers(true)
+      setView('picker')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send invitations')
+    } finally {
+      setInviting(false)
+    }
+  }, [workspaceId, users, selectedUserIds, loadUsers])
 
   // ─── Start import ─────────────────────────────────────────────────────────
   const handleStartImport = useCallback(async () => {
@@ -422,6 +552,144 @@ export function SlackImportPanel() {
           void checkConnection()
         }}
       />
+    )
+  }
+
+  // ─── People view ──────────────────────────────────────────────────────────
+  if (view === 'people') {
+    return (
+      <div className="px-5 py-4">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Import people from Slack</h3>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">
+              Invite Slack members to your Overlay workspace before importing channels.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-500">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+            <button type="button" className="ml-auto shrink-0" onClick={() => setError(null)}>
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {usersLoading ? (
+          <div className="space-y-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 rounded-lg border border-[var(--border)] p-3">
+                <span className="h-6 w-6 animate-pulse rounded-full bg-[var(--surface-subtle)]" />
+                <span className="h-3 w-32 animate-pulse rounded bg-[var(--surface-subtle)]" />
+              </div>
+            ))}
+          </div>
+        ) : usersError ? (
+          <EmptyState
+            className="min-h-40 px-6 py-8"
+            icon={<AlertCircle size={24} />}
+            title="Could not load Slack users"
+            description={usersError}
+            action={
+              <Button size="sm" onClick={() => void loadUsers(true)}>
+                <RefreshCw size={12} />
+                Try again
+              </Button>
+            }
+          />
+        ) : users.length === 0 ? (
+          <EmptyState
+            className="min-h-40 px-6 py-8"
+            icon={<Users size={24} strokeWidth={1.5} />}
+            title="No Slack users found"
+            description="Your connected Slack account doesn't have access to the workspace member list."
+          />
+        ) : (
+          <>
+            <div className="mb-3 flex items-center justify-between text-xs text-[var(--muted)]">
+              <span>{users.filter((u) => selectedUserIds.has(u.id)).length} selected</span>
+              <span>
+                {users.filter((u) => u.status === 'member').length} members ·{' '}
+                {users.filter((u) => u.status === 'invited').length} invited ·{' '}
+                {users.filter((u) => u.status === 'new').length} new
+              </span>
+            </div>
+
+            <div className="max-h-80 space-y-1 overflow-y-auto">
+              {users.map((u) => {
+                const isSelected = selectedUserIds.has(u.id)
+                return (
+                  <label
+                    key={u.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-colors ${
+                      isSelected
+                        ? 'border-[var(--foreground)]/30 bg-[var(--surface-subtle)]'
+                        : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]/50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedUserIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(u.id)) next.delete(u.id)
+                          else next.add(u.id)
+                          return next
+                        })
+                      }}
+                      disabled={u.status !== 'new'}
+                      className="h-4 w-4 rounded border-[var(--border)] accent-[var(--foreground)]"
+                    />
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[10px] text-[var(--muted)]">
+                      {u.displayName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-[var(--foreground)]">{u.displayName}</span>
+                      <span className="text-[10px] text-[var(--muted-light)]">{u.email}</span>
+                    </span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] ${
+                        u.status === 'member'
+                          ? 'bg-green-500/10 text-green-600'
+                          : u.status === 'invited'
+                            ? 'bg-amber-500/10 text-amber-600'
+                            : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+                      }`}
+                    >
+                      {u.status === 'member' ? 'In workspace' : u.status === 'invited' ? 'Invited' : 'New'}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2 border-t border-[var(--border)] pt-4">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setView('picker')
+                }}
+                variant="ghost"
+                disabled={inviting}
+              >
+                Skip
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleInviteUsers()}
+                disabled={selectedUserIds.size === 0 || inviting}
+              >
+                {inviting ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
+                {inviting ? 'Inviting…' : 'Invite selected'}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     )
   }
 

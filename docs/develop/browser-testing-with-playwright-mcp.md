@@ -147,6 +147,7 @@ The server exposes these tools (names may vary slightly by version; always call 
 | --- | --- |
 | `browser_navigate` | Go to a URL. Returns the page title, console state, and a snapshot. |
 | `browser_snapshot` | Capture the full accessibility tree of the current page. Returns YAML. |
+| `browser_take_screenshot` | Take a PNG/JPEG/WebP screenshot of the current page or a specific element. Use when the model supports vision. |
 | `browser_find` | Search the accessibility snapshot for text or a regex. Cheaper than a full snapshot. |
 | `browser_click` | Click an element by its `ref` from the snapshot. |
 | `browser_type` | Type into an input by `ref`. |
@@ -229,6 +230,12 @@ async () => {
   };
 }
 ```
+
+### 5. Vision-assisted QA
+
+Playwright MCP works well with accessibility snapshots, but `browser_take_screenshot` returns a real image. If the model running the QA session supports vision, **absolutely include screenshots in tool calls for visual analysis as well** — do not rely on the accessibility tree alone. Vision analysis catches layout shifts, broken images, loading states, theme problems, and visual regressions that text snapshots cannot.
+
+Use `browser_take_screenshot` after `browser_navigate` and after interactions that change the visible state, so the vision model can verify the rendered page in the same tool-call flow. Continue to use `browser_snapshot` for finding click targets; screenshots are for verification and analysis, not for driving actions.
 
 ## Gotchas
 

@@ -1,0 +1,242 @@
+import { v } from 'convex/values'
+import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { mutation, query } from '../_generated/server'
+import { validateServerSecret } from '../lib/auth'
+import { recordConversationEvent } from '../collaboration/events'
+import type { MutationCtx } from '../_generated/server'
+
+type ActorResult = { principalId: string; membership: { status: string } }
+
+async function requireActorForSlack(
+  ctx: { db: MutationCtx['db'] },
+  args: { actorUserId: string; workspaceId: string; serverSecret: string },
+): Promise<ActorResult> {
+  if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_workspaceId_userId', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId)
+    )).unique()
+  if (!principal || principal.type !== 'human' || principal.archivedAt) {
+    throw new Error('WORKSPACE_ACCESS_DENIED')
+  }
+  const membership = await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
+    )).unique()
+  if (!membership || membership.status !== 'active') throw new Error('WORKSPACE_ACCESS_DENIED')
+  return { principalId: principal.principalId, membership }
+}
+
+function slugifyChannel(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-')
+    .slice(0, 120)
+}
+
+/**
+ * Create a workspace channel for a Slack import. The importer becomes the
+ * initial moderator participant. Additional participants can be added later
+ * via addSlackChannelParticipants once users accept invitations.
+ */
+export const createSlackChannel = mutation({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    title: v.string(),
+    clientId: v.string(),
+    visibility: v.union(v.literal('public'), v.literal('private')),
+    serverSecret: v.string(),
+  },
+  returns: v.id('conversations'),
+  handler: async (ctx, args) => {
+    const actor = await requireActorForSlack(ctx, args)
+
+    // Resume support: if we already imported this Slack channel, reuse it.
+    const existing = await ctx.db
+      .query('conversations')
+      .withIndex('by_userId_clientId', (q) => q.eq('userId', args.actorUserId).eq('clientId', args.clientId))
+      .first()
+    if (existing) {
+      if (existing.deletedAt) throw new Error('Channel was archived')
+      return existing._id
+    }
+
+    // Also enforce unique slug per workspace
+    const slug = slugifyChannel(args.title)
+    if (!slug) throw new Error('Channel name is required')
+    const existingBySlug = await ctx.db
+      .query('conversations')
+      .withIndex('by_workspaceId_channelSlug', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('channelSlug', slug)
+      ))
+      .filter((q) => q.eq(q.field('deletedAt'), undefined))
+      .first()
+    if (existingBySlug) throw new Error('A channel with this name already exists')
+
+    const now = Date.now()
+    const conversationId = await ctx.db.insert('conversations', {
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      conversationType: 'channel',
+      createdByPrincipalId: actor.principalId,
+      clientId: args.clientId,
+      title: args.title,
+      lastModified: now,
+      updatedAt: now,
+      createdAt: now,
+      lastMode: 'act',
+      askModelIds: [DEFAULT_MODEL_ID],
+      actModelId: DEFAULT_MODEL_ID,
+      channelSlug: slug,
+      channelVisibility: args.visibility,
+      isAutomation: false,
+    })
+
+    // Add importer as moderator
+    await ctx.db.insert('conversationParticipants', {
+      conversationId,
+      workspaceId: args.workspaceId,
+      principalId: actor.principalId,
+      principalType: 'human',
+      role: 'moderator',
+      status: 'active',
+      notificationLevel: 'all',
+      joinedAt: now,
+      updatedAt: now,
+    })
+
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.created',
+      payload: { conversationType: 'channel', source: 'slack' },
+    })
+
+    return conversationId
+  },
+})
+
+/**
+ * Find or list workspace principals by email(s). Used to map Slack users to
+ * existing Overlay members so they can be added to imported channels.
+ */
+export const getWorkspacePrincipalsByEmail = query({
+  args: {
+    workspaceId: v.string(),
+    emails: v.array(v.string()),
+    serverSecret: v.string(),
+  },
+  returns: v.array(v.object({
+    principalId: v.string(),
+    userId: v.optional(v.string()),
+    email: v.optional(v.string()),
+    displayName: v.string(),
+    membershipStatus: v.optional(v.string()),
+  })),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) return []
+    const normalizedEmails = [...new Set(args.emails.map((e) => e.toLowerCase().trim()))].filter(Boolean)
+    if (normalizedEmails.length === 0) return []
+
+    const allPrincipals = await ctx.db
+      .query('workspacePrincipals')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
+
+    const matches = allPrincipals.filter((p) =>
+      p.email && normalizedEmails.includes(p.email.toLowerCase().trim()),
+    )
+
+    const results = []
+    for (const p of matches) {
+      const membership = await ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId_principalId', (q) => (
+          q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)
+        ))
+        .unique()
+      results.push({
+        principalId: p.principalId,
+        userId: p.userId,
+        email: p.email,
+        displayName: p.displayName,
+        membershipStatus: membership?.status,
+      })
+    }
+    return results
+  },
+})
+
+/**
+ * Add existing workspace principals as members of an imported Slack channel.
+ * Skips users who are not active members.
+ */
+export const addSlackChannelParticipants = mutation({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    conversationId: v.id('conversations'),
+    principalIds: v.array(v.string()),
+    serverSecret: v.string(),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const actor = await requireActorForSlack(ctx, args)
+
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.workspaceId !== args.workspaceId || conversation.deletedAt) {
+      throw new Error('Channel not found')
+    }
+
+    const uniquePrincipalIds = [...new Set(args.principalIds)].filter(Boolean)
+    let added = 0
+    const now = Date.now()
+
+    for (const principalId of uniquePrincipalIds) {
+      if (principalId === actor.principalId) continue // Already the moderator
+
+      const principal = await ctx.db
+        .query('workspacePrincipals')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+        .filter((q) => q.eq(q.field('principalId'), principalId))
+        .unique()
+      if (!principal || principal.archivedAt || !principal.email) continue
+
+      const membership = await ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId_principalId', (q) => (
+          q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
+        ))
+        .unique()
+      if (!membership || membership.status !== 'active') continue
+
+      const existing = await ctx.db
+        .query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('principalId', principalId)
+        ))
+        .unique()
+      if (existing) continue
+
+      await ctx.db.insert('conversationParticipants', {
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        principalId,
+        principalType: principal.type as 'human' | 'agent',
+        role: 'member',
+        status: 'active',
+        notificationLevel: 'all',
+        joinedAt: now,
+        updatedAt: now,
+      })
+      added++
+    }
+
+    return added
+  },
+})

@@ -63,6 +63,7 @@ async function resolveSlackConnectedAccount(
  * GET /api/v1/imports/slack
  * Query params:
  *   - action=channels&connectedAccountId=...  → list Slack channels
+ *   - action=users&connectedAccountId=...     → list Slack users
  *   - action=jobs                             → list import jobs for workspace
  *   - action=job&jobId=...                    → get a single job
  */
@@ -112,6 +113,42 @@ export async function GET(
 
       return NextResponse.json({
         channels: mapped,
+        total: mapped.length,
+        connectedAccountId,
+        nextCursor: page.nextCursor,
+        hasMore: page.nextCursor !== null,
+      })
+    }
+
+    if (action === 'users') {
+      // Resolve connected account from workspace connectors if not provided
+      const connectedAccountId =
+        searchParams.get('connectedAccountId')?.trim() ||
+        (await resolveSlackConnectedAccount(workspaceId, userId))
+
+      if (!connectedAccountId) {
+        return NextResponse.json(
+          { error: 'Slack is not connected. Connect Slack via the integrations page first.' },
+          { status: 400 },
+        )
+      }
+
+      const client = new ComposioSlackClient()
+      const cursor = searchParams.get('cursor')?.trim() || undefined
+      const page = await client.listUsers(connectedAccountId, userId, { cursor })
+
+      const mapped = page.items.map((u) => ({
+        id: u.id,
+        name: u.name || u.real_name || u.id,
+        displayName: u.profile?.display_name || u.real_name || u.name || u.id,
+        email: u.profile?.email?.trim().toLowerCase() || null,
+        avatar: u.profile?.image_48 || null,
+        isBot: u.is_bot ?? false,
+        isDeleted: u.deleted ?? false,
+      }))
+
+      return NextResponse.json({
+        users: mapped,
         total: mapped.length,
         connectedAccountId,
         nextCursor: page.nextCursor,
