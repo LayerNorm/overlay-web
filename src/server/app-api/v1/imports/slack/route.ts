@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -272,18 +272,24 @@ export async function POST(
       throw new Error('Job created but could not be fetched')
     }
 
-    // Start the backfill worker in the background.
-    // We don't await it — the client subscribes to Convex for progress updates.
+    // Start the backfill worker using after() so Vercel keeps the function
+    // alive (via waitUntil) until the worker finishes, even after the response
+    // is sent. Without this, the serverless function terminates immediately
+    // after returning the response, killing the background worker.
     const worker = new SlackBackfillWorker()
-    void worker.processJob({
-      _id: jobRow._id,
-      userId: jobRow.userId,
-      workspaceId: jobRow.workspaceId,
-      connectedAccountId: jobRow.connectedAccountId,
-      selectedChannelIds: jobRow.selectedChannelIds,
-      createdAt: jobRow.createdAt,
-    }).catch((err) => {
-      logger.error(`[SlackImport] Background worker failed for job ${jobId}:`, err)
+    after(async () => {
+      try {
+        await worker.processJob({
+          _id: jobRow._id,
+          userId: jobRow.userId,
+          workspaceId: jobRow.workspaceId,
+          connectedAccountId: jobRow.connectedAccountId,
+          selectedChannelIds: jobRow.selectedChannelIds,
+          createdAt: jobRow.createdAt,
+        })
+      } catch (err) {
+        logger.error(`[SlackImport] Background worker failed for job ${jobId}:`, err)
+      }
     })
 
     logger.info(`[SlackImport] Started import job ${jobId} for workspace ${workspaceId}`)
@@ -298,6 +304,51 @@ export async function POST(
     logger.error('[SlackImport] POST failed:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to start Slack import' },
+      { status: 502 },
+    )
+  }
+}
+
+/**
+ * Internal POST /api/v1/imports/slack/process
+ * Called by the Convex cron action (with x-internal-api-secret) to
+ * process a queued or stuck Slack import job. This runs the full
+ * backfill worker synchronously — the cron action waits for completion.
+ */
+export async function POST_process(request: NextRequest) {
+  try {
+    const internalSecret = request.headers.get('x-internal-api-secret')?.trim()
+    const expectedSecret = getInternalApiSecret()
+    if (!internalSecret || internalSecret !== expectedSecret) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json() as {
+      jobId: string
+      userId: string
+      workspaceId: string
+      connectedAccountId: string
+      selectedChannelIds: string[]
+      createdAt: number
+    }
+
+    logger.info(`[SlackImport] Processing job ${body.jobId} (${body.selectedChannelIds.length} channels)`)
+
+    const worker = new SlackBackfillWorker()
+    await worker.processJob({
+      _id: body.jobId as Id<'slackImportJobs'>,
+      userId: body.userId,
+      workspaceId: body.workspaceId,
+      connectedAccountId: body.connectedAccountId,
+      selectedChannelIds: body.selectedChannelIds,
+      createdAt: body.createdAt,
+    })
+
+    return NextResponse.json({ success: true, jobId: body.jobId })
+  } catch (error) {
+    logger.error('[SlackImport] Process endpoint failed:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to process Slack import' },
       { status: 502 },
     )
   }
