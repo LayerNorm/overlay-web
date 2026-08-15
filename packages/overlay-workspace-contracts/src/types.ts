@@ -244,6 +244,7 @@ export type WorkspaceManagementView =
   | 'roles'
   | 'chats-agents'
   | 'sharing'
+  | 'import'
 
 export type WorkspaceManagementItem = {
   id: string

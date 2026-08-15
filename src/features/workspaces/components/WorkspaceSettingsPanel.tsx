@@ -6,6 +6,7 @@ import {
   Archive,
   Bot,
   CircleAlert,
+  Download,
   KeyRound,
   Link2,
   Loader2,
@@ -48,6 +49,7 @@ import {
   TeamMembersDialog,
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
+import { SlackImportPanel } from './SlackImportPanel'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -117,6 +119,14 @@ const TABS: ReadonlyArray<{
     emptyTitle: 'Workspace billing',
     emptyDescription: 'Manage shared credits and usage.',
     action: 'Manage billing',
+  },
+  {
+    id: 'import',
+    label: 'Import',
+    icon: Download,
+    emptyTitle: 'No imports yet',
+    emptyDescription: 'Bring data from external platforms into this workspace.',
+    action: 'Start import',
   },
 ]
 
@@ -831,6 +841,8 @@ export function WorkspaceSettingsPanel({
         ) : null}
         {activeTab === 'billing' ? (
           <WorkspaceBillingSection client={client} workspace={activeWorkspace} />
+        ) : activeTab === 'import' ? (
+          <SlackImportPanel />
         ) : activeTab === 'sharing' ? (
           <WorkspaceSharingPolicySection
             state={policyState}
