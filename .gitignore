@@ -102,3 +102,6 @@ SECURITY_AUDIT_REPORT_FULL.md
 SECURITY_AUDIT_REPORT_ROUND2.md
 optimizations.md
 .pi/
+
+# Local smoke test scripts (not shipped)
+scripts/composio-slack-smoke/
