@@ -39,3 +39,81 @@ Composio catalog and connection setup require `COMPOSIO_API_KEY` on the Next.js 
 Verify configuration through `GET /api/v1/integrations?action=health`. Catalog requests fail with an actionable provider/configuration error when the key is missing, rejected, or the upstream catalog is unavailable; an empty catalog is reserved for a successful response with no matches.
 
 Connector visibility is workspace-scoped through `workspaceConnectors`. On the first Personal-workspace read after upgrading, active Composio accounts with no mapping in any workspace are assigned to Personal. Existing workspace mappings are never moved or duplicated.
+
+## Slack import via Composio
+
+Slack import uses Composio's `SLACKBOT` toolkit with **direct tool execution** — not the LLM session-based flow used by agent tools. This is a deterministic, paginated backfill that runs as a server-side background job.
+
+### Architecture
+
+```
+Workspace Settings → Import tab
+  → Connect Slack (Composio OAuth, providerKey=slackbot)
+  → Channel picker (SLACKBOT_LIST_ALL_CHANNELS)
+  → Create import job (Convex slackImportJobs)
+  → Backfill worker (server-side, not LLM):
+      1. Fetch users (SLACKBOT_LIST_ALL_USERS)
+      2. Per channel: create Overlay conversation
+      3. Paginate history (SLACKBOT_FETCH_CONVERSATION_HISTORY)
+      4. Fetch thread replies (SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION)
+      5. Download files (SLACKBOT_DOWNLOAD_FILE)
+      6. Normalize → insert as conversationMessages
+      7. Dedup via slackImportMappings
+  → Progress via polling GET /api/v1/imports/slack?action=job
+  → Coverage report on completion
+```
+
+### Key files
+
+| Layer | File | Purpose |
+| --- | --- | --- |
+| Convex schema | `convex/schema.ts` | `slackImportJobs`, `slackImportMappings` tables |
+| Convex functions | `convex/imports/slackJobs.ts` | Job CRUD, live subscriptions, worker queries |
+| Convex functions | `convex/imports/slackMappings.ts` | Source→Overlay ID mapping, dedup, resume |
+| Server adapter | `src/server/imports/slack/composioClient.ts` | REST client for Composio direct tool execution |
+| Server adapter | `src/server/imports/slack/normalizer.ts` | Slack → Overlay format transformation |
+| Server adapter | `src/server/imports/slack/backfillWorker.ts` | Deterministic import loop |
+| BFF route | `src/server/app-api/v1/imports/slack/route.ts` | GET (channels/jobs), POST (start/cancel) |
+| BFF route | `src/app/api/v1/imports/slack/route.ts` | Next.js route handler |
+| UI | `src/features/workspaces/components/SlackImportPanel.tsx` | 3-state panel (connect → picker → progress) |
+
+### Direct tool execution vs LLM sessions
+
+Agent tools use `createBrowserUnifiedTools()` which creates a Composio session per user and lets the LLM choose tool calls. The Slack importer does **not** use sessions. Instead it calls Composio's REST API directly:
+
+```
+POST https://backend.composio.dev/api/v3.1/tools/execute/{tool_slug}
+  x-api-key: COMPOSIO_API_KEY
+  body: { connected_account_id, arguments }
+```
+
+This gives deterministic pagination, retries, checkpointing, and predictable costs. The response wraps Slack's API response in a `data` field (sometimes as a JSON string that must be parsed).
+
+### Composio Slackbot auth config
+
+The `SLACKBOT` toolkit requires a Composio-managed auth config before OAuth can work. If one doesn't exist, the connect flow will fail. Auth configs are created via:
+
+```
+POST /api/v3.1/auth_configs
+  body: { toolkit: { slug: "slackbot" }, ... }
+```
+
+The auth config is project-scoped in Composio. Once created, the standard `connectResponse({ providerKey: 'slackbot' })` flow works from the UI.
+
+### Rate limit considerations
+
+- The backfill worker adds small delays between thread fetches (200ms) to avoid rate limits.
+- Composio may return rate limit errors from Slack's API. The worker logs these but continues with other channels.
+- Channel listing is cached per import job — the worker lists channels once at the start.
+- For large workspaces, the import may take several minutes. Progress is reported via Convex job status updates after each channel.
+
+### Slack access limitations
+
+A Slack bot/user token only sees conversations the authenticated account can access:
+
+- **Public channels:** broadly accessible
+- **Private channels:** only if the bot/user is a member
+- **DMs:** only the authenticated user's DMs
+- **MPIMs:** only if the user is a participant
+
+The coverage report distinguishes public/private/DM/MPIM counts so users understand what was actually imported vs what exists in their Slack workspace. For full workspace export, Slack's admin ZIP export or Enterprise Discovery API would be needed (not implemented yet).
