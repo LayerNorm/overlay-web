@@ -162,8 +162,15 @@ export async function GET(
     return NextResponse.json({ jobs, connected: true })
   } catch (error) {
     logger.error('[SlackImport] GET failed:', error)
+    const errMsg = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : typeof error === 'object' && error !== null
+          ? JSON.stringify(error).substring(0, 500)
+          : 'Failed to fetch Slack import data'
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch Slack import data' },
+      { error: errMsg },
       { status: 502 },
     )
   }

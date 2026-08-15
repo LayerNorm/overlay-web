@@ -114,7 +114,12 @@ export class ComposioSlackClient {
     const body = await res.json() as ComposioExecuteResponse<T>
 
     if (!res.ok || body.successful === false) {
-      const errorMsg = body.error || `Composio tool ${toolSlug} failed (HTTP ${res.status})`
+      const rawError = body.error
+      const errorMsg = typeof rawError === 'string'
+        ? rawError
+        : typeof rawError === 'object' && rawError !== null
+          ? JSON.stringify(rawError).substring(0, 500)
+          : `Composio tool ${toolSlug} failed (HTTP ${res.status})`
       logger.error(`[ComposioSlack] ${toolSlug} failed:`, errorMsg)
       throw new Error(errorMsg)
     }
