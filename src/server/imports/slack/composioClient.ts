@@ -93,6 +93,7 @@ export class ComposioSlackClient {
     toolSlug: string,
     args: Record<string, unknown>,
     connectedAccountId: string,
+    entityId: string,
   ): Promise<T> {
     const apiKey = await this.getApiKey()
     if (!apiKey) {
@@ -107,6 +108,7 @@ export class ComposioSlackClient {
       },
       body: JSON.stringify({
         connected_account_id: connectedAccountId,
+        entity_id: entityId,
         arguments: args,
       }),
     })
@@ -137,6 +139,7 @@ export class ComposioSlackClient {
    */
   async listChannels(
     connectedAccountId: string,
+    entityId: string,
     options?: { types?: string; limit?: number; cursor?: string },
   ): Promise<PaginatedResult<SlackChannel>> {
     const result = await this.executeTool<{
@@ -146,7 +149,7 @@ export class ComposioSlackClient {
       limit: options?.limit ?? 200,
       types: options?.types ?? 'public_channel,private_channel,mpim,im',
       ...(options?.cursor ? { cursor: options.cursor } : {}),
-    }, connectedAccountId)
+    }, connectedAccountId, entityId)
 
     return {
       items: result.channels ?? [],
@@ -159,12 +162,13 @@ export class ComposioSlackClient {
    */
   async listAllChannels(
     connectedAccountId: string,
+    entityId: string,
     options?: { types?: string },
   ): Promise<SlackChannel[]> {
     const all: SlackChannel[] = []
     let cursor: string | undefined
     do {
-      const page = await this.listChannels(connectedAccountId, {
+      const page = await this.listChannels(connectedAccountId, entityId, {
         ...(options?.types ? { types: options.types } : {}),
         cursor,
       })
@@ -179,6 +183,7 @@ export class ComposioSlackClient {
    */
   async listUsers(
     connectedAccountId: string,
+    entityId: string,
     options?: { limit?: number; cursor?: string },
   ): Promise<PaginatedResult<SlackUser>> {
     const result = await this.executeTool<{
@@ -187,7 +192,7 @@ export class ComposioSlackClient {
     }>('SLACKBOT_LIST_ALL_USERS', {
       limit: options?.limit ?? 200,
       ...(options?.cursor ? { cursor: options.cursor } : {}),
-    }, connectedAccountId)
+    }, connectedAccountId, entityId)
 
     return {
       items: result.members ?? [],
@@ -198,11 +203,11 @@ export class ComposioSlackClient {
   /**
    * List all users by paginating until exhausted.
    */
-  async listAllUsers(connectedAccountId: string): Promise<SlackUser[]> {
+  async listAllUsers(connectedAccountId: string, entityId: string): Promise<SlackUser[]> {
     const all: SlackUser[] = []
     let cursor: string | undefined
     do {
-      const page = await this.listUsers(connectedAccountId, { cursor })
+      const page = await this.listUsers(connectedAccountId, entityId, { cursor })
       all.push(...page.items)
       cursor = page.nextCursor ?? undefined
     } while (cursor)
@@ -214,6 +219,7 @@ export class ComposioSlackClient {
    */
   async fetchHistory(
     connectedAccountId: string,
+    entityId: string,
     channelId: string,
     options?: { limit?: number; cursor?: string; oldest?: string; latest?: string },
   ): Promise<PaginatedResult<SlackMessage>> {
@@ -227,7 +233,7 @@ export class ComposioSlackClient {
       ...(options?.cursor ? { cursor: options.cursor } : {}),
       ...(options?.oldest ? { oldest: options.oldest } : {}),
       ...(options?.latest ? { latest: options.latest } : {}),
-    }, connectedAccountId)
+    }, connectedAccountId, entityId)
 
     return {
       items: result.messages ?? [],
@@ -241,13 +247,14 @@ export class ComposioSlackClient {
    */
   async fetchAllHistory(
     connectedAccountId: string,
+    entityId: string,
     channelId: string,
     onProgress?: (messages: SlackMessage[], totalSoFar: number) => Promise<void>,
   ): Promise<SlackMessage[]> {
     const all: SlackMessage[] = []
     let cursor: string | undefined
     do {
-      const page = await this.fetchHistory(connectedAccountId, channelId, { cursor })
+      const page = await this.fetchHistory(connectedAccountId, entityId, channelId, { cursor })
       all.push(...page.items)
       if (onProgress) await onProgress(page.items, all.length)
       cursor = page.nextCursor ?? undefined
@@ -260,6 +267,7 @@ export class ComposioSlackClient {
    */
   async fetchThread(
     connectedAccountId: string,
+    entityId: string,
     channelId: string,
     threadTs: string,
     options?: { limit?: number; cursor?: string },
@@ -273,7 +281,7 @@ export class ComposioSlackClient {
       ts: threadTs,
       limit: options?.limit ?? 100,
       ...(options?.cursor ? { cursor: options.cursor } : {}),
-    }, connectedAccountId)
+    }, connectedAccountId, entityId)
 
     return {
       items: result.messages ?? [],
@@ -287,13 +295,14 @@ export class ComposioSlackClient {
    */
   async fetchAllThread(
     connectedAccountId: string,
+    entityId: string,
     channelId: string,
     threadTs: string,
   ): Promise<SlackMessage[]> {
     const all: SlackMessage[] = []
     let cursor: string | undefined
     do {
-      const page = await this.fetchThread(connectedAccountId, channelId, threadTs, { cursor })
+      const page = await this.fetchThread(connectedAccountId, entityId, channelId, threadTs, { cursor })
       all.push(...page.items)
       cursor = page.nextCursor ?? undefined
     } while (cursor)
@@ -306,6 +315,7 @@ export class ComposioSlackClient {
    */
   async downloadFile(
     connectedAccountId: string,
+    entityId: string,
     fileId: string,
   ): Promise<{ url: string; filename?: string }> {
     const result = await this.executeTool<{
@@ -315,7 +325,7 @@ export class ComposioSlackClient {
       filename?: string
     }>('SLACKBOT_DOWNLOAD_FILE', {
       file: fileId,
-    }, connectedAccountId)
+    }, connectedAccountId, entityId)
 
     const url = result.url || result.public_url
     if (!url) {

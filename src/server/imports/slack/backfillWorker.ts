@@ -56,7 +56,7 @@ export class SlackBackfillWorker {
     try {
       // Phase 1: Fetch users for name resolution
       await this.updateStatus(jobId, 'listing_channels')
-      await this.fetchUsers(job.connectedAccountId)
+      await this.fetchUsers(job.connectedAccountId, job.userId)
 
       // Phase 2: Import each selected channel
       await this.updateStatus(jobId, 'importing', {
@@ -137,9 +137,9 @@ export class SlackBackfillWorker {
   /**
    * Fetch and cache all workspace users for name resolution.
    */
-  private async fetchUsers(connectedAccountId: string): Promise<void> {
+  private async fetchUsers(connectedAccountId: string, entityId: string): Promise<void> {
     logger.info(`[SlackBackfill] Fetching workspace users...`)
-    const users = await this.client.listAllUsers(connectedAccountId)
+    const users = await this.client.listAllUsers(connectedAccountId, entityId)
     this.userCache.load(users)
     logger.info(`[SlackBackfill] Cached ${users.length} users`)
   }
@@ -174,7 +174,7 @@ export class SlackBackfillWorker {
       logger.info(`[SlackBackfill] Resuming channel ${channelId} → conversation ${conversationId}`)
     } else {
       // Fetch channel metadata
-      const channels = await this.client.listAllChannels(connectedAccountId)
+      const channels = await this.client.listAllChannels(connectedAccountId, userId)
       const channel = channels.find((c) => c.id === channelId)
       if (!channel) {
         throw new Error(`Channel ${channelId} not found`)
@@ -204,7 +204,7 @@ export class SlackBackfillWorker {
     }
 
     // Determine channel type for coverage
-    const channels = await this.client.listAllChannels(connectedAccountId)
+    const channels = await this.client.listAllChannels(connectedAccountId, userId)
     const channel = channels.find((c) => c.id === channelId)
     const channelType = channel
       ? (channel.is_mpim ? 'mpim' : channel.is_im ? 'im' : channel.is_private || channel.is_group ? 'private_channel' : 'public_channel')
@@ -215,7 +215,7 @@ export class SlackBackfillWorker {
     let filesDownloaded = 0
     let threadsImported = 0
 
-    await this.client.fetchAllHistory(connectedAccountId, channelId, async (pageMessages) => {
+    await this.client.fetchAllHistory(connectedAccountId, userId, channelId, async (pageMessages) => {
       for (const msg of pageMessages) {
         if (shouldSkipMessage(msg)) continue
 
@@ -271,7 +271,7 @@ export class SlackBackfillWorker {
         if (normalized.files.length > 0) {
           for (const file of normalized.files) {
             try {
-              await this.client.downloadFile(connectedAccountId, file.sourceFileId)
+              await this.client.downloadFile(connectedAccountId, userId, file.sourceFileId)
               filesDownloaded++
             } catch (err) {
               logger.warn(`[SlackBackfill] Failed to download file ${file.sourceFileId}:`, err)
@@ -324,7 +324,7 @@ export class SlackBackfillWorker {
   }): Promise<number> {
     const { connectedAccountId, channelId, threadTs, conversationId, workspaceId, userId, jobId } = args
 
-    const replies = await this.client.fetchAllThread(connectedAccountId, channelId, threadTs)
+    const replies = await this.client.fetchAllThread(connectedAccountId, userId, channelId, threadTs)
 
     let imported = 0
     // Skip the first message — it's the parent, already imported

@@ -94,7 +94,7 @@ export async function GET(
       // exceeds the serverless function timeout.
       const client = new ComposioSlackClient()
       const cursor = searchParams.get('cursor')?.trim() || undefined
-      const page = await client.listChannels(connectedAccountId, { cursor })
+      const page = await client.listChannels(connectedAccountId, userId, { cursor })
 
       const mapped = page.items.map((ch: SlackChannelResponse) => ({
         id: ch.id,
