@@ -133,6 +133,16 @@ export async function GET(
     }
 
     // Default: action=jobs — list import jobs for the workspace
+    // Also checks Slack connection status so the client can use this
+    // as a lightweight connection check without calling the integrations catalog.
+    const connectedAccountId = await resolveSlackConnectedAccount(workspaceId, userId)
+    if (!connectedAccountId) {
+      return NextResponse.json(
+        { error: 'Slack is not connected. Connect Slack via the integrations page first.' },
+        { status: 400 },
+      )
+    }
+
     const jobs = await convex.query<SlackImportJobResponse[]>(
       'imports/slackJobs:listJobs',
       {
@@ -143,7 +153,7 @@ export async function GET(
       },
     ) ?? []
 
-    return NextResponse.json({ jobs })
+    return NextResponse.json({ jobs, connected: true })
   } catch (error) {
     logger.error('[SlackImport] GET failed:', error)
     return NextResponse.json(

@@ -678,7 +678,7 @@ export function WorkspaceSettingsPanel({
   }, [activeTab, activeWorkspace, client, refreshKey])
 
   useEffect(() => {
-    if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing') return
+    if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing' || activeTab === 'import') return
     const controller = new AbortController()
     setState({ status: 'loading' })
     void client.load(activeWorkspace.id, activeTab, controller.signal)

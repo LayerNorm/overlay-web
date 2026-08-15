@@ -64,12 +64,45 @@ const CHANNEL_TYPE_LABEL = {
   mpim: 'Group DM',
 } as const
 
+const ACTIVE_JOB_STATUSES = new Set(['queued', 'listing_channels', 'importing'])
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+/**
+ * Fetch helper with retry on 429. Returns { ok, data, status }.
+ * Retries up to 2 times with exponential backoff (1s, 2s).
+ */
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit,
+  maxRetries = 2,
+): Promise<{ ok: boolean; data: Record<string, unknown>; status: number }> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, { credentials: 'same-origin', ...options })
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>
+      if (res.status === 429 && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+        continue
+      }
+      return { ok: res.ok, data, status: res.status }
+    } catch {
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+        continue
+      }
+      return { ok: false, data: { error: 'Network request failed' }, status: 0 }
+    }
+  }
+  return { ok: false, data: { error: 'Max retries exceeded' }, status: 0 }
+}
+
 export function SlackImportPanel() {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id
 
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
   const [channels, setChannels] = useState<SlackChannel[]>([])
+  const [channelsLoaded, setChannelsLoaded] = useState(false)
   const [channelsLoading, setChannelsLoading] = useState(false)
   const [channelsError, setChannelsError] = useState<string | null>(null)
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set())
@@ -79,73 +112,91 @@ export function SlackImportPanel() {
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'picker' | 'progress'>('picker')
+  const [oauthPolling, setOauthPolling] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mountedRef = useRef(true)
 
-  // Check connection status and load jobs on mount
-  const checkConnectionAndJobs = useCallback(async () => {
-    if (!workspaceId) return
-    try {
-      const res = await overlayAppClient.integrations.get<{ connected: string[] }>()
-      const isConnected = (res.connected || []).includes('slackbot')
-      setConnectionState(isConnected ? 'connected' : 'not_connected')
-
-      if (isConnected) {
-        const jobsRes = await fetch('/api/v1/imports/slack?action=jobs', {
-          credentials: 'same-origin',
-        })
-        if (jobsRes.ok) {
-          const data = await jobsRes.json() as { jobs: SlackImportJob[] }
-          setJobs(data.jobs || [])
-          const active = (data.jobs || []).find(
-            (j) => j.status === 'queued' || j.status === 'listing_channels' || j.status === 'importing',
-          )
-          if (active) {
-            setActiveJob(active)
-            setView('progress')
-          }
-        }
+  // ─── Connection check via jobs endpoint ───────────────────────────────────
+  // The jobs endpoint returns 400 "Slack is not connected" if there's no
+  // connected Slack account. This avoids the heavy integrations catalog call.
+  const checkConnection = useCallback(async (): Promise<boolean> => {
+    if (!workspaceId) return false
+    const { ok, data } = await fetchWithRetry('/api/v1/imports/slack?action=jobs')
+    if (!mountedRef.current) return false
+    if (ok) {
+      const jobList = (data.jobs ?? []) as SlackImportJob[]
+      setJobs(jobList)
+      const active = jobList.find((j) => ACTIVE_JOB_STATUSES.has(j.status))
+      if (active) {
+        setActiveJob(active)
+        setView('progress')
       }
-    } catch {
-      setConnectionState('not_connected')
+      setConnectionState('connected')
+      return true
     }
+    // 400 with "not connected" message means Slack isn't connected yet
+    const errMsg = String(data.error ?? '')
+    if (errMsg.toLowerCase().includes('not connected') || data.error === 'Slack is not connected. Connect Slack via the integrations page first.') {
+      setConnectionState('not_connected')
+      return false
+    }
+    // Other errors (429, 500, etc.) — don't change state, just return false
+    setConnectionState('not_connected')
+    return false
   }, [workspaceId])
 
+  // Initial mount check
   useEffect(() => {
-    void checkConnectionAndJobs()
-  }, [checkConnectionAndJobs])
+    mountedRef.current = true
+    void checkConnection()
+    return () => {
+      mountedRef.current = false
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+      if (oauthPollRef.current) {
+        clearInterval(oauthPollRef.current)
+        oauthPollRef.current = null
+      }
+    }
+  }, [checkConnection])
 
-  // Load channels when connected and in picker view
-  const loadChannels = useCallback(async () => {
+  // ─── Load channels ────────────────────────────────────────────────────────
+  const loadChannels = useCallback(async (force = false) => {
     if (!workspaceId || connectionState !== 'connected') return
+    if (channelsLoaded && !force) return
     setChannelsLoading(true)
     setChannelsError(null)
     try {
-      const res = await fetch('/api/v1/imports/slack?action=channels', {
-        credentials: 'same-origin',
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to load channels')
+      const { ok, data } = await fetchWithRetry('/api/v1/imports/slack?action=channels')
+      if (!mountedRef.current) return
+      if (!ok) {
+        throw new Error(String(data.error ?? 'Failed to load channels'))
       }
-      const data = await res.json() as { channels: SlackChannel[]; total: number }
-      setChannels(data.channels || [])
+      const channelList = (data.channels ?? []) as SlackChannel[]
+      setChannels(channelList)
+      setChannelsLoaded(true)
     } catch (err) {
+      if (!mountedRef.current) return
       setChannelsError(err instanceof Error ? err.message : 'Failed to load channels')
     } finally {
-      setChannelsLoading(false)
+      if (mountedRef.current) setChannelsLoading(false)
     }
-  }, [workspaceId, connectionState])
+  }, [workspaceId, connectionState, channelsLoaded])
 
+  // Load channels when entering picker view (not on mount — only when needed)
   useEffect(() => {
-    if (view === 'picker' && connectionState === 'connected' && channels.length === 0 && !channelsLoading) {
+    if (view === 'picker' && connectionState === 'connected' && !channelsLoaded && !channelsLoading) {
       void loadChannels()
     }
-  }, [view, connectionState, channels.length, channelsLoading, loadChannels])
+  }, [view, connectionState, channelsLoaded, channelsLoading, loadChannels])
 
-  // Poll active job for progress updates
+  // ─── Poll active job for progress ─────────────────────────────────────────
   useEffect(() => {
     if (view !== 'progress' || !activeJob) return
-    if (activeJob.status === 'completed' || activeJob.status === 'failed' || activeJob.status === 'cancelled') {
+    if (TERMINAL_JOB_STATUSES.has(activeJob.status)) {
       if (pollRef.current) {
         clearInterval(pollRef.current)
         pollRef.current = null
@@ -153,40 +204,40 @@ export function SlackImportPanel() {
       return
     }
 
-    pollRef.current = setInterval(async () => {
-      if (!activeJob) return
-      try {
-        const res = await fetch(`/api/v1/imports/slack?action=job&jobId=${activeJob._id}`, {
-          credentials: 'same-origin',
-        })
-        if (res.ok) {
-          const job = await res.json() as SlackImportJob
-          setActiveJob(job)
-          if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-            if (pollRef.current) {
-              clearInterval(pollRef.current)
-              pollRef.current = null
-            }
-            // Refresh jobs list
-            void checkConnectionAndJobs()
+    const pollJob = async () => {
+      if (!activeJob || !mountedRef.current) return
+      const { ok, data } = await fetchWithRetry(
+        `/api/v1/imports/slack?action=job&jobId=${activeJob._id}`,
+      )
+      if (!mountedRef.current) return
+      if (ok) {
+        const job = data as unknown as SlackImportJob
+        setActiveJob(job)
+        if (TERMINAL_JOB_STATUSES.has(job.status)) {
+          if (pollRef.current) {
+            clearInterval(pollRef.current)
+            pollRef.current = null
           }
+          // Refresh jobs list
+          void checkConnection()
         }
-      } catch {
-        // ignore polling errors
       }
-    }, 2000)
+    }
 
+    pollRef.current = setInterval(pollJob, 3000)
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current)
         pollRef.current = null
       }
     }
-  }, [view, activeJob?._id, activeJob?.status, activeJob, checkConnectionAndJobs])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, activeJob?._id, activeJob?.status])
 
-  // Handle connect
+  // ─── OAuth connect + poll for connection ──────────────────────────────────
   const handleConnect = useCallback(async () => {
     setError(null)
+    setOauthPolling(true)
     const oauthTab = window.open('about:blank', '_blank')
     try {
       const res = await overlayAppClient.integrations.connectResponse({
@@ -197,45 +248,69 @@ export function SlackImportPanel() {
       if (!res.ok) {
         oauthTab?.close()
         setError(data.error || 'Failed to connect to Slack')
+        setOauthPolling(false)
       } else if (data.redirectUrl) {
         if (oauthTab) oauthTab.location.href = data.redirectUrl
         else window.open(data.redirectUrl, '_blank')
+
+        // Poll for connection status every 3s for up to 5 minutes
+        let pollCount = 0
+        const maxPolls = 100 // 5 minutes at 3s intervals
+        oauthPollRef.current = setInterval(async () => {
+          pollCount++
+          if (pollCount > maxPolls || !mountedRef.current) {
+            if (oauthPollRef.current) {
+              clearInterval(oauthPollRef.current)
+              oauthPollRef.current = null
+            }
+            setOauthPolling(false)
+            return
+          }
+          const connected = await checkConnection()
+          if (connected && mountedRef.current) {
+            if (oauthPollRef.current) {
+              clearInterval(oauthPollRef.current)
+              oauthPollRef.current = null
+            }
+            setOauthPolling(false)
+          }
+        }, 3000)
       } else {
         oauthTab?.close()
         setError('No connection URL was returned')
+        setOauthPolling(false)
       }
     } catch (err) {
       oauthTab?.close()
       setError(err instanceof Error ? err.message : 'Failed to connect to Slack')
+      setOauthPolling(false)
     }
-  }, [])
+  }, [checkConnection])
 
-  // Handle start import
+  // ─── Start import ─────────────────────────────────────────────────────────
   const handleStartImport = useCallback(async () => {
     if (selectedChannelIds.size === 0) return
     setStarting(true)
     setError(null)
     try {
-      const res = await fetch('/api/v1/imports/slack', {
+      const { ok, data } = await fetchWithRetry('/api/v1/imports/slack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'start',
           selectedChannelIds: [...selectedChannelIds],
         }),
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to start import')
+      if (!ok) {
+        throw new Error(String(data.error ?? 'Failed to start import'))
       }
-      const data = await res.json() as { jobId: string }
+      const jobId = data.jobId as string
       // Fetch the job and switch to progress view
-      const jobRes = await fetch(`/api/v1/imports/slack?action=job&jobId=${data.jobId}`, {
-        credentials: 'same-origin',
-      })
+      const jobRes = await fetchWithRetry(
+        `/api/v1/imports/slack?action=job&jobId=${jobId}`,
+      )
       if (jobRes.ok) {
-        const job = await jobRes.json() as SlackImportJob
+        const job = jobRes.data as unknown as SlackImportJob
         setActiveJob(job)
         setView('progress')
       }
@@ -246,15 +321,14 @@ export function SlackImportPanel() {
     }
   }, [selectedChannelIds])
 
-  // Handle cancel
+  // ─── Cancel import ────────────────────────────────────────────────────────
   const handleCancel = useCallback(async () => {
     if (!activeJob) return
     setCancelling(true)
     try {
-      await fetch('/api/v1/imports/slack', {
+      await fetchWithRetry('/api/v1/imports/slack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
         body: JSON.stringify({ action: 'cancel', jobId: activeJob._id }),
       })
     } catch {
@@ -264,13 +338,14 @@ export function SlackImportPanel() {
     }
   }, [activeJob])
 
-  // Handle refresh channels
+  // ─── Refresh channels ─────────────────────────────────────────────────────
   const handleRefreshChannels = useCallback(() => {
     setChannels([])
-    void loadChannels()
+    setChannelsLoaded(false)
+    void loadChannels(true)
   }, [loadChannels])
 
-  // Toggle channel selection
+  // ─── Channel selection ────────────────────────────────────────────────────
   const toggleChannel = useCallback((channelId: string) => {
     setSelectedChannelIds((prev) => {
       const next = new Set(prev)
@@ -280,7 +355,6 @@ export function SlackImportPanel() {
     })
   }, [])
 
-  // Select all public channels
   const selectAllPublic = useCallback(() => {
     setSelectedChannelIds((prev) => {
       const next = new Set(prev)
@@ -314,9 +388,9 @@ export function SlackImportPanel() {
         title="Import from Slack"
         description="Connect your Slack workspace to import channel history into Overlay conversations. Messages, threads, and files are imported deterministically — no AI processing."
         action={
-          <Button size="sm" onClick={() => void handleConnect()}>
-            <Download size={13} />
-            Connect Slack
+          <Button size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
+            {oauthPolling ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {oauthPolling ? 'Waiting for connection…' : 'Connect Slack'}
           </Button>
         }
       />
@@ -333,7 +407,7 @@ export function SlackImportPanel() {
         onBackToPicker={() => {
           setView('picker')
           setActiveJob(null)
-          void checkConnectionAndJobs()
+          void checkConnection()
         }}
       />
     )
@@ -364,21 +438,21 @@ export function SlackImportPanel() {
           <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
             <CheckCircle2 size={12} />
             {jobs.filter((j) => j.status === 'completed').length} completed import(s).
-            <button
-              type="button"
-              className="text-[var(--foreground)] underline"
-              onClick={() => {
-                const active = jobs.find(
-                  (j) => j.status === 'queued' || j.status === 'listing_channels' || j.status === 'importing',
-                )
-                if (active) {
-                  setActiveJob(active)
-                  setView('progress')
-                }
-              }}
-            >
-              View active job
-            </button>
+            {jobs.some((j) => ACTIVE_JOB_STATUSES.has(j.status)) && (
+              <button
+                type="button"
+                className="text-[var(--foreground)] underline"
+                onClick={() => {
+                  const active = jobs.find((j) => ACTIVE_JOB_STATUSES.has(j.status))
+                  if (active) {
+                    setActiveJob(active)
+                    setView('progress')
+                  }
+                }}
+              >
+                View active job
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -515,7 +589,7 @@ function JobProgressView({
   onCancel(): void
   onBackToPicker(): void
 }) {
-  const isActive = job.status === 'queued' || job.status === 'listing_channels' || job.status === 'importing'
+  const isActive = ACTIVE_JOB_STATUSES.has(job.status)
   const isCompleted = job.status === 'completed'
   const isFailed = job.status === 'failed'
   const isCancelled = job.status === 'cancelled'
