@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -275,25 +275,11 @@ export async function POST(
       throw new Error('Job created but could not be fetched')
     }
 
-    // Start the backfill worker using after() so Vercel keeps the function
-    // alive (via waitUntil) until the worker finishes, even after the response
-    // is sent. Without this, the serverless function terminates immediately
-    // after returning the response, killing the background worker.
-    const worker = new SlackBackfillWorker()
-    after(async () => {
-      try {
-        await worker.processJob({
-          _id: jobRow._id,
-          userId: jobRow.userId,
-          workspaceId: jobRow.workspaceId,
-          connectedAccountId: jobRow.connectedAccountId,
-          selectedChannelIds: jobRow.selectedChannelIds,
-          createdAt: jobRow.createdAt,
-        })
-      } catch (err) {
-        logger.error(`[SlackImport] Background worker failed for job ${jobId}:`, err)
-      }
-    })
+    // The backfill worker is processed by a Convex cron job that runs every
+    // minute. The cron picks up queued jobs and calls the /process endpoint
+    // which runs the full backfill worker with maxDuration=300s.
+    // We don't use after() here because the Vercel function may not stay
+    // alive long enough for a full backfill. The cron provides reliability.
 
     logger.info(`[SlackImport] Started import job ${jobId} for workspace ${workspaceId}`)
 
