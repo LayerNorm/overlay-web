@@ -91,6 +91,9 @@ export type ConversationMessageRow = {
   deletedAt?: number
   authorPrincipalId?: string
   authorKind?: 'human' | 'agent' | 'model' | 'system'
+  importedAuthorName?: string
+  importedAuthorEmail?: string
+  importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   editedAt?: number
   editHistory?: Array<{
     content: string

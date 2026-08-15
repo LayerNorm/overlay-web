@@ -341,6 +341,9 @@ export function DirectMessageExperience({
         id: string
         authorKind: RoomMessageRecord['authorKind']
         authorPrincipalId?: string
+        importedAuthorName?: string
+        importedAuthorEmail?: string
+        importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
         content?: string
         parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
         createdAt: number
@@ -364,6 +367,9 @@ export function DirectMessageExperience({
             id: string
             authorKind: RoomMessageRecord['authorKind']
             authorPrincipalId?: string
+            importedAuthorName?: string
+            importedAuthorEmail?: string
+            importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
             content?: string
             parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
             createdAt: number
@@ -405,6 +411,9 @@ export function DirectMessageExperience({
           id: string
           authorKind: RoomMessageRecord['authorKind']
           authorPrincipalId?: string
+          importedAuthorName?: string
+          importedAuthorEmail?: string
+          importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
           content?: string
           parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
           createdAt: number
@@ -1197,7 +1206,8 @@ export function DirectMessageExperience({
     })
     const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
     const teaserAuthor = teaserMessage
-      ? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
+      ? teaserMessage.importedAuthorName?.trim()
+        ?? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
         ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
       : null
     return (

@@ -15,6 +15,10 @@ export type RoomMessageRecord = {
   turnId: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorPrincipalId?: string
+  /** Denormalized identity for messages imported from Slack (see schema). */
+  importedAuthorName?: string
+  importedAuthorEmail?: string
+  importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   content: string
   parts?: RoomMessagePart[]
   createdAt: number
@@ -125,7 +129,11 @@ export function toRoomMessageView({
   return {
     id: message.id,
     mine,
-    authorName,
+    // An imported message carries its own author identity; prefer it over the
+    // participant-resolved name (the Slack author is usually not a participant).
+    authorName: message.importedAuthorName?.trim() || authorName,
+    authorEmail: message.importedAuthorEmail,
+    authorStatus: message.importedAuthorStatus,
     authorKind: message.authorKind,
     authorColor,
     createdAt: message.createdAt,

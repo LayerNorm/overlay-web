@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { Button, EmptyState } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from './WorkspaceProvider'
 
 interface SlackChannel {
@@ -107,9 +108,11 @@ async function fetchWithRetry(
   return { ok: false, data: { error: 'Max retries exceeded' }, status: 0 }
 }
 
-export function SlackImportPanel() {
+export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   const { activeWorkspace } = useWorkspace()
+  const { user } = useAuth()
   const workspaceId = activeWorkspace?.id
+  const currentUserEmail = user?.email?.trim().toLowerCase() || null
 
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
   const [channels, setChannels] = useState<SlackChannel[]>([])
@@ -261,6 +264,11 @@ export function SlackImportPanel() {
         else if (item.kind === 'invitation' && item.status === 'pending') invitedEmails.add(email)
       }
 
+      // The signed-in user is, by definition, in the workspace. Their principal
+      // email can be stale/missing in the management list, which would otherwise
+      // mislabel their own Slack account as "New" — so add it explicitly.
+      if (currentUserEmail) memberEmails.add(currentUserEmail)
+
       const merged = slackUsers
         .filter((u) => !u.isBot && !u.isDeleted && u.email)
         .map((u) => {
@@ -283,7 +291,7 @@ export function SlackImportPanel() {
     } finally {
       if (mountedRef.current) setUsersLoading(false)
     }
-  }, [workspaceId, connectionState, usersLoaded, activeWorkspace?.id])
+  }, [workspaceId, connectionState, usersLoaded, activeWorkspace?.id, currentUserEmail])
 
   useEffect(() => {
     if (view === 'people' && connectionState === 'connected' && !usersLoaded && !usersLoading) {
@@ -514,54 +522,61 @@ export function SlackImportPanel() {
   // ─── Loading state ────────────────────────────────────────────────────────
   if (connectionState === 'loading') {
     return (
-      <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Loading…
-      </div>
+      <ImportFlow serviceLabel="Slack" step={null} onBack={onBack}>
+        <div className="flex min-h-56 items-center justify-center px-5 text-sm text-[var(--muted)]">
+          <Loader2 size={16} className="mr-2 animate-spin" />
+          Loading…
+        </div>
+      </ImportFlow>
     )
   }
 
   // ─── Not connected state ──────────────────────────────────────────────────
   if (connectionState === 'not_connected') {
     return (
-      <EmptyState
-        className="min-h-72 px-6 py-12"
-        icon={<Download size={30} strokeWidth={1.5} />}
-        title="Import from Slack"
-        description="Connect your Slack workspace to import channel history into Overlay conversations. Messages, threads, and files are imported deterministically — no AI processing."
-        action={
-          <Button size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
-            {oauthPolling ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-            {oauthPolling ? 'Waiting for connection…' : 'Connect Slack'}
-          </Button>
-        }
-      />
+      <ImportFlow serviceLabel="Slack" step={0} onBack={onBack}>
+        <EmptyState
+          className="min-h-56 px-6 py-10"
+          icon={<Download size={30} strokeWidth={1.5} />}
+          title="Connect Slack"
+          description="Connect your Slack workspace to import channel history into Overlay conversations. Messages, threads, and files are imported deterministically — no AI processing."
+          action={
+            <Button size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
+              {oauthPolling ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {oauthPolling ? 'Waiting for connection…' : 'Connect Slack'}
+            </Button>
+          }
+        />
+      </ImportFlow>
     )
   }
 
   // ─── Progress view ────────────────────────────────────────────────────────
   if (view === 'progress' && activeJob) {
     return (
-      <JobProgressView
-        job={activeJob}
-        cancelling={cancelling}
-        onCancel={() => void handleCancel()}
-        onBackToPicker={() => {
-          setView('picker')
-          setActiveJob(null)
-          void checkConnection()
-        }}
-      />
+      <ImportFlow serviceLabel="Slack" step={2} onBack={onBack}>
+        <JobProgressView
+          job={activeJob}
+          cancelling={cancelling}
+          onCancel={() => void handleCancel()}
+          onBackToPicker={() => {
+            setView('picker')
+            setActiveJob(null)
+            void checkConnection()
+          }}
+        />
+      </ImportFlow>
     )
   }
 
   // ─── People view ──────────────────────────────────────────────────────────
   if (view === 'people') {
     return (
+      <ImportFlow serviceLabel="Slack" step={0} onBack={onBack}>
       <div className="px-5 py-4">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">Import people from Slack</h3>
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Choose who to invite</h3>
             <p className="mt-0.5 text-xs text-[var(--muted)]">
               Invite Slack members to your Overlay workspace before importing channels.
             </p>
@@ -690,18 +705,20 @@ export function SlackImportPanel() {
           </>
         )}
       </div>
+      </ImportFlow>
     )
   }
 
   // ─── Channel picker view ──────────────────────────────────────────────────
   return (
+    <ImportFlow serviceLabel="Slack" step={1} onBack={onBack}>
     <div className="px-5 py-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">Import from Slack</h3>
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">Choose channels</h3>
           <p className="mt-0.5 text-xs text-[var(--muted)]">
-            Select channels to import. Each channel becomes an Overlay conversation.
+            Select channels to import. Each becomes an Overlay conversation, including DMs and group DMs.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -852,6 +869,77 @@ export function SlackImportPanel() {
           </div>
         </>
       )}
+    </div>
+    </ImportFlow>
+  )
+}
+
+// ─── Import flow chrome (shared, service-agnostic) ───────────────────────────
+
+/**
+ * Consistent frame around every step of an import flow: a back control to the
+ * service picker, the service label, and a three-step progress indicator. The
+ * stepper is hidden (step === null) for transient states like loading.
+ */
+function ImportFlow({
+  serviceLabel,
+  step,
+  onBack,
+  children,
+}: {
+  serviceLabel: string
+  step: 0 | 1 | 2 | null
+  onBack?: () => void
+  children: ReactNode
+}) {
+  const steps = ['People', 'Channels', 'Import']
+  return (
+    <div className="flex flex-col">
+      <div className="border-b border-[var(--border)] px-5 pb-3 pt-4">
+        <div className="flex items-center gap-2">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            >
+              <ArrowLeft size={13} />
+              All services
+            </button>
+          ) : null}
+          <span className="text-sm font-semibold text-[var(--foreground)]">Import from {serviceLabel}</span>
+        </div>
+        {step !== null ? (
+          <ol className="mt-3 flex items-center gap-1.5">
+            {steps.map((label, index) => {
+              const done = index < step
+              const active = index === step
+              return (
+                <li key={label} className="flex items-center gap-1.5">
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-colors ${
+                      done
+                        ? 'bg-[var(--foreground)] text-[var(--background)]'
+                        : active
+                          ? 'border border-[var(--foreground)] text-[var(--foreground)]'
+                          : 'border border-[var(--border)] text-[var(--muted-light)]'
+                    }`}
+                  >
+                    {done ? <CheckCircle2 size={12} /> : index + 1}
+                  </span>
+                  <span className={`text-[11px] ${active ? 'font-semibold text-[var(--foreground)]' : 'text-[var(--muted)]'}`}>
+                    {label}
+                  </span>
+                  {index < steps.length - 1 ? (
+                    <span className="mx-1 h-px w-5 bg-[var(--border)]" />
+                  ) : null}
+                </li>
+              )
+            })}
+          </ol>
+        ) : null}
+      </div>
+      {children}
     </div>
   )
 }

@@ -22,6 +22,8 @@ interface SlackChannel {
   is_private?: boolean
   num_members?: number
   created?: number
+  /** For `im` channels: the other participant's Slack user id. */
+  user?: string
 }
 
 interface SlackMessage {

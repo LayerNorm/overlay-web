@@ -1016,6 +1016,18 @@ export default defineSchema({
       v.literal('system'),
     )),
     authorPrincipalId: v.optional(v.string()),
+    // Denormalized author identity for messages imported from an external
+    // source (e.g. Slack). The original author is often not an Overlay
+    // principal — or not a participant of the imported channel — so their
+    // name, email, and workspace-membership status are stored on the message
+    // itself for display and avatar detail.
+    importedAuthorName: v.optional(v.string()),
+    importedAuthorEmail: v.optional(v.string()),
+    importedAuthorStatus: v.optional(v.union(
+      v.literal('member'),
+      v.literal('invited'),
+      v.literal('not_invited'),
+    )),
     turnId: v.string(),
     role: v.union(v.literal('user'), v.literal('assistant')),
     mode: v.union(v.literal('ask'), v.literal('act')),

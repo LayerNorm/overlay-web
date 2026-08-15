@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- room attachments mirror the chat transcript renderer */
 
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
   Bookmark,
   Bot,
@@ -50,6 +50,9 @@ export type RoomMessageView = {
   authorName: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorColor?: string
+  /** Present for messages imported from Slack: shown in the author detail card. */
+  authorEmail?: string
+  authorStatus?: 'member' | 'invited' | 'not_invited'
   createdAt: number
   eventSequence?: number
   editedAt?: number
@@ -109,6 +112,95 @@ function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'
 }
 
+const AUTHOR_STATUS_META = {
+  member: { label: 'In workspace', className: 'bg-green-500/10 text-green-600' },
+  invited: { label: 'Invited', className: 'bg-amber-500/10 text-amber-600' },
+  not_invited: { label: 'Not invited', className: 'bg-[var(--surface-subtle)] text-[var(--muted)]' },
+} as const
+
+type AuthorStatus = keyof typeof AUTHOR_STATUS_META
+
+/**
+ * Wraps an author avatar or name so clicking it reveals a small identity card
+ * (name, email, workspace status). Used for imported Slack messages whose
+ * author is not necessarily an Overlay participant. When there is no detail to
+ * show, the trigger renders inert so ordinary messages are unaffected.
+ */
+function AuthorIdentityPopover({
+  name,
+  email,
+  status,
+  triggerClassName,
+  children,
+}: {
+  name: string
+  email?: string
+  status?: AuthorStatus
+  triggerClassName?: string
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  // Ordinary messages carry no imported-author detail — render the trigger inert.
+  if (!status && !email) return <>{children}</>
+  const statusMeta = status ? AUTHOR_STATUS_META[status] : null
+
+  return (
+    <span ref={ref} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--foreground)] ${triggerClassName ?? ''}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        {children}
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          className="absolute left-0 top-[calc(100%+6px)] z-30 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 shadow-lg"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]">
+              {authorInitial(name)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-[var(--foreground)]">{name}</span>
+              <span className="block truncate text-[11px] text-[var(--muted)]">{email ?? 'No email on file'}</span>
+            </span>
+          </div>
+          {statusMeta ? (
+            <div className="mt-2.5 flex items-center justify-between border-t border-[var(--border)] pt-2.5">
+              <span className="text-[11px] text-[var(--muted)]">Workspace</span>
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}>
+                {statusMeta.label}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  )
+}
+
 /**
  * One message in a shared room.
  *
@@ -162,12 +254,19 @@ export function RoomMessageItem({
       <Bot size={16} strokeWidth={1.75} />
     </span>
   ) : (
-    <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
-      aria-hidden
+    <AuthorIdentityPopover
+      name={message.authorName}
+      email={message.authorEmail}
+      status={message.authorStatus}
+      triggerClassName="rounded-lg"
     >
-      {authorInitial(mine ? 'You' : message.authorName)}
-    </span>
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
+        aria-hidden
+      >
+        {authorInitial(mine ? 'You' : message.authorName)}
+      </span>
+    </AuthorIdentityPopover>
   )
 
   /** Human and agent messages share the same safe GFM renderer. */
@@ -377,9 +476,20 @@ export function RoomMessageItem({
       <div className="relative min-w-0 flex-1">
         {toolbar}
         <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="truncate text-[13px] font-bold text-[var(--foreground)]">
-            {message.authorName}
-          </span>
+          <AuthorIdentityPopover
+            name={message.authorName}
+            email={message.authorEmail}
+            status={message.authorStatus}
+          >
+            <span className="truncate text-[13px] font-bold text-[var(--foreground)] hover:underline">
+              {message.authorName}
+            </span>
+          </AuthorIdentityPopover>
+          {message.authorStatus && message.authorStatus !== 'member' ? (
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${AUTHOR_STATUS_META[message.authorStatus].className}`}>
+              {AUTHOR_STATUS_META[message.authorStatus].label}
+            </span>
+          ) : null}
           {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
           {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
           {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}

@@ -35,9 +35,12 @@ interface CoverageReport {
  * it's ordinary application code that paginates through Slack's API
  * and writes normalized messages to Convex.
  */
+type AuthorStatus = 'member' | 'invited' | 'not_invited'
+
 export class SlackBackfillWorker {
   private client: ComposioSlackClient
   private userCache = new SlackUserCache()
+  private authorStatusByEmail = new Map<string, AuthorStatus>()
   private serverSecret: string
 
   constructor() {
@@ -57,6 +60,7 @@ export class SlackBackfillWorker {
       // Phase 1: Fetch users and channel metadata for name resolution
       await this.updateStatus(jobId, 'listing_channels')
       await this.fetchUsers(job.connectedAccountId, job.userId)
+      await this.resolveAuthorStatuses(job.workspaceId)
 
       // Fetch all channels once (used for metadata lookup per channel)
       const allChannels = await this.client.listAllChannels(job.connectedAccountId, job.userId)
@@ -150,6 +154,47 @@ export class SlackBackfillWorker {
   }
 
   /**
+   * Resolve, once per job, whether each Slack author's email maps to an active
+   * workspace member, a pending invitation, or nobody. Used to tag every
+   * imported message so the UI can show the author's status.
+   */
+  private async resolveAuthorStatuses(workspaceId: string): Promise<void> {
+    const emails = this.userCache.allEmails()
+    if (emails.length === 0) return
+    try {
+      const rows = await convex.query<Array<{ email: string; status: AuthorStatus }>>(
+        'imports/slackImporter:resolveAuthorStatuses',
+        { workspaceId, emails, serverSecret: this.serverSecret },
+      )
+      for (const row of rows ?? []) {
+        this.authorStatusByEmail.set(row.email, row.status)
+      }
+    } catch (err) {
+      logger.warn('[SlackBackfill] Failed to resolve author statuses:', err)
+    }
+  }
+
+  /**
+   * Build the imported-author metadata for a normalized message so the message
+   * carries its real author's name, email, and workspace-membership status.
+   */
+  private importedAuthorFields(normalized: {
+    sourceUserName: string
+    sourceUserEmail: string | null
+  }): {
+    importedAuthorName: string
+    importedAuthorEmail?: string
+    importedAuthorStatus: AuthorStatus
+  } {
+    const email = normalized.sourceUserEmail
+    return {
+      importedAuthorName: normalized.sourceUserName,
+      ...(email ? { importedAuthorEmail: email } : {}),
+      importedAuthorStatus: (email && this.authorStatusByEmail.get(email)) || 'not_invited',
+    }
+  }
+
+  /**
    * Import a single channel: create conversation, fetch messages, fetch threads.
    */
   private async importChannel(args: {
@@ -188,19 +233,15 @@ export class SlackBackfillWorker {
     } else {
       const normalized = normalizeChannel(channel, workspaceId, this.userCache)
 
-      if (channelType === 'im' || channelType === 'mpim') {
-        // DM/MPIM import is not supported in the first pass: we need the other
-        // participants to be active workspace members first, which requires the
-        // user-import step to complete and invitees to accept. Skip for now.
-        logger.info(`[SlackBackfill] Skipping DM/MPIM ${channelId} (${normalized.title}) — other participants are not workspace members yet`)
-        return { messagesImported: 0, filesDownloaded: 0, threadsImported: 0, channelType }
-      }
-
-      // Create a proper workspace channel (conversationType='channel') with the
-      // importer as the initial moderator. This is Phase A of the Slack import
-      // rework: imported channels must appear in the Channels tab, not as
-      // personal/direct-message chats.
-      const visibility = channel.is_private || channel.is_group ? 'private' : 'public'
+      // Create a workspace conversation (conversationType='channel') with the
+      // importer as the initial moderator. DMs and group DMs are imported as
+      // private conversations — their messages carry per-author identity
+      // metadata, so the original authors render correctly even though they are
+      // not workspace participants.
+      const visibility =
+        channelType === 'im' || channelType === 'mpim' || channel.is_private || channel.is_group
+          ? 'private'
+          : 'public'
       conversationId = await convex.mutation<Id<'conversations'>>(
         'imports/slackImporter:createSlackChannel',
         {
@@ -260,6 +301,7 @@ export class SlackBackfillWorker {
             contentType: 'text',
             parts: [],
             skipMemoryExtraction: true,  // don't run memory extraction on imported messages
+            ...this.importedAuthorFields(normalized),
             serverSecret: this.serverSecret,
           },
         )
@@ -368,6 +410,7 @@ export class SlackBackfillWorker {
           contentType: 'text',
           parts: [],
           skipMemoryExtraction: true,
+          ...this.importedAuthorFields(normalized),
           serverSecret: this.serverSecret,
         },
       )

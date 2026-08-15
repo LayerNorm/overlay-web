@@ -173,6 +173,69 @@ export const getWorkspacePrincipalsByEmail = query({
 })
 
 /**
+ * Resolve the workspace-membership status of a set of emails (Slack authors).
+ * Returns a status per email so imported messages can display whether their
+ * author is an active member, has a pending invitation, or is not invited.
+ */
+export const resolveAuthorStatuses = query({
+  args: {
+    workspaceId: v.string(),
+    emails: v.array(v.string()),
+    serverSecret: v.string(),
+  },
+  returns: v.array(v.object({
+    email: v.string(),
+    status: v.union(v.literal('member'), v.literal('invited'), v.literal('not_invited')),
+  })),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) return []
+    const emails = [...new Set(args.emails.map((e) => e.toLowerCase().trim()))].filter(Boolean)
+    if (emails.length === 0) return []
+    const emailSet = new Set(emails)
+
+    // Active members: principals with a matching email and an active membership.
+    const principals = await ctx.db
+      .query('workspacePrincipals')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
+    const memberEmails = new Set<string>()
+    for (const p of principals) {
+      const email = p.email?.toLowerCase().trim()
+      if (!email || p.archivedAt || !emailSet.has(email)) continue
+      const membership = await ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId_principalId', (q) => (
+          q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)
+        ))
+        .unique()
+      if (membership?.status === 'active') memberEmails.add(email)
+    }
+
+    // Pending invitations count as "invited".
+    const invitedEmails = new Set<string>()
+    for (const email of emails) {
+      if (memberEmails.has(email)) continue
+      const invitation = await ctx.db
+        .query('workspaceInvitations')
+        .withIndex('by_workspaceId_email_status', (q) => (
+          q.eq('workspaceId', args.workspaceId).eq('email', email).eq('status', 'pending')
+        ))
+        .first()
+      if (invitation) invitedEmails.add(email)
+    }
+
+    return emails.map((email) => ({
+      email,
+      status: memberEmails.has(email)
+        ? ('member' as const)
+        : invitedEmails.has(email)
+          ? ('invited' as const)
+          : ('not_invited' as const),
+    }))
+  },
+})
+
+/**
  * Add existing workspace principals as members of an imported Slack channel.
  * Skips users who are not active members.
  */

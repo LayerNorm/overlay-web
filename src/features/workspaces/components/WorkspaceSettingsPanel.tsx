@@ -49,7 +49,7 @@ import {
   TeamMembersDialog,
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
-import { SlackImportPanel } from './SlackImportPanel'
+import { ImportPanel } from './ImportPanel'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -842,7 +842,7 @@ export function WorkspaceSettingsPanel({
         {activeTab === 'billing' ? (
           <WorkspaceBillingSection client={client} workspace={activeWorkspace} />
         ) : activeTab === 'import' ? (
-          <SlackImportPanel />
+          <ImportPanel />
         ) : activeTab === 'sharing' ? (
           <WorkspaceSharingPolicySection
             state={policyState}

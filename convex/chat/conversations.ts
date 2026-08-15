@@ -691,6 +691,13 @@ export const addMessage = mutation({
     replySnippet: v.optional(v.string()),
     routedModelId: v.optional(v.string()),
     skipMemoryExtraction: v.optional(v.boolean()),
+    importedAuthorName: v.optional(v.string()),
+    importedAuthorEmail: v.optional(v.string()),
+    importedAuthorStatus: v.optional(v.union(
+      v.literal('member'),
+      v.literal('invited'),
+      v.literal('not_invited'),
+    )),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess({
@@ -730,6 +737,9 @@ export const addMessage = mutation({
       replyToTurnId: args.replyToTurnId,
       replySnippet: args.replySnippet,
       routedModelId: args.routedModelId,
+      ...(args.importedAuthorName ? { importedAuthorName: args.importedAuthorName } : {}),
+      ...(args.importedAuthorEmail ? { importedAuthorEmail: args.importedAuthorEmail } : {}),
+      ...(args.importedAuthorStatus ? { importedAuthorStatus: args.importedAuthorStatus } : {}),
       status: 'completed' as const,
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
