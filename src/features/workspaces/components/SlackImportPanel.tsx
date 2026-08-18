@@ -879,7 +879,6 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
                   <Icon size={14} className="shrink-0 text-[var(--muted)]" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-[var(--foreground)]">
-                      {ch.type === 'public_channel' ? '#' : ''}
                       {displayName}
                     </span>
                     <span className="text-[10px] text-[var(--muted-light)]">
