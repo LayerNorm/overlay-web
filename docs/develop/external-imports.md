@@ -161,13 +161,15 @@ Source-to-Overlay ID mappings for dedup and resume. Indexed by `(workspaceId, so
 
 ## UI
 
-The `SlackImportPanel` component in `src/features/workspaces/components/SlackImportPanel.tsx` renders inside the workspace settings "Import" tab. It has 5 states:
+The `SlackImportPanel` component in `src/features/workspaces/components/SlackImportPanel.tsx` renders inside the workspace settings "Import" tab. It has 5 states and a matching 5-step indicator:
 
-1. **Not connected** — "Connect Slack" button triggers Composio OAuth
-2. **People** — review/invite Slack members before importing
+1. **Not connected / Connect** — "Connect Slack" button triggers Composio OAuth; this is the active Connect step until the service is connected
+2. **People** — review/invite Slack members before importing; once Slack is connected, the Connect step is marked complete
 3. **Channel picker** — checkboxes for each accessible channel, "Select all public" convenience, start import button
 4. **Progress** — live polling of job status, progress bar, cancel button
 5. **Done** — terminal summary (completed/failed/cancelled) with coverage and next actions. The import wizard lands on Done instead of returning to People.
+
+The connection check runs on initial mount and while OAuth is being completed. It must not reset the current view when the user advances from People to the channel picker; otherwise the picker flashes and the wizard returns to People.
 
 ## Future platforms
 

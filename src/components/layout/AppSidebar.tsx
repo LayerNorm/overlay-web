@@ -1009,23 +1009,6 @@ export default function AppSidebar({
   )
 
   const railItems: PrimaryRailItem[] = []
-  if (settingsPathActive && !publicShowcase) {
-    // Settings has no entry in the primary rail, so there is no obvious way back
-    // to the app from it. While it is open, surface a temporary item that closes
-    // settings and returns to Chats.
-    const chatDestination = navItemDestination('/app/chat')
-    railItems.push({
-      id: 'settings-close',
-      label: 'Close settings',
-      icon: X,
-      active: true,
-      title: 'Close settings',
-      onSelect: () => {
-        setPendingNav({ href: '/app/chat', fromPath: pathname })
-        router.push(chatDestination)
-      },
-    })
-  }
   if (showAdminNavigation) {
     railItems.push({
       id: 'admin',
@@ -1066,6 +1049,23 @@ export default function AppSidebar({
       onSelect: () => selectNavItem(item),
     })
   })
+
+  if (settingsPathActive && !publicShowcase) {
+    // Settings has no entry in the primary rail, so surface its return action
+    // after the regular navigation items while it is open.
+    const chatDestination = navItemDestination('/app/chat')
+    railItems.push({
+      id: 'settings-close',
+      label: 'Settings',
+      icon: X,
+      active: true,
+      title: 'Settings',
+      onSelect: () => {
+        setPendingNav({ href: '/app/chat', fromPath: pathname })
+        router.push(chatDestination)
+      },
+    })
+  }
 
   const showcaseRailFooterItems: PrimaryRailItem[] = showcasePrimaryLinks.map((link) => ({
     id: link.id,

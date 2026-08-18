@@ -41,6 +41,8 @@ export const overlayAppShell = defineOverlayAppConfig({
 
 Registries merge with defaults by `id`. If you provide an item with the same `id`, Overlay replaces that item’s metadata. Unspecified default items remain available.
 
+While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Chats; it should not be inserted at the top of the primary navigation.
+
 ## Component Keys
 
 Bootstrap returns serializable metadata only. React renderers are local to each surface and are referenced by stable `componentKey` strings. For example, a settings panel can declare `componentKey: 'acme.settings.security'`; the web app maps that key to a local React component, while mobile can map the same key to a React Native renderer or ignore it.

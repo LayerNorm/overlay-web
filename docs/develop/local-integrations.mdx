@@ -75,7 +75,7 @@ Workspace Settings → Import tab
 | Server adapter | `src/server/imports/slack/backfillWorker.ts` | Deterministic import loop |
 | BFF route | `src/server/app-api/v1/imports/slack/route.ts` | GET (channels/jobs), POST (start/cancel) |
 | BFF route | `src/app/api/v1/imports/slack/route.ts` | Next.js route handler |
-| UI | `src/features/workspaces/components/SlackImportPanel.tsx` | 3-state panel (connect → picker → progress) |
+| UI | `src/features/workspaces/components/SlackImportPanel.tsx` | 5-step panel (connect → people → channels → progress → done) |
 
 ### Direct tool execution vs LLM sessions
 

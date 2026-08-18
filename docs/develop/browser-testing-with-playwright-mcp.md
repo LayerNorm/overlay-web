@@ -239,6 +239,8 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
 
 ## Gotchas
 
+- **Use staging as the canonical QA target.** Browser testing for this repo should run against `https://staging.getoverlay.io`, after the `staging` Vercel deployment is ready and the matching Convex dev deployment has been pushed. Do not treat a direct Vercel deployment URL as the normal test environment; use one only when diagnosing a staging cache or deployment issue.
+- **Backgrounded tabs can delay rendering.** When Playwright MCP is driving a Chrome tab that is behind another tab, the browser may throttle or defer the app's client rendering until that tab becomes visible. The app can appear to remain on the loading shell for roughly 30 seconds, then render immediately when the tab is brought to the foreground. Do not report that wait as normal app latency without first making the tested staging tab visible; ask the user to focus it if needed, then continue the QA run in the same browser connection.
 - **Snapshot refs are ephemeral.** Every `browser_navigate` or `browser_click` invalidates
   previous refs. Call `browser_snapshot` again before clicking.
 - **Console errors persist across navigations.** Use `browser_console_messages` with

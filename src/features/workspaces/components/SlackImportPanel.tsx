@@ -164,8 +164,6 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
       if (active) {
         setActiveJob(active)
         setView('progress')
-      } else if (view !== 'done') {
-        setView('people')
       }
       setConnectionState('connected')
       return true
@@ -179,7 +177,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
     // Other errors (429, 500, etc.) — don't change state, just return false
     setConnectionState('not_connected')
     return false
-  }, [workspaceId, view])
+  }, [workspaceId])
 
   // Initial mount check
   useEffect(() => {
@@ -568,7 +566,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   // ─── Progress view ────────────────────────────────────────────────────────
   if (view === 'progress' && activeJob) {
     return (
-      <ImportFlow serviceLabel="Slack" step={2} onBack={onBack}>
+      <ImportFlow serviceLabel="Slack" step={3} onBack={onBack}>
         <JobProgressView
           job={activeJob}
           cancelling={cancelling}
@@ -586,7 +584,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   // ─── Done view ────────────────────────────────────────────────────────────
   if (view === 'done' && activeJob) {
     return (
-      <ImportFlow serviceLabel="Slack" step={3} onBack={onBack}>
+      <ImportFlow serviceLabel="Slack" step={4} onBack={onBack}>
         <JobDoneView
           job={activeJob}
           onBackToPicker={() => {
@@ -603,7 +601,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   // ─── People view ──────────────────────────────────────────────────────────
   if (view === 'people') {
     return (
-      <ImportFlow serviceLabel="Slack" step={0} onBack={onBack}>
+      <ImportFlow serviceLabel="Slack" step={1} onBack={onBack}>
       <div className="px-5 py-4">
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -742,7 +740,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
 
   // ─── Channel picker view ──────────────────────────────────────────────────
   return (
-    <ImportFlow serviceLabel="Slack" step={1} onBack={onBack}>
+    <ImportFlow serviceLabel="Slack" step={2} onBack={onBack}>
     <div className="px-5 py-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
@@ -909,7 +907,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
 
 /**
  * Consistent frame around every step of an import flow: a back control to the
- * service picker, the service label, and a three-step progress indicator. The
+ * service picker, the service label, and a five-step progress indicator. The
  * stepper is hidden (step === null) for transient states like loading.
  */
 function ImportFlow({
@@ -919,11 +917,11 @@ function ImportFlow({
   children,
 }: {
   serviceLabel: string
-  step: 0 | 1 | 2 | 3 | null
+  step: 0 | 1 | 2 | 3 | 4 | null
   onBack?: () => void
   children: ReactNode
 }) {
-  const steps = ['People', 'Channels', 'Import', 'Done']
+  const steps = ['Connect', 'People', 'Channels', 'Import', 'Done']
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] px-5 pb-3 pt-4">
