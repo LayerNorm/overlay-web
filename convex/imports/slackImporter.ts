@@ -375,6 +375,7 @@ export const getSlackImportActor = query({
     v.object({
       principalId: v.string(),
       email: v.optional(v.string()),
+      displayName: v.optional(v.string()),
     }),
     v.null(),
   ),
@@ -395,6 +396,7 @@ export const getSlackImportActor = query({
     return {
       principalId: principal.principalId,
       email: principal.email?.toLowerCase().trim(),
+      displayName: principal.displayName,
     }
   },
 })

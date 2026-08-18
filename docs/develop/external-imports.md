@@ -157,7 +157,7 @@ Source-to-Overlay ID mappings for dedup and resume. Indexed by `(workspaceId, so
 ## Imported message authorship
 
 - Imported messages carry `importedAuthorName`, `importedAuthorEmail`, and `importedAuthorStatus` so authors who are not Overlay principals still render.
-- The authenticated importer's own messages are recognized by matching email (or principal) and are stored with `authorKind: 'human'` and `authorPrincipalId: <importer>`, causing them to render as "You".
+- The authenticated importer's own messages are recognized by the Slack user ID when it can be resolved, with email and a unique display-name fallback. For 1:1 DMs, the importer can also be inferred as the author other than the DM's known counterpart. Those messages are stored with `authorKind: 'human'` and `authorPrincipalId: <importer>`, causing them to render as "You".
 
 ## UI
 

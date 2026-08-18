@@ -43,6 +43,8 @@ export class SlackBackfillWorker {
   private authorStatusByEmail = new Map<string, AuthorStatus>()
   private actorPrincipalId: string | null = null
   private actorEmail: string | null = null
+  private actorDisplayName: string | null = null
+  private actorSlackUserId: string | null = null
   private serverSecret: string
 
   constructor() {
@@ -157,18 +159,27 @@ export class SlackBackfillWorker {
   }
 
   /**
-   * Resolve, once per job, the authenticated importer's principal and email so
-   * their own imported messages can be attributed to them (first person).
+   * Resolve, once per job, the authenticated importer's principal and Slack
+   * identity so their own imported messages can be attributed to them (first person).
    */
   private async resolveActor(workspaceId: string, actorUserId: string): Promise<void> {
     try {
-      const actor = await convex.query<{ principalId: string; email?: string } | null>(
+      const actor = await convex.query<{
+        principalId: string
+        email?: string
+        displayName?: string
+      } | null>(
         'imports/slackImporter:getSlackImportActor',
         { workspaceId, actorUserId, serverSecret: this.serverSecret },
       )
       if (actor) {
         this.actorPrincipalId = actor.principalId
         this.actorEmail = actor.email?.toLowerCase().trim() || null
+        this.actorDisplayName = actor.displayName?.trim() || null
+        this.actorSlackUserId = this.userCache.findUserIdByIdentity({
+          email: this.actorEmail,
+          displayName: this.actorDisplayName,
+        })
       }
     } catch (err) {
       logger.warn('[SlackBackfill] Failed to resolve actor:', err)
@@ -206,6 +217,7 @@ export class SlackBackfillWorker {
    * carries its real author's name, email, and workspace-membership status.
    */
   private importedAuthorFields(normalized: {
+    sourceUserId: string
     sourceUserName: string
     sourceUserEmail: string | null
   }): {
@@ -216,7 +228,17 @@ export class SlackBackfillWorker {
     authorPrincipalId?: string
   } {
     const email = normalized.sourceUserEmail
-    const isOwnMessage = Boolean(email && this.actorEmail && email === this.actorEmail)
+    const isOwnMessageBySlackId = Boolean(
+      normalized.sourceUserId && this.actorSlackUserId
+      && normalized.sourceUserId === this.actorSlackUserId,
+    )
+    const isOwnMessageByEmail = Boolean(email && this.actorEmail && email === this.actorEmail)
+    const isOwnMessageByName = Boolean(
+      !this.actorSlackUserId
+      && this.actorDisplayName
+      && normalizeIdentityText(normalized.sourceUserName) === normalizeIdentityText(this.actorDisplayName),
+    )
+    const isOwnMessage = isOwnMessageBySlackId || isOwnMessageByEmail || isOwnMessageByName
     const status = isOwnMessage
       ? 'member'
       : (email && this.authorStatusByEmail.get(email)) || 'not_invited'
@@ -228,6 +250,31 @@ export class SlackBackfillWorker {
         ? { authorKind: 'human' as const, authorPrincipalId: this.actorPrincipalId }
         : {}),
     }
+  }
+
+  /**
+   * Re-apply imported-author metadata to a message found during a resumed
+   * import. This repairs messages written by older importer revisions without
+   * inserting duplicates.
+   */
+  private async repairImportedMessage(
+    conversationId: string,
+    userId: string,
+    normalized: ReturnType<typeof normalizeMessage>,
+  ): Promise<void> {
+    await convex.mutation('chat/conversations:addMessage', {
+      conversationId: conversationId as Id<'conversations'>,
+      userId,
+      turnId: normalized.turnId,
+      role: normalized.role,
+      mode: 'ask',
+      content: normalized.content,
+      contentType: 'text',
+      parts: [],
+      skipMemoryExtraction: true,
+      ...this.importedAuthorFields(normalized),
+      serverSecret: this.serverSecret,
+    })
   }
 
   /**
@@ -298,13 +345,23 @@ export class SlackBackfillWorker {
     let threadsImported = 0
 
     await this.client.fetchAllHistory(connectedAccountId, userId, channelId, async (pageMessages) => {
+      // Slack IM metadata identifies the other participant. If the connected
+      // account's profile email differs from the Overlay owner email, infer the
+      // authenticated Slack user from the other author in the DM history.
+      if (channelType === 'im' && !this.actorSlackUserId && channel.user) {
+        const candidate = pageMessages
+          .map((message) => message.user)
+          .find((sourceUserId) => sourceUserId && sourceUserId !== channel.user && !this.userCache.isBot(sourceUserId))
+        if (candidate) this.actorSlackUserId = candidate
+      }
+
       for (const msg of pageMessages) {
         if (shouldSkipMessage(msg)) continue
 
         const normalized = normalizeMessage(msg, this.userCache)
 
         // Check for existing mapping (dedup)
-        const existingMapping = await convex.query<{ messageId?: string } | null>(
+        const existingMapping = await convex.query<{ conversationId: string; messageId?: string } | null>(
           'imports/slackMappings:findExisting',
           {
             workspaceId,
@@ -315,7 +372,9 @@ export class SlackBackfillWorker {
         )
 
         if (existingMapping) {
-          // Already imported, skip
+          // Resume imports also repair author metadata written by an older
+          // importer revision, while addMessage keeps the row idempotent.
+          await this.repairImportedMessage(existingMapping.conversationId, userId, normalized)
           continue
         }
 
@@ -373,6 +432,7 @@ export class SlackBackfillWorker {
               workspaceId,
               userId,
               jobId,
+              otherSlackUserId: channelType === 'im' ? channel.user : undefined,
             })
             threadsImported += replies
           } catch (err) {
@@ -404,10 +464,17 @@ export class SlackBackfillWorker {
     workspaceId: string
     userId: string
     jobId: Id<'slackImportJobs'>
+    otherSlackUserId?: string
   }): Promise<number> {
-    const { connectedAccountId, channelId, threadTs, conversationId, workspaceId, userId, jobId } = args
+    const { connectedAccountId, channelId, threadTs, conversationId, workspaceId, userId, jobId, otherSlackUserId } = args
 
     const replies = await this.client.fetchAllThread(connectedAccountId, userId, channelId, threadTs)
+    if (!this.actorSlackUserId && otherSlackUserId) {
+      const candidate = replies
+        .map((message) => message.user)
+        .find((sourceUserId) => sourceUserId && sourceUserId !== otherSlackUserId && !this.userCache.isBot(sourceUserId))
+      if (candidate) this.actorSlackUserId = candidate
+    }
 
     let imported = 0
     // Skip the first message — it's the parent, already imported
@@ -418,7 +485,7 @@ export class SlackBackfillWorker {
       const normalized = normalizeMessage(reply, this.userCache)
 
       // Dedup check
-      const existing = await convex.query<{ messageId?: string } | null>(
+      const existing = await convex.query<{ conversationId: string; messageId?: string } | null>(
         'imports/slackMappings:findExisting',
         {
           workspaceId,
@@ -427,7 +494,10 @@ export class SlackBackfillWorker {
           serverSecret: this.serverSecret,
         },
       )
-      if (existing) continue
+      if (existing) {
+        await this.repairImportedMessage(existing.conversationId, userId, normalized)
+        continue
+      }
 
       const messageId = await convex.mutation<Id<'conversationMessages'> | null>(
         'chat/conversations:addMessage',
@@ -487,6 +557,10 @@ export class SlackBackfillWorker {
       serverSecret: this.serverSecret,
     })
   }
+}
+
+function normalizeIdentityText(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/\s+/g, ' ') || ''
 }
 
 function delay(ms: number): Promise<void> {

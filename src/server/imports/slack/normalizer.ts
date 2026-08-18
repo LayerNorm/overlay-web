@@ -51,6 +51,10 @@ export interface NormalizedMessage {
   content: string  // = formatted text with author prefix and file links
 }
 
+function normalizeIdentityText(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/\s+/g, ' ') || ''
+}
+
 /**
  * User cache for resolving Slack user IDs to display names.
  */
@@ -72,6 +76,32 @@ export class SlackUserCache {
   resolveEmail(userId: string): string | null {
     const email = this.users.get(userId)?.profile?.email?.trim().toLowerCase()
     return email || null
+  }
+
+  /**
+   * Resolve the Slack user ID for the authenticated importer. Slack profile
+   * emails are not guaranteed to match the Overlay account email, so use a
+   * unique normalized display-name match as a fallback.
+   */
+  findUserIdByIdentity({
+    email,
+    displayName,
+  }: {
+    email?: string | null
+    displayName?: string | null
+  }): string | null {
+    const users = [...this.users.values()].filter((user) => !user.is_bot && !user.deleted)
+    const normalizedEmail = email?.trim().toLowerCase()
+    if (normalizedEmail) {
+      const emailMatches = users.filter((user) => user.profile?.email?.trim().toLowerCase() === normalizedEmail)
+      if (emailMatches.length === 1) return emailMatches[0]!.id
+    }
+
+    const normalizedName = normalizeIdentityText(displayName)
+    if (!normalizedName) return null
+    const nameMatches = users.filter((user) => [user.real_name, user.profile?.display_name, user.name]
+      .some((candidate) => normalizeIdentityText(candidate) === normalizedName))
+    return nameMatches.length === 1 ? nameMatches[0]!.id : null
   }
 
   isBot(userId: string): boolean {
