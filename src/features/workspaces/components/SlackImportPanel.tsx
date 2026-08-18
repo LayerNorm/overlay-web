@@ -329,7 +329,13 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
       if (!mountedRef.current) return
       if (ok) {
         const job = data as unknown as SlackImportJob
-        setActiveJob(job)
+        setActiveJob((previous) => ({
+          ...job,
+          totalChannels: job.totalChannels ?? previous?.totalChannels,
+          selectedChannelIds: job.selectedChannelIds.length > 0
+            ? job.selectedChannelIds
+            : (previous?.selectedChannelIds ?? []),
+        }))
         if (TERMINAL_JOB_STATUSES.has(job.status)) {
           if (pollRef.current) {
             clearInterval(pollRef.current)
