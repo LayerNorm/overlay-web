@@ -853,6 +853,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
           <div className="max-h-80 space-y-1 overflow-y-auto">
             {channels.map((ch) => {
               const Icon = CHANNEL_TYPE_ICON[ch.type] ?? Hash
+              const displayName = ch.type === 'public_channel' ? ch.name.replace(/^#+/, '') : ch.name
               const isSelected = selectedChannelIds.has(ch.id)
               return (
                 <label
@@ -873,7 +874,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-[var(--foreground)]">
                       {ch.type === 'public_channel' ? '#' : ''}
-                      {ch.name}
+                      {displayName}
                     </span>
                     <span className="text-[10px] text-[var(--muted-light)]">
                       {CHANNEL_TYPE_LABEL[ch.type]}
@@ -921,7 +922,7 @@ function ImportFlow({
   onBack?: () => void
   children: ReactNode
 }) {
-  const steps = ['Connect', 'People', 'Channels', 'Import', 'Done']
+  const steps = ['Connect', 'People', 'Chats', 'Import', 'Done']
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] px-5 pb-3 pt-4">
@@ -991,8 +992,11 @@ function JobProgressView({
   const isFailed = job.status === 'failed'
   const isCancelled = job.status === 'cancelled'
 
-  const progressPct = job.totalChannels && job.totalChannels > 0
-    ? Math.round(((job.processedChannels ?? 0) / job.totalChannels) * 100)
+  const totalChats = job.totalChannels ?? job.selectedChannelIds.length
+  const processedChats = job.processedChannels ?? 0
+  const isPreparing = job.status === 'queued' || job.status === 'listing_channels' || totalChats === 0
+  const progressPct = totalChats > 0
+    ? Math.round((processedChats / totalChats) * 100)
     : 0
 
   return (
@@ -1011,7 +1015,7 @@ function JobProgressView({
             {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Importing…'}
           </h3>
           <p className="mt-0.5 text-xs text-[var(--muted)]">
-            {job.totalChannels ?? 0} channel{(job.totalChannels ?? 0) === 1 ? '' : 's'} selected
+            {totalChats} chat{totalChats === 1 ? '' : 's'} selected
           </p>
         </div>
         {isActive ? (
@@ -1035,7 +1039,9 @@ function JobProgressView({
         <div className="mb-4">
           <div className="flex items-center justify-between text-xs text-[var(--muted)]">
             <span>
-              {job.status === 'listing_channels' ? 'Preparing…' : `Processing channel ${job.processedChannels ?? 0} of ${job.totalChannels ?? 0}`}
+              {isPreparing
+                ? 'Preparing…'
+                : `Processing chat ${Math.min(processedChats + 1, totalChats)} of ${totalChats}`}
             </span>
             <span>{progressPct}%</span>
           </div>
@@ -1079,7 +1085,11 @@ function JobProgressView({
       {isActive ? (
         <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
           <Loader2 size={12} className="animate-spin" />
-          {job.status === 'listing_channels' ? 'Fetching workspace users and channels…' : 'Importing messages…'}
+          {job.status === 'listing_channels'
+            ? 'Fetching workspace users and channels…'
+            : isPreparing
+              ? 'Preparing import…'
+              : 'Importing messages…'}
         </div>
       ) : null}
 
