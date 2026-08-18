@@ -35,7 +35,7 @@ export function FindBar({
   containerRef,
   placeholder = 'Find in page...',
   theme
-}: FindBarProps): React.ReactElement | null {
+}: FindBarProps): React.ReactElement<any> | null {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [totalMatches, setTotalMatches] = useState(0)

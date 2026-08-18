@@ -32,7 +32,7 @@ export function ChatViewHeader({
   isAgentMode = false,
   containerRef,
   leftSlot
-}: ChatViewHeaderProps): React.ReactElement {
+}: ChatViewHeaderProps): React.ReactElement<any> {
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -99,12 +99,12 @@ export function ChatViewHeader({
         showDropdown={showDropdown}
         setShowDropdown={setShowDropdown}
         setSelectedModels={setSelectedModels}
-        dropdownRef={dropdownRef as React.RefObject<HTMLDivElement>}
+        dropdownRef={dropdownRef as React.RefObject<HTMLDivElement | null>}
         theme={theme}
         isAgentMode={isAgentMode}
         allowMultiSelect={allowMultiSelect}
         containerRef={containerRef}
       />
     </div>
-  )
+  );
 }

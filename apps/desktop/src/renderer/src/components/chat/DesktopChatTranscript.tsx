@@ -85,7 +85,7 @@ export function DesktopChatTranscript({
   actionsLocked = false,
   presentation,
   onContinue
-}: DesktopChatTranscriptProps): React.ReactElement {
+}: DesktopChatTranscriptProps): React.ReactElement<any> {
   const transcriptView = useMemo(
     () => desktopChatTranscriptAdapter({ messages, streamingAssistantMessageId }),
     [messages, streamingAssistantMessageId]

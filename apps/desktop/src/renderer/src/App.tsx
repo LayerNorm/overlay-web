@@ -35,7 +35,7 @@ interface DownloadProgress {
   totalFormatted: string
 }
 
-function MainApp(): ReactElement {
+function MainApp(): ReactElement<any> {
   const [showSettings, setShowSettings] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null)
   const [showAuthOnly, setShowAuthOnly] = useState(false)
@@ -382,7 +382,7 @@ function MainApp(): ReactElement {
   )
 }
 
-export default function App(): ReactElement {
+export default function App(): ReactElement<any> {
   useWindowZoom()
 
   // Sync auth with the main process as early as possible and signal readiness.

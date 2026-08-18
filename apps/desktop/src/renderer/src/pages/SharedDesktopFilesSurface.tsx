@@ -131,7 +131,7 @@ export function SharedDesktopFilesSurface({
   onOpenOutput,
   onOpenFile,
   onOpenLocalDocument,
-}: SharedDesktopFilesSurfaceProps): React.ReactElement {
+}: SharedDesktopFilesSurfaceProps): React.ReactElement<any> {
   const [authority, setAuthority] = useState<DesktopKnowledgeAuthority>(getDesktopKnowledgeAuthority)
   const [route, setRoute] = useState<SharedKnowledgeRouteState>({
     file: null,

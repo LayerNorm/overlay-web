@@ -18,7 +18,7 @@ export function SystemEventsStep({
   theme,
   onNext,
   isTransitioning
-}: SystemEventsStepProps): React.ReactElement {
+}: SystemEventsStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
   const buttonStyle = getButtonStyle(theme)
   const [permissionRequested, setPermissionRequested] = useState(false)

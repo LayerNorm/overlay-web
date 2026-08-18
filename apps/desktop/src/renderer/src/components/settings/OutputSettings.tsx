@@ -15,7 +15,7 @@ export function OutputSettings({
   settings,
   onUpdateSetting,
   theme
-}: OutputSettingsProps): ReactElement {
+}: OutputSettingsProps): ReactElement<any> {
   const [isPhraseDialogOpen, setIsPhraseDialogOpen] = useState(false)
   const [isDictionaryDialogOpen, setIsDictionaryDialogOpen] = useState(false)
 
@@ -180,7 +180,7 @@ function DictionaryDialog({
   onSave,
   currentWords,
   theme
-}: DictionaryDialogProps): ReactElement | null {
+}: DictionaryDialogProps): ReactElement<any> | null {
   const [words, setWords] = useState<string[]>(currentWords)
 
   useEffect(() => {
@@ -291,7 +291,7 @@ interface ModalShellProps {
   onSave: () => void
 }
 
-function ModalShell({ title, children, theme, onClose, onSave }: ModalShellProps): ReactElement {
+function ModalShell({ title, children, theme, onClose, onSave }: ModalShellProps): ReactElement<any> {
   return (
     <div
       style={{

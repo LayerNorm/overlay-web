@@ -20,7 +20,7 @@ export function TranscriptionSettings({
   settings,
   onUpdateSetting,
   theme
-}: TranscriptionSettingsProps): ReactElement {
+}: TranscriptionSettingsProps): ReactElement<any> {
   const [showModelSelector, setShowModelSelector] = useState(false)
   const [currentModelName, setCurrentModelName] = useState('Base')
   const [editingModeId, setEditingModeId] = useState<string | null>(null)
@@ -345,7 +345,7 @@ export function TranscriptionSettings({
                     >
                       {editingModeId === mode.id ? (
                         // Edit mode
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        (<div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <input
                             type="text"
                             value={editingModeName}
@@ -376,10 +376,10 @@ export function TranscriptionSettings({
                               <Check size={16} />
                             </button>
                           </div>
-                        </div>
+                        </div>)
                       ) : (
                         // View mode
-                        <div>
+                        (<div>
                           <div
                             style={{
                               display: 'flex',
@@ -457,7 +457,7 @@ export function TranscriptionSettings({
                               )}
                             </div>
                           </div>
-                        </div>
+                        </div>)
                       )}
                     </div>
                   ))}
@@ -628,5 +628,5 @@ export function TranscriptionSettings({
         theme={theme}
       />
     </>
-  )
+  );
 }

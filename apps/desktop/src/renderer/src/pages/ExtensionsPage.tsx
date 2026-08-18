@@ -54,7 +54,7 @@ export function ExtensionsNav({
   theme,
   activeView,
   onSelectView
-}: ExtensionsNavProps): React.ReactElement {
+}: ExtensionsNavProps): React.ReactElement<any> {
   const items = [
     { id: 'connectors' as const, label: 'Connectors', icon: Plug },
     { id: 'skills' as const, label: 'Skills', icon: Sparkles },
@@ -97,7 +97,7 @@ function Header({
   onAdd?: () => void
   addLabel?: string
   leftSlot?: ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const showSearch = search !== undefined && onSearchChange !== undefined
 
   return (
@@ -191,7 +191,7 @@ function Modal({
   children: ReactNode
   footer: ReactNode
   onClose: () => void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div
       onMouseDown={(event) => {
@@ -278,7 +278,7 @@ function Field({
   theme: Theme
   label: string
   children: ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <label style={{ display: 'block', marginBottom: 14 }}>
       <span
@@ -299,7 +299,7 @@ function Field({
   )
 }
 
-function InlineError({ children }: { children: ReactNode }): React.ReactElement {
+function InlineError({ children }: { children: ReactNode }): React.ReactElement<any> {
   return (
     <div
       style={{
@@ -356,7 +356,7 @@ function SkillDialog({
   onClose: () => void
   onSaved: (skill: Skill) => void
   onDeleted: (id: string) => void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [name, setName] = useState(skill?.name ?? '')
   const [description, setDescription] = useState(skill?.description ?? '')
   const [instructions, setInstructions] = useState(skill?.instructions ?? '')
@@ -514,7 +514,7 @@ function SkillsPanel({
 }: {
   theme: Theme
   leftSlot?: ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -695,7 +695,7 @@ function McpDialog({
   onClose: () => void
   onSaved: (server: McpServer) => void
   onDeleted: (id: string) => void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [name, setName] = useState(server?.name ?? '')
   const [description, setDescription] = useState(server?.description ?? '')
   const [transport, setTransport] = useState<'sse' | 'streamable-http'>(
@@ -955,7 +955,7 @@ function McpsPanel({
 }: {
   theme: Theme
   leftSlot?: ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [servers, setServers] = useState<McpServer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -1122,7 +1122,7 @@ function Card({
   theme: Theme
   children: ReactNode
   onClick: () => void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <button
       type="button"
@@ -1156,7 +1156,7 @@ function EmptyState({
   icon: ReactNode
   title: string
   detail: string
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div
       style={{
@@ -1251,7 +1251,7 @@ export function ExtensionsPage({
   theme: Theme
   activeView: ExtensionView
   headerLeftSlot?: ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [connectorsSearch, setConnectorsSearch] = useState('')
 
   if (activeView === 'skills') return <SkillsPanel theme={theme} leftSlot={headerLeftSlot} />

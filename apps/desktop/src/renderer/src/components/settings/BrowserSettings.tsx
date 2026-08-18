@@ -30,7 +30,7 @@ function ActionRow({
   onRequest,
   onConfirm,
   onCancel
-}: ActionRowProps): React.ReactElement {
+}: ActionRowProps): React.ReactElement<any> {
   const isDark = theme.isDark
 
   const rowStyle: React.CSSProperties = {
@@ -146,7 +146,7 @@ export function BrowserSettings({
   settings: _settings,
   onUpdateSetting: _onUpdateSetting,
   theme
-}: BrowserSettingsProps): React.ReactElement {
+}: BrowserSettingsProps): React.ReactElement<any> {
   const [historyState, setHistoryState] = useState<ActionState>('idle')
   const [cookiesState, setCookiesState] = useState<ActionState>('idle')
   const [bookmarksState, setBookmarksState] = useState<ActionState>('idle')

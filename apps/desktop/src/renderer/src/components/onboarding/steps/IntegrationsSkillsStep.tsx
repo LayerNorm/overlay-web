@@ -57,7 +57,7 @@ interface IntegrationActionResponse {
 export function IntegrationsSkillsStep({
   theme,
   isTransitioning
-}: OnboardingStepProps): React.ReactElement {
+}: OnboardingStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
   const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS)
 

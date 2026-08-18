@@ -21,7 +21,7 @@ export function FolderView({
   folderId,
   onChatSelect,
   theme,
-}: FolderViewProps): React.ReactElement | null {
+}: FolderViewProps): React.ReactElement<any> | null {
   const [folder, setFolder] = useState<Folder | null>(null)
   const [chats, setChats] = useState<ChatMeta[]>([])
   const [instructions, setInstructions] = useState('')

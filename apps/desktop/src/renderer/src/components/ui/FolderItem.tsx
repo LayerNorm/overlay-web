@@ -36,7 +36,7 @@ export function FolderItem({
   onDrop,
   onDragLeave,
   children
-}: FolderItemProps): React.ReactElement {
+}: FolderItemProps): React.ReactElement<any> {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(name)
   const [isHovered, setIsHovered] = useState(false)

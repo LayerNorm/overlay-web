@@ -65,7 +65,7 @@ function StorageUsageBar({
   usedBytes: number
   limitBytes: number
   theme: Theme
-}): ReactElement {
+}): ReactElement<any> {
   const normalizedUsed = Math.max(0, usedBytes)
   const normalizedLimit = Math.max(0, limitBytes)
   const remainingBytes = Math.max(0, normalizedLimit - normalizedUsed)
@@ -118,7 +118,7 @@ function StorageUsageBar({
   )
 }
 
-export function AccountSettings({ theme, onSignOut }: AccountSettingsProps): ReactElement {
+export function AccountSettings({ theme, onSignOut }: AccountSettingsProps): ReactElement<any> {
   const [authSession, setAuthSession] = useState<AuthSession | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)

@@ -15,7 +15,7 @@ export function NotebookSettings({
   settings,
   onUpdateSetting,
   theme
-}: NotebookSettingsProps): ReactElement {
+}: NotebookSettingsProps): ReactElement<any> {
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [notesFolder, setNotesFolder] = useState('')
 

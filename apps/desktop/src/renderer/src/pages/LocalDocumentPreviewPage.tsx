@@ -7,7 +7,7 @@ export function LocalDocumentPreviewPage({
 }: {
   documentId: string
   headerLeftSlot?: ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [name, setName] = useState('Local document')
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)

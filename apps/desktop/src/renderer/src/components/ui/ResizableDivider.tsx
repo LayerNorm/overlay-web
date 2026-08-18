@@ -13,7 +13,7 @@ export function ResizableDivider({
   direction,
   onResize,
   theme
-}: ResizableDividerProps): React.ReactElement {
+}: ResizableDividerProps): React.ReactElement<any> {
   const [isDragging, setIsDragging] = useState(false)
   const [startPos, setStartPos] = useState(0)
 

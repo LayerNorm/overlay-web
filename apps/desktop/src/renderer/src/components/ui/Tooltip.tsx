@@ -15,7 +15,7 @@ export function Tooltip({
   position = 'top',
   delay = 400,
   disabled = false
-}: TooltipProps): ReactElement {
+}: TooltipProps): ReactElement<any> {
   const [isVisible, setIsVisible] = useState(false)
   const [coords, setCoords] = useState({ x: 0, y: 0 })
   const triggerRef = useRef<HTMLDivElement>(null)

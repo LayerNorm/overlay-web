@@ -15,7 +15,7 @@ export function GeneralSettings({
   settings,
   onUpdateSetting,
   theme
-}: GeneralSettingsProps): ReactElement {
+}: GeneralSettingsProps): ReactElement<any> {
   const [isDeviceDialogOpen, setIsDeviceDialogOpen] = useState(false)
   const [selectedDeviceName, setSelectedDeviceName] = useState('Default')
   const [launchAtStartup, setLaunchAtStartup] = useState(false)
@@ -90,7 +90,7 @@ export function GeneralSettings({
     value: ThemePresetId,
     presets: typeof LIGHT_PRESETS,
     onChange: (value: ThemePresetId) => void
-  ): ReactElement => {
+  ): ReactElement<any> => {
     const active = presets.find((preset) => preset.id === value)
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

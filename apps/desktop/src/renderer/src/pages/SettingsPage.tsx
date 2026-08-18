@@ -73,7 +73,7 @@ export function SettingsPage({
   onSignOut,
   sidebarExpanded,
   onToggleSidebar
-}: SettingsPageProps): React.ReactElement {
+}: SettingsPageProps): React.ReactElement<any> {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [memorySearchOpen, setMemorySearchOpen] = useState(false)
   const [memorySearchQuery, setMemorySearchQuery] = useState('')

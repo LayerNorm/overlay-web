@@ -33,7 +33,7 @@ export function PanelSidebarFrame({
   onOpenChange,
   onWidthChange,
   children,
-}: PanelSidebarFrameProps): React.ReactElement | null {
+}: PanelSidebarFrameProps): React.ReactElement<any> | null {
   const startResize = (event: React.MouseEvent): void => {
     event.preventDefault()
     const startX = event.clientX

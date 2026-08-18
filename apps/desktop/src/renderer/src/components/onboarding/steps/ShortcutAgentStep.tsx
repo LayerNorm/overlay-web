@@ -25,7 +25,7 @@ export function ShortcutAgentStep({
   isTransitioning,
   initialHotkey,
   onHotkeyChange
-}: ShortcutAgentStepProps): React.ReactElement {
+}: ShortcutAgentStepProps): React.ReactElement<any> {
   const [agentHotkey, setAgentHotkey] = useState(initialHotkey)
   const [showHotkeyDialog, setShowHotkeyDialog] = useState(false)
 

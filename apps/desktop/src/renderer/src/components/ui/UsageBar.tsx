@@ -33,7 +33,7 @@ export function UsageBar({
   isDark = false,
   showTooltip = false,
   resetTime
-}: UsageBarProps): ReactElement {
+}: UsageBarProps): ReactElement<any> {
   const [isHovered, setIsHovered] = useState(false)
 
   const remaining = Math.max(0, total - used)

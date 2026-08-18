@@ -656,14 +656,18 @@ class ChatService {
 
       // Handle user messages with images for other providers
       if (m.role === 'user' && images.length > 0 && supportsVision) {
-        const content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
+        const content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string } | { type: 'file'; data: string; mediaType: string }> = [
           { type: 'text', text: textContent }
         ]
 
         for (const imgData of images) {
           // AI SDK expects base64 data without the data URL prefix for some providers
           // But the image type accepts data URLs directly
-          content.push({ type: 'image', image: imgData })
+          content.push({
+            type: 'file',
+            data: imgData,
+            mediaType: 'image'
+          })
         }
 
         return {
@@ -677,7 +681,7 @@ class ChatService {
         role: m.role,
         content: textContent
       }
-    })
+    });
   }
 
   // Get the appropriate model instance for a given model ID

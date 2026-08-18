@@ -16,7 +16,7 @@ export function NativeProjectFileTreeHost({
   onClose(): void
   onFileClick?(path: string): void
   isClosing?: boolean
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [paths, setPaths] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

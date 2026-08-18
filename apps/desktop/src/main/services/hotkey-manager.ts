@@ -68,7 +68,7 @@ interface PanelTranscribeCallbacks {
   hidePanel: (panel: PanelToggleMode) => void
 }
 
-class HotkeyManager {
+export class HotkeyManager {
   private registeredHotkeys: Map<HotkeyMode, string> = new Map()
   private registeredPanelHotkeys: Map<PanelToggleMode, string> = new Map()
   private configuredHotkeys: Map<HotkeyMode, string> = new Map()
@@ -93,6 +93,7 @@ class HotkeyManager {
   private activePanelRecording: PanelToggleMode | null = null
   private panelRecordingStartTime: number | null = null
   private panelWasVisibleBeforeRecording: boolean = false
+  private panelHotkeyStartedAt: number | null = null
 
   // Panel hold detection state
   private pendingPanelHotkey: PanelToggleMode | null = null
@@ -105,6 +106,7 @@ class HotkeyManager {
   private lastPanelShownAt = new Map<PanelToggleMode, number>()
   /** Re-press within this window always hides (skip hold-vs-tap ambiguity). */
   private readonly RAPID_REPRESS_HIDE_MS = 450
+  private readonly STALE_PANEL_HOTKEY_STATE_MS = 2000
 
   // Combined hotkey mode (transcription + push-to-talk share same accelerator)
   private combinedHotkeyAccelerator: string | null = null
@@ -307,6 +309,10 @@ class HotkeyManager {
             console.log(`[HotkeyManager] Panel hotkey blocked - not authenticated`)
             return
           }
+          if (!this.uiohookStarted) {
+            this.pressedKeys.clear()
+            void this.startUIOhook()
+          }
           this.startPanelHotkeyPress(panel)
         })
 
@@ -358,12 +364,42 @@ class HotkeyManager {
     }
   }
 
+  private clearPanelHoldState(): void {
+    this.pendingPanelHotkey = null
+    this.pendingPanelWasVisible = false
+    this.pendingPanelOpenedOnKeydown = false
+    this.panelHotkeyStartedAt = null
+    if (this.panelHoldTimeout) {
+      clearTimeout(this.panelHoldTimeout)
+      this.panelHoldTimeout = null
+    }
+  }
+
+  private recoverStalePanelHotkeyState(): void {
+    if (!this.pendingPanelHotkey && !this.activePanelRecording) return
+    const startedAt = this.panelHotkeyStartedAt
+    if (!startedAt || Date.now() - startedAt < this.STALE_PANEL_HOTKEY_STATE_MS) return
+
+    const interruptedMode = this.activePanelRecording ? this.currentMode : null
+    console.warn('[HotkeyManager] Resetting stale panel hotkey state')
+    this.clearPanelHoldState()
+    this.activePanelRecording = null
+    this.panelRecordingStartTime = null
+    this.panelWasVisibleBeforeRecording = false
+    this.isRecording = false
+    this.currentMode = null
+    this.recordingStartTime = null
+    this.pressedKeys.clear()
+    if (interruptedMode) this.callbacks?.onRecordingCancel(interruptedMode)
+  }
+
   /**
    * Start panel hotkey press - begins hold detection
    * Hidden panel: show immediately on keydown; release = stay open, hold = record
    * Visible panel: release = hide, hold = record (stay open)
    */
   private startPanelHotkeyPress(panel: PanelToggleMode): void {
+    this.recoverStalePanelHotkeyState()
     // Don't start if already recording with any mode
     if (this.isRecording || this.activePanelRecording) {
       console.log('[HotkeyManager] Already recording, ignoring panel hotkey')
@@ -404,6 +440,7 @@ class HotkeyManager {
     this.pendingPanelHotkey = panel
     this.pendingPanelWasVisible = wasVisible
     this.pendingPanelOpenedOnKeydown = false
+    this.panelHotkeyStartedAt = Date.now()
 
     // Show immediately when opening — don't wait for keyup / hold threshold.
     if (!wasVisible) {
@@ -430,17 +467,12 @@ class HotkeyManager {
     const wasVisibleBeforePress = this.pendingPanelWasVisible
     const openedOnKeydown = this.pendingPanelOpenedOnKeydown
     // Clear pending state
-    this.pendingPanelHotkey = null
-    this.pendingPanelWasVisible = false
-    this.pendingPanelOpenedOnKeydown = false
-    if (this.panelHoldTimeout) {
-      clearTimeout(this.panelHoldTimeout)
-      this.panelHoldTimeout = null
-    }
+    this.clearPanelHoldState()
 
     // Now start actual recording
     this.activePanelRecording = panel
     this.panelRecordingStartTime = Date.now()
+    this.panelHotkeyStartedAt = this.panelRecordingStartTime
     this.isRecording = true
     this.currentMode = panel === 'chat' ? 'panel-chat' : 'panel-notebook'
     this.recordingStartTime = Date.now()
@@ -466,13 +498,7 @@ class HotkeyManager {
     )
 
     // Clear pending state
-    this.pendingPanelHotkey = null
-    this.pendingPanelWasVisible = false
-    this.pendingPanelOpenedOnKeydown = false
-    if (this.panelHoldTimeout) {
-      clearTimeout(this.panelHoldTimeout)
-      this.panelHoldTimeout = null
-    }
+    this.clearPanelHoldState()
 
     if (wasVisible) {
       // Tap while open → hide
@@ -526,6 +552,7 @@ class HotkeyManager {
     const currentMode = this.currentMode
     this.activePanelRecording = null
     this.panelRecordingStartTime = null
+    this.panelHotkeyStartedAt = null
     this.isRecording = false
     this.currentMode = null
     this.recordingStartTime = null
@@ -1040,6 +1067,7 @@ class HotkeyManager {
     this.pendingPanelHotkey = null
     this.pendingPanelWasVisible = false
     this.pendingPanelOpenedOnKeydown = false
+    this.panelHotkeyStartedAt = null
     this.lastPanelShownAt.clear()
 
     if (this.combinedHoldTimeout) {
@@ -1091,6 +1119,13 @@ class HotkeyManager {
     if (this.areRegisteredHotkeysActive()) return true
     console.warn('[HotkeyManager] Detected missing global shortcut registration')
     return this.recoverHotkeys()
+  }
+
+  ensureReleaseMonitor(): void {
+    const needsReleaseMonitor =
+      this.configuredPanelHotkeys.size > 0 || this.configuredHotkeys.has('push-to-talk')
+    if (!needsReleaseMonitor || this.uiohookStarted || this.uiohookStartPromise) return
+    void this.startUIOhook()
   }
 
   private areRegisteredHotkeysActive(): boolean {
@@ -1146,6 +1181,7 @@ class HotkeyManager {
     this.pendingPanelHotkey = null
     this.pendingPanelWasVisible = false
     this.pendingPanelOpenedOnKeydown = false
+    this.panelHotkeyStartedAt = null
     this.lastPanelShownAt.clear()
     if (this.panelHoldTimeout) {
       clearTimeout(this.panelHoldTimeout)

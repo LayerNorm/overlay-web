@@ -69,7 +69,7 @@ export function BrowserContextMenu({
   canGoBack,
   canGoForward,
   theme
-}: BrowserContextMenuProps): ReactElement | null {
+}: BrowserContextMenuProps): ReactElement<any> | null {
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

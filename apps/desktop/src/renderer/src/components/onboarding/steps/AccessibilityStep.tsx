@@ -18,7 +18,7 @@ export function AccessibilityStep({
   theme,
   onNext,
   isTransitioning
-}: AccessibilityStepProps): React.ReactElement {
+}: AccessibilityStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
   const buttonStyle = getButtonStyle(theme)
 

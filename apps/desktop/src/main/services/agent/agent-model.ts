@@ -49,7 +49,7 @@ export async function getAgentModel() {
       case 'openai':
         return createOpenAI({ apiKey: key })(modelId)
       case 'google':
-        return createGoogleGenerativeAI({ apiKey: key })(modelId)
+        return createGoogleGenerativeAI({ apiKey: key })(modelId);
       case 'xai':
         return createXai({ apiKey: key })(modelId)
       case 'groq':

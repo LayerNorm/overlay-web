@@ -21,7 +21,7 @@ export function SettingsSidebar({
   activeTab,
   theme,
   onSelectTab
-}: SettingsSidebarProps): ReactElement {
+}: SettingsSidebarProps): ReactElement<any> {
   return (
     <div
       style={{

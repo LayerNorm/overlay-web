@@ -14,7 +14,7 @@ import {
 import { usePanelTheme } from '../hooks/usePanelTheme'
 import { TrafficLightButtons } from '../components/ui/TrafficLightButtons'
 
-export function TranscriptionPanel(): React.ReactElement {
+export function TranscriptionPanel(): React.ReactElement<any> {
   const [isVisible, setIsVisible] = useState(false)
   const [isProtected, setIsProtected] = useState(false)
   const [transcriptionText, setTranscriptionText] = useState('')

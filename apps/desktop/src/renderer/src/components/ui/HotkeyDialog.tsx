@@ -130,7 +130,7 @@ export function HotkeyDialog({
   title = 'Press the hotkey you want to use to start recording:',
   theme = lightTheme,
   onSameAsTranscription
-}: HotkeyDialogProps): React.ReactElement | null {
+}: HotkeyDialogProps): React.ReactElement<any> | null {
   const [recordedKeys, setRecordedKeys] = useState<Set<string>>(new Set())
   const [displayKeys, setDisplayKeys] = useState<string[]>([])
   const [allKeysReleased, setAllKeysReleased] = useState(true)

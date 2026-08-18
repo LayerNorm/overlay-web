@@ -39,7 +39,7 @@ export function MemoryIndicator({
   memories,
   theme,
   onDeleteMemory
-}: MemoryIndicatorProps): React.ReactElement | null {
+}: MemoryIndicatorProps): React.ReactElement<any> | null {
   const [isExpanded, setIsExpanded] = useState(false)
 
   if (memories.length === 0) return null

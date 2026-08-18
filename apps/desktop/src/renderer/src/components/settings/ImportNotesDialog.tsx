@@ -153,7 +153,7 @@ export function ImportNotesDialog({
   isOpen,
   onClose,
   theme
-}: ImportNotesDialogProps): ReactElement | null {
+}: ImportNotesDialogProps): ReactElement<any> | null {
   const [isAnimating, setIsAnimating] = useState(false)
   const [shouldRender, setShouldRender] = useState(false)
   const [selectedSource, setSelectedSource] = useState<ImportSource>('obsidian')

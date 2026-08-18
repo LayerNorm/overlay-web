@@ -69,7 +69,7 @@ export function SidebarListItem({
   actions,
   title,
   theme
-}: SidebarListItemProps): ReactElement {
+}: SidebarListItemProps): ReactElement<any> {
   const [hovered, setHovered] = useState(false)
   const { background, foreground } = resolveSidebarListItemColors({
     theme,
@@ -170,7 +170,7 @@ export function SidebarItemAction({
   title: string
   icon: ComponentType<{ size?: number; color?: string }>
   color?: string
-}): ReactElement {
+}): ReactElement<any> {
   return (
     <button
       onClick={(e) => {

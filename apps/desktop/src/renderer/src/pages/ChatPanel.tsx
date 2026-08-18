@@ -127,7 +127,7 @@ const HIDDEN_CHAT_MODEL_IDS = new Set<string>([
 ])
 
 // Inner component for draggable spacer - must be inside DockablePanel to access context
-function DraggableSpacer(): React.ReactElement {
+function DraggableSpacer(): React.ReactElement<any> {
   const { startDrag } = useDockableDrag()
   return (
     <div
@@ -143,7 +143,7 @@ function DraggableSpacer(): React.ReactElement {
   )
 }
 
-export function ChatPanel(): React.ReactElement {
+export function ChatPanel(): React.ReactElement<any> {
   const { theme } = usePanelTheme()
   const { chatModels, bootstrap, refreshBootstrap } = useAppBootstrap()
   const [models, setModels] = useState<ChatModel[]>([])
@@ -2937,7 +2937,7 @@ Please provide a concise consensus summary that synthesizes the above responses.
       .split(/\s+/)
       .filter((w) => w.length > 3 && !stopWords.has(w))
       .slice(0, 5)
-      .join(', ')
+      .join(', ');
   }, [])
 
   // Build a simple markdown SOP (for display in the textarea)

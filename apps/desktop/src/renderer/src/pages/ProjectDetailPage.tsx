@@ -36,7 +36,7 @@ export function ProjectDetailPage({
   theme,
   onOpenChat,
   headerLeftSlot
-}: ProjectDetailPageProps): ReactElement {
+}: ProjectDetailPageProps): ReactElement<any> {
   const [project, setProject] = useState<ProjectDoc | null>(null)
   const [name, setName] = useState('')
   const [instructions, setInstructions] = useState('')

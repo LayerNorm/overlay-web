@@ -46,7 +46,7 @@ export function UrlBar({
   onUrlFocus,
   onUrlBlur,
   onUrlKeyDown
-}: UrlBarProps): ReactElement {
+}: UrlBarProps): ReactElement<any> {
   const [suggestion, setSuggestion] = useState<string | null>(null)
   const [userTypedValue, setUserTypedValue] = useState('')
   const urlParts = parseUrlParts(inputUrl)
@@ -76,7 +76,7 @@ export function UrlBar({
         const inputWithoutWww = lowerInput.replace(/^www\./, '')
         const matchStart = urlWithoutProtocol.indexOf(inputWithoutWww)
         if (matchStart === 0) {
-          return entry.url.replace(/^https?:\/\//, '').replace(/^www\./, '').slice(input.replace(/^www\./, '').length)
+          return entry.url.replace(/^https?:\/\//, '').replace(/^www\./, '').slice(input.replace(/^www\./, '').length);
         }
       }
     }

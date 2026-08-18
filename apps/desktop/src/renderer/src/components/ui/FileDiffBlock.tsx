@@ -111,7 +111,7 @@ export function FileDiffBlock({
   toolResult,
   isLoading,
   workingFolder
-}: FileDiffBlockProps): React.ReactElement {
+}: FileDiffBlockProps): React.ReactElement<any> {
   const [collapsed, setCollapsed] = useState(false)
   const [undoState, setUndoState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [copied, setCopied] = useState(false)

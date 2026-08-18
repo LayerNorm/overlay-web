@@ -12,7 +12,7 @@ export function SiteInfoCookies({
   cookieDomainsCount,
   theme,
   onNavigateToCookiesList
-}: SiteInfoCookiesProps): ReactElement {
+}: SiteInfoCookiesProps): ReactElement<any> {
   return (
     <>
       <div

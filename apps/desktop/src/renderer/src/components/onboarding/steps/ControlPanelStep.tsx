@@ -6,7 +6,7 @@ import { MessageCircle, Mic, Notebook, Globe } from 'lucide-react'
 export function ControlPanelStep({
   theme,
   isTransitioning
-}: OnboardingStepProps): React.ReactElement {
+}: OnboardingStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
 
   const iconButtonStyle = (delay: string): React.CSSProperties => ({

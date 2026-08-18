@@ -336,7 +336,7 @@ async function runAppleScript(script: string, timeoutMs = APPLESCRIPT_TIMEOUT_MS
 }
 
 function escapeForAppleScript(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function getCurrentDateTimePayload(): JsonRecord {
@@ -679,8 +679,13 @@ function addHeadlessBrowserTools(tools: ToolSet, options: ToolSetOptions): void 
             if (screenshot.startsWith('data:image/')) {
               return [
                 { type: 'text', text: result },
-                { type: 'image', image: screenshot, mimeType: 'image/jpeg' }
-              ]
+                {
+                  type: 'file',
+                  data: screenshot,
+                  mimeType: 'image/jpeg',
+                  mediaType: 'image'
+                }
+              ];
             }
           } catch {
             // screenshot failure is non-fatal
@@ -728,8 +733,13 @@ function addHeadlessBrowserTools(tools: ToolSet, options: ToolSetOptions): void 
             if (screenshot.startsWith('data:image/')) {
               return [
                 { type: 'text', text: result },
-                { type: 'image', image: screenshot, mimeType: 'image/jpeg' }
-              ]
+                {
+                  type: 'file',
+                  data: screenshot,
+                  mimeType: 'image/jpeg',
+                  mediaType: 'image'
+                }
+              ];
             }
           } catch {
             // screenshot failure is non-fatal
@@ -780,8 +790,13 @@ function addHeadlessBrowserTools(tools: ToolSet, options: ToolSetOptions): void 
           emitToolResult(options, 'headless_screenshot', { type: 'screenshot', captured: true })
           return [
             { type: 'text', text: 'Headless screenshot captured.' },
-            { type: 'image', image: result, mimeType: 'image/jpeg' }
-          ]
+            {
+              type: 'file',
+              data: result,
+              mimeType: 'image/jpeg',
+              mediaType: 'image'
+            }
+          ];
         }
 
         emitToolResult(options, 'headless_screenshot', result)
@@ -1432,8 +1447,13 @@ function addBrowserTools(tools: ToolSet, options: ToolSetOptions): void {
             if (screenshot.startsWith('data:image/')) {
               return [
                 { type: 'text', text: result },
-                { type: 'image', image: screenshot, mimeType: 'image/jpeg' }
-              ]
+                {
+                  type: 'file',
+                  data: screenshot,
+                  mimeType: 'image/jpeg',
+                  mediaType: 'image'
+                }
+              ];
             }
           } catch {
             // screenshot failure is non-fatal
@@ -1475,8 +1495,13 @@ function addBrowserTools(tools: ToolSet, options: ToolSetOptions): void {
             if (screenshot.startsWith('data:image/')) {
               return [
                 { type: 'text', text: result },
-                { type: 'image', image: screenshot, mimeType: 'image/jpeg' }
-              ]
+                {
+                  type: 'file',
+                  data: screenshot,
+                  mimeType: 'image/jpeg',
+                  mediaType: 'image'
+                }
+              ];
             }
           } catch {
             // screenshot failure is non-fatal
@@ -1550,8 +1575,13 @@ function addBrowserTools(tools: ToolSet, options: ToolSetOptions): void {
           emitToolResult(options, 'browser_screenshot', { type: 'screenshot', captured: true })
           return [
             { type: 'text', text: 'Screenshot captured.' },
-            { type: 'image', image: result, mimeType: 'image/jpeg' }
-          ]
+            {
+              type: 'file',
+              data: result,
+              mimeType: 'image/jpeg',
+              mediaType: 'image'
+            }
+          ];
         }
 
         emitToolResult(options, 'browser_screenshot', result)

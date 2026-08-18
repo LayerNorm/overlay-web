@@ -23,7 +23,7 @@ function getAuthErrorMessage(error: unknown): string {
     : 'Sign-in could not be completed. Please try again.'
 }
 
-export function AuthStep({ theme, onNext, isTransitioning }: AuthStepProps): React.ReactElement {
+export function AuthStep({ theme, onNext, isTransitioning }: AuthStepProps): React.ReactElement<any> {
   const [authStatus, setAuthStatus] = useState<string | null>(() => getAuthFailureMessage())
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const { refreshBootstrap } = useAppBootstrap()

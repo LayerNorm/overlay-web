@@ -20,7 +20,7 @@ export function PermissionsTab({
   onExpandOrigin,
   onDeleteForOrigin,
   onDeletePermission
-}: PermissionsTabProps): ReactElement {
+}: PermissionsTabProps): ReactElement<any> {
   return (
     <div style={{ maxWidth: 700 }}>
       <h2

@@ -27,7 +27,7 @@ const SHORTCUTS = [
   { keys: ['⌘', '0'], desc: 'Reset zoom' }
 ]
 
-export function ShortcutsTab({ theme }: ShortcutsTabProps): ReactElement {
+export function ShortcutsTab({ theme }: ShortcutsTabProps): ReactElement<any> {
   return (
     <div style={{ maxWidth: 500 }}>
       <h2

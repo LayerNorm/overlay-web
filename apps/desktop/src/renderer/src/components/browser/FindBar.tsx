@@ -20,7 +20,7 @@ interface FindResult {
   matches: number
 }
 
-export function FindBar({ isOpen, onClose, tabId, theme }: FindBarProps): ReactElement | null {
+export function FindBar({ isOpen, onClose, tabId, theme }: FindBarProps): ReactElement<any> | null {
   const [searchText, setSearchText] = useState('')
   const [findResult, setFindResult] = useState<FindResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)

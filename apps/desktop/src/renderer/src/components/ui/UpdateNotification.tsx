@@ -14,7 +14,7 @@ export function UpdateNotification({
   version,
   onInstall,
   onDismiss
-}: UpdateNotificationProps): ReactElement {
+}: UpdateNotificationProps): ReactElement<any> {
   const handleInstall = useCallback(() => {
     onInstall()
   }, [onInstall])

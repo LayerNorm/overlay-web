@@ -22,7 +22,7 @@ function NotificationCard({
   notification,
   onDismiss,
   autoDismissSeconds
-}: NotificationCardProps): ReactElement {
+}: NotificationCardProps): ReactElement<any> {
   const { isDarkMode } = usePanelTheme()
   const [progress, setProgress] = useState(100)
 
@@ -165,7 +165,7 @@ export function NotificationPanel({
   notifications,
   onDismiss,
   autoDismissSeconds
-}: NotificationPanelProps): ReactElement {
+}: NotificationPanelProps): ReactElement<any> {
   return (
     <div
       style={{

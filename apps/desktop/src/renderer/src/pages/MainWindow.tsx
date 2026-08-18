@@ -115,7 +115,7 @@ export function MainWindow({
   onOpenSettings,
   sidebarExpanded,
   onToggleSidebar
-}: MainWindowProps): ReactElement {
+}: MainWindowProps): ReactElement<any> {
   const { settings } = useSettings()
   const theme = getTheme(settings.darkMode, settings.lightThemePreset, settings.darkThemePreset)
   const panelTheme = getPanelTheme(

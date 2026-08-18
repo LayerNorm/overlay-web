@@ -88,7 +88,15 @@ export function registerPanelIPC(): void {
   ipcMain.handle('window:close-current', async (evt) => {
     const win = BrowserWindow.fromWebContents(evt.sender)
     if (win && !win.isDestroyed()) {
-      win.close()
+      const url = win.webContents.getURL()
+      const isDockablePanel = ['chat', 'notebook', 'browser'].some((panelType) =>
+        url.includes(`window=${panelType}`)
+      )
+      if (isDockablePanel) {
+        panelManager.destroyPanelWindow(win.id)
+      } else {
+        win.close()
+      }
       return { success: true }
     }
     return { success: false }

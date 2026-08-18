@@ -37,7 +37,7 @@ interface BrowserPanelProps {
 }
 
 // Inner component for draggable spacer - must be inside DockablePanel to access context
-function DraggableSpacer(): React.ReactElement {
+function DraggableSpacer(): React.ReactElement<any> {
   const { startDrag } = useDockableDrag()
   return (
     <div
@@ -54,7 +54,7 @@ function DraggableSpacer(): React.ReactElement {
   )
 }
 
-export function BrowserPanel({ embedded = false, headerLeftSlot }: BrowserPanelProps = {}): ReactElement {
+export function BrowserPanel({ embedded = false, headerLeftSlot }: BrowserPanelProps = {}): ReactElement<any> {
   const { settings } = useSettings()
   const theme = {
     ...getTheme(settings.darkMode, settings.lightThemePreset, settings.darkThemePreset),

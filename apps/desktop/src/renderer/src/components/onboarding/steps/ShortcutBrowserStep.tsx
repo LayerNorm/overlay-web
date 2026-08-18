@@ -25,7 +25,7 @@ export function ShortcutBrowserStep({
   isTransitioning,
   initialHotkey,
   onHotkeyChange
-}: ShortcutBrowserStepProps): React.ReactElement {
+}: ShortcutBrowserStepProps): React.ReactElement<any> {
   const [browserHotkey, setBrowserHotkey] = useState(initialHotkey)
   const [showHotkeyDialog, setShowHotkeyDialog] = useState(false)
 

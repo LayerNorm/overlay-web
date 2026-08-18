@@ -43,7 +43,7 @@ interface ModelsSettingsProps {
   theme: Theme
 }
 
-export function ModelsSettings({ theme }: ModelsSettingsProps): React.ReactElement {
+export function ModelsSettings({ theme }: ModelsSettingsProps): React.ReactElement<any> {
   const { bootstrap, chatModels, refreshBootstrap } = useAppBootstrap()
   const subscription = useSubscription()
   void subscription

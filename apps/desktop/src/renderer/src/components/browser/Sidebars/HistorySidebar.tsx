@@ -16,7 +16,7 @@ export function HistorySidebar({
   onClose,
   onClear,
   onOpenUrl
-}: HistorySidebarProps): ReactElement {
+}: HistorySidebarProps): ReactElement<any> {
   return (
     <div
       style={{

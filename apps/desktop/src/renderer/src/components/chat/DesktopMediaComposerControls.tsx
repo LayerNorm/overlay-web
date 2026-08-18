@@ -43,7 +43,7 @@ export function DesktopMediaComposerControls({
   onVideoSubModeChange,
   isFreeTier,
   disabled = false
-}: DesktopMediaComposerControlsProps): React.ReactElement {
+}: DesktopMediaComposerControlsProps): React.ReactElement<any> {
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [videoModePickerOpen, setVideoModePickerOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)

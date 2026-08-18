@@ -65,7 +65,7 @@ export function SettingsPanel({
   onExpandPermissionOrigin,
   onDeletePermissionsForOrigin,
   onDeletePermission
-}: SettingsPanelProps): ReactElement {
+}: SettingsPanelProps): ReactElement<any> {
   return (
     <div
       style={{

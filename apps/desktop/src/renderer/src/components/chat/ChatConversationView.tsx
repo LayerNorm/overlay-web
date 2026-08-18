@@ -37,7 +37,7 @@ export function ChatConversationView({
   placeholder,
   onChatIdChange,
   headerLeftSlot
-}: ChatConversationViewProps): React.ReactElement {
+}: ChatConversationViewProps): React.ReactElement<any> {
   const runtime = useDesktopChatRuntime({
     chatId,
     mode,

@@ -113,7 +113,7 @@ export function FilesListPage({
   onSearchQueryChange,
   isSelectMode,
   onSelectModeChange
-}: FilesListPageProps): ReactElement {
+}: FilesListPageProps): ReactElement<any> {
   const [authority, setAuthority] = useState<DesktopKnowledgeAuthority>(
     getDesktopKnowledgeAuthority
   )

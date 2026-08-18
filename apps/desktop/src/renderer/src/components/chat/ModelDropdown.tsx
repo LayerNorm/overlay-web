@@ -17,7 +17,7 @@ interface ModelDropdownProps {
   showDropdown: boolean
   setShowDropdown: (show: boolean) => void
   setSelectedModels: (models: ChatModel[]) => void
-  dropdownRef: React.RefObject<HTMLDivElement>
+  dropdownRef: React.RefObject<HTMLDivElement | null>
   theme: PanelTheme
   // Context for recommendations
   hasDocuments?: boolean
@@ -45,7 +45,7 @@ function readSelectionMode(): ModelSelectionMode {
 // ── ModelBadges: fixed h-5 container — capability chips OR cost pill on hover ─
 // Both states share the same h-5 wrapper so the row height never changes
 // (root-cause fix for the desktop height jitter).
-function ModelBadges({ model, isHovered }: { model: ChatModel; isHovered: boolean }): React.ReactElement {
+function ModelBadges({ model, isHovered }: { model: ChatModel; isHovered: boolean }): React.ReactElement<any> {
   const cost = model.cost ?? 1
   if (isHovered) {
     return (
@@ -91,7 +91,7 @@ function MetricRow({
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
   label: string
   value: React.ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
@@ -105,7 +105,7 @@ function MetricRow({
   )
 }
 
-function ModelQualitiesPanel({ model }: { model: ChatModel | null | undefined }): React.ReactElement | null {
+function ModelQualitiesPanel({ model }: { model: ChatModel | null | undefined }): React.ReactElement<any> | null {
   if (!model) return null
   return (
     <div className="pointer-events-none flex flex-col gap-1">
@@ -148,7 +148,7 @@ export function ModelDropdown({
   isAgentMode = false,
   allowMultiSelect = false,
   containerRef
-}: ModelDropdownProps): React.ReactElement {
+}: ModelDropdownProps): React.ReactElement<any> {
   void hasDocuments
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
   const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
@@ -498,7 +498,7 @@ function DropdownPositioner({
   contentRef: React.RefObject<HTMLDivElement | null>
   onStyleChange: (style: React.CSSProperties) => void
   children: React.ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   useEffect(() => {
     const calculatePosition = (): void => {
       if (!dropdownRef.current || !contentRef.current) return

@@ -20,7 +20,7 @@ export function NavigationButtons({
   onGoBack,
   onGoForward,
   onReload
-}: NavigationButtonsProps): ReactElement {
+}: NavigationButtonsProps): ReactElement<any> {
   return (
     <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
       <button

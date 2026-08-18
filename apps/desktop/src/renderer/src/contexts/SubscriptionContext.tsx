@@ -118,7 +118,7 @@ interface SubscriptionProviderProps {
   children: ReactNode
 }
 
-export function SubscriptionProvider({ children }: SubscriptionProviderProps): React.ReactElement {
+export function SubscriptionProvider({ children }: SubscriptionProviderProps): React.ReactElement<any> {
   const { bootstrap, chatModels } = useAppBootstrap()
   const [state, setState] = useState<SubscriptionState>(() => {
     // Always start from defaults; fetch authoritative state from main process via IPC

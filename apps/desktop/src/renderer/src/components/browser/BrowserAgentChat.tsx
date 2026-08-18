@@ -66,7 +66,7 @@ export function BrowserAgentChat({
   theme,
   onClose,
   activeTabId
-}: BrowserAgentChatProps): React.ReactElement {
+}: BrowserAgentChatProps): React.ReactElement<any> {
   const { chatModels, bootstrap } = useAppBootstrap()
   // Chat state - persist Ask/Act toggle across sessions
   const [chatMode, setChatMode] = useState<BrowserChatMode>(() => {

@@ -38,7 +38,7 @@ function ProjectNode({
   onSelect?: (id: string) => void
   selectedProjectId?: string | null
   theme: Theme
-}): ReactElement {
+}): ReactElement<any> {
   const children = useMemo(
     () => allProjects.filter((p) => p.parentId === project.id),
     [allProjects, project.id]
@@ -162,7 +162,7 @@ export function ProjectsListPage({
   refreshToken = 0,
   selectedProjectId,
   onSelectProject
-}: ProjectsListPageProps): ReactElement {
+}: ProjectsListPageProps): ReactElement<any> {
   const [projects, setProjects] = useState<Project[]>(() => loadProjects())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 

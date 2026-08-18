@@ -16,7 +16,7 @@ export function BookmarksSidebar({
   onClose,
   onOpenUrl,
   onRemove
-}: BookmarksSidebarProps): ReactElement {
+}: BookmarksSidebarProps): ReactElement<any> {
   return (
     <div
       style={{

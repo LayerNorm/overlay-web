@@ -21,7 +21,7 @@ function PermissionCard({
   onRequest,
   theme,
   animationDelay
-}: PermissionCardProps): React.ReactElement {
+}: PermissionCardProps): React.ReactElement<any> {
   return (
     <div
       style={{
@@ -135,7 +135,7 @@ export function PermissionsStep({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onNext,
   isTransitioning
-}: OnboardingStepProps): React.ReactElement {
+}: OnboardingStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
 
   const [micPermission, setMicPermission] = useState(false)

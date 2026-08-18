@@ -79,12 +79,13 @@ export function normalizeTokenUsage(usage: unknown): NormalizedTokenUsage {
     raw.output_tokens
   )
 
+  const rawInputTokenDetails = isRecord(raw.inputTokenDetails) ? raw.inputTokenDetails : {}
+
   const cachedTokens = firstDefinedNumber(
-    usage.cachedInputTokens,
+    inputTokenDetails.cacheReadTokens,
     usage.cachedTokens,
     usage.cacheReadTokens,
-    inputTokenDetails.cacheReadTokens,
-    raw.cachedInputTokens,
+    rawInputTokenDetails.cacheReadTokens,
     raw.cached_input_tokens,
     raw.cacheReadTokens,
     raw.cache_read_tokens

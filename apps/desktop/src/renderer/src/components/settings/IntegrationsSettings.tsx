@@ -36,7 +36,7 @@ function IntegrationIcon({
 }: {
   logoUrl?: string | null
   name: string
-}): ReactElement {
+}): ReactElement<any> {
   const [hasLoadError, setHasLoadError] = useState(false)
 
   useEffect(() => setHasLoadError(false), [logoUrl])
@@ -85,7 +85,7 @@ function matchesQuery(item: ConnectorCatalogItem, query: string): boolean {
 export function IntegrationsSettings({
   theme,
   searchQuery = ''
-}: IntegrationsSettingsProps): ReactElement {
+}: IntegrationsSettingsProps): ReactElement<any> {
   const initialSnapshot = getCachedDesktopIntegrations()
   const [snapshot, setSnapshot] = useState<DesktopIntegrationsSnapshot | null>(initialSnapshot)
   const [error, setError] = useState<string | null>(null)
@@ -234,7 +234,7 @@ export function IntegrationsSettings({
     fontFamily: 'system-ui, -apple-system, sans-serif'
   }
 
-  const renderRow = (integration: ConnectorCatalogItem, connected: boolean): ReactElement => (
+  const renderRow = (integration: ConnectorCatalogItem, connected: boolean): ReactElement<any> => (
     <SettingsRow
       key={integration.slug}
       title={

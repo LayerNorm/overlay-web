@@ -25,7 +25,7 @@ function base64(bytes: Uint8Array): string {
 export function RemoteFilePreviewPage({
   fileId,
   headerLeftSlot,
-}: RemoteFilePreviewPageProps): React.ReactElement {
+}: RemoteFilePreviewPageProps): React.ReactElement<any> {
   const [file, setFile] = useState<KnowledgeFile | null>(null)
   const [content, setContent] = useState('')
   const [objectUrl, setObjectUrl] = useState<string | undefined>()

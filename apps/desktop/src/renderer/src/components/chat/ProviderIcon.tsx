@@ -68,7 +68,7 @@ export function ProviderIcon({
   showBorder = false,
   onClick,
   title
-}: ProviderIconProps): React.ReactElement {
+}: ProviderIconProps): React.ReactElement<any> {
   const { isDarkMode } = usePanelTheme()
 
   const iconData = PROVIDER_ICONS[provider]

@@ -23,7 +23,7 @@ export function ShortcutSettings({
   settings,
   onUpdateSetting,
   theme
-}: ShortcutSettingsProps): ReactElement {
+}: ShortcutSettingsProps): ReactElement<any> {
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null)
 
   const sectionHeaderStyle: React.CSSProperties = {

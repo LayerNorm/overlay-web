@@ -64,7 +64,7 @@ export function ChatHeader({
   headerLocked,
   onToggleHeaderLock,
   isPanelHovered
-}: ChatHeaderProps): React.ReactElement {
+}: ChatHeaderProps): React.ReactElement<any> {
   const { startDrag } = useDockableDrag()
 
   // Only start drag when clicking on the tab bar background, not on interactive children

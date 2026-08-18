@@ -238,6 +238,7 @@ const handleRecordingStop = async (_mode: HotkeyMode): Promise<void> => {
 
 const handleRecordingCancel = async (_mode: HotkeyMode): Promise<void> => {
   console.log(`[Main] Recording canceled (quick release): ${_mode}`)
+  clearPanelTranscriptionDestination()
 
   // Notify all windows to cancel recording (won't send to API)
   windowManager.broadcastToAllWindows('record:cancel')
@@ -308,19 +309,9 @@ const handlePanelToggle = (panel: PanelToggleMode): void => {
     return
   }
 
-  if (panel === 'chat' || panel === 'notebook') {
+  if (panel === 'chat' || panel === 'notebook' || panel === 'browser') {
     const result = panelManager.togglePanelVisibility(panel)
     console.log(`[Hotkey] Panel toggle: ${panel}, result: ${result.action}, count: ${result.count}`)
-  } else {
-    if (existingPanel) {
-      if (existingPanel.isVisible()) {
-        panelManager.closePanelWindow(panel)
-      } else {
-        panelManager.showPanelWindow(existingPanel)
-      }
-    } else {
-      panelManager.createPanelWindow(panel)
-    }
   }
 }
 
@@ -956,7 +947,9 @@ app.whenReady().then(async () => {
   powerMonitor.on('unlock-screen', () => scheduleHotkeyRecovery('screen unlock'))
   powerMonitor.on('user-did-become-active', () => scheduleHotkeyRecovery('user session activation'))
   hotkeyHealthCheckInterval = setInterval(() => {
-    if (hotkeyManager.isInitialized()) hotkeyManager.ensureHotkeysRegistered()
+    if (!hotkeyManager.isInitialized()) return
+    hotkeyManager.ensureHotkeysRegistered()
+    hotkeyManager.ensureReleaseMonitor()
   }, 60_000)
 
   // Initialize local transcription services

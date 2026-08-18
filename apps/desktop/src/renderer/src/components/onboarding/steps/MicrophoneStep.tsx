@@ -18,7 +18,7 @@ export function MicrophoneStep({
   theme,
   onNext,
   isTransitioning
-}: MicrophoneStepProps): React.ReactElement {
+}: MicrophoneStepProps): React.ReactElement<any> {
   const [permissionDenied, setPermissionDenied] = useState(false)
   const containerStyle = getContainerStyle(theme, isTransitioning)
   const buttonStyle = getButtonStyle(theme)

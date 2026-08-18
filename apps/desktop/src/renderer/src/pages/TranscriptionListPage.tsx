@@ -35,7 +35,7 @@ export function TranscriptionListPage({
   onSearchQueryChange,
   isSelectMode,
   onSelectModeChange
-}: TranscriptionListPageProps): ReactElement {
+}: TranscriptionListPageProps): ReactElement<any> {
   const { transcriptions } = useTranscriptions()
   const [localTranscriptions, setLocalTranscriptions] = useState<Transcription[]>(transcriptions)
   const [copiedId, setCopiedId] = useState<string | null>(null)

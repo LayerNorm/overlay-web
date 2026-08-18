@@ -12,7 +12,7 @@ export function DownloadsSidebar({
   downloads,
   theme,
   onClose
-}: DownloadsSidebarProps): ReactElement {
+}: DownloadsSidebarProps): ReactElement<any> {
   return (
     <div
       style={{

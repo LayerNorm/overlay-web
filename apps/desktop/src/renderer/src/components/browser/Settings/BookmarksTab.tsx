@@ -8,7 +8,7 @@ interface BookmarksTabProps {
   onOpenUrl: (url: string) => void
 }
 
-export function BookmarksTab({ bookmarks, theme, onOpenUrl }: BookmarksTabProps): ReactElement {
+export function BookmarksTab({ bookmarks, theme, onOpenUrl }: BookmarksTabProps): ReactElement<any> {
   return (
     <div style={{ maxWidth: 600 }}>
       <h2

@@ -1,6 +1,6 @@
 import { ReactElement } from 'react'
 
-export function BrowserStyles(): ReactElement {
+export function BrowserStyles(): ReactElement<any> {
   return (
     <style>{`
       @keyframes loading {

@@ -163,7 +163,7 @@ function AttachMenuButton({
   showSwitch?: boolean
   checked?: boolean
   neutralWhenActive?: boolean
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const activeClass =
     active && !neutralWhenActive
       ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
@@ -212,7 +212,7 @@ function ToolRequestChip({
   label: string
   icon: ReactNode
   onClear: () => void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs font-medium text-[var(--foreground)]">
       <button
@@ -276,7 +276,7 @@ export const ChatInputArea = forwardRef<ChatInputAreaHandle, ChatInputAreaProps>
       showScreenshotControl = true
     },
     ref
-  ): React.ReactElement {
+  ): React.ReactElement<any> {
     // Subscription state for upgrade tip
     const subscription = useSubscription()
     const { bootstrap, imageModels, videoModels, uiSettings } = useAppBootstrap()
@@ -1006,7 +1006,7 @@ export const ChatInputArea = forwardRef<ChatInputAreaHandle, ChatInputAreaProps>
                       onModelSelect(changedModel)
                     }
                   }}
-                  dropdownRef={modelDropdownRef as React.RefObject<HTMLDivElement>}
+                  dropdownRef={modelDropdownRef as React.RefObject<HTMLDivElement | null>}
                   theme={theme}
                   hasDocuments={mentions.some((m) => m.type === 'document')}
                   isAgentMode={agentModeEnabled || chatMode === 'write'}
@@ -1044,6 +1044,6 @@ export const ChatInputArea = forwardRef<ChatInputAreaHandle, ChatInputAreaProps>
           </div>
         </div>
       </div>
-    )
+    );
   }
 )

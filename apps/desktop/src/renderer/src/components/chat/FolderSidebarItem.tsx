@@ -28,7 +28,7 @@ export function FolderSidebarItem({
   onDeleteChat,
   onOpenChatInNewWindow,
   onMoveChatToFolder
-}: FolderSidebarItemProps): React.ReactElement {
+}: FolderSidebarItemProps): React.ReactElement<any> {
   const [isExpanded, setIsExpanded] = useState(folder.isExpanded)
 
   const folderChats = chats.filter((c) => c.id) // All chats passed are already filtered

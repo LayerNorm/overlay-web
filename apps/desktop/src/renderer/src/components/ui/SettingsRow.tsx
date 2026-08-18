@@ -13,7 +13,7 @@ export function SettingsRow({
   description,
   children,
   theme = lightTheme
-}: SettingsRowProps): React.ReactElement {
+}: SettingsRowProps): React.ReactElement<any> {
   return (
     <div
       style={{

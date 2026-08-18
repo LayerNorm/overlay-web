@@ -29,7 +29,7 @@ export function ShortcutNotebookStep({
   isTransitioning,
   initialHotkey,
   onHotkeyChange
-}: ShortcutNotebookStepProps): React.ReactElement {
+}: ShortcutNotebookStepProps): React.ReactElement<any> {
   const [notebookHotkey, setNotebookHotkey] = useState(initialHotkey)
   const [showHotkeyDialog, setShowHotkeyDialog] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)

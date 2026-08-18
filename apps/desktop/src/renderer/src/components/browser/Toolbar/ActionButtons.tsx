@@ -28,7 +28,7 @@ export function ActionButtons({
   onToggleDownloads,
   onToggleBookmarks,
   onOpenSettings
-}: ActionButtonsProps): ReactElement {
+}: ActionButtonsProps): ReactElement<any> {
   return (
     <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
       <button

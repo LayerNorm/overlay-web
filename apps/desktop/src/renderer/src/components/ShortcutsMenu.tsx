@@ -20,7 +20,7 @@ export function ShortcutsMenu({
   shortcuts,
   theme,
   title = 'Keyboard Shortcuts'
-}: ShortcutsMenuProps): React.ReactElement | null {
+}: ShortcutsMenuProps): React.ReactElement<any> | null {
   if (!isOpen) return null
 
   return (

@@ -59,7 +59,7 @@ const STEPS_WITHOUT_NAV = ['welcome', 'auth', 'all-in-one']
 export function OnboardingPage({
   onComplete,
   startAtAuth = false
-}: OnboardingPageProps): React.ReactElement | null {
+}: OnboardingPageProps): React.ReactElement<any> | null {
   const { settings, updateSetting } = useSettings()
   const theme = getTheme(settings.darkMode, settings.lightThemePreset, settings.darkThemePreset)
   const subscription = useSubscription()
@@ -136,7 +136,7 @@ export function OnboardingPage({
   const primaryButtonStyle = getButtonStyle(theme)
 
   // Navigation buttons component
-  const NavigationButtons = (): React.ReactElement | null => {
+  const NavigationButtons = (): React.ReactElement<any> | null => {
     if (STEPS_WITHOUT_NAV.includes(step) || isLastStep) return null
 
     return (
@@ -195,7 +195,7 @@ export function OnboardingPage({
   }
 
   // Render the current step
-  const renderStep = (): React.ReactElement | null => {
+  const renderStep = (): React.ReactElement<any> | null => {
     switch (step) {
       case 'welcome':
         return (

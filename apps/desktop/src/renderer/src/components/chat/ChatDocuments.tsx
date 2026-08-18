@@ -23,7 +23,7 @@ export function ChatDocuments({
   chatId,
   theme,
   onDocumentCountChange
-}: ChatDocumentsProps): React.ReactElement {
+}: ChatDocumentsProps): React.ReactElement<any> {
   const [documents, setDocuments] = useState<DocumentInfo[]>([])
   const [isExpanded, setIsExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -88,7 +88,7 @@ export function ChatDocuments({
     }
   }
 
-  const getFileIcon = (mimeType: string): React.ReactElement => {
+  const getFileIcon = (mimeType: string): React.ReactElement<any> => {
     if (mimeType.includes('pdf')) {
       return <FileText size={12} color={theme.textSecondary} />
     }

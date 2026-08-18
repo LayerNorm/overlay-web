@@ -6,7 +6,7 @@ interface LoadingIndicatorProps {
   theme: Theme
 }
 
-export function LoadingIndicator({ isLoading, theme }: LoadingIndicatorProps): ReactElement | null {
+export function LoadingIndicator({ isLoading, theme }: LoadingIndicatorProps): ReactElement<any> | null {
   if (!isLoading) return null
 
   return (

@@ -61,7 +61,7 @@ export function Toolbar({
   onToggleDownloads,
   onToggleBookmarks,
   onOpenSettings
-}: ToolbarProps): ReactElement {
+}: ToolbarProps): ReactElement<any> {
   return (
     <div
       style={

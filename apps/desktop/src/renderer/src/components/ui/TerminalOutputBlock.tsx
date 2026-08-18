@@ -27,7 +27,7 @@ function parseResult(toolResult?: string): Record<string, unknown> | null {
 
 function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
-  return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
+  return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
 }
 
 export function TerminalOutputBlock({
@@ -36,7 +36,7 @@ export function TerminalOutputBlock({
   toolInput,
   toolResult,
   isLoading
-}: TerminalOutputBlockProps): React.ReactElement {
+}: TerminalOutputBlockProps): React.ReactElement<any> {
   const [expanded, setExpanded] = useState(false)
   const result = parseResult(toolResult)
 

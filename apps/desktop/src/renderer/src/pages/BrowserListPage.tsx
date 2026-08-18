@@ -33,7 +33,7 @@ export function BrowserListPage({
   onSearchQueryChange,
   isSelectMode,
   onSelectModeChange
-}: BrowserListPageProps): React.ReactElement {
+}: BrowserListPageProps): React.ReactElement<any> {
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(new Set())

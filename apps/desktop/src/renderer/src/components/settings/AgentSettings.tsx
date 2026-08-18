@@ -19,7 +19,7 @@ export function AgentSettings({
   settings,
   onUpdateSetting,
   theme
-}: AgentSettingsProps): ReactElement {
+}: AgentSettingsProps): ReactElement<any> {
   const [showModelDialog, setShowModelDialog] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)

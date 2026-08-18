@@ -6,7 +6,7 @@ interface PanelFrameBorderProps {
 export function PanelFrameBorder({
   visible,
   color,
-}: PanelFrameBorderProps): React.ReactElement | null {
+}: PanelFrameBorderProps): React.ReactElement<any> | null {
   if (!visible) return null
   return (
     <div

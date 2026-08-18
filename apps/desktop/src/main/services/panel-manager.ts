@@ -31,6 +31,8 @@ class PanelManager {
   // Pre-created hidden panel windows for faster activation
   private preloadedPanels: PreloadedPanels = {}
   private preloadedReady = new Set<DockablePreloadPanel>()
+  private recoveringPanelRenderers = new Set<number>()
+  private destroyingPanelWindows = new Set<number>()
   private pendingOpenStateWrite: ReturnType<typeof setImmediate> | null = null
 
   // Track which items are open in which windows (for preventing duplicate windows)
@@ -176,6 +178,7 @@ class PanelManager {
 
   showPanelWindow(win: BrowserWindow, focus = true): void {
     if (win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
     this.prepareDockablePanelWindow(win)
     // Match overlay: stay on all Spaces / over fullscreen without the
     // process-type transform that switches Spaces on multi-monitor Macs.
@@ -254,6 +257,49 @@ class PanelManager {
     this.preloadedReady.delete(panelType)
   }
 
+  private broadcastPanelVisibility(
+    panelType: 'chat' | 'notebook' | 'browser',
+    isVisible: boolean
+  ): void {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) return
+      win.webContents.send('panel:visibility-changed', panelType, isVisible)
+    })
+  }
+
+  private recoverPanelRenderer(
+    panelWindow: BrowserWindow,
+    panelType: 'chat' | 'notebook' | 'browser',
+    reason: string
+  ): void {
+    if (this.isQuitting || panelWindow.isDestroyed()) return
+    if (this.destroyingPanelWindows.has(panelWindow.id)) return
+    if (this.recoveringPanelRenderers.has(panelWindow.id)) return
+
+    const wasVisible = panelWindow.isVisible()
+    this.recoveringPanelRenderers.add(panelWindow.id)
+    console.warn(`[Panel] Recovering ${panelType} renderer (${reason})`, panelWindow.id)
+
+    const finishRecovery = (): void => {
+      this.recoveringPanelRenderers.delete(panelWindow.id)
+      if (panelWindow.isDestroyed()) return
+      if (wasVisible && !this.hiddenPanelWindows[panelType].has(panelWindow.id)) {
+        this.showPanelWindow(panelWindow, false)
+      } else {
+        panelWindow.hide()
+      }
+    }
+
+    panelWindow.webContents.once('did-finish-load', finishRecovery)
+    try {
+      panelWindow.webContents.reload()
+    } catch (error) {
+      panelWindow.webContents.removeListener('did-finish-load', finishRecovery)
+      this.recoveringPanelRenderers.delete(panelWindow.id)
+      console.error(`[Panel] Failed to reload ${panelType} renderer:`, error)
+    }
+  }
+
   /**
    * Apply Show Panels On Startup: restore last-open chat/notebook/browser panels,
    * or keep them hidden when the setting is off.
@@ -288,9 +334,7 @@ class PanelManager {
         }
       }
       this.hiddenPanelWindows[panelType].clear()
-      BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send('panel:visibility-changed', panelType, true)
-      })
+      this.broadcastPanelVisibility(panelType, true)
     }
   }
 
@@ -459,9 +503,7 @@ class PanelManager {
 
     panelLatencyMarkShow(panelType)
     this.markPanelOpenState(panelType, true)
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('panel:visibility-changed', panelType, true)
-    })
+    this.broadcastPanelVisibility(panelType, true)
 
     return result
   }
@@ -483,9 +525,7 @@ class PanelManager {
 
     const result: ToggleResult = { action: 'hidden', count: hiddenSet.size }
     this.markPanelOpenState(panelType, false)
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('panel:visibility-changed', panelType, false)
-    })
+    this.broadcastPanelVisibility(panelType, false)
 
     this.maybeYieldFocusAfterPanelsHidden()
     return result
@@ -534,29 +574,34 @@ class PanelManager {
 
     // Check if we have a preloaded panel ready (only for non-forceNew, non-itemId cases)
     const preloadedKey = panelType as DockablePreloadPanel
+    const preloadedPanel = this.preloadedPanels[preloadedKey]
     if (
       show &&
       !forceNew &&
       !itemId &&
       (panelType === 'chat' || panelType === 'notebook' || panelType === 'browser') &&
-      this.preloadedPanels[preloadedKey]
+      preloadedPanel
     ) {
-      const preloadedPanel = this.preloadedPanels[preloadedKey]!
-      delete this.preloadedPanels[preloadedKey]
+      if (preloadedPanel.isDestroyed()) {
+        delete this.preloadedPanels[preloadedKey]
+        this.clearPreloadReady(preloadedKey)
+      } else {
+        delete this.preloadedPanels[preloadedKey]
 
-      if (isPanelLatencyEnabled() && !this.preloadedReady.has(preloadedKey)) {
-        console.warn(`[PanelManager] Showing ${preloadedKey} preload before renderer-ready`)
+        if (isPanelLatencyEnabled() && !this.preloadedReady.has(preloadedKey)) {
+          console.warn(`[PanelManager] Showing ${preloadedKey} preload before renderer-ready`)
+        }
+        this.clearPreloadReady(preloadedKey)
+
+        // Only dockable panels are preloaded, and they always use fullscreen bounds.
+        preloadedPanel.setIgnoreMouseEvents(true, { forward: true })
+        this.showPanelWindow(preloadedPanel)
+        this.markPanelOpenState(preloadedKey, true)
+
+        // Pre-create a new hidden panel for next time
+        setTimeout(() => this.preloadPanelWindow(preloadedKey), 100)
+        return preloadedPanel
       }
-      this.clearPreloadReady(preloadedKey)
-
-      // Only dockable panels are preloaded, and they always use fullscreen bounds.
-      preloadedPanel.setIgnoreMouseEvents(true, { forward: true })
-      this.showPanelWindow(preloadedPanel)
-      this.markPanelOpenState(preloadedKey, true)
-
-      // Pre-create a new hidden panel for next time
-      setTimeout(() => this.preloadPanelWindow(preloadedKey), 100)
-      return preloadedPanel
     }
 
     // Check if panel already exists (only for non-forceNew cases)
@@ -741,25 +786,15 @@ class PanelManager {
       return { action: 'deny' }
     })
 
-    // For browser panels, intercept close to hide instead of destroy (preserves tabs)
-    // But allow close when app is quitting
-    if (panelType === 'browser') {
+    if (panelType === 'chat' || panelType === 'notebook' || panelType === 'browser') {
       panelWindow.on('close', (event) => {
-        if (this.isQuitting) {
-          return // Allow close when quitting
-        }
+        if (this.isQuitting) return
         event.preventDefault()
-        panelWindow.hide()
-        this.hiddenPanelWindows.browser.add(panelWindow.id)
-        this.markPanelOpenState('browser', this.isPanelTypeVisible('browser'))
-        BrowserWindow.getAllWindows().forEach((w) => {
-          w.webContents.send(
-            'panel:visibility-changed',
-            'browser',
-            this.isPanelTypeVisible('browser')
-          )
-        })
-        this.maybeYieldFocusAfterPanelsHidden()
+        this.hidePanelWindow(panelWindow.id, panelType)
+      })
+
+      panelWindow.webContents.on('render-process-gone', (_event, details) => {
+        this.recoverPanelRenderer(panelWindow, panelType, details.reason)
       })
     }
 
@@ -789,6 +824,9 @@ class PanelManager {
 
     // Clean up on close
     panelWindow.on('closed', () => {
+      this.recoveringPanelRenderers.delete(panelWindow.id)
+      this.destroyingPanelWindows.delete(panelWindow.id)
+      this.originalBounds.delete(panelWindow.id)
       // Clear from preloaded if it was preloaded
       const preloadKey = panelType as DockablePreloadPanel
       if (
@@ -850,8 +888,13 @@ class PanelManager {
 
   // Pre-create a hidden panel window for faster activation
   preloadPanelWindow(panelType: DockablePreloadPanel): void {
-    if (this.preloadedPanels[panelType]) {
+    const existing = this.preloadedPanels[panelType]
+    if (existing && !existing.isDestroyed()) {
       return // Already preloaded
+    }
+    if (existing?.isDestroyed()) {
+      delete this.preloadedPanels[panelType]
+      this.clearPreloadReady(panelType)
     }
     console.log(`[Panel] Preloading ${panelType} panel window`)
     this.createPanelWindow(panelType, { show: false, preload: true })
@@ -869,7 +912,7 @@ class PanelManager {
   closePanelWindow(panelType: PanelType): void {
     const panelWindow = windowManager.findWindowByType(panelType)
     if (panelWindow) {
-      panelWindow.close()
+      this.destroyPanelWindow(panelWindow.id)
     }
   }
 
@@ -900,9 +943,8 @@ class PanelManager {
           win.hide()
         }
       }
-      BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send('panel:visibility-changed', panelType, false)
-      })
+      this.markPanelOpenState(panelType, false)
+      this.broadcastPanelVisibility(panelType, false)
     }
     this.maybeYieldFocusAfterPanelsHidden()
   }
@@ -923,6 +965,7 @@ class PanelManager {
     if (win && !win.isDestroyed()) {
       // For browser panels, we need to bypass the close prevention
       // by setting a flag or using destroy() directly
+      this.destroyingPanelWindows.add(windowId)
       win.destroy()
       console.log(`[Panel] Destroyed window ${windowId}`)
     }
@@ -949,12 +992,14 @@ class PanelManager {
         panelType === 'transcription'
           ? false
           : this.isPanelTypeVisible(panelType as 'chat' | 'notebook' | 'browser')
-      BrowserWindow.getAllWindows().forEach((w) => {
-        w.webContents.send('panel:visibility-changed', panelType, isVisible)
-      })
-
       if (panelType === 'chat' || panelType === 'notebook' || panelType === 'browser') {
+        this.broadcastPanelVisibility(panelType, isVisible)
         this.maybeYieldFocusAfterPanelsHidden()
+      } else {
+        BrowserWindow.getAllWindows().forEach((w) => {
+          if (w.isDestroyed() || w.webContents.isDestroyed()) return
+          w.webContents.send('panel:visibility-changed', panelType, isVisible)
+        })
       }
     }
   }

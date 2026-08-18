@@ -25,7 +25,7 @@ export function FolderDocuments({
   theme,
   isExpanded,
   onToggle
-}: FolderDocumentsProps): React.ReactElement {
+}: FolderDocumentsProps): React.ReactElement<any> {
   const [documents, setDocuments] = useState<DocumentInfo[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
@@ -72,7 +72,7 @@ export function FolderDocuments({
     }
   }
 
-  const getFileIcon = (mimeType: string): React.ReactElement => {
+  const getFileIcon = (mimeType: string): React.ReactElement<any> => {
     if (mimeType.includes('pdf')) {
       return <FileText size={14} color={theme.textSecondary} />
     }

@@ -13,7 +13,7 @@ interface PanelSidebarActionGridProps {
 
 export function PanelSidebarActionGrid({
   children,
-}: PanelSidebarActionGridProps): React.ReactElement {
+}: PanelSidebarActionGridProps): React.ReactElement<any> {
   return (
     <div style={{ padding: '10px 10px 6px' }}>
       <div
@@ -45,7 +45,7 @@ export function PanelSidebarActionButton({
   disabled = false,
   onClick,
   children,
-}: PanelSidebarActionButtonProps): React.ReactElement {
+}: PanelSidebarActionButtonProps): React.ReactElement<any> {
   return (
     <button
       type="button"
@@ -98,7 +98,7 @@ export function PanelSidebarSearch({
   inputRef,
   onChange,
   onKeyDown,
-}: PanelSidebarSearchProps): React.ReactElement {
+}: PanelSidebarSearchProps): React.ReactElement<any> {
   return (
     <div style={{ padding: collapsed ? '10px 10px 6px' : '0 10px 6px' }}>
       <div

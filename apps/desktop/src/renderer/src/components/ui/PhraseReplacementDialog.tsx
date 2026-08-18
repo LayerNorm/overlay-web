@@ -18,7 +18,7 @@ export function PhraseReplacementDialog({
   onSave,
   currentPhrases,
   theme = lightTheme
-}: PhraseReplacementDialogProps): React.ReactElement | null {
+}: PhraseReplacementDialogProps): React.ReactElement<any> | null {
   const [phrases, setPhrases] = useState<PhrasePair[]>(currentPhrases)
   const [originalPhrase, setOriginalPhrase] = useState('')
   const [replacementPhrase, setReplacementPhrase] = useState('')

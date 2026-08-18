@@ -16,7 +16,7 @@ export function ChatSettings({
   settings,
   onUpdateSetting,
   theme
-}: ChatSettingsProps): React.ReactElement {
+}: ChatSettingsProps): React.ReactElement<any> {
   const [permissionPending, setPermissionPending] = useState(false)
   const [permissionError, setPermissionError] = useState<string | null>(null)
 

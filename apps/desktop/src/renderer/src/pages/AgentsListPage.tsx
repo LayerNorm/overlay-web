@@ -30,7 +30,7 @@ function getDateLabel(timestamp: number): string {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-export function AgentsListPage({ theme, onNewAgent }: AgentsListPageProps): React.ReactElement {
+export function AgentsListPage({ theme, onNewAgent }: AgentsListPageProps): React.ReactElement<any> {
   const [allChats, setAllChats] = useState<ChatMeta[]>(() => loadChatsMeta())
   const [activeChatId, setActiveChatId] = useState<string | null>(() => getLastOpenedChatId())
   const [isSelectMode, setIsSelectMode] = useState(false)

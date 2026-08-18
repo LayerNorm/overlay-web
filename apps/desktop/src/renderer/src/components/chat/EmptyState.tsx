@@ -1,6 +1,6 @@
 import { Sparkles } from 'lucide-react'
 
-export function EmptyState(): React.ReactElement {
+export function EmptyState(): React.ReactElement<any> {
   return (
     <div
       style={{

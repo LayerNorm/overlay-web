@@ -41,7 +41,7 @@ export function EmbeddedChatTranscript({
   modelName,
   planSteps,
   onContinue
-}: EmbeddedChatTranscriptProps): React.ReactElement | null {
+}: EmbeddedChatTranscriptProps): React.ReactElement<any> | null {
   const messages = useMemo(
     () =>
       embeddedChatItemsToMessages(items, {

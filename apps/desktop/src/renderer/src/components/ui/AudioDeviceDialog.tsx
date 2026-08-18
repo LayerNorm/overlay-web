@@ -25,7 +25,7 @@ export function AudioDeviceDialog({
   currentDeviceId,
   title = 'Select audio input device:',
   theme = lightTheme
-}: AudioDeviceDialogProps): React.ReactElement | null {
+}: AudioDeviceDialogProps): React.ReactElement<any> | null {
   const [devices, setDevices] = useState<AudioDevice[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>(currentDeviceId || 'default')
   const [loading, setLoading] = useState<boolean>(true)

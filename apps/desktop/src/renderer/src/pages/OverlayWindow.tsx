@@ -28,7 +28,7 @@ function WaveformBars({
   levels?: number[]
   isVertical: boolean
   bouncing?: boolean
-}): ReactElement {
+}): ReactElement<any> {
   const bars = levels ?? Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0)
   return (
     <div
@@ -105,7 +105,7 @@ function getKeepMicrophoneWarm(): boolean {
 }
 
 interface OverlayDockContextBridgeProps {
-  children: (ctx: ReturnType<typeof useDockableDrag>) => ReactElement
+  children: (ctx: ReturnType<typeof useDockableDrag>) => ReactElement<any>
   onDraggingChange: (isDragging: boolean) => void
 }
 
@@ -119,7 +119,7 @@ interface PendingTranscriptionDelivery {
 function OverlayDockContextBridge({
   children,
   onDraggingChange
-}: OverlayDockContextBridgeProps): ReactElement {
+}: OverlayDockContextBridgeProps): ReactElement<any> {
   const ctx = useDockableDrag()
 
   useEffect(() => {
@@ -129,7 +129,7 @@ function OverlayDockContextBridge({
   return children(ctx)
 }
 
-export function OverlayWindow(): ReactElement {
+export function OverlayWindow(): ReactElement<any> {
   const [recording, setRecording] = useState(false)
   const [audioLevels, setAudioLevels] = useState(Array(WAVEFORM_BAR_COUNT).fill(0))
   const [isHovered, setIsHovered] = useState(true)
@@ -151,6 +151,7 @@ export function OverlayWindow(): ReactElement {
   const recordingSourceRef = useRef<'hotkey' | 'mic' | null>(null)
   const lastRecordingRef = useRef<{ blob: Blob; source: 'hotkey' | 'mic' | null; duration: number } | null>(null)
   const pendingDeliveryRef = useRef<PendingTranscriptionDelivery | null>(null)
+  const panelInteractionGenerationRef = useRef(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recorderChunksRef = useRef<Blob[]>([])
   const onStopResolveRef = useRef<((blob: Blob | null) => void) | null>(null)
@@ -259,6 +260,7 @@ export function OverlayWindow(): ReactElement {
   // Toggle panel windows - unified hide/show behavior
   // Hides all windows if any are visible, shows all windows if all are hidden
   const togglePanel = async (panel: 'notebook' | 'chat' | 'browser'): Promise<void> => {
+    panelInteractionGenerationRef.current += 1
     setOpeningPanel(panel)
     setShowButtons(true)
 
@@ -907,26 +909,26 @@ export function OverlayWindow(): ReactElement {
   // Listen for panel closed events (when panel window is closed externally)
   useEffect(() => {
     const offPanelClosed = window.bridge?.onPanelClosed?.((panelType) => {
+      panelInteractionGenerationRef.current += 1
       // Remove from openPanels set
       setOpenPanels((prev) => {
         const next = new Set(prev)
         next.delete(panelType as 'notebook' | 'chat' | 'browser')
         return next
       })
-      if (activePanel === panelType) {
-        setActivePanel(null)
-      }
+      setActivePanel((current) => (current === panelType ? null : current))
     })
     return () => {
       offPanelClosed?.()
     }
-  }, [activePanel])
+  }, [])
 
   // Listen for panel visibility changes (from hotkey toggle or other sources)
   // This keeps the overlay UI in sync when panels are hidden/shown via hotkey
   useEffect(() => {
     const offVisibilityChanged = window.bridge?.onPanelVisibilityChanged?.(
       (panelType, isVisible) => {
+        panelInteractionGenerationRef.current += 1
         console.log(`[OverlayWindow] Visibility changed: ${panelType} -> ${isVisible}`)
         if (!isVisible) {
           // Count a completed session when panel is hidden
@@ -950,16 +952,42 @@ export function OverlayWindow(): ReactElement {
             next.delete(panelType)
             return next
           })
-          if (activePanel === panelType) {
-            setActivePanel(null)
-          }
+          setActivePanel((current) => (current === panelType ? null : current))
         }
       }
     )
     return () => {
       offVisibilityChanged?.()
     }
-  }, [activePanel])
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    const synchronizePanelVisibility = async (): Promise<void> => {
+      const generation = panelInteractionGenerationRef.current
+      try {
+        const panelTypes = ['notebook', 'chat', 'browser'] as const
+        const visibility: Array<{ panel: (typeof panelTypes)[number]; isVisible: boolean }> = []
+        for (const panel of panelTypes) {
+          visibility.push({ panel, isVisible: (await window.bridge.isPanelVisible(panel)).isVisible })
+        }
+        if (disposed || generation !== panelInteractionGenerationRef.current) return
+        const visiblePanels = visibility.filter((entry) => entry.isVisible).map((entry) => entry.panel)
+        setOpenPanels(new Set(visiblePanels))
+        setActivePanel((current) => {
+          if (current && visiblePanels.includes(current)) return current
+          return visiblePanels.at(-1) ?? null
+        })
+      } catch (error) {
+        console.warn('[OverlayWindow] Failed to synchronize panel visibility:', error)
+      }
+    }
+
+    void synchronizePanelVisibility()
+    return () => {
+      disposed = true
+    }
+  }, [])
 
   // Determine dimensions based on state
   // Overlay only expands on hover - panels being open just highlights the buttons when hovered
@@ -1036,389 +1064,349 @@ export function OverlayWindow(): ReactElement {
                 : 'center'
 
           return (
-          <div
-            data-testid="overlay-pill"
-            aria-label="Overlay controls"
-            style={{
-              width: '100%',
-              height: '100%',
-              background: 'transparent',
-              pointerEvents: 'none',
-              overflow: 'visible'
-            }}
-          >
             <div
+              data-testid="overlay-pill"
+              aria-label="Overlay controls"
               style={{
-                width: hitW,
-                height: hitH,
-                display: 'flex',
-                flexDirection: isVertical ? 'row' : 'column',
-                alignItems: isVertical ? hitJustifyContent : hitAlignItems,
-                justifyContent: isVertical ? hitAlignItems : hitJustifyContent,
+                width: '100%',
+                height: '100%',
                 background: 'transparent',
-                pointerEvents: 'none'
+                pointerEvents: 'none',
+                overflow: 'visible'
               }}
             >
-              {/* Agent toast — appears above/beside control bar when agent is active */}
-              {agentStatus && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    ...(isVertical
-                      ? {
-                          [dockedEdge === 'right' ? 'right' : 'left']:
-                            EXPANDED_HEIGHT + 16 + 8,
-                          top: '50%',
-                          transform: 'translateY(-50%)'
-                        }
-                      : dockedEdge === 'top'
+              <div
+                style={{
+                  width: hitW,
+                  height: hitH,
+                  display: 'flex',
+                  flexDirection: isVertical ? 'row' : 'column',
+                  alignItems: isVertical ? hitJustifyContent : hitAlignItems,
+                  justifyContent: isVertical ? hitAlignItems : hitJustifyContent,
+                  background: 'transparent',
+                  pointerEvents: 'none'
+                }}
+              >
+                {/* Agent toast — appears above/beside control bar when agent is active */}
+                {agentStatus && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      ...(isVertical
                         ? {
-                            top: EXPANDED_HEIGHT + 16 + 8,
-                            left: '50%',
-                            transform: 'translateX(-50%)'
+                            [dockedEdge === 'right' ? 'right' : 'left']:
+                              EXPANDED_HEIGHT + 16 + 8,
+                            top: '50%',
+                            transform: 'translateY(-50%)'
                           }
-                        : {
-                            bottom: EXPANDED_HEIGHT + 16 + 8,
-                            left: '50%',
-                            transform: 'translateX(-50%)'
-                          }),
-                    background:
-                      agentStatus === 'error' ? 'rgba(220,38,38,0.92)' : 'rgba(19,19,19,0.92)',
-                    border: `1px solid ${
-                      agentStatus === 'done'
-                        ? 'rgba(34,197,94,0.5)'
-                        : agentStatus === 'error'
-                          ? 'rgba(220,38,38,0.3)'
-                          : 'rgba(255,255,255,0.12)'
-                    }`,
-                    borderRadius: 12,
-                    padding: '6px 14px',
-                    backdropFilter: 'blur(20px)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    whiteSpace: 'nowrap',
-                    maxWidth: 300,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    pointerEvents: 'none',
-                    zIndex: 9999
+                        : dockedEdge === 'top'
+                          ? {
+                              top: EXPANDED_HEIGHT + 16 + 8,
+                              left: '50%',
+                              transform: 'translateX(-50%)'
+                            }
+                          : {
+                              bottom: EXPANDED_HEIGHT + 16 + 8,
+                              left: '50%',
+                              transform: 'translateX(-50%)'
+                            }),
+                      background:
+                        agentStatus === 'error' ? 'rgba(220,38,38,0.92)' : 'rgba(19,19,19,0.92)',
+                      border: `1px solid ${
+                        agentStatus === 'done'
+                          ? 'rgba(34,197,94,0.5)'
+                          : agentStatus === 'error'
+                            ? 'rgba(220,38,38,0.3)'
+                            : 'rgba(255,255,255,0.12)'
+                      }`,
+                      borderRadius: 12,
+                      padding: '6px 14px',
+                      backdropFilter: 'blur(20px)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      whiteSpace: 'nowrap',
+                      maxWidth: 300,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      pointerEvents: 'none',
+                      zIndex: 9999
+                    }}
+                  >
+                    {agentStatus === 'thinking' && (
+                      <span style={{ fontSize: 12, opacity: 0.6, animation: 'pulse 1.4s infinite' }}>
+                        ●
+                      </span>
+                    )}
+                    {agentStatus === 'done' && (
+                      <span style={{ fontSize: 11, color: '#22c55e' }}>✓</span>
+                    )}
+                    {agentStatus === 'error' && <span style={{ fontSize: 11 }}>✕</span>}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: 'rgba(255,255,255,0.9)',
+                        fontFamily: 'system-ui, -apple-system, sans-serif',
+                        letterSpacing: '-0.01em'
+                      }}
+                    >
+                      {agentStatus === 'thinking'
+                        ? 'Working…'
+                        : agentSummary || (agentStatus === 'error' ? 'Agent error' : 'Done')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Agent state border — racing white when thinking, green/red on result */}
+                <div
+                  onMouseEnter={handleWidgetMouseEnter}
+                  onMouseMove={handleWidgetMouseMove}
+                  onMouseLeave={() => handleWidgetMouseLeave(isDragging)}
+                  onMouseDown={(e) => {
+                    const target = e.target as HTMLElement
+                    if (target.closest('button, input')) return
+                    startDrag(e)
+                  }}
+                  style={{
+                    position: 'relative',
+                    pointerEvents: 'auto',
+                    cursor: 'default'
                   }}
                 >
                   {agentStatus === 'thinking' && (
-                    <span style={{ fontSize: 12, opacity: 0.6, animation: 'pulse 1.4s infinite' }}>
-                      ●
-                    </span>
+                    <div
+                      className="agent-border-spin"
+                      style={
+                        {
+                          position: 'absolute',
+                          inset: -2,
+                          borderRadius: pillBorderRadius + 2,
+                          zIndex: 0,
+                          pointerEvents: 'none'
+                        } as React.CSSProperties
+                      }
+                    />
                   )}
-                  {agentStatus === 'done' && (
-                    <span style={{ fontSize: 11, color: '#22c55e' }}>✓</span>
+                  {(agentStatus === 'done' || agentStatus === 'error') && (
+                    <div
+                      style={
+                        {
+                          position: 'absolute',
+                          inset: -2,
+                          borderRadius: pillBorderRadius + 2,
+                          boxShadow:
+                            agentStatus === 'done'
+                              ? '0 0 0 2px #22c55e, 0 0 16px rgba(34,197,94,0.5)'
+                              : '0 0 0 2px #ef4444, 0 0 16px rgba(239,68,68,0.5)',
+                          zIndex: 0,
+                          pointerEvents: 'none'
+                        } as React.CSSProperties
+                      }
+                    />
                   )}
-                  {agentStatus === 'error' && <span style={{ fontSize: 11 }}>✕</span>}
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: 'rgba(255,255,255,0.9)',
-                      fontFamily: 'system-ui, -apple-system, sans-serif',
-                      letterSpacing: '-0.01em'
-                    }}
-                  >
-                    {agentStatus === 'thinking'
-                      ? 'Working…'
-                      : agentSummary || (agentStatus === 'error' ? 'Agent error' : 'Done')}
-                  </span>
-                </div>
-              )}
-
-              {/* Agent state border — racing white when thinking, green/red on result */}
-              <div
-                onMouseEnter={handleWidgetMouseEnter}
-                onMouseMove={handleWidgetMouseMove}
-                onMouseLeave={() => handleWidgetMouseLeave(isDragging)}
-                onMouseDown={(e) => {
-                  const target = e.target as HTMLElement
-                  if (target.closest('button, input')) return
-                  startDrag(e)
-                }}
-                style={{
-                  position: 'relative',
-                  pointerEvents: 'auto',
-                  cursor: 'default'
-                }}
-              >
-                {agentStatus === 'thinking' && (
-                  <div
-                    className="agent-border-spin"
-                    style={
-                      {
-                        position: 'absolute',
-                        inset: -2,
-                        borderRadius: pillBorderRadius + 2,
-                        zIndex: 0,
-                        pointerEvents: 'none'
-                      } as React.CSSProperties
-                    }
-                  />
-                )}
-                {(agentStatus === 'done' || agentStatus === 'error') && (
+                  {/* Control bar — always draggable; buttons have no-drag so they stay clickable */}
                   <div
                     style={
                       {
-                        position: 'absolute',
-                        inset: -2,
-                        borderRadius: pillBorderRadius + 2,
-                        boxShadow:
-                          agentStatus === 'done'
-                            ? '0 0 0 2px #22c55e, 0 0 16px rgba(34,197,94,0.5)'
-                            : '0 0 0 2px #ef4444, 0 0 16px rgba(239,68,68,0.5)',
-                        zIndex: 0,
-                        pointerEvents: 'none'
-                      } as React.CSSProperties
-                    }
-                  />
-                )}
-                {/* Control bar — always draggable; buttons have no-drag so they stay clickable */}
-                <div
-                  style={
-                    {
-                      width,
-                      height,
-                      borderRadius: pillBorderRadius,
-                      background:
-                        recording || isExpanded
-                          ? 'rgba(19, 19, 19, 0.95)'
-                          : 'rgba(19, 19, 19, 0.8)',
-                      border:
-                        recording || isExpanded
-                          ? '1px solid rgba(255, 255, 255, 0.15)'
-                          : '1px solid rgba(255, 255, 255, 0.3)',
-                      backdropFilter: 'blur(20px)',
-                      display: 'flex',
-                      flexDirection: isVertical ? 'column' : 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: recording
-                        ? isMicRecording
-                          ? 10
-                          : WAVEFORM_GAP
-                        : isExpanded
-                          ? transcriptionError
-                            ? 4
-                            : 6
-                          : WAVEFORM_GAP,
-                      padding: recording
-                        ? isVertical
-                          ? '6px 0'
-                          : '0 6px'
-                        : isExpanded
+                        width,
+                        height,
+                        borderRadius: pillBorderRadius,
+                        background:
+                          recording || isExpanded
+                            ? 'rgba(19, 19, 19, 0.95)'
+                            : 'rgba(19, 19, 19, 0.8)',
+                        border:
+                          recording || isExpanded
+                            ? '1px solid rgba(255, 255, 255, 0.15)'
+                            : '1px solid rgba(255, 255, 255, 0.3)',
+                        backdropFilter: 'blur(20px)',
+                        display: 'flex',
+                        flexDirection: isVertical ? 'column' : 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: recording
+                          ? isMicRecording
+                            ? 10
+                            : WAVEFORM_GAP
+                          : isExpanded
+                            ? transcriptionError
+                              ? 4
+                              : 6
+                            : WAVEFORM_GAP,
+                        padding: recording
                           ? isVertical
-                            ? '8px 0'
-                            : '0 8px'
-                          : 0,
-                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: 'none',
-                      position: 'relative',
-                      zIndex: 1,
-                      // Always draggable — buttons override with no-drag for click handling
-                      cursor: 'default'
-                    } as React.CSSProperties
-                  }
-                >
-                  {recording ? (
-                    isMicRecording ? (
-                      // Mic recording mode: Stop button + Waveform + Pause/Play button
-                      <>
-                        {/* Stop button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            stopRecording()
-                          }}
-                          style={
-                            {
-                              width: 36,
-                              height: 36,
-                              borderRadius: '50%',
-                              background: '#dc2626',
-                              border: '1px solid rgba(255, 255, 255, 0.2)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'default',
-                              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                              padding: 0,
-                              pointerEvents: 'auto',
-                              animation: 'fadeScaleIn 0.15s ease-out'
-                            } as React.CSSProperties
-                          }
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#ef4444'
-                            e.currentTarget.style.transform = 'scale(1.08)'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#dc2626'
-                            e.currentTarget.style.transform = 'scale(1)'
-                          }}
-                        >
-                          <Square size={12} color="#fff" fill="#fff" />
-                        </button>
+                            ? '6px 0'
+                            : '0 6px'
+                          : isExpanded
+                            ? isVertical
+                              ? '8px 0'
+                              : '0 8px'
+                            : 0,
+                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                        boxShadow: 'none',
+                        position: 'relative',
+                        zIndex: 1,
+                        // Always draggable — buttons override with no-drag for click handling
+                        cursor: 'default'
+                      } as React.CSSProperties
+                    }
+                  >
+                    {recording ? (
+                      isMicRecording ? (
+                        // Mic recording mode: Stop button + Waveform + Pause/Play button
+                        (<>
+                          {/* Stop button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              stopRecording()
+                            }}
+                            style={
+                              {
+                                width: 36,
+                                height: 36,
+                                borderRadius: '50%',
+                                background: '#dc2626',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'default',
+                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                padding: 0,
+                                pointerEvents: 'auto',
+                                animation: 'fadeScaleIn 0.15s ease-out'
+                              } as React.CSSProperties
+                            }
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#ef4444'
+                              e.currentTarget.style.transform = 'scale(1.08)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#dc2626'
+                              e.currentTarget.style.transform = 'scale(1)'
+                            }}
+                          >
+                            <Square size={12} color="#fff" fill="#fff" />
+                          </button>
 
-                        {/* Waveform */}
-                        <WaveformBars levels={audioLevels} isVertical={isVertical} />
+                          {/* Waveform */}
+                          <WaveformBars levels={audioLevels} isVertical={isVertical} />
 
-                        {/* Pause/Play button */}
+                          {/* Pause/Play button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              togglePause()
+                            }}
+                            title={isPaused ? 'Resume recording' : 'Pause recording'}
+                            style={
+                              {
+                                width: 36,
+                                height: 36,
+                                borderRadius: '50%',
+                                background: 'rgba(255, 255, 255, 0.08)',
+                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'default',
+                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                padding: 0,
+                                pointerEvents: 'auto',
+                                animation: 'fadeScaleIn 0.15s ease-out'
+                              } as React.CSSProperties
+                            }
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
+                              e.currentTarget.style.transform = 'scale(1.08)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
+                              e.currentTarget.style.transform = 'scale(1)'
+                            }}
+                          >
+                            {isPaused ? (
+                              <Play size={15} color="rgba(255,255,255,0.7)" strokeWidth={1.75} />
+                            ) : (
+                              <Pause size={15} color="rgba(255,255,255,0.7)" strokeWidth={1.75} />
+                            )}
+                          </button>
+                        </>)
+                      ) : (
+                        // Simple waveform for non-expanded recording
+                        (<WaveformBars levels={audioLevels} isVertical={isVertical} />)
+                      )
+                    ) : isProcessing ? (
+                      // Processing state: waveform bars with bouncing wave animation
+                      (<WaveformBars isVertical={isVertical} bouncing />)
+                    ) : isExpanded && showButtons ? (
+                      // Expanded state with action buttons (shown after expansion animation)
+                      (<>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            togglePause()
+                            togglePanel('notebook')
                           }}
-                          title={isPaused ? 'Resume recording' : 'Pause recording'}
-                          style={
-                            {
-                              width: 36,
-                              height: 36,
-                              borderRadius: '50%',
-                              background: 'rgba(255, 255, 255, 0.08)',
-                              border: '1px solid rgba(255, 255, 255, 0.12)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'default',
-                              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                              padding: 0,
-                              pointerEvents: 'auto',
-                              animation: 'fadeScaleIn 0.15s ease-out'
-                            } as React.CSSProperties
-                          }
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
-                            e.currentTarget.style.transform = 'scale(1.08)'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
-                            e.currentTarget.style.transform = 'scale(1)'
-                          }}
-                        >
-                          {isPaused ? (
-                            <Play size={15} color="rgba(255,255,255,0.7)" strokeWidth={1.75} />
-                          ) : (
-                            <Pause size={15} color="rgba(255,255,255,0.7)" strokeWidth={1.75} />
-                          )}
-                        </button>
-                      </>
-                    ) : (
-                      // Simple waveform for non-expanded recording
-                      <WaveformBars levels={audioLevels} isVertical={isVertical} />
-                    )
-                  ) : isProcessing ? (
-                    // Processing state: waveform bars with bouncing wave animation
-                    <WaveformBars isVertical={isVertical} bouncing />
-                  ) : isExpanded && showButtons ? (
-                    // Expanded state with action buttons (shown after expansion animation)
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          togglePanel('notebook')
-                        }}
-                        style={
-                          {
-                            width: 32,
-                            height: 32,
-                            borderRadius: '50%',
-                            background: openPanels.has('notebook')
-                              ? 'rgba(255, 255, 255, 0.25)'
-                              : 'rgba(255, 255, 255, 0.08)',
-                            border: openPanels.has('notebook')
-                              ? '1px solid rgba(255, 255, 255, 0.4)'
-                              : '1px solid rgba(255, 255, 255, 0.12)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'default',
-                            transition:
-                              'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                            padding: 0,
-                            pointerEvents: 'auto',
-                            animation: 'buttonFadeIn 0.12s ease-out forwards',
-                            animationDelay: '180ms',
-                            opacity: 0
-                          } as React.CSSProperties
-                        }
-                        onMouseEnter={(e) => {
-                          if (!openPanels.has('notebook')) {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
-                          }
-                          e.currentTarget.style.transform = 'scale(1.08)'
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!openPanels.has('notebook')) {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
-                          }
-                          e.currentTarget.style.transform = 'scale(1)'
-                        }}
-                      >
-                        <Notebook
-                          size={15}
-                          color={openPanels.has('notebook') ? '#fff' : 'rgba(255,255,255,0.7)'}
-                          strokeWidth={1.75}
-                        />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          startRecording('mic')
-                        }}
-                        style={
-                          {
-                            width: 32,
-                            height: 32,
-                            borderRadius: '50%',
-                            background: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(255, 255, 255, 0.12)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'default',
-                            transition:
-                              'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                            padding: 0,
-                            pointerEvents: 'auto',
-                            animation: 'buttonFadeIn 0.12s ease-out forwards',
-                            animationDelay: '200ms',
-                            opacity: 0
-                          } as React.CSSProperties
-                        }
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
-                          e.currentTarget.style.transform = 'scale(1.08)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
-                          e.currentTarget.style.transform = 'scale(1)'
-                        }}
-                      >
-                        <Mic size={15} color="rgba(255,255,255,0.7)" strokeWidth={1.75} />
-                      </button>
-                      {transcriptionError && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            retryTranscription()
-                          }}
-                          title="Retry"
                           style={
                             {
                               width: 32,
                               height: 32,
                               borderRadius: '50%',
-                              background: 'rgba(239, 68, 68, 0.12)',
-                              border: '1px solid rgba(239, 68, 68, 0.5)',
+                              background: openPanels.has('notebook')
+                                ? 'rgba(255, 255, 255, 0.25)'
+                                : 'rgba(255, 255, 255, 0.08)',
+                              border: openPanels.has('notebook')
+                                ? '1px solid rgba(255, 255, 255, 0.4)'
+                                : '1px solid rgba(255, 255, 255, 0.12)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'default',
+                              transition:
+                                'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                              padding: 0,
+                              pointerEvents: 'auto',
+                              animation: 'buttonFadeIn 0.12s ease-out forwards',
+                              animationDelay: '180ms',
+                              opacity: 0
+                            } as React.CSSProperties
+                          }
+                          onMouseEnter={(e) => {
+                            if (!openPanels.has('notebook')) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
+                            }
+                            e.currentTarget.style.transform = 'scale(1.08)'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!openPanels.has('notebook')) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
+                            }
+                            e.currentTarget.style.transform = 'scale(1)'
+                          }}
+                        >
+                          <Notebook
+                            size={15}
+                            color={openPanels.has('notebook') ? '#fff' : 'rgba(255,255,255,0.7)'}
+                            strokeWidth={1.75}
+                          />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            startRecording('mic')
+                          }}
+                          style={
+                            {
+                              width: 32,
+                              height: 32,
+                              borderRadius: '50%',
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              border: '1px solid rgba(255, 255, 255, 0.12)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -1433,205 +1421,245 @@ export function OverlayWindow(): ReactElement {
                             } as React.CSSProperties
                           }
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'
-                            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.7)'
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
                             e.currentTarget.style.transform = 'scale(1.08)'
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'
-                            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
                             e.currentTarget.style.transform = 'scale(1)'
                           }}
                         >
-                          <RefreshCw size={15} color="#ef4444" strokeWidth={1.75} />
+                          <Mic size={15} color="rgba(255,255,255,0.7)" strokeWidth={1.75} />
                         </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          togglePanel('chat')
-                        }}
-                        style={
-                          {
-                            width: 32,
-                            height: 32,
-                            borderRadius: '50%',
-                            background: openPanels.has('chat')
-                              ? 'rgba(255, 255, 255, 0.25)'
-                              : 'rgba(255, 255, 255, 0.08)',
-                            border: openPanels.has('chat')
-                              ? '1px solid rgba(255, 255, 255, 0.4)'
-                              : '1px solid rgba(255, 255, 255, 0.12)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'default',
-                            transition:
-                              'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                            padding: 0,
-                            pointerEvents: 'auto',
-                            animation: 'buttonFadeIn 0.12s ease-out forwards',
-                            animationDelay: '220ms',
-                            opacity: 0
-                          } as React.CSSProperties
-                        }
-                        onMouseEnter={(e) => {
-                          if (!openPanels.has('chat')) {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
+                        {transcriptionError && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              retryTranscription()
+                            }}
+                            title="Retry"
+                            style={
+                              {
+                                width: 32,
+                                height: 32,
+                                borderRadius: '50%',
+                                background: 'rgba(239, 68, 68, 0.12)',
+                                border: '1px solid rgba(239, 68, 68, 0.5)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'default',
+                                transition:
+                                  'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                padding: 0,
+                                pointerEvents: 'auto',
+                                animation: 'buttonFadeIn 0.12s ease-out forwards',
+                                animationDelay: '200ms',
+                                opacity: 0
+                              } as React.CSSProperties
+                            }
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'
+                              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.7)'
+                              e.currentTarget.style.transform = 'scale(1.08)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'
+                              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'
+                              e.currentTarget.style.transform = 'scale(1)'
+                            }}
+                          >
+                            <RefreshCw size={15} color="#ef4444" strokeWidth={1.75} />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            togglePanel('chat')
+                          }}
+                          style={
+                            {
+                              width: 32,
+                              height: 32,
+                              borderRadius: '50%',
+                              background: openPanels.has('chat')
+                                ? 'rgba(255, 255, 255, 0.25)'
+                                : 'rgba(255, 255, 255, 0.08)',
+                              border: openPanels.has('chat')
+                                ? '1px solid rgba(255, 255, 255, 0.4)'
+                                : '1px solid rgba(255, 255, 255, 0.12)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'default',
+                              transition:
+                                'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                              padding: 0,
+                              pointerEvents: 'auto',
+                              animation: 'buttonFadeIn 0.12s ease-out forwards',
+                              animationDelay: '220ms',
+                              opacity: 0
+                            } as React.CSSProperties
                           }
-                          e.currentTarget.style.transform = 'scale(1.08)'
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!openPanels.has('chat')) {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
+                          onMouseEnter={(e) => {
+                            if (!openPanels.has('chat')) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
+                            }
+                            e.currentTarget.style.transform = 'scale(1.08)'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!openPanels.has('chat')) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
+                            }
+                            e.currentTarget.style.transform = 'scale(1)'
+                          }}
+                        >
+                          <MessageCircle
+                            size={15}
+                            color={openPanels.has('chat') ? '#fff' : 'rgba(255,255,255,0.7)'}
+                            strokeWidth={1.75}
+                          />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            togglePanel('browser')
+                          }}
+                          style={
+                            {
+                              width: 32,
+                              height: 32,
+                              borderRadius: '50%',
+                              background: openPanels.has('browser')
+                                ? 'rgba(255, 255, 255, 0.25)'
+                                : 'rgba(255, 255, 255, 0.08)',
+                              border: openPanels.has('browser')
+                                ? '1px solid rgba(255, 255, 255, 0.4)'
+                                : '1px solid rgba(255, 255, 255, 0.12)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'default',
+                              transition:
+                                'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                              padding: 0,
+                              pointerEvents: 'auto',
+                              animation: 'buttonFadeIn 0.12s ease-out forwards',
+                              animationDelay: '240ms',
+                              opacity: 0
+                            } as React.CSSProperties
                           }
-                          e.currentTarget.style.transform = 'scale(1)'
-                        }}
-                      >
-                        <MessageCircle
-                          size={15}
-                          color={openPanels.has('chat') ? '#fff' : 'rgba(255,255,255,0.7)'}
-                          strokeWidth={1.75}
-                        />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          togglePanel('browser')
-                        }}
-                        style={
-                          {
-                            width: 32,
-                            height: 32,
-                            borderRadius: '50%',
-                            background: openPanels.has('browser')
-                              ? 'rgba(255, 255, 255, 0.25)'
-                              : 'rgba(255, 255, 255, 0.08)',
-                            border: openPanels.has('browser')
-                              ? '1px solid rgba(255, 255, 255, 0.4)'
-                              : '1px solid rgba(255, 255, 255, 0.12)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'default',
-                            transition:
-                              'background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                            padding: 0,
-                            pointerEvents: 'auto',
-                            animation: 'buttonFadeIn 0.12s ease-out forwards',
-                            animationDelay: '240ms',
-                            opacity: 0
-                          } as React.CSSProperties
-                        }
-                        onMouseEnter={(e) => {
-                          if (!openPanels.has('browser')) {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
-                          }
-                          e.currentTarget.style.transform = 'scale(1.08)'
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!openPanels.has('browser')) {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
-                          }
-                          e.currentTarget.style.transform = 'scale(1)'
-                        }}
-                      >
-                        <Globe
-                          size={15}
-                          color={openPanels.has('browser') ? '#fff' : 'rgba(255,255,255,0.7)'}
-                          strokeWidth={1.75}
-                        />
-                      </button>
-                    </>
-                  ) : null}
+                          onMouseEnter={(e) => {
+                            if (!openPanels.has('browser')) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)'
+                            }
+                            e.currentTarget.style.transform = 'scale(1.08)'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!openPanels.has('browser')) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
+                            }
+                            e.currentTarget.style.transform = 'scale(1)'
+                          }}
+                        >
+                          <Globe
+                            size={15}
+                            color={openPanels.has('browser') ? '#fff' : 'rgba(255,255,255,0.7)'}
+                            strokeWidth={1.75}
+                          />
+                        </button>
+                      </>)
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* CSS for animations */}
-            <style>{`
-        @property --agent-angle {
-          syntax: '<angle>';
-          initial-value: 0deg;
-          inherits: false;
-        }
-        @keyframes agentBorderSpin {
-          to { --agent-angle: 360deg; }
-        }
-        .agent-border-spin {
-          background: conic-gradient(
-            from var(--agent-angle),
-            transparent 0deg,
-            rgba(255, 255, 255, 0.85) 50deg,
-            transparent 100deg
+              {/* CSS for animations */}
+              <style>{`
+          @property --agent-angle {
+            syntax: '<angle>';
+            initial-value: 0deg;
+            inherits: false;
+          }
+          @keyframes agentBorderSpin {
+            to { --agent-angle: 360deg; }
+          }
+          .agent-border-spin {
+            background: conic-gradient(
+              from var(--agent-angle),
+              transparent 0deg,
+              rgba(255, 255, 255, 0.85) 50deg,
+              transparent 100deg
+            );
+            animation: agentBorderSpin 1.2s linear infinite;
+          }
+          @keyframes fadeScaleIn {
+            from {
+              opacity: 0;
+              transform: scale(0.8);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+          @keyframes buttonFadeIn {
+            from {
+              opacity: 0;
+              transform: scale(0.85);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+          @keyframes waveBounce {
+            0%, 100% {
+              height: 2px;
+            }
+            25% {
+              height: 15px;
+            }
+            50% {
+              height: 2px;
+            }
+            75% {
+              height: 15px;
+            }
+          }
+          @keyframes waveBounceVertical {
+            0%, 100% {
+              width: 2px;
+            }
+            25% {
+              width: 15px;
+            }
+            50% {
+              width: 2px;
+            }
+            75% {
+              width: 15px;
+            }
+          }
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+        `}</style>
+            </div>
           );
-          animation: agentBorderSpin 1.2s linear infinite;
-        }
-        @keyframes fadeScaleIn {
-          from {
-            opacity: 0;
-            transform: scale(0.8);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        @keyframes buttonFadeIn {
-          from {
-            opacity: 0;
-            transform: scale(0.85);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        @keyframes waveBounce {
-          0%, 100% {
-            height: 2px;
-          }
-          25% {
-            height: 15px;
-          }
-          50% {
-            height: 2px;
-          }
-          75% {
-            height: 15px;
-          }
-        }
-        @keyframes waveBounceVertical {
-          0%, 100% {
-            width: 2px;
-          }
-          25% {
-            width: 15px;
-          }
-          50% {
-            width: 2px;
-          }
-          75% {
-            width: 15px;
-          }
-        }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-      `}</style>
-          </div>
-          )
         }}
       </OverlayDockContextBridge>
     </DockablePanel>
-  )
+  );
 }

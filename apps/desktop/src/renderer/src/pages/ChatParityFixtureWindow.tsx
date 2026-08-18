@@ -319,7 +319,7 @@ function FixtureSection({
   description: string
   scenarioId: string
   children: React.ReactNode
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <section
       className="overlay-chat-surface parity-fixture-section"
@@ -335,7 +335,7 @@ function FixtureSection({
   )
 }
 
-function PerfReadout({ config }: { config: FixtureConfig }): React.ReactElement {
+function PerfReadout({ config }: { config: FixtureConfig }): React.ReactElement<any> {
   const [snapshot, setSnapshot] = useState<PerfDebugSnapshot>({ renders: {}, timings: {} })
 
   useEffect(() => {
@@ -374,7 +374,7 @@ function DesktopTextFixture({
 }: {
   scenario: ChatParityTextScenario
   theme: ReturnType<typeof getPanelTheme>
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const [messages, setMessages] = useState(() => textScenarioMessages(scenario))
   const [sourcesPanel, setSourcesPanel] = useState<{
     turnId: string
@@ -435,7 +435,7 @@ function DesktopMediaComposerFixture({
   theme
 }: {
   theme: ReturnType<typeof getPanelTheme>
-}): React.ReactElement {
+}): React.ReactElement<any> {
   const controls = useDesktopMediaComposerState({
     imageModels: FIXTURE_IMAGE_MODELS,
     videoModels: FIXTURE_VIDEO_MODELS,
@@ -553,7 +553,7 @@ function EmbeddedConsumersFixture({
   theme
 }: {
   theme: ReturnType<typeof getPanelTheme>
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div className="grid gap-5 lg:grid-cols-2" data-testid="embedded-consumers-fixture">
       <section className="min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3">
@@ -586,7 +586,7 @@ function EmbeddedConsumersFixture({
   )
 }
 
-export function ChatParityFixtureWindow(): React.ReactElement {
+export function ChatParityFixtureWindow(): React.ReactElement<any> {
   const config = useMemo(readFixtureConfig, [])
   const theme = useMemo(() => getPanelTheme(config.theme === 'dark'), [config.theme])
   const textScenarios = CHAT_PARITY_TEXT_SCENARIOS.filter(

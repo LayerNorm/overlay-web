@@ -15,7 +15,7 @@ export function NameStep({
   onNext,
   isTransitioning,
   onNameValidChange
-}: NameStepProps): React.ReactElement {
+}: NameStepProps): React.ReactElement<any> {
   const [userName, setUserName] = useState('')
 
   const containerStyle = getContainerStyle(theme, isTransitioning)

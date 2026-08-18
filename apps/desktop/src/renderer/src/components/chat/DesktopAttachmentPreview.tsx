@@ -118,7 +118,7 @@ export function DesktopAttachmentPreviewPanel({
   preview: AttachmentPreview
   onClose(): void
   onModeChange(mode: AttachmentPreviewMode): void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div className="shared-app-scope h-full min-h-0 w-full">
       <AttachmentPreviewPanel
@@ -142,7 +142,7 @@ export function DesktopAttachmentPreviewDialog({
   mode: AttachmentPreviewMode
   onClose(): void
   onModeChange(mode: AttachmentPreviewMode): void
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <div className="shared-app-scope">
       <AttachmentPreviewDialog

@@ -57,7 +57,7 @@ export function DesktopNotebookPanelSidebar({
   onCloseTab,
   searchInputRef,
   isCollapsed = false,
-}: DesktopNotebookPanelSidebarProps): React.ReactElement {
+}: DesktopNotebookPanelSidebarProps): React.ReactElement<any> {
   const [query, setQuery] = useState('')
   const [folders, setFolders] = useState<NoteFolder[]>(() => loadNoteFolders())
   const [folderMap, setFolderMap] = useState<Record<string, string>>(() => loadNoteFolderMap())
@@ -116,7 +116,7 @@ export function DesktopNotebookPanelSidebar({
     exitSelectMode()
   }
 
-  const renderNote = (note: NotebookNote, depth = 0): React.ReactElement => {
+  const renderNote = (note: NotebookNote, depth = 0): React.ReactElement<any> => {
     const active = note._id === activeNoteId
     const selected = selectedIds.has(note._id)
     return (
@@ -166,7 +166,7 @@ export function DesktopNotebookPanelSidebar({
     )
   }
 
-  const renderFolder = (folder: NoteFolder, depth = 0): React.ReactElement => {
+  const renderFolder = (folder: NoteFolder, depth = 0): React.ReactElement<any> => {
     const childFolders = folders.filter((candidate) => candidate.parentId === folder.id)
     const folderNotes = filteredNotes.filter((note) => noteFolderId(note, folderMap) === folder.id)
     return (

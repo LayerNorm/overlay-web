@@ -12,7 +12,7 @@ export function SiteInfoPermissions({
   permissions,
   theme,
   onDeletePermission
-}: SiteInfoPermissionsProps): ReactElement {
+}: SiteInfoPermissionsProps): ReactElement<any> {
   return (
     <>
       <div

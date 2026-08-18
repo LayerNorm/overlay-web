@@ -133,7 +133,7 @@ export function PermissionPrompt({
   onAllow,
   onDeny,
   theme
-}: PermissionPromptProps): ReactElement | null {
+}: PermissionPromptProps): ReactElement<any> | null {
   const [rememberChoice, setRememberChoice] = useState(false)
 
   if (!request) return null

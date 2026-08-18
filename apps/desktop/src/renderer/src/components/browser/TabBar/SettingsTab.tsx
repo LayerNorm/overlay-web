@@ -14,7 +14,7 @@ export function SettingsTab({
   theme,
   onSelect,
   onClose
-}: SettingsTabProps): ReactElement {
+}: SettingsTabProps): ReactElement<any> {
   return (
     <div
       onClick={onSelect}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, ReactElement } from 'react'
 import { NotificationPanel, NotificationItem } from '../components/notifications'
 
-export function NotificationPage(): ReactElement {
+export function NotificationPage(): ReactElement<any> {
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [autoDismissSeconds, setAutoDismissSeconds] = useState(3)
 

@@ -15,7 +15,7 @@ export function TestTranscriptionStep({
   onNext,
   isTransitioning,
   pushToTalkHotkey
-}: TestTranscriptionStepProps): React.ReactElement {
+}: TestTranscriptionStepProps): React.ReactElement<any> {
   const [transcriptionText, setTranscriptionText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
 

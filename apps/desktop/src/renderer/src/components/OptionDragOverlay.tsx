@@ -5,7 +5,7 @@ interface OptionDragOverlayProps {
   isOptionHeld: boolean
 }
 
-export function OptionDragOverlay({ isOptionHeld }: OptionDragOverlayProps): React.ReactElement {
+export function OptionDragOverlay({ isOptionHeld }: OptionDragOverlayProps): React.ReactElement<any> {
   const { startDrag, isDragging } = useDockableDrag()
 
   return (

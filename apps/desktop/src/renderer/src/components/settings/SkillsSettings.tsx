@@ -85,7 +85,7 @@ function htmlToMarkdown(html: string): string {
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
+    .trim();
 }
 
 function SkillChip({
@@ -96,7 +96,7 @@ function SkillChip({
   label: string
   onRemove: () => void
   theme: Theme
-}): ReactElement {
+}): ReactElement<any> {
   return (
     <span
       style={{
@@ -133,7 +133,7 @@ function SkillChip({
   )
 }
 
-export function SkillsSettings({ theme }: SkillsSettingsProps): ReactElement {
+export function SkillsSettings({ theme }: SkillsSettingsProps): ReactElement<any> {
   const [skills, setSkills] = useState<LoadedSkill[]>([])
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingSkill, setEditingSkill] = useState<LoadedSkill | null>(null)

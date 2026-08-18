@@ -16,7 +16,7 @@ export function TrafficLightButtons({
   onMinimize,
   onMaximize,
   isMaximized = false
-}: TrafficLightButtonsProps): React.ReactElement {
+}: TrafficLightButtonsProps): React.ReactElement<any> {
   const [isHovered, setIsHovered] = useState(false)
 
   const buttonSize = 13
@@ -99,7 +99,7 @@ export function TrafficLightButtons({
         {isHovered &&
           (isMaximized ? (
             // Restore icon - two overlapping squares
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+            (<svg width="8" height="8" viewBox="0 0 10 10" fill="none">
               <path
                 d="M3 1h5.5a.5.5 0 01.5.5V7M1 3h5.5a.5.5 0 01.5.5V9a.5.5 0 01-.5.5H1.5A.5.5 0 011 9V3.5A.5.5 0 011.5 3H1z"
                 stroke="#006500"
@@ -108,10 +108,10 @@ export function TrafficLightButtons({
                 strokeLinejoin="round"
                 opacity="0.8"
               />
-            </svg>
+            </svg>)
           ) : (
             // Maximize icon - diagonal arrow
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+            (<svg width="8" height="8" viewBox="0 0 10 10" fill="none">
               <path
                 d="M1 9L9 1M9 1H4M9 1v5"
                 stroke="#006500"
@@ -120,9 +120,9 @@ export function TrafficLightButtons({
                 strokeLinejoin="round"
                 opacity="0.8"
               />
-            </svg>
+            </svg>)
           ))}
       </button>
     </div>
-  )
+  );
 }

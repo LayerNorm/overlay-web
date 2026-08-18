@@ -48,7 +48,7 @@ export function useChatContext(): ChatContextValue {
   return context
 }
 
-export function ChatProvider({ children }: { children: React.ReactNode }): React.ReactElement {
+export function ChatProvider({ children }: { children: React.ReactNode }): React.ReactElement<any> {
   const [conversations, setConversations] = useState<ChatMeta[]>(() => loadChatsMeta())
   const [currentChatId, setCurrentChatId] = useState<string | null>(null)
   const [currentChat, setCurrentChat] = useState<Chat | null | undefined>(null)

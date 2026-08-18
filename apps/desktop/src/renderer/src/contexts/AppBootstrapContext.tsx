@@ -39,7 +39,7 @@ interface AppBootstrapContextValue {
 
 const AppBootstrapContext = createContext<AppBootstrapContextValue | null>(null)
 
-export function AppBootstrapProvider({ children }: { children: ReactNode }): React.ReactElement {
+export function AppBootstrapProvider({ children }: { children: ReactNode }): React.ReactElement<any> {
   const [bootstrap, setBootstrap] = useState<AppBootstrapResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

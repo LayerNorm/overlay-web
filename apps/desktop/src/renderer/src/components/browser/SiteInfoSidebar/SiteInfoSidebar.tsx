@@ -18,7 +18,7 @@ export function SiteInfoSidebar({
   isSecure,
   theme,
   onClose
-}: SiteInfoSidebarProps): ReactElement {
+}: SiteInfoSidebarProps): ReactElement<any> {
   const [view, setView] = useState<SiteInfoView>('main')
   const [cookieDomains, setCookieDomains] = useState<CookieDomain[]>([])
   const [sitePermissions, setSitePermissions] = useState<SitePermission[]>([])

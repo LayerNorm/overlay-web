@@ -22,7 +22,7 @@ function AddMemoryDialog({
   onSave,
   isSaving,
   theme
-}: AddMemoryDialogProps): ReactElement | null {
+}: AddMemoryDialogProps): ReactElement<any> | null {
   const [text, setText] = useState('')
   const [isAnimating, setIsAnimating] = useState(false)
   const [shouldRender, setShouldRender] = useState(false)
@@ -284,7 +284,7 @@ export function MemoryListPage({
   showAddDialog,
   onAddDialogOpenChange,
   loadFromBackend = false
-}: MemoryListPageProps): ReactElement {
+}: MemoryListPageProps): ReactElement<any> {
   const [memories, setMemories] = useState<StoredMemory[]>([])
   const [isSavingMemory, setIsSavingMemory] = useState(false)
   const [selectedMemoryIds, setSelectedMemoryIds] = useState<Set<string>>(new Set())

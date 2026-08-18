@@ -347,3 +347,17 @@ already has (or will have) a Convex-side implementation.
 - [ ] **Ensure Postgres enforces row-level event delivery** matching
       the Convex subscription model so the client can upsert one row
       instead of reloading the full list.
+
+### P2 — Slack import parity
+
+- [ ] **Add Postgres tables for `slackImportJobs` and `slackImportMappings`**
+      matching the Convex schema (status enum, selected channel IDs,
+      coverage report JSON, source-to-Overlay ID mapping with unique
+      constraint on `(workspace_id, source_channel_id, source_message_ts)`).
+
+- [ ] **Port Slack import job mutations/queries to Postgres adapter**
+      (`createJob`, `getJob`, `watchJob`, `watchJobs`, `listJobs`,
+      `updateJobStatus`, `cancelJob`, `listQueuedJobs`) and mapping
+      mutations (`insertMapping`, `findExisting`, `findChannelConversation`,
+      `countChannelMessages`). The `watch*` queries should use the same
+      realtime subscription pattern as other Postgres-backed watches.

@@ -18,7 +18,7 @@ export function DesktopSourcesPanel({
   onClose,
   sources,
   theme
-}: DesktopSourcesPanelProps): React.ReactElement {
+}: DesktopSourcesPanelProps): React.ReactElement<any> {
   const scopeStyle = useMemo(() => panelThemeToSharedCssVars(theme, overlayLogoUrl), [theme])
   const openSource = useCallback((url: string) => {
     void window.bridge.openExternal(url)

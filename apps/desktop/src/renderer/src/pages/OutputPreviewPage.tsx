@@ -17,7 +17,7 @@ function base64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-export function OutputPreviewPage({ outputId, headerLeftSlot }: OutputPreviewPageProps): ReactElement {
+export function OutputPreviewPage({ outputId, headerLeftSlot }: OutputPreviewPageProps): ReactElement<any> {
   const [output, setOutput] = useState<KnowledgeFile | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | undefined>()

@@ -33,7 +33,7 @@ const TIER_STYLES: Record<
   }
 }
 
-export function TierBadge({ tier, size = 'sm' }: TierBadgeProps): ReactElement {
+export function TierBadge({ tier, size = 'sm' }: TierBadgeProps): ReactElement<any> {
   const styles = TIER_STYLES[tier]
   const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
 

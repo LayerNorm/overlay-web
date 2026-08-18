@@ -6,7 +6,7 @@ interface DownloadsTabProps {
   theme: Theme
 }
 
-export function DownloadsTab({ downloads, theme }: DownloadsTabProps): ReactElement {
+export function DownloadsTab({ downloads, theme }: DownloadsTabProps): ReactElement<any> {
   return (
     <div style={{ maxWidth: 600 }}>
       <div

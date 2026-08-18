@@ -14,7 +14,7 @@ export function SiteInfoMain({
   theme,
   onNavigateToCookies,
   onNavigateToPermissions
-}: SiteInfoMainProps): ReactElement {
+}: SiteInfoMainProps): ReactElement<any> {
   return (
     <>
       {/* Connection security */}

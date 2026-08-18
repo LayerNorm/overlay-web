@@ -26,7 +26,7 @@ const SCENARIOS = new Set<FileParityFixtureScenario>([
   'gallery', 'states', 'inventory', 'viewers', 'notebook', 'sync', 'surface'
 ])
 
-export function FileParityFixtureWindow(): React.ReactElement {
+export function FileParityFixtureWindow(): React.ReactElement<any> {
   const params = new URLSearchParams(window.location.search)
   const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
   const requestedWidth = Number(params.get('width'))

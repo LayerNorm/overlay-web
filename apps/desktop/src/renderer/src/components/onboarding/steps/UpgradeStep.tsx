@@ -79,7 +79,7 @@ export function UpgradeStep({
   theme,
   onNext,
   isTransitioning
-}: OnboardingStepProps): React.ReactElement {
+}: OnboardingStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
 
   const handleSelect = (tier: Tier): void => {

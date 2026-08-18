@@ -8,7 +8,7 @@ interface HistoryTabProps {
   onOpenUrl: (url: string) => void
 }
 
-export function HistoryTab({ history, theme, onClear, onOpenUrl }: HistoryTabProps): ReactElement {
+export function HistoryTab({ history, theme, onClear, onOpenUrl }: HistoryTabProps): ReactElement<any> {
   return (
     <div style={{ maxWidth: 600 }}>
       <div

@@ -31,7 +31,7 @@ export function ShortcutChatStep({
   isTransitioning,
   initialHotkey,
   onHotkeyChange
-}: ShortcutChatStepProps): React.ReactElement {
+}: ShortcutChatStepProps): React.ReactElement<any> {
   const [chatHotkey, setChatHotkey] = useState(initialHotkey)
   const [showHotkeyDialog, setShowHotkeyDialog] = useState(false)
   const [showAddMemoryDialog, setShowAddMemoryDialog] = useState(false)

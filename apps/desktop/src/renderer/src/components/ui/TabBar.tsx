@@ -21,7 +21,7 @@ export function TabBar({
   onSelectTab,
   onCloseTab,
   theme
-}: TabBarProps): React.ReactElement | null {
+}: TabBarProps): React.ReactElement<any> | null {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const handleWheel = useCallback((e: React.WheelEvent) => {

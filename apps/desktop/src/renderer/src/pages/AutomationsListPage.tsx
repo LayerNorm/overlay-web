@@ -50,7 +50,7 @@ export function AutomationsListPage({
   selectedAutomationId,
   selectedConversationId,
   refreshToken = 0
-}: AutomationsListPageProps): React.ReactElement {
+}: AutomationsListPageProps): React.ReactElement<any> {
   const [automations, setAutomations] = useState<Automation[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)

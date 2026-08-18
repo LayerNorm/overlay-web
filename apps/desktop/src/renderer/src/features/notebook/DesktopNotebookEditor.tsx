@@ -96,7 +96,7 @@ export function DesktopNotebookEditor({
   onActiveNoteChange,
   renderHeader,
   panelSidebar,
-}: DesktopNotebookEditorProps): React.ReactElement {
+}: DesktopNotebookEditorProps): React.ReactElement<any> {
   const { bootstrap, chatModels } = useAppBootstrap()
   const { theme } = usePanelTheme()
   const repository = useMemo(() => createDesktopNotebookRepository(), [])
@@ -129,7 +129,7 @@ export function DesktopNotebookEditor({
     let cancelled = false
     void (async () => {
       const assigned = window.bridge.getWindowItemId?.()
-      const last = assigned || await window.bridge.getLastOpenedNoteId()
+      const last = assigned || (await window.bridge.getLastOpenedNoteId())
       if (last && !cancelled) setSelectedNoteId(last)
       if (!cancelled) setSelectionPending(false)
     })()

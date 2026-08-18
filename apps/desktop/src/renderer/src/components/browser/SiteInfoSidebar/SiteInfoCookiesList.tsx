@@ -12,7 +12,7 @@ export function SiteInfoCookiesList({
   cookieDomains,
   theme,
   onDeleteCookiesForDomain
-}: SiteInfoCookiesListProps): ReactElement {
+}: SiteInfoCookiesListProps): ReactElement<any> {
   return (
     <>
       <div style={{ padding: '16px' }}>

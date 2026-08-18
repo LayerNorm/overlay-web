@@ -5,7 +5,7 @@ import { getContainerStyle } from '../styles'
 export function ReduceFrictionStep({
   theme,
   isTransitioning
-}: OnboardingStepProps): React.ReactElement {
+}: OnboardingStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
   const [showSecondPhrase, setShowSecondPhrase] = useState(false)
 

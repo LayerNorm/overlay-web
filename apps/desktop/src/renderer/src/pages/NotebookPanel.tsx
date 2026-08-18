@@ -54,7 +54,7 @@ function readPanelSettings(): {
   }
 }
 
-function DraggableSpacer(): React.ReactElement {
+function DraggableSpacer(): React.ReactElement<any> {
   const { startDrag } = useDockableDrag()
   return (
     <div
@@ -68,7 +68,7 @@ function DraggableSpacer(): React.ReactElement {
 const CONTROL_CLASS =
   'inline-flex size-9 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
-export function NotebookPanel(): React.ReactElement {
+export function NotebookPanel(): React.ReactElement<any> {
   const { theme } = usePanelTheme()
   const initialSettings = readPanelSettings()
   const [isProtected, setIsProtected] = useState(false)

@@ -53,7 +53,7 @@ export function TabBar({
   onToggleHeaderLock,
   showWindowControls = true,
   showUtilityControls = true
-}: TabBarProps): ReactElement {
+}: TabBarProps): ReactElement<any> {
   const { startDrag } = useDockableDrag()
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)

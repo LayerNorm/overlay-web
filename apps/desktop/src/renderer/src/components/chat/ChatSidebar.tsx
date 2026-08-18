@@ -95,7 +95,7 @@ function FolderRow({
   onDragLeave,
   onDragStart,
   children
-}: FolderRowProps): React.ReactElement {
+}: FolderRowProps): React.ReactElement<any> {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(folder.name)
   const [isHovered, setIsHovered] = useState(false)
@@ -332,7 +332,7 @@ function ChatRow({
   onOpenInNewTab,
   onRename,
   onDragStart
-}: ChatRowProps): React.ReactElement {
+}: ChatRowProps): React.ReactElement<any> {
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(chat.title)
@@ -545,7 +545,7 @@ export function ChatSidebar({
   onSelectTab,
   onCloseTab,
   isCollapsed
-}: ChatSidebarProps): React.ReactElement {
+}: ChatSidebarProps): React.ReactElement<any> {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [folders, setFolders] = useState<FolderType[]>([])
@@ -988,7 +988,7 @@ export function ChatSidebar({
           </div>
         ) : isSearching ? (
           /* When searching, show flat list of all matching chats with folder path */
-          <>
+          (<>
             {filteredChats.map((chat, idx) => {
               const folderPath = getFolderPath(chat.id)
               return (
@@ -1028,7 +1028,7 @@ export function ChatSidebar({
                 </div>
               )
             })}
-          </>
+          </>)
         ) : (
           <>
             {/* Previous Chats header - shown when accessTabsInSidebar is enabled and there are open tabs */}
@@ -1311,5 +1311,5 @@ export function ChatSidebar({
       )}
 
     </div>
-  )
+  );
 }

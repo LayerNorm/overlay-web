@@ -34,7 +34,7 @@ export function ChatSidebarItem({
   onOpenInNewWindow,
   onMoveToFolder,
   folders = []
-}: ChatSidebarItemProps): React.ReactElement {
+}: ChatSidebarItemProps): React.ReactElement<any> {
   const [isExpanded, setIsExpanded] = useState(false)
   const [memories, setMemories] = useState<StoredMemory[]>([])
   const [showMenu, setShowMenu] = useState(false)

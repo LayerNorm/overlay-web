@@ -30,7 +30,7 @@ export interface MentionCategoryResult {
   items: Mention[]
 }
 
-function CategoryIcon({ icon, className }: { icon: string; className?: string }): React.ReactElement | null {
+function CategoryIcon({ icon, className }: { icon: string; className?: string }): React.ReactElement<any> | null {
   const Icon = ICON_MAP[icon]
   if (!Icon) return null
   return <Icon size={14} strokeWidth={1.75} className={className} />
@@ -67,7 +67,7 @@ export function MentionPopup({
   selectedCategory,
   onSelectedCategoryChange,
   availableTypes
-}: MentionPopupProps): React.ReactElement | null {
+}: MentionPopupProps): React.ReactElement<any> | null {
   const [activeIndex, setActiveIndex] = useState(0)
   const popupRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -184,7 +184,7 @@ export function MentionPopup({
 
   const isEmptyResults = rows.length === 0 || (rows.length === 1 && rows[0]!.kind === 'upload')
 
-  const uploadRow = (idx: number, withBorder: boolean): React.ReactElement => (
+  const uploadRow = (idx: number, withBorder: boolean): React.ReactElement<any> => (
     <div key="upload" className={withBorder ? 'border-t border-[var(--border)]' : undefined}>
       <button
         ref={(el) => {

@@ -32,7 +32,7 @@ export function Tab({
   isDragging,
   dragIndex,
   dragOverIndex
-}: TabProps): ReactElement {
+}: TabProps): ReactElement<any> {
   const isDropTarget = dragOverIndex === index
   // Determine which side to show the drop indicator
   const showLeftIndicator = isDropTarget && dragIndex !== null && dragIndex > index

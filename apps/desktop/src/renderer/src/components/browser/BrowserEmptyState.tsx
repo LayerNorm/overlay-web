@@ -19,7 +19,7 @@ function getFaviconUrl(url: string): string {
 
 function getHostname(url: string): string {
   try {
-    return new URL(url).hostname.replace(/^www\./, '')
+    return new URL(url).hostname.replace(/^www\./, '');
   } catch {
     return url
   }
@@ -29,7 +29,7 @@ export function BrowserEmptyState({
   theme,
   embedded,
   onCreateTab
-}: BrowserEmptyStateProps): ReactElement {
+}: BrowserEmptyStateProps): ReactElement<any> {
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [inputUrl, setInputUrl] = useState('')
   const [isUrlFocused, setIsUrlFocused] = useState(false)

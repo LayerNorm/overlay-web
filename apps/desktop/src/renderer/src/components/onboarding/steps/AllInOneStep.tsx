@@ -6,7 +6,7 @@ export function AllInOneStep({
   theme,
   onNext,
   isTransitioning
-}: OnboardingStepProps): React.ReactElement {
+}: OnboardingStepProps): React.ReactElement<any> {
   const containerStyle = getContainerStyle(theme, isTransitioning)
   // Phases: 0-3 for AllInOne content, 4-5 for ReduceFriction content, 6 = done
   const [phase, setPhase] = useState<number>(0)

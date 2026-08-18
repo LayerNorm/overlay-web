@@ -85,7 +85,7 @@ export function ModelSelectorDialog({
   onSave,
   currentModelId,
   theme = lightTheme
-}: ModelSelectorDialogProps): React.ReactElement | null {
+}: ModelSelectorDialogProps): React.ReactElement<any> | null {
   const [selectedModelId, setSelectedModelId] = useState(currentModelId)
   // No models are bundled - all must be downloaded
   const [installedModels, setInstalledModels] = useState<Set<string>>(new Set())

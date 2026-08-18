@@ -31,7 +31,7 @@ function IntegrationLogoTile({
 }: {
   logoUrl?: string | null
   name: string
-}): ReactElement {
+}): ReactElement<any> {
   const [hasError, setHasError] = useState(false)
 
   useEffect(() => setHasError(false), [logoUrl])
@@ -76,7 +76,7 @@ export function IntegrationsDialog({
   onClose,
   onConnectToolkit,
   onDisconnectToolkit
-}: IntegrationsDialogProps): ReactElement | null {
+}: IntegrationsDialogProps): ReactElement<any> | null {
   const [query, setQuery] = useState('')
   const [busySlug, setBusySlug] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

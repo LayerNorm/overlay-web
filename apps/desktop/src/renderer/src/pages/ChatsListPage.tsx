@@ -39,7 +39,7 @@ export function ChatsListPage({
   onSearchQueryChange,
   isSelectMode,
   onSelectModeChange
-}: ChatsListPageProps): React.ReactElement {
+}: ChatsListPageProps): React.ReactElement<any> {
   const chatContext = useChatContext()
   const [activeChatId, setActiveChatId] = useState<string | null>(() =>
     chatContext.getLastOpenedChatId()

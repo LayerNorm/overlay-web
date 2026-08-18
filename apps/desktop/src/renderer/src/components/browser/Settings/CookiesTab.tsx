@@ -22,7 +22,7 @@ export function CookiesTab({
   onExpandDomain,
   onLoadDomainCookies,
   onDeleteForDomain
-}: CookiesTabProps): ReactElement {
+}: CookiesTabProps): ReactElement<any> {
   const handleExpandDomain = async (domain: string): Promise<void> => {
     if (expandedCookieDomain === domain) {
       onExpandDomain(null)
