@@ -691,6 +691,13 @@ export const addMessage = mutation({
     replySnippet: v.optional(v.string()),
     routedModelId: v.optional(v.string()),
     skipMemoryExtraction: v.optional(v.boolean()),
+    authorKind: v.optional(v.union(
+      v.literal('human'),
+      v.literal('agent'),
+      v.literal('model'),
+      v.literal('system'),
+    )),
+    authorPrincipalId: v.optional(v.string()),
     importedAuthorName: v.optional(v.string()),
     importedAuthorEmail: v.optional(v.string()),
     importedAuthorStatus: v.optional(v.union(
@@ -737,6 +744,8 @@ export const addMessage = mutation({
       replyToTurnId: args.replyToTurnId,
       replySnippet: args.replySnippet,
       routedModelId: args.routedModelId,
+      ...(args.authorKind ? { authorKind: args.authorKind } : {}),
+      ...(args.authorPrincipalId ? { authorPrincipalId: args.authorPrincipalId } : {}),
       ...(args.importedAuthorName ? { importedAuthorName: args.importedAuthorName } : {}),
       ...(args.importedAuthorEmail ? { importedAuthorEmail: args.importedAuthorEmail } : {}),
       ...(args.importedAuthorStatus ? { importedAuthorStatus: args.importedAuthorStatus } : {}),

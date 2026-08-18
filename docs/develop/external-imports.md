@@ -148,13 +148,26 @@ Source-to-Overlay ID mappings for dedup and resume. Indexed by `(workspaceId, so
 | GET | `/api/v1/imports/slack?action=job&jobId=...` | Get single job status |
 | POST | `/api/v1/imports/slack` | `action=start` or `action=cancel` |
 
+## Slack conversation mapping
+
+- `public_channel` and `private_channel` are persisted as `conversationType: 'channel'`.
+- `im` (1:1 DM) and `mpim` (group DM) are persisted as `conversationType: 'dm'` and land under Direct Messages.
+- Resuming an existing import updates the conversation type and clears any `archivedAt`/`removedAt` on the importer's participant row so re-imported conversations do not get stuck in Archived.
+
+## Imported message authorship
+
+- Imported messages carry `importedAuthorName`, `importedAuthorEmail`, and `importedAuthorStatus` so authors who are not Overlay principals still render.
+- The authenticated importer's own messages are recognized by matching email (or principal) and are stored with `authorKind: 'human'` and `authorPrincipalId: <importer>`, causing them to render as "You".
+
 ## UI
 
-The `SlackImportPanel` component in `src/features/workspaces/components/SlackImportPanel.tsx` renders inside the workspace settings "Import" tab. It has 3 states:
+The `SlackImportPanel` component in `src/features/workspaces/components/SlackImportPanel.tsx` renders inside the workspace settings "Import" tab. It has 5 states:
 
 1. **Not connected** — "Connect Slack" button triggers Composio OAuth
-2. **Channel picker** — checkboxes for each accessible channel, "Select all public" convenience, start import button
-3. **Progress** — live polling of job status, progress bar, cancel button, coverage report on completion
+2. **People** — review/invite Slack members before importing
+3. **Channel picker** — checkboxes for each accessible channel, "Select all public" convenience, start import button
+4. **Progress** — live polling of job status, progress bar, cancel button
+5. **Done** — terminal summary (completed/failed/cancelled) with coverage and next actions. The import wizard lands on Done instead of returning to People.
 
 ## Future platforms
 

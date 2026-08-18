@@ -224,12 +224,22 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
     setDeletingIds((current) => new Set(current).add(conversation._id))
     try {
       if (conversation.conversationType === 'channel' || conversation.conversationType === 'dm') {
-        const { currentPrincipalId } = await overlayAppClient.conversations.participants(conversation._id)
-        const { removed } = await overlayAppClient.conversations.removeParticipant(
-          conversation._id,
-          currentPrincipalId,
-        )
-        if (!removed) throw new Error('Conversation was not removed')
+        const { participants, currentPrincipalId } = await overlayAppClient.conversations.participants(conversation._id)
+        // When the current user is the only active participant (typical for
+        // imported Slack channels/DMs), removeParticipant would fail because a
+        // room must retain at least one human. Hard-delete the conversation.
+        if (participants.length <= 1) {
+          const response = await overlayAppClient.conversations.deleteResponse({
+            conversationId: conversation._id,
+          })
+          if (!response.ok) throw new Error('Conversation was not deleted')
+        } else {
+          const { removed } = await overlayAppClient.conversations.removeParticipant(
+            conversation._id,
+            currentPrincipalId,
+          )
+          if (!removed) throw new Error('Conversation was not removed')
+        }
       } else {
         const response = await overlayAppClient.conversations.deleteResponse({
           conversationId: conversation._id,

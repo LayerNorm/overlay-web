@@ -41,6 +41,8 @@ export class SlackBackfillWorker {
   private client: ComposioSlackClient
   private userCache = new SlackUserCache()
   private authorStatusByEmail = new Map<string, AuthorStatus>()
+  private actorPrincipalId: string | null = null
+  private actorEmail: string | null = null
   private serverSecret: string
 
   constructor() {
@@ -60,6 +62,7 @@ export class SlackBackfillWorker {
       // Phase 1: Fetch users and channel metadata for name resolution
       await this.updateStatus(jobId, 'listing_channels')
       await this.fetchUsers(job.connectedAccountId, job.userId)
+      await this.resolveActor(job.workspaceId, job.userId)
       await this.resolveAuthorStatuses(job.workspaceId)
 
       // Fetch all channels once (used for metadata lookup per channel)
@@ -154,6 +157,25 @@ export class SlackBackfillWorker {
   }
 
   /**
+   * Resolve, once per job, the authenticated importer's principal and email so
+   * their own imported messages can be attributed to them (first person).
+   */
+  private async resolveActor(workspaceId: string, actorUserId: string): Promise<void> {
+    try {
+      const actor = await convex.query<{ principalId: string; email?: string } | null>(
+        'imports/slackImporter:getSlackImportActor',
+        { workspaceId, actorUserId, serverSecret: this.serverSecret },
+      )
+      if (actor) {
+        this.actorPrincipalId = actor.principalId
+        this.actorEmail = actor.email?.toLowerCase().trim() || null
+      }
+    } catch (err) {
+      logger.warn('[SlackBackfill] Failed to resolve actor:', err)
+    }
+  }
+
+  /**
    * Resolve, once per job, whether each Slack author's email maps to an active
    * workspace member, a pending invitation, or nobody. Used to tag every
    * imported message so the UI can show the author's status.
@@ -168,6 +190,11 @@ export class SlackBackfillWorker {
       )
       for (const row of rows ?? []) {
         this.authorStatusByEmail.set(row.email, row.status)
+      }
+      // Always treat the authenticated importer as an active member, even if
+      // their Slack email does not appear in the workspace-principal cache.
+      if (this.actorEmail) {
+        this.authorStatusByEmail.set(this.actorEmail, 'member')
       }
     } catch (err) {
       logger.warn('[SlackBackfill] Failed to resolve author statuses:', err)
@@ -185,12 +212,21 @@ export class SlackBackfillWorker {
     importedAuthorName: string
     importedAuthorEmail?: string
     importedAuthorStatus: AuthorStatus
+    authorKind?: 'human'
+    authorPrincipalId?: string
   } {
     const email = normalized.sourceUserEmail
+    const isOwnMessage = Boolean(email && this.actorEmail && email === this.actorEmail)
+    const status = isOwnMessage
+      ? 'member'
+      : (email && this.authorStatusByEmail.get(email)) || 'not_invited'
     return {
       importedAuthorName: normalized.sourceUserName,
       ...(email ? { importedAuthorEmail: email } : {}),
-      importedAuthorStatus: (email && this.authorStatusByEmail.get(email)) || 'not_invited',
+      importedAuthorStatus: status,
+      ...(isOwnMessage && this.actorPrincipalId
+        ? { authorKind: 'human' as const, authorPrincipalId: this.actorPrincipalId }
+        : {}),
     }
   }
 
@@ -219,47 +255,42 @@ export class SlackBackfillWorker {
     }
     const channelType = channel.is_mpim ? 'mpim' : channel.is_im ? 'im' : channel.is_private || channel.is_group ? 'private_channel' : 'public_channel'
 
-    // Check if we already have a conversation for this channel (resume support)
-    const existing = await convex.query<{ conversationId: string } | null>(
-      'imports/slackMappings:findChannelConversation',
-      { importJobId: jobId, sourceChannelId: channelId, serverSecret: this.serverSecret },
-    )
+    const normalized = normalizeChannel(channel, workspaceId, this.userCache)
 
-    let conversationId: Id<'conversations'>
+    // Create the right conversation type. DMs/MPIMs become conversationType='dm'
+    // so they appear under Direct Messages; public/private channels stay as
+    // conversationType='channel'. The mutations are idempotent by clientId and
+    // heal any previous mis-typed or archived conversation.
+    const conversationId: Id<'conversations'> =
+      channelType === 'im' || channelType === 'mpim'
+        ? (await convex.mutation<Id<'conversations'>>(
+            'imports/slackImporter:createSlackDirectMessage',
+            {
+              actorUserId: userId,
+              workspaceId,
+              title: normalized.title,
+              clientId: normalized.clientId,
+              serverSecret: this.serverSecret,
+            },
+            { throwOnError: true },
+          ) as Id<'conversations'>)
+        : (await convex.mutation<Id<'conversations'>>(
+            'imports/slackImporter:createSlackChannel',
+            {
+              actorUserId: userId,
+              workspaceId,
+              title: normalized.title,
+              clientId: normalized.clientId,
+              visibility:
+                channel.is_private || channel.is_group ? 'private' : 'public',
+              serverSecret: this.serverSecret,
+            },
+            { throwOnError: true },
+          ) as Id<'conversations'>)
 
-    if (existing?.conversationId) {
-      conversationId = existing.conversationId as Id<'conversations'>
-      logger.info(`[SlackBackfill] Resuming channel ${channelId} → conversation ${conversationId}`)
-    } else {
-      const normalized = normalizeChannel(channel, workspaceId, this.userCache)
+    if (!conversationId) throw new Error('Failed to create conversation')
 
-      // Create a workspace conversation (conversationType='channel') with the
-      // importer as the initial moderator. DMs and group DMs are imported as
-      // private conversations — their messages carry per-author identity
-      // metadata, so the original authors render correctly even though they are
-      // not workspace participants.
-      const visibility =
-        channelType === 'im' || channelType === 'mpim' || channel.is_private || channel.is_group
-          ? 'private'
-          : 'public'
-      conversationId = await convex.mutation<Id<'conversations'>>(
-        'imports/slackImporter:createSlackChannel',
-        {
-          actorUserId: userId,
-          workspaceId,
-          title: normalized.title,
-          clientId: normalized.clientId,
-          visibility,
-          serverSecret: this.serverSecret,
-        },
-        { throwOnError: true },
-      ) as Id<'conversations'>
-
-      if (!conversationId) throw new Error('Failed to create conversation')
-
-      logger.info(`[SlackBackfill] Created workspace channel ${conversationId} for ${channelId} (${normalized.title})`)
-
-    }
+    logger.info(`[SlackBackfill] Created/resolved conversation ${conversationId} for ${channelId} (${normalized.title})`)
 
     // Fetch all messages and import them
     let messagesImported = 0

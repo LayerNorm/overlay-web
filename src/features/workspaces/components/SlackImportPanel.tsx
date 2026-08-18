@@ -125,7 +125,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [view, setView] = useState<'people' | 'picker' | 'progress'>('people')
+  const [view, setView] = useState<'people' | 'picker' | 'progress' | 'done'>('people')
   const [users, setUsers] = useState<SlackUser[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
   const [usersLoading, setUsersLoading] = useState(false)
@@ -136,6 +136,19 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const mountedRef = useRef(true)
+
+  // ─── Load jobs list without touching the current view ───────────────────────
+  const loadJobs = useCallback(async (): Promise<SlackImportJob[]> => {
+    if (!workspaceId) return []
+    const { ok, data } = await fetchWithRetry('/api/v1/imports/slack?action=jobs')
+    if (!mountedRef.current) return []
+    if (ok) {
+      const jobList = (data.jobs ?? []) as SlackImportJob[]
+      setJobs(jobList)
+      return jobList
+    }
+    return []
+  }, [workspaceId])
 
   // ─── Connection check via jobs endpoint ───────────────────────────────────
   // The jobs endpoint returns 400 "Slack is not connected" if there's no
@@ -151,7 +164,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
       if (active) {
         setActiveJob(active)
         setView('progress')
-      } else {
+      } else if (view !== 'done') {
         setView('people')
       }
       setConnectionState('connected')
@@ -166,7 +179,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
     // Other errors (429, 500, etc.) — don't change state, just return false
     setConnectionState('not_connected')
     return false
-  }, [workspaceId])
+  }, [workspaceId, view])
 
   // Initial mount check
   useEffect(() => {
@@ -324,8 +337,9 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
             clearInterval(pollRef.current)
             pollRef.current = null
           }
-          // Refresh jobs list
-          void checkConnection()
+          // Land on the Done step; keep the completed job visible for the summary.
+          setView('done')
+          void loadJobs()
         }
       }
     }
@@ -562,8 +576,25 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
           onBackToPicker={() => {
             setView('picker')
             setActiveJob(null)
-            void checkConnection()
+            void loadJobs()
           }}
+        />
+      </ImportFlow>
+    )
+  }
+
+  // ─── Done view ────────────────────────────────────────────────────────────
+  if (view === 'done' && activeJob) {
+    return (
+      <ImportFlow serviceLabel="Slack" step={3} onBack={onBack}>
+        <JobDoneView
+          job={activeJob}
+          onBackToPicker={() => {
+            setView('picker')
+            setActiveJob(null)
+            void loadJobs()
+          }}
+          onDone={onBack}
         />
       </ImportFlow>
     )
@@ -888,11 +919,11 @@ function ImportFlow({
   children,
 }: {
   serviceLabel: string
-  step: 0 | 1 | 2 | null
+  step: 0 | 1 | 2 | 3 | null
   onBack?: () => void
   children: ReactNode
 }) {
-  const steps = ['People', 'Channels', 'Import']
+  const steps = ['People', 'Channels', 'Import', 'Done']
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] px-5 pb-3 pt-4">
@@ -1072,6 +1103,88 @@ function CoverageRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2">
       <span className="text-[var(--muted)]">{label}</span>
       <span className="font-medium text-[var(--foreground)]">{value.toLocaleString()}</span>
+    </div>
+  )
+}
+
+// ─── Job Done View ───────────────────────────────────────────────────────────
+
+function JobDoneView({
+  job,
+  onBackToPicker,
+  onDone,
+}: {
+  job: SlackImportJob
+  onBackToPicker(): void
+  onDone?: () => void
+}) {
+  const isCompleted = job.status === 'completed'
+  const isFailed = job.status === 'failed'
+  const isCancelled = job.status === 'cancelled'
+
+  return (
+    <div className="px-5 py-4">
+      <div className="mb-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBackToPicker}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        >
+          <ArrowLeft size={14} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+            {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Import finished'}
+          </h3>
+          <p className="mt-0.5 text-xs text-[var(--muted)]">
+            {job.totalChannels ?? 0} channel{(job.totalChannels ?? 0) === 1 ? '' : 's'} selected
+          </p>
+        </div>
+      </div>
+
+      {isFailed && job.error ? (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-500">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          <span>{job.error}</span>
+        </div>
+      ) : null}
+
+      {isCompleted && job.coverage ? (
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+            <CheckCircle2 size={16} className="text-green-500" />
+            Successfully imported
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <CoverageRow label="Messages" value={job.coverage.messagesImported} />
+            <CoverageRow label="Thread replies" value={job.coverage.threadsImported} />
+            <CoverageRow label="Files downloaded" value={job.coverage.filesDownloaded} />
+            <CoverageRow label="Public channels" value={job.coverage.publicChannels} />
+            <CoverageRow label="Private channels" value={job.coverage.privateChannels} />
+            <CoverageRow label="DMs + Group DMs" value={job.coverage.dms + job.coverage.mpims} />
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[10px] text-[var(--muted)]">
+            Imported messages are read-only in Overlay. They appear as conversations in your workspace chat.
+            Coverage reflects what the connected Slack account can access — not all workspace data may be visible.
+          </div>
+        </div>
+      ) : null}
+
+      {isCancelled ? (
+        <div className="mb-4 text-xs text-[var(--muted)]">The import was cancelled before it completed.</div>
+      ) : null}
+
+      <div className="mt-4 flex items-center gap-2 border-t border-[var(--border)] pt-4">
+        <Button size="sm" onClick={onBackToPicker}>
+          <Download size={13} />
+          Import more channels
+        </Button>
+        {onDone ? (
+          <Button size="sm" variant="secondary" onClick={onDone}>
+            Done
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -141,8 +141,15 @@ export const createSlackChannel = mutation({
             joinedAt: now,
             updatedAt: now,
           })
-        } else if (participant.status !== 'active') {
-          await ctx.db.patch(participant._id, { status: 'active', updatedAt: now })
+        } else {
+          // Clear any archive/removed state so re-imported conversations are
+          // visible again rather than stuck in the Archived tab.
+          await ctx.db.patch(participant._id, {
+            status: 'active',
+            archivedAt: undefined,
+            removedAt: undefined,
+            updatedAt: now,
+          })
         }
       }
       return existing._id
@@ -188,6 +195,115 @@ export const createSlackChannel = mutation({
       userId: args.actorUserId,
       type: 'conversation.created',
       payload: { conversationType: 'channel', source: 'slack' },
+    })
+
+    return conversationId
+  },
+})
+
+/**
+ * Create a workspace direct-message conversation for a Slack IM or MPIM. The
+ * importer becomes the initial participant. DMs are not channels, so they carry
+ * no slug/visibility; they use the import clientId as a stable dmIdentityKey.
+ */
+export const createSlackDirectMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    title: v.string(),
+    clientId: v.string(),
+    serverSecret: v.string(),
+  },
+  returns: v.id('conversations'),
+  handler: async (ctx, args) => {
+    const actor = await requireActorForSlack(ctx, args)
+    const now = Date.now()
+
+    // Resume support: a previous import may have left this conversation
+    // soft-deleted or typed as a channel. Resurrect it and ensure it is a DM.
+    const existing = await ctx.db
+      .query('conversations')
+      .withIndex('by_userId_clientId', (q) => q.eq('userId', args.actorUserId).eq('clientId', args.clientId))
+      .first()
+    if (existing) {
+      if (
+        existing.deletedAt !== undefined
+        || existing.conversationType !== 'dm'
+        || !existing.dmIdentityKey
+      ) {
+        await ctx.db.patch(existing._id, {
+          deletedAt: undefined,
+          conversationType: 'dm',
+          dmIdentityKey: args.clientId,
+          title: existing.title || args.title,
+          updatedAt: now,
+          lastModified: now,
+        })
+      }
+      const participant = await ctx.db
+        .query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
+        ))
+        .first()
+      if (!participant) {
+        await ctx.db.insert('conversationParticipants', {
+          conversationId: existing._id,
+          workspaceId: args.workspaceId,
+          principalId: actor.principalId,
+          principalType: 'human',
+          role: 'moderator',
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+        })
+      } else {
+        await ctx.db.patch(participant._id, {
+          status: 'active',
+          archivedAt: undefined,
+          removedAt: undefined,
+          updatedAt: now,
+        })
+      }
+      return existing._id
+    }
+
+    const conversationId = await ctx.db.insert('conversations', {
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      conversationType: 'dm',
+      createdByPrincipalId: actor.principalId,
+      clientId: args.clientId,
+      dmIdentityKey: args.clientId,
+      title: args.title,
+      lastModified: now,
+      updatedAt: now,
+      createdAt: now,
+      lastMode: 'act',
+      askModelIds: [DEFAULT_MODEL_ID],
+      actModelId: DEFAULT_MODEL_ID,
+      isAutomation: false,
+    })
+
+    await ctx.db.insert('conversationParticipants', {
+      conversationId,
+      workspaceId: args.workspaceId,
+      principalId: actor.principalId,
+      principalType: 'human',
+      role: 'moderator',
+      status: 'active',
+      notificationLevel: 'all',
+      joinedAt: now,
+      updatedAt: now,
+    })
+
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.created',
+      payload: { conversationType: 'dm', source: 'slack' },
     })
 
     return conversationId
@@ -242,6 +358,44 @@ export const getWorkspacePrincipalsByEmail = query({
       })
     }
     return results
+  },
+})
+
+/**
+ * Look up the importer's workspace principal and email so the backfill worker
+ * can mark the current user's own imported messages as authored by them.
+ */
+export const getSlackImportActor = query({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      principalId: v.string(),
+      email: v.optional(v.string()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) return null
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId)
+      ))
+      .unique()
+    if (!principal || principal.type !== 'human' || principal.archivedAt) return null
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
+      ))
+      .unique()
+    if (!membership || membership.status !== 'active') return null
+    return {
+      principalId: principal.principalId,
+      email: principal.email?.toLowerCase().trim(),
+    }
   },
 })
 
