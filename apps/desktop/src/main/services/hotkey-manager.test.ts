@@ -11,57 +11,86 @@ const mocks = vi.hoisted(() => {
     stop: vi.fn(),
     removeAllListeners: vi.fn()
   }
-
-  return { globalHandlers, hookHandlers, hook }
-})
-
-vi.mock('electron', () => ({
-  globalShortcut: {
+  const globalShortcut = {
     register: vi.fn((accelerator: string, handler: () => void) => {
-      mocks.globalHandlers.set(accelerator, handler)
+      globalHandlers.set(accelerator, handler)
       return true
     }),
     unregister: vi.fn((accelerator: string) => {
-      mocks.globalHandlers.delete(accelerator)
+      globalHandlers.delete(accelerator)
     }),
-    unregisterAll: vi.fn(() => mocks.globalHandlers.clear()),
-    isRegistered: vi.fn((accelerator: string) => mocks.globalHandlers.has(accelerator))
-  },
-  systemPreferences: {
+    unregisterAll: vi.fn(() => globalHandlers.clear()),
+    isRegistered: vi.fn((accelerator: string) => globalHandlers.has(accelerator))
+  }
+  const systemPreferences = {
     isTrustedAccessibilityClient: vi.fn(() => true)
   }
+  const settingsService = { isAuthenticated: true }
+  const panelLatencyMarkHotkey = vi.fn()
+
+  return {
+    globalHandlers,
+    hookHandlers,
+    hook,
+    globalShortcut,
+    systemPreferences,
+    settingsService,
+    panelLatencyMarkHotkey
+  }
+})
+
+vi.mock('electron', () => ({
+  globalShortcut: mocks.globalShortcut,
+  systemPreferences: mocks.systemPreferences
 }))
 
 vi.mock('./settings-service', () => ({
-  settingsService: { isAuthenticated: true }
+  settingsService: mocks.settingsService
 }))
 
 vi.mock('../utils/panel-latency', () => ({
-  panelLatencyMarkHotkey: vi.fn()
+  panelLatencyMarkHotkey: mocks.panelLatencyMarkHotkey
 }))
 
 vi.mock('uiohook-napi', () => ({
   uIOhook: mocks.hook
 }))
 
-import { HotkeyManager } from './hotkey-manager'
+import { HotkeyManager, type PanelToggleMode } from './hotkey-manager'
+
+const PANELS: PanelToggleMode[] = ['chat', 'notebook', 'browser']
+const PANEL_HOTKEYS: Record<PanelToggleMode, string> = {
+  chat: 'Cmd ⌘ + .',
+  notebook: 'Cmd ⌘ + /',
+  browser: 'Cmd ⌘ + \\'
+}
+const PANEL_ACCELERATORS: Record<PanelToggleMode, string> = {
+  chat: 'Command+.',
+  notebook: 'Command+/',
+  browser: 'Command+\\'
+}
 
 describe('HotkeyManager panel lifecycle', () => {
   let manager: HotkeyManager
-  const showPanel = vi.fn()
-  const hidePanel = vi.fn()
+  const onPanelToggle = vi.fn()
   const onRecordingCancel = vi.fn()
 
-  beforeEach(async () => {
-    vi.useFakeTimers()
+  beforeEach(() => {
     mocks.globalHandlers.clear()
     mocks.hookHandlers.clear()
+    mocks.globalShortcut.register.mockClear()
+    mocks.globalShortcut.unregister.mockClear()
+    mocks.globalShortcut.unregisterAll.mockClear()
+    mocks.globalShortcut.isRegistered.mockClear()
     mocks.hook.start.mockClear()
     mocks.hook.stop.mockClear()
     mocks.hook.removeAllListeners.mockClear()
     mocks.hook.on.mockClear()
-    showPanel.mockReset()
-    hidePanel.mockReset()
+    mocks.systemPreferences.isTrustedAccessibilityClient.mockClear()
+    mocks.systemPreferences.isTrustedAccessibilityClient.mockReturnValue(true)
+    mocks.settingsService.isAuthenticated = true
+    mocks.panelLatencyMarkHotkey.mockClear()
+    onPanelToggle.mockReset()
     onRecordingCancel.mockReset()
 
     manager = new HotkeyManager()
@@ -70,32 +99,91 @@ describe('HotkeyManager panel lifecycle', () => {
       onRecordingStop: vi.fn(),
       onRecordingCancel
     })
-    manager.initializePanelTranscribeCallbacks({
-      onPanelRecordingStart: vi.fn(),
-      onPanelRecordingStop: vi.fn(),
-      onPanelQuickToggle: vi.fn(),
-      isPanelVisible: () => false,
-      showPanel,
-      hidePanel
-    })
-    manager.registerPanelHotkey('chat', 'Cmd ⌘ + .')
-    await vi.runAllTimersAsync()
+    manager.initializePanelCallbacks({ onPanelToggle })
   })
 
   afterEach(() => {
     manager.unregisterAll()
-    vi.useRealTimers()
   })
 
-  it('recovers a panel shortcut when a missed keyup leaves a pending press stuck', () => {
-    mocks.hookHandlers.get('keydown')?.({ keycode: 3675 })
-    mocks.hookHandlers.get('keydown')?.({ keycode: 52 })
-    mocks.globalHandlers.get('Command+.')?.()
-    expect(showPanel).toHaveBeenCalledTimes(1)
+  it.each(PANELS)('registers %s through globalShortcut', (panel) => {
+    expect(manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])).toBe(true)
+    expect(mocks.globalShortcut.register).toHaveBeenCalledWith(
+      PANEL_ACCELERATORS[panel],
+      expect.any(Function)
+    )
+    expect(mocks.globalHandlers.has(PANEL_ACCELERATORS[panel])).toBe(true)
+  })
 
-    vi.setSystemTime(Date.now() + 2_500)
-    mocks.globalHandlers.get('Command+.')?.()
+  it.each(PANELS)('toggles %s through the shared panel callback', (panel) => {
+    manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
 
-    expect(showPanel).toHaveBeenCalledTimes(2)
+    mocks.globalHandlers.get(PANEL_ACCELERATORS[panel])?.()
+
+    expect(onPanelToggle).toHaveBeenCalledTimes(1)
+    expect(onPanelToggle).toHaveBeenCalledWith(panel)
+    expect(mocks.panelLatencyMarkHotkey).toHaveBeenCalledWith(panel)
+  })
+
+  it('does not initialize uIOhook for panel shortcuts', async () => {
+    for (const panel of PANELS) {
+      manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
+    }
+    manager.ensureReleaseMonitor()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mocks.hook.start).not.toHaveBeenCalled()
+    expect(mocks.hook.on).not.toHaveBeenCalled()
+  })
+
+  it('does not require Accessibility permission for panel shortcuts', () => {
+    mocks.systemPreferences.isTrustedAccessibilityClient.mockReturnValue(false)
+
+    for (const panel of PANELS) {
+      expect(manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])).toBe(true)
+    }
+
+    expect(mocks.systemPreferences.isTrustedAccessibilityClient).not.toHaveBeenCalled()
+  })
+
+  it.each(PANELS)('unregisters and re-registers %s identically', (panel) => {
+    manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
+    manager.unregisterPanelHotkey(panel)
+
+    expect(mocks.globalHandlers.has(PANEL_ACCELERATORS[panel])).toBe(false)
+
+    manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
+    mocks.globalHandlers.get(PANEL_ACCELERATORS[panel])?.()
+
+    expect(onPanelToggle).toHaveBeenCalledTimes(1)
+    expect(onPanelToggle).toHaveBeenCalledWith(panel)
+  })
+
+  it('recovers all configured panel shortcuts through the same path', () => {
+    for (const panel of PANELS) {
+      manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
+    }
+    onPanelToggle.mockReset()
+
+    expect(manager.recoverHotkeys()).toBe(true)
+
+    for (const panel of PANELS) {
+      expect(mocks.globalHandlers.has(PANEL_ACCELERATORS[panel])).toBe(true)
+      mocks.globalHandlers.get(PANEL_ACCELERATORS[panel])?.()
+    }
+
+    expect(onPanelToggle).toHaveBeenCalledTimes(PANELS.length)
+    expect(onPanelToggle.mock.calls.map(([panel]) => panel)).toEqual(PANELS)
+    expect(mocks.hook.start).not.toHaveBeenCalled()
+  })
+
+  it.each(PANELS)('blocks %s when the user is not authenticated', (panel) => {
+    mocks.settingsService.isAuthenticated = false
+    manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
+
+    mocks.globalHandlers.get(PANEL_ACCELERATORS[panel])?.()
+
+    expect(onPanelToggle).not.toHaveBeenCalled()
+    expect(mocks.panelLatencyMarkHotkey).not.toHaveBeenCalled()
   })
 })

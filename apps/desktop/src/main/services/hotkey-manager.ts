@@ -40,12 +40,7 @@ async function getUIOhook(): Promise<any | null> {
  * This is a cleaner, more maintainable implementation that centralizes all hotkey logic
  */
 
-export type HotkeyMode =
-  | 'push-to-talk'
-  | 'transcription'
-  | 'assistant'
-  | 'panel-chat'
-  | 'panel-notebook'
+export type HotkeyMode = 'push-to-talk' | 'transcription' | 'assistant'
 export type PanelToggleMode = 'chat' | 'notebook' | 'browser'
 
 interface HotkeyCallbacks {
@@ -58,16 +53,6 @@ interface PanelToggleCallbacks {
   onPanelToggle: (panel: PanelToggleMode) => void
 }
 
-// Extended callbacks for panel hold-to-transcribe
-interface PanelTranscribeCallbacks {
-  onPanelRecordingStart: (panel: PanelToggleMode, wasVisible: boolean) => void
-  onPanelRecordingStop: (panel: PanelToggleMode, wasVisible: boolean) => void
-  onPanelQuickToggle: (panel: PanelToggleMode) => void
-  isPanelVisible: (panel: PanelToggleMode) => boolean
-  showPanel: (panel: PanelToggleMode) => void
-  hidePanel: (panel: PanelToggleMode) => void
-}
-
 export class HotkeyManager {
   private registeredHotkeys: Map<HotkeyMode, string> = new Map()
   private registeredPanelHotkeys: Map<PanelToggleMode, string> = new Map()
@@ -76,7 +61,6 @@ export class HotkeyManager {
   private activeToggles: Set<HotkeyMode> = new Set()
   private callbacks: HotkeyCallbacks | null = null
   private panelCallbacks: PanelToggleCallbacks | null = null
-  private panelTranscribeCallbacks: PanelTranscribeCallbacks | null = null
   private isRecording = false
   private currentMode: HotkeyMode | null = null
   private recordingStartTime: number | null = null
@@ -87,26 +71,6 @@ export class HotkeyManager {
   private uiohookStarted = false
   private uiohookStartPromise: Promise<boolean> | null = null
   private uiohookGeneration = 0
-
-  // Panel hold-to-transcribe state
-  private panelKeyGroups: Map<PanelToggleMode, number[][]> = new Map()
-  private activePanelRecording: PanelToggleMode | null = null
-  private panelRecordingStartTime: number | null = null
-  private panelWasVisibleBeforeRecording: boolean = false
-  private panelHotkeyStartedAt: number | null = null
-
-  // Panel hold detection state
-  private pendingPanelHotkey: PanelToggleMode | null = null
-  /** True if the panel was already visible when the pending press began. */
-  private pendingPanelWasVisible = false
-  /** True if we already showed the panel on keydown (hidden→show optimistic path). */
-  private pendingPanelOpenedOnKeydown = false
-  private panelHoldTimeout: NodeJS.Timeout | null = null
-  /** When each panel was last shown via hotkey (for rapid re-press → instant hide). */
-  private lastPanelShownAt = new Map<PanelToggleMode, number>()
-  /** Re-press within this window always hides (skip hold-vs-tap ambiguity). */
-  private readonly RAPID_REPRESS_HIDE_MS = 450
-  private readonly STALE_PANEL_HOTKEY_STATE_MS = 2000
 
   // Combined hotkey mode (transcription + push-to-talk share same accelerator)
   private combinedHotkeyAccelerator: string | null = null
@@ -119,8 +83,6 @@ export class HotkeyManager {
 
   // Minimum recording duration to prevent accidental quick releases (in milliseconds)
   private readonly MIN_RECORDING_DURATION_MS = 200
-  // Hold threshold - time to wait before considering it a "hold" (in milliseconds)
-  private readonly HOLD_THRESHOLD_MS = 200
 
   /**
    * Convert display format hotkey to Electron accelerator format
@@ -263,16 +225,7 @@ export class HotkeyManager {
   }
 
   /**
-   * Initialize panel transcribe callbacks for hold-to-transcribe feature
-   */
-  initializePanelTranscribeCallbacks(callbacks: PanelTranscribeCallbacks): void {
-    this.panelTranscribeCallbacks = callbacks
-  }
-
-  /**
-   * Register a hotkey for a panel toggle with hold-to-transcribe support
-   * For chat and notebook panels: hold to record, quick press to toggle
-   * For browser panel: simple toggle only
+   * Register a panel hotkey using the same simple toggle path for every panel.
    */
   registerPanelHotkey(panel: PanelToggleMode, displayHotkey: string): boolean {
     if (!displayHotkey) {
@@ -287,310 +240,28 @@ export class HotkeyManager {
       console.log(`[HotkeyManager] Registering panel hotkey ${panel}: ${displayHotkey}`)
       this.unregisterPanelHotkey(panel, false)
       const accelerator = this.convertToAccelerator(displayHotkey)
-
-      // For chat and notebook panels, use hybrid approach (like push-to-talk)
-      if (panel === 'chat' || panel === 'notebook') {
-        // Convert to keycodes for release detection
-        const keyGroups = this.convertToKeycodes(displayHotkey)
-        this.panelKeyGroups.set(panel, keyGroups)
-
-        // Check accessibility permission BEFORE registering the hotkey
-        // This prevents the native module from being loaded without permissions
-        if (!hasAccessibilityPermission()) {
-          console.log(
-            `[HotkeyManager] Cannot register ${panel} panel hotkey - accessibility permission not granted`
-          )
-          return false
+      const success = globalShortcut.register(accelerator, () => {
+        if (!settingsService.isAuthenticated) {
+          console.log(`[HotkeyManager] Panel toggle blocked - not authenticated`)
+          return
         }
+        console.log(`[HotkeyManager] Panel toggle triggered: ${panel}`)
+        panelLatencyMarkHotkey(panel)
+        this.panelCallbacks?.onPanelToggle(panel)
+      })
 
-        const success = globalShortcut.register(accelerator, () => {
-          // Check auth state before triggering
-          if (!settingsService.isAuthenticated) {
-            console.log(`[HotkeyManager] Panel hotkey blocked - not authenticated`)
-            return
-          }
-          if (!this.uiohookStarted) {
-            this.pressedKeys.clear()
-            void this.startUIOhook()
-          }
-          this.startPanelHotkeyPress(panel)
-        })
-
-        if (success) {
-          this.registeredPanelHotkeys.set(panel, accelerator)
-          // Start uIOhook for key release monitoring (will check permissions internally)
-          this.startUIOhook().then((started) => {
-            if (!started) {
-              console.warn(
-                `[HotkeyManager] uIOhook not started for ${panel} - hold-to-transcribe will be disabled`
-              )
-            }
-          })
-          console.log(
-            `[HotkeyManager] Panel hotkey registered (hybrid): ${panel} -> ${accelerator}, keycodes:`,
-            keyGroups
-          )
-        } else {
-          console.error(`[HotkeyManager] Failed to register ${panel} panel hotkey: ${accelerator}`)
-        }
-
-        return success
+      if (success) {
+        this.registeredPanelHotkeys.set(panel, accelerator)
+        console.log(`[HotkeyManager] Panel hotkey registered: ${panel} -> ${accelerator}`)
       } else {
-        // Browser panel: simple toggle only
-        const success = globalShortcut.register(accelerator, () => {
-          if (!settingsService.isAuthenticated) {
-            console.log(`[HotkeyManager] Panel toggle blocked - not authenticated`)
-            return
-          }
-          console.log(`[HotkeyManager] Panel toggle triggered: ${panel}`)
-          panelLatencyMarkHotkey(panel)
-          this.panelCallbacks?.onPanelToggle(panel)
-        })
-
-        if (success) {
-          this.registeredPanelHotkeys.set(panel, accelerator)
-          console.log(
-            `[HotkeyManager] Successfully registered ${panel} panel hotkey: ${accelerator}`
-          )
-        } else {
-          console.error(`[HotkeyManager] Failed to register ${panel} panel hotkey: ${accelerator}`)
-        }
-
-        return success
+        console.error(`[HotkeyManager] Failed to register ${panel} panel hotkey: ${accelerator}`)
       }
+
+      return success
     } catch (error) {
       console.error(`[HotkeyManager] Error registering ${panel} panel hotkey:`, error)
       return false
     }
-  }
-
-  private clearPanelHoldState(): void {
-    this.pendingPanelHotkey = null
-    this.pendingPanelWasVisible = false
-    this.pendingPanelOpenedOnKeydown = false
-    this.panelHotkeyStartedAt = null
-    if (this.panelHoldTimeout) {
-      clearTimeout(this.panelHoldTimeout)
-      this.panelHoldTimeout = null
-    }
-  }
-
-  private recoverStalePanelHotkeyState(): void {
-    if (!this.pendingPanelHotkey && !this.activePanelRecording) return
-    const startedAt = this.panelHotkeyStartedAt
-    if (!startedAt || Date.now() - startedAt < this.STALE_PANEL_HOTKEY_STATE_MS) return
-
-    const interruptedMode = this.activePanelRecording ? this.currentMode : null
-    console.warn('[HotkeyManager] Resetting stale panel hotkey state')
-    this.clearPanelHoldState()
-    this.activePanelRecording = null
-    this.panelRecordingStartTime = null
-    this.panelWasVisibleBeforeRecording = false
-    this.isRecording = false
-    this.currentMode = null
-    this.recordingStartTime = null
-    this.pressedKeys.clear()
-    if (interruptedMode) this.callbacks?.onRecordingCancel(interruptedMode)
-  }
-
-  /**
-   * Start panel hotkey press - begins hold detection
-   * Hidden panel: show immediately on keydown; release = stay open, hold = record
-   * Visible panel: release = hide, hold = record (stay open)
-   */
-  private startPanelHotkeyPress(panel: PanelToggleMode): void {
-    this.recoverStalePanelHotkeyState()
-    // Don't start if already recording with any mode
-    if (this.isRecording || this.activePanelRecording) {
-      console.log('[HotkeyManager] Already recording, ignoring panel hotkey')
-      return
-    }
-
-    // A new press while one is pending: either key-repeat (ignore) or a missed
-    // keyup between two rapid taps (finalize previous tap, then continue).
-    if (this.pendingPanelHotkey) {
-      const keyGroups = this.panelKeyGroups.get(this.pendingPanelHotkey)
-      const stillHeld = keyGroups ? this.areAllKeysPressed(keyGroups) : false
-      if (stillHeld) {
-        console.log('[HotkeyManager] Panel hotkey repeat while held, ignoring')
-        return
-      }
-      console.log('[HotkeyManager] Finalizing previous panel tap before new press')
-      this.handlePanelTap(this.pendingPanelHotkey)
-    }
-
-    const wasVisible = this.panelTranscribeCallbacks?.isPanelVisible(panel) ?? false
-    console.log(
-      `[HotkeyManager] Panel hotkey pressed: ${panel}, wasVisible=${wasVisible}, starting hold detection`
-    )
-
-    // Rapid second press while open → hide immediately (double-tap dismiss).
-    // Skip hold detection so hide doesn't wait for keyup / 200ms threshold.
-    if (wasVisible) {
-      const lastShown = this.lastPanelShownAt.get(panel) ?? 0
-      if (Date.now() - lastShown < this.RAPID_REPRESS_HIDE_MS) {
-        console.log(`[HotkeyManager] Rapid re-press on ${panel}, hiding immediately`)
-        panelLatencyMarkHotkey(panel)
-        this.panelTranscribeCallbacks?.hidePanel(panel)
-        this.lastPanelShownAt.delete(panel)
-        return
-      }
-    }
-
-    this.pendingPanelHotkey = panel
-    this.pendingPanelWasVisible = wasVisible
-    this.pendingPanelOpenedOnKeydown = false
-    this.panelHotkeyStartedAt = Date.now()
-
-    // Show immediately when opening — don't wait for keyup / hold threshold.
-    if (!wasVisible) {
-      panelLatencyMarkHotkey(panel)
-      this.panelTranscribeCallbacks?.showPanel(panel)
-      this.pendingPanelOpenedOnKeydown = true
-      this.lastPanelShownAt.set(panel, Date.now())
-    }
-
-    this.panelHoldTimeout = setTimeout(() => {
-      if (this.pendingPanelHotkey === panel) {
-        console.log(`[HotkeyManager] Hold threshold reached for ${panel}, starting recording`)
-        this.startPanelRecordingAfterHold(panel)
-      }
-    }, this.HOLD_THRESHOLD_MS)
-
-    this.monitorPanelKeyReleaseForTap(panel)
-  }
-
-  /**
-   * Start recording after hold threshold is reached
-   */
-  private startPanelRecordingAfterHold(panel: PanelToggleMode): void {
-    const wasVisibleBeforePress = this.pendingPanelWasVisible
-    const openedOnKeydown = this.pendingPanelOpenedOnKeydown
-    // Clear pending state
-    this.clearPanelHoldState()
-
-    // Now start actual recording
-    this.activePanelRecording = panel
-    this.panelRecordingStartTime = Date.now()
-    this.panelHotkeyStartedAt = this.panelRecordingStartTime
-    this.isRecording = true
-    this.currentMode = panel === 'chat' ? 'panel-chat' : 'panel-notebook'
-    this.recordingStartTime = Date.now()
-
-    // Notify that panel recording has started
-    // The callback will check panel visibility and open if needed
-    this.panelWasVisibleBeforeRecording = wasVisibleBeforePress || openedOnKeydown
-    this.panelTranscribeCallbacks?.onPanelRecordingStart(panel, this.panelWasVisibleBeforeRecording)
-    this.callbacks?.onRecordingStart(this.currentMode)
-
-    // Continue monitoring for key release to stop recording
-    this.monitorPanelKeyRelease(panel)
-  }
-
-  /**
-   * Handle early key release (tap) before hold threshold
-   */
-  private handlePanelTap(panel: PanelToggleMode): void {
-    const wasVisible = this.pendingPanelWasVisible
-    const openedOnKeydown = this.pendingPanelOpenedOnKeydown
-    console.log(
-      `[HotkeyManager] Tap detected for ${panel}, wasVisible=${wasVisible}, openedOnKeydown=${openedOnKeydown}`
-    )
-
-    // Clear pending state
-    this.clearPanelHoldState()
-
-    if (wasVisible) {
-      // Tap while open → hide
-      panelLatencyMarkHotkey(panel)
-      this.panelTranscribeCallbacks?.hidePanel(panel)
-      this.lastPanelShownAt.delete(panel)
-    } else if (!openedOnKeydown) {
-      // Fallback: show if we somehow didn't open on keydown
-      panelLatencyMarkHotkey(panel)
-      this.panelTranscribeCallbacks?.onPanelQuickToggle(panel)
-      this.lastPanelShownAt.set(panel, Date.now())
-    }
-    // else: already shown on keydown — nothing to do
-  }
-
-  /**
-   * Monitor for early key release during hold detection (tap detection)
-   */
-  private monitorPanelKeyReleaseForTap(panel: PanelToggleMode): void {
-    const keyGroups = this.panelKeyGroups.get(panel)
-    if (!keyGroups) return
-
-    const checkInterval = setInterval(() => {
-      // If we're no longer pending (either became a hold or was cancelled), stop monitoring
-      if (this.pendingPanelHotkey !== panel) {
-        clearInterval(checkInterval)
-        return
-      }
-
-      // Check if keys are released before hold threshold
-      if (!this.areAllKeysPressed(keyGroups)) {
-        clearInterval(checkInterval)
-        this.handlePanelTap(panel)
-      }
-    }, 10) // Check every 10ms for responsive tap detection
-  }
-
-  /**
-   * Stop panel hotkey recording - called when key is released after recording has started
-   */
-  private stopPanelHotkeyRecording(): void {
-    if (!this.activePanelRecording) {
-      return
-    }
-
-    const panel = this.activePanelRecording
-    const duration = this.panelRecordingStartTime ? Date.now() - this.panelRecordingStartTime : 0
-    const wasVisible = this.panelWasVisibleBeforeRecording
-
-    // Reset panel recording state
-    const currentMode = this.currentMode
-    this.activePanelRecording = null
-    this.panelRecordingStartTime = null
-    this.panelHotkeyStartedAt = null
-    this.isRecording = false
-    this.currentMode = null
-    this.recordingStartTime = null
-
-    console.log(`[HotkeyManager] Panel hold release (${duration}ms), transcribing for ${panel}`)
-    this.callbacks?.onRecordingStop(currentMode!)
-    this.panelTranscribeCallbacks?.onPanelRecordingStop(panel, wasVisible)
-  }
-
-  /**
-   * Monitor key state to detect when panel hotkey keys are released
-   */
-  private monitorPanelKeyRelease(panel: PanelToggleMode): void {
-    const keyGroups = this.panelKeyGroups.get(panel)
-    if (!keyGroups) return
-
-    const checkInterval = setInterval(() => {
-      // If recording stopped by other means, clear interval
-      if (!this.activePanelRecording || this.activePanelRecording !== panel) {
-        clearInterval(checkInterval)
-        return
-      }
-
-      // Check if all panel hotkey keys are still pressed
-      if (!this.areAllKeysPressed(keyGroups)) {
-        // Keys released, stop recording
-        clearInterval(checkInterval)
-        this.stopPanelHotkeyRecording()
-      }
-    }, 50) // Check every 50ms for responsive key release detection
-  }
-
-  /**
-   * Set the panel visibility state before recording started
-   * Called by the main process after checking panel visibility
-   */
-  setPanelWasVisible(wasVisible: boolean): void {
-    this.panelWasVisibleBeforeRecording = wasVisible
   }
 
   /**
@@ -604,7 +275,6 @@ export class HotkeyManager {
       this.registeredPanelHotkeys.delete(panel)
       console.log(`[HotkeyManager] Unregistered ${panel} panel hotkey`)
     }
-    this.panelKeyGroups.delete(panel)
   }
 
   /**
@@ -678,27 +348,6 @@ export class HotkeyManager {
         console.log('[HotkeyManager] Combined: tap (keyup), switched to transcription')
       }
 
-      // If we're in hold detection phase (pending), check if keys are released (tap detection)
-      if (this.pendingPanelHotkey) {
-        const panel = this.pendingPanelHotkey
-        const keyGroups = this.panelKeyGroups.get(panel)
-        if (keyGroups && !this.areAllKeysPressed(keyGroups)) {
-          console.log(
-            `[HotkeyManager] Panel ${panel} keys released during hold detection (keyup event) - tap`
-          )
-          this.handlePanelTap(panel)
-        }
-      }
-
-      // If we're recording in panel mode, check if the panel hotkey is still pressed
-      if (this.activePanelRecording) {
-        const panel = this.activePanelRecording
-        const keyGroups = this.panelKeyGroups.get(panel)
-        if (keyGroups && !this.areAllKeysPressed(keyGroups)) {
-          console.log(`[HotkeyManager] Panel ${panel} keys released (keyup event)`)
-          this.stopPanelHotkeyRecording()
-        }
-      }
     })
 
     try {
@@ -1052,31 +701,18 @@ export class HotkeyManager {
     this.registeredPanelHotkeys.clear()
     this.activeToggles.clear()
     this.pushToTalkKeyGroups = []
-    this.panelKeyGroups.clear()
     this.pressedKeys.clear()
     this.isRecording = false
     this.currentMode = null
     this.recordingStartTime = null
-    this.activePanelRecording = null
-    this.panelRecordingStartTime = null
-    this.panelWasVisibleBeforeRecording = false
     this.combinedHotkeyAccelerator = null
     this.combinedKeyGroups = []
     this.pendingCombinedPress = false
     this.combinedDebounceUntil = 0
-    this.pendingPanelHotkey = null
-    this.pendingPanelWasVisible = false
-    this.pendingPanelOpenedOnKeydown = false
-    this.panelHotkeyStartedAt = null
-    this.lastPanelShownAt.clear()
 
     if (this.combinedHoldTimeout) {
       clearTimeout(this.combinedHoldTimeout)
       this.combinedHoldTimeout = null
-    }
-    if (this.panelHoldTimeout) {
-      clearTimeout(this.panelHoldTimeout)
-      this.panelHoldTimeout = null
     }
     this.uiohookGeneration++
     if (uIOhookInstance) {
@@ -1092,13 +728,7 @@ export class HotkeyManager {
 
     if (interruptedMode) this.callbacks?.onRecordingCancel(interruptedMode)
 
-    const hotkeyOrder: HotkeyMode[] = [
-      'transcription',
-      'push-to-talk',
-      'assistant',
-      'panel-chat',
-      'panel-notebook'
-    ]
+    const hotkeyOrder: HotkeyMode[] = ['transcription', 'push-to-talk', 'assistant']
     for (const mode of hotkeyOrder) {
       const displayHotkey = hotkeyConfigurations.get(mode)
       if (displayHotkey) this.registerHotkey(mode, displayHotkey)
@@ -1122,8 +752,7 @@ export class HotkeyManager {
   }
 
   ensureReleaseMonitor(): void {
-    const needsReleaseMonitor =
-      this.configuredPanelHotkeys.size > 0 || this.configuredHotkeys.has('push-to-talk')
+    const needsReleaseMonitor = this.configuredHotkeys.has('push-to-talk')
     if (!needsReleaseMonitor || this.uiohookStarted || this.uiohookStartPromise) return
     void this.startUIOhook()
   }
@@ -1158,14 +787,10 @@ export class HotkeyManager {
     this.configuredPanelHotkeys.clear()
     this.activeToggles.clear()
     this.pushToTalkKeyGroups = []
-    this.panelKeyGroups.clear()
     this.pressedKeys.clear()
     this.isRecording = false
     this.currentMode = null
     this.recordingStartTime = null
-    this.activePanelRecording = null
-    this.panelRecordingStartTime = null
-    this.panelWasVisibleBeforeRecording = false
 
     // Clear combined hotkey state
     this.combinedHotkeyAccelerator = null
@@ -1175,17 +800,6 @@ export class HotkeyManager {
     if (this.combinedHoldTimeout) {
       clearTimeout(this.combinedHoldTimeout)
       this.combinedHoldTimeout = null
-    }
-
-    // Clear hold detection state
-    this.pendingPanelHotkey = null
-    this.pendingPanelWasVisible = false
-    this.pendingPanelOpenedOnKeydown = false
-    this.panelHotkeyStartedAt = null
-    this.lastPanelShownAt.clear()
-    if (this.panelHoldTimeout) {
-      clearTimeout(this.panelHoldTimeout)
-      this.panelHoldTimeout = null
     }
 
     this.uiohookGeneration++
