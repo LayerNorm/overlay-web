@@ -204,6 +204,153 @@ function dispatchEditorInput(el: HTMLDivElement) {
   el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatBackColor' }))
 }
 
+/** Walk up from a node to the nearest block-level element within the editor root. */
+function getBlockContainer(node: Node, root: HTMLElement): HTMLElement | null {
+  let current: Node | null = node
+  while (current && current !== root) {
+    if (current.nodeType === Node.ELEMENT_NODE) {
+      const el = current as HTMLElement
+      if (/^(DIV|P|H[1-6]|BLOCKQUOTE|LI|PRE|UL|OL)$/.test(el.tagName)) return el
+    }
+    current = current.parentNode
+  }
+  return null
+}
+
+/** Return the text content of a block element up to (but not including) the caret. */
+function getTextBeforeCaretInBlock(block: HTMLElement, caretNode: Node, caretOffset: number): string {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  let text = ''
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+    if (node === caretNode) {
+      text += (node.textContent || '').slice(0, caretOffset)
+      break
+    }
+    text += node.textContent || ''
+  }
+  return text
+}
+
+/**
+ * Detect block-level markdown triggers typed at the start of a line and apply
+ * the corresponding block format. Returns true if a format was applied.
+ *
+ * Triggers: `# `, `## `, `### `, `> `, `- `, `* `, `1. `
+ */
+function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  if (!el.contains(range.startContainer)) return false
+
+  const block = getBlockContainer(range.startContainer, el)
+  if (!block) return false
+  // Only auto-format plain, unformatted blocks (DIV or P)
+  if (block.tagName !== 'DIV' && block.tagName !== 'P') return false
+
+  const blockText = block.textContent || ''
+  const textBeforeCaret = getTextBeforeCaretInBlock(block, range.startContainer, range.startOffset)
+  // Caret must be at the end of the block's text
+  if (textBeforeCaret !== blockText) return false
+
+  const blockTriggers: Array<{ pattern: RegExp; tag?: string; list?: 'ul' | 'ol' }> = [
+    { pattern: /^###\s$/, tag: 'h3' },
+    { pattern: /^##\s$/, tag: 'h2' },
+    { pattern: /^#\s$/, tag: 'h1' },
+    { pattern: /^>\s$/, tag: 'blockquote' },
+    { pattern: /^[-*]\s$/, list: 'ul' },
+  ]
+
+  for (const { pattern, tag, list } of blockTriggers) {
+    if (pattern.test(blockText)) {
+      block.textContent = ''
+      if (list) {
+        document.execCommand('insertUnorderedList')
+      } else if (tag) {
+        document.execCommand('formatBlock', false, tag)
+      }
+      dispatchEditorInput(el)
+      return true
+    }
+  }
+
+  // Ordered list: `1. `, `2. `, etc.
+  if (/^\d+\.\s$/.test(blockText)) {
+    block.textContent = ''
+    document.execCommand('insertOrderedList')
+    dispatchEditorInput(el)
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Detect inline markdown patterns as they are typed and wrap the text in the
+ * appropriate element. Returns true if a format was applied.
+ *
+ * Patterns: `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`
+ */
+function tryApplyInlineMarkdown(el: HTMLDivElement): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  if (!el.contains(range.startContainer)) return false
+
+  const node = range.startContainer
+  if (node.nodeType !== Node.TEXT_NODE) return false
+
+  const text = node.textContent || ''
+  const offset = range.startOffset
+  const textBefore = text.slice(0, offset)
+
+  // Check patterns in order — `**` before `*` to avoid false matches
+  const patterns: Array<{ open: string; close: string; tag: string }> = [
+    { open: '**', close: '**', tag: 'strong' },
+    { open: '~~', close: '~~', tag: 's' },
+    { open: '`', close: '`', tag: 'code' },
+    { open: '*', close: '*', tag: 'em' },
+  ]
+
+  for (const { open, close, tag } of patterns) {
+    if (!textBefore.endsWith(close)) continue
+
+    const beforeClose = textBefore.slice(0, -close.length)
+    const openIdx = beforeClose.lastIndexOf(open)
+    if (openIdx === -1) continue
+
+    const innerText = beforeClose.slice(openIdx + open.length)
+    if (innerText.length === 0) continue
+    // Reject if inner text starts or ends with whitespace (likely not intentional formatting)
+    if (/^\s|\s$/.test(innerText)) continue
+    // For single `*`, guard against matching `**` as two `*` pairs
+    if (open === '*' && openIdx > 0 && textBefore[openIdx - 1] === '*') continue
+
+    // Replace the markdown markers with a formatted element
+    const replaceRange = document.createRange()
+    replaceRange.setStart(node, openIdx)
+    replaceRange.setEnd(node, openIdx + open.length + innerText.length + close.length)
+    replaceRange.deleteContents()
+
+    const wrapper = document.createElement(tag)
+    wrapper.textContent = innerText
+    replaceRange.insertNode(wrapper)
+
+    // Place caret after the wrapper
+    const newRange = document.createRange()
+    newRange.setStartAfter(wrapper)
+    newRange.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+
+    dispatchEditorInput(el)
+    return true
+  }
+
+  return false
+}
+
 function toggleInlineCode(el: HTMLDivElement) {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0) return
@@ -406,6 +553,8 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const isComposingRef = useRef(false)
     const suppressInputRef = useRef(false)
     const lastValueRef = useRef(value)
+    /** Guards against recursive handleInput calls from dispatchEditorInput in live markdown formatting. */
+    const formattingAppliedRef = useRef(false)
     /** True when the @ that opened the current popup was inserted by the @ button rather
      * than typed by the user; on close-without-select we strip that orphan @. */
     const buttonInsertedAtRef = useRef(false)
@@ -539,6 +688,17 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       if (suppressInputRef.current) return
       const el = editorRef.current
       if (!el) return
+
+      // Live markdown: attempt block and inline formatting before extracting text.
+      // These calls dispatch a new input event when they apply a format, which
+      // re-enters handleInput — the formattingAppliedRef guard prevents infinite
+      // recursion by skipping the formatting attempt on the re-entrant call.
+      if (!formattingAppliedRef.current) {
+        formattingAppliedRef.current = true
+        const applied = tryApplyBlockMarkdown(el) || tryApplyInlineMarkdown(el)
+        formattingAppliedRef.current = false
+        if (applied) return // The dispatched input event will re-run handleInput
+      }
 
       const text = extractMarkdownFromElement(el)
       const empty = isComposerTextEmpty(text)
@@ -688,12 +848,52 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           return
         }
 
-        // For text paste, insert as plain text
         e.preventDefault()
         const text = e.clipboardData.getData('text/plain')
-        if (text) {
+        if (!text) return
+
+        const el = editorRef.current
+        if (!el) {
           document.execCommand('insertText', false, text)
+          return
         }
+
+        // If the pasted text contains markdown syntax, parse and insert as
+        // formatted HTML so the composer renders it visually.
+        const hasMarkdown = /(^|\n)(#{1,3}\s|>\s|[-*]\s|\d+\.\s|```)|\*\*[^*]+\*\*|`[^`]+`|~~[^~]+~~|(^|[\s(])\*[^*\n]+\*(?=$|[\s).,!?:;])/m.test(text)
+
+        if (hasMarkdown) {
+          const html = markdownToEditorHtml(text)
+          if (html) {
+            const template = document.createElement('template')
+            template.innerHTML = html
+            const fragment = template.content
+
+            const sel = window.getSelection()
+            if (sel && sel.rangeCount > 0) {
+              const range = sel.getRangeAt(0)
+              range.deleteContents()
+              range.insertNode(fragment)
+              // Move caret to end of inserted content
+              const lastChild = el.lastElementChild
+              if (lastChild) {
+                const newRange = document.createRange()
+                newRange.selectNodeContents(lastChild)
+                newRange.collapse(false)
+                sel.removeAllRanges()
+                sel.addRange(newRange)
+              }
+            } else {
+              document.execCommand('insertText', false, text)
+            }
+            resizeEditorElement(el)
+            dispatchEditorInput(el)
+            return
+          }
+        }
+
+        // Plain text: insert without formatting
+        document.execCommand('insertText', false, text)
       },
       [onPaste]
     )

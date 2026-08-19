@@ -4,33 +4,23 @@
 
 import {
   AtSign,
-  Bold,
   Brain,
   Check,
-  Code,
   FileText,
   Globe2,
-  Heading1,
-  Heading2,
   Image as ImageIcon,
-  Italic,
-  List,
-  ListOrdered,
   MousePointerClick,
-  PencilLine,
   Plus,
-  Quote,
   Reply,
   Send,
   SquareTerminal,
-  Strikethrough,
   Video,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
-import { MentionInput, type MentionInputFormatCommand } from './chat-interface/MentionInput'
+import { MentionInput } from './chat-interface/MentionInput'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
@@ -128,7 +118,7 @@ export function ChatComposer(props: ChatComposerProps) {
             viewProps.showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
           }`}
         >
-          {viewProps.mode === 'chat' ? (
+          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? (
             <p className="mb-2 text-center text-[11px] text-[var(--muted-light)]">
               Overlay can make mistakes. Check important info.
             </p>
@@ -157,7 +147,6 @@ export function ChatComposer(props: ChatComposerProps) {
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
-  const [formattingOpen, setFormattingOpen] = useState(false)
 
   return (
     <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
@@ -191,7 +180,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
             event.target.value = ''
           }}
         />
-        {formattingOpen ? <ComposerFormattingToolbar textareaRef={props.textareaRef} /> : null}
         <MentionInput
           ref={props.textareaRef}
           value={props.input}
@@ -213,51 +201,8 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
         <ComposerControls
           {...props}
           mixedFileInputRef={mixedFileInputRef}
-          formattingOpen={formattingOpen}
-          onFormattingOpenChange={setFormattingOpen}
         />
       </div>
-    </div>
-  )
-}
-
-const COMPOSER_FORMAT_OPTIONS: Array<{
-  command: MentionInputFormatCommand
-  label: string
-  Icon: LucideIcon
-}> = [
-  { command: 'heading1', label: 'Heading 1', Icon: Heading1 },
-  { command: 'heading2', label: 'Heading 2', Icon: Heading2 },
-  { command: 'bold', label: 'Bold', Icon: Bold },
-  { command: 'italic', label: 'Italic', Icon: Italic },
-  { command: 'strike', label: 'Strikethrough', Icon: Strikethrough },
-  { command: 'inlineCode', label: 'Inline code', Icon: Code },
-  { command: 'codeBlock', label: 'Code block', Icon: SquareTerminal },
-  { command: 'blockquote', label: 'Quote', Icon: Quote },
-  { command: 'bulletList', label: 'Bullet list', Icon: List },
-  { command: 'orderedList', label: 'Numbered list', Icon: ListOrdered },
-]
-
-function ComposerFormattingToolbar({
-  textareaRef,
-}: Pick<ComposerViewProps, 'textareaRef'>) {
-  return (
-    <div className="mb-2 flex items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {COMPOSER_FORMAT_OPTIONS.map(({ command, label, Icon }) => (
-        <button
-          key={command}
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault()
-            textareaRef.current?.applyFormat(command)
-          }}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-          aria-label={label}
-          title={label}
-        >
-          <Icon size={14} strokeWidth={1.75} />
-        </button>
-      ))}
     </div>
   )
 }
@@ -281,8 +226,6 @@ function ReplyContextBar({ replyContext, setReplyContext }: Pick<ComposerViewPro
 type ComposerControlsProps = ComposerViewProps & {
   disabledSend: boolean
   mixedFileInputRef: RefObject<HTMLInputElement | null>
-  formattingOpen: boolean
-  onFormattingOpenChange: (open: boolean) => void
 }
 
 function ComposerControls(props: ComposerControlsProps) {
@@ -290,23 +233,10 @@ function ComposerControls(props: ComposerControlsProps) {
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
       props.isTemporaryChat
-        ? 'grid-cols-[auto_auto_auto_minmax(0,1fr)_auto]'
-        : 'grid-cols-[auto_auto_auto_minmax(0,1fr)_auto_auto]'
+        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
+        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
     }`}>
       <AttachMenu {...props} />
-      <DelayedTooltip label={props.formattingOpen ? 'Hide formatting' : 'Show formatting'} side="top">
-        <button
-          type="button"
-          onClick={() => props.onFormattingOpenChange(!props.formattingOpen)}
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] ${
-            props.formattingOpen ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
-          }`}
-          aria-label={props.formattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
-          aria-pressed={props.formattingOpen}
-        >
-          <PencilLine size={16} strokeWidth={1.75} />
-        </button>
-      </DelayedTooltip>
       <DelayedTooltip label={mentionTooltip} side="top">
         <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
