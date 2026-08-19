@@ -81,10 +81,7 @@ import { resetProviders as resetGatewayProvider } from './services/ai/gateway-pr
 
 // IPC Handlers
 import { registerAllIPC } from './ipc'
-import {
-  setPanelTranscriptionDestination,
-  clearPanelTranscriptionDestination
-} from './ipc/panel-ipc'
+import { clearPanelTranscriptionDestination } from './ipc/panel-ipc'
 
 // Security
 import { verifyCodeSigning, auditLogger } from './services/security/security-service'
@@ -296,82 +293,14 @@ async function injectSelectedTextIntoPanel(panel: 'chat' | 'notebook'): Promise<
 }
 
 const handlePanelToggle = (panel: PanelToggleMode): void => {
-  const existingPanel = windowManager.findWindowByType(panel)
-  const isOpening = !existingPanel || !existingPanel.isVisible()
+  const result = panelManager.togglePanelVisibility(panel)
+  console.log(`[Hotkey] Panel toggle: ${panel}, result: ${result.action}, count: ${result.count}`)
 
-  if (panel === 'chat' && isOpening) {
-    if (existingPanel?.isVisible()) {
-      void injectSelectedTextIntoPanel('chat')
-      return
-    }
-    panelManager.togglePanelVisibility('chat')
-    void injectSelectedTextIntoPanel('chat')
-    return
-  }
-
-  if (panel === 'chat' || panel === 'notebook' || panel === 'browser') {
-    const result = panelManager.togglePanelVisibility(panel)
-    console.log(`[Hotkey] Panel toggle: ${panel}, result: ${result.action}, count: ${result.count}`)
-  }
-}
-
-const handlePanelRecordingStart = async (panel: PanelToggleMode): Promise<void> => {
-  const allWindows = panelManager.getAllPanelWindows(panel)
-  const wasVisible = allWindows.some((win) => win.isVisible())
-  hotkeyManager.setPanelWasVisible(wasVisible)
-  if (!wasVisible) {
-    console.log(`[Main] Panel ${panel} was hidden, opening for transcription`)
-    panelManager.togglePanelVisibility(panel)
-  }
-  if (panel === 'chat' || panel === 'notebook') {
-    setPanelTranscriptionDestination(panel, wasVisible)
-  }
-  console.log(`[Main] Panel ${panel} recording started, wasVisible: ${wasVisible}`)
-}
-
-const handlePanelRecordingStop = async (
-  panel: PanelToggleMode,
-  wasVisible: boolean
-): Promise<void> => {
-  console.log(`[Main] Panel ${panel} recording stopped, wasVisible: ${wasVisible}`)
-}
-
-const handlePanelQuickToggle = (panel: PanelToggleMode): void => {
-  console.log(`[Main] Panel ${panel} quick toggle`)
-  clearPanelTranscriptionDestination()
-
-  if (panel === 'chat' || panel === 'notebook') {
-    const result = panelManager.togglePanelVisibility(panel)
-    if (result.action === 'hidden') {
-      cancelSelectedTextInject()
-    } else {
-      void injectSelectedTextIntoPanel(panel)
-    }
-    return
-  }
-
-  panelManager.togglePanelVisibility(panel)
-}
-
-const handlePanelShow = (panel: PanelToggleMode): void => {
-  console.log(`[Main] Panel ${panel} show`)
-  clearPanelTranscriptionDestination()
-  if (panel === 'chat' || panel === 'notebook' || panel === 'browser') {
-    panelManager.showPanelType(panel)
-    if (panel === 'chat' || panel === 'notebook') {
-      void injectSelectedTextIntoPanel(panel)
-    }
-  }
-}
-
-const handlePanelHide = (panel: PanelToggleMode): void => {
-  console.log(`[Main] Panel ${panel} hide`)
-  clearPanelTranscriptionDestination()
-  if (panel === 'chat' || panel === 'notebook') {
+  if (panel !== 'chat' && panel !== 'notebook') return
+  if (result.action === 'hidden') {
     cancelSelectedTextInject()
-  }
-  if (panel === 'chat' || panel === 'notebook' || panel === 'browser') {
-    panelManager.hidePanelType(panel)
+  } else {
+    void injectSelectedTextIntoPanel(panel)
   }
 }
 
@@ -446,14 +375,6 @@ function setupHotkeySystem(options: { registerPanelHotkeys?: boolean } = {}): vo
     console.log('[Main] Registered default panel hotkeys')
   }
 
-  hotkeyManager.initializePanelTranscribeCallbacks({
-    onPanelRecordingStart: handlePanelRecordingStart,
-    onPanelRecordingStop: handlePanelRecordingStop,
-    onPanelQuickToggle: handlePanelQuickToggle,
-    isPanelVisible: (panel) => panelManager.isPanelTypeVisible(panel),
-    showPanel: handlePanelShow,
-    hidePanel: handlePanelHide
-  })
 }
 
 // Handle deep link on macOS (when app is already running)

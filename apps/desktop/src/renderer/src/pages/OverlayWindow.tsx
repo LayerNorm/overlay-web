@@ -134,7 +134,6 @@ export function OverlayWindow(): ReactElement<any> {
   const [audioLevels, setAudioLevels] = useState(Array(WAVEFORM_BAR_COUNT).fill(0))
   const [isHovered, setIsHovered] = useState(true)
   const [openPanels, setOpenPanels] = useState<Set<'notebook' | 'chat' | 'browser'>>(new Set())
-  const [activePanel, setActivePanel] = useState<'notebook' | 'chat' | 'browser' | null>(null)
   const [showButtons, setShowButtons] = useState(true)
   const [recordingSource, setRecordingSource] = useState<'hotkey' | 'mic' | null>(null)
   const [, setOpeningPanel] = useState<'notebook' | 'chat' | 'browser' | null>(null)
@@ -260,55 +259,60 @@ export function OverlayWindow(): ReactElement<any> {
   // Toggle panel windows - unified hide/show behavior
   // Hides all windows if any are visible, shows all windows if all are hidden
   const togglePanel = async (panel: 'notebook' | 'chat' | 'browser'): Promise<void> => {
-    panelInteractionGenerationRef.current += 1
+    const interactionGeneration = panelInteractionGenerationRef.current + 1
+    panelInteractionGenerationRef.current = interactionGeneration
     setOpeningPanel(panel)
     setShowButtons(true)
 
-    // For chat/notebook panel opening, check for selected text first
-    // Only do this if panels are currently hidden (will be shown)
+    let selectedText: string | null = null
     const visibilityCheck = await window.bridge.isPanelVisible(panel)
     console.log(`[OverlayWindow] ${panel} visibility check:`, visibilityCheck)
 
+    // Capture selected text before presenting the panel, because presenting it
+    // can change which application owns the active selection.
     if (!visibilityCheck.isVisible && (panel === 'chat' || panel === 'notebook')) {
       try {
         const result = await window.bridge.detectSelectedText()
         if (result.success && result.hasSelection && result.selectedText.trim()) {
-          // Open panel with selected text
-          console.log(`[OverlayWindow] Detected selected text, opening new ${panel}`)
-          if (panel === 'chat') {
-            await window.bridge.sendTextToNewChat(result.selectedText)
-          } else {
-            await window.bridge.sendTextToNewNote(result.selectedText)
-          }
-          setOpenPanels((prev) => new Set(prev).add(panel))
-          setActivePanel(panel)
-          setOpeningPanel(null)
-          setShowButtons(true)
-          return
+          selectedText = result.selectedText
         }
       } catch (error) {
         console.error('[OverlayWindow] Failed to detect selected text:', error)
       }
     }
 
-    // Toggle panel visibility (hide all if any visible, show all if all hidden)
+    // Every panel must be presented through the shared native lifecycle before
+    // any panel-specific selected-text delivery occurs.
     const toggleResult = await window.bridge.togglePanelWindow(panel, true)
     console.log(`[OverlayWindow] Toggle ${panel} result:`, toggleResult)
 
-    // Update UI state based on whether panels are now visible or hidden
     if (toggleResult.isVisible) {
-      // Panels are now visible
       setOpenPanels((prev) => new Set(prev).add(panel))
-      setActivePanel(panel)
     } else {
-      // Panels are now hidden
       setOpenPanels((prev) => {
         const next = new Set(prev)
         next.delete(panel)
         return next
       })
-      if (activePanel === panel) {
-        setActivePanel(null)
+    }
+
+    if (
+      toggleResult.isVisible &&
+      selectedText &&
+      interactionGeneration === panelInteractionGenerationRef.current
+    ) {
+      try {
+        const delivery =
+          panel === 'chat'
+            ? await window.bridge.sendTextToNewChat(selectedText)
+            : panel === 'notebook'
+              ? await window.bridge.sendTextToNewNote(selectedText)
+              : null
+        if (delivery && !delivery.success) {
+          console.error(`[OverlayWindow] Failed to deliver selected text to ${panel}:`, delivery.error)
+        }
+      } catch (error) {
+        console.error(`[OverlayWindow] Failed to deliver selected text to ${panel}:`, error)
       }
     }
 
@@ -916,7 +920,6 @@ export function OverlayWindow(): ReactElement<any> {
         next.delete(panelType as 'notebook' | 'chat' | 'browser')
         return next
       })
-      setActivePanel((current) => (current === panelType ? null : current))
     })
     return () => {
       offPanelClosed?.()
@@ -944,7 +947,6 @@ export function OverlayWindow(): ReactElement<any> {
           // Panel is now visible - track it but don't auto-expand
           // User can hover to see open panels
           setOpenPanels((prev) => new Set(prev).add(panelType))
-          setActivePanel(panelType)
         } else {
           // Panel is now hidden
           setOpenPanels((prev) => {
@@ -952,7 +954,6 @@ export function OverlayWindow(): ReactElement<any> {
             next.delete(panelType)
             return next
           })
-          setActivePanel((current) => (current === panelType ? null : current))
         }
       }
     )
@@ -974,10 +975,6 @@ export function OverlayWindow(): ReactElement<any> {
         if (disposed || generation !== panelInteractionGenerationRef.current) return
         const visiblePanels = visibility.filter((entry) => entry.isVisible).map((entry) => entry.panel)
         setOpenPanels(new Set(visiblePanels))
-        setActivePanel((current) => {
-          if (current && visiblePanels.includes(current)) return current
-          return visiblePanels.at(-1) ?? null
-        })
       } catch (error) {
         console.warn('[OverlayWindow] Failed to synchronize panel visibility:', error)
       }
