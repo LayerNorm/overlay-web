@@ -89,6 +89,19 @@ the CDP port is already listening.
 Devin agents can call `mcp-playwright` tools directly — no extra setup beyond
 ensuring the testing Chrome is running.
 
+### Second testing instance (port 9223)
+
+If another coding agent is already using the first testing Chrome on port 9222,
+launch a second isolated instance:
+
+```bash
+bash ~/.config/devin/launch-chrome-testing-2.sh
+```
+
+This launches a second Chrome process with a separate cloned profile on CDP
+port 9223. Update the agent's MCP config to use `--cdp-endpoint
+http://localhost:9223` instead of port 9222.
+
 ### Claude Code
 
 Add the same server to `~/.claude/claude_desktop_config.json` (or the project-level
@@ -189,13 +202,20 @@ Chrome instance — they would overwrite each other's tabs, cross-contaminate co
 messages, and fight over session state.
 
 The current setup solves this: the testing Chrome on port 9222 is dedicated to one
-agent. Other agents should either:
+agent. A second testing Chrome on port 9223 can be launched for a second agent:
+
+```bash
+bash ~/.config/devin/launch-chrome-testing-2.sh
+```
+
+The second agent's MCP config should use `--cdp-endpoint http://localhost:9223`.
+Other agents should either:
 - Use `--extension` mode to connect to the user's main Chrome (different instance).
 - Launch their own testing Chrome on a different CDP port with a different profile.
 - Stagger their QA runs so only one agent does browser testing at a time.
 
-To create additional isolated testing Chrome instances, clone the profile to a new
-directory and launch with a different `--remote-debugging-port`:
+To create additional isolated testing Chrome instances beyond the first two, clone
+the profile to a new directory and launch with a different `--remote-debugging-port`:
 
 ```bash
 cp -R ~/Library/Application\ Support/Google/Chrome-LayerNorm-Testing \
