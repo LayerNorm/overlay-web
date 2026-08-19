@@ -197,6 +197,7 @@ function extractMarkdownFromElement(el: HTMLDivElement): string {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/\u00A0/g, ' ')
+    .replace(/\u200B/g, '') // strip zero-width spaces used for caret placement
     .trimEnd()
 }
 
@@ -324,22 +325,11 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
         // For lists, execCommand creates the list structure
         document.execCommand('insertUnorderedList')
       } else if (tag) {
-        // For headings/quotes, manually insert a block element at the caret
-        const blockEl = document.createElement(tag)
-        // Add a text node so the caret has somewhere to land inside the block
-        const placeholderText = document.createTextNode('')
-        blockEl.appendChild(placeholderText)
-        // Insert at current caret position (which is where the trigger was)
-        const insertRange = document.createRange()
-        insertRange.setStart(node, lineStart)
-        insertRange.collapse(true)
-        insertRange.insertNode(blockEl)
-        // Place caret inside the new block's text node
-        const newRange = document.createRange()
-        newRange.setStart(placeholderText, 0)
-        newRange.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(newRange)
+        // For headings/quotes, use execCommand('insertHTML') which handles
+        // caret placement inside the new block element correctly.
+        // A zero-width space ensures the caret lands inside the element
+        // and subsequent typing goes into it; it gets stripped on input.
+        document.execCommand('insertHTML', false, `<${tag}>\u200B</${tag}>`)
       } else {
         // Fallback: place caret at end of editor
         const newRange = document.createRange()
