@@ -326,15 +326,18 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
       } else if (tag) {
         // For headings/quotes, manually insert a block element at the caret
         const blockEl = document.createElement(tag)
+        // Add a text node so the caret has somewhere to land inside the block
+        const placeholderText = document.createTextNode('')
+        blockEl.appendChild(placeholderText)
         // Insert at current caret position (which is where the trigger was)
         const insertRange = document.createRange()
         insertRange.setStart(node, lineStart)
         insertRange.collapse(true)
         insertRange.insertNode(blockEl)
-        // Place caret inside the new block
+        // Place caret inside the new block's text node
         const newRange = document.createRange()
-        newRange.selectNodeContents(blockEl)
-        newRange.collapse(false)
+        newRange.setStart(placeholderText, 0)
+        newRange.collapse(true)
         sel.removeAllRanges()
         sel.addRange(newRange)
       } else {
