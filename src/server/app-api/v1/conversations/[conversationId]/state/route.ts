@@ -10,18 +10,30 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
   }
   const input = context.parsedJson as ConversationParticipantStateInput
   try {
-    const participant = await getOverlayServerContext().appData.repositories
-      .conversationCollaboration.updateParticipantState({
+    const collaboration = getOverlayServerContext().appData.repositories.conversationCollaboration
+    if (input.archiveScope === 'everyone' && input.archived !== undefined) {
+      if (context.workspace.membership.role !== 'owner') {
+        return NextResponse.json({ error: 'Workspace owner required' }, { status: 403 })
+      }
+      const participant = await collaboration.archiveConversationForEveryone({
         actorUserId: context.auth.userId,
         workspaceId: context.workspace.workspace.id,
         conversationId,
-        notificationLevel: input.notificationLevel,
         archived: input.archived,
-        markUnread: input.markUnread,
-        markRead: input.markRead,
-        readSequence: input.readSequence,
       })
-    return NextResponse.json({ participant })
+      return NextResponse.json({ participant, scope: 'everyone' })
+    }
+    const participant = await collaboration.updateParticipantState({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      conversationId,
+      notificationLevel: input.notificationLevel,
+      archived: input.archived,
+      markUnread: input.markUnread,
+      markRead: input.markRead,
+      readSequence: input.readSequence,
+    })
+    return NextResponse.json({ participant, scope: 'self' })
   } catch (_error) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }

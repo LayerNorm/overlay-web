@@ -94,7 +94,7 @@ export class ConversationsClient {
     return this.http.request('/api/v1/conversations', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
-  deleteResponse(query: { conversationId: string }, init?: RequestInit) {
+  deleteResponse(query: { conversationId: string; scope?: 'self' | 'everyone' }, init?: RequestInit) {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
   }
 

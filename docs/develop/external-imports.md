@@ -171,6 +171,15 @@ The `SlackImportPanel` component in `src/features/workspaces/components/SlackImp
 
 The connection check runs on initial mount and while OAuth is being completed. It must not reset the current view when the user advances from People to the Chats picker; otherwise the picker flashes and the wizard returns to People.
 
+## Conversation lifecycle scope (archive/delete)
+
+DMs and channels support two lifecycle scopes when archiving or deleting:
+
+- **self** — only the current participant's view is affected. Archive hides the conversation from the actor's sidebar; delete removes the actor's participant row. This is the default and is available to all participants.
+- **everyone** — applies the action to every active participant. Archive moves the conversation to Archived for all members; delete soft-deletes the conversation record. This scope requires the workspace **owner** role and is enforced server-side in both the BFF route and the Convex/Postgres repositories.
+
+The scope is selected via `ConversationScopeActionDialog` (`src/features/chat/components/collaboration/ConversationScopeActionDialog.tsx`), which is shown from the sidebar archive button, the DM header menu, and the Archived panel's delete confirmation. The API contract uses `archiveScope` on `ConversationParticipantStateInput` for archive and `scope=self|everyone` query parameter on `DELETE /api/v1/conversations` for delete.
+
 ## Future platforms
 
 ### Microsoft Teams

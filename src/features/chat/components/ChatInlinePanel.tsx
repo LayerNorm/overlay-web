@@ -42,6 +42,8 @@ import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
+import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 
 
 type Conversation = {
@@ -75,6 +77,7 @@ export function ChatInlinePanel({
   seededChats?: Conversation[]
 }) {
   const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
@@ -94,6 +97,9 @@ export function ChatInlinePanel({
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
   const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
+  const [pendingArchiveChat, setPendingArchiveChat] = useState<Conversation | null>(null)
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
   const lastConversationListVersionRef = useRef<number | null>(null)
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
@@ -510,16 +516,34 @@ export function ChatInlinePanel({
     }
   }
 
-  async function archiveChat(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
+  function requestArchive(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     setEditingChatId(null)
-    dispatchChatArchived({
-      chat: { ...chat, archivedAt: Date.now() },
-    })
+    if (chat.conversationType === 'dm' || chat.conversationType === 'channel') {
+      setArchiveError(null)
+      setPendingArchiveChat(chat)
+      return
+    }
+    void archiveChat(chat, 'self')
+  }
+
+  async function archiveChat(chat: Conversation, scope: 'self' | 'everyone') {
+    setArchiveBusy(true)
+    setArchiveError(null)
     try {
-      await overlayAppClient.conversations.updateParticipantState(chat._id, { archived: true })
-    } catch {
+      await overlayAppClient.conversations.updateParticipantState(chat._id, {
+        archived: true,
+        archiveScope: scope,
+      })
+      dispatchChatArchived({
+        chat: { ...chat, archivedAt: Date.now() },
+      })
+      setPendingArchiveChat(null)
+    } catch (error) {
+      setArchiveError(error instanceof Error ? error.message : 'Conversation could not be archived')
       void loadChats()
+    } finally {
+      setArchiveBusy(false)
     }
   }
 
@@ -631,7 +655,7 @@ export function ChatInlinePanel({
                     )}
                     <button
                       type="button"
-                      onClick={(event) => void archiveChat(chat, event)}
+                      onClick={(event) => requestArchive(chat, event)}
                       className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
                       aria-label="Archive chat"
                     >
@@ -689,6 +713,20 @@ export function ChatInlinePanel({
         }}
       />
     ) : null}
+    <ConversationScopeActionDialog
+      open={Boolean(pendingArchiveChat)}
+      action="archive"
+      conversationTitle={pendingArchiveChat?.title ?? 'conversation'}
+      canApplyToEveryone={activeWorkspace?.role === 'owner'}
+      busy={archiveBusy}
+      error={archiveError}
+      onOpenChange={(open) => {
+        if (!open && !archiveBusy) setPendingArchiveChat(null)
+      }}
+      onSelect={(scope) => {
+        if (pendingArchiveChat) void archiveChat(pendingArchiveChat, scope)
+      }}
+    />
     </>
   )
 }

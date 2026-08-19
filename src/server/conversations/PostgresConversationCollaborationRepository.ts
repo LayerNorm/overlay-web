@@ -774,7 +774,9 @@ implements ConversationCollaborationRepository {
         eq(conversationParticipants.conversationId, args.conversationId),
         eq(conversationParticipants.status, 'active'),
       ))
-    if (active.length <= 1) throw new Error('A conversation must retain one participant')
+    if (active.length <= 1 && actor.id !== args.principalId) {
+      throw new Error('A conversation must retain one participant')
+    }
     const now = new Date()
     const rows = await this.db.update(conversationParticipants).set({
       status: 'removed',
@@ -861,6 +863,65 @@ implements ConversationCollaborationRepository {
     }
     if (!row) throw new Error('CONVERSATION_ACCESS_DENIED')
     return mapParticipant(row, actor)
+  }
+
+  async archiveConversationForEveryone(args: {
+    actorUserId: string
+    archived: boolean
+    conversationId: string
+    workspaceId: string
+  }): Promise<ConversationParticipant> {
+    const actor = await this.requireWorkspaceOwner(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const now = new Date()
+    await this.db.update(conversationParticipants).set({
+      archivedAt: args.archived ? now : null,
+      updatedAt: now,
+    }).where(and(
+      eq(conversationParticipants.conversationId, args.conversationId),
+      eq(conversationParticipants.workspaceId, args.workspaceId),
+      eq(conversationParticipants.status, 'active'),
+    ))
+    await emitConversationEvent(this.db, {
+      conversationId: args.conversationId,
+      payload: { archived: args.archived, scope: 'everyone' },
+      type: 'conversation.updated',
+      userId: args.actorUserId,
+    })
+    const [participant] = await this.db.select().from(conversationParticipants).where(and(
+      eq(conversationParticipants.conversationId, args.conversationId),
+      eq(conversationParticipants.principalId, actor.id),
+      eq(conversationParticipants.status, 'active'),
+    )).limit(1)
+    if (!participant) throw new Error('CONVERSATION_ACCESS_DENIED')
+    return mapParticipant(participant, actor)
+  }
+
+  async deleteConversationForEveryone(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<boolean> {
+    await this.requireWorkspaceOwner(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const now = new Date()
+    const rows = await this.db.update(conversations).set({
+      deletedAt: now,
+      lastModified: now,
+      updatedAt: now,
+    }).where(and(
+      eq(conversations.id, args.conversationId),
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversations.deletedAt),
+    )).returning({ id: conversations.id })
+    if (rows.length > 0) {
+      await emitConversationEvent(this.db, {
+        conversationId: args.conversationId,
+        type: 'conversation.deleted',
+        userId: args.actorUserId,
+      })
+    }
+    return rows.length > 0
   }
 
   async upsertPresence(args: {
@@ -1536,6 +1597,19 @@ implements ConversationCollaborationRepository {
       )).limit(1)
     if (!row) throw new Error('WORKSPACE_ACCESS_DENIED')
     return row.principal
+  }
+
+  private async requireWorkspaceOwner(args: { actorUserId: string; workspaceId: string }) {
+    const actor = await this.requireActor(args)
+    const [membership] = await this.db.select({ role: workspaceMemberships.role })
+      .from(workspaceMemberships)
+      .where(and(
+        eq(workspaceMemberships.workspaceId, args.workspaceId),
+        eq(workspaceMemberships.principalId, actor.id),
+        eq(workspaceMemberships.status, 'active'),
+      )).limit(1)
+    if (membership?.role !== 'owner') throw new Error('WORKSPACE_OWNER_REQUIRED')
+    return actor
   }
 
   private async requireModerator(args: {

@@ -19,6 +19,8 @@ import {
 } from '@/features/workspaces/lib/workspace-routing'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
+import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 
 /**
  * Sidebar lists for the Chats subviews that are not conversation list.
@@ -139,9 +141,13 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
+  const { activeWorkspace } = useWorkspace()
   const [items, setItems] = useState<ArchivedConversation[] | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set())
+  const [scopeDialogOpen, setScopeDialogOpen] = useState(false)
+  const [scopeDialogBusy, setScopeDialogBusy] = useState(false)
+  const [scopeDialogError, setScopeDialogError] = useState<string | null>(null)
   const activeId = searchParams?.get('id')
     ?? (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('id'))
   const archivedBase = (() => {
@@ -218,39 +224,52 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
     }
   }
 
-  async function deleteArchived(conversation: ArchivedConversation, event: MouseEvent<HTMLButtonElement>) {
-    event.stopPropagation()
+  async function deleteArchived(conversation: ArchivedConversation, scope: 'self' | 'everyone') {
     if (deletingIds.has(conversation._id)) return
+    setScopeDialogBusy(true)
+    setScopeDialogError(null)
     setDeletingIds((current) => new Set(current).add(conversation._id))
     try {
       if (conversation.conversationType === 'channel' || conversation.conversationType === 'dm') {
-        const { participants, currentPrincipalId } = await overlayAppClient.conversations.participants(conversation._id)
-        // When the current user is the only active participant (typical for
-        // imported Slack channels/DMs), removeParticipant would fail because a
-        // room must retain at least one human. Hard-delete the conversation.
-        if (participants.length <= 1) {
+        if (scope === 'everyone') {
           const response = await overlayAppClient.conversations.deleteResponse({
             conversationId: conversation._id,
+            scope: 'everyone',
           })
           if (!response.ok) throw new Error('Conversation was not deleted')
         } else {
-          const { removed } = await overlayAppClient.conversations.removeParticipant(
-            conversation._id,
-            currentPrincipalId,
-          )
-          if (!removed) throw new Error('Conversation was not removed')
+          const { participants, currentPrincipalId } = await overlayAppClient.conversations.participants(conversation._id)
+          // When the current user is the only active participant (typical for
+          // imported Slack channels/DMs), removeParticipant would fail because a
+          // room must retain at least one human. Hard-delete the conversation.
+          if (participants.length <= 1) {
+            const response = await overlayAppClient.conversations.deleteResponse({
+              conversationId: conversation._id,
+              scope: 'self',
+            })
+            if (!response.ok) throw new Error('Conversation was not deleted')
+          } else {
+            const { removed } = await overlayAppClient.conversations.removeParticipant(
+              conversation._id,
+              currentPrincipalId,
+            )
+            if (!removed) throw new Error('Conversation was not removed')
+          }
         }
       } else {
         const response = await overlayAppClient.conversations.deleteResponse({
           conversationId: conversation._id,
+          scope: 'self',
         })
         if (!response.ok) throw new Error('Conversation was not deleted')
       }
       setItems((current) => current?.filter((item) => item._id !== conversation._id) ?? null)
       setPendingDeleteId(null)
+      setScopeDialogOpen(false)
       dispatchChatDeleted({ chatId: conversation._id })
       if (activeId === conversation._id) router.push(archivedBase)
-    } catch {
+    } catch (error) {
+      setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be deleted')
       void load()
     } finally {
       setDeletingIds((current) => {
@@ -258,6 +277,7 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
         next.delete(conversation._id)
         return next
       })
+      setScopeDialogBusy(false)
     }
   }
 
@@ -269,6 +289,7 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
   }
 
   return (
+    <>
     <SidebarResourceList>
       {items.map((conversation) => {
         const isConfirmingDelete = pendingDeleteId === conversation._id
@@ -295,7 +316,11 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
             {isConfirmingDelete ? (
               <button
                 type="button"
-                onClick={(event) => void deleteArchived(conversation, event)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setScopeDialogError(null)
+                  setScopeDialogOpen(true)
+                }}
                 disabled={isDeleting}
                 className="inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25 disabled:opacity-30"
                 aria-label={`Confirm delete ${label}`}
@@ -331,5 +356,24 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
         )
       })}
     </SidebarResourceList>
+    <ConversationScopeActionDialog
+      open={scopeDialogOpen}
+      action="delete"
+      conversationTitle={items?.find((item) => item._id === pendingDeleteId)?.title?.trim() || 'conversation'}
+      canApplyToEveryone={activeWorkspace?.role === 'owner'}
+      busy={scopeDialogBusy}
+      error={scopeDialogError}
+      onOpenChange={(open) => {
+        if (!open && !scopeDialogBusy) {
+          setScopeDialogOpen(false)
+          setPendingDeleteId(null)
+        }
+      }}
+      onSelect={(scope) => {
+        const conversation = items?.find((item) => item._id === pendingDeleteId)
+        if (conversation) void deleteArchived(conversation, scope)
+      }}
+    />
+    </>
   )
 }

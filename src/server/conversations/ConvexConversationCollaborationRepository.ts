@@ -247,6 +247,31 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true }) as ConversationParticipant
   }
 
+  async archiveConversationForEveryone(args: {
+    actorUserId: string
+    archived: boolean
+    conversationId: string
+    workspaceId: string
+  }) {
+    return await convex.mutation<ConversationParticipant>('collaboration/directMessages:archiveConversationForEveryone', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) as ConversationParticipant
+  }
+
+  async deleteConversationForEveryone(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }) {
+    return await convex.mutation<boolean>('collaboration/directMessages:deleteConversationForEveryone', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? false
+  }
+
   async upsertPresence(args: {
     actorUserId: string
     conversationId?: string

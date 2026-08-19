@@ -354,16 +354,48 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const { auth } = context
     const { appData } = getOverlayServerContext()
     const repository = appData.repositories.conversations
+    const collaboration = appData.repositories.conversationCollaboration
 
     const conversationId = request.nextUrl.searchParams.get('conversationId')
     if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
+    const conversation = await collaboration.getAccessibleConversation({
+      actorUserId: auth.userId,
+      conversationId,
+      workspaceId: context.workspace.workspace.id,
+    })
+    const collaborationType = conversation?.conversationType === 'dm' || conversation?.conversationType === 'channel'
+    if (collaborationType) {
+      const scope = request.nextUrl.searchParams.get('scope') ?? 'self'
+      if (scope === 'everyone') {
+        if (context.workspace.membership.role !== 'owner') {
+          return NextResponse.json({ error: 'Workspace owner required' }, { status: 403 })
+        }
+        const deleted = await collaboration.deleteConversationForEveryone({
+          actorUserId: auth.userId,
+          conversationId,
+          workspaceId: context.workspace.workspace.id,
+        })
+        if (!deleted) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      } else if (scope === 'self') {
+        const removed = await collaboration.removeParticipant({
+          actorUserId: auth.userId,
+          conversationId,
+          principalId: context.workspace.principal.id,
+          workspaceId: context.workspace.workspace.id,
+        })
+        if (!removed) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      } else {
+        return NextResponse.json({ error: 'Invalid delete scope' }, { status: 400 })
+      }
+      return NextResponse.json({ success: true, conversationId, scope, deletedAt: Date.now() })
+    }
 
     await repository.deleteConversation({
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
-    return NextResponse.json({ success: true, conversationId, deletedAt: Date.now() })
+    return NextResponse.json({ success: true, conversationId, scope: 'self', deletedAt: Date.now() })
   } catch (error) {
     logger.error('[conversations DELETE]', error)
     return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 })

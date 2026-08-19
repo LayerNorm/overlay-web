@@ -15,6 +15,7 @@ export {
   isWorkspacePrincipalType,
   type TeamMemberPrincipalType,
   type ConversationNotificationLevel,
+  type ConversationLifecycleScope,
   type ConversationParticipant,
   type ConversationParticipantRole,
   type ConversationParticipantStateInput,

@@ -126,6 +126,17 @@ export interface ConversationCollaborationRepository {
     conversationId: string
     workspaceId: string
   }): Promise<ConversationParticipant>
+  archiveConversationForEveryone(args: {
+    actorUserId: string
+    archived: boolean
+    conversationId: string
+    workspaceId: string
+  }): Promise<ConversationParticipant>
+  deleteConversationForEveryone(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<boolean>
   upsertPresence(args: {
     actorUserId: string
     conversationId?: string

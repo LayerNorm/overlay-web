@@ -369,9 +369,12 @@ export type DirectMessageCreateInput = {
   sourceConversationId?: string
 }
 
+export type ConversationLifecycleScope = 'self' | 'everyone'
+
 export type ConversationParticipantStateInput = {
   notificationLevel?: ConversationNotificationLevel
   archived?: boolean
+  archiveScope?: ConversationLifecycleScope
   markUnread?: boolean
   markRead?: boolean
   /** Optional explicit event boundary; omitted markRead advances to the server's current boundary. */

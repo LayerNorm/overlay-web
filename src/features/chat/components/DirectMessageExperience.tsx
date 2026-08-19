@@ -58,6 +58,7 @@ import { useChatShellPanels } from './chat/useChatShellPanels'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
+import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { useQuery } from '@/components/providers/convex-hooks'
@@ -175,7 +176,7 @@ export function DirectMessageExperience({
   showcase?: boolean
   conversationType?: 'dm' | 'channel'
 }) {
-  const { activeWorkspaceId } = useWorkspace()
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexAuthToken()
@@ -215,6 +216,10 @@ export function DirectMessageExperience({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const [pendingArchiveScope, setPendingArchiveScope] = useState(false)
+  const [scopeDialogBusy, setScopeDialogBusy] = useState(false)
+  const [scopeDialogError, setScopeDialogError] = useState<string | null>(null)
+  const [pendingDeleteScope, setPendingDeleteScope] = useState(false)
   const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<number | null>(null)
   const [newMessageCount, setNewMessageCount] = useState(0)
   const [channel, setChannel] = useState<ChannelSummary | null>(showcase && conversationType === 'channel' ? {
@@ -669,10 +674,6 @@ export function DirectMessageExperience({
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
-  const typingNames = presence
-    .filter((row) => row.principalId !== currentPrincipalId && row.typing)
-    .map((row) => participants.find((participant) => participant.principalId === row.principalId)?.displayName)
-    .filter((name): name is string => Boolean(name))
   const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
   const threadRoot = messages.find((message) => message.id === threadRootId)
@@ -1229,7 +1230,7 @@ export function DirectMessageExperience({
       : null
     return (
       <RoomMessageItem
-        key={message.id}
+        key={message.clientNonce ? `nonce-${message.clientNonce}` : message.id}
         message={view}
         reactions={reactions
           .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
@@ -1542,15 +1543,8 @@ export function DirectMessageExperience({
                           }).catch(() => undefined)
                           return
                         }
-                        dispatchChatArchived({
-                          chat: {
-                            _id: conversationId,
-                            title,
-                            lastModified: Date.now(),
-                            conversationType,
-                          },
-                        })
-                        void updateState({ archived: true }, 'Conversation archived').catch(() => undefined)
+                        setScopeDialogError(null)
+                        setPendingArchiveScope(true)
                       }}
                     />
                 </FloatingMenu>
@@ -1672,16 +1666,6 @@ export function DirectMessageExperience({
                 </div>
               </div>
             </div>
-            <p
-              role="status"
-              aria-live="polite"
-              data-testid="conversation-activity-status"
-              className="mx-auto h-4 w-full max-w-[56rem] px-4 text-[11px] text-[var(--muted-light)]"
-            >
-              {typingNames.length > 0
-                ? `${typingNames.join(', ')} ${typingNames.length === 1 ? 'is' : 'are'} typing`
-                : ''}
-            </p>
             <ChatComposer
               mode="chat"
               surface={{
@@ -1800,6 +1784,81 @@ export function DirectMessageExperience({
           }}
         />
       ) : null}
+      <ConversationScopeActionDialog
+        open={pendingArchiveScope}
+        action="archive"
+        conversationTitle={title}
+        canApplyToEveryone={activeWorkspace?.role === 'owner'}
+        busy={scopeDialogBusy}
+        error={scopeDialogError}
+        onOpenChange={(open) => {
+          if (!open && !scopeDialogBusy) setPendingArchiveScope(false)
+        }}
+        onSelect={async (scope) => {
+          setScopeDialogBusy(true)
+          setScopeDialogError(null)
+          try {
+            await overlayAppClient.conversations.updateParticipantState(conversationId, {
+              archived: true,
+              archiveScope: scope,
+            })
+            dispatchChatArchived({
+              chat: {
+                _id: conversationId,
+                title,
+                lastModified: Date.now(),
+                conversationType,
+              },
+            })
+            setPendingArchiveScope(false)
+          } catch (error) {
+            setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be archived')
+          } finally {
+            setScopeDialogBusy(false)
+          }
+        }}
+      />
+      <ConversationScopeActionDialog
+        open={pendingDeleteScope}
+        action="delete"
+        conversationTitle={title}
+        canApplyToEveryone={activeWorkspace?.role === 'owner'}
+        busy={scopeDialogBusy}
+        error={scopeDialogError}
+        onOpenChange={(open) => {
+          if (!open && !scopeDialogBusy) setPendingDeleteScope(false)
+        }}
+        onSelect={async (scope) => {
+          setScopeDialogBusy(true)
+          setScopeDialogError(null)
+          try {
+            const response = await overlayAppClient.conversations.deleteResponse({
+              conversationId,
+              scope,
+            })
+            if (!response.ok) throw new Error('Conversation was not deleted')
+            dispatchChatArchived({
+              chat: {
+                _id: conversationId,
+                title,
+                lastModified: Date.now(),
+                conversationType,
+                archivedAt: Date.now(),
+              },
+            })
+            setPendingDeleteScope(false)
+            const view = conversationType === 'channel' ? 'channels' : 'dms'
+            const chatBase = activeWorkspaceId
+              ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+              : '/app/chat'
+            router.push(`${chatBase}?${new URLSearchParams({ view }).toString()}`)
+          } catch (error) {
+            setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be deleted')
+          } finally {
+            setScopeDialogBusy(false)
+          }
+        }}
+      />
     </>
   )
 }

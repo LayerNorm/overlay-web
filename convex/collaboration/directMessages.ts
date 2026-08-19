@@ -64,6 +64,27 @@ async function requireActor(
   return principal
 }
 
+async function requireWorkspaceOwner(
+  ctx: CollaborationCtx,
+  args: {
+    accessToken?: string
+    actorUserId: string
+    workspaceId: string
+    serverSecret?: string
+  },
+) {
+  const actor = await requireActor(ctx, args)
+  const membership = await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId)
+    ))
+    .unique()
+  if (membership?.status !== 'active' || membership.role !== 'owner') {
+    throw new Error('WORKSPACE_OWNER_REQUIRED')
+  }
+  return actor
+}
+
 async function canAccess(
   ctx: CollaborationCtx,
   args: {
@@ -852,7 +873,9 @@ export const removeParticipant = mutation({
       .withIndex('by_conversationId_status', (q) => (
         q.eq('conversationId', args.conversationId).eq('status', 'active')
       )).collect()
-    if (active.length <= 1) throw new Error('A conversation must retain one participant')
+    if (active.length <= 1 && access.actor.principalId !== args.principalId) {
+      throw new Error('A conversation must retain one participant')
+    }
     const participant = await ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_principalId', (q) => (
         q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
@@ -935,6 +958,76 @@ export const updateParticipantState = mutation({
     }
     await ctx.db.patch(participant._id, patch)
     return await participantView(ctx, { ...participant, ...patch })
+  },
+})
+
+export const archiveConversationForEveryone = mutation({
+  args: {
+    actorUserId: v.string(),
+    archived: v.boolean(),
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireWorkspaceOwner(ctx, args)
+    const access = await requireConversationAccess(ctx, args)
+    const now = Date.now()
+    const participants = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_status', (q) => (
+        q.eq('conversationId', args.conversationId).eq('status', 'active')
+      ))
+      .collect()
+    for (const participant of participants) {
+      await ctx.db.patch(participant._id, {
+        archivedAt: args.archived ? now : undefined,
+        updatedAt: now,
+      })
+    }
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.updated',
+      payload: { archived: args.archived, scope: 'everyone' },
+    })
+    const current = participants.find((participant) => participant.principalId === actor.principalId)
+      ?? access.participant
+    if (!current) throw new Error('CONVERSATION_ACCESS_DENIED')
+    return await participantView(ctx, {
+      ...current,
+      archivedAt: args.archived ? now : undefined,
+      updatedAt: now,
+    })
+  },
+})
+
+export const deleteConversationForEveryone = mutation({
+  args: {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await requireWorkspaceOwner(ctx, args)
+    const access = await requireConversationAccess(ctx, args)
+    if (access.conversation.deletedAt) return false
+    const now = Date.now()
+    await ctx.db.patch(args.conversationId, {
+      deletedAt: now,
+      lastModified: now,
+      updatedAt: now,
+    })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.deleted',
+      payload: { scope: 'everyone' },
+    })
+    return true
   },
 })
 
