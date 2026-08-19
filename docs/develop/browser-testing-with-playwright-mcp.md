@@ -57,36 +57,50 @@ machine.
 
 ### Devin (already configured)
 
-The MCP is already registered in `~/.config/devin/mcp_config.json`:
+The MCP is registered in `~/.config/devin/mcp_config.json`. It connects to a
+**dedicated testing Chrome instance** via CDP (not the user's main Chrome), so
+agent browser QA never interferes with the user's browsing or other agents:
 
 ```json
 {
   "mcp-playwright": {
     "command": "npx",
-    "args": ["-y", "@playwright/mcp@latest", "--extension"],
-    "env": {
-      "PLAYWRIGHT_MCP_EXTENSION_TOKEN": "<token from Chrome extension>"
-    }
+    "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "http://localhost:9222"]
   }
 }
 ```
 
-Devin agents can call `mcp-playwright` tools directly — no extra setup.
+The testing Chrome instance must be running before Playwright MCP tools can be
+used. To launch it:
+
+```bash
+bash ~/.config/devin/launch-chrome-testing.sh
+```
+
+This script launches a separate Chrome process with:
+- A cloned LayerNorm profile (cookies, auth sessions, localStorage copied from
+  the user's `Profile 6` Chrome profile, renamed to "LayerNorm Testing")
+- Background-tab throttling disabled (see [Background tab throttling](#background-tab-throttling))
+- A CDP endpoint on port 9222 for Playwright MCP to connect to
+
+If the script reports the instance is already running, it is safe to proceed —
+the CDP port is already listening.
+
+Devin agents can call `mcp-playwright` tools directly — no extra setup beyond
+ensuring the testing Chrome is running.
 
 ### Claude Code
 
 Add the same server to `~/.claude/claude_desktop_config.json` (or the project-level
-`.mcp.json`):
+`.mcp.json`). Use the CDP endpoint if the testing Chrome is running, otherwise
+use `--extension` to connect to the user's main Chrome:
 
 ```json
 {
   "mcpServers": {
     "mcp-playwright": {
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--extension"],
-      "env": {
-        "PLAYWRIGHT_MCP_EXTENSION_TOKEN": "<token from Chrome extension>"
-      }
+      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "http://localhost:9222"]
     }
   }
 }
@@ -98,8 +112,8 @@ equivalent in the Claude Code UI).
 ### Windsurf
 
 Windsurf reads MCP servers from `~/.codeium/windsurf/mcp_config.json`. Add the same
-`mcp-playwright` block. Windsurf's MCP panel (Settings → MCP Servers) should show it as
-connected after restart.
+`mcp-playwright` block with the CDP endpoint. Windsurf's MCP panel (Settings → MCP
+Servers) should show it as connected after restart.
 
 ### Codex (OpenAI)
 
@@ -108,35 +122,95 @@ Codex CLI reads MCP servers from `~/.codex/config.toml`. Add:
 ```toml
 [mcp_servers.mcp-playwright]
 command = "npx"
-args = ["-y", "@playwright/mcp@latest", "--extension"]
-
-[mcp_servers.mcp-playwright.env]
-PLAYWRIGHT_MCP_EXTENSION_TOKEN = "<token from Chrome extension>"
+args = ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "http://localhost:9222"]
 ```
 
 ### Generic / other agents
 
-Any agent that speaks the Model Context Protocol can use this server. The minimal config is:
+Any agent that speaks the Model Context Protocol can use this server. The minimal
+config is:
 
-- **Command:** `npx -y @playwright/mcp@latest --extension`
-- **Env:** `PLAYWRIGHT_MCP_EXTENSION_TOKEN` set to the token shown in the Playwright MCP
-  Chrome extension popup.
+- **Command:** `npx -y @playwright/mcp@latest --cdp-endpoint http://localhost:9222`
+- **Prerequisite:** The testing Chrome instance must be running (launch with
+  `bash ~/.config/devin/launch-chrome-testing.sh`).
 
-If the agent does not support the `--extension` mode (no Chrome profile to reuse), drop
-`--extension` and the server will launch a clean Chromium instead. You will then need to
-handle SSO auth manually (see below).
+If the testing Chrome is not available and the agent needs SSO cookies, it can fall
+back to `--extension` mode to connect to the user's main Chrome (requires the
+Playwright MCP Chrome extension and its token). However, this risks interfering
+with other agents or the user's browsing — prefer the dedicated testing Chrome.
 
-## The `--extension` flag and SSO-protected environments
+## The `--cdp-endpoint` flag and SSO-protected environments
 
 `staging.getoverlay.io` and `www.getoverlay.io` are behind Vercel Deployment Protection
 (SSO). A clean Chromium instance has no session cookie and will be redirected to the Vercel
-auth page. The `--extension` flag tells the MCP to connect to the user's existing Chrome
-profile via the Playwright MCP browser extension, reusing their SSO cookies. This is why
-the extension token is required in the env block.
+auth page. The dedicated testing Chrome instance (launched by
+`~/.config/devin/launch-chrome-testing.sh`) has a cloned LayerNorm profile with valid SSO
+cookies, so Playwright MCP can access staging directly via the CDP endpoint on port 9222.
 
-If you are testing a local dev server (`http://localhost:PORT`), the extension flag is not
-needed — there is no SSO. But agents should not run local dev servers for QA; always use
-staging. The extension flag does not hurt to leave on regardless.
+The previous `--extension` mode connected to the user's main Chrome profile via the
+Playwright MCP browser extension. This worked but had two problems:
+1. It shared tabs and session state with the user's browsing, causing interference.
+2. Background tabs were throttled by Chrome (see [Background tab throttling](#background-tab-throttling)).
+
+The CDP approach solves both: the testing Chrome is a separate process with its own
+profile, and it launches with throttling disabled.
+
+If the testing Chrome is not running, `browser_navigate` will fail with a connection
+error. Launch it with `bash ~/.config/devin/launch-chrome-testing.sh` and retry.
+
+## Background tab throttling
+
+Chrome throttles JavaScript in background tabs to save CPU/battery: `setTimeout` is
+clamped to 1000ms minimum, `requestAnimationFrame` is paused, and renderer processes
+are deprioritized. This causes pages to appear "stuck on loading" when the Playwright
+tab is not in the foreground — the app's hydration and data-fetching stall until the
+tab becomes visible.
+
+The testing Chrome is launched with these flags to disable all background throttling:
+
+- `--disable-background-timer-throttling` — stops `setTimeout`/`setInterval` clamping
+- `--disable-backgrounding-occluded-windows` — stops occluded windows from being deprioritized
+- `--disable-renderer-backgrounding` — stops the renderer process from being throttled
+- `--disable-features=CalculateNativeWinOcclusion` — disables occlusion detection
+
+With these flags, pages load fully in background tabs without needing to be focused.
+This is essential for agent-driven QA where the agent navigates to a URL and waits for
+the page to render while the user is working in another tab.
+
+**Note:** The JS-level Page Visibility API (`document.hidden`, `document.visibilityState`)
+is not overridden in CDP mode. If the app or a library checks `document.hidden` and
+pauses logic based on it, those code paths could still stall. The 4 Chrome flags cover
+the vast majority of cases (timer clamping, rAF, renderer priority).
+
+## Multi-agent isolation
+
+If multiple coding agents run browser QA simultaneously, they must not share the same
+Chrome instance — they would overwrite each other's tabs, cross-contaminate console
+messages, and fight over session state.
+
+The current setup solves this: the testing Chrome on port 9222 is dedicated to one
+agent. Other agents should either:
+- Use `--extension` mode to connect to the user's main Chrome (different instance).
+- Launch their own testing Chrome on a different CDP port with a different profile.
+- Stagger their QA runs so only one agent does browser testing at a time.
+
+To create additional isolated testing Chrome instances, clone the profile to a new
+directory and launch with a different `--remote-debugging-port`:
+
+```bash
+cp -R ~/Library/Application\ Support/Google/Chrome-LayerNorm-Testing \
+  ~/Library/Application\ Support/Google/Chrome-LayerNorm-Testing-2
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --user-data-dir="$HOME/Library/Application Support/Google/Chrome-LayerNorm-Testing-2" \
+  --profile-directory="Default" \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
+  --disable-features=CalculateNativeWinOcclusion \
+  --remote-debugging-port=9223 \
+  --no-first-run \
+  --no-default-browser-check &
+```
 
 ## Tool reference
 
@@ -240,7 +314,12 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
 ## Gotchas
 
 - **Use staging as the canonical QA target.** Browser testing for this repo should run against `https://staging.getoverlay.io`, after the `staging` Vercel deployment is ready and the matching Convex dev deployment has been pushed. Do not treat a direct Vercel deployment URL as the normal test environment; use one only when diagnosing a staging cache or deployment issue.
-- **Backgrounded tabs can delay rendering.** When Playwright MCP is driving a Chrome tab that is behind another tab, the browser may throttle or defer the app's client rendering until that tab becomes visible. The app can appear to remain on the loading shell for roughly 30 seconds, then render immediately when the tab is brought to the foreground. Do not report that wait as normal app latency without first making the tested staging tab visible; ask the user to focus it if needed, then continue the QA run in the same browser connection.
+- **Backgrounded tabs no longer stall.** The testing Chrome is launched with
+  `--disable-background-timer-throttling` and related flags (see
+  [Background tab throttling](#background-tab-throttling)). Pages load fully in
+  background tabs without needing to be focused. If you see a page stuck on the
+  loading shell, check that the testing Chrome was launched via
+  `~/.config/devin/launch-chrome-testing.sh` (not a normal Chrome launch).
 - **Snapshot refs are ephemeral.** Every `browser_navigate` or `browser_click` invalidates
   previous refs. Call `browser_snapshot` again before clicking.
 - **Console errors persist across navigations.** Use `browser_console_messages` with
@@ -259,8 +338,9 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
   connection failures from the dead localhost. These are not staging errors — filter by URL.
   (This should not happen if agents follow the rule of only testing on staging.)
 - **SSO cookies expire.** If `browser_navigate` to staging redirects to a Vercel auth page,
-  the Chrome extension's session has expired. Ask the user to refresh the extension by
-  opening Chrome and visiting `staging.getoverlay.io` once.
+  the testing Chrome's cloned session has expired. Re-clone the profile from the user's
+  main Chrome (`Profile 6`) or ask the user to log in to staging in the testing Chrome
+  window directly.
 - **Chrome-extension IndexedDB noise.** Errors like `InvalidStateError: Failed to execute
   'transaction' on 'IDBDatabase'` from `chrome-extension://…` (often volume / password
   managers) are not Overlay bugs. Filter console noise to app origins before treating them
