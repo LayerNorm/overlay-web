@@ -277,6 +277,21 @@ export function RoomMessageItem({
   ) : null
 
   if (message.deletedAt) {
+    if (mine) {
+      return (
+        <div
+          {...rootProps}
+          className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+        >
+          <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+            <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+              <span className="italic text-[var(--muted)]">Message deleted</span>
+            </UserMessageBubble>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div
         {...rootProps}

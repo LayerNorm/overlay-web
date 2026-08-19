@@ -197,9 +197,11 @@ test('collaboration operations sit in the hover action row', () => {
   assert.match(html, /1 reply/)
 })
 
-test('deleted messages leave a tombstone instead of content', () => {
+test('deleted own messages keep the right-aligned user bubble', () => {
   const html = render(record({ id: 'message_5', deletedAt: Date.now(), content: '' }))
   assert.match(html, /Message deleted/)
+  assert.match(html, /justify-end/)
+  assert.match(html, /chat-user-bubble/)
 })
 
 test('attachment summaries become chips, not body text', () => {
