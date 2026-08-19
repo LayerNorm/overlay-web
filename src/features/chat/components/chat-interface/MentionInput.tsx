@@ -204,32 +204,68 @@ function dispatchEditorInput(el: HTMLDivElement) {
   el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatBackColor' }))
 }
 
-/** Walk up from a node to the nearest block-level element within the editor root. */
+/** Walk up from a node to the nearest block-level element within the editor root.
+ * Returns the root itself if the node is a direct child (common when the editor
+ * is empty or has a bare text node). */
 function getBlockContainer(node: Node, root: HTMLElement): HTMLElement | null {
   let current: Node | null = node
   while (current && current !== root) {
     if (current.nodeType === Node.ELEMENT_NODE) {
       const el = current as HTMLElement
-      if (/^(DIV|P|H[1-6]|BLOCKQUOTE|LI|PRE|UL|OL)$/.test(el.tagName)) return el
+      if (/^(P|H[1-6]|BLOCKQUOTE|LI|PRE|UL|OL)$/.test(el.tagName)) return el
     }
     current = current.parentNode
   }
-  return null
+  // Text directly in root or in a div — treat root as the block container
+  return current === root || node === root ? root : null
 }
 
-/** Return the text content of a block element up to (but not including) the caret. */
-function getTextBeforeCaretInBlock(block: HTMLElement, caretNode: Node, caretOffset: number): string {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-  let text = ''
-  while (walker.nextNode()) {
-    const node = walker.currentNode
-    if (node === caretNode) {
-      text += (node.textContent || '').slice(0, caretOffset)
-      break
+/** Check that the caret is at the start of a block (no text before it on this line). */
+function isAtBlockStart(node: Node, textOffsetInNode: number, root: HTMLElement): boolean {
+  const text = node.textContent || ''
+  const textBefore = text.slice(0, textOffsetInNode)
+  // The text before the caret on the current line must be only the trigger itself
+  // (no other text before the trigger on this line)
+  const lineStart = textBefore.lastIndexOf('\n') + 1
+  const beforeTrigger = textBefore.slice(0, lineStart)
+  if (beforeTrigger.trim().length > 0) return false
+
+  // Walk backwards through siblings to ensure no text content before this text node
+  // in the current block
+  const parent = node.parentNode
+  if (!parent) return false
+
+  let sibling: Node | null = node.previousSibling
+  while (sibling) {
+    if (sibling.nodeType === Node.TEXT_NODE && (sibling.textContent || '').trim()) return false
+    if (sibling.nodeType === Node.ELEMENT_NODE) {
+      const sibEl = sibling as HTMLElement
+      if (sibEl.tagName === 'BR') return true
+      if (sibEl.textContent && sibEl.textContent.trim()) return false
     }
-    text += node.textContent || ''
+    sibling = sibling.previousSibling
   }
-  return text
+
+  // If parent is not the root, check parent's previous siblings too
+  if (parent !== root && parent.nodeType === Node.ELEMENT_NODE) {
+    const parentEl = parent as HTMLElement
+    if (!/^(P|H[1-6]|BLOCKQUOTE|LI|PRE|UL|OL|DIV)$/.test(parentEl.tagName)) return true
+    // For div wrappers, check if the div itself is at the start
+    if (parentEl.tagName === 'DIV') {
+      let parentSibling: Node | null = parentEl.previousSibling
+      while (parentSibling) {
+        if (parentSibling.nodeType === Node.TEXT_NODE && (parentSibling.textContent || '').trim()) return false
+        if (parentSibling.nodeType === Node.ELEMENT_NODE) {
+          const psEl = parentSibling as HTMLElement
+          if (psEl.tagName === 'BR') return true
+          if (psEl.textContent && psEl.textContent.trim()) return false
+        }
+        parentSibling = parentSibling.previousSibling
+      }
+    }
+  }
+
+  return true
 }
 
 /**
@@ -244,15 +280,29 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
   const range = sel.getRangeAt(0)
   if (!el.contains(range.startContainer)) return false
 
-  const block = getBlockContainer(range.startContainer, el)
-  if (!block) return false
-  // Only auto-format plain, unformatted blocks (DIV or P)
-  if (block.tagName !== 'DIV' && block.tagName !== 'P') return false
+  const node = range.startContainer
+  if (node.nodeType !== Node.TEXT_NODE) return false
 
-  const blockText = block.textContent || ''
-  const textBeforeCaret = getTextBeforeCaretInBlock(block, range.startContainer, range.startOffset)
-  // Caret must be at the end of the block's text
-  if (textBeforeCaret !== blockText) return false
+  const text = node.textContent || ''
+  const offset = range.startOffset
+  const textBefore = text.slice(0, offset)
+
+  // Get the current line text (from last newline to caret)
+  const lineStart = textBefore.lastIndexOf('\n') + 1
+  const lineText = textBefore.slice(lineStart)
+
+  // Check that there's no text after the caret on this line
+  const textAfter = text.slice(offset)
+  if (textAfter.split('\n')[0].trim().length > 0) return false
+
+  // Check that we're at the start of a block
+  if (!isAtBlockStart(node, offset, el)) return false
+
+  // Check that the block is not already formatted
+  const block = getBlockContainer(node, el)
+  if (!block) return false
+  const blockTag = block.tagName
+  if (blockTag !== 'DIV' && blockTag !== 'P') return false
 
   const blockTriggers: Array<{ pattern: RegExp; tag?: string; list?: 'ul' | 'ol' }> = [
     { pattern: /^###\s$/, tag: 'h3' },
@@ -263,22 +313,35 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
   ]
 
   for (const { pattern, tag, list } of blockTriggers) {
-    if (pattern.test(blockText)) {
-      block.textContent = ''
+    if (pattern.test(lineText)) {
+      // Delete the trigger text from the text node
+      node.textContent = text.slice(0, lineStart) + text.slice(offset)
+      // Apply the format
       if (list) {
         document.execCommand('insertUnorderedList')
       } else if (tag) {
         document.execCommand('formatBlock', false, tag)
       }
+      // Place caret at end of editor content
+      const newRange = document.createRange()
+      newRange.selectNodeContents(el)
+      newRange.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(newRange)
       dispatchEditorInput(el)
       return true
     }
   }
 
   // Ordered list: `1. `, `2. `, etc.
-  if (/^\d+\.\s$/.test(blockText)) {
-    block.textContent = ''
+  if (/^\d+\.\s$/.test(lineText)) {
+    node.textContent = text.slice(0, lineStart) + text.slice(offset)
     document.execCommand('insertOrderedList')
+    const newRange = document.createRange()
+    newRange.selectNodeContents(el)
+    newRange.collapse(false)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
     dispatchEditorInput(el)
     return true
   }
