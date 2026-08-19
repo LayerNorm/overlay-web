@@ -81,7 +81,6 @@ import { resetProviders as resetGatewayProvider } from './services/ai/gateway-pr
 
 // IPC Handlers
 import { registerAllIPC } from './ipc'
-import { clearPanelTranscriptionDestination } from './ipc/panel-ipc'
 
 // Security
 import { verifyCodeSigning, auditLogger } from './services/security/security-service'
@@ -235,7 +234,6 @@ const handleRecordingStop = async (_mode: HotkeyMode): Promise<void> => {
 
 const handleRecordingCancel = async (_mode: HotkeyMode): Promise<void> => {
   console.log(`[Main] Recording canceled (quick release): ${_mode}`)
-  clearPanelTranscriptionDestination()
 
   // Notify all windows to cancel recording (won't send to API)
   windowManager.broadcastToAllWindows('record:cancel')
@@ -346,7 +344,6 @@ function scheduleHotkeyRecovery(reason: string): void {
     hotkeyRecoveryTimeout = null
     if (!hotkeyManager.isInitialized()) return
     console.log(`[Main] Recovering hotkeys after ${reason}`)
-    clearPanelTranscriptionDestination()
     hotkeyManager.recoverHotkeys()
   }, 750)
 }

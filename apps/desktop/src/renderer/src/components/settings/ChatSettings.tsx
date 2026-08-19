@@ -226,18 +226,6 @@ export function ChatSettings({
         </SettingsRow>
 
         <SettingsRow
-          title="Paste Transcription in New Chat"
-          description="When holding the hotkey to transcribe, paste in a new chat if panel was hidden"
-          theme={theme}
-        >
-          <Toggle
-            checked={settings.pasteTranscriptionInNewChat}
-            onChange={(checked) => onUpdateSetting('pasteTranscriptionInNewChat', checked)}
-            theme={theme}
-          />
-        </SettingsRow>
-
-        <SettingsRow
           title="Show Retrieved Memories"
           description="Show context memories retrieved for each user message in chat"
           theme={theme}

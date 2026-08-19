@@ -112,8 +112,6 @@ interface OverlayDockContextBridgeProps {
 interface PendingTranscriptionDelivery {
   text: string
   source: 'hotkey' | 'mic' | null
-  pasteInNewChatWhenHidden: boolean
-  pasteInNewNoteWhenHidden: boolean
 }
 
 function OverlayDockContextBridge({
@@ -752,43 +750,10 @@ export function OverlayWindow(): ReactElement<any> {
     isRecordingCanceledRef.current = false
     isSettingUpRef.current = false
 
-    // Safety clear any panel transcription destination (in case of quick release)
-    await window.bridge.clearPanelTranscriptionDestination()
-
     console.log('[OverlayWindow] Recording canceled and microphone lifecycle restored')
   }
 
   async function deliverTranscription(delivery: PendingTranscriptionDelivery): Promise<void> {
-    const panelDestination = await window.bridge.getPanelTranscriptionDestination()
-
-    if (panelDestination) {
-      const { panel, wasVisible } = panelDestination
-      const createNew =
-        !wasVisible &&
-        (panel === 'chat'
-          ? delivery.pasteInNewChatWhenHidden
-          : delivery.pasteInNewNoteWhenHidden)
-
-      console.log(
-        `[OverlayWindow] Routing to ${panel} panel, wasVisible: ${wasVisible}, createNew: ${createNew}`
-      )
-
-      if (panel === 'chat') {
-        if (createNew) {
-          await window.bridge.sendTextToNewChat(delivery.text)
-        } else {
-          await window.bridge.sendTextToChatInput(delivery.text)
-        }
-      } else if (createNew) {
-        await window.bridge.sendTextToNewNote(delivery.text)
-      } else {
-        await window.bridge.sendTextToNoteInput(delivery.text)
-      }
-
-      await window.bridge.clearPanelTranscriptionDestination()
-      return
-    }
-
     if (delivery.source === 'mic') {
       console.log('[OverlayWindow] Opening TranscriptionPanel with text')
       await window.bridge.sendTranscriptionToPanel(delivery.text)
@@ -843,9 +808,7 @@ export function OverlayWindow(): ReactElement<any> {
 
       const delivery: PendingTranscriptionDelivery = {
         text: processedText,
-        source: currentRecordingSource,
-        pasteInNewChatWhenHidden: currentSettings.pasteTranscriptionInNewChat !== false,
-        pasteInNewNoteWhenHidden: currentSettings.pasteTranscriptionInNewNote !== false
+        source: currentRecordingSource
       }
       pendingDeliveryRef.current = delivery
 

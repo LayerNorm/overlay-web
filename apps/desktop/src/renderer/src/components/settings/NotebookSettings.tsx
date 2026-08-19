@@ -43,18 +43,6 @@ export function NotebookSettings({
         </SettingsRow>
 
         <SettingsRow
-          title="Paste Transcription in New Note"
-          description="When holding the hotkey to transcribe, paste in a new note if panel was hidden"
-          theme={theme}
-        >
-          <Toggle
-            checked={settings.pasteTranscriptionInNewNote}
-            onChange={(checked) => onUpdateSetting('pasteTranscriptionInNewNote', checked)}
-            theme={theme}
-          />
-        </SettingsRow>
-
-        <SettingsRow
           title="Access Tabs in Sidebar"
           description="Move tab navigation to the sidebar instead of the header"
           theme={theme}

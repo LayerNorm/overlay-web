@@ -450,16 +450,6 @@ interface Bridge {
       warningThreshold: boolean
     }>
   }
-  // Panel transcription destination methods
-  setPanelTranscriptionDestination(
-    panelType: 'chat' | 'notebook',
-    destination: 'new' | 'current'
-  ): Promise<{ success: boolean }>
-  getPanelTranscriptionDestination(): Promise<{
-    panel: 'chat' | 'notebook'
-    wasVisible: boolean
-  } | null>
-  clearPanelTranscriptionDestination(): Promise<{ success: boolean }>
   // Native context menu
   showContextMenu(
     items: Array<{

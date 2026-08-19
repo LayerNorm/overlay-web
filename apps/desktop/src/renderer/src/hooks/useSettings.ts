@@ -178,9 +178,6 @@ export interface Settings {
   /** When true, open the main window (panels) when the app launches. */
   showPanelsOnStartup: boolean
   snapToEdges: boolean
-  // Hold-to-transcribe settings for panel hotkeys
-  pasteTranscriptionInNewChat: boolean
-  pasteTranscriptionInNewNote: boolean
   // Smart transcription modes
   smartTranscriptionModes: SmartTranscriptionMode[]
   activeSmartTranscriptionModeId: string
@@ -239,9 +236,6 @@ const DEFAULT_SETTINGS: Settings = {
   floatPillAboveDock: true,
   showPanelsOnStartup: false,
   snapToEdges: true,
-  // Hold-to-transcribe settings for panel hotkeys
-  pasteTranscriptionInNewChat: true,
-  pasteTranscriptionInNewNote: true,
   agenticWakeWordEnabled: true,
   // Smart transcription modes
   smartTranscriptionModes: [
@@ -313,21 +307,26 @@ function normalizeSettings(value: unknown): Settings {
     value && typeof value === 'object'
       ? (value as Partial<Settings> & {
           expandBottomOverlay?: boolean
+          pasteTranscriptionInNewChat?: unknown
+          pasteTranscriptionInNewNote?: unknown
         })
       : {}
+  const normalizedParsed = { ...parsed }
+  delete normalizedParsed.pasteTranscriptionInNewChat
+  delete normalizedParsed.pasteTranscriptionInNewNote
   const floatPillAboveDock =
-    typeof parsed.floatPillAboveDock === 'boolean'
-      ? parsed.floatPillAboveDock
-      : typeof parsed.expandBottomOverlay === 'boolean'
-        ? parsed.expandBottomOverlay
+    typeof normalizedParsed.floatPillAboveDock === 'boolean'
+      ? normalizedParsed.floatPillAboveDock
+      : typeof normalizedParsed.expandBottomOverlay === 'boolean'
+        ? normalizedParsed.expandBottomOverlay
         : DEFAULT_SETTINGS.floatPillAboveDock
   return {
     ...DEFAULT_SETTINGS,
-    ...parsed,
+    ...normalizedParsed,
     floatPillAboveDock,
-    chatToolPermissionMode: normalizeChatToolPermissionMode(parsed.chatToolPermissionMode),
-    lightThemePreset: normalizeThemePreset(parsed.lightThemePreset, DEFAULT_LIGHT_THEME_PRESET),
-    darkThemePreset: normalizeThemePreset(parsed.darkThemePreset, DEFAULT_DARK_THEME_PRESET)
+    chatToolPermissionMode: normalizeChatToolPermissionMode(normalizedParsed.chatToolPermissionMode),
+    lightThemePreset: normalizeThemePreset(normalizedParsed.lightThemePreset, DEFAULT_LIGHT_THEME_PRESET),
+    darkThemePreset: normalizeThemePreset(normalizedParsed.darkThemePreset, DEFAULT_DARK_THEME_PRESET)
   }
 }
 

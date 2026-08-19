@@ -317,16 +317,6 @@ const bridge = {
   sendTranscriptionToPanel(text: string) {
     return ipcRenderer.invoke('transcription:send-to-panel', text)
   },
-  // Panel transcription destination methods for hold-to-transcribe feature
-  getPanelTranscriptionDestination(): Promise<{
-    panel: 'chat' | 'notebook'
-    wasVisible: boolean
-  } | null> {
-    return ipcRenderer.invoke('transcription:get-panel-destination')
-  },
-  clearPanelTranscriptionDestination() {
-    return ipcRenderer.invoke('transcription:clear-panel-destination')
-  },
   sendTextToChatInput(text: string) {
     return ipcRenderer.invoke('chat:send-text-to-input', text)
   },

@@ -15,33 +15,6 @@ import { browserManager } from '../services/browser-manager'
 import { systemUtils } from '../services/system-utils'
 import { panelLatencyMarkHydrate, panelLatencyMarkPaint } from '../utils/panel-latency'
 
-// Panel transcription destination state
-// When set, transcription will be sent to this panel instead of being pasted
-interface PanelTranscriptionDestination {
-  panel: 'chat' | 'notebook'
-  wasVisible: boolean // Whether panel was visible before recording started
-}
-
-let panelTranscriptionDestination: PanelTranscriptionDestination | null = null
-
-// Exported functions for use by main process
-export function setPanelTranscriptionDestination(
-  panel: 'chat' | 'notebook',
-  wasVisible: boolean
-): void {
-  panelTranscriptionDestination = { panel, wasVisible }
-  console.log('[PanelIPC] Set transcription destination:', panelTranscriptionDestination)
-}
-
-export function clearPanelTranscriptionDestination(): void {
-  console.log('[PanelIPC] Cleared transcription destination')
-  panelTranscriptionDestination = null
-}
-
-export function getPanelTranscriptionDestination(): PanelTranscriptionDestination | null {
-  return panelTranscriptionDestination
-}
-
 export function registerPanelIPC(): void {
   ipcMain.on(
     'panel:renderer-ready',
@@ -496,16 +469,6 @@ export function registerPanelIPC(): void {
         resolve({ success: false, error: 'Timeout waiting for panel' })
       }, 3000)
     })
-  })
-
-  // Panel transcription destination handlers - for hold-to-transcribe feature
-  ipcMain.handle('transcription:get-panel-destination', async () => {
-    return panelTranscriptionDestination
-  })
-
-  ipcMain.handle('transcription:clear-panel-destination', async () => {
-    clearPanelTranscriptionDestination()
-    return { success: true }
   })
 
   // Window drag handlers for Cmd+drag functionality
