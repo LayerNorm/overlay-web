@@ -314,20 +314,37 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
 
   for (const { pattern, tag, list } of blockTriggers) {
     if (pattern.test(lineText)) {
-      // Delete the trigger text from the text node
-      node.textContent = text.slice(0, lineStart) + text.slice(offset)
-      // Apply the format
+      // Delete the trigger text using a range (handles bare text nodes in root)
+      const deleteRange = document.createRange()
+      deleteRange.setStart(node, lineStart)
+      deleteRange.setEnd(node, offset)
+      deleteRange.deleteContents()
+
       if (list) {
+        // For lists, execCommand creates the list structure
         document.execCommand('insertUnorderedList')
       } else if (tag) {
-        document.execCommand('formatBlock', false, tag)
+        // For headings/quotes, manually insert a block element at the caret
+        const blockEl = document.createElement(tag)
+        // Insert at current caret position (which is where the trigger was)
+        const insertRange = document.createRange()
+        insertRange.setStart(node, lineStart)
+        insertRange.collapse(true)
+        insertRange.insertNode(blockEl)
+        // Place caret inside the new block
+        const newRange = document.createRange()
+        newRange.selectNodeContents(blockEl)
+        newRange.collapse(false)
+        sel.removeAllRanges()
+        sel.addRange(newRange)
+      } else {
+        // Fallback: place caret at end of editor
+        const newRange = document.createRange()
+        newRange.selectNodeContents(el)
+        newRange.collapse(false)
+        sel.removeAllRanges()
+        sel.addRange(newRange)
       }
-      // Place caret at end of editor content
-      const newRange = document.createRange()
-      newRange.selectNodeContents(el)
-      newRange.collapse(false)
-      sel.removeAllRanges()
-      sel.addRange(newRange)
       dispatchEditorInput(el)
       return true
     }
@@ -335,7 +352,10 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
 
   // Ordered list: `1. `, `2. `, etc.
   if (/^\d+\.\s$/.test(lineText)) {
-    node.textContent = text.slice(0, lineStart) + text.slice(offset)
+    const deleteRange = document.createRange()
+    deleteRange.setStart(node, lineStart)
+    deleteRange.setEnd(node, offset)
+    deleteRange.deleteContents()
     document.execCommand('insertOrderedList')
     const newRange = document.createRange()
     newRange.selectNodeContents(el)
