@@ -176,7 +176,7 @@ function AuthorIdentityPopover({
       {open ? (
         <div
           role="dialog"
-          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-[var(--border)] bg-[var(--background)]/100 p-3 shadow-xl"
+          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 shadow-xl"
         >
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]">

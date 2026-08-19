@@ -12,11 +12,13 @@ import {
   Archive,
   Bell,
   BellOff,
+  Bot,
   Hash,
   MoreHorizontal,
   Paperclip,
   Pin,
   Share2,
+  UserRound,
   UsersRound,
   X,
 } from 'lucide-react'
@@ -226,6 +228,7 @@ export function DirectMessageExperience({
     createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
     updatedAt: Date.parse('2026-07-29T18:10:00.000Z'),
   } : null)
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   const [reactions, setReactions] = useState<MessageReaction[]>(showcase ? [{
     conversationId,
     messageId: 'showcase-dm-message-1',
@@ -337,6 +340,8 @@ export function DirectMessageExperience({
       ? undefined
       : new URLSearchParams(window.location.search).get('message')?.trim() || undefined
     const result = await overlayAppClient.conversations.get<{
+      title?: string
+      conversationType?: 'personal' | 'dm' | 'channel'
       messages: Array<{
         id: string
         authorKind: RoomMessageRecord['authorKind']
@@ -382,6 +387,7 @@ export function DirectMessageExperience({
           }>
         }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
       : null
+    setConversationTitle(result.title?.trim() || null)
     setHasMoreMessages(result.hasMore === true)
     const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
       ...message,
@@ -516,6 +522,10 @@ export function DirectMessageExperience({
   })
 
   useEffect(() => {
+    setConversationTitle(null)
+  }, [conversationId])
+
+  useEffect(() => {
     if (showcase) return
     let cancelled = false
     // When Convex realtime presence subscription is active, skip the initial
@@ -648,7 +658,14 @@ export function DirectMessageExperience({
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
   const title = conversationType === 'channel'
     ? channel?.name ?? 'Channel'
-    : otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message'
+    : conversationTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
+  const HeaderIcon = conversationType === 'channel'
+    ? Hash
+    : otherParticipants.length === 1 && otherParticipants[0]?.principalType === 'agent'
+      ? Bot
+      : otherParticipants.length <= 1
+        ? UserRound
+        : UsersRound
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
@@ -1425,7 +1442,7 @@ export function DirectMessageExperience({
             subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
             leading={(
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                {conversationType === 'channel' ? <Hash size={15} /> : <UsersRound size={15} />}
+                <HeaderIcon size={15} />
               </span>
             )}
             actions={(

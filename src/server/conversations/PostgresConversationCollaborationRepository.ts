@@ -66,6 +66,7 @@ implements ConversationCollaborationRepository {
     actorUserId: string
     workspaceId: string
   }): Promise<ConversationListRow[]> {
+    const actor = await this.requireActor(args)
     const ids = await this.listAccessibleConversationIds(args)
     if (ids.length === 0) return []
     const rows = await this.db.select().from(conversations).where(and(
@@ -74,7 +75,30 @@ implements ConversationCollaborationRepository {
       isNull(conversations.deletedAt),
       isNull(conversations.projectId),
     )).orderBy(desc(conversations.lastModified))
-    return rows.filter((row) => !row.isAutomation).map(mapAccessibleConversation)
+    const participantRows = await this.db
+      .select({
+        conversationId: conversationParticipants.conversationId,
+        principalId: conversationParticipants.principalId,
+        principalType: conversationParticipants.principalType,
+      })
+      .from(conversationParticipants)
+      .where(and(
+        inArray(conversationParticipants.conversationId, ids),
+        eq(conversationParticipants.workspaceId, args.workspaceId),
+        eq(conversationParticipants.status, 'active'),
+      ))
+    const otherParticipantTypes = new Map<string, Array<'human' | 'agent'>>()
+    for (const participant of participantRows) {
+      if (participant.principalId === actor.id) continue
+      if (participant.principalType !== 'human' && participant.principalType !== 'agent') continue
+      const types = otherParticipantTypes.get(participant.conversationId) ?? []
+      types.push(participant.principalType)
+      otherParticipantTypes.set(participant.conversationId, types)
+    }
+    return rows.filter((row) => !row.isAutomation).map((row) => ({
+      ...mapAccessibleConversation(row),
+      otherParticipantTypes: otherParticipantTypes.get(row.id) ?? [],
+    }))
   }
 
   async listArchivedConversations(args: {

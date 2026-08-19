@@ -162,6 +162,22 @@ async function participantViews(
   return await Promise.all(rows.sort((a, b) => a.joinedAt - b.joinedAt).map((row) => participantView(ctx, row)))
 }
 
+async function otherParticipantTypes(
+  ctx: CollaborationCtx,
+  conversationId: Id<'conversations'>,
+  actorPrincipalId: string,
+): Promise<Array<'human' | 'agent'>> {
+  const rows = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_status', (q) => (
+      q.eq('conversationId', conversationId).eq('status', 'active')
+    ))
+    .collect()
+  return rows
+    .filter((row) => row.principalId !== actorPrincipalId)
+    .map((row) => row.principalType)
+    .filter((type): type is 'human' | 'agent' => type === 'human' || type === 'agent')
+}
+
 export const getAccessibleConversation = query({
   args: {
     actorUserId: v.string(),
@@ -190,6 +206,7 @@ export const getAccessibleConversation = query({
       shareToken: conversation.shareToken,
       isAutomation: conversation.isAutomation,
       conversationType: conversation.conversationType ?? 'personal',
+      otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, access.actor.principalId),
       workspaceId: conversation.workspaceId,
     }
   },
@@ -212,7 +229,7 @@ export const listAccessibleConversations = query({
     const rows = await ctx.db.query('conversations')
       .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
-    return rows.filter((conversation) => (
+    const accessible = rows.filter((conversation) => (
       !conversation.deletedAt
       && !conversation.projectId
       && !conversation.isAutomation
@@ -220,7 +237,8 @@ export const listAccessibleConversations = query({
         ((conversation.conversationType ?? 'personal') === 'personal' && conversation.userId === args.actorUserId)
         || shared.has(String(conversation._id))
       )
-    )).sort((left, right) => right.lastModified - left.lastModified).map((conversation) => ({
+    )).sort((left, right) => right.lastModified - left.lastModified)
+    return await Promise.all(accessible.map(async (conversation) => ({
       _id: conversation._id,
       userId: conversation.userId,
       clientId: conversation.clientId,
@@ -237,8 +255,9 @@ export const listAccessibleConversations = query({
       shareToken: conversation.shareToken,
       isAutomation: conversation.isAutomation,
       conversationType: conversation.conversationType ?? 'personal',
+      otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, actor.principalId),
       workspaceId: conversation.workspaceId,
-    }))
+    })))
   },
 })
 

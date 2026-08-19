@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, MessageSquare, Check, Hash, Pencil, UsersRound } from 'lucide-react'
+import { Archive, Bot, Check, Hash, MessageSquare, Pencil, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -49,6 +49,14 @@ type Conversation = {
   title: string
   lastModified: number
   conversationType?: 'personal' | 'dm' | 'channel'
+  otherParticipantTypes?: Array<'human' | 'agent'>
+}
+
+function directMessageIcon(participantTypes?: Array<'human' | 'agent'>) {
+  if (!participantTypes) return UsersRound
+  if (participantTypes.length === 1 && participantTypes[0] === 'agent') return Bot
+  if (participantTypes.length <= 1) return UserRound
+  return UsersRound
 }
 
 export function ChatInlinePanel({
@@ -549,6 +557,11 @@ export function ChatInlinePanel({
             const active = activeId === chat._id
             const isEditing = editingChatId === chat._id
             const isDeleting = deletingChatIds.includes(chat._id)
+            const ConversationIcon = chat.conversationType === 'channel'
+              ? Hash
+              : chat.conversationType === 'dm'
+                ? directMessageIcon(chat.otherParticipantTypes)
+                : MessageSquare
             return (
               <SidebarResourceRow
                 key={chat._id}
@@ -561,13 +574,7 @@ export function ChatInlinePanel({
                   isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
                 }`}
               >
-                {chat.conversationType === 'channel' ? (
-                  <Hash size={12} className="shrink-0" />
-                ) : chat.conversationType === 'dm' ? (
-                  <UsersRound size={12} className="shrink-0" />
-                ) : (
-                  <MessageSquare size={12} className="shrink-0" />
-                )}
+                <ConversationIcon size={12} className="shrink-0" />
                 {!isPublicShowcase && isEditing ? (
                   <input
                     autoFocus

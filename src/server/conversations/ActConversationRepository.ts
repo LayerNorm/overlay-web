@@ -69,6 +69,8 @@ export type ConversationListRow = {
   shareToken?: string | null
   isAutomation?: boolean
   conversationType?: 'personal' | 'dm' | 'channel'
+  /** Active participant types other than the current actor, for DM presentation. */
+  otherParticipantTypes?: Array<'human' | 'agent'>
   workspaceId?: string
 }
 

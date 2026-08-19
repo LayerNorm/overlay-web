@@ -142,6 +142,9 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         : undefined
 
       return NextResponse.json({
+        conversationId,
+        title: conv.title,
+        conversationType: conv.conversationType ?? 'personal',
         ...(messageLimit ? {
           limit: messageLimit,
           hasMore: messages.length >= messageLimit,
@@ -187,17 +190,18 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         workspaceId: context.workspace.workspace.id,
       }),
     ])
-    // `listAccessibleConversations` already drops archived rows, but `personal`
-    // keys off conversations.userId and knows nothing about participant state.
-    // A DM or channel the actor created therefore came back through that branch
-    // and survived the dedupe below, which is why archiving looked like a no-op.
+    // Keep personal conversations on the personal repository branch, but take
+    // collaboration conversations from the participant-scoped branch so DM
+    // metadata (including participant composition) remains available to the UI.
     const archivedIds = new Set(archived.map((conversation) => String(conversation._id)))
     const list = [
-      ...personal.filter((conversation) => !archivedIds.has(String(conversation._id))),
+      ...personal.filter((conversation) => (
+        (conversation.conversationType ?? 'personal') === 'personal'
+        && !archivedIds.has(String(conversation._id))
+      )),
       ...accessible.filter((conversation) => (
         (conversation.conversationType ?? 'personal') !== 'personal'
         && !archivedIds.has(String(conversation._id))
-        && !personal.some((item) => item._id === conversation._id)
       )),
     ]
       .map((conversation) => ({
