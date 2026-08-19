@@ -1104,7 +1104,12 @@ export const watchPresence = query({
       const presence = await computePresence(ctx, args.conversationId, args.workspaceId, args)
       return { ok: true as const, presence }
     } catch (error) {
-      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
+      if (
+        error instanceof Error &&
+        ['Unauthorized', 'WORKSPACE_ACCESS_DENIED', 'CONVERSATION_ACCESS_DENIED'].includes(
+          error.message,
+        )
+      ) {
         return { ok: false as const, presence: [] }
       }
       throw error
