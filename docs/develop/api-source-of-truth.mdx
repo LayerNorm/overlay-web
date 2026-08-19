@@ -120,7 +120,7 @@ When the version changes, the client fetches only the delta via `GET /api/v1/con
 
 ### Presence subscription
 
-`watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive.
+`watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive. The query catches `Unauthorized`, `WORKSPACE_ACCESS_DENIED`, and `CONVERSATION_ACCESS_DENIED` errors gracefully (returning `{ok: false, presence: []}`) so that self-scoped conversation deletion/archive does not crash the React error boundary when the subscription is still active.
 
 ### Knowledge source ingestion subscription
 
