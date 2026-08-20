@@ -48,13 +48,16 @@ export function CommandPalette({
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const { mounted, visible } = usePresence(open)
 
+  // Gated on `mounted`, not just `open`: usePresence keeps the palette
+  // unmounted for a frame after it opens, so focusing on `open` alone would
+  // target a ref that is still null and leave the caret outside the input.
   useEffect(() => {
-    if (!open) return
+    if (!open || !mounted) return
     queueMicrotask(() => {
       setActiveIndex(0)
       inputRef.current?.focus()
     })
-  }, [open, breadcrumb?.label])
+  }, [open, mounted, breadcrumb?.label])
 
   useEffect(() => {
     queueMicrotask(() => setActiveIndex(0))
@@ -137,6 +140,7 @@ export function CommandPalette({
           <Search size={16} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
           <input
             ref={inputRef}
+            autoFocus
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={placeholder}

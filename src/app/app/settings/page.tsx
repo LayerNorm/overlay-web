@@ -30,6 +30,7 @@ import { renderExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
+import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { isWorkspaceSettingsTab, WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
 import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
@@ -49,6 +50,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'account',
   'workspace',
   'customization',
+  'shortcuts',
   'memories',
   'models',
   'webhooks',
@@ -246,6 +248,8 @@ export default function SettingsPage() {
               )}
             </SettingsGroup>
           )}
+
+          {!isLoading && section === 'shortcuts' && <ShortcutsSettings />}
 
           {!isLoading && section === 'memories' && (
             <div className="h-full">

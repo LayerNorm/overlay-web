@@ -7,8 +7,9 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import {
   CreditCard, FileText, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
-  Bot, Brain, Mail, Palette, UsersRound, Webhook,
+  Bot, Brain, Keyboard, Mail, Palette, UsersRound, Webhook,
 } from 'lucide-react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import {
   resolveOverlayAppShellConfig,
   resolveSidebarActionForPath,
@@ -80,6 +81,7 @@ import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
 import { NEW_AGENT_EVENT, NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 
 export type {
   AppSidebarChatPanelContext,
@@ -106,12 +108,19 @@ const SETTINGS_SECTION_ICONS: Record<string, typeof Settings> = {
   general: Settings,
   account: User,
   customization: Palette,
+  shortcuts: Keyboard,
   memories: Brain,
   models: Bot,
   webhooks: Webhook,
   contact: Mail,
   workspace: UsersRound,
 }
+
+/** Sidebar navigation chords stay inert while typing and ignore key repeat. */
+const NAV_HOTKEY_OPTIONS = {
+  preventDefault: true,
+  ignoreEventWhen: (event: KeyboardEvent) => event.repeat,
+} as const
 
 const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'chat',
@@ -438,29 +447,29 @@ export default function AppSidebar({
     return () => window.removeEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
   }, [loadEntitlements])
 
-  useEffect(() => {
-    function onNavShortcut(e: KeyboardEvent) {
-      if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return
-      const t = e.target
-      if (t instanceof Node && (t as HTMLElement).closest?.('input, textarea, select, [contenteditable="true"]')) {
-        return
-      }
-      if (e.code === 'Digit7') {
-        e.preventDefault()
-        if (settingsPathActive) return
-        if (isGuestConfirmed) { requireAuth('settings'); return }
-        setMobileMenuOpen(false)
-        setMobileView('nav')
-        setPendingNav({ href: '/app/settings', fromPath: pathname })
-        router.push('/app/settings')
-        return
-      }
-      const m = /^Digit([1-6])$/.exec(e.code)
-      if (!m) return
-      const idx = parseInt(m[1]!, 10) - 1
-      const item = navItems[idx]
+  // Bound through react-hotkeys-hook from the shared registry so Settings →
+  // Shortcuts always documents the chord that is actually listening.
+  useHotkeys(
+    requireShortcutHotkey('navigation.settings'),
+    () => {
+      if (settingsPathActive) return
+      if (isGuestConfirmed) { requireAuth('settings'); return }
+      setMobileMenuOpen(false)
+      setMobileView('nav')
+      setPendingNav({ href: '/app/settings', fromPath: pathname })
+      router.push('/app/settings')
+    },
+    NAV_HOTKEY_OPTIONS,
+    [isGuestConfirmed, pathname, requireAuth, router, settingsPathActive],
+  )
+
+  useHotkeys(
+    requireShortcutHotkey('navigation.section'),
+    (event) => {
+      const match = /^Digit([1-6])$/.exec(event.code)
+      if (!match) return
+      const item = navItems[parseInt(match[1]!, 10) - 1]
       if (!item || item.disabled || !item.href) return
-      e.preventDefault()
       if (
         pathname.startsWith(item.href) ||
         (canonicalWorkspaceRoute && workspaceSurface === resolveWorkspaceSurface(item.href))
@@ -476,23 +485,22 @@ export default function AppSidebar({
             ...(item.href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
           }).toString()}`
         : workspaceHref)
-    }
-    window.addEventListener('keydown', onNavShortcut, true)
-    return () => window.removeEventListener('keydown', onNavShortcut, true)
-  }, [
-    activeWorkspaceId,
-    buildWorkspaceHref,
-    canonicalWorkspaceRoute,
-    isGuestConfirmed,
-    navItems,
-    pathname,
-    publicShowcase,
-    requireAuth,
-    router,
-    settingsPathActive,
-    workspaceSurface,
-    resolveWorkspaceSurface,
-  ])
+    },
+    NAV_HOTKEY_OPTIONS,
+    [
+      activeWorkspaceId,
+      buildWorkspaceHref,
+      canonicalWorkspaceRoute,
+      isGuestConfirmed,
+      navItems,
+      pathname,
+      publicShowcase,
+      requireAuth,
+      router,
+      workspaceSurface,
+      resolveWorkspaceSurface,
+    ],
+  )
 
   useEffect(() => {
     if (!mobileAccountOpen) return
@@ -693,18 +701,15 @@ export default function AppSidebar({
     setGlobalSearchInitialCategory(category)
     setGlobalSearchOpen(true)
   }
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      const isMeta = e.metaKey || e.ctrlKey
-      if (isMeta && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault()
-        setGlobalSearchInitialCategory(null)
-        setGlobalSearchOpen((prev) => !prev)
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [])
+  useHotkeys(
+    requireShortcutHotkey('global.search'),
+    () => {
+      setGlobalSearchInitialCategory(null)
+      setGlobalSearchOpen((prev) => !prev)
+    },
+    // Search must open from anywhere, including the composer and other inputs.
+    { preventDefault: true, enableOnFormTags: true, enableOnContentEditable: true },
+  )
 
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
@@ -1449,6 +1454,7 @@ export default function AppSidebar({
         open={globalSearchOpen}
         onClose={() => setGlobalSearchOpen(false)}
         initialCategory={globalSearchInitialCategory}
+        workspaceId={activeWorkspaceId}
         onNewChat={() => {
           void createChat()
         }}

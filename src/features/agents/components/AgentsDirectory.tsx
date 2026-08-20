@@ -7,7 +7,7 @@ import { Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { AgentEditorDialog } from './AgentEditorDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -28,6 +28,8 @@ const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
 
 export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const deepLinkedAgentId = searchParams?.get('agentId') ?? null
   const { activeWorkspaceId } = useWorkspace()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>(showcase ? SHOWCASE_AGENTS : [])
   const [canCreate, setCanCreate] = useState(showcase)
@@ -54,6 +56,21 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   }, [activeWorkspaceId, showcase])
 
   useEffect(() => { void load() }, [load])
+
+  // Deep link from global search: open the editor for the requested agent once
+  // the directory has loaded, then drop the param so a refresh does not reopen it.
+  useEffect(() => {
+    if (!deepLinkedAgentId || loading) return
+    const agent = agents.find((candidate) => candidate.id === deepLinkedAgentId)
+    if (!agent) return
+    setEditing(agent)
+    setError(null)
+    setDialogOpen(true)
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.delete('agentId')
+    const queryString = params.toString()
+    router.replace(queryString ? `?${queryString}` : window.location.pathname, { scroll: false })
+  }, [agents, deepLinkedAgentId, loading, router, searchParams])
 
   useEffect(() => {
     const openCreateDialog = () => {
