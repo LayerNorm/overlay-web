@@ -67,6 +67,26 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     locallyRead.has(item.id) ? { ...item, readAt: item.readAt ?? locallyRead.get(item.id) } : item
   ))
 
+  // Mark all notifications as read when the inline Activity panel opens.
+  // This is intentionally a side effect of opening the panel, not a user action.
+  useEffect(() => {
+    const unreadIds = notifications
+      .filter((notification) => !notification.readAt)
+      .map(({ id }) => id)
+    if (unreadIds.length === 0) return
+    // Optimistically mark read in the local state so the badge drops immediately.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLocallyRead((current) => {
+      const next = new Map(current)
+      const readAt = Date.now()
+      for (const id of unreadIds) next.set(id, readAt)
+      return next
+    })
+    void overlayAppClient.conversations.markNotificationsRead(unreadIds)
+      .then(() => dispatchCollaborationNotificationsChanged())
+      .catch(() => undefined)
+  }, [notifications])
+
   async function openNotification(item: ActivityNotification) {
     onNavigate?.()
     if (!item.conversationId) return

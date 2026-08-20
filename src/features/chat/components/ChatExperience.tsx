@@ -269,6 +269,7 @@ export default function ChatExperience({
     askModelSelectionMode,
     setAskModelSelectionMode,
     chatPrefsHydrated,
+    hasStoredTextModelSelection,
     generationMode,
     setGenerationMode,
     personalChatMode,
@@ -424,10 +425,14 @@ export default function ChatExperience({
     },
     [resolveAppDefaultChatModels],
   )
-  // Apply account default models on new-chat surfaces when settings load or change.
+  // Apply account default models on new-chat surfaces when settings load or change,
+  // but only if the user has no stored per-session text model preference. Stored
+  // preferences win so a single-model user isn\'t forced back into multiple model
+  // mode every time they return to personal chat.
   useEffect(() => {
     if (!chatPrefsHydrated || activeChatId || isTemporaryChat) return
     if (userAskModelOverrideRef.current) return
+    if (hasStoredTextModelSelection) return
 
     const { askModelIds, actModelId } = resolveAppDefaultChatModels()
     const modeFromSettings: AskModelSelectionMode =
@@ -453,6 +458,7 @@ export default function ChatExperience({
   }, [
     activeChatId,
     chatPrefsHydrated,
+    hasStoredTextModelSelection,
     isTemporaryChat,
     resolveAppDefaultChatModels,
     setAskModelSelectionMode,

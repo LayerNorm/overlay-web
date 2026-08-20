@@ -15,6 +15,12 @@ import {
   readStoredReasoningLevel,
   writeStoredReasoningLevel,
 } from '@/shared/chat/chat-model-prefs'
+import { safeSetLocalStorage } from './model-selection-utils'
+import {
+  CHAT_MODEL_KEY,
+  ACT_MODEL_KEY,
+  CHAT_ASK_MODEL_SELECTION_MODE_KEY,
+} from '@/shared/chat/chat-model-prefs'
 import {
   CHAT_GEN_MODE_KEY,
   IMAGE_MODEL_SELECTION_MODE_KEY,
@@ -30,6 +36,7 @@ export function useChatPreferences() {
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
   const [askModelSelectionMode, setAskModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
+  const [hasStoredTextModelSelection, setHasStoredTextModelSelection] = useState(false)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
   const [personalChatMode, setPersonalChatMode] = useState<PersonalChatMode>('chat')
   const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
@@ -56,6 +63,34 @@ export function useChatPreferences() {
       const savedPersonalChatMode = localStorage.getItem(PERSONAL_CHAT_MODE_KEY)
       if (savedPersonalChatMode === 'chat' || savedPersonalChatMode === 'work') {
         setPersonalChatMode(savedPersonalChatMode)
+      }
+
+      // Restore last text chat model selection if present
+      try {
+        const savedAskMode = localStorage.getItem(CHAT_ASK_MODEL_SELECTION_MODE_KEY)
+        if (savedAskMode === 'single' || savedAskMode === 'multiple') {
+          setAskModelSelectionMode(savedAskMode)
+        }
+        const savedModelsRaw = localStorage.getItem(CHAT_MODEL_KEY)
+        const savedAct = localStorage.getItem(ACT_MODEL_KEY)
+        if (savedModelsRaw) {
+          const parsed = JSON.parse(savedModelsRaw) as unknown
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((id): id is string => typeof id === 'string')) {
+            setSelectedModels(parsed.slice(0, 4))
+            if (savedAct && typeof savedAct === 'string') {
+              setSelectedActModel(savedAct)
+            } else {
+              setSelectedActModel(parsed[0]!)
+            }
+            setHasStoredTextModelSelection(true)
+          }
+        } else if (savedAct && typeof savedAct === 'string') {
+          setSelectedActModel(savedAct)
+          setSelectedModels([savedAct])
+          setHasStoredTextModelSelection(true)
+        }
+      } catch {
+        /* keep default */
       }
 
       const imgMode = localStorage.getItem(IMAGE_MODEL_SELECTION_MODE_KEY)
@@ -109,6 +144,19 @@ export function useChatPreferences() {
     if (level) writeStoredReasoningLevel(level)
   }).current
 
+  // Persist text chat model selection to localStorage so it survives
+  // navigation and app restarts for the new/personal chat surface.
+  useEffect(() => {
+    try {
+      safeSetLocalStorage(CHAT_MODEL_KEY, JSON.stringify(selectedModels))
+      safeSetLocalStorage(ACT_MODEL_KEY, selectedActModel)
+      safeSetLocalStorage(CHAT_ASK_MODEL_SELECTION_MODE_KEY, askModelSelectionMode)
+      setHasStoredTextModelSelection(true)
+    } catch {
+      /* private browsing / blocked storage — ignore */
+    }
+  }, [selectedModels, selectedActModel, askModelSelectionMode])
+
   return {
     selectedActModel,
     setSelectedActModel,
@@ -117,6 +165,7 @@ export function useChatPreferences() {
     askModelSelectionMode,
     setAskModelSelectionMode,
     chatPrefsHydrated,
+    hasStoredTextModelSelection,
     generationMode,
     setGenerationMode,
     personalChatMode,

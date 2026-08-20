@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { AtSign, Bell, BellOff, Check, Inbox, MessageCircle, Smile } from 'lucide-react'
 import type {
@@ -67,6 +67,26 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const loading = !notificationsReady
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
+
+  // Mark all notifications as read when the Activity view is opened.
+  // This is intentionally a side effect of opening the view, not a user action.
+  useEffect(() => {
+    const unreadIds = sourceNotifications
+      .filter((notification) => !notification.readAt)
+      .map(({ id }) => id)
+    if (unreadIds.length === 0) return
+    // Optimistically mark read in the local state so the badge drops immediately.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLocallyRead((current) => {
+      const next = new Map(current)
+      const readAt = Date.now()
+      for (const id of unreadIds) next.set(id, readAt)
+      return next
+    })
+    void overlayAppClient.conversations.markNotificationsRead(unreadIds)
+      .then(() => dispatchCollaborationNotificationsChanged())
+      .catch(() => undefined)
+  }, [sourceNotifications])
 
   async function openNotification(notification: WorkspaceNotification) {
     const conversationPromise = notification.conversationId

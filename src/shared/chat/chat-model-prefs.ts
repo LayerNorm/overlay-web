@@ -6,6 +6,7 @@ import type { ReasoningLevel } from '@overlay/chat-core'
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
 export const ACT_MODEL_KEY = 'overlay_act_model'
+export const CHAT_ASK_MODEL_SELECTION_MODE_KEY = 'overlay_chat_ask_model_selection_mode'
 export const REASONING_KEY = 'overlay_reasoning_level'
 
 const VALID_REASONING_LEVELS: readonly ReasoningLevel[] = [
@@ -95,7 +96,8 @@ export function readStoredActModelId(): string {
   return readStoredAskModelIds()[0] ?? DEFAULT_MODEL_ID
 }
 
-/** Body fields for POST /api/v1/conversations — server clamps models for free tier. */
+/** Body fields for POST /api/v1/conversations. Prefers explicit account defaults,
+ * then the user\'s most recent text model selection from localStorage, then tier defaults. */
 export function resolveNewChatModelFields({
   defaultActModelId,
   defaultAskModelIds,
@@ -111,6 +113,26 @@ export function resolveNewChatModelFields({
   actModelId: string
   lastMode: 'act'
 } {
+  const hasConfiguredDefault =
+    Boolean(defaultActModelId?.trim()) || Boolean(defaultAskModelIds && defaultAskModelIds.length > 0)
+
+  if (!hasConfiguredDefault) {
+    const storedAsk = readStoredAskModelIds()
+    const storedAct = readStoredActModelId()
+    const storedSelection = normalizeChatModelSelection({
+      askModelIds: storedAsk,
+      actModelId: storedAct,
+      fallbackModelId: DEFAULT_MODEL_ID,
+    })
+    if (storedSelection.askModelIds.length > 0) {
+      return {
+        askModelIds: storedSelection.askModelIds,
+        actModelId: storedSelection.actModelId,
+        lastMode: 'act',
+      }
+    }
+  }
+
   const selection = resolveDefaultChatModelSelection({
     defaultActModelId,
     defaultAskModelIds,
