@@ -583,6 +583,7 @@ export async function POST(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
+              variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
             })
           : agentRunService.startChat({
               conversationId: cid,
@@ -743,6 +744,8 @@ export async function POST(
         instructions: actInstructions,
         messages: workMessages,
         modelId: effectiveModelId,
+        multiModelSlotIndex,
+        multiModelTotal,
         paid,
         ...(modelSupportsZeroDataRetention(effectiveModelId)
           ? { providerOptions: { gateway: { zeroDataRetention: true } } }

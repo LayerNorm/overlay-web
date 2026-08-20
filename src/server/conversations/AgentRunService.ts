@@ -43,6 +43,7 @@ export class AgentRunService {
     turnId: string
     userId: string
     userMessageId?: Id<'conversationMessages'>
+    variantIndex?: number
   }): Promise<AgentRun | undefined> {
     if (!args.conversationId || !args.userMessageId) return undefined
     return await this.repository.startAgentRun({
@@ -53,6 +54,7 @@ export class AgentRunService {
       turnId: args.turnId,
       userId: args.userId,
       userMessageId: args.userMessageId,
+      variantIndex: args.variantIndex,
     }) ?? undefined
   }
 

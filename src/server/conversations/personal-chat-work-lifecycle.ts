@@ -62,6 +62,8 @@ export async function finalizePersonalChatWork(input: {
     usage?: { inputTokens?: number; outputTokens?: number }
   }
   modelId: string
+  multiModelSlotIndex?: number
+  multiModelTotal?: number
   paid: boolean
   reservationId: string | null
   resourceUserId: string
@@ -106,8 +108,8 @@ export async function finalizePersonalChatWork(input: {
     emitWebhook: input.emitWebhook,
     event: input.event,
     finishedToolCallIds,
-    multiModelSlotIndex: 0,
-    multiModelTotal: 1,
+    multiModelSlotIndex: input.multiModelSlotIndex ?? 0,
+    multiModelTotal: input.multiModelTotal ?? 1,
     sourceCitations: input.sourceCitations,
     timedOut: false,
     timeoutMs: 0,
