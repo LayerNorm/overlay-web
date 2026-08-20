@@ -68,7 +68,6 @@ import { settingsService } from './services/settings-service'
 import { windowManager } from './services/window-manager'
 import { panelManager } from './services/panel-manager'
 import { systemUtils } from './services/system-utils'
-import { panelLatencyMarkDetectEditingDone } from './utils/panel-latency'
 import { isYieldingFocus } from './utils/yield-focus'
 import { hotkeyManager, HotkeyMode, hasAccessibilityPermission } from './services/hotkey-manager'
 import type { PanelToggleMode } from './services/hotkey-manager'
@@ -249,57 +248,9 @@ const handleRecordingCancel = async (_mode: HotkeyMode): Promise<void> => {
 
 // --- Shared hotkey system setup (single source of truth) ---
 
-let selectionInjectGeneration = 0
-
-function cancelSelectedTextInject(): void {
-  selectionInjectGeneration++
-}
-
-async function injectSelectedTextIntoPanel(panel: 'chat' | 'notebook'): Promise<void> {
-  const generation = ++selectionInjectGeneration
-  try {
-    // Let a rapid hide cancel before we run Cmd+C / osascript.
-    await new Promise((resolve) => setTimeout(resolve, 80))
-    if (generation !== selectionInjectGeneration) return
-    if (!panelManager.isPanelTypeVisible(panel)) return
-
-    const context = await systemUtils.detectEditingMode()
-    panelLatencyMarkDetectEditingDone(panel)
-    if (generation !== selectionInjectGeneration) return
-    if (!panelManager.isPanelTypeVisible(panel)) return
-    if (!context.isEditing || !context.selectedText.trim()) return
-
-    const channel = panel === 'chat' ? 'chat:new-with-text' : 'notebook:new-with-text'
-    const panelWindow = windowManager.findWindowByType(panel)
-    if (!panelWindow) return
-
-    const send = (): void => {
-      if (generation !== selectionInjectGeneration) return
-      if (!panelManager.isPanelTypeVisible(panel)) return
-      panelWindow.webContents.send(channel, context.selectedText)
-    }
-    if (panelWindow.webContents.isLoading()) {
-      panelWindow.webContents.once('did-finish-load', () => {
-        setTimeout(send, 50)
-      })
-    } else {
-      setTimeout(send, 50)
-    }
-  } catch (error) {
-    console.error('[Panel] Failed to detect selected text:', error)
-  }
-}
-
 const handlePanelToggle = (panel: PanelToggleMode): void => {
   const result = panelManager.togglePanelVisibility(panel)
   console.log(`[Hotkey] Panel toggle: ${panel}, result: ${result.action}, count: ${result.count}`)
-
-  if (panel !== 'chat' && panel !== 'notebook') return
-  if (result.action === 'hidden') {
-    cancelSelectedTextInject()
-  } else {
-    void injectSelectedTextIntoPanel(panel)
-  }
 }
 
 let hotkeyRecoveryTimeout: ReturnType<typeof setTimeout> | null = null
