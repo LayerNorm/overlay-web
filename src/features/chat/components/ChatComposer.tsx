@@ -118,11 +118,7 @@ export function ChatComposer(props: ChatComposerProps) {
             viewProps.showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
           }`}
         >
-          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? (
-            <p className="mb-2 text-center text-[11px] text-[var(--muted-light)]">
-              Overlay can make mistakes. Check important info.
-            </p>
-          ) : null}
+          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? null : null}
           <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
@@ -131,6 +127,11 @@ export function ChatComposer(props: ChatComposerProps) {
           ) : (
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
+          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? (
+            <p className="mt-2 text-center text-[11px] text-[var(--muted-light)]">
+              Overlay can make mistakes. Check important info.
+            </p>
+          ) : null}
         </div>
         <ChatEmptyState
           visible={viewProps.showCenteredEmptyChat}

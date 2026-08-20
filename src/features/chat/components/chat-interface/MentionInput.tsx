@@ -305,15 +305,16 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
   const blockTag = block.tagName
   if (blockTag !== 'DIV' && blockTag !== 'P') return false
 
-  const blockTriggers: Array<{ pattern: RegExp; tag?: string; list?: 'ul' | 'ol' }> = [
+  const blockTriggers: Array<{ pattern: RegExp; tag?: string; list?: 'ul' | 'ol'; pre?: boolean }> = [
     { pattern: /^###\s$/, tag: 'h3' },
     { pattern: /^##\s$/, tag: 'h2' },
     { pattern: /^#\s$/, tag: 'h1' },
     { pattern: /^>\s$/, tag: 'blockquote' },
     { pattern: /^[-*]\s$/, list: 'ul' },
+    { pattern: /^```\s$/, pre: true },
   ]
 
-  for (const { pattern, tag, list } of blockTriggers) {
+  for (const { pattern, tag, list, pre } of blockTriggers) {
     if (pattern.test(lineText)) {
       // Delete the trigger text using a range (handles bare text nodes in root)
       const deleteRange = document.createRange()
@@ -324,6 +325,9 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
       if (list) {
         // For lists, execCommand creates the list structure
         document.execCommand('insertUnorderedList')
+      } else if (pre) {
+        // For code blocks, insert a <pre> with a zero-width space for caret placement
+        document.execCommand('insertHTML', false, '<pre>\u200B</pre>')
       } else if (tag) {
         // For headings/quotes, use execCommand('insertHTML') which handles
         // caret placement inside the new block element correctly.
@@ -883,6 +887,192 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         if (showPopup && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape')) {
           // Let MentionPopup handle these via document listener
           return
+        }
+
+        const el = editorRef.current
+
+        // Shift+Enter inside a list/blockquote/pre: create a new item/line.
+        // On an empty item/line, exit the block instead.
+        if (e.key === 'Enter' && e.shiftKey && el) {
+          const sel = window.getSelection()
+          if (sel && sel.rangeCount > 0 && sel.isCollapsed && sel.anchorNode) {
+            const block = getBlockContainer(sel.anchorNode, el)
+            if (block && block !== el) {
+              const tag = block.tagName
+              // List item: check the <li> specifically
+              const li = tag === 'LI' ? block : (block.parentElement?.tagName === 'LI' ? block.parentElement : null)
+              if (li) {
+                const liText = (li.textContent || '').replace(/\u200B/g, '').trim()
+                if (liText === '') {
+                  // Empty list item: exit the list — split out a paragraph
+                  e.preventDefault()
+                  const list = li.parentElement
+                  if (list) {
+                    // Remove the empty <li>
+                    li.remove()
+                    // If the list is now empty, remove it and insert a <p>
+                    if (list.children.length === 0) {
+                      list.remove()
+                    }
+                    // Insert a paragraph after the list (or at end of editor)
+                    const p = document.createElement('p')
+                    p.appendChild(document.createTextNode('\u200B'))
+                    if (list && list.parentElement) {
+                      if (list.nextElementSibling) {
+                        list.parentElement.insertBefore(p, list.nextElementSibling)
+                      } else {
+                        list.parentElement.appendChild(p)
+                      }
+                    } else {
+                      el.appendChild(p)
+                    }
+                    const newRange = document.createRange()
+                    newRange.setStart(p.firstChild!, 0)
+                    newRange.collapse(true)
+                    sel.removeAllRanges()
+                    sel.addRange(newRange)
+                    dispatchEditorInput(el)
+                    return
+                  }
+                } else {
+                  // Non-empty list item: let browser create a new <li> naturally
+                  // (execCommand insertUnorderedList/insertOrderedList already active)
+                  // Just let the default behavior happen
+                }
+              }
+              // Blockquote: create a new line within the blockquote, or exit if empty
+              else if (tag === 'BLOCKQUOTE') {
+                const bqText = (block.textContent || '').replace(/\u200B/g, '').trim()
+                if (bqText === '') {
+                  // Empty blockquote: exit — insert a paragraph after it
+                  e.preventDefault()
+                  const p = document.createElement('p')
+                  p.appendChild(document.createTextNode('\u200B'))
+                  if (block.nextElementSibling) {
+                    block.parentElement!.insertBefore(p, block.nextElementSibling)
+                  } else {
+                    block.parentElement!.appendChild(p)
+                  }
+                  block.remove()
+                  const newRange = document.createRange()
+                  newRange.setStart(p.firstChild!, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  dispatchEditorInput(el)
+                  return
+                }
+                // Non-empty: insert a <br> inside the blockquote for a new line
+                e.preventDefault()
+                document.execCommand('insertLineBreak')
+                return
+              }
+              // Code block: insert a newline within the <pre>, or exit if empty
+              else if (tag === 'PRE') {
+                const preText = (block.textContent || '').replace(/\u200B/g, '').trim()
+                if (preText === '') {
+                  // Empty pre: exit — insert a paragraph after it
+                  e.preventDefault()
+                  const p = document.createElement('p')
+                  p.appendChild(document.createTextNode('\u200B'))
+                  if (block.nextElementSibling) {
+                    block.parentElement!.insertBefore(p, block.nextElementSibling)
+                  } else {
+                    block.parentElement!.appendChild(p)
+                  }
+                  block.remove()
+                  const newRange = document.createRange()
+                  newRange.setStart(p.firstChild!, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  dispatchEditorInput(el)
+                  return
+                }
+                // Non-empty: insert a newline inside the <pre>
+                e.preventDefault()
+                document.execCommand('insertLineBreak')
+                return
+              }
+            }
+          }
+        }
+
+        // Backspace on empty list item / blockquote / pre: exit the block
+        if (e.key === 'Backspace' && el) {
+          const sel = window.getSelection()
+          if (sel && sel.rangeCount > 0 && sel.isCollapsed && sel.anchorNode) {
+            const block = getBlockContainer(sel.anchorNode, el)
+            if (block && block !== el) {
+              const tag = block.tagName
+              const li = tag === 'LI' ? block : (block.parentElement?.tagName === 'LI' ? block.parentElement : null)
+              if (li) {
+                const liText = (li.textContent || '').replace(/\u200B/g, '').trim()
+                if (liText === '') {
+                  e.preventDefault()
+                  const list = li.parentElement
+                  li.remove()
+                  if (list && list.children.length === 0) list.remove()
+                  const p = document.createElement('p')
+                  p.appendChild(document.createTextNode('\u200B'))
+                  if (list && list.nextElementSibling) {
+                    list.parentElement!.insertBefore(p, list.nextElementSibling)
+                  } else if (list) {
+                    list.parentElement!.appendChild(p)
+                  } else {
+                    el.appendChild(p)
+                  }
+                  const newRange = document.createRange()
+                  newRange.setStart(p.firstChild!, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  dispatchEditorInput(el)
+                  return
+                }
+              } else if (tag === 'BLOCKQUOTE') {
+                const bqText = (block.textContent || '').replace(/\u200B/g, '').trim()
+                if (bqText === '') {
+                  e.preventDefault()
+                  const p = document.createElement('p')
+                  p.appendChild(document.createTextNode('\u200B'))
+                  if (block.nextElementSibling) {
+                    block.parentElement!.insertBefore(p, block.nextElementSibling)
+                  } else {
+                    block.parentElement!.appendChild(p)
+                  }
+                  block.remove()
+                  const newRange = document.createRange()
+                  newRange.setStart(p.firstChild!, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  dispatchEditorInput(el)
+                  return
+                }
+              } else if (tag === 'PRE') {
+                const preText = (block.textContent || '').replace(/\u200B/g, '').trim()
+                if (preText === '') {
+                  e.preventDefault()
+                  const p = document.createElement('p')
+                  p.appendChild(document.createTextNode('\u200B'))
+                  if (block.nextElementSibling) {
+                    block.parentElement!.insertBefore(p, block.nextElementSibling)
+                  } else {
+                    block.parentElement!.appendChild(p)
+                  }
+                  block.remove()
+                  const newRange = document.createRange()
+                  newRange.setStart(p.firstChild!, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  dispatchEditorInput(el)
+                  return
+                }
+              }
+            }
+          }
         }
 
         // Handle backspace on mention chip
