@@ -5,12 +5,13 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import {
   canUsePaidBudgetFeatures,
 } from '@/server/billing/billing-runtime'
 
-const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
+const TITLE_MODEL = DEFAULT_MODEL_ID
 const FALLBACK_TITLE = 'New Chat'
 
 const titleSchema = z.object({

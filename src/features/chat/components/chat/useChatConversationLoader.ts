@@ -273,12 +273,17 @@ export function useChatConversationLoader({
         exchangeModels: restoredExchangeModels,
       } = restoreGenerationStateForExchanges(exchanges, outputGroups)
 
+      const exchangeModels = restoredExchangeModels.map((models, idx) => {
+        const actualModels = exchanges[idx]?.responses.map((r) => r.model) ?? []
+        return actualModels.length > 0 ? actualModels : models
+      })
+
       runtime.ui = createConversationUiState({
         selectedActModel: resolvedActModel,
         selectedModels: resolvedSelectedModels,
         askModelSelectionMode: resolvedSelectedModels.length > 1 ? 'multiple' : 'single',
         exchangeModes: exchangeModesFromServer,
-        exchangeModels: restoredExchangeModels,
+        exchangeModels,
         selectedTabPerExchange: exchanges.map(() => 0),
         activeChatTitle: resolvedTitle,
         generationResults: restoredResults,
