@@ -272,6 +272,17 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true }) ?? false
   }
 
+  async deleteAllConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }) {
+    return await convex.mutation<{ conversationsDeleted: number; participantsRemoved: number }>(
+      'collaboration/channels:deleteAllConversations',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    ) ?? { conversationsDeleted: 0, participantsRemoved: 0 }
+  }
+
   async upsertPresence(args: {
     actorUserId: string
     conversationId?: string

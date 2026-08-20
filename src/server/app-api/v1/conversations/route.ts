@@ -356,6 +356,24 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const repository = appData.repositories.conversations
     const collaboration = appData.repositories.conversationCollaboration
 
+    // Special case: ?all=true deletes every conversation in the workspace
+    // (owner-only). Used for one-time cleanup when channel/DM state has
+    // become inconsistent across members.
+    if (request.nextUrl.searchParams.get('all') === 'true') {
+      if (context.workspace.membership.role !== 'owner') {
+        return NextResponse.json({ error: 'Workspace owner required' }, { status: 403 })
+      }
+      const result = await collaboration.deleteAllConversations({
+        actorUserId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      })
+      logger.info('Deleted all workspace conversations', {
+        workspaceId: context.workspace.workspace.id,
+        ...result,
+      })
+      return NextResponse.json({ success: true, ...result })
+    }
+
     const conversationId = request.nextUrl.searchParams.get('conversationId')
     if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
     const conversation = await collaboration.getAccessibleConversation({

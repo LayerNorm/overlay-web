@@ -98,6 +98,10 @@ export class ConversationsClient {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
   }
 
+  deleteAllResponse(init?: RequestInit) {
+    return this.http.request('/api/v1/conversations?all=true', { ...init, method: 'DELETE' })
+  }
+
   addMessage(body: ConversationMessageRequest, init?: MutationRequestInit) {
     return this.http.json<{ success: boolean; conversationId: string; turnId: string; messageId?: string }>(
       '/api/v1/conversations/message',

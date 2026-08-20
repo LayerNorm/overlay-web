@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, not, or } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -453,6 +453,7 @@ implements ConversationCollaborationRepository {
         eq(conversationParticipants.workspaceId, args.workspaceId),
         eq(conversationParticipants.principalId, actor.id),
         eq(conversationParticipants.status, 'active'),
+        isNull(conversationParticipants.archivedAt),
         eq(conversations.conversationType, 'channel'),
         isNull(conversations.deletedAt),
       ))
@@ -922,6 +923,42 @@ implements ConversationCollaborationRepository {
       })
     }
     return rows.length > 0
+  }
+
+  async deleteAllConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<{ conversationsDeleted: number; participantsRemoved: number }> {
+    await this.requireWorkspaceOwner(args)
+    const now = new Date()
+    const deletedConversations = await this.db.update(conversations).set({
+      deletedAt: now,
+      lastModified: now,
+      updatedAt: now,
+    }).where(and(
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversations.deletedAt),
+    )).returning({ id: conversations.id })
+    for (const conv of deletedConversations) {
+      await emitConversationEvent(this.db, {
+        conversationId: conv.id,
+        type: 'conversation.deleted',
+        userId: args.actorUserId,
+      })
+    }
+    const removedParticipants = await this.db.update(conversationParticipants).set({
+      status: 'removed',
+      removedAt: now,
+      archivedAt: now,
+      updatedAt: now,
+    }).where(and(
+      eq(conversationParticipants.workspaceId, args.workspaceId),
+      not(eq(conversationParticipants.status, 'removed')),
+    )).returning({ principalId: conversationParticipants.principalId })
+    return {
+      conversationsDeleted: deletedConversations.length,
+      participantsRemoved: removedParticipants.length,
+    }
   }
 
   async upsertPresence(args: {

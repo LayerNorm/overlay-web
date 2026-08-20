@@ -182,7 +182,9 @@ export const listChannels = query({
     const participants = await ctx.db.query('conversationParticipants')
       .withIndex('by_workspaceId_principalId_status', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId).eq('status', 'active')
-      )).collect()
+      ))
+      .filter((q) => q.eq(q.field('archivedAt'), undefined))
+      .collect()
     const result = []
     for (const participant of participants) {
       const conversation = await ctx.db.get(participant.conversationId)
@@ -190,7 +192,8 @@ export const listChannels = query({
       const members = await ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_status', (q) => (
           q.eq('conversationId', conversation._id).eq('status', 'active')
-        )).collect()
+        ))
+        .collect()
       result.push({
         conversationId: conversation._id,
         workspaceId: args.workspaceId,
@@ -486,3 +489,80 @@ function groupReactions(
   }
   return [...grouped.values()]
 }
+
+/**
+ * Owner-only: soft-deletes every conversation (channels + DMs) and removes
+ * all participant rows in a workspace. Used for one-time cleanup when channel
+ * / DM state has become inconsistent across members (e.g. after Slack imports
+ * or testing). After cleanup, new channels and DMs created going forward will
+ * have consistent participant rows for all members.
+ */
+export const deleteAllConversations = mutation({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  returns: v.object({
+    conversationsDeleted: v.number(),
+    participantsRemoved: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { principal: actor } = await requireActor(ctx, args)
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId)
+      )).unique()
+    if (membership?.status !== 'active' || membership.role !== 'owner') {
+      throw new Error('WORKSPACE_OWNER_REQUIRED')
+    }
+
+    const now = Date.now()
+    let conversationsDeleted = 0
+    let participantsRemoved = 0
+
+    // Soft-delete all conversations in the workspace
+    const conversations = await ctx.db.query('conversations')
+      .withIndex('by_workspaceId_conversationType_lastModified', (q) => (
+        q.eq('workspaceId', args.workspaceId)
+      ))
+      .collect()
+
+    for (const conversation of conversations) {
+      if (conversation.deletedAt) continue
+      await ctx.db.patch(conversation._id, {
+        deletedAt: now,
+        lastModified: now,
+        updatedAt: now,
+      })
+      conversationsDeleted++
+      await recordConversationEvent(ctx, {
+        conversationId: conversation._id,
+        workspaceId: args.workspaceId,
+        userId: args.actorUserId,
+        type: 'conversation.deleted',
+        payload: { scope: 'everyone', reason: 'workspace-cleanup' },
+      })
+    }
+
+    // Remove all participant rows in the workspace
+    const participants = await ctx.db.query('conversationParticipants')
+      .withIndex('by_workspaceId_principalId_status', (q) => (
+        q.eq('workspaceId', args.workspaceId)
+      ))
+      .collect()
+
+    for (const participant of participants) {
+      if (participant.status === 'removed') continue
+      await ctx.db.patch(participant._id, {
+        status: 'removed',
+        removedAt: now,
+        archivedAt: now,
+        updatedAt: now,
+      })
+      participantsRemoved++
+    }
+
+    return { conversationsDeleted, participantsRemoved }
+  },
+})

@@ -137,6 +137,10 @@ export interface ConversationCollaborationRepository {
     conversationId: string
     workspaceId: string
   }): Promise<boolean>
+  deleteAllConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<{ conversationsDeleted: number; participantsRemoved: number }>
   upsertPresence(args: {
     actorUserId: string
     conversationId?: string
