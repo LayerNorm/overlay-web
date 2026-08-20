@@ -11,6 +11,10 @@ import {
   isOverlayGatedToolOutput,
   isUsageExhaustedError,
 } from '@overlay/chat-core'
+import {
+  knowledgeCitationsFromMarkdown,
+  knowledgeSourcesFromCitations,
+} from '../../lib/knowledge-sources'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { MarkdownMessage } from '../MarkdownMessage'
@@ -127,6 +131,25 @@ export function ChatExchange({
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
     const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
+    /**
+     * Cited files and memories. Live replies carry the citation map in message
+     * metadata; older persisted replies only have the linkified `**Sources:**`
+     * line in the markdown, so fall back to reading it back out of the text.
+     */
+    const effectiveSourceCitations = useMemo(() => {
+      if (sourceCitations && Object.keys(sourceCitations).length > 0) return sourceCitations
+      const recovered = knowledgeCitationsFromMarkdown(assistantPlainText)
+      return Object.keys(recovered).length > 0 ? recovered : undefined
+    }, [assistantPlainText, sourceCitations])
+    const knowledgeSources = useMemo(
+      () => knowledgeSourcesFromCitations(effectiveSourceCitations),
+      [effectiveSourceCitations],
+    )
+    /** Web and knowledge sources share one Sources button and one panel. */
+    const allSources = useMemo(
+      () => [...webSources, ...knowledgeSources],
+      [knowledgeSources, webSources],
+    )
     const normalizedStatus: ChatExchangeStatus = status ?? (
       responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
     )
@@ -418,7 +441,7 @@ export function ChatExchange({
                 key={`md-${userMsgId}-${responseModelId}-${seg.originIndex}`}
                 text={block.text}
                 isStreaming={isTextStreaming && isLastText}
-                sourceCitations={isLastText ? sourceCitations : undefined}
+                sourceCitations={isLastText ? effectiveSourceCitations : undefined}
                 webSources={isLastText && webSources.length > 0 ? webSources : undefined}
                 suppressTypingIndicator={!loadingPresentation.inlineTextMarker}
                 onOpenAttachmentPreview={onOpenAttachmentPreview}
@@ -479,7 +502,7 @@ export function ChatExchange({
             onBranch={onBranch}
             turnIdForActions={turnIdForActions}
             actionsLocked={actionsLocked}
-            webSources={webSources}
+            sources={allSources}
             onOpenSources={onOpenSources}
             userMsgId={userMsgId}
             isSourcesOpenForThis={isSourcesOpenForThis}

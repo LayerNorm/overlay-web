@@ -2,6 +2,7 @@ import 'katex/dist/katex.min.css'
 import { type ReactNode, memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { SourceCitationMap } from '../lib/source-citations'
+import { knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
 import { shimIncompleteMarkdown } from '../lib/shim-incomplete-markdown'
 import type { ChatStreamingMode } from '../context/chat-settings'
@@ -86,6 +87,13 @@ function MarkdownMessageImpl({
     [text, sourceCitations, isStreaming, hasCitationMap, webSources, hasWebSources, appBaseUrl],
   )
 
+  // Ordered the same way the chip hrefs are numbered, so `#overlay-knowcite-2`
+  // is the second citation in the map.
+  const knowledgeSources = useMemo(
+    () => knowledgeSourcesFromCitations(sourceCitations, appBaseUrl),
+    [sourceCitations, appBaseUrl],
+  )
+
   const mdRenderComponents = useMemo(
     () => {
       const baseComponents = createBaseMdComponents({ onOpenAttachmentPreview })
@@ -100,6 +108,15 @@ function MarkdownMessageImpl({
         </WebSourceTooltip>
       )
 
+      /** Knowledge chips stay in the app — same chip, same hover card, no new tab. */
+      const renderInternalChip = (href: string, label: string, tooltipSources: WebSourceItem[]) => (
+        <WebSourceTooltip sources={tooltipSources}>
+          <a href={href} className={chipClass}>
+            {label}
+          </a>
+        </WebSourceTooltip>
+      )
+
       return {
         ...baseComponents,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,6 +126,16 @@ function MarkdownMessageImpl({
 
           if (isMentionHref(href)) {
             return <span className={mentionChipClass}>{props.children}</span>
+          }
+
+          // Knowledge citation chip: `#overlay-knowcite-N` (a cited file or memory).
+          if (typeof href === 'string' && href.startsWith('#overlay-knowcite-')) {
+            const n = parseInt(href.slice('#overlay-knowcite-'.length), 10)
+            const source = knowledgeSources[n - 1]
+            if (source?.internalHref) {
+              return renderInternalChip(source.internalHref, linkText || source.title, [source])
+            }
+            return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{n}]</span>
           }
 
           // Multi-citation chip: `#overlay-webcite-multi-1-2-3`
@@ -186,7 +213,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [webSources, appBaseUrl, onOpenAttachmentPreview],
+    [knowledgeSources, webSources, appBaseUrl, onOpenAttachmentPreview],
   )
   const activeRemarkPlugins = useMemo(
     () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],

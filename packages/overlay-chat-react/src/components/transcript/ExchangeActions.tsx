@@ -12,7 +12,8 @@ export interface ExchangeActionsProps {
   onBranch?: () => void
   turnIdForActions: string | null
   actionsLocked: boolean
-  webSources: readonly WebSourceItem[]
+  /** Web and knowledge sources for this turn, in the order the panel lists them. */
+  sources: readonly WebSourceItem[]
   onOpenSources?: (turnId: string, sources: WebSourceItem[]) => void
   userMsgId: string
   isSourcesOpenForThis: boolean
@@ -31,7 +32,7 @@ export function ExchangeActions({
   onBranch,
   turnIdForActions,
   actionsLocked,
-  webSources,
+  sources,
   onOpenSources,
   userMsgId,
   isSourcesOpenForThis,
@@ -93,10 +94,10 @@ export function ExchangeActions({
           <GitBranch size={14} strokeWidth={1.75} />
         </button>
       ) : null}
-      {webSources.length > 0 && onOpenSources ? (
+      {sources.length > 0 && onOpenSources ? (
         <button
           type="button"
-          onClick={() => onOpenSources(turnIdForActions ?? userMsgId, [...webSources])}
+          onClick={() => onOpenSources(turnIdForActions ?? userMsgId, [...sources])}
           disabled={isExiting}
           className={`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
             isSourcesOpenForThis

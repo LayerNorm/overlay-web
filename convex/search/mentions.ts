@@ -66,48 +66,62 @@ export const searchMentions = query({
       return { conversations: [], files: [], notes: [], automations: [], skills: [], mcpServers: [] }
     }
 
+    // Every result is scoped to the caller AND to the active workspace. Search
+    // indexes carry `workspaceId` as a filter field, and an explicit workspace
+    // matches only documents stamped with it — the same strict equality the
+    // conversation/file list queries use, so search can never surface a
+    // resource the corresponding list view would hide.
+    const workspaceId = args.workspaceId
+    const userId = args.userId
+
     const [conversationsRaw, filesRaw, notesRaw, automationsRaw, skills, mcpServers] = await Promise.all([
-      // Conversations: search by title, filter by user
+      // Conversations: search by title, scoped to user + workspace
       ctx.db
         .query('conversations')
-        .withSearchIndex('search_title', (search) =>
-          search.search('title', q).eq('userId', args.userId),
-        )
+        .withSearchIndex('search_title', (search) => {
+          const scoped = search.search('title', q).eq('userId', userId)
+          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
+        })
         .take(MENTION_SEARCH_LIMIT * 2),
-      // Files: search by name, filter by user
+      // Files: search by name, scoped to user + workspace
       ctx.db
         .query('files')
-        .withSearchIndex('search_name', (search) =>
-          search.search('name', q).eq('userId', args.userId),
-        )
+        .withSearchIndex('search_name', (search) => {
+          const scoped = search.search('name', q).eq('userId', userId)
+          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
+        })
         .take(MENTION_SEARCH_LIMIT * 2),
-      // Notes: search by title, filter by user
+      // Notes: search by title, scoped to user + workspace
       ctx.db
         .query('notes')
-        .withSearchIndex('search_title', (search) =>
-          search.search('title', q).eq('userId', args.userId),
-        )
+        .withSearchIndex('search_title', (search) => {
+          const scoped = search.search('title', q).eq('userId', userId)
+          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
+        })
         .take(MENTION_SEARCH_LIMIT * 2),
-      // Automations: search by name, filter by user
+      // Automations: search by name, scoped to user + workspace
       ctx.db
         .query('automations')
-        .withSearchIndex('search_name', (search) =>
-          search.search('name', q).eq('userId', args.userId),
-        )
+        .withSearchIndex('search_name', (search) => {
+          const scoped = search.search('name', q).eq('userId', userId)
+          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
+        })
         .take(MENTION_SEARCH_LIMIT * 2),
-      // Skills: search by name, filter by user
+      // Skills: search by name, scoped to user + workspace
       ctx.db
         .query('skills')
-        .withSearchIndex('search_name', (search) =>
-          search.search('name', q).eq('userId', args.userId),
-        )
+        .withSearchIndex('search_name', (search) => {
+          const scoped = search.search('name', q).eq('userId', userId)
+          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
+        })
         .take(MENTION_SEARCH_LIMIT),
-      // MCP servers: search by name, filter by user
+      // MCP servers: search by name, scoped to user + workspace
       ctx.db
         .query('mcpServers')
-        .withSearchIndex('search_name', (search) =>
-          search.search('name', q).eq('userId', args.userId),
-        )
+        .withSearchIndex('search_name', (search) => {
+          const scoped = search.search('name', q).eq('userId', userId)
+          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
+        })
         .take(MENTION_SEARCH_LIMIT),
     ])
 

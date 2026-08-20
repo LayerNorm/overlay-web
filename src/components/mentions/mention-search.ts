@@ -5,7 +5,22 @@
 
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { getActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+
+/**
+ * Every request names the workspace the UI is currently showing. Without it the
+ * server falls back to the user's stored preference, which lags a workspace
+ * switch and would surface another workspace's chats and files in search.
+ */
+function workspaceInit(init: RequestInit = {}): RequestInit {
+  const workspaceId = getActiveChatListWorkspace()
+  if (!workspaceId) return init
+  const headers = new Headers(init.headers)
+  headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
+  return { ...init, headers }
+}
 
 interface CachedData {
   cacheKey: string
@@ -48,37 +63,38 @@ export function invalidateMentionCache() {
 }
 
 async function fetchAll(): Promise<CachedData> {
-  if (cache) return cache
+  const currentKeyPrefix = getActiveChatListWorkspace() ?? 'personal'
+  if (cache && cache.cacheKey.startsWith(`${currentKeyPrefix}:`)) return cache
   if (inFlight) return inFlight
   inFlight = (async () => {
     const automationsEnabled = await areAutomationsEnabled()
     const capabilities = await getMentionCapabilities()
-    const cacheKey = mentionCapabilityCacheKey(capabilities)
+    const cacheKey = `${currentKeyPrefix}:${mentionCapabilityCacheKey(capabilities)}`
     const [filesRes, notesRes, knowledgeRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
         capabilities.files
-          ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : []))
+          ? overlayAppClient.files.getResponse({ limit: 100, summary: true }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
         capabilities.files
-          ? overlayAppClient.notes.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          ? overlayAppClient.notes.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
         capabilities.knowledge
-          ? overlayAppClient.knowledgeBases.list()
+          ? overlayAppClient.knowledgeBases.list(workspaceInit())
           : Promise.resolve({ knowledgeBases: [] }),
         capabilities.integrations
-          ? overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] }))
+          ? overlayAppClient.integrations.getResponse(undefined, workspaceInit()).then((r) => (r.ok ? r.json() : { items: [] }))
           : Promise.resolve({ items: [] }),
         capabilities.automations && automationsEnabled
-          ? overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          ? overlayAppClient.automations.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
         capabilities.skills
-          ? overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          ? overlayAppClient.skills.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
         capabilities.mcpServers
-          ? overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          ? overlayAppClient.mcpServers.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
         capabilities.chat
-          ? overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          ? overlayAppClient.conversations.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
       ])
 
@@ -198,7 +214,7 @@ async function getMentionCapabilities(): Promise<{
   mcpServers: boolean
 }> {
   if (!capabilityState) {
-    capabilityState = fetch('/api/v1/capabilities', { cache: 'no-store' })
+    capabilityState = fetch('/api/v1/capabilities', workspaceInit({ cache: 'no-store' }))
       .then(async (response) => {
         if (!response.ok) return defaultMentionCapabilities()
         const payload = await response.json()
@@ -301,9 +317,10 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
   // Try the indexed Convex search endpoint first (bounded top-K results).
   // Falls back to the scan-and-filter approach if the endpoint is unavailable.
   try {
-    const response = await fetch(`/api/v1/mention-search?q=${encodeURIComponent(q)}`, {
-      credentials: 'same-origin',
-    })
+    const response = await fetch(
+      `/api/v1/mention-search?q=${encodeURIComponent(q)}`,
+      workspaceInit({ credentials: 'same-origin' }),
+    )
     if (response.ok) {
       const result = await response.json() as {
         conversations: Array<{ _id: string; title: string }>

@@ -122,16 +122,30 @@ export interface ChatMessageMention {
   fileIds?: string[]
 }
 
-export type SourceCitationMap = Record<
-  string,
-  { kind: 'file' | 'memory'; sourceId: string }
->
+export type SourceCitation = {
+  kind: 'file' | 'memory'
+  sourceId: string
+  /** Human label for the source chip / panel row. */
+  title?: string
+  /** Short excerpt shown under the title in the sources panel. */
+  snippet?: string
+}
+
+export type SourceCitationMap = Record<string, SourceCitation>
 
 export interface WebSourceItem {
   url: string
   title: string
   snippet?: string
-  origin: 'web-search' | 'browser'
+  origin: 'web-search' | 'browser' | 'knowledge'
+  /**
+   * In-app route for knowledge sources (a file, note, or memory). Present only
+   * when `origin === 'knowledge'`; those have no external URL, so renderers
+   * link here instead of opening a new tab.
+   */
+  internalHref?: string
+  /** Which internal resource this is — drives the icon and the row subtitle. */
+  internalKind?: 'file' | 'memory'
 }
 
 export interface ChatMessageMetadata {

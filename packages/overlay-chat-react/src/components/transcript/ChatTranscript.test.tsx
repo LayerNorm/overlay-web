@@ -214,7 +214,7 @@ test('exchange actions keep branch and sources immediately after reply', () => {
       onBranch={() => undefined}
       turnIdForActions="turn-1"
       actionsLocked={false}
-      webSources={[
+      sources={[
         {
           url: 'https://example.com/source',
           title: 'Source',

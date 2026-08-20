@@ -104,6 +104,10 @@ function getBadgeTone(kind: string): string {
   return 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]'
 }
 
+function memoryDomId(memoryId: string): string {
+  return `memory-${memoryId}`
+}
+
 interface MemoriesHeaderState {
   count: number
   actions: ReactNode
@@ -118,6 +122,9 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   void _userId
   const { activeWorkspaceId } = useWorkspace()
   const [memories, setMemories] = useState<Memory[]>([])
+  /** Set when a chat source citation deep-links here via `?memory=<id>`. */
+  const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(null)
+  const jumpedMemoryIdRef = useRef<string | null>(null)
   const [members, setMembers] = useState<Array<{ name: string; principalId: string }>>([])
   const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const loadRequestIdRef = useRef(0)
@@ -185,6 +192,25 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     })
     return () => { cancelled = true }
   }, [activeWorkspaceId, loadMemories])
+
+  // Deep link from a chat source chip: scroll the cited memory into view and
+  // ring it, mirroring the message permalink behaviour in chats.
+  useEffect(() => {
+    const target = typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('memory')?.trim() || null
+    if (!target || jumpedMemoryIdRef.current === target) return
+    if (!memories.some((memory) => memory.memoryId === target)) return
+    jumpedMemoryIdRef.current = target
+    setHighlightedMemoryId(target)
+    document.getElementById(memoryDomId(target))?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [memories])
+
+  useEffect(() => {
+    if (!highlightedMemoryId) return
+    const timer = window.setTimeout(() => setHighlightedMemoryId(null), 2_600)
+    return () => window.clearTimeout(timer)
+  }, [highlightedMemoryId])
 
   async function handleAdd() {
     const text = addText.trim()
@@ -461,13 +487,19 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                 <div className="space-y-2">
                   {groups[label].map((memory) => {
                     const isSelected = selectedIds.has(memory.memoryId)
+                    const isHighlighted = highlightedMemoryId === memory.memoryId
                     return (
                       <div
                         key={memory.memoryId}
-                        className={`group rounded-xl border px-3 py-3 transition-colors ${
+                        id={memoryDomId(memory.memoryId)}
+                        className={`group scroll-mt-6 rounded-xl border px-3 py-3 transition-colors ${
                           isSelected
                             ? 'border-[var(--border)] bg-[var(--surface-subtle)]'
                             : 'border-[var(--border)] bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)]'
+                        } ${
+                          isHighlighted
+                            ? 'ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
+                            : ''
                         }`}
                       >
                         <div className="flex items-start gap-3">

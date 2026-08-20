@@ -1,5 +1,6 @@
 import React, { useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { Brain, FileText } from 'lucide-react'
 import type { WebSourceItem } from '../lib/web-sources'
 import { webSourceDisplayKey } from '../lib/web-sources'
 
@@ -136,24 +137,33 @@ export function WebSourceTooltip({
             </div>
             <ul className="flex flex-col gap-0.5">
               {sources.map((source, i) => {
-                const host = hostOf(source.url)
-                const shortHost = webSourceDisplayKey(source.url)
-                const fav = faviconUrl(source.url)
+                const internal = source.origin === 'knowledge'
+                const host = internal ? '' : hostOf(source.url)
+                const shortHost = internal
+                  ? (source.internalKind === 'memory' ? 'Memory' : 'File')
+                  : webSourceDisplayKey(source.url)
+                const fav = internal ? '' : faviconUrl(source.url)
                 const isTitleJustHost =
-                  !source.title?.trim() ||
-                  source.title.trim().toLowerCase() === host.toLowerCase() ||
-                  source.title.trim().toLowerCase() === shortHost.toLowerCase()
-                const titleText = isTitleJustHost ? host : source.title.trim()
+                  !internal &&
+                  (!source.title?.trim() ||
+                    source.title.trim().toLowerCase() === host.toLowerCase() ||
+                    source.title.trim().toLowerCase() === shortHost.toLowerCase())
+                const titleText = isTitleJustHost ? host : source.title.trim() || shortHost
                 return (
                   <li key={`${source.url}-${i}`}>
                     <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={internal ? (source.internalHref ?? source.url) : source.url}
+                      {...(internal ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
                       className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
                     >
                       <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-subtle)] ring-1 ring-[var(--border)]">
-                        {fav ? (
+                        {internal ? (
+                          source.internalKind === 'memory' ? (
+                            <Brain size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                          ) : (
+                            <FileText size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                          )
+                        ) : fav ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={fav} alt="" className="h-3.5 w-3.5" width={14} height={14} />
                         ) : (
@@ -166,7 +176,7 @@ export function WebSourceTooltip({
                         {titleText}
                       </span>
                       <span className="shrink-0 truncate text-[11px] text-[var(--muted)]" style={{ maxWidth: '40%' }}>
-                        {shortHost}
+                        {internal ? (source.internalKind === 'memory' ? 'Memories' : 'Files') : shortHost}
                       </span>
                     </a>
                   </li>

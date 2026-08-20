@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
@@ -104,7 +105,7 @@ interface GlobalSearchDialogProps {
   onClose: () => void
   initialCategory?: MentionType | null
   onNewChat: () => void
-  /** Required to list workspace agents; projects are user-scoped. */
+  /** Scopes agent and project results to the workspace the user is viewing. */
   workspaceId?: string | null
 }
 
@@ -172,7 +173,12 @@ export function GlobalSearchDialog({
         workspaceId
           ? overlayAppClient.agents.list(workspaceId)
           : Promise.resolve({ agents: [] as WorkspaceAgentDirectoryItem[] }),
-        overlayAppClient.projects.getResponse({ limit: 100 }).then((res) => (res.ok ? res.json() : [])),
+        overlayAppClient.projects
+          .getResponse(
+            { limit: 100 },
+            workspaceId ? { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } } : undefined,
+          )
+          .then((res) => (res.ok ? res.json() : [])),
       ])
       if (cancelled) return
 

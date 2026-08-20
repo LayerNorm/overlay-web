@@ -54,6 +54,27 @@ export async function buildAutoRetrievalBundle(args: {
   }
 }
 
+const CITATION_SNIPPET_CHARS = 160
+const MEMORY_TITLE_CHARS = 80
+
+function collapse(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text
+}
+
+/** Unnamed memories use their content as the label. */
+function memoryCitationTitle(text: string): string {
+  const collapsed = collapse(text)
+  return collapsed ? truncate(collapsed, MEMORY_TITLE_CHARS) : 'Memory'
+}
+
+function citationSnippet(text: string): string {
+  return truncate(collapse(text), CITATION_SNIPPET_CHARS)
+}
+
 /** Pure formatting seam used by backend characterization and UI citation tests. */
 export function formatAutoRetrievalBundle(
   chunks: HybridSearchChunk[],
@@ -82,7 +103,16 @@ export function formatAutoRetrievalBundle(
     const citationNumber = Object.keys(citations).length + 1
     const block = `[${citationNumber}] (${kind}) ${title}\n${chunk.text}`
     if (used + block.length > BLOCK_CHAR_BUDGET) break
-    citations[String(citationNumber)] = { kind: chunk.sourceKind, sourceId: chunk.sourceId }
+    // Title and excerpt travel with the citation so the source chip and the
+    // sources panel can label it, the same way a web source carries its title.
+    citations[String(citationNumber)] = {
+      kind: chunk.sourceKind,
+      sourceId: chunk.sourceId,
+      // Memories are usually stored without a name of their own; fall back to
+      // their content so the source chip says something recognizable.
+      title: chunk.sourceKind === 'memory' && title === 'Memory' ? memoryCitationTitle(chunk.text) : title,
+      snippet: citationSnippet(chunk.text),
+    }
     lines.push(block, '')
     used += block.length
   }

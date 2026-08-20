@@ -7,7 +7,15 @@ export type WebSourceItem = {
   url: string
   title: string
   snippet?: string
-  origin: 'web-search' | 'browser'
+  origin: 'web-search' | 'browser' | 'knowledge'
+  /**
+   * In-app route for knowledge sources (a file, note, or memory). Present only
+   * when `origin === 'knowledge'`; those have no external URL, so renderers
+   * link here instead of opening a new tab.
+   */
+  internalHref?: string
+  /** Which internal resource this is — drives the icon and the row subtitle. */
+  internalKind?: 'file' | 'memory'
 }
 
 /** Hash href for markdown (survives rehype-sanitize; click opens real URL in React). */

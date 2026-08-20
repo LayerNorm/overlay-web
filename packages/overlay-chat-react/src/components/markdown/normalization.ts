@@ -1,6 +1,7 @@
 import { stripThinkingPlaceholderMarkdown } from '../../lib/agent-assistant-text'
 import { mergeGfmTableContinuationLines } from '../../lib/markdown-table-fix'
 import { normalizeAssistantMathMarkdown } from '../../lib/math-markdown-normalize'
+import { linkifyInlineKnowledgeCitations } from '../../lib/knowledge-sources'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import { linkifyInlineWebCitations,type WebSourceItem } from '../../lib/web-sources'
 
@@ -71,29 +72,6 @@ function stripTrailingSourcesBlock(text: string): string {
   return kept.join('\n')
 }
 
-/** Turn `[n]` on **Sources:** lines into markdown links to Knowledge (when we have retrieval metadata). */
-function linkifySourceCitations(text: string, citations: SourceCitationMap, appBaseUrl?: string | null): string {
-  if (!citations || Object.keys(citations).length === 0) return text
-  const lines = text.split('\n')
-  return lines
-    .map((line) => {
-      const trimmed = line.trimStart()
-      if (!/^(\*\*)?Sources:(\*\*)?/i.test(trimmed)) return line
-      return line.replace(/\[\s*(\d+)\s*\](?!\()/g, (_m, d) => {
-        const key = String(Number(d))
-        const src = citations[key]
-        if (!src) return `[${d}]`
-        const base = (appBaseUrl ?? '').replace(/\/$/, '')
-        const href =
-          src.kind === 'memory'
-            ? `${base}/app/knowledge?memory=${encodeURIComponent(src.sourceId)}`
-            : `${base}/app/knowledge?file=${encodeURIComponent(src.sourceId)}`
-        return `[${d}](${href})`
-      })
-    })
-    .join('\n')
-}
-
 export function normalizeGeneratedMarkdown(
   text: string,
   options?: {
@@ -112,10 +90,10 @@ export function normalizeGeneratedMarkdown(
   const hasKnowledgeCitations =
     !!(options?.sourceCitations && Object.keys(options.sourceCitations).length > 0)
   const hasWebSources = !!(options?.webSources && options.webSources.length > 0)
-  // Strip the redundant trailing "Sources:" prose block — we surface web sources via the sidebar
-  // button + inline chips. Keep the block when we only have knowledge citations (those still
-  // rely on the numbered list for Knowledge linkify).
-  if (hasWebSources && !hasKnowledgeCitations) {
+  // Strip the redundant trailing "Sources:" prose block. Web and knowledge
+  // sources are both surfaced as inline chips plus the Sources button/panel, so
+  // the plaintext list of bare numbers is never the right presentation.
+  if (hasWebSources || hasKnowledgeCitations) {
     t = stripTrailingSourcesBlock(t)
   }
   if (
@@ -123,12 +101,18 @@ export function normalizeGeneratedMarkdown(
     options?.webSources &&
     options.webSources.length > 0
   ) {
+    // The trailing Sources block is normally stripped above; the guard still
+    // matters when a model writes one mid-message, where knowledge numbers must
+    // not be mistaken for web citations.
     t = linkifyInlineWebCitations(t, options.webSources, {
       skipKnowledgeSourceLines: hasKnowledgeCitations,
     })
   }
-  if (options?.linkifyCitations && hasKnowledgeCitations) {
-    t = linkifySourceCitations(t, options.sourceCitations!, options.appBaseUrl)
+  // `[n]` is one numbering space per reply. When a turn has web sources those own
+  // the inline markers (the retrieval prompt keeps knowledge numbers on the
+  // Sources line, which is gone by now); otherwise they resolve to knowledge.
+  if (options?.linkifyCitations && hasKnowledgeCitations && !hasWebSources) {
+    t = linkifyInlineKnowledgeCitations(t, options.sourceCitations!)
   }
   return t
 }

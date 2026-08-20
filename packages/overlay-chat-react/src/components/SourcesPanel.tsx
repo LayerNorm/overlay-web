@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { PanelRightOpen, Maximize2 } from 'lucide-react'
+import { Brain, FileText, PanelRightOpen, Maximize2 } from 'lucide-react'
 import {
   faviconUrl,
   prettyUrlPath,
@@ -71,33 +71,43 @@ export function SourcesPanel({
   const sourceList = (
     <ul className="flex flex-col gap-1">
       {sources.flatMap((source, idx) => {
-        const safeUrl = safeHttpUrl(source.url)
+        // Knowledge sources are in-app routes, not URLs: they skip the http
+        // guard, open in place, and carry a resource icon instead of a favicon.
+        const internal = source.origin === 'knowledge'
+        const internalHref = source.internalHref ?? source.url
+        const safeUrl = internal ? internalHref : safeHttpUrl(source.url)
         if (!safeUrl) return []
-        const site = webSourceDisplayKey(source.url)
-        const fav = faviconUrl(source.url)
+        const site = internal
+          ? (source.internalKind === 'memory' ? 'Memory' : 'File')
+          : webSourceDisplayKey(source.url)
+        const fav = internal ? '' : faviconUrl(source.url)
         const titleCandidate = source.title?.trim() || ''
         let host = ''
-        try {
-          host = new URL(source.url).hostname.replace(/^www\./i, '')
-        } catch {
-          host = site
+        if (!internal) {
+          try {
+            host = new URL(source.url).hostname.replace(/^www\./i, '')
+          } catch {
+            host = site
+          }
         }
         const isTitleJustHost =
-          !titleCandidate ||
-          titleCandidate.toLowerCase() === host.toLowerCase() ||
-          titleCandidate.toLowerCase() === site.toLowerCase()
-        const displayTitle = isTitleJustHost ? host : titleCandidate
-        const subtext =
-          source.snippet?.trim() ||
-          (isTitleJustHost ? prettyUrlPath(source.url) : host)
+          !internal &&
+          (!titleCandidate ||
+            titleCandidate.toLowerCase() === host.toLowerCase() ||
+            titleCandidate.toLowerCase() === site.toLowerCase())
+        const displayTitle = internal
+          ? titleCandidate || site
+          : isTitleJustHost ? host : titleCandidate
+        const subtext = internal
+          ? source.snippet?.trim() || (source.internalKind === 'memory' ? 'Saved memory' : 'Indexed file')
+          : source.snippet?.trim() || (isTitleJustHost ? prettyUrlPath(source.url) : host)
         return (
           <li key={`${source.url}-${idx}`}>
             <a
               href={safeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              {...(internal ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
               onClick={
-                onOpenSource
+                onOpenSource && !internal
                   ? (event) => {
                       event.preventDefault()
                       onOpenSource(safeUrl)
@@ -108,7 +118,13 @@ export function SourcesPanel({
             >
               <div className="flex min-w-0 items-start gap-2.5">
                 <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-elevated)] ring-1 ring-[var(--border)]">
-                  {fav ? (
+                  {internal ? (
+                    source.internalKind === 'memory' ? (
+                      <Brain size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                    ) : (
+                      <FileText size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                    )
+                  ) : fav ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={fav} alt="" className="h-3.5 w-3.5" width={14} height={14} />
                   ) : (
