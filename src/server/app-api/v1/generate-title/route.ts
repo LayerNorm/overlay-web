@@ -10,7 +10,7 @@ import {
   canUsePaidBudgetFeatures,
 } from '@/server/billing/billing-runtime'
 
-const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
+const TITLE_MODEL = 'deepseek/deepseek-v4-flash-0731'
 const FALLBACK_TITLE = 'New Chat'
 
 const titleSchema = z.object({

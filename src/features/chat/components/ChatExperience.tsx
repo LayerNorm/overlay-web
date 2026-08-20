@@ -415,6 +415,14 @@ export default function ChatExperience({
   ])
   const applyDefaultChatModelsToView = useCallback(
     (ui: Partial<ConversationUiState>): ConversationUiState => {
+      if (hasStoredTextModelSelection) {
+        return createConversationUiState({
+          ...ui,
+          selectedActModel,
+          selectedModels,
+          askModelSelectionMode: selectedModels.length > 1 ? 'multiple' : 'single',
+        })
+      }
       const { askModelIds, actModelId } = resolveAppDefaultChatModels()
       return createConversationUiState({
         ...ui,
@@ -423,7 +431,7 @@ export default function ChatExperience({
         askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
       })
     },
-    [resolveAppDefaultChatModels],
+    [hasStoredTextModelSelection, resolveAppDefaultChatModels, selectedActModel, selectedModels],
   )
   // Apply account default models on new-chat surfaces when settings load or change,
   // but only if the user has no stored per-session text model preference. Stored
