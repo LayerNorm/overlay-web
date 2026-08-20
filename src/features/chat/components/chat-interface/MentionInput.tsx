@@ -881,6 +881,60 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       [onChange, onMentionsChange]
     )
 
+/** Check if the caret is on an empty line within a block element (pre, blockquote). */
+function isCaretOnEmptyLine(sel: Selection): boolean {
+  if (sel.rangeCount === 0 || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  const node = range.startContainer
+  const offset = range.startOffset
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent || ''
+    const before = text.slice(0, offset).replace(/\u200B/g, '')
+    const after = text.slice(offset).replace(/\u200B/g, '')
+    // Check if everything before the caret on this line is empty
+    const lineStart = before.lastIndexOf('\n') + 1
+    if (before.slice(lineStart).trim().length > 0) return false
+    // Check if everything after the caret on this line is empty
+    if (after.split('\n')[0].trim().length > 0) return false
+    return true
+  }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    // Caret between elements — check if surrounding siblings are empty
+    const el = node as HTMLElement
+    const childBefore = el.childNodes[offset - 1]
+    const childAfter = el.childNodes[offset]
+    const beforeText = childBefore ? (childBefore.textContent || '').replace(/\u200B/g, '') : ''
+    const afterText = childAfter ? (childAfter.textContent || '').replace(/\u200B/g, '') : ''
+    // If the previous sibling is a <br>, we're on a new line
+    if (childBefore && childBefore.nodeName === 'BR') return true
+    return beforeText.trim().length === 0 && afterText.trim().length === 0
+  }
+  return false
+}
+
+function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivElement) {
+  const p = document.createElement('p')
+  p.appendChild(document.createTextNode('\u200B'))
+  if (block.nextElementSibling) {
+    block.parentElement!.insertBefore(p, block.nextElementSibling)
+  } else {
+    block.parentElement!.appendChild(p)
+  }
+  // Remove trailing <br> from the block if present
+  const lastChild = block.lastChild
+  if (lastChild && lastChild.nodeName === 'BR') lastChild.remove()
+  // If block is now empty, remove it
+  if ((block.textContent || '').replace(/\u200B/g, '').trim() === '') {
+    block.remove()
+  }
+  const newRange = document.createRange()
+  newRange.setStart(p.firstChild!, 0)
+  newRange.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(newRange)
+  dispatchEditorInput(el)
+}
+
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLDivElement>) => {
         // If popup is open, don't propagate Enter/Arrow keys
@@ -953,56 +1007,28 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
                   return
                 }
               }
-              // Blockquote: create a new line within the blockquote, or exit if empty
+              // Blockquote: create a new line within the blockquote, or exit if
+              // the caret is on an empty line
               else if (tag === 'BLOCKQUOTE') {
-                const bqText = (block.textContent || '').replace(/\u200B/g, '').trim()
-                if (bqText === '') {
-                  // Empty blockquote: exit — insert a paragraph after it
+                if (isCaretOnEmptyLine(sel)) {
                   e.preventDefault()
-                  const p = document.createElement('p')
-                  p.appendChild(document.createTextNode('\u200B'))
-                  if (block.nextElementSibling) {
-                    block.parentElement!.insertBefore(p, block.nextElementSibling)
-                  } else {
-                    block.parentElement!.appendChild(p)
-                  }
-                  block.remove()
-                  const newRange = document.createRange()
-                  newRange.setStart(p.firstChild!, 0)
-                  newRange.collapse(true)
-                  sel.removeAllRanges()
-                  sel.addRange(newRange)
-                  dispatchEditorInput(el)
+                  exitBlockToParagraph(block, sel, el)
                   return
                 }
-                // Non-empty: insert a <br> inside the blockquote for a new line
+                // Non-empty line: insert a line break inside the blockquote
                 e.preventDefault()
                 document.execCommand('insertLineBreak')
                 return
               }
-              // Code block: insert a newline within the <pre>, or exit if empty
+              // Code block: insert a newline within the <pre>, or exit if
+              // the caret is on an empty line
               else if (tag === 'PRE') {
-                const preText = (block.textContent || '').replace(/\u200B/g, '').trim()
-                if (preText === '') {
-                  // Empty pre: exit — insert a paragraph after it
+                if (isCaretOnEmptyLine(sel)) {
                   e.preventDefault()
-                  const p = document.createElement('p')
-                  p.appendChild(document.createTextNode('\u200B'))
-                  if (block.nextElementSibling) {
-                    block.parentElement!.insertBefore(p, block.nextElementSibling)
-                  } else {
-                    block.parentElement!.appendChild(p)
-                  }
-                  block.remove()
-                  const newRange = document.createRange()
-                  newRange.setStart(p.firstChild!, 0)
-                  newRange.collapse(true)
-                  sel.removeAllRanges()
-                  sel.addRange(newRange)
-                  dispatchEditorInput(el)
+                  exitBlockToParagraph(block, sel, el)
                   return
                 }
-                // Non-empty: insert a newline inside the <pre>
+                // Non-empty line: insert a newline inside the <pre>
                 e.preventDefault()
                 document.execCommand('insertLineBreak')
                 return
@@ -1044,43 +1070,15 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
                   return
                 }
               } else if (tag === 'BLOCKQUOTE') {
-                const bqText = (block.textContent || '').replace(/\u200B/g, '').trim()
-                if (bqText === '') {
+                if (isCaretOnEmptyLine(sel)) {
                   e.preventDefault()
-                  const p = document.createElement('p')
-                  p.appendChild(document.createTextNode('\u200B'))
-                  if (block.nextElementSibling) {
-                    block.parentElement!.insertBefore(p, block.nextElementSibling)
-                  } else {
-                    block.parentElement!.appendChild(p)
-                  }
-                  block.remove()
-                  const newRange = document.createRange()
-                  newRange.setStart(p.firstChild!, 0)
-                  newRange.collapse(true)
-                  sel.removeAllRanges()
-                  sel.addRange(newRange)
-                  dispatchEditorInput(el)
+                  exitBlockToParagraph(block, sel, el)
                   return
                 }
               } else if (tag === 'PRE') {
-                const preText = (block.textContent || '').replace(/\u200B/g, '').trim()
-                if (preText === '') {
+                if (isCaretOnEmptyLine(sel)) {
                   e.preventDefault()
-                  const p = document.createElement('p')
-                  p.appendChild(document.createTextNode('\u200B'))
-                  if (block.nextElementSibling) {
-                    block.parentElement!.insertBefore(p, block.nextElementSibling)
-                  } else {
-                    block.parentElement!.appendChild(p)
-                  }
-                  block.remove()
-                  const newRange = document.createRange()
-                  newRange.setStart(p.firstChild!, 0)
-                  newRange.collapse(true)
-                  sel.removeAllRanges()
-                  sel.addRange(newRange)
-                  dispatchEditorInput(el)
+                  exitBlockToParagraph(block, sel, el)
                   return
                 }
               }
