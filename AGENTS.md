@@ -34,7 +34,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | Doc | When to update |
 | --- | --- |
 | `docs/develop/cache-components-design-decisions.md` | Any change to `instant = false` opt-outs, `<Suspense>` boundaries in routes, `cacheComponents`/`partialPrefetching` config, or route-level PPR status. Add the route to the converted list or update its opt-out reason. |
-| `docs/develop/browser-testing-with-playwright-mcp.md` | Any change to the Playwright MCP setup, tool usage patterns, or QA workflow. Add new workflow patterns or gotchas discovered during testing. |
+| `docs/develop/browser-testing-with-agent-browser.md` | Any change to the agent-browser setup, tool usage patterns, or QA workflow. Add new workflow patterns or gotchas discovered during testing. |
 | `docs/develop/worktree-staging-qa.mdx` | Any change to the worktree branching model, staging deploy workflow, or Convex deploy lanes. |
 | `docs/develop/convex-workflow.mdx` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/develop/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
