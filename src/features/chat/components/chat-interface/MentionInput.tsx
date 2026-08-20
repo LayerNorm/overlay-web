@@ -935,9 +935,22 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
                     return
                   }
                 } else {
-                  // Non-empty list item: let browser create a new <li> naturally
-                  // (execCommand insertUnorderedList/insertOrderedList already active)
-                  // Just let the default behavior happen
+                  // Non-empty list item: create a new <li> after the current one
+                  e.preventDefault()
+                  const newLi = document.createElement('li')
+                  newLi.appendChild(document.createElement('br'))
+                  if (li.nextElementSibling) {
+                    li.parentElement!.insertBefore(newLi, li.nextElementSibling)
+                  } else {
+                    li.parentElement!.appendChild(newLi)
+                  }
+                  const newRange = document.createRange()
+                  newRange.setStart(newLi, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  dispatchEditorInput(el)
+                  return
                 }
               }
               // Blockquote: create a new line within the blockquote, or exit if empty
