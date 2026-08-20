@@ -127,10 +127,15 @@ The safe procedure is:
    ~/Library/Application Support/Google/Chrome-Testing
    ```
 3. **Copy only the profile directory** (e.g., `Profile 6`) into the new
-   user-data-dir **as `Default`**:
+   user-data-dir **as `Default`**, skipping large cache directories:
    ```bash
-   cp -R ~/Library/Application\ Support/Google/Chrome/Profile\ 6 \
-     ~/Library/Application\ Support/Google/Chrome-Testing/Default
+   rsync -a \
+     --exclude='GPUCache' --exclude='Cache' --exclude='Code Cache' \
+     --exclude='Service Worker/CacheStorage' --exclude='Service Worker/ScriptCache' \
+     --exclude='File System' --exclude='blob_storage' --exclude='IndexedDB' \
+     --exclude='.com.google.Chrome.*' \
+     ~/Library/Application\ Support/Google/Chrome/Profile\ 6/ \
+     ~/Library/Application\ Support/Google/Chrome-Testing/Default/
    ```
 4. **Do NOT copy the main Chrome's `Local State` file.** Let the new Chrome
    instance generate its own `Local State` on first launch. Copying the original
@@ -138,10 +143,28 @@ The safe procedure is:
    extensions.
 5. **Do NOT copy `SingletonLock`, `SingletonSocket`, or `SingletonCookie`** files
    if they exist — they point to the original Chrome process.
-6. **Launch the testing Chrome first**, then reopen the user's main Chrome.
+6. **Have the user reopen their main Chrome first.** Confirm all profiles and
+   extensions are intact.
+7. **Then launch the testing Chrome instance(s)** via the launch scripts. Because
+   they use a different `--user-data-dir`, they start as separate processes and
+   do not merge into the user's Chrome.
 
-The launch script at `~/.config/devin/launch-chrome-testing.sh` handles the launch
-(assuming the profile was cloned correctly per steps 1-3).
+The launch script at `~/.config/devin/launch-chrome-testing.sh` handles step 7
+(assuming the profile was cloned correctly per steps 1-5).
+
+### Why launch order matters
+
+Chrome uses a singleton lock per `--user-data-dir`. If the user's main Chrome is
+not running when a testing Chrome is launched, and the user later opens Chrome,
+Chrome may merge into the testing Chrome's process instead of starting a new one
+with the main profile directory. The user would then see the testing profile
+(which only has one "Default" profile) instead of their real profiles.
+
+The correct order is:
+1. User's main Chrome is running (with all profiles confirmed).
+2. Launch testing Chrome instances — they start as separate processes because
+   they use different `--user-data-dir` paths.
+3. Both the main Chrome and testing Chrome(s) run independently in parallel.
 
 ### What gets copied
 
