@@ -420,7 +420,22 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   }
 }
 
+function partsHaveVisibleAssistantContent(parts: Array<Record<string, unknown>> | undefined): boolean {
+  if (!parts?.length) return false
+  return parts.some((part) => {
+    const type = typeof part.type === 'string' ? part.type : ''
+    if (type === 'text' || type === 'output-text' || type === 'reasoning') {
+      return typeof part.text === 'string' && part.text.trim().length > 0
+    }
+    if (type === 'tool-invocation' || type === 'file' || type === 'data') return true
+    return type.startsWith('tool-')
+  })
+}
+
 function serializeConversationMessage(message: ConversationMessageRow) {
+  const visibleParts = partsHaveVisibleAssistantContent(message.parts)
+    ? message.parts!.map(serializeConversationMessagePart)
+    : [{ type: 'text' as const, text: message.content }]
   return {
     id: message._id,
     turnId: message.turnId,
@@ -429,9 +444,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
     role: message.role,
-    parts: message.parts?.length
-      ? message.parts.map(serializeConversationMessagePart)
-      : [{ type: 'text' as const, text: message.content }],
+    parts: visibleParts,
     model: message.modelId,
     ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
     ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
@@ -472,8 +485,9 @@ function serializeConversationMessagePart(part: Record<string, unknown>) {
       toolInvocation: part.toolInvocation,
     }
   }
+  const type = typeof part.type === 'string' ? part.type : 'text'
   return {
-    type: typeof part.type === 'string' ? part.type : 'text',
+    type: type === 'output-text' ? 'text' : type,
     text: typeof part.text === 'string' ? part.text : undefined,
     url: typeof part.url === 'string' ? part.url : undefined,
     mediaType: typeof part.mediaType === 'string' ? part.mediaType : undefined,

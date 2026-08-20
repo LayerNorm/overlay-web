@@ -838,13 +838,14 @@ export const startAgentRun = mutation({
       throw new Error('Unauthorized')
     }
 
-    const existing = await ctx.db
+    const variantIndex = args.variantIndex ?? 0
+    const runsForTurn = await ctx.db
       .query('conversationAgentRuns')
       .withIndex('by_turn_variant', (q) => q
         .eq('conversationId', args.conversationId)
-        .eq('turnId', args.turnId)
-        .eq('variantIndex', args.variantIndex))
-      .unique()
+        .eq('turnId', args.turnId))
+      .collect()
+    const existing = runsForTurn.find((run) => (run.variantIndex ?? 0) === variantIndex)
     if (existing) return existing
 
     const now = Date.now()
@@ -853,12 +854,12 @@ export const startAgentRun = mutation({
       userId: args.userId,
       turnId: args.turnId,
       role: 'assistant',
-      mode: 'act',
+      mode: args.mode === 'work' ? 'act' : 'ask',
       content: '',
       contentType: 'text',
       parts: [{ type: 'text', text: '' }],
       modelId: args.modelId,
-      variantIndex: args.variantIndex,
+      variantIndex,
       status: 'generating',
       updatedAt: now,
       createdAt: now,
@@ -872,7 +873,7 @@ export const startAgentRun = mutation({
       mode: args.mode,
       runner: args.runner,
       status: 'queued',
-      variantIndex: args.variantIndex,
+      variantIndex,
       workflowRunId: args.workflowRunId,
       leaseExpiresAt: args.leaseExpiresAt,
       createdAt: now,
@@ -963,7 +964,7 @@ export const completeAgentRun = mutation({
     assertAgentRunTransition(run.status, 'completed')
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
-    if (message?.status === 'generating') {
+    if (message) {
       await ctx.db.patch(message._id, {
         content: args.content,
         parts: args.parts,

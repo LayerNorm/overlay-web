@@ -22,16 +22,23 @@ import {
   isGeneratedUiPart,
 } from './generated-ui'
 
-export function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
-  if (!msg.parts) return ''
-  return msg.parts.filter((part) => part.type === 'text').map((part) => part.text || '').join('')
+export function getMessageText(msg: {
+  parts?: Array<{ type: string; text?: string }>
+  content?: string
+}): string {
+  const fromParts = (msg.parts ?? [])
+    .filter((part) => part.type === 'text' || part.type === 'output-text')
+    .map((part) => part.text || '')
+    .join('')
+  if (fromParts.trim()) return fromParts
+  return typeof msg.content === 'string' ? msg.content : fromParts
 }
 
 export function messageHasVisibleAssistantActivity(msg: {
   parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }>
 }): boolean {
   return (msg.parts ?? []).some((part) => {
-    if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
+    if (part.type === 'text' || part.type === 'output-text' || part.type === 'reasoning') return Boolean(part.text?.trim())
     if (isGeneratedUiPart(part)) return true
     if (part.type === 'tool-invocation') return Boolean(part.toolInvocation)
     if (part.type === 'file') return Boolean(part.url)
@@ -176,7 +183,39 @@ export function getMessageImages(msg: {
   return getMessageImageAttachments(msg).map((attachment) => attachment.url)
 }
 
-/** Act assistant for a user turn: mirrors chat0 until streaming appends the assistant only to actChat. */
+function assistantsAfterUserAt<T extends { role: string }>(messages: T[], userIndex: number): T[] {
+  const candidates: T[] = []
+  for (let index = userIndex + 1; index < messages.length; index++) {
+    const message = messages[index]!
+    if (message.role === 'user') break
+    if (message.role === 'assistant') candidates.push(message)
+  }
+  return candidates
+}
+
+function userIndexByTurnCount(
+  messages: Array<{ id?: string; role: string }>,
+  userMsgId: string,
+): number {
+  let userCount = 0
+  let targetCount = -1
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]
+    if (message?.role !== 'user') continue
+    if (message.id === userMsgId && targetCount < 0) targetCount = userCount
+    userCount++
+  }
+  if (targetCount < 0) return -1
+  let seen = 0
+  for (let index = 0; index < messages.length; index++) {
+    if (messages[index]?.role !== 'user') continue
+    if (seen === targetCount) return index
+    seen++
+  }
+  return -1
+}
+
+/** Act assistant for a user turn: look up by id, then by user-turn count — never by raw array index. */
 export function resolveActAssistant<
   T extends { id?: string; role: string; parts?: Array<{ type: string; text?: string; toolInvocation?: unknown; url?: string }> },
 >(
@@ -184,26 +223,25 @@ export function resolveActAssistant<
   actMsgs: T[],
   userMsgId: string,
 ): T | null {
-  const i = chat0Linear.findIndex((m) => m.role === 'user' && m.id === userMsgId)
-  if (i >= 0) {
-    const candidates: T[] = []
-    for (let j = i + 1; j < actMsgs.length; j++) {
-      const m = actMsgs[j]!
-      if (m.role === 'user') break
-      if (m.role === 'assistant') candidates.push(m)
-    }
-    const selected = chooseAssistantCandidate(candidates)
+  const byId = actMsgs.findIndex((message) => message.id === userMsgId && message.role === 'user')
+  if (byId >= 0) {
+    const selected = chooseAssistantCandidate(assistantsAfterUserAt(actMsgs, byId))
     if (selected) return selected
   }
-  const ui = actMsgs.findIndex((m) => m.id === userMsgId && m.role === 'user')
-  if (ui >= 0) {
-    const candidates: T[] = []
-    for (let j = ui + 1; j < actMsgs.length; j++) {
-      const m = actMsgs[j]!
-      if (m.role === 'user') break
-      if (m.role === 'assistant') candidates.push(m)
+  const byTurnCount = userIndexByTurnCount(actMsgs, userMsgId)
+  if (byTurnCount >= 0) {
+    const selected = chooseAssistantCandidate(assistantsAfterUserAt(actMsgs, byTurnCount))
+    if (selected) return selected
+  }
+  const sourceUserIndex = userIndexByTurnCount(chat0Linear, userMsgId)
+  if (sourceUserIndex < 0) return null
+  let userCount = 0
+  for (let index = 0; index < actMsgs.length; index++) {
+    if (actMsgs[index]?.role !== 'user') continue
+    if (userCount === sourceUserIndex) {
+      return chooseAssistantCandidate(assistantsAfterUserAt(actMsgs, index))
     }
-    return chooseAssistantCandidate(candidates)
+    userCount++
   }
   return null
 }

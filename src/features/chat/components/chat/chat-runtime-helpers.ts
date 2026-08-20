@@ -4,7 +4,9 @@ import {
   cloneOrphanModelThreadsMap,
   cloneUiMessageThread,
   createConversationUiState,
+  getMessageText,
   latestTextExchangeIndex,
+  messageHasVisibleAssistantActivity,
   sameModelOrder,
   sameModelSet,
   selectedModelForExchange,
@@ -45,6 +47,59 @@ export function readableModelId(modelId: string): string {
     .join(' ')
 }
 
+export function assistantSnapshotKey(
+  messages: Array<{ id?: string; role?: string; status?: string; parts?: unknown[] }> | undefined,
+  exchangeIndex: number,
+): string {
+  if (!messages?.length || exchangeIndex < 0) return 'none'
+  let userCount = 0
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]
+    if (message?.role !== 'user') continue
+    if (userCount === exchangeIndex) {
+      const snapshots: string[] = []
+      for (let nextIndex = index + 1; nextIndex < messages.length; nextIndex++) {
+        const next = messages[nextIndex]
+        if (next?.role === 'user') break
+        if (next?.role !== 'assistant') continue
+        const partCount = Array.isArray(next.parts) ? next.parts.length : 0
+        const textLen = getMessageText(next as UIMessage).length
+        snapshots.push(`${next.id ?? ''}:${next.status ?? ''}:${partCount}:${textLen}`)
+      }
+      return snapshots.length > 0 ? snapshots.join('|') : 'none'
+    }
+    userCount++
+  }
+  return 'none'
+}
+
+function assistantsAfterUser(messages: UIMessage[], userIndex: number): UIMessage[] {
+  const candidates: UIMessage[] = []
+  for (let index = userIndex + 1; index < messages.length; index++) {
+    const message = messages[index]
+    if (message?.role === 'user') break
+    if (message?.role === 'assistant') candidates.push(message)
+  }
+  return candidates
+}
+
+function findAssistantAtExchange(messages: UIMessage[] | undefined, exchangeIndex: number): UIMessage | null {
+  if (!messages?.length || exchangeIndex < 0) return null
+  let userCount = 0
+  for (let index = 0; index < messages.length; index++) {
+    if (messages[index]?.role !== 'user') continue
+    if (userCount === exchangeIndex) {
+      return chooseAssistantCandidate(assistantsAfterUser(messages, index))
+    }
+    userCount++
+  }
+  return null
+}
+
+function messageModelId(message: UIMessage | null): string | undefined {
+  return (message as { model?: string } | null)?.model
+}
+
 export function getResponseForExchangeForModel({
   modelId,
   exchangeIndex,
@@ -69,25 +124,30 @@ export function getResponseForExchangeForModel({
     liveIdx >= 0 &&
     (sameModelOrder(order, activeRuntime.ui.selectedModels) ||
       (isActiveLoading && !!slotOrder?.length))
-  const msgs =
-    canUseLiveSlot
-      ? activeAskChats[liveIdx]?.messages ?? []
-      : activeRuntime.ui.orphanModelThreads.get(modelId) ?? []
-  let userCount = 0
-  for (let i = 0; i < msgs.length; i++) {
-    if (msgs[i]?.role === 'user') {
-      if (userCount === exchangeIndex) {
-        const candidates: UIMessage[] = []
-        for (let j = i + 1; j < msgs.length; j++) {
-          if (msgs[j]?.role === 'user') break
-          if (msgs[j]?.role === 'assistant') candidates.push(msgs[j]!)
-        }
-        return chooseAssistantCandidate(candidates)
-      }
-      userCount++
+  const preferredLists: UIMessage[][] = []
+  if (canUseLiveSlot) preferredLists.push(activeAskChats[liveIdx]?.messages ?? [])
+  const orphanThread = activeRuntime.ui.orphanModelThreads.get(modelId)
+  if (orphanThread?.length) preferredLists.push(orphanThread as UIMessage[])
+  preferredLists.push(activeRuntime.actChat.messages as UIMessage[])
+  for (const chat of activeAskChats) {
+    if (chat.messages?.length) preferredLists.push(chat.messages)
+  }
+
+  let fallback: UIMessage | null = null
+  for (const messages of preferredLists) {
+    const candidate = findAssistantAtExchange(messages, exchangeIndex)
+    if (!candidate) continue
+    const candidateModel = messageModelId(candidate)
+    if (candidateModel && candidateModel !== modelId) {
+      if (!fallback && messageHasVisibleAssistantActivity(candidate)) fallback = candidate
+      continue
+    }
+    if (messageHasVisibleAssistantActivity(candidate) || !fallback) {
+      if (messageHasVisibleAssistantActivity(candidate)) return candidate
+      fallback = candidate
     }
   }
-  return null
+  return fallback
 }
 
 export function prepareAskModelThreadsForTextTurn(

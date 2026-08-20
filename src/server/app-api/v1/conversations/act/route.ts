@@ -351,6 +351,7 @@ export async function POST(
     } = resolveActMultiModelState({
       rawMultiModelSlotIndex,
       rawMultiModelTotal,
+      idempotencyKey: context.requestIdempotencyKey,
     })
     /** User message is persisted once (slot 0). Third-party (Composio) actions only on primary slot. */
 
@@ -390,6 +391,7 @@ export async function POST(
       latestUserParts,
       attachmentNames,
       skipMemoryExtraction: !memoryEnabled,
+      mode: personalChatMode === 'work' ? 'act' : 'ask',
       billingActorUserId: userId,
       billingAccountId: resolvedBillingPayer.scope === 'workspace'
         ? resolvedBillingPayer.billingAccountId
@@ -583,7 +585,7 @@ export async function POST(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
-              variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
+              variantIndex: multiModelSlotIndex,
             })
           : agentRunService.startChat({
               conversationId: cid,
@@ -592,7 +594,7 @@ export async function POST(
               turnId: tid,
               userId: conversationUserId,
               userMessageId,
-              variantIndex: multiModelTotal > 1 ? multiModelSlotIndex : undefined,
+              variantIndex: multiModelSlotIndex,
             }))
       : Promise.resolve(undefined)
 	    const [agentRun, actTooling] = await Promise.all([

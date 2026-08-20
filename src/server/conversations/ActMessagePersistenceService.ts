@@ -120,6 +120,7 @@ export class ActMessagePersistenceService {
     skipMemoryExtraction?: boolean
     turnId: string
     userId: string
+    mode?: 'ask' | 'act'
     attachmentNames?: string[]
   }): Promise<Id<'conversationMessages'> | undefined> {
     if (!args.conversationId) return undefined
@@ -127,10 +128,11 @@ export class ActMessagePersistenceService {
       // Multi-model requests start concurrently. Secondary slots reuse the
       // primary slot's user message, so briefly wait for that idempotent write
       // instead of racing it and creating duplicate user rows.
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        const messages = await this.deps.repository.getMessages({
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const messages = await this.deps.repository.getRecentMessages({
           conversationId: args.conversationId,
           userId: args.userId,
+          limit: 8,
         })
         const existing = messages.find(
           (message) => message.turnId === args.turnId && message.role === 'user',
@@ -146,7 +148,7 @@ export class ActMessagePersistenceService {
       userId: args.userId,
       turnId: args.turnId,
       role: 'user',
-      mode: 'act',
+      mode: args.mode ?? 'act',
       content: args.latestUserText || args.latestUserContent,
       contentType: 'text',
       parts: sanitizeMessagePartsForPersistence(args.latestUserParts, {
@@ -325,7 +327,7 @@ export class ActMessagePersistenceService {
           modelId: args.attemptModelId,
           routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
-          variantIndex: args.multiModelTotal > 1 ? args.multiModelSlotIndex : undefined,
+          variantIndex: args.multiModelSlotIndex,
         })
       }
       if (args.emitWebhook && assistantCompleted) {

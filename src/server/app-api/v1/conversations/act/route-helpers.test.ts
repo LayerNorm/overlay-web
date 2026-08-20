@@ -49,9 +49,16 @@ test('resolveActMultiModelState clamps slots and marks follow-up slots', () => {
     isMultiModelFollowUpSlot: true,
   })
   assert.deepEqual(resolveActMultiModelState({ rawMultiModelTotal: 1, rawMultiModelSlotIndex: 1 }), {
-    multiModelTotal: 1,
+    multiModelTotal: 2,
     multiModelSlotIndex: 1,
-    isMultiModelFollowUpSlot: false,
+    isMultiModelFollowUpSlot: true,
+  })
+  assert.deepEqual(resolveActMultiModelState({
+    idempotencyKey: 'act:turn-abc:1',
+  }), {
+    multiModelTotal: 2,
+    multiModelSlotIndex: 1,
+    isMultiModelFollowUpSlot: true,
   })
 })
 

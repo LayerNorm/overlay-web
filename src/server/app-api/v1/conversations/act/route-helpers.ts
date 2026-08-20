@@ -5,6 +5,7 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isLegacyFreeTierDefaultModelId,
 } from '@/shared/ai/gateway/model-types'
+import { parseActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
 
 export const DEFAULT_ACT_ABORT_TIMEOUT_MS = 290_000
 export const AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
@@ -162,15 +163,24 @@ export function resolveEffectiveActModelId(modelId?: string): string {
 export function resolveActMultiModelState(params: {
   rawMultiModelSlotIndex?: number
   rawMultiModelTotal?: number
+  idempotencyKey?: string | null
 }): ActMultiModelState {
-  const multiModelTotal =
-    typeof params.rawMultiModelTotal === 'number' && params.rawMultiModelTotal > 0
-      ? Math.min(4, Math.floor(params.rawMultiModelTotal))
-      : 1
-  const multiModelSlotIndex =
+  const parsedKey = params.idempotencyKey
+    ? parseActStreamIdempotencyKey(params.idempotencyKey)
+    : null
+  const slotFromBody =
     typeof params.rawMultiModelSlotIndex === 'number' && params.rawMultiModelSlotIndex >= 0
       ? Math.min(3, Math.floor(params.rawMultiModelSlotIndex))
-      : 0
+      : undefined
+  const slotFromKey = parsedKey && Number.isFinite(parsedKey.slotIndex)
+    ? Math.min(3, parsedKey.slotIndex)
+    : undefined
+  const multiModelSlotIndex = slotFromBody ?? slotFromKey ?? 0
+  const totalFromBody =
+    typeof params.rawMultiModelTotal === 'number' && params.rawMultiModelTotal > 0
+      ? Math.min(4, Math.floor(params.rawMultiModelTotal))
+      : undefined
+  const multiModelTotal = Math.min(4, Math.max(totalFromBody ?? 1, multiModelSlotIndex + 1))
 
   return {
     multiModelTotal,

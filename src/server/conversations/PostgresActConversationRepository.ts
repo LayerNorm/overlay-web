@@ -795,17 +795,15 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .for('update')
       if (!conversation || !userMessage) throw new Error('Unauthorized')
 
-      const [existing] = await tx
+      const variantIndex = args.variantIndex ?? 0
+      const existingRows = await tx
         .select()
         .from(agentRuns)
         .where(and(
           eq(agentRuns.conversationId, args.conversationId),
           eq(agentRuns.turnId, args.turnId),
-          args.variantIndex === undefined
-            ? isNull(agentRuns.variantIndex)
-            : eq(agentRuns.variantIndex, args.variantIndex),
         ))
-        .limit(1)
+      const existing = existingRows.find((row) => (row.variantIndex ?? 0) === variantIndex)
       if (existing) return mapAgentRun(existing)
 
       const now = new Date()
@@ -817,12 +815,12 @@ export class PostgresActConversationRepository implements ActConversationReposit
         userId: args.userId,
         turnId: args.turnId,
         role: 'assistant',
-        mode: 'act',
+        mode: args.mode === 'work' ? 'act' : 'ask',
         content: '',
         contentType: 'text',
         parts: [{ type: 'text', text: '' }],
         modelId: args.modelId,
-        variantIndex: args.variantIndex,
+        variantIndex,
         status: 'generating',
         authorKind: 'model',
         createdAt: now,
@@ -838,7 +836,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         mode: args.mode,
         runner: args.runner,
         status: 'queued',
-        variantIndex: args.variantIndex,
+        variantIndex,
         workflowRunId: args.workflowRunId,
         leaseExpiresAt: finiteDate(args.leaseExpiresAt),
         createdAt: now,
@@ -944,10 +942,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         tokens: args.tokens,
         status: 'completed',
         updatedAt: now,
-      }).where(and(
-        eq(conversationMessages.id, run.assistantMessageId),
-        eq(conversationMessages.status, 'generating'),
-      ))
+      }).where(eq(conversationMessages.id, run.assistantMessageId))
       const [updated] = await tx.update(agentRuns).set({
         status: 'completed',
         completedAt: now,

@@ -134,7 +134,7 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
       out.push({ kind: 'file', url: pt.url, mediaType: pt.mediaType })
       continue
     }
-    if (pt.type === 'text' && typeof pt.text === 'string') {
+    if ((pt.type === 'text' || pt.type === 'output-text') && typeof pt.text === 'string') {
       const segList = splitRedactedThinkingSegments(pt.text)
       for (const seg of segList) {
         if (seg.kind === 'text') {

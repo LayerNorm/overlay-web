@@ -76,9 +76,11 @@ export function buildRestoredMessageExchanges<TMessage extends RestorableConvers
         model: assistant.model || options.defaultModelId,
         msg: assistant,
       }))
-      const previous = exchanges[exchanges.length - 1]
-      if (previous) {
-        previous.responses.push(...orphanResponses)
+      const unmatched = exchanges.find((exchange) => exchange.responses.length === 0)
+      if (unmatched) {
+        unmatched.responses.push(...orphanResponses)
+      } else if (exchanges.length > 0) {
+        exchanges[exchanges.length - 1]!.responses.push(...orphanResponses)
       } else {
         exchanges.push({
           userMsg: {

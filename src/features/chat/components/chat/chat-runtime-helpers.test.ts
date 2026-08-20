@@ -89,6 +89,41 @@ test('compares assistant snapshots by status, model, routed model, and parts', (
   assert.equal(sameAssistantSnapshot(first, changed), false)
 })
 
+test('falls back to actChat when the selected model thread is missing an earlier assistant', () => {
+  const runtime = runtimeFor({
+    selectedModels: ['model-b'],
+    exchangeModels: [['model-a'], ['model-b']],
+    askMessages: [[
+      user('u-1'),
+      user('u-2'),
+      assistant('b-2', 'second', { model: 'model-b' }),
+    ]],
+    actMessages: [
+      user('u-1'),
+      assistant('a-1', 'first', { model: 'model-a' }),
+      user('u-2'),
+      assistant('b-2', 'second', { model: 'model-b' }),
+    ],
+  })
+  runtime.ui.orphanModelThreads.set('model-a', [
+    user('u-1'),
+    assistant('a-1', 'first', { model: 'model-a' }),
+    user('u-2'),
+  ])
+
+  assert.equal(
+    getResponseForExchangeForModel({
+      modelId: 'model-a',
+      exchangeIndex: 0,
+      selectedModels: ['model-b'],
+      activeRuntime: runtime,
+      activeAskChats: runtime.askChats,
+      isActiveLoading: false,
+    })?.id,
+    'a-1',
+  )
+})
+
 test('selects the assistant response for a model exchange from live slots', () => {
   const runtime = runtimeFor({
     selectedModels: ['model-a', 'model-b'],

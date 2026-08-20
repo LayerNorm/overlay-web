@@ -32,6 +32,7 @@ import {
   resolveActAssistant,
   splitUserDisplayText,
 } from '@overlay/chat-core'
+import { assistantSnapshotKey } from './chat/chat-runtime-helpers'
 import type { DraftModalState } from './chat-interface/types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatToolSurface } from './ChatToolSurface'
@@ -128,6 +129,14 @@ function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChat
   if (prev.interruptedExchangeIdx !== next.interruptedExchangeIdx) return false
   if (isTurnInList(prev.message, prev.exitingTurnIds) !== isTurnInList(next.message, next.exitingTurnIds)) return false
   if (isSourcesOpenForMessage(prev.message, prev.sourcesPanel) !== isSourcesOpenForMessage(next.message, next.sourcesPanel)) return false
+  if (
+    assistantSnapshotKey(prev.primaryMessages, exchangeIndex)
+    !== assistantSnapshotKey(next.primaryMessages, exchangeIndex)
+  ) return false
+  if (
+    assistantSnapshotKey(prev.actChat.messages as UIMessage[], exchangeIndex)
+    !== assistantSnapshotKey(next.actChat.messages as UIMessage[], exchangeIndex)
+  ) return false
 
   return true
 }
@@ -160,8 +169,11 @@ function TextChatMessage(props: TextChatMessageProps) {
   const streamSlotIndex = !selectedModelId ? -1 : isMultiAct ? modelList.indexOf(selectedModelId) : isActExchange ? -1 : selectedModels.indexOf(selectedModelId)
   const slotInstance = streamSlotIndex >= 0 ? chatInstances[streamSlotIndex] : null
   const initialResponseMsg = props.getResponseForExchangeForModel(selectedModelId, exchangeIndex, isMultiAct ? modelList : undefined)
-  const responseMsg = (isActExchange && !isMultiAct
+  const actResponseMsg = isActExchange && !isMultiAct
     ? resolveActAssistant(primaryMessages, actChat.messages, message.id)
+    : null
+  const responseMsg = (isActExchange && !isMultiAct
+    ? (isLatest ? (actResponseMsg ?? initialResponseMsg) : (initialResponseMsg ?? actResponseMsg))
     : initialResponseMsg) as UIMessage | null
   const responseText = responseMsg ? getMessageText(responseMsg) : ''
 
