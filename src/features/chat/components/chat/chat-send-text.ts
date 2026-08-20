@@ -103,10 +103,9 @@ export function sendTextTurn({
     turnId: textTurnId,
   })
 
-  const multiText = personalChatMode === 'chat' && snapshot.textModelsForTurn.length > 1
-  const textSlotCount = personalChatMode === 'work'
-    ? 1
-    : Math.min(4, snapshot.textModelsForTurn.length)
+  const effectiveTextModelsForTurn = snapshot.textModelsForTurn
+  const multiText = effectiveTextModelsForTurn.length > 1
+  const textSlotCount = Math.min(4, effectiveTextModelsForTurn.length)
   let msgCountBeforeSend = 0
   let preparedFirstSendRuntime = false
   let textHistoryBaseModelId: string | undefined
@@ -114,14 +113,14 @@ export function sendTextTurn({
   const prepareTextRuntime = (runtime: ConversationRuntime) => {
     textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(
       runtime,
-      snapshot.textModelsForTurn,
+      effectiveTextModelsForTurn,
     ).historyBaseModelId
     msgCountBeforeSend = runtime.askChats[0].messages.length
     const ui = runtime.ui
     runtime.ui = createConversationUiState({
       ...ui,
       exchangeModes: [...ui.exchangeModes, 'act'],
-      exchangeModels: [...ui.exchangeModels, [...snapshot.textModelsForTurn]],
+      exchangeModels: [...ui.exchangeModels, [...effectiveTextModelsForTurn]],
       selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
       exchangeGenTypes: [...ui.exchangeGenTypes, 'text'],
       isFirstMessage: false,
@@ -158,8 +157,8 @@ export function sendTextTurn({
     const previewRuntime = emptyRuntime
     resetRuntimeState(previewRuntime, {
       selectedActModel: selectedActModelSnapshot,
-      selectedModels: snapshot.textModelsForTurn,
-      askModelSelectionMode: snapshot.textModelsForTurn.length > 1 ? 'multiple' : 'single',
+      selectedModels: effectiveTextModelsForTurn,
+      askModelSelectionMode: effectiveTextModelsForTurn.length > 1 ? 'multiple' : 'single',
       activeChatTitle: snapshot.activeChatTitleSnapshot ?? null,
       isFirstMessage: false,
     })
@@ -215,13 +214,13 @@ export function sendTextTurn({
   if (!snapshot.temporaryChatSnapshot && !preparedFirstSendRuntime) {
     textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(
       targetRuntime,
-      snapshot.textModelsForTurn,
+      effectiveTextModelsForTurn,
     ).historyBaseModelId
     msgCountBeforeSend = targetRuntime.askChats[0].messages.length
     updateRuntimeUiState(chatId, (prev) => ({
       ...prev,
       exchangeModes: [...prev.exchangeModes, 'act'],
-      exchangeModels: [...prev.exchangeModels, [...snapshot.textModelsForTurn]],
+      exchangeModels: [...prev.exchangeModels, [...effectiveTextModelsForTurn]],
       selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
       exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
       isFirstMessage: false,
@@ -258,7 +257,7 @@ export function sendTextTurn({
     temporaryChatSnapshot: snapshot.temporaryChatSnapshot,
     embedProjectId,
     knowledgeBaseId,
-    textModelsForTurn: snapshot.textModelsForTurn,
+    textModelsForTurn: effectiveTextModelsForTurn,
     turnId: textTurnId,
     requestMode: snapshot.requestMode,
     automationIdParam,
@@ -286,7 +285,7 @@ export function sendTextTurn({
   startActTextStream({
     chatId,
     targetRuntime,
-    textModelsForTurn: snapshot.textModelsForTurn,
+    textModelsForTurn: effectiveTextModelsForTurn,
     textSlotCount,
     selectedActModel: selectedActModelSnapshot,
     turnId: textTurnId,
