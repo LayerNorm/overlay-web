@@ -105,152 +105,74 @@ Restart the agent after editing the config.
 
 ## Creating a testing Chrome profile
 
-A testing Chrome profile is a copy of the user's LayerNorm Chrome profile
-(`Profile 6`) that lives in its own `--user-data-dir` and runs as a separate
-Chrome process with its own CDP port. This gives the agent an authenticated
-browser session without touching the user's main Chrome.
+A testing Chrome profile is a regular Chrome profile that lives inside the
+user's main Chrome user-data-dir alongside their other profiles. It has the
+LayerNorm SSO cookies copied into it so the agent can access staging without
+needing a separate Chrome instance.
 
-### CRITICAL: How to clone a profile safely
+This approach avoids all the problems with separate `--user-data-dir` instances:
+no dock icon conflicts, no singleton lock issues, no profile merging, and all
+profiles are visible in one Chrome window.
 
-**Copying a profile while Chrome is running, or copying the main Chrome's
-`Local State` file, will corrupt the original profiles.** Chrome has anti-cloning
-protections that detect duplicate profile state and respond by disabling all
-extensions across all profiles in the original Chrome. This has happened and it
-required manual recovery.
+### Setup procedure
 
-The safe procedure is:
-
-1. **Quit Chrome entirely.** All Chrome windows must be closed. Verify with
+1. **Create a new profile in Chrome.** Open the profile switcher (top-right),
+   click "Add", choose "Continue without an account", and name it "Testing".
+2. **Quit Chrome entirely.** All Chrome windows must be closed. Verify with
    `pgrep -f "Google Chrome"` — it should return nothing.
-2. **Create a new user-data-dir** (not inside the main Chrome directory):
-   ```
-   ~/Library/Application Support/Google/Chrome-Testing
-   ```
-3. **Copy only the profile directory** (e.g., `Profile 6`) into the new
-   user-data-dir **as `Default`**, skipping large cache directories:
+3. **Copy auth/session files from the LayerNorm profile** (e.g., `Profile 6`)
+   into the new Testing profile directory (e.g., `Profile 12`):
    ```bash
-   rsync -a \
-     --exclude='GPUCache' --exclude='Cache' --exclude='Code Cache' \
-     --exclude='Service Worker/CacheStorage' --exclude='Service Worker/ScriptCache' \
-     --exclude='File System' --exclude='blob_storage' --exclude='IndexedDB' \
-     --exclude='.com.google.Chrome.*' \
-     ~/Library/Application\ Support/Google/Chrome/Profile\ 6/ \
-     ~/Library/Application\ Support/Google/Chrome-Testing/Default/
+   SRC="~/Library/Application Support/Google/Chrome/Profile 6"
+   DST="~/Library/Application Support/Google/Chrome/Profile 12"
+   for file in "Cookies" "Login Data" "Login Data For Account" "Web Data" \
+               "Local Storage" "Session Storage" "Network" "TransportSecurity"; do
+     cp -R "$SRC/$file" "$DST/$file" 2>/dev/null
+   done
    ```
-4. **Do NOT copy the main Chrome's `Local State` file.** Let the new Chrome
-   instance generate its own `Local State` on first launch. Copying the original
-   `Local State` is what triggers the anti-cloning protection that wipes
-   extensions.
-5. **Do NOT copy `SingletonLock`, `SingletonSocket`, or `SingletonCookie`** files
-   if they exist — they point to the original Chrome process.
-6. **Have the user reopen their main Chrome first.** Confirm all profiles and
-   extensions are intact.
-7. **Then launch the testing Chrome instance(s)** via the launch scripts. Because
-   they use a different `--user-data-dir`, they start as separate processes and
-   do not merge into the user's Chrome.
-
-The launch script at `~/.config/devin/launch-chrome-testing.sh` handles step 7
-(assuming the profile was cloned correctly per steps 1-5).
-
-### Why launch order matters
-
-Chrome uses a singleton lock per `--user-data-dir`. If the user's main Chrome is
-not running when a testing Chrome is launched, and the user later opens Chrome,
-Chrome may merge into the testing Chrome's process instead of starting a new one
-with the main profile directory. The user would then see the testing profile
-(which only has one "Default" profile) instead of their real profiles.
-
-The correct order is:
-1. User's main Chrome is running (with all profiles confirmed).
-2. Launch testing Chrome instances — they start as separate processes because
-   they use different `--user-data-dir` paths.
-3. Both the main Chrome and testing Chrome(s) run independently in parallel.
-
-### What gets copied
-
-The profile directory contains everything the agent needs:
-- `Cookies`, `Login Data` — SSO sessions for staging and production
-- `Local Storage`, `Session Storage` — app state
-- `History` — browsing history (not needed for QA but harmless)
-- `Extensions/` — installed extensions (files only; Chrome re-enables them on
-  first launch in the new user-data-dir)
-- `Preferences`, `Secure Preferences` — profile settings
-
-Skip large cache directories to save disk space:
-- `GPUCache`, `Cache`, `Code Cache`, `Service Worker/CacheStorage`
-- `File System`, `blob_storage`
+   Do NOT copy `Preferences`, `Secure Preferences`, `Extensions/`, `History`,
+   or `Local State` — those are profile-specific settings that should stay
+   unique to the Testing profile.
+4. **Reopen Chrome.** The Testing profile now has valid SSO cookies for
+   staging and production.
 
 ### When SSO cookies expire
 
-If `browser_navigate` to staging redirects to a Vercel auth page, the testing
-Chrome's cloned session has expired. Re-clone the profile from the user's main
-Chrome (`Profile 6`) following the safe procedure above, or ask the user to log
-in to staging in the testing Chrome window directly.
+If `browser_navigate` to staging redirects to a Vercel auth page, the Testing
+profile's cloned session has expired. Either:
+- Re-copy the auth files from the LayerNorm profile (steps 2-3 above), or
+- Ask the user to log in to staging in the Testing profile directly.
 
-## The `--cdp-endpoint` flag and SSO-protected environments
+## Playwright MCP configuration
 
-`staging.getoverlay.io` and `www.getoverlay.io` are behind Vercel Deployment Protection
-(SSO). A clean Chromium instance has no session cookie and will be redirected to the Vercel
-auth page. The dedicated testing Chrome instance has a cloned LayerNorm profile with valid
-SSO cookies, so Playwright MCP can access staging directly via the CDP endpoint.
+Playwright MCP connects to the user's main Chrome via the browser extension
+(`--extension` mode). This reuses the Testing profile's SSO cookies. No
+separate Chrome instance or CDP port is needed.
 
-The previous `--extension` mode connected to the user's main Chrome profile via the
-Playwright MCP browser extension. This worked but had two problems:
-1. It shared tabs and session state with the user's browsing, causing interference.
-2. Background tabs were throttled by Chrome (see [Background tab throttling](#background-tab-throttling)).
+```json
+{
+  "mcp-playwright": {
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest", "--extension"]
+  }
+}
+```
 
-The CDP approach solves both: the testing Chrome is a separate process with its own
-profile, and it launches with throttling disabled.
+For QA, switch to the Testing profile in Chrome before running
+`browser_navigate`. The agent will drive the active tab in that profile.
 
-If the testing Chrome is not running, `browser_navigate` will fail with a connection
-error. Launch it with `bash ~/.config/devin/launch-chrome-testing.sh` and retry.
+### Previous approach: separate Chrome instances (deprecated)
 
-## Background tab throttling
+An earlier approach used separate `--user-data-dir` Chrome instances with CDP
+endpoints. This caused repeated problems:
+- Chrome singleton behavior merged the user's main Chrome into testing instances
+- Dock icon activated testing Chrome instead of the user's main Chrome
+- Profile cloning risked corrupting extensions across all profiles
+- Multiple running Chrome processes confused the user's workflow
 
-Chrome throttles JavaScript in background tabs to save CPU/battery: `setTimeout` is
-clamped to 1000ms minimum, `requestAnimationFrame` is paused, and renderer processes
-are deprioritized. This causes pages to appear "stuck on loading" when the Playwright
-tab is not in the foreground — the app's hydration and data-fetching stall until the
-tab becomes visible.
-
-The testing Chrome is launched with these flags to disable all background throttling:
-
-- `--disable-background-timer-throttling` — stops `setTimeout`/`setInterval` clamping
-- `--disable-backgrounding-occluded-windows` — stops occluded windows from being deprioritized
-- `--disable-renderer-backgrounding` — stops the renderer process from being throttled
-- `--disable-features=CalculateNativeWinOcclusion` — disables occlusion detection
-
-With these flags, pages load fully in background tabs without needing to be focused.
-This is essential for agent-driven QA where the agent navigates to a URL and waits for
-the page to render while the user is working in another tab.
-
-**Note:** The JS-level Page Visibility API (`document.hidden`, `document.visibilityState`)
-is not overridden in CDP mode. If the app or a library checks `document.hidden` and
-pauses logic based on it, those code paths could still stall. The 4 Chrome flags cover
-the vast majority of cases (timer clamping, rAF, renderer priority).
-
-## Multi-agent isolation
-
-If multiple coding agents run browser QA simultaneously, they must not share the same
-Chrome instance — they would overwrite each other's tabs, cross-contaminate console
-messages, and fight over session state.
-
-**Chrome does not allow multiple processes to use the same `--user-data-dir`
-simultaneously** (singleton lock). Each concurrent agent needs its own:
-- `--user-data-dir` (separate profile copy)
-- `--remote-debugging-port` (separate CDP endpoint)
-
-The current setup provides two testing Chrome instances:
-
-| Instance | CDP port | User-data-dir | Launch script |
-| --- | --- | --- | --- |
-| 1 | 9222 | `Chrome-Testing` | `~/.config/devin/launch-chrome-testing.sh` |
-| 2 | 9223 | `Chrome-Testing-2` | `~/.config/devin/launch-chrome-testing-2.sh` |
-
-Each agent's MCP config should point to its own CDP port. To create additional
-instances beyond the first two, follow the safe cloning procedure in
-[Creating a testing Chrome profile](#creating-a-testing-chrome-profile) with a
-new user-data-dir and CDP port.
+The in-main-Chrome profile approach above avoids all of these issues. The old
+launch scripts (`launch-chrome-testing.sh`, `launch-chrome-testing-2.sh`) and
+testing directories (`Chrome-Testing`, `Chrome-Testing-2`) have been removed.
 
 **Important:** Each profile copy is a snapshot at clone time. SSO cookies and
 session state diverge over time. If one instance's session expires, re-clone
