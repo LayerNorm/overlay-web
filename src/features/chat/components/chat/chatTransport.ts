@@ -173,8 +173,6 @@ export interface StartActTextStreamParams {
   loadSubscription: RefreshAfterTurn
   onError: (error: unknown, fallbackMessage: string) => void
   logPrefix: string
-  personalChatMode?: 'chat' | 'work'
-  onWorkAccepted?: () => Promise<unknown>
 }
 
 function finishTextTurn(params: Pick<
@@ -198,30 +196,12 @@ function failTextTurn(
 }
 
 export function startActTextStream(params: StartActTextStreamParams) {
-  if (params.personalChatMode === 'work') {
-    const messages = params.targetRuntime.actChat.messages
-    void overlayAppClient.conversations.actResponse({
-      ...params.commonBody,
-      messages,
-      modelId: params.selectedActModel,
-      personalChatMode: 'work',
-    }).then(async (response) => {
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as { error?: string; message?: string }
-        throw new Error(payload.message ?? payload.error ?? `Work mode failed (${response.status})`)
-      }
-      await params.onWorkAccepted?.()
-      finishTextTurn(params)
-    }).catch((error) => {
-      failTextTurn(params, error, 'Could not start Work mode. Try again.')
-    })
-    return
-  }
-  const multiText = params.textModelsForTurn.length > 1
+  const modelsToSend = params.textModelsForTurn.slice(0, params.textSlotCount)
+  const multiText = modelsToSend.length > 1
 
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
   if (multiText) {
-    const sends = params.textModelsForTurn.map((modelId, slotIdx) =>
+    const sends = modelsToSend.map((modelId, slotIdx) =>
       params.targetRuntime.askChats[slotIdx]!.sendMessage(
         {
           role: 'user',
@@ -276,11 +256,12 @@ export function startActTextStream(params: StartActTextStreamParams) {
 
 export function startActRetryStream(params: StartActTextStreamParams) {
   const retrySlots = params.textSlotCount
-  const multiRetry = params.textModelsForTurn.length > 1
+  const modelsToSend = params.textModelsForTurn.slice(0, retrySlots)
+  const multiRetry = modelsToSend.length > 1
 
   /* eslint-disable @typescript-eslint/no-explicit-any -- AI SDK UIMessage payload */
   if (multiRetry) {
-    const sends = params.textModelsForTurn.slice(0, retrySlots).map((modelId, slotIdx) =>
+    const sends = modelsToSend.map((modelId, slotIdx) =>
       params.targetRuntime.askChats[slotIdx]!.sendMessage(
         {
           role: 'user',

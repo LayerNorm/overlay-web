@@ -69,9 +69,11 @@ contract. The request route performs the same authorization, context and memory
 construction, model policy, tool filtering, billing reservation, and user-message
 persistence as Chat mode, then starts `workflows/personal-chat-work.ts`. Model
 calls and tool executions are durable Workflow steps; the workflow ID is stored
-on AgentRun. Work mode does not expose a writable stream in its first version:
-the client renders AgentRun state and receives the single final message through
-the normal conversation data path.
+on AgentRun. Work mode exposes the workflow's writable stream as a UI message
+SSE stream: the `WorkflowAgent` writes `ModelCallStreamPart` chunks to the run
+stream and the route pipes them through `createModelCallToUIChunkTransform`. The
+client renders tokens, tool calls, and approval requests in real time, then
+receives the final persisted message through the normal conversation data path.
 
 Approval-required tools transition AgentRun to `waiting_for_approval` with a
 durable hook token and tool-call summary. `POST
@@ -84,8 +86,8 @@ idempotent.
 
 Both runners write comparable observations onto the terminal AgentRun. Chat
 records first-token and completion latency from its direct stream; Work records
-completion latency and durable step observations but intentionally has no
-first-token sample while it remains final-only. Provider token usage and
+first-token latency from the workflow stream, completion latency, and durable
+step observations. Provider token usage and
 estimated provider cost, tool outcomes and retries, cancellation timing,
 browser-disconnect outcomes, lease/process-loss observations, and stale-run
 detection feed `GET /api/v1/conversations/run/metrics`. The report keeps raw

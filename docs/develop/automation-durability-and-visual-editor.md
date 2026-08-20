@@ -25,7 +25,7 @@ Two workstreams converge on one shared prerequisite:
 | On-prem parity | Hard requirement from day one | `@workflow/world-postgres` or extend existing durable job system — Step 7 |
 | Graph model scope | Full node kind set from day one, linear execution only in Step 3 | Schema supports branching/parallelism; execution wiring deferred to Step 5 |
 | Personal Chat Chat mode | ToolLoopAgent + AgentRun | Direct SSE while connected; final-only persistence; lease detects process loss |
-| Personal Chat Work mode | WorkflowAgent + AgentRun | Durable execution; final-only response publication in v1 |
+| Personal Chat Work mode | WorkflowAgent + AgentRun | Durable execution; streams `ModelCallStreamPart` chunks from the workflow writable to the client through `createModelCallToUIChunkTransform` |
 
 ## Vercel Workflows Pricing
 
@@ -455,9 +455,12 @@ tools, and billing reservation as serializable input.
   effect receives a stable AgentRun/tool-call idempotency key for Overlay APIs.
 - Approval pauses are represented by AgentRun plus a Workflow hook. The client
   approves or denies through `/api/v1/conversations/run/approval`.
-- The first release intentionally omits Workflow's writable stream. It writes
-  the assistant message once at completion and relies on Convex/Postgres
-  conversation sync after reconnect.
+- Work mode exposes the workflow's writable stream. The `WorkflowAgent` writes
+  `ModelCallStreamPart` chunks to the run stream, and the Act route returns them
+  through `createModelCallToUIChunkTransform` as a UI message SSE stream. The
+  client sees tokens, tool calls, and approval requests in real time; final
+  persistence still happens once at completion and through conversation sync on
+  reconnect.
 - Work mode is text generation only. Choosing Image or Video changes the next
   Personal Chat turn back to Chat mode.
 - The Workflow, React, and core AI SDK packages must remain on a mutually
@@ -470,7 +473,7 @@ Chat and Work publish a shared empirical report through
 completion latency, provider token cost, observed Workflow steps/retries and
 serialized step/event bytes, browser-disconnect completion, explicit
 process-failure recovery, tool outcomes, cancellation acknowledgement latency,
-and stale-run frequency. Work has no first-token sample while it remains
-final-only. Observed Workflow bytes are not billing bytes, and infrastructure
+and stale-run frequency. Work now records first-token latency from the streamed
+workflow response. Observed Workflow bytes are not billing bytes, and infrastructure
 cost remains unsampled until invoice allocation is available. The endpoint
 intentionally makes no Chat-versus-Work recommendation.

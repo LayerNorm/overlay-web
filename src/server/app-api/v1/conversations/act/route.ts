@@ -6,6 +6,7 @@ import {
   acquireConcurrentRequestSlot,
   concurrentRequestLimitResponse,
 } from '@/server/security/concurrent-request-limiter'
+import { createModelCallToUIChunkTransform } from '@ai-sdk/workflow'
 import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -782,11 +783,12 @@ export async function POST(
       budgetReservationFinalized = true
       concurrencySlot?.release()
       concurrencySlot = null
-      return NextResponse.json({
-        accepted: true,
-        agentRunId: agentRun.id,
-        workflowRunId: workflowRun.runId,
-      }, { status: 202 })
+      const _uiStream = workflowRun.getReadable().pipeThrough(createModelCallToUIChunkTransform())
+      const _uiResp = createUIMessageStreamResponse({ stream: _uiStream })
+      const responseHeaders = new Headers(_uiResp.headers)
+      responseHeaders.set('x-request-id', requestId)
+      if (agentRun?.id) responseHeaders.set('x-overlay-agent-run-id', agentRun.id)
+      return new Response(_uiResp.body, { headers: responseHeaders, status: _uiResp.status, statusText: _uiResp.statusText })
     }
 
     const runActStream = async (params: {

@@ -91,7 +91,6 @@ export function useChatSendController({
   requireAuth,
   resetComposerToolIds,
   reasoning,
-  refreshAgentRun,
   selectedActModel,
   selectedImageModels,
   selectedModels,
@@ -169,7 +168,6 @@ export function useChatSendController({
   requireAuth: (reason: 'send') => void
   resetComposerToolIds: (temporary: boolean) => void
   reasoning?: ReasoningLevel
-  refreshAgentRun: () => Promise<unknown>
   selectedActModel: string
   selectedImageModels: string[]
   selectedModels: string[]
@@ -438,7 +436,6 @@ export function useChatSendController({
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
       reasoning,
       personalChatMode,
-      refreshAgentRun,
       setComposerNotice,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
@@ -487,7 +484,6 @@ export function useChatSendController({
     requireAuth,
     resetComposerToolIds,
     reasoning,
-    refreshAgentRun,
     selectedActModel,
     selectedImageModels,
     selectedModels,

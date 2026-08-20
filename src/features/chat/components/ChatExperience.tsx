@@ -1533,7 +1533,6 @@ export default function ChatExperience({
     requireAuth,
     resetComposerToolIds,
     reasoning,
-    refreshAgentRun: agentRunLifecycle.refresh,
     selectedActModel,
     selectedImageModels,
     selectedModels,

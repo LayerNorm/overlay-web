@@ -40,7 +40,6 @@ export function sendTextTurn({
   knowledgeBaseId,
   reasoning,
   personalChatMode,
-  refreshAgentRun,
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
@@ -85,7 +84,6 @@ export function sendTextTurn({
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
   personalChatMode: 'chat' | 'work'
-  refreshAgentRun: () => Promise<unknown>
   setComposerNotice: Dispatch<SetStateAction<string | null>>
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
@@ -301,7 +299,5 @@ export function sendTextTurn({
     loadSubscription: refreshAfterActTextTurn,
     onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
     logPrefix: multiText ? 'Act multi' : 'Act',
-    personalChatMode,
-    onWorkAccepted: refreshAgentRun,
   })
 }

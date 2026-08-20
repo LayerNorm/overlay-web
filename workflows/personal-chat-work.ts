@@ -1,6 +1,6 @@
-import { WorkflowAgent } from '@ai-sdk/workflow'
+import { WorkflowAgent, type ModelCallStreamPart } from '@ai-sdk/workflow'
 import { isStepCount, jsonSchema, tool, type ModelMessage, type StepResult, type ToolSet } from 'ai'
-import { createHook, FatalError, getWorkflowMetadata } from 'workflow'
+import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
 import type {
   PersonalChatWorkToolDefinition,
   PersonalChatWorkToolingContext,
@@ -79,6 +79,24 @@ export function buildPersonalChatWorkApprovalToken(agentRunId: string, approvalC
   return `agent-run:${agentRunId}:approval:${approvalCycle}`
 }
 
+async function closeWorkStream() {
+  'use step'
+  const writable = getWritable<ModelCallStreamPart<ToolSet>>()
+  await writable.close()
+}
+
+async function failWorkStream(error: unknown) {
+  'use step'
+  const writable = getWritable<ModelCallStreamPart<ToolSet>>()
+  const writer = writable.getWriter()
+  try {
+    const message = error instanceof Error ? error.message : 'Unknown workflow failure'
+    await writer.write({ type: 'error', error: new Error(message) } as unknown as ModelCallStreamPart<ToolSet>)
+  } finally {
+    await writer.close()
+  }
+}
+
 export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowInput) {
   'use workflow'
 
@@ -89,6 +107,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
     workflowRunId,
   })
 
+  const writable = getWritable<ModelCallStreamPart<ToolSet>>()
   const allSteps: StepResult<ToolSet>[] = []
   try {
     const tools = buildWorkflowTools(input.toolDefinitions)
@@ -116,7 +135,12 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
 
     let messages = input.messages
     for (let approvalCycle = 0; approvalCycle < 20; approvalCycle += 1) {
-      const result = await agent.stream({ messages })
+      const result = await agent.stream({
+        messages,
+        writable,
+        preventClose: true,
+        sendFinish: false,
+      })
       allSteps.push(...result.steps)
       const completedToolCallIds = new Set(result.toolResults.map((part) => part.toolCallId))
       const approvalRequests = result.toolCalls.filter((call) => {
@@ -145,6 +169,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
           turnId: input.turnId,
           workflowRunId,
         })
+        await closeWorkStream()
         return { agentRunId: input.agentRunId, completed: true }
       }
 
@@ -183,6 +208,7 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
     }
     throw new FatalError('Work mode exceeded the maximum number of approval cycles.')
   } catch (error) {
+    await failWorkStream(error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown workflow failure'
     await failPersonalChatWork({
       agentRunId: input.agentRunId,

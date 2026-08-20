@@ -57,9 +57,13 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
   persistent conversation, the server drains a second stream branch after a
   browser disconnect and performs one final assistant-message write; it does
   not persist token deltas or mirror the stream through Cloudflare.
-- The same endpoint accepts `personalChatMode: "work"`. It returns `202` with
-  `agentRunId` and `workflowRunId` after starting a durable WorkflowAgent. Work
-  mode is final-only in v1: no Workflow writable stream is exposed.
+- The same endpoint accepts `personalChatMode: "work"`. It starts a durable
+  WorkflowAgent and immediately returns the workflow's default writable stream
+  as an SSE UI message stream. The WorkflowAgent writes raw
+  `ModelCallStreamPart` chunks to the run stream, which the route transforms
+  through `createModelCallToUIChunkTransform` so the client receives token,
+  tool, and approval updates in real time. Work mode closes the stream when the
+  workflow finalizes or fails.
 - `GET /api/v1/conversations/run?conversationId=<id>` returns an active
   `AgentRun` when any model slot is non-terminal, otherwise the most recent
   terminal run. Clients use this response—not `conversationMessages.status`—to
