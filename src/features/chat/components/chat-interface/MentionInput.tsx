@@ -205,6 +205,13 @@ function dispatchEditorInput(el: HTMLDivElement) {
   el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatBackColor' }))
 }
 
+function escapeTextForHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 /** Walk up from a node to the nearest block-level element within the editor root.
  * Returns the root itself if the node is a direct child (common when the editor
  * is empty or has a bare text node). */
@@ -221,59 +228,12 @@ function getBlockContainer(node: Node, root: HTMLElement): HTMLElement | null {
   return current === root || node === root ? root : null
 }
 
-/** Check that the caret is at the start of a block (no text before it on this line). */
-function isAtBlockStart(node: Node, textOffsetInNode: number, root: HTMLElement): boolean {
-  const text = node.textContent || ''
-  const textBefore = text.slice(0, textOffsetInNode)
-  // The text before the caret on the current line must be only the trigger itself
-  // (no other text before the trigger on this line)
-  const lineStart = textBefore.lastIndexOf('\n') + 1
-  const beforeTrigger = textBefore.slice(0, lineStart)
-  if (beforeTrigger.trim().length > 0) return false
-
-  // Walk backwards through siblings to ensure no text content before this text node
-  // in the current block
-  const parent = node.parentNode
-  if (!parent) return false
-
-  let sibling: Node | null = node.previousSibling
-  while (sibling) {
-    if (sibling.nodeType === Node.TEXT_NODE && (sibling.textContent || '').trim()) return false
-    if (sibling.nodeType === Node.ELEMENT_NODE) {
-      const sibEl = sibling as HTMLElement
-      if (sibEl.tagName === 'BR') return true
-      if (sibEl.textContent && sibEl.textContent.trim()) return false
-    }
-    sibling = sibling.previousSibling
-  }
-
-  // If parent is not the root, check parent's previous siblings too
-  if (parent !== root && parent.nodeType === Node.ELEMENT_NODE) {
-    const parentEl = parent as HTMLElement
-    if (!/^(P|H[1-6]|BLOCKQUOTE|LI|PRE|UL|OL|DIV)$/.test(parentEl.tagName)) return true
-    // For div wrappers, check if the div itself is at the start
-    if (parentEl.tagName === 'DIV') {
-      let parentSibling: Node | null = parentEl.previousSibling
-      while (parentSibling) {
-        if (parentSibling.nodeType === Node.TEXT_NODE && (parentSibling.textContent || '').trim()) return false
-        if (parentSibling.nodeType === Node.ELEMENT_NODE) {
-          const psEl = parentSibling as HTMLElement
-          if (psEl.tagName === 'BR') return true
-          if (psEl.textContent && psEl.textContent.trim()) return false
-        }
-        parentSibling = parentSibling.previousSibling
-      }
-    }
-  }
-
-  return true
-}
-
 /**
- * Detect block-level markdown triggers typed at the start of a line and apply
- * the corresponding block format. Returns true if a format was applied.
- *
- * Triggers: `# `, `## `, `### `, `> `, `- `, `* `, `1. `
+ * Detect block-level markdown triggers at the start of a line and apply the
+ * corresponding block format. Handles the trigger typed live (`# `) as well as
+ * the whole line already present after a paste or fast typing
+ * (`# heading text`). Works inside multi-line text nodes created by Shift+Enter
+ * and ignores trailing zero-width spaces used for caret placement.
  */
 function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
   const sel = window.getSelection()
@@ -286,79 +246,76 @@ function tryApplyBlockMarkdown(el: HTMLDivElement): boolean {
 
   const text = node.textContent || ''
   const offset = range.startOffset
-  const textBefore = text.slice(0, offset)
+  const ZWSP = '\u200B'
 
-  // Get the current line text (from last newline to caret)
-  const lineStart = textBefore.lastIndexOf('\n') + 1
-  const lineText = textBefore.slice(lineStart)
+  // Find the current line in the text node, ignoring trailing zero-width spaces.
+  const lineStart = text.slice(0, offset).lastIndexOf('\n') + 1
+  const nextNewline = text.indexOf('\n', lineStart)
+  const lineEnd = nextNewline === -1 ? text.length : nextNewline
+  const fullLineText = text.slice(lineStart, lineEnd).replace(new RegExp(`${ZWSP}+$`), '')
 
-  // Check that there's no text after the caret on this line
-  const textAfter = text.slice(offset)
-  if (textAfter.split('\n')[0].trim().length > 0) return false
-
-  // Check that we're at the start of a block
-  if (!isAtBlockStart(node, offset, el)) return false
-
-  // Check that the block is not already formatted
+  // Only apply block formatting inside plain div or paragraph blocks.
   const block = getBlockContainer(node, el)
   if (!block) return false
   const blockTag = block.tagName
   if (blockTag !== 'DIV' && blockTag !== 'P') return false
 
-  const blockTriggers: Array<{ pattern: RegExp; tag?: string; list?: 'ul' | 'ol'; pre?: boolean }> = [
-    { pattern: /^###\s$/, tag: 'h3' },
-    { pattern: /^##\s$/, tag: 'h2' },
-    { pattern: /^#\s$/, tag: 'h1' },
-    { pattern: /^>\s$/, tag: 'blockquote' },
-    { pattern: /^[-*]\s$/, list: 'ul' },
-    { pattern: /^```\s$/, pre: true },
+  // Ordered list needs the number to preserve the user's chosen start.
+  const orderedListMatch = fullLineText.match(/^(\d+)\.\s/)
+  if (orderedListMatch) {
+    const start = Number(orderedListMatch[1])
+    const content = fullLineText.slice(orderedListMatch[0].length).replace(new RegExp(`^${ZWSP}+|${ZWSP}+$`, 'g'), '')
+    const itemHtml = content ? escapeTextForHtml(content) : ZWSP
+    const lineRange = document.createRange()
+    lineRange.setStart(node, lineStart)
+    lineRange.setEnd(node, lineEnd)
+    lineRange.deleteContents()
+    document.execCommand('insertHTML', false, `<ol start="${start}"><li>${itemHtml}</li></ol>`)
+    dispatchEditorInput(el)
+    return true
+  }
+
+  const blockTriggers: Array<{
+    pattern: RegExp
+    tag?: string
+    list?: 'ul' | 'ol'
+    pre?: boolean
+  }> = [
+    { pattern: /^###\s/, tag: 'h3' },
+    { pattern: /^##\s/, tag: 'h2' },
+    { pattern: /^#\s/, tag: 'h1' },
+    { pattern: /^>\s/, tag: 'blockquote' },
+    { pattern: /^[-*]\s/, list: 'ul' },
+    { pattern: /^```\s/, pre: true },
   ]
 
   for (const { pattern, tag, list, pre } of blockTriggers) {
-    if (pattern.test(lineText)) {
-      // Delete the trigger text using a range (handles bare text nodes in root)
-      const deleteRange = document.createRange()
-      deleteRange.setStart(node, lineStart)
-      deleteRange.setEnd(node, offset)
-      deleteRange.deleteContents()
+    const match = fullLineText.match(pattern)
+    if (!match) continue
 
-      if (list) {
-        // For lists, execCommand creates the list structure
-        document.execCommand('insertUnorderedList')
-      } else if (pre) {
-        // For code blocks, insert a <pre> with a zero-width space for caret placement
-        document.execCommand('insertHTML', false, '<pre>\u200B</pre>')
-      } else if (tag) {
-        // For headings/quotes, use execCommand('insertHTML') which handles
-        // caret placement inside the new block element correctly.
-        // A zero-width space ensures the caret lands inside the element
-        // and subsequent typing goes into it; it gets stripped on input.
-        document.execCommand('insertHTML', false, `<${tag}>\u200B</${tag}>`)
-      } else {
-        // Fallback: place caret at end of editor
-        const newRange = document.createRange()
-        newRange.selectNodeContents(el)
-        newRange.collapse(false)
-        sel.removeAllRanges()
-        sel.addRange(newRange)
-      }
-      dispatchEditorInput(el)
-      return true
+    const triggerLength = match[0].length
+    const content = fullLineText.slice(triggerLength).replace(new RegExp(`^${ZWSP}+|${ZWSP}+$`, 'g'), '')
+    const lineRange = document.createRange()
+    lineRange.setStart(node, lineStart)
+    lineRange.setEnd(node, lineEnd)
+    lineRange.deleteContents()
+
+    if (list) {
+      const itemHtml = content ? escapeTextForHtml(content) : ZWSP
+      document.execCommand('insertHTML', false, `<ul><li>${itemHtml}</li></ul>`)
+    } else if (pre) {
+      const preHtml = content ? escapeTextForHtml(content) : ZWSP
+      document.execCommand('insertHTML', false, `<pre>${preHtml}</pre>`)
+    } else if (tag) {
+      const tagHtml = content ? escapeTextForHtml(content) : ZWSP
+      document.execCommand('insertHTML', false, `<${tag}>${tagHtml}</${tag}>`)
+    } else {
+      const newRange = document.createRange()
+      newRange.selectNodeContents(el)
+      newRange.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(newRange)
     }
-  }
-
-  // Ordered list: `1. `, `2. `, etc.
-  if (/^\d+\.\s$/.test(lineText)) {
-    const deleteRange = document.createRange()
-    deleteRange.setStart(node, lineStart)
-    deleteRange.setEnd(node, offset)
-    deleteRange.deleteContents()
-    document.execCommand('insertOrderedList')
-    const newRange = document.createRange()
-    newRange.selectNodeContents(el)
-    newRange.collapse(false)
-    sel.removeAllRanges()
-    sel.addRange(newRange)
     dispatchEditorInput(el)
     return true
   }
