@@ -1033,6 +1033,12 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
                 document.execCommand('insertLineBreak')
                 return
               }
+              // Headings: Shift+Enter always exits to a normal paragraph
+              else if (/^H[1-6]$/.test(tag)) {
+                e.preventDefault()
+                exitBlockToParagraph(block, sel, el)
+                return
+              }
             }
           }
         }
