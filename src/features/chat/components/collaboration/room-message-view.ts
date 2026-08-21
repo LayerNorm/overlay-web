@@ -53,6 +53,17 @@ export function mergeRoomMessages(
   return [...merged.values()].sort(compareRoomMessageRecords)
 }
 
+/**
+ * The transcript wrapper keys rows on this identity. It must not flip when the
+ * optimistic row is reconciled into the persisted row — a key change remounts
+ * the row and replays the message-appear entrance animation (the sent-message
+ * blink). The server echoes `clientNonce` back on the persisted row, so the
+ * nonce is the stable identity across that transition.
+ */
+export function roomMessageRowKey(message: Pick<RoomMessageRecord, 'id' | 'clientNonce'>): string {
+  return `room-message-row-${message.clientNonce ?? message.id}`
+}
+
 /** The server appends "[Attached 2 images: a.png]" to stored content; thumbnails already say that. */
 const ATTACHMENT_SUMMARY = /\[Attached [^\]]*\]/g
 

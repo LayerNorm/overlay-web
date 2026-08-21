@@ -71,6 +71,7 @@ import { takePendingCollaborationMessage } from '../lib/pending-collaboration-me
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
+  roomMessageRowKey,
   toRoomMessageView,
   type RoomMessageRecord,
 } from './collaboration/room-message-view'
@@ -1704,7 +1705,7 @@ export function DirectMessageExperience({
                       const showDayDivider = !previous
                         || roomDayKey(previous.createdAt) !== roomDayKey(message.createdAt)
                       return (
-                        <div key={`room-message-row-${message.id}`} className="contents">
+                        <div key={roomMessageRowKey(message)} className="contents">
                           {showDayDivider ? (
                             <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
                               <span className="h-px flex-1 bg-[var(--border)]" />
