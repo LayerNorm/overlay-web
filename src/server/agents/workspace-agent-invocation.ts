@@ -11,6 +11,11 @@ import {
   ActEntitlementService,
 } from '@/server/conversations/ActEntitlementService'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import {
+  buildAssistantPersistenceFromSteps,
+  compactAssistantPersistenceForConvex,
+  replaceAssistantTextForPersistence,
+} from '@/shared/chat/persist-assistant-turn'
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import { buildAgentTurnContext } from './agent-turn-context'
@@ -49,7 +54,50 @@ const AGENT_MEMORY_TOOL_IDS = new Set([
 export type WorkspaceAgentDelta = {
   agentPrincipalId: string
   agentName: string
-  delta: string
+  delta?: string
+  /** Ordered transcript part for live tool/reasoning/generated-UI rendering. */
+  part?: Record<string, unknown>
+}
+
+const UNVERIFIED_NOTE_ACTION_CLAIM = /\b(?:I|we)\s+(?:have\s+)?(?:saved|created|wrote|written|updated|edited)\s+(?:a|the|your)?\s*note\b[^.!?\n]*[.!?]?/gi
+
+function hasSuccessfulTool(
+  parts: Array<Record<string, unknown>>,
+  toolName: string,
+): boolean {
+  return parts.some((part) => {
+    if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') {
+      return false
+    }
+    const invocation = part.toolInvocation as Record<string, unknown>
+    if (invocation.toolName !== toolName || !invocation.toolOutput || typeof invocation.toolOutput !== 'object') {
+      return false
+    }
+    return (invocation.toolOutput as Record<string, unknown>).success === true
+  })
+}
+
+/**
+ * Basic external-action claims need a deterministic check. A prompt is useful
+ * guidance, but it is not evidence that a note was actually written.
+ */
+export function reconcileUnverifiedAgentActionClaims(
+  persistence: { content: string; parts: Array<Record<string, unknown>> },
+): { content: string; parts: Array<Record<string, unknown>> } {
+  if (
+    !UNVERIFIED_NOTE_ACTION_CLAIM.test(persistence.content)
+    || hasSuccessfulTool(persistence.parts, 'create_note')
+  ) {
+    UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
+    return persistence
+  }
+  UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
+  const corrected = persistence.content.replace(
+    UNVERIFIED_NOTE_ACTION_CLAIM,
+    'I could not create or save a note in this turn because the note tool did not complete successfully.',
+  )
+  UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
+  return replaceAssistantTextForPersistence(persistence, corrected)
 }
 
 export const WORKSPACE_AGENT_INVOCATION_REASON_CODES = [
@@ -144,7 +192,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
    * watches it arrive.
    */
   onDelta?: (event: WorkspaceAgentDelta) => void
-  /** Aborts generation when the watching client disconnects. */
+  /** Reserved for an explicit server-side cancellation; client disconnects do not cancel a turn. */
   signal?: AbortSignal
 }): Promise<void> {
   const server = getOverlayServerContext()
@@ -402,10 +450,92 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       let streamed = ''
       let streamFailed = false
+      const liveParts: Array<Record<string, unknown>> = []
+      const emitLivePart = (part: Record<string, unknown>) => {
+        args.onDelta?.({
+          agentPrincipalId: agent.principalId,
+          agentName: agent.name,
+          part,
+        })
+      }
+      const findToolPart = (toolCallId: string) => liveParts.findIndex((part) => {
+        if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return false
+        return (part.toolInvocation as Record<string, unknown>).toolCallId === toolCallId
+      })
+      const updateToolPart = (toolCallId: string, patch: Record<string, unknown>) => {
+        const index = findToolPart(toolCallId)
+        if (index < 0) return
+        const current = liveParts[index]!
+        const invocation = current.toolInvocation && typeof current.toolInvocation === 'object'
+          ? current.toolInvocation as Record<string, unknown>
+          : {}
+        const next = {
+          ...current,
+          toolInvocation: { ...invocation, ...patch },
+        }
+        liveParts[index] = next
+        emitLivePart(next)
+      }
       try {
-        for await (const delta of result.textStream) {
-          streamed += delta
-          args.onDelta?.({ agentPrincipalId: agent.principalId, agentName: agent.name, delta })
+        for await (const event of result.fullStream) {
+          if (event.type === 'text-delta') {
+            streamed += event.text
+            args.onDelta?.({
+              agentPrincipalId: agent.principalId,
+              agentName: agent.name,
+              delta: event.text,
+            })
+            continue
+          }
+          if (event.type === 'reasoning-delta') {
+            const index = liveParts.findIndex((part) => part.type === 'reasoning')
+            const current = index >= 0 ? liveParts[index]! : { type: 'reasoning', state: 'streaming', text: '' }
+            const next = {
+              ...current,
+              state: 'streaming',
+              text: `${typeof current.text === 'string' ? current.text : ''}${event.text}`,
+            }
+            if (index >= 0) liveParts[index] = next
+            else liveParts.push(next)
+            emitLivePart(next)
+            continue
+          }
+          if (event.type === 'tool-call') {
+            const part = {
+              type: 'tool-invocation',
+              toolInvocation: {
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                state: 'input-available',
+                toolInput: event.input,
+              },
+            }
+            liveParts.push(part)
+            emitLivePart(part)
+            continue
+          }
+          if (event.type === 'tool-result') {
+            updateToolPart(event.toolCallId, {
+              state: 'output-available',
+              toolOutput: event.output,
+            })
+            continue
+          }
+          if (event.type === 'tool-error') {
+            updateToolPart(event.toolCallId, {
+              state: 'output-error',
+              toolOutput: { error: event.error instanceof Error ? event.error.message : String(event.error) },
+            })
+            continue
+          }
+          if (event.type === 'finish-step') {
+            const index = liveParts.findIndex((part) => part.type === 'reasoning')
+            if (index >= 0) {
+              const next = { ...liveParts[index]!, state: 'done' }
+              liveParts[index] = next
+              emitLivePart(next)
+            }
+          }
         }
       } catch (streamError) {
         streamFailed = true
@@ -437,6 +567,15 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         reservationId = null
         continue
       }
+      let assistantPersistence = buildAssistantPersistenceFromSteps(
+        await Promise.resolve(result.steps).catch((_error) => undefined),
+        content,
+      )
+      assistantPersistence = reconcileUnverifiedAgentActionClaims(assistantPersistence)
+      // The same bounded representation is safe for both providers and keeps
+      // Convex's nested-document limits from turning a successful agent turn
+      // into a persistence failure.
+      assistantPersistence = compactAssistantPersistenceForConvex(assistantPersistence)
       const responseId = await collaboration.addAgentMessage({
         actorUserId: args.actorUserId,
         conversationId: args.conversationId,
@@ -445,8 +584,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         clientNonce: invocationNonce,
         threadRootMessageId: args.threadRootMessageId,
         turnId: `agent_${args.messageId}_${agent.id}`,
-        content,
+        content: assistantPersistence.content,
         modelId: effectiveModelId,
+        parts: assistantPersistence.parts,
         tokens: usageTokens(usage),
       })
       if (!responseId) {
@@ -521,9 +661,9 @@ export function buildAgentSystemPrompt(args: {
           canRecall
             ? 'Before answering a question about the user, the workspace, or past work, call search_memory rather than assuming you know nothing.'
             : '',
-          'Never claim to have used a tool or changed a resource unless the tool call actually ran.',
+          'Never claim to have used a tool or changed a resource unless the tool call actually ran and returned success. If a requested action has no available tool, say that plainly and offer the result as a draft instead.',
         ].filter(Boolean).join(' ')
-      : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource.',
+      : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource, created or saved a note, sent a message, edited a document, or completed any other external action. Say the capability is unavailable and provide a draft when useful.',
     'Be concise, useful, and explicit when context is insufficient.',
     args.contextBlock,
   ].filter((section) => section && section.trim()).join('\n')

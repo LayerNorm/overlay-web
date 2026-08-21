@@ -40,7 +40,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           try {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
           } catch (_error) {
-            // The client is gone; the invocation's abort signal ends the run.
+            // The client is gone; the server-side invocation continues and persists
+            // the completed reply so a room switch or reconnect can recover it.
           }
         }
         try {
@@ -52,7 +53,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             messageId,
             mentionedPrincipalIds: body.mentionedPrincipalIds,
             threadRootMessageId: body.threadRootMessageId,
-            signal: request.signal,
             onDelta: (event) => send({ type: 'delta', ...event }),
           })
           send({ type: 'done' })

@@ -104,6 +104,7 @@ implements ConversationCollaborationRepository {
     content: string
     conversationId: string
     modelId: string
+    parts?: Array<Record<string, unknown>>
     threadRootMessageId?: string
     tokens?: { input: number; output: number }
     turnId: string

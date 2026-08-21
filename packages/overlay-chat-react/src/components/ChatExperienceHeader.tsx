@@ -254,7 +254,7 @@ export function ChatExperienceHeader({
             ? 'flex w-full'
             : showAutomationHeaderControls
               ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
-              : 'hidden min-[768px]:flex'
+              : 'flex w-full md:w-auto'
         }`}
       >
         {activeChatId && editingChatId === activeChatId ? (
