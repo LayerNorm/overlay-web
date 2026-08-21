@@ -138,9 +138,7 @@ for (const requirement of requiredImports) {
 }
 
 const webChatRoot = join(workspaceRoot, 'src/features/chat')
-const allowedDirectMarkdownFiles = new Set([
-  join(workspaceRoot, 'src/features/chat/components/MarkdownMessage.tsx')
-])
+const allowedDirectMarkdownFiles = new Set([])
 const allowedSemanticRendererFiles = new Set([
   ...allowedDirectMarkdownFiles,
   join(workspaceRoot, 'src/features/chat/components/ChatToolSurface.tsx'),

@@ -23,7 +23,7 @@ import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
-import { MarkdownMessage } from '../MarkdownMessage'
+import { MarkdownMessage } from '@overlay/chat-react'
 
 export type RoomMessageReaction = {
   emoji: string
