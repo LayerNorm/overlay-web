@@ -236,6 +236,7 @@ implements ConversationCollaborationRepository {
     content: string
     conversationId: string
     modelId: string
+    parts?: Array<Record<string, unknown>>
     threadRootMessageId?: string
     tokens?: { input: number; output: number }
     turnId: string
@@ -280,6 +281,7 @@ implements ConversationCollaborationRepository {
         mode: 'act',
         content: args.content,
         contentType: 'text',
+        parts: args.parts,
         modelId: args.modelId,
         tokens: args.tokens,
         status: 'completed',

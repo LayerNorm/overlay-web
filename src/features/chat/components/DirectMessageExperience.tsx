@@ -27,6 +27,7 @@ import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
+import { buildAssistantVisualSequence } from '@overlay/chat-core'
 import type {
   ChannelSummary,
   ConversationPin,
@@ -86,6 +87,49 @@ const FileViewerPanel = dynamic(
 )
 
 type OptimisticMessage = RoomMessageRecord
+
+type StreamingAgentReply = {
+  principalId: string
+  name: string
+  text: string
+  parts: Array<Record<string, unknown>>
+  threadRootMessageId?: string
+}
+
+function mergeStreamingAgentPart(
+  parts: Array<Record<string, unknown>>,
+  incoming: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  if (incoming.type === 'reasoning') {
+    const index = parts.findIndex((part) => part.type === 'reasoning')
+    if (index >= 0) return parts.map((part, partIndex) => partIndex === index ? incoming : part)
+  }
+  if (incoming.type === 'tool-invocation' && incoming.toolInvocation && typeof incoming.toolInvocation === 'object') {
+    const toolCallId = (incoming.toolInvocation as Record<string, unknown>).toolCallId
+    if (typeof toolCallId === 'string' && toolCallId) {
+      const index = parts.findIndex((part) => (
+        part.type === 'tool-invocation'
+        && part.toolInvocation
+        && typeof part.toolInvocation === 'object'
+        && (part.toolInvocation as Record<string, unknown>).toolCallId === toolCallId
+      ))
+      if (index >= 0) return parts.map((part, partIndex) => partIndex === index ? incoming : part)
+    }
+  }
+  return [...parts, incoming]
+}
+
+function appendStreamingAgentText(
+  parts: Array<Record<string, unknown>>,
+  delta: string,
+): Array<Record<string, unknown>> {
+  if (!delta) return parts
+  const last = parts.at(-1)
+  if (last?.type === 'text' && typeof last.text === 'string') {
+    return [...parts.slice(0, -1), { ...last, text: `${last.text}${delta}` }]
+  }
+  return [...parts, { type: 'text', text: delta }]
+}
 
 const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
 const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
@@ -251,14 +295,14 @@ export function DirectMessageExperience({
   const [threadInput, setThreadInput] = useState('')
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
   /** Live agent text keyed by principal, replaced by the stored row once saved. */
-  const [streamingAgentReplies, setStreamingAgentReplies] = useState<Record<string, {
-    principalId: string
-    name: string
-    text: string
-    threadRootMessageId?: string
-  }>>({})
+  const [streamingAgentReplies, setStreamingAgentReplies] = useState<Record<string, StreamingAgentReply>>({})
   const streamingAgentTextLength = Object.values(streamingAgentReplies)
     .reduce((length, reply) => length + reply.text.length, 0)
+  // Live previews belong to the room that started them. The server keeps the
+  // turn running, while reopening the room recovers the persisted row.
+  useEffect(() => {
+    setStreamingAgentReplies({})
+  }, [conversationId])
   const [shareOpen, setShareOpen] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -984,15 +1028,21 @@ export function DirectMessageExperience({
         for (const frame of frames) {
           const line = frame.split('\n').find((row) => row.startsWith('data: '))
           if (!line) continue
-          let event: { type?: string; agentPrincipalId?: string; agentName?: string; delta?: string }
+          let event: {
+            type?: string
+            agentPrincipalId?: string
+            agentName?: string
+            delta?: string
+            part?: Record<string, unknown>
+          }
           try {
             event = JSON.parse(line.slice(6))
           } catch {
             continue
           }
-          if (event.type !== 'delta' || !event.delta) continue
+          if (event.type !== 'delta' || (!event.delta && !event.part)) continue
           const principalId = event.agentPrincipalId ?? fallbackAgent?.principalId ?? 'agent'
-          const next = (accumulated.get(principalId) ?? '') + event.delta
+          const next = (accumulated.get(principalId) ?? '') + (event.delta ?? '')
           accumulated.set(principalId, next)
           setStreamingAgentReplies((current) => ({
             ...current,
@@ -1000,6 +1050,14 @@ export function DirectMessageExperience({
               principalId,
               name: event.agentName ?? fallbackAgent?.displayName ?? 'Agent',
               text: next,
+              parts: event.part
+                ? mergeStreamingAgentPart(
+                    event.delta
+                      ? appendStreamingAgentText(current[principalId]?.parts ?? [], event.delta)
+                      : current[principalId]?.parts ?? [],
+                    event.part,
+                  )
+                : appendStreamingAgentText(current[principalId]?.parts ?? [], event.delta ?? ''),
               threadRootMessageId,
             },
           }))
@@ -1294,7 +1352,7 @@ export function DirectMessageExperience({
   ))
 
   /** A live agent reply renders through the same message body as a stored one. */
-  function renderStreamingAgentReply(reply: { principalId: string; name: string; text: string }) {
+  function renderStreamingAgentReply(reply: StreamingAgentReply) {
     return (
       <RoomMessageItem
         key={`streaming-${reply.principalId}`}
@@ -1305,7 +1363,7 @@ export function DirectMessageExperience({
           authorKind: 'agent',
           createdAt: Date.now(),
           text: reply.text,
-          blocks: reply.text ? [{ kind: 'text', text: reply.text }] : [],
+          blocks: buildAssistantVisualSequence(reply.parts),
           images: [],
           documentNames: [],
           mentions: participantMentions,
