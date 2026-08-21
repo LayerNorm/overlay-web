@@ -74,5 +74,13 @@ test('stored binaries keep the original preview when extracted text is also pres
   )
   assert.match(markup, /overlay-file-viewer--pdf/)
   assert.match(markup, /src="\/api\/v1\/files\/file_1\/content"/)
-  assert.doesNotMatch(markup, /This PDF is stored as extracted text/)
+  assert.match(markup, /Show extracted text/)
+})
+
+test('PDFs without a preview URL render extracted text as the fallback', () => {
+  const markup = renderToStaticMarkup(
+    <FileViewer name="Research.pdf" content="Extracted PDF text" />,
+  )
+  assert.match(markup, /Extracted PDF text/)
+  assert.match(markup, /Extracted text fallback for this PDF/)
 })
