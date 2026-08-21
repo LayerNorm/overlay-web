@@ -30,7 +30,7 @@ import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-pr
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 
 const MarkdownMessage = dynamic(() =>
-  import('@/features/chat/components/MarkdownMessage').then((module) => ({ default: module.MarkdownMessage })),
+  import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
 )
 
 const nextNotebookMutation = createKnowledgeMutationPublisher(

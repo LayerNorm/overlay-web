@@ -1,1 +1,1 @@
-export { HumanMarkdownMessage as SafeHumanMarkdown } from '../MarkdownMessage'
+export { MarkdownMessage as SafeHumanMarkdown } from '@overlay/chat-react'
