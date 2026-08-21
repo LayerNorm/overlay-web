@@ -121,7 +121,7 @@
     "check:bundle-budgets": "node scripts/check-bundle-budgets.mjs",
     "start": "next start",
     "lint": "eslint",
-    "check:chat-transcript-boundaries": "node packages/overlay-chat-react/scripts/check-transcript-boundaries.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/chat/components/chat/toChatTranscriptView.test.ts src/shared/knowledge/source-citations.test.ts src/shared/knowledge/knowledge-sources.test.ts src/server/app-api/v1/link-preview/embeddable.test.ts",
+    "check:chat-transcript-boundaries": "node packages/overlay-chat-react/scripts/check-transcript-boundaries.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/chat/components/chat/toChatTranscriptView.test.ts src/shared/knowledge/source-citations.test.ts src/shared/knowledge/knowledge-sources.test.ts src/server/app-api/v1/link-preview/embeddable.test.ts && TSX_TSCONFIG_PATH=packages/overlay-chat-core/tsconfig.json node --import tsx --test packages/overlay-chat-core/src/sources.snippet.test.ts",
     "check:file-parity-boundaries": "node scripts/check-file-parity-boundaries.mjs",
     "check:knowledge-surface-contract": "node scripts/check-knowledge-surface-contract.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/knowledge/adapters/webKnowledgeSurfaceAdapters.test.ts && TSX_TSCONFIG_PATH=packages/overlay-modules-react/tsconfig.json node --import tsx --test packages/overlay-modules-react/src/knowledge/surface.test.tsx packages/overlay-modules-react/src/knowledge/file-viewer.test.tsx packages/overlay-modules-react/src/projects/native-file-tree.test.tsx",
     "chat-parity:manifest": "node scripts/chat-parity-baseline-manifest.mjs",

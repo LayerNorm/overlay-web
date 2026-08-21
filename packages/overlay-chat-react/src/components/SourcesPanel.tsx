@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { Brain, FileText, PanelRightOpen, Maximize2 } from 'lucide-react'
 import {
   faviconUrl,
+  plainTextSnippet,
   prettyUrlPath,
   safeHttpUrl,
   webSourceDisplayKey,
@@ -82,7 +83,8 @@ export function SourcesPanel({
           ? (source.internalKind === 'memory' ? 'Memory' : 'File')
           : webSourceDisplayKey(source.url)
         const fav = internal ? '' : faviconUrl(source.url)
-        const titleCandidate = source.title?.trim() || ''
+        const titleCandidate = plainTextSnippet(source.title)
+        const snippet = plainTextSnippet(source.snippet)
         let host = ''
         if (!internal) {
           try {
@@ -100,8 +102,8 @@ export function SourcesPanel({
           ? titleCandidate || site
           : isTitleJustHost ? host : titleCandidate
         const subtext = internal
-          ? source.snippet?.trim() || (source.internalKind === 'memory' ? 'Saved memory' : 'Indexed file')
-          : source.snippet?.trim() || (isTitleJustHost ? prettyUrlPath(source.url) : host)
+          ? snippet || (source.internalKind === 'memory' ? 'Saved memory' : 'Indexed file')
+          : snippet || (isTitleJustHost ? prettyUrlPath(source.url) : host)
         return (
           <li key={`${source.url}-${idx}`}>
             <a
@@ -161,7 +163,6 @@ export function SourcesPanel({
         aria-label="Sources"
         aria-hidden={!open}
         actions={presentationToggle}
-        compactHeader
         className="bg-[var(--sidebar-surface)]"
         bodyClassName="overflow-y-auto px-3 py-3"
       >

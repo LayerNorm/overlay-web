@@ -55,6 +55,20 @@ test('persisted transcripts recover their citations from the Sources line', () =
   })
 })
 
+test('a reloaded transcript keeps the source names, not just "File"', () => {
+  const citations = knowledgeCitationsFromMarkdown(
+    'Answer text.\n\n**Sources:** [1](/app/settings?section=memories&memory=mem_1 "User loves Celsius")'
+      + ' [2](/app/files?file=file_1 "LayerNorm Summer 2026 YC.pdf")',
+  )
+  assert.deepEqual(citations, {
+    '1': { kind: 'memory', sourceId: 'mem_1', title: 'User loves Celsius' },
+    '2': { kind: 'file', sourceId: 'file_1', title: 'LayerNorm Summer 2026 YC.pdf' },
+  })
+  // The label is what the chip and the panel row show after a reload.
+  assert.equal(knowledgeChipLabel(citations['1']!), 'Memory: User loves…')
+  assert.equal(knowledgeSourcesFromCitations(citations)[1]!.title, 'LayerNorm Summer 2026 YC.pdf')
+})
+
 test('legacy /app/knowledge memory links still resolve to a memory', () => {
   assert.deepEqual(
     knowledgeCitationsFromMarkdown('Answer.\n\n**Sources:** [1](/app/knowledge?memory=mem_9)'),

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Brain, FileText } from 'lucide-react'
 import type { WebSourceItem } from '../lib/web-sources'
 import { webSourceDisplayKey } from '../lib/web-sources'
+import { plainTextSnippet } from '@overlay/chat-core'
 
 const SHOW_DELAY_MS = 200
 const HIDE_GRACE_MS = 120
@@ -144,12 +145,14 @@ export function WebSourceTooltip({
                   ? (source.internalKind === 'memory' ? 'Memory' : 'File')
                   : webSourceDisplayKey(source.url)
                 const fav = internal ? '' : faviconUrl(source.url)
+                // Snippets arrive as raw document HTML/markdown; keep prose only.
+                const cleanTitle = plainTextSnippet(source.title)
                 const isTitleJustHost =
                   !internal &&
-                  (!source.title?.trim() ||
-                    source.title.trim().toLowerCase() === host.toLowerCase() ||
-                    source.title.trim().toLowerCase() === shortHost.toLowerCase())
-                const titleText = isTitleJustHost ? host : source.title.trim() || shortHost
+                  (!cleanTitle ||
+                    cleanTitle.toLowerCase() === host.toLowerCase() ||
+                    cleanTitle.toLowerCase() === shortHost.toLowerCase())
+                const titleText = isTitleJustHost ? host : cleanTitle || shortHost
                 return (
                   <li key={`${source.url}-${i}`}>
                     <a

@@ -83,10 +83,10 @@ const KNOWLEDGE_HREF_PATTERNS: Array<{ re: RegExp; kind: 'file' | 'memory' }> = 
 ]
 
 /**
- * Recover citations from a persisted transcript. Older assistant messages have
- * the citation map baked into the markdown as a trailing `**Sources:** [1](…)`
- * line rather than carried in message metadata, so this is the only way to give
- * those chats the same sources UI as a live reply.
+ * Recover citations from a persisted transcript. The citation map is not stored
+ * with the message — the trailing `**Sources:** [1](href "Label")` line is the
+ * durable record — so this is what gives a reloaded chat the same chips and
+ * source rows it had while the reply was live, names included.
  */
 export function knowledgeCitationsFromMarkdown(text: string): SourceCitationMap {
   const citations: SourceCitationMap = {}
@@ -95,13 +95,20 @@ export function knowledgeCitationsFromMarkdown(text: string): SourceCitationMap 
     const trimmed = lines[i]!.trimStart()
     if (trimmed === '') continue
     if (!/^(\*\*)?\s*(Sources|Citations|References)\s*:?/i.test(trimmed)) break
-    for (const match of trimmed.matchAll(/\[\s*(\d+)\s*\]\(([^)]+)\)/g)) {
+    // `[1](/app/files?file=x "Roadmap.md")` — the link title is optional, since
+    // transcripts written before labels were carried have the href alone.
+    for (const match of trimmed.matchAll(/\[\s*(\d+)\s*\]\(\s*([^)\s]+)(?:\s+"([^"]*)")?\s*\)/g)) {
       const number = String(Number(match[1]))
       const href = match[2]!
+      const label = match[3]?.trim()
       for (const { re, kind } of KNOWLEDGE_HREF_PATTERNS) {
         const hit = re.exec(href)
         if (!hit) continue
-        citations[number] = { kind, sourceId: decodeURIComponent(hit[1]!) }
+        citations[number] = {
+          kind,
+          sourceId: decodeURIComponent(hit[1]!),
+          ...(label ? { title: label } : {}),
+        }
         break
       }
     }

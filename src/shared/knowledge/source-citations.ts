@@ -1,6 +1,14 @@
 import type { SourceCitationMap } from './ask-knowledge-types'
 
-/** Link source numbers on a Sources line to their durable Overlay destination. */
+/**
+ * Link source numbers on a Sources line to their durable Overlay destination.
+ *
+ * The citation map itself is not persisted with the message, so the label rides
+ * along in the markdown link title. Without it a reloaded transcript can only
+ * say "File" or "Memory" — the chips and the sources panel would lose the names
+ * they showed while the reply was live. The whole line is stripped from the
+ * rendered markdown, so the extra title is never displayed as prose.
+ */
 export function linkifySourceCitationsMarkdown(
   text: string,
   citations: SourceCitationMap,
@@ -18,7 +26,8 @@ export function linkifySourceCitationsMarkdown(
         const href = source.kind === 'memory'
           ? `/app/settings?section=memories&memory=${encodeURIComponent(source.sourceId)}`
           : `/app/files?file=${encodeURIComponent(source.sourceId)}`
-        return `[${digit}](${href})`
+        const label = source.title?.trim().replace(/["\\]/g, '').replace(/\s+/g, ' ')
+        return label ? `[${digit}](${href} "${label}")` : `[${digit}](${href})`
       })
     })
     .join('\n')

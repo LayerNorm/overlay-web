@@ -4,6 +4,7 @@ import { logger } from '@/server/observability/logger'
 import type { AutoRetrievalBundle, SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { HybridSearchChunk } from '@/shared/knowledge/hybrid-search'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { plainTextSnippet } from '@overlay/chat-core/sources'
 
 /** Retrieval-only context for the model. Durable facts the user wants remembered are written via save_memory (Ask or Act), not here. */
 
@@ -57,8 +58,9 @@ export async function buildAutoRetrievalBundle(args: {
 const CITATION_SNIPPET_CHARS = 160
 const MEMORY_TITLE_CHARS = 80
 
+/** Indexed chunks are raw document HTML/markdown; labels must read as prose. */
 function collapse(text: string): string {
-  return text.replace(/\s+/g, ' ').trim()
+  return plainTextSnippet(text)
 }
 
 function truncate(text: string, max: number): string {

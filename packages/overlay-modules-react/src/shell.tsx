@@ -315,7 +315,9 @@ export function AppScreenSidePanel({
         <div
           className={cn(
             'flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)]',
-            compactHeader ? 'h-11 min-h-11 px-3' : 'min-h-16 px-4',
+            // Non-compact matches AppScreenHeader's height so the two borders
+            // read as one continuous divider across the screen and the panel.
+            compactHeader ? 'h-11 min-h-11 px-3' : 'min-h-14 px-4 md:min-h-16',
           )}
         >
           <div className="min-w-0">
