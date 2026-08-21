@@ -7,6 +7,7 @@ import {
   compareRoomMessageRecords,
   isOwnRoomMessage,
   mergeRoomMessages,
+  roomMessageRowKey,
   toRoomMessageView,
   type RoomMessageRecord,
 } from './room-message-view'
@@ -228,4 +229,12 @@ test('room reconciliation uses deterministic ordering and replaces optimistic du
   const merged = mergeRoomMessages([persisted, later], [pending])
   assert.deepEqual(merged.map((message) => message.id), ['message_real', 'message_z'])
   assert.ok(compareRoomMessageRecords(merged[0]!, merged[1]!) < 0)
+})
+
+test('optimistic and persisted copies of one send share one row key', () => {
+  const pending = record({ id: 'optimistic_nonce_1', clientNonce: 'nonce_1' })
+  const persisted = record({ id: 'message_real', clientNonce: 'nonce_1' })
+  assert.equal(roomMessageRowKey(pending), roomMessageRowKey(persisted))
+  // Messages without a nonce (server-generated, imported) stay keyed by id.
+  assert.equal(roomMessageRowKey(record({ id: 'message_x' })), 'room-message-row-message_x')
 })
