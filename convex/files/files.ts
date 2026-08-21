@@ -67,7 +67,10 @@ function normalizeFile(file: Doc<'files'>) {
   const text = textOf(file)
   const blobBacked = Boolean(file.storageId ?? file.r2Key)
   const hasInlineText = Boolean(text.trim())
-  const storageBackedForDownload = blobBacked && !hasInlineText
+  // Indexed uploads intentionally have both the original blob and extracted
+  // text. Keep the text in content for search, but still expose the blob as
+  // the user-facing preview/download source.
+  const storageBackedForDownload = blobBacked
   return {
     _id: file._id,
     userId: file.userId,
@@ -76,7 +79,7 @@ function normalizeFile(file: Doc<'files'>) {
     type: file.type,
     kind,
     parentId: file.parentId ?? null,
-    content: storageBackedForDownload ? buildProxyUrl(file._id) : text,
+    content: blobBacked && !hasInlineText ? buildProxyUrl(file._id) : text,
     textContent: text,
     storageId: file.storageId ?? null,
     r2Key: file.r2Key ?? null,

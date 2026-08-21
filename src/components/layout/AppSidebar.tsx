@@ -797,7 +797,7 @@ export default function AppSidebar({
           // With a file or folder open the category row is still "current", so a
           // plain equality check swallowed the click and nothing happened. Selecting
           // the category you are already in is how you get back out to its list.
-          const hasOpenItem = currentSearchParams.has('file') || currentSearchParams.has('folder')
+          const hasOpenItem = notesOpen || currentSearchParams.has('file') || currentSearchParams.has('folder') || currentSearchParams.has('id')
           if (next === filesView && !hasOpenItem) return
           beginSecondaryNavigation(next)
           const params = new URLSearchParams(currentSearchParams.toString())
@@ -806,8 +806,13 @@ export default function AppSidebar({
           else params.set('view', next)
           params.delete('file')
           params.delete('folder')
+          params.delete('id')
+          params.delete('memory')
           const query = params.toString()
-          router.push(query ? `${pathname}?${query}` : pathname)
+          const filesHref = canonicalWorkspaceRoute && activeWorkspaceId
+            ? buildWorkspaceHref(activeWorkspaceId, '/app/files')
+            : '/app/files'
+          router.push(query ? `${filesHref}?${query}` : filesHref)
         },
       }
     }

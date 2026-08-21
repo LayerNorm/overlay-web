@@ -62,3 +62,17 @@ test('indexed document text can use a preview classifier without changing its di
   assert.match(markup, /Extracted text/)
   assert.doesNotMatch(markup, />Research\.pdf\.md</)
 })
+
+test('stored binaries keep the original preview when extracted text is also present', () => {
+  const markup = renderToStaticMarkup(
+    <FileViewerPanel
+      name="Research.pdf"
+      previewName="Research.pdf.md"
+      content="# Extracted text"
+      url="/api/v1/files/file_1/content"
+    />,
+  )
+  assert.match(markup, /overlay-file-viewer--pdf/)
+  assert.match(markup, /src="\/api\/v1\/files\/file_1\/content"/)
+  assert.doesNotMatch(markup, /This PDF is stored as extracted text/)
+})

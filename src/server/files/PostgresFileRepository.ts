@@ -899,7 +899,10 @@ function normalizeFile(row: FileRow): FileRecord {
   const text = textOf(row)
   const blobBacked = Boolean(row.storageId ?? row.r2Key)
   const hasInlineText = Boolean(text.trim())
-  const storageBackedForDownload = blobBacked && !hasInlineText
+  // Indexed uploads intentionally have both the original blob and extracted
+  // text. Keep the text in content for search, but still expose the blob as
+  // the user-facing preview/download source.
+  const storageBackedForDownload = blobBacked
   return {
     _id: row.id,
     userId: row.userId,
@@ -907,7 +910,7 @@ function normalizeFile(row: FileRow): FileRecord {
     type: row.type,
     kind,
     parentId: row.parentId ?? null,
-    content: storageBackedForDownload ? `/api/v1/files/${row.id}/content` : text,
+    content: blobBacked && !hasInlineText ? `/api/v1/files/${row.id}/content` : text,
     textContent: text,
     storageId: row.storageId ?? undefined,
     r2Key: row.r2Key ?? undefined,
