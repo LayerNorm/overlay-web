@@ -437,19 +437,25 @@ function PdfViewer({
           onError={() => setPreviewFailed(true)}
         />
       )}
-      {iframeSrc && hasExtractedText ? (
+      {iframeSrc ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-xs text-[var(--muted)]">
-          <span>{previewFailed ? 'Showing extracted text' : 'PDF preview'}</span>
-          <button
-            type="button"
-            className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
-            onClick={() => {
-              setPreviewFailed(false)
-              setShowText((value) => !value)
-            }}
-          >
-            {showingText ? 'Try PDF preview' : 'Show extracted text'}
-          </button>
+          <span>
+            {previewFailed
+              ? hasExtractedText ? 'Showing extracted text' : 'PDF preview unavailable'
+              : hasExtractedText ? 'PDF preview' : 'No extracted text is available for this file.'}
+          </span>
+          {hasExtractedText ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+              onClick={() => {
+                setPreviewFailed(false)
+                setShowText((value) => !value)
+              }}
+            >
+              {showingText ? 'Try PDF preview' : 'Show extracted text'}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
