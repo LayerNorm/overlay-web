@@ -84,3 +84,10 @@ test('PDFs without a preview URL render extracted text as the fallback', () => {
   assert.match(markup, /Extracted PDF text/)
   assert.match(markup, /Extracted text fallback for this PDF/)
 })
+
+test('PDFs without extracted text explain why a fallback is unavailable', () => {
+  const markup = renderToStaticMarkup(
+    <FileViewer name="Research.pdf" content="" url="/api/v1/files/file_1/content" />,
+  )
+  assert.match(markup, /No extracted text is available for this file/)
+})
