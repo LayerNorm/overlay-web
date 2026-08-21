@@ -90,12 +90,11 @@ export function normalizeGeneratedMarkdown(
   const hasKnowledgeCitations =
     !!(options?.sourceCitations && Object.keys(options.sourceCitations).length > 0)
   const hasWebSources = !!(options?.webSources && options.webSources.length > 0)
-  // Strip the redundant trailing "Sources:" prose block. Web and knowledge
-  // sources are both surfaced as inline chips plus the Sources button/panel, so
-  // the plaintext list of bare numbers is never the right presentation.
-  if (hasWebSources || hasKnowledgeCitations) {
-    t = stripTrailingSourcesBlock(t)
-  }
+  // Always drop the trailing "Sources:" block. Whatever it listed is already in
+  // the Sources button and panel for the turn (ChatExchange recovers sources
+  // from this block when a reply carries no other citation metadata), so
+  // repeating it as prose is redundant no matter which kind of source it was.
+  t = stripTrailingSourcesBlock(t)
   if (
     options?.linkifyWebCitations &&
     options?.webSources &&

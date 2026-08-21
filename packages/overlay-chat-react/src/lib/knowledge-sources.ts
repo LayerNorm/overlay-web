@@ -24,6 +24,26 @@ export function knowledgeSourceTitle(citation: SourceCitation): string {
   return citation.kind === 'memory' ? 'Memory' : 'File'
 }
 
+const CHIP_MEMORY_WORDS = 2
+const CHIP_FILE_CHARS = 28
+
+/**
+ * Short label for an inline chip. A memory's full text is far too long to sit in
+ * running prose, so it collapses to `Memory: first two words…`; the tooltip and
+ * the sources panel still show the full title.
+ */
+export function knowledgeChipLabel(citation: SourceCitation): string {
+  const title = knowledgeSourceTitle(citation)
+  if (citation.kind !== 'memory') {
+    return title.length > CHIP_FILE_CHARS ? `${title.slice(0, CHIP_FILE_CHARS - 1).trimEnd()}…` : title
+  }
+  if (title === 'Memory') return 'Memory'
+  const words = title.split(/\s+/).filter(Boolean)
+  const head = words.slice(0, CHIP_MEMORY_WORDS).join(' ')
+  if (!head) return 'Memory'
+  return words.length > CHIP_MEMORY_WORDS ? `Memory: ${head}…` : `Memory: ${head}`
+}
+
 /** Hash href for markdown chips (survives rehype-sanitize; React resolves the real route). */
 export function knowledgeCitationMarkdownHref(indexOneBased: number): string {
   return `#overlay-knowcite-${indexOneBased}`
@@ -90,6 +110,36 @@ export function knowledgeCitationsFromMarkdown(text: string): SourceCitationMap 
   return citations
 }
 
+/**
+ * External links that live only in a reply's trailing `Sources:` block. That
+ * block is always stripped from the rendered markdown, so a turn whose sources
+ * were never collected from a tool call would otherwise lose them entirely.
+ */
+export function externalSourcesFromMarkdown(text: string): WebSourceItem[] {
+  const sources: WebSourceItem[] = []
+  const seen = new Set<string>()
+  const lines = text.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i]!.trimStart()
+    if (trimmed === '') continue
+    if (!/^(\*\*)?\s*(Sources|Citations|References)\s*:?/i.test(trimmed)) break
+    for (const match of trimmed.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)) {
+      const url = match[2]!
+      if (seen.has(url)) continue
+      seen.add(url)
+      sources.push({ url, title: match[1]?.trim() || '', origin: 'web-search' })
+    }
+    for (const match of trimmed.matchAll(/(?<!\]\()\bhttps?:\/\/[^\s)\]]+/g)) {
+      const url = match[0]
+      if (seen.has(url)) continue
+      seen.add(url)
+      sources.push({ url, title: '', origin: 'web-search' })
+    }
+    break
+  }
+  return sources
+}
+
 function transformOutsideCodeFences(text: string, fn: (chunk: string) => string): string {
   const fenceRe = /```[\s\S]*?```/g
   let last = 0
@@ -118,7 +168,7 @@ export function linkifyInlineKnowledgeCitations(
     chunk.replace(/\[\s*(\d+)\s*\](?!\()/g, (full, digit: string) => {
       const citation = citations[String(Number(digit))]
       if (!citation) return full
-      return `[${knowledgeSourceTitle(citation)}](${knowledgeCitationMarkdownHref(Number(digit))})`
+      return `[${knowledgeChipLabel(citation)}](${knowledgeCitationMarkdownHref(Number(digit))})`
     }),
   )
 }

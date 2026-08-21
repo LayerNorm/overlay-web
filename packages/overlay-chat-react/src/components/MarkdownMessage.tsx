@@ -2,7 +2,7 @@ import 'katex/dist/katex.min.css'
 import { type ReactNode, memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { SourceCitationMap } from '../lib/source-citations'
-import { knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
+import { knowledgeChipLabel, knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
 import { webSourceDisplayKey, type WebSourceItem } from '../lib/web-sources'
 import { shimIncompleteMarkdown } from '../lib/shim-incomplete-markdown'
 import type { ChatStreamingMode } from '../context/chat-settings'
@@ -132,8 +132,10 @@ function MarkdownMessageImpl({
           if (typeof href === 'string' && href.startsWith('#overlay-knowcite-')) {
             const n = parseInt(href.slice('#overlay-knowcite-'.length), 10)
             const source = knowledgeSources[n - 1]
+            const citation = sourceCitations?.[String(n)]
             if (source?.internalHref) {
-              return renderInternalChip(source.internalHref, linkText || source.title, [source])
+              const label = linkText || (citation ? knowledgeChipLabel(citation) : source.title)
+              return renderInternalChip(source.internalHref, label, [source])
             }
             return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{n}]</span>
           }
@@ -213,7 +215,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, webSources, appBaseUrl, onOpenAttachmentPreview],
+    [knowledgeSources, sourceCitations, webSources, appBaseUrl, onOpenAttachmentPreview],
   )
   const activeRemarkPlugins = useMemo(
     () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],

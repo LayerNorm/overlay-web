@@ -12,6 +12,7 @@ import {
   isUsageExhaustedError,
 } from '@overlay/chat-core'
 import {
+  externalSourcesFromMarkdown,
   knowledgeCitationsFromMarkdown,
   knowledgeSourcesFromCitations,
 } from '../../lib/knowledge-sources'
@@ -145,11 +146,15 @@ export function ChatExchange({
       () => knowledgeSourcesFromCitations(effectiveSourceCitations),
       [effectiveSourceCitations],
     )
-    /** Web and knowledge sources share one Sources button and one panel. */
-    const allSources = useMemo(
-      () => [...webSources, ...knowledgeSources],
-      [knowledgeSources, webSources],
-    )
+    /**
+     * Web and knowledge sources share one Sources button and one panel. The
+     * trailing `Sources:` block is stripped from the rendered reply, so when no
+     * tool call supplied sources its external links are recovered from there.
+     */
+    const allSources = useMemo(() => {
+      if (webSources.length > 0) return [...webSources, ...knowledgeSources]
+      return [...externalSourcesFromMarkdown(assistantPlainText), ...knowledgeSources]
+    }, [assistantPlainText, knowledgeSources, webSources])
     const normalizedStatus: ChatExchangeStatus = status ?? (
       responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
     )

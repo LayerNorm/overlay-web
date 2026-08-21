@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  externalSourcesFromMarkdown,
+  knowledgeChipLabel,
   knowledgeCitationsFromMarkdown,
   knowledgeSourceHref,
   knowledgeSourcesFromCitations,
@@ -64,13 +66,47 @@ test('a reply without a Sources line recovers nothing', () => {
   assert.deepEqual(knowledgeCitationsFromMarkdown('Just an answer.'), {})
 })
 
+test('memory chips shorten to the first two words', () => {
+  assert.equal(
+    knowledgeChipLabel({
+      kind: 'memory',
+      sourceId: 'mem_1',
+      title: 'User loves Celsius energy powder packets.',
+    }),
+    'Memory: User loves…',
+  )
+  // Nothing was cut, so nothing is elided.
+  assert.equal(
+    knowledgeChipLabel({ kind: 'memory', sourceId: 'mem_2', title: 'Prefers dark' }),
+    'Memory: Prefers dark',
+  )
+  assert.equal(knowledgeChipLabel({ kind: 'memory', sourceId: 'mem_3' }), 'Memory')
+  assert.equal(
+    knowledgeChipLabel({ kind: 'file', sourceId: 'file_1', title: 'Roadmap.md' }),
+    'Roadmap.md',
+  )
+})
+
 test('inline markers become knowledge chips, code fences are left alone', () => {
   const linkified = linkifyInlineKnowledgeCitations(
     'Per your note [1] this holds.\n\n```\nconst a = list[1]\n```',
-    { '1': { kind: 'memory', sourceId: 'mem_1', title: 'User loves Celsius' } },
+    { '1': { kind: 'memory', sourceId: 'mem_1', title: 'User loves Celsius energy packets' } },
   )
   assert.equal(
     linkified,
-    'Per your note [User loves Celsius](#overlay-knowcite-1) this holds.\n\n```\nconst a = list[1]\n```',
+    'Per your note [Memory: User loves…](#overlay-knowcite-1) this holds.\n\n```\nconst a = list[1]\n```',
   )
+})
+
+test('external links in a stripped Sources block survive as sources', () => {
+  assert.deepEqual(
+    externalSourcesFromMarkdown(
+      'Answer.\n\n**Sources:** [Celsius](https://celsius.com/faq) https://example.com/a',
+    ),
+    [
+      { url: 'https://celsius.com/faq', title: 'Celsius', origin: 'web-search' },
+      { url: 'https://example.com/a', title: '', origin: 'web-search' },
+    ],
+  )
+  assert.deepEqual(externalSourcesFromMarkdown('Answer with https://example.com inline.'), [])
 })
