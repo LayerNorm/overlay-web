@@ -6,6 +6,7 @@ const themeValidator = v.union(v.literal('light'), v.literal('dark'))
 const chatModeValidator = v.union(v.literal('ask'), v.literal('act'))
 const modelPreferenceValidator = v.union(v.literal('same-for-each-chat'), v.literal('different-for-each-chat'))
 const chatStreamingModeValidator = v.literal('token')
+const linkOpenPreferenceValidator = v.union(v.literal('ask'), v.literal('overlay'), v.literal('new-tab'))
 const themePresetValidator = v.optional(v.string())
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
@@ -19,6 +20,7 @@ const uiSettingsValidator = v.object({
   useSecondarySidebar: v.boolean(),
   chatStreamingMode: chatStreamingModeValidator,
   autoContinue: v.boolean(),
+  linkOpenPreference: linkOpenPreferenceValidator,
   defaultChatMode: chatModeValidator,
   modelPreference: modelPreferenceValidator,
   defaultAskModelIds: v.array(v.string()),
@@ -43,6 +45,7 @@ function defaultUiSettings() {
     useSecondarySidebar: false,
     chatStreamingMode: 'token' as const,
     autoContinue: false,
+    linkOpenPreference: 'ask' as const,
     defaultChatMode: 'act' as const,
     modelPreference: 'same-for-each-chat' as const,
     defaultAskModelIds: [] as string[],
@@ -108,6 +111,7 @@ export const getByServer = query({
       chatStreamingMode:
         existing.chatStreamingMode === 'chunk' ? 'token' : (existing.chatStreamingMode ?? 'token'),
       autoContinue: existing.autoContinue ?? false,
+      linkOpenPreference: existing.linkOpenPreference ?? 'ask',
       defaultChatMode: existing.defaultChatMode ?? 'act',
       modelPreference: existing.modelPreference ?? 'same-for-each-chat',
       defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
@@ -140,6 +144,7 @@ export const upsertByServer = mutation({
     /** Ignored if sent; persisted value is always `token`. */
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
+    linkOpenPreference: v.optional(linkOpenPreferenceValidator),
     defaultChatMode: v.optional(chatModeValidator),
     modelPreference: v.optional(modelPreferenceValidator),
     defaultAskModelIds: v.optional(v.array(v.string())),
@@ -167,6 +172,7 @@ export const upsertByServer = mutation({
       useSecondarySidebar: args.useSecondarySidebar ?? existing?.useSecondarySidebar ?? false,
       chatStreamingMode: 'token' as const,
       autoContinue: args.autoContinue ?? existing?.autoContinue ?? false,
+      linkOpenPreference: args.linkOpenPreference ?? existing?.linkOpenPreference ?? 'ask' as const,
       defaultChatMode: args.defaultChatMode ?? existing?.defaultChatMode ?? 'act' as const,
       modelPreference: args.modelPreference ?? existing?.modelPreference ?? 'same-for-each-chat' as const,
       defaultAskModelIds:

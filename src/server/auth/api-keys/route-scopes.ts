@@ -2,6 +2,7 @@ import type { ApiKeyScope } from '@/shared/auth/api-key-scopes'
 
 const CHAT_READ_PATHS = new Set([
   '/api/v1/chat-suggestions',
+  '/api/v1/link-preview',
 ])
 
 const CHAT_WRITE_PATHS = new Set([

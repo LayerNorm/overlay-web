@@ -13,6 +13,7 @@ import {
   Pencil,
   SlidersHorizontal,
 } from 'lucide-react'
+import { CrossfadeText } from './CrossfadeText'
 import type {
   ChatModel,
   GenerationMode,
@@ -277,7 +278,7 @@ export function ChatExperienceHeader({
         ) : (
           <div className="flex min-w-0 items-center gap-1">
             <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
-              <span className="line-clamp-2 md:line-clamp-1 md:truncate">{titleLabel}</span>
+              <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
             </h2>
             {showRenameButton ? (
               <button

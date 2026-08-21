@@ -32,7 +32,11 @@ function readStoredAttachmentPreviewMode(): AttachmentPreviewMode {
 
 export function useChatPanels() {
   const [sourcesPanel, setSourcesPanel] = useState<{ turnId: string; sources: WebSourceItem[] } | null>(null)
+  /** A link opened in the right-hand panel instead of a browser tab. */
+  const [linkPreview, setLinkPreview] = useState<{ url: string; title?: string } | null>(null)
+
   const openSourcesPanel = useCallback((turnId: string, sources: WebSourceItem[]) => {
+    setLinkPreview(null)
     setSourcesPanel((prev) => (prev && prev.turnId === turnId ? null : { turnId, sources }))
   }, [])
   const closeSourcesPanel = useCallback(() => setSourcesPanel(null), [])
@@ -55,8 +59,17 @@ export function useChatPanels() {
     }
   }, [])
 
+  // One right-hand panel at a time: opening a link replaces whatever is there.
+  const openLinkPreview = useCallback((url: string, title?: string) => {
+    setSourcesPanel(null)
+    setAttachmentPreview(null)
+    setLinkPreview({ url, ...(title ? { title } : {}) })
+  }, [])
+  const closeLinkPreview = useCallback(() => setLinkPreview(null), [])
+
   const openAttachmentPreview = useCallback((preview: AttachmentPreview, options?: AttachmentPreviewOpenOptions) => {
     setSourcesPanel(null)
+    setLinkPreview(null)
     if (options?.mode) {
       setAttachmentPreviewMode(options.mode)
     }
@@ -67,6 +80,7 @@ export function useChatPanels() {
     const fileId = fileIds[0]
     if (!fileId) return
     setSourcesPanel(null)
+    setLinkPreview(null)
     const url = `/api/v1/files/${fileId}/content`
     setAttachmentPreview({
       name,
@@ -98,7 +112,10 @@ export function useChatPanels() {
     attachmentPreview,
     attachmentPreviewMode,
     closeAttachmentPreview,
+    closeLinkPreview,
     closeSourcesPanel,
+    linkPreview,
+    openLinkPreview,
     openAttachmentPreview,
     openFilePreview,
     openSourcesPanel,

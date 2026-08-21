@@ -112,6 +112,7 @@ export function useChatSendController({
   setPendingChatDocuments,
   setReplyContext,
   setRuntimeHydrationVersion,
+  prefetchFirstMessageTitle,
   startFirstMessageRename,
   startSession,
   syncStandaloneChatUrl,
@@ -189,6 +190,7 @@ export function useChatSendController({
   setPendingChatDocuments: Dispatch<SetStateAction<PendingChatDocument[]>>
   setReplyContext: (context: ReplyContext) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
+  prefetchFirstMessageTitle: (seedText: string) => void
   startFirstMessageRename: (chatId: string, seedText: string) => void
   startSession: StartSession
   syncStandaloneChatUrl: (chatId: string | null) => void
@@ -379,6 +381,12 @@ export function useChatSendController({
     })
     setIsOptimisticLoading(true)
 
+    // Title generation runs alongside the message, not after it: a long turn
+    // would otherwise leave the chat named "New Chat" until the run finished.
+    if (isFirstMessage && !snapshot.temporaryChatSnapshot && snapshot.text.trim()) {
+      prefetchFirstMessageTitle(snapshot.text)
+    }
+
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
       clearSubmittedComposer()
       await sendMediaTurn({
@@ -500,6 +508,7 @@ export function useChatSendController({
     setPendingChatDocuments,
     setReplyContext,
     setRuntimeHydrationVersion,
+    prefetchFirstMessageTitle,
     startFirstMessageRename,
     startSession,
     textareaRef,

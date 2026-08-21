@@ -71,6 +71,7 @@ import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-acces
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
+import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
@@ -246,9 +247,12 @@ export default function ChatExperience({
     attachmentPreview,
     attachmentPreviewMode,
     closeAttachmentPreview,
+    closeLinkPreview,
     closeSourcesPanel,
+    linkPreview,
     openAttachmentPreview,
     openFilePreview,
+    openLinkPreview,
     openSourcesPanel,
     panelPresentation,
     setPanelPresentation,
@@ -796,6 +800,7 @@ export default function ChatExperience({
     headerTitleInputRef,
     markChatModified,
     setEditingChatTitle,
+    prefetchFirstMessageTitle,
     startFirstMessageRename,
   } = useChatTitleController({
     activeChatId,
@@ -1562,6 +1567,7 @@ export default function ChatExperience({
     setPendingChatDocuments,
     setReplyContext,
     setRuntimeHydrationVersion,
+    prefetchFirstMessageTitle,
     startFirstMessageRename,
     startSession,
     syncStandaloneChatUrl,
@@ -2007,7 +2013,9 @@ export default function ChatExperience({
     attachmentPreview,
     attachmentPreviewMode,
     closeAttachmentPreview,
+    closeLinkPreview,
     closeSourcesPanel,
+    linkPreview,
     panelPresentation,
     setPanelPresentation,
     setAttachmentPreviewMode,
@@ -2019,6 +2027,10 @@ export default function ChatExperience({
   return (
     <>
       {liveQueryBridge}
+      <LinkOpenInterceptor
+        preference={settings.linkOpenPreference}
+        onOpenInOverlay={openLinkPreview}
+      />
       <ChatExperienceView
       shell={{
         rightPanel: shellRightPanel,

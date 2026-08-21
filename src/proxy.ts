@@ -152,7 +152,10 @@ function buildCspPolicy(): string {
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:",
     `connect-src ${buildConnectSrc().join(' ')}`,
-    "frame-src 'self' blob: data: https://www.youtube.com https://www.youtube-nocookie.com",
+    // `https:` backs the link preview panel, which frames arbitrary https pages
+    // the user chose to open. Those frames are sandboxed without
+    // allow-top-navigation, so a framed page cannot navigate the app.
+    "frame-src 'self' blob: data: https:",
     "media-src 'self' blob: data:",
     "worker-src 'self' blob:",
     "manifest-src 'self'",

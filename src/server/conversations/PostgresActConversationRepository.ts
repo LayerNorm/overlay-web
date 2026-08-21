@@ -393,6 +393,12 @@ export class PostgresActConversationRepository implements ActConversationReposit
       darkThemePreset: (row.darkThemePreset ?? DEFAULT_APP_SETTINGS.darkThemePreset) as AppSettings['darkThemePreset'],
       chatStreamingMode: row.chatStreamingMode === 'token' ? 'token' : DEFAULT_APP_SETTINGS.chatStreamingMode,
       autoContinue: row.autoContinue ?? DEFAULT_APP_SETTINGS.autoContinue,
+      linkOpenPreference:
+        row.linkOpenPreference === 'ask' ||
+        row.linkOpenPreference === 'overlay' ||
+        row.linkOpenPreference === 'new-tab'
+          ? row.linkOpenPreference
+          : DEFAULT_APP_SETTINGS.linkOpenPreference,
       defaultChatMode: row.defaultChatMode ?? DEFAULT_APP_SETTINGS.defaultChatMode,
       modelPreference: row.modelPreference === 'different-for-each-chat'
         ? 'different-for-each-chat'

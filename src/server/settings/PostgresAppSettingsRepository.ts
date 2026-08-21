@@ -43,6 +43,10 @@ export class PostgresAppSettingsRepository implements AppSettingsRepository {
 
 type UserSettingsRow = typeof userSettings.$inferSelect
 
+function isLinkOpenPreference(value: string | null): value is AppSettings['linkOpenPreference'] {
+  return value === 'ask' || value === 'overlay' || value === 'new-tab'
+}
+
 function settingsFromRow(row: UserSettingsRow): AppSettings {
   return {
     theme: row.theme === 'dark' ? 'dark' : DEFAULT_APP_SETTINGS.theme,
@@ -50,6 +54,9 @@ function settingsFromRow(row: UserSettingsRow): AppSettings {
     darkThemePreset: (row.darkThemePreset ?? DEFAULT_APP_SETTINGS.darkThemePreset) as AppSettings['darkThemePreset'],
     chatStreamingMode: row.chatStreamingMode === 'token' ? 'token' : DEFAULT_APP_SETTINGS.chatStreamingMode,
     autoContinue: row.autoContinue ?? DEFAULT_APP_SETTINGS.autoContinue,
+    linkOpenPreference: isLinkOpenPreference(row.linkOpenPreference)
+      ? row.linkOpenPreference
+      : DEFAULT_APP_SETTINGS.linkOpenPreference,
     defaultChatMode: row.defaultChatMode ?? DEFAULT_APP_SETTINGS.defaultChatMode,
     modelPreference: row.modelPreference === 'different-for-each-chat'
       ? 'different-for-each-chat'
@@ -76,6 +83,7 @@ function settingsToColumns(patch: AppSettingsPatch): Partial<typeof userSettings
   if (patch.darkThemePreset !== undefined) columns.darkThemePreset = patch.darkThemePreset
   if (patch.chatStreamingMode !== undefined) columns.chatStreamingMode = patch.chatStreamingMode
   if (patch.autoContinue !== undefined) columns.autoContinue = patch.autoContinue
+  if (patch.linkOpenPreference !== undefined) columns.linkOpenPreference = patch.linkOpenPreference
   if (patch.defaultChatMode !== undefined) columns.defaultChatMode = patch.defaultChatMode
   if (patch.modelPreference !== undefined) columns.modelPreference = patch.modelPreference
   if (patch.defaultAskModelIds !== undefined) columns.defaultAskModelIds = patch.defaultAskModelIds

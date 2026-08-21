@@ -435,6 +435,13 @@
       "when": 1787166006000,
       "tag": "0061_agent_run_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1787166007000,
+      "tag": "0062_link_open_preference",
+      "breakpoints": true
     }
   ]
 }

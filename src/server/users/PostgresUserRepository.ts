@@ -91,6 +91,7 @@ export class PostgresUserRepository implements UserRepository {
           useSecondarySidebar: false,
           chatStreamingMode: 'token',
           autoContinue: false,
+          linkOpenPreference: 'ask',
           defaultChatMode: 'act',
           modelPreference: 'same-for-each-chat',
           defaultAskModelIds: [],

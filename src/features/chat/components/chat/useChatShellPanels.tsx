@@ -3,10 +3,12 @@
 import type { ReactNode } from 'react'
 import {
   AttachmentPreviewPanel,
+  LinkPreviewPanel,
   type AttachmentPreview,
   type AttachmentPreviewMode,
 } from '@overlay/chat-react'
 import { ChatSourcesPanel } from '../ChatSourcesPanel'
+import { checkLinkEmbeddable } from '@/features/chat/lib/link-preview'
 import type { PanelPresentation } from './useChatPanels'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 
@@ -19,7 +21,9 @@ export function useChatShellPanels({
   attachmentPreview,
   attachmentPreviewMode,
   closeAttachmentPreview,
+  closeLinkPreview,
   closeSourcesPanel,
+  linkPreview,
   panelPresentation,
   setPanelPresentation,
   setAttachmentPreviewMode,
@@ -29,7 +33,9 @@ export function useChatShellPanels({
   attachmentPreview: AttachmentPreview | null
   attachmentPreviewMode: AttachmentPreviewMode
   closeAttachmentPreview: () => void
+  closeLinkPreview: () => void
   closeSourcesPanel: () => void
+  linkPreview: { url: string; title?: string } | null
   panelPresentation: PanelPresentation
   setPanelPresentation: (presentation: PanelPresentation) => void
   setAttachmentPreviewMode: (mode: AttachmentPreviewMode) => void
@@ -44,6 +50,15 @@ export function useChatShellPanels({
       onModeChange={setAttachmentPreviewMode}
       renderViewer={renderAttachmentViewer}
     />
+  ) : linkPreview ? (
+    <LinkPreviewPanel
+      url={linkPreview.url}
+      title={linkPreview.title}
+      onClose={closeLinkPreview}
+      presentation={panelPresentation}
+      onPresentationChange={setPanelPresentation}
+      checkEmbeddable={checkLinkEmbeddable}
+    />
   ) : sourcesPanel ? (
     <ChatSourcesPanel
       variant="shell"
@@ -57,12 +72,15 @@ export function useChatShellPanels({
 
   const shellRightPanelClose = attachmentPreview && attachmentPreviewMode === 'panel'
     ? closeAttachmentPreview
-    : sourcesPanel
-      ? closeSourcesPanel
-      : undefined
-  const shellRightPanelWidth = attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : 380
+    : linkPreview
+      ? closeLinkPreview
+      : sourcesPanel
+        ? closeSourcesPanel
+        : undefined
+  const shellRightPanelWidth =
+    attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : linkPreview ? 520 : 380
   const shellRightPanelMode: 'docked' | 'floating' =
-    sourcesPanel && !(attachmentPreview && attachmentPreviewMode === 'panel')
+    (sourcesPanel || linkPreview) && !(attachmentPreview && attachmentPreviewMode === 'panel')
       ? (panelPresentation === 'sidebar' ? 'docked' : 'floating')
       : 'docked'
 

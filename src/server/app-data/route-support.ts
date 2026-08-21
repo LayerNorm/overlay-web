@@ -106,6 +106,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'chat-send',
   },
   {
+    id: 'link-preview-embeddability',
+    methods: ['GET'],
+    paths: ['/api/v1/link-preview'],
+    status: 'supported',
+    feature: 'chat-send',
+  },
+  {
     id: 'conversation-title-generation',
     methods: ['POST'],
     paths: ['/api/v1/generate-title'],

@@ -46,6 +46,7 @@ import {
   GenerateImageRequest,
   GenerateTabGroupLabelRequest,
   GenerateTitleRequest,
+  LinkPreviewQuery,
   GenerateVideoRequest,
   IngestDocumentForm,
   IntegrationConnectRequest,
@@ -365,6 +366,13 @@ export const webApiBoundaryDefinitions = [
     schema: { json: GenerateTabGroupLabelRequest },
     summary: 'Generate a tab group label',
     tag: 'Tools',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/link-preview',
+    schema: { query: LinkPreviewQuery, response: UnknownResponse },
+    summary: 'Check whether a URL can be framed in the link preview panel',
+    tag: 'Chat',
   },
   {
     method: 'POST',

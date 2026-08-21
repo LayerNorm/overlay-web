@@ -11,6 +11,7 @@ export const UpdateSettingsRequest = z.object({
   lightThemePreset: z.string().optional(),
   darkThemePreset: z.string().optional(),
   autoContinue: z.boolean().optional(),
+  linkOpenPreference: z.enum(['ask', 'overlay', 'new-tab']).optional(),
   defaultChatMode: z.enum(['ask', 'act']).optional(),
   modelPreference: z.enum(['same-for-each-chat', 'different-for-each-chat']).optional(),
   defaultAskModelIds: z.array(z.string()).optional(),

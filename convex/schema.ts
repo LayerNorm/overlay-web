@@ -10,6 +10,9 @@ export default defineSchema({
     useSecondarySidebar: v.boolean(),
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
+    linkOpenPreference: v.optional(
+      v.union(v.literal('ask'), v.literal('overlay'), v.literal('new-tab')),
+    ),
     defaultChatMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
     modelPreference: v.optional(v.union(v.literal('same-for-each-chat'), v.literal('different-for-each-chat'))),
     defaultAskModelIds: v.optional(v.array(v.string())),

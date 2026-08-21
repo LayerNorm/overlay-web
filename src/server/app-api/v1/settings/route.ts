@@ -76,6 +76,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lightThemePreset?: ThemePresetId
       darkThemePreset?: ThemePresetId
       autoContinue?: boolean
+      linkOpenPreference?: AppSettings['linkOpenPreference']
       defaultChatMode?: ChatModePreference
       modelPreference?: AppSettings['modelPreference']
       defaultAskModelIds?: string[]
@@ -107,6 +108,14 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.autoContinue !== undefined && typeof body.autoContinue !== 'boolean') {
       return NextResponse.json({ error: 'Invalid autoContinue' }, { status: 400 })
+    }
+    if (
+      body.linkOpenPreference !== undefined &&
+      body.linkOpenPreference !== 'ask' &&
+      body.linkOpenPreference !== 'overlay' &&
+      body.linkOpenPreference !== 'new-tab'
+    ) {
+      return NextResponse.json({ error: 'Invalid linkOpenPreference' }, { status: 400 })
     }
     if (
       body.defaultChatMode !== undefined &&
@@ -196,6 +205,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lightThemePreset?: string
       darkThemePreset?: string
       autoContinue?: boolean
+      linkOpenPreference?: AppSettings['linkOpenPreference']
       defaultChatMode?: ChatModePreference
       modelPreference?: AppSettings['modelPreference']
       defaultAskModelIds?: string[]
@@ -230,6 +240,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.autoContinue !== undefined) {
       mutationArgs.autoContinue = body.autoContinue
       settingsPatch.autoContinue = body.autoContinue
+    }
+    if (body.linkOpenPreference !== undefined) {
+      mutationArgs.linkOpenPreference = body.linkOpenPreference
+      settingsPatch.linkOpenPreference = body.linkOpenPreference
     }
     if (body.defaultChatMode !== undefined) {
       mutationArgs.defaultChatMode = body.defaultChatMode

@@ -38,6 +38,8 @@ import type {
 import type { AttachmentPreview } from '@overlay/chat-react'
 import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
@@ -312,13 +314,17 @@ export function DirectMessageExperience({
     addImages,
     handlePaste,
   } = useChatAttachments({ setComposerNotice })
+  const { settings: appSettings } = useAppSettings()
   const {
     attachmentPreview,
     attachmentPreviewMode,
     closeAttachmentPreview,
+    closeLinkPreview,
     closeSourcesPanel,
+    linkPreview,
     openAttachmentPreview,
     openFilePreview,
+    openLinkPreview,
     panelPresentation,
     setPanelPresentation,
     setAttachmentPreviewMode,
@@ -1203,7 +1209,9 @@ export function DirectMessageExperience({
     attachmentPreview,
     attachmentPreviewMode,
     closeAttachmentPreview,
+    closeLinkPreview,
     closeSourcesPanel,
+    linkPreview,
     panelPresentation,
     setPanelPresentation,
     setAttachmentPreviewMode,
@@ -1392,6 +1400,10 @@ export function DirectMessageExperience({
 
   return (
     <>
+      <LinkOpenInterceptor
+        preference={appSettings.linkOpenPreference}
+        onOpenInOverlay={openLinkPreview}
+      />
       {convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
         <ConvexRoomMessageSubscription
           accessToken={convexAccessToken}

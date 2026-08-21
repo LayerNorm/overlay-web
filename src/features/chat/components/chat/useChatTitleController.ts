@@ -10,7 +10,7 @@ import {
 import {
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
-import { generateTitle } from '@/features/chat/lib/generate-title'
+import { generateTitle, prefetchTitle } from '@/features/chat/lib/generate-title'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import type { Conversation, ConversationUiState } from '../chat-interface/types'
 
@@ -138,8 +138,30 @@ export function useChatTitleController({
     loadChats,
   ])
 
+  /**
+   * Fire the title request alongside the first message instead of waiting for
+   * the conversation to exist. A long agent run would otherwise leave the chat
+   * named "New Chat" for its whole duration.
+   *
+   * The resolved title is shown on the open conversation right away; the chat
+   * row and the server update follow once the conversation id arrives.
+   */
+  const prefetchFirstMessageTitle = useCallback((seedText: string) => {
+    if (!titleGenerationEnabled) return
+    const pending = prefetchTitle(seedText)
+    if (!pending) return
+    void pending.then((aiTitle) => {
+      if (!aiTitle) return
+      // Only paint the pending new-chat surface: once a conversation is active,
+      // startFirstMessageRename owns the title for that id.
+      if (activeChatIdRef.current !== null) return
+      setActiveChatTitle(sanitizeChatTitle(aiTitle, DEFAULT_CHAT_TITLE))
+    })
+  }, [activeChatIdRef, setActiveChatTitle, titleGenerationEnabled])
+
   const startFirstMessageRename = useCallback((chatId: string, text: string) => {
     if (!titleGenerationEnabled) return
+    // Resolves from the prefetched request when the seed matches.
     void generateTitle(text).then(async (aiTitle) => {
       if (!aiTitle) return
       const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
@@ -161,6 +183,7 @@ export function useChatTitleController({
     editingChatTitle,
     headerTitleInputRef,
     markChatModified,
+    prefetchFirstMessageTitle,
     setEditingChatTitle,
     startFirstMessageRename,
   }

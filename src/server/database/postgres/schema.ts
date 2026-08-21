@@ -447,6 +447,7 @@ export const userSettings = pgTable('user_settings', {
   useSecondarySidebar: boolean('use_secondary_sidebar').default(false).notNull(),
   chatStreamingMode: text('chat_streaming_mode'),
   autoContinue: boolean('auto_continue'),
+  linkOpenPreference: text('link_open_preference'),
   defaultChatMode: chatMode('default_chat_mode'),
   modelPreference: text('model_preference'),
   defaultAskModelIds: jsonb('default_ask_model_ids').$type<string[]>(),

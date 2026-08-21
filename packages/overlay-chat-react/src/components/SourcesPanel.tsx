@@ -68,8 +68,9 @@ export function SourcesPanel({
   const presentationToggle = presentation && onPresentationChange ? (
     <PresentationToggle presentation={presentation} onPresentationChange={onPresentationChange} />
   ) : null
+  // Source rows follow the same open-in-Overlay flow as links inside a reply.
   const sourceList = (
-    <ul className="flex flex-col gap-1">
+    <ul className="flex flex-col gap-1" data-overlay-link-scope="">
       {sources.flatMap((source, idx) => {
         // Knowledge sources are in-app routes, not URLs: they skip the http
         // guard, open in place, and carry a resource icon instead of a favicon.

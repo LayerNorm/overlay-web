@@ -85,6 +85,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       'conversations-act',
       'conversation-title-generation',
       'conversation-realtime-and-mutations',
+      'link-preview-embeddability',
     ],
     exitGate: 'All chat routes are supported and refresh, reconnect, second-tab, stop, share, and resume tests pass.',
   },

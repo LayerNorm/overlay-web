@@ -45,12 +45,16 @@ export type ThemePresetId =
   | 'vscode-plus'
   | 'xcode'
 
+/** Where a hyperlink in a chat response opens. `ask` shows the chooser on click. */
+export type LinkOpenPreference = 'ask' | 'overlay' | 'new-tab'
+
 export interface AppSettings {
   theme: ThemePreference
   lightThemePreset: ThemePresetId
   darkThemePreset: ThemePresetId
   chatStreamingMode: ChatStreamingMode
   autoContinue: boolean
+  linkOpenPreference: LinkOpenPreference
   defaultChatMode: ChatModePreference
   modelPreference: ModelPreference
   defaultAskModelIds: string[]
@@ -74,6 +78,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   darkThemePreset: 'default-dark',
   chatStreamingMode: 'token',
   autoContinue: false,
+  linkOpenPreference: 'ask',
   defaultChatMode: 'act',
   modelPreference: 'same-for-each-chat',
   defaultAskModelIds: [],

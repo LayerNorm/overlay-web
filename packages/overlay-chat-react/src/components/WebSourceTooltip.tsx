@@ -130,6 +130,7 @@ export function WebSourceTooltip({
               zIndex: 400,
               width: 'min(calc(100vw - 16px), 22rem)',
             }}
+            data-overlay-link-scope=""
             className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-lg"
           >
             <div className="px-2 pb-1.5 pt-0.5 text-[11px] font-medium text-[var(--muted)]">

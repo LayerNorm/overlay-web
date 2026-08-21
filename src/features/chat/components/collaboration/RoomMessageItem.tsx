@@ -240,6 +240,8 @@ export function RoomMessageItem({
   const rootProps = {
     id: roomMessageDomId(message.id),
     'data-room-message': message.id,
+    // Links in a room message follow the open-in-Overlay preference.
+    'data-overlay-link-scope': '',
   }
   const highlightClass = highlighted
     ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'

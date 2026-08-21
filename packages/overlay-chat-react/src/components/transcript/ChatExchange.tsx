@@ -180,6 +180,7 @@ export function ChatExchange({
           ? { maxWidth: presentation.maxContentWidth }
           : undefined}
         data-exchange-idx={exchIdx}
+        data-overlay-link-scope=""
         data-exchange-turn={turnIdForActions ?? undefined}
       >
         {/* User message */}

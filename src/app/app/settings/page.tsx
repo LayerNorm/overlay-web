@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Link2, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/page'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
@@ -18,6 +18,8 @@ import overlayAppConfig from '@/overlay.config'
 import type { BillingSettings } from '@overlay/app-core'
 import { resolveOverlayAppShellConfig } from '@overlay/app-core'
 import { resolveSettingsPanel } from '@overlay/app-core/settings-account'
+import { ListboxSelect } from '@overlay/ui/primitives'
+import type { LinkOpenPreference } from '@overlay/app-core'
 import {
   SettingRow,
   SettingsActionRow,
@@ -185,6 +187,26 @@ export default function SettingsPage() {
                   onChange={() => void updateSettings({ onlyAllowZdrModels: !settings.onlyAllowZdrModels })}
                 />
               ) : null}
+              <SettingsActionRow
+                icon={<Link2 size={18} strokeWidth={1.8} />}
+                title="Open links in"
+                description="Where a link in a response opens. Overlay shows it in the right-hand panel without leaving the chat."
+                action={
+                  <ListboxSelect<LinkOpenPreference>
+                    value={settings.linkOpenPreference}
+                    options={[
+                      { value: 'ask', label: 'Ask every time' },
+                      { value: 'overlay', label: 'Overlay' },
+                      { value: 'new-tab', label: 'New tab' },
+                    ]}
+                    disabled={busy}
+                    aria-label="Where to open links"
+                    className="shrink-0"
+                    buttonClassName="min-w-[9.5rem]"
+                    onChange={(linkOpenPreference) => void updateSettings({ linkOpenPreference })}
+                  />
+                }
+              />
               <SettingsActionRow
                 icon={<Play size={18} strokeWidth={1.8} />}
                 title="Onboarding tour"

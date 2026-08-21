@@ -123,6 +123,10 @@ export const ActConversationRequest = z.object({
 
 export const ChatSuggestionQuery = z.object({})
 
+export const LinkPreviewQuery = z.object({
+  url: z.string().min(1),
+}).passthrough()
+
 export const GenerateTitleRequest = z.object({
   ...AuthFields,
   conversationId: z.string().optional(),
