@@ -419,7 +419,7 @@ export function ChatExperienceHeader({
       ) : null}
 
       {appMode === 'automate' || !showAutomationChatTab ? null : (
-      <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:shrink-0 md:flex-row md:items-center md:justify-end md:gap-2">
+      <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:min-w-0 md:shrink-0 md:flex-row md:items-center md:justify-end md:gap-2">
         <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
           {!hasAutomationContext ? (
             <PersonalChatModeToggle
