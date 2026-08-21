@@ -350,6 +350,8 @@ export function AppScreenBody({
 }
 
 export interface AppScreenSidePanelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+  /** Optional fully composed header. Use AppScreenSidePanelHeader for parity with page headers. */
+  header?: ReactNode
   title?: ReactNode
   description?: ReactNode
   actions?: ReactNode
@@ -360,6 +362,7 @@ export interface AppScreenSidePanelProps extends Omit<HTMLAttributes<HTMLElement
 }
 
 export function AppScreenSidePanel({
+  header,
   title,
   description,
   actions,
@@ -379,7 +382,7 @@ export function AppScreenSidePanel({
       )}
       {...props}
     >
-      {(title || description || actions || onClose) ? (
+      {header ?? ((title || description || actions || onClose) ? (
         <div
           className={cn(
             'flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)]',
@@ -411,8 +414,28 @@ export function AppScreenSidePanel({
             </div>
           ) : null}
         </div>
-      ) : null}
+      ) : null)}
       <div className={cn('min-h-0 flex-1 overflow-auto', bodyClassName)}>{children}</div>
     </section>
+  )
+}
+
+/**
+ * Header slot for right sidebars. Its vertical rhythm intentionally matches
+ * AppScreenHeader so the divider remains continuous when a panel is docked.
+ */
+export type AppScreenSidePanelHeaderProps = HTMLAttributes<HTMLElement>
+
+export function AppScreenSidePanelHeader({ className, children, ...props }: AppScreenSidePanelHeaderProps) {
+  return (
+    <header
+      className={cn(
+        'flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2.5 md:min-h-16 md:py-3',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </header>
   )
 }

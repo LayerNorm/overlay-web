@@ -454,13 +454,13 @@ export function FileViewerPanel({
     <AppScreenShell
       className="overlay-file-viewer-panel flex min-h-0 flex-1 flex-col"
       header={
-        <AppScreenHeader className="px-6">
+        <AppScreenHeader className="px-0 py-0 sm:px-0">
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 md:py-3">
               {headerLeft}
               <span className="truncate text-sm font-medium text-[var(--foreground)]">{name}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2 px-3 py-2.5 md:py-3">
               {isSaving ? (
                 <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--muted-light)]">Saving...</span>
               ) : null}
@@ -488,7 +488,14 @@ export function FileViewerPanel({
           </div>
         </>
       ) : (
-        <FileViewer name={previewName ?? name} content={content} url={url} operations={operations} />
+        <FileViewer
+          // A stored binary must be classified by its real filename even when
+          // the backend also exposes an extracted-text classifier.
+          name={url && prefersUrlPreview(name) ? name : (previewName ?? name)}
+          content={content}
+          url={url}
+          operations={operations}
+        />
       )}
       </AppScreenBody>
     </AppScreenShell>

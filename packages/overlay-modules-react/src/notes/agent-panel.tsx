@@ -26,9 +26,9 @@ export function NotebookAgentPanel({
     <AppScreenSidePanel
       className="overlay-chat-surface bg-[var(--sidebar-surface)]"
       bodyClassName="flex min-h-0 flex-col overflow-hidden"
+      header={header}
       aria-label="Note assistant"
     >
-      {header}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
         {items.length === 0 && (
           <div className="text-center py-8">

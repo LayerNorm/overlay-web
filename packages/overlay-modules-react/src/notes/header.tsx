@@ -3,7 +3,7 @@
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
 import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2, X } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
-import { AppScreenHeader } from '../shell'
+import { AppScreenHeader, AppScreenSidePanelHeader } from '../shell'
 
 export interface NotebookHeaderProps {
   activeNote: NotebookNote | null
@@ -169,7 +169,7 @@ export function NotebookAgentHeader({
   const nextPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
   const presentationLabel = presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'
   return (
-    <div className="flex h-11 min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3">
+    <AppScreenSidePanelHeader>
       <span className="text-[13px] font-medium text-[var(--foreground)]">Assistant</span>
       <div className="flex items-center gap-2">
         {pendingDiffCount > 0 && (
@@ -214,6 +214,6 @@ export function NotebookAgentHeader({
           <X size={14} strokeWidth={1.8} />
         </button>
       </div>
-    </div>
+    </AppScreenSidePanelHeader>
   )
 }
