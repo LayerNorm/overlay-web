@@ -25,6 +25,8 @@ export function useChatShellPanels({
   closeSourcesPanel,
   linkPreview,
   panelPresentation,
+  panelWidth,
+  setPanelWidth,
   setPanelPresentation,
   setAttachmentPreviewMode,
   sourcesPanel,
@@ -37,6 +39,9 @@ export function useChatShellPanels({
   closeSourcesPanel: () => void
   linkPreview: { url: string; title?: string } | null
   panelPresentation: PanelPresentation
+  /** User-dragged width; null keeps each panel's own default. */
+  panelWidth: number | null
+  setPanelWidth: (width: number) => void
   setPanelPresentation: (presentation: PanelPresentation) => void
   setAttachmentPreviewMode: (mode: AttachmentPreviewMode) => void
   sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
@@ -77,14 +82,16 @@ export function useChatShellPanels({
       : sourcesPanel
         ? closeSourcesPanel
         : undefined
-  const shellRightPanelWidth =
+  const defaultRightPanelWidth =
     attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : linkPreview ? 520 : 380
+  const shellRightPanelWidth = panelWidth ?? defaultRightPanelWidth
   const shellRightPanelMode: 'docked' | 'floating' =
     (sourcesPanel || linkPreview) && !(attachmentPreview && attachmentPreviewMode === 'panel')
       ? (panelPresentation === 'sidebar' ? 'docked' : 'floating')
       : 'docked'
 
   return {
+    shellRightPanelResize: setPanelWidth,
     shellRightPanel,
     shellRightPanelClose,
     shellRightPanelWidth,

@@ -249,7 +249,7 @@ export function ChatExperienceHeader({
   return (
     <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
       <div
-        className={`group/header-title min-w-0 items-center gap-2 ${
+        className={`group/header-title min-w-0 items-center gap-2 md:min-w-0 md:flex-1 ${
           activeChatId && editingChatId === activeChatId
             ? 'flex w-full'
             : showAutomationHeaderControls
@@ -276,8 +276,11 @@ export function ChatExperienceHeader({
             onBlur={() => void onCommitChatRename(activeChatId)}
           />
         ) : (
-          <div className="flex min-w-0 items-center gap-1">
-            <h2 className="min-w-0 max-w-[min(100%,20rem)] text-sm font-medium leading-snug text-[var(--foreground)] md:truncate lg:max-w-[24rem]">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <h2
+              className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[20rem] md:truncate lg:max-w-[24rem]"
+              title={titleLabel}
+            >
               <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
             </h2>
             {showRenameButton ? (
@@ -416,7 +419,7 @@ export function ChatExperienceHeader({
       ) : null}
 
       {appMode === 'automate' || !showAutomationChatTab ? null : (
-      <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
+      <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:shrink-0 md:flex-row md:items-center md:justify-end md:gap-2">
         <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
           {!hasAutomationContext ? (
             <PersonalChatModeToggle

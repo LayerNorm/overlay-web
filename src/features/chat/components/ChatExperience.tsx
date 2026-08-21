@@ -255,7 +255,9 @@ export default function ChatExperience({
     openLinkPreview,
     openSourcesPanel,
     panelPresentation,
+    panelWidth,
     setPanelPresentation,
+    setPanelWidth,
     setAttachmentPreviewMode,
     setSourcesPanel,
     sourcesPanel,
@@ -2008,6 +2010,7 @@ export default function ChatExperience({
     shellRightPanel,
     shellRightPanelClose,
     shellRightPanelMode,
+    shellRightPanelResize,
     shellRightPanelWidth,
   } = useChatShellPanels({
     attachmentPreview,
@@ -2017,6 +2020,8 @@ export default function ChatExperience({
     closeSourcesPanel,
     linkPreview,
     panelPresentation,
+    panelWidth,
+    setPanelWidth,
     setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
@@ -2038,6 +2043,7 @@ export default function ChatExperience({
         rightPanelWidth: shellRightPanelWidth,
         rightPanelMode: shellRightPanelMode,
         onRightPanelClose: shellRightPanelClose,
+        onRightPanelResize: shellRightPanelResize,
       }}
       main={{
         activeChatDeleting,

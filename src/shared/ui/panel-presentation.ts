@@ -31,3 +31,36 @@ export function storePanelPresentation(presentation: PanelPresentation): void {
 export function toRightPanelMode(presentation: PanelPresentation): 'docked' | 'floating' {
   return presentation === 'sidebar' ? 'docked' : 'floating'
 }
+
+export const PANEL_WIDTH_KEY = 'overlay_panel_width'
+/** Narrow enough to still read, wide enough for a framed page. */
+export const MIN_PANEL_WIDTH = 320
+export const MAX_PANEL_WIDTH = 880
+
+export function clampPanelWidth(width: number): number {
+  const ceiling = typeof window === 'undefined'
+    ? MAX_PANEL_WIDTH
+    : Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(window.innerWidth * 0.7)))
+  return Math.round(Math.min(ceiling, Math.max(MIN_PANEL_WIDTH, width)))
+}
+
+/** Null until the user drags, so each panel keeps its own default width. */
+export function readStoredPanelWidth(): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(PANEL_WIDTH_KEY)
+    if (!raw) return null
+    const value = Number.parseInt(raw, 10)
+    return Number.isFinite(value) ? clampPanelWidth(value) : null
+  } catch {
+    return null
+  }
+}
+
+export function storePanelWidth(width: number): void {
+  try {
+    window.localStorage.setItem(PANEL_WIDTH_KEY, String(width))
+  } catch {
+    // Ignore blocked storage; the current session still reflects the width.
+  }
+}

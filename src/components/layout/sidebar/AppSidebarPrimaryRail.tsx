@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import { SidebarShell } from '@overlay/ui/primitives'
+import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 
 export interface PrimaryRailItem {
   id: string
@@ -103,6 +104,7 @@ export function AppSidebarPrimaryRail({
   brand,
   items,
   footerItems = [],
+  sectionNav,
   account,
   expanded = false,
   className,
@@ -110,10 +112,41 @@ export function AppSidebarPrimaryRail({
   brand: ReactNode
   items: readonly PrimaryRailItem[]
   footerItems?: readonly PrimaryRailItem[]
+  /**
+   * Subviews of the active section (Personal, DMs, Channels…). Collapsing the
+   * sidebar hides the secondary panel, so they move under the primary icons
+   * instead of disappearing.
+   */
+  sectionNav?: {
+    items: readonly InlineNavItem[]
+    activeId: string
+    pendingId?: string | null
+    onSelect: (id: string) => void
+  }
   account: ReactNode
   expanded?: boolean
   className?: string
 }) {
+  // Icon-only rows need an icon; anything without one has no collapsed form.
+  const sectionItems: PrimaryRailItem[] = !expanded && sectionNav
+    ? sectionNav.items.flatMap((item) => {
+        const Icon = item.icon
+        if (!Icon) return []
+        return [{
+          id: item.id,
+          label: item.label,
+          icon: Icon,
+          active: sectionNav.activeId === item.id,
+          pending: sectionNav.pendingId === item.id,
+          disabled: item.locked,
+          title: item.label,
+          ...(item.badgeCount ? { badgeCount: item.badgeCount } : {}),
+          ...(item.href ? { href: item.href } : {}),
+          onSelect: () => sectionNav.onSelect(item.id),
+        }]
+      })
+    : []
+  const showSectionItems = sectionItems.length > 0
   return (
     <SidebarShell className={className}>
       <div
@@ -134,6 +167,14 @@ export function AppSidebarPrimaryRail({
         {items.map((item) => (
           <RailButton key={item.id} item={item} expanded={expanded} />
         ))}
+        {showSectionItems ? (
+          <>
+            <div className="my-2 border-t border-[var(--border)]" role="presentation" />
+            {sectionItems.map((item) => (
+              <RailButton key={`section-${item.id}`} item={item} expanded={expanded} />
+            ))}
+          </>
+        ) : null}
       </nav>
       <div className={`shrink-0 space-y-0.5 border-t border-[var(--border)] py-3 ${expanded ? 'px-2' : 'px-2'}`}>
         {footerItems.map((item) => (

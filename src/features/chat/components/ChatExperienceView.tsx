@@ -40,6 +40,7 @@ export type ChatExperienceViewProps = {
     rightPanelWidth?: number
     rightPanelMode?: 'docked' | 'floating'
     onRightPanelClose?: () => void
+    onRightPanelResize?: (width: number) => void
   }
   main: {
     activeChatDeleting: boolean
@@ -81,6 +82,7 @@ export function ChatExperienceView({
         rightPanelWidth={shell.rightPanelWidth}
         rightPanelMode={shell.rightPanelMode}
         onRightPanelClose={shell.onRightPanelClose}
+        onRightPanelResize={shell.onRightPanelResize}
       >
         <div
           className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden transition-opacity duration-200 ${

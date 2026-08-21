@@ -326,7 +326,9 @@ export function DirectMessageExperience({
     openFilePreview,
     openLinkPreview,
     panelPresentation,
+    panelWidth,
     setPanelPresentation,
+    setPanelWidth,
     setAttachmentPreviewMode,
     sourcesPanel,
   } = useChatPanels()
@@ -1204,6 +1206,7 @@ export function DirectMessageExperience({
     shellRightPanel,
     shellRightPanelClose,
     shellRightPanelMode,
+    shellRightPanelResize,
     shellRightPanelWidth,
   } = useChatShellPanels({
     attachmentPreview,
@@ -1213,6 +1216,8 @@ export function DirectMessageExperience({
     closeSourcesPanel,
     linkPreview,
     panelPresentation,
+    panelWidth,
+    setPanelWidth,
     setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
@@ -1421,6 +1426,7 @@ export function DirectMessageExperience({
         rightPanelWidth={shellRightPanel ? shellRightPanelWidth : 380}
         rightPanelMode={shellRightPanelMode}
         onRightPanelClose={rightPanelClose}
+        onRightPanelResize={shellRightPanelResize}
       >
         <div
           className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col"

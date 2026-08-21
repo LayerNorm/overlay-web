@@ -1409,6 +1409,7 @@ export default function AppSidebar({
         brand={railBrand}
         items={railItems}
         footerItems={railFooterItems}
+        sectionNav={sidebarCollapsed ? panelNav : undefined}
         account={desktopAccountSlot}
         expanded={railExpanded}
         className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
