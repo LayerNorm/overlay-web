@@ -453,7 +453,8 @@ function normalizeScheduleInput(schedule: unknown): unknown {
   if (typeof schedule === 'string') {
     try {
       return JSON.parse(schedule)
-    } catch {
+    } catch (_error) {
+      // Hand the raw value back so schedule validation reports the real problem.
       return schedule
     }
   }
