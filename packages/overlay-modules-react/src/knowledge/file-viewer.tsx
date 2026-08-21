@@ -350,30 +350,12 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
 
   if (type === 'pdf') {
     const iframeSrc = resolveSafeViewerUrl(source, 'pdf')
-    if (iframeSrc) {
-      return (
-        <div className="overlay-file-viewer overlay-file-viewer--pdf flex min-h-0 flex-1 flex-col overflow-hidden">
-          <iframe src={iframeSrc} sandbox="" referrerPolicy="no-referrer" className="min-h-0 flex-1 w-full border-none" title={name} />
-        </div>
-      )
-    }
-    if (content.trim()) {
-      return (
-        <div className="overlay-file-viewer overlay-file-viewer--pdf flex-1 overflow-y-auto px-8 py-6">
-          <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
-            This PDF is stored as extracted text for search and the notebook (not the original layout).
-          </p>
-          <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
-            {content}
-          </pre>
-        </div>
-      )
-    }
     return (
-      <div className="overlay-file-viewer overlay-file-viewer--pdf flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
-        <FileType size={28} />
-        <p className="text-sm font-medium text-[var(--foreground)]">Could not load PDF preview</p>
-      </div>
+      <PdfViewer
+        name={name}
+        content={content}
+        iframeSrc={iframeSrc}
+      />
     )
   }
 
@@ -408,6 +390,68 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
         <p className="mt-1 text-xs text-[var(--muted-light)]">{labels[ext] ?? 'Binary file'} — preview not available</p>
       </div>
       <ViewerOperationButtons name={name} url={downloadUrl} operations={operations} />
+    </div>
+  )
+}
+
+function PdfViewer({
+  name,
+  content,
+  iframeSrc,
+}: {
+  name: string
+  content: string
+  iframeSrc?: string
+}) {
+  const [previewFailed, setPreviewFailed] = useState(false)
+  const [showText, setShowText] = useState(!iframeSrc)
+  const hasExtractedText = content.trim().length > 0
+  const showingText = !iframeSrc || showText || previewFailed
+
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--pdf flex min-h-0 flex-1 flex-col overflow-hidden">
+      {showingText ? (
+        hasExtractedText ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+            <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
+              {previewFailed
+                ? 'The PDF preview could not be displayed, so the extracted text is shown instead.'
+                : 'Extracted text fallback for this PDF.'}
+            </p>
+            <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+              {content}
+            </pre>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+            <FileType size={28} />
+            <p className="text-sm font-medium text-[var(--foreground)]">Could not load PDF preview</p>
+          </div>
+        )
+      ) : (
+        <iframe
+          src={iframeSrc}
+          referrerPolicy="no-referrer"
+          className="min-h-0 flex-1 w-full border-none"
+          title={name}
+          onError={() => setPreviewFailed(true)}
+        />
+      )}
+      {iframeSrc && hasExtractedText ? (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-xs text-[var(--muted)]">
+          <span>{previewFailed ? 'Showing extracted text' : 'PDF preview'}</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+            onClick={() => {
+              setPreviewFailed(false)
+              setShowText((value) => !value)
+            }}
+          >
+            {showingText ? 'Try PDF preview' : 'Show extracted text'}
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -454,13 +498,13 @@ export function FileViewerPanel({
     <AppScreenShell
       className="overlay-file-viewer-panel flex min-h-0 flex-1 flex-col"
       header={
-        <AppScreenHeader className="px-0 py-0 sm:px-0">
+        <AppScreenHeader className="px-6">
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 md:py-3">
+            <div className="flex min-w-0 items-center gap-2">
               {headerLeft}
               <span className="truncate text-sm font-medium text-[var(--foreground)]">{name}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-2 px-3 py-2.5 md:py-3">
+            <div className="flex shrink-0 items-center gap-2">
               {isSaving ? (
                 <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--muted-light)]">Saving...</span>
               ) : null}
