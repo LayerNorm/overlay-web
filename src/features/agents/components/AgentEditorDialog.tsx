@@ -17,6 +17,7 @@ import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCa
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import {
   AGENT_TOOL_GROUPS,
+  DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
   toolIdsForEnabledGroups,
 } from '@/shared/agents/tool-groups'
@@ -50,7 +51,11 @@ export function AgentEditorDialog({
   const [modelId, setModelId] = useState<string>(agent?.modelId ?? DEFAULT_MODEL_ID)
   const [avatarColor, setAvatarColor] = useState(agent?.avatarColor ?? AVATAR_COLORS[0]!)
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(
-    () => enabledAgentToolGroupIds(agent?.allowedToolIds ?? []),
+    // A brand new agent starts with the read-and-remember groups checked; an
+    // existing one shows exactly what it was granted, including nothing.
+    () => (agent
+      ? enabledAgentToolGroupIds(agent.allowedToolIds)
+      : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)),
   )
   const [advanced, setAdvanced] = useState(false)
 

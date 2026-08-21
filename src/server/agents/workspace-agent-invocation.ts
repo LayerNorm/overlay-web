@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { streamText } from 'ai'
-import { isStepCount } from '@/server/ai/sdk'
+import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
@@ -11,20 +11,35 @@ import {
   ActEntitlementService,
 } from '@/server/conversations/ActEntitlementService'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
-import { buildOverlayToolSet } from '@/server/tools/tools/build'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { getInternalApiBaseUrl } from '@/server/web/app-url'
+import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { buildWorkspaceAgentTooling } from './agent-tooling'
+import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations } from './mention-policy'
 
 /**
- * Room agents run fewer tool steps than the interactive act agent — they reply
- * inside a shared conversation, so a long autonomous loop is both surprising to
- * the room and expensive.
+ * Step budgets.
+ *
+ * A one-to-one DM with an agent is the agent's own workspace: a long tool loop
+ * there is expected, the same way it is in personal chat. A channel is shared,
+ * so an agent that grinds for twenty steps in front of six people is a worse
+ * experience than one that answers or asks. The channel cap lifts once agent
+ * runs become durable and can show live progress — see INTERNAL_TODOs.md,
+ * "Durable agent runs".
  */
-const MAX_TOOL_STEPS_AGENT = 6
+const MAX_TOOL_STEPS_AGENT_DM = 20
+const MAX_TOOL_STEPS_AGENT_CHANNEL = 8
 
-/** Memory mutation tools; their presence in an agent's allow-list enables memory. */
+const MAX_OUTPUT_TOKENS_AGENT = 4_000
+
+/**
+ * A tool loop needs longer than a single completion. This is still bounded by
+ * the request that hosts it; a run that genuinely needs hours needs Phase 3.
+ */
+const AGENT_TURN_TIMEOUT_MS = 300_000
+
+/** Memory tools; their presence in an agent's allow-list enables memory. */
 const AGENT_MEMORY_TOOL_IDS = new Set([
+  'search_memory',
   'save_memory',
   'save_memory_batch',
   'update_memory',
@@ -68,6 +83,18 @@ export class WorkspaceAgentInvocationError extends Error {
     super(message)
     this.name = 'WorkspaceAgentInvocationError'
   }
+}
+
+/**
+ * The models an agent turn may attempt, in order.
+ *
+ * An agent is configured with one model, but the workspace paying for the turn
+ * may not be entitled to it — a paid model on a free workspace, or a paid
+ * workspace that has run out of budget. Falling back to the free router keeps
+ * the agent answering instead of failing the turn outright.
+ */
+export function agentModelAttempts(modelId: string): string[] {
+  return isFreeTierChatModelId(modelId) ? [modelId] : [modelId, FREE_TIER_AUTO_MODEL_ID]
 }
 
 async function loadAccessibleConversation(args: {
@@ -141,7 +168,8 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     }),
     server.workspaceAgentService.list({ actorUserId: args.actorUserId, workspaceId: args.workspaceId }),
   ])
-  if ((conversation.conversationType ?? 'personal') === 'personal') {
+  const conversationType = conversation.conversationType ?? 'personal'
+  if (conversationType === 'personal') {
     logger.warn('[workspace-agent] room is not a collaboration room', {
       conversationId: args.conversationId,
       reason: 'not_a_collaboration_room',
@@ -154,7 +182,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     : undefined
   const resolvedPrincipalIds = resolveMentionFirstInvocations({
     authorKind: 'human',
-    conversationType: conversation.conversationType ?? 'personal',
+    conversationType,
     participants: participants.map((participant) => ({
       principalId: participant.principalId,
       principalType: participant.principalType,
@@ -188,6 +216,13 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   }
   const cappedPrincipalIds = principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
+  const triggeringMessage = history.find((message) => message._id === args.messageId)
+  const latestUserText = triggeringMessage?.content
+    ?? history.filter((message) => !message.deletedAt).at(-1)?.content
+    ?? ''
+  const maxToolSteps = conversationType === 'dm'
+    ? MAX_TOOL_STEPS_AGENT_DM
+    : MAX_TOOL_STEPS_AGENT_CHANNEL
   let completedResponses = 0
   let alreadyCompletedResponses = 0
   let lastFailureReason: WorkspaceAgentInvocationReasonCode | undefined
@@ -211,16 +246,44 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     let reservationId: string | null = null
     let failureReason: WorkspaceAgentInvocationReasonCode = 'model_failed'
     try {
+      const requestFingerprint = hashOperationalIdentifier(
+        'workspace-agent-invocation',
+        invocationNonce,
+      )
+      const programmaticSubjectId = `agent:${agent.id}`
       const entitlementService = new ActEntitlementService({
         repository: server.appData.repositories.conversations,
         usagePolicy: server.chatUsagePolicy,
       })
-      const { paid, runtimeEntitlements } = await entitlementService.gateModelAccess({
-        effectiveModelId: agent.modelId,
-        programmaticSubjectId: `agent:${agent.id}`,
-        userId: args.actorUserId,
-        workspaceId: args.workspaceId,
-      })
+      // The agent's configured model may be out of reach for whoever is paying.
+      // Try it, then fall back rather than failing the turn.
+      const attempts = agentModelAttempts(agent.modelId)
+      let gate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>> | undefined
+      let effectiveModelId = agent.modelId
+      let gateError: unknown
+      for (const attemptModelId of attempts) {
+        try {
+          gate = await entitlementService.gateModelAccess({
+            effectiveModelId: attemptModelId,
+            programmaticSubjectId,
+            userId: args.actorUserId,
+            workspaceId: args.workspaceId,
+          })
+          effectiveModelId = attemptModelId
+          gateError = undefined
+          break
+        } catch (error) {
+          gateError = error
+          logger.warn('[workspace-agent] model not available, trying fallback', {
+            agentId: agent.id,
+            attemptModelId,
+            conversationId: args.conversationId,
+          })
+        }
+      }
+      if (!gate) throw gateError ?? new Error('No agent model attempt succeeded')
+      const { paid, runtimeEntitlements } = gate
+
       const estimatedInputTokens = Math.ceil(JSON.stringify(history.slice(-24)).length / 4) + 1_000
       const reservation = await server.chatUsagePolicy.reserveForAttempt({
         entitlements: runtimeEntitlements,
@@ -229,15 +292,12 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         // (message, agent) pair, so a duplicate mention or a reconnect reserves
         // budget once rather than charging twice.
         idempotencyKey: invocationNonce,
-        maxOutputTokens: 2_000,
-        modelId: agent.modelId,
+        maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
+        modelId: effectiveModelId,
         operationId: 'workspace.agent.invoke',
         paid,
-        requestFingerprint: hashOperationalIdentifier(
-          'workspace-agent-invocation',
-          invocationNonce,
-        ),
-        programmaticSubjectId: `agent:${agent.id}`,
+        requestFingerprint,
+        programmaticSubjectId,
         userId: args.actorUserId,
         workspaceId: args.workspaceId,
       })
@@ -253,57 +313,92 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         continue
       }
       reservationId = reservation.reservationId
-      const model = await getLanguageModel(agent.modelId, args.accessToken)
-      const transcript = history
-        .filter((message) => !message.deletedAt)
-        .slice(-24)
-        .map((message) => {
-          const participant = participants.find((item) => item.principalId === message.authorPrincipalId)
-          const author = participant?.displayName ?? (message.authorKind === 'agent' ? 'Agent' : 'Human')
-          return `${author}: ${message.content}`
-        })
-        .join('\n')
-      // Give the agent the same overlay tool surface the personal act agent uses,
-      // filtered to the tools the agent was granted. The default master Overlay
-      // agent is granted the full toolset. Tools authenticate as the triggering
-      // actor via the internal service secret, exactly like the act route.
+      const model = await getLanguageModel(effectiveModelId, args.accessToken)
+
       const isDefaultMaster = Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
-      const agentTools = (agent.allowedToolIds.length > 0 || isDefaultMaster)
-        ? buildOverlayToolSet({
-            userId: args.actorUserId,
-            accessToken: args.accessToken,
-            serverSecret: getInternalApiSecret(),
-            workspaceId: args.workspaceId,
-            conversationId: args.conversationId,
-            baseUrl: getInternalApiBaseUrl(),
-            allowedToolIds: isDefaultMaster && agent.allowedToolIds.length === 0 ? undefined : agent.allowedToolIds,
-            memoryEnabled: isDefaultMaster || agent.allowedToolIds.some((id) => AGENT_MEMORY_TOOL_IDS.has(id)),
-            includePaidOnlyOverlayTools: paid,
-          })
-        : {}
-      const hasTools = Object.keys(agentTools).length > 0
+      const memoryEnabled = isDefaultMaster
+        || agent.allowedToolIds.some((id) => AGENT_MEMORY_TOOL_IDS.has(id))
+
+      // Context and tooling are independent and both hit the network.
+      const [turnContext, tooling] = await Promise.all([
+        buildAgentTurnContext({
+          accessToken: args.accessToken,
+          actorUserId: args.actorUserId,
+          agentName: agent.name,
+          agentPrincipalId: agent.principalId,
+          billingProgrammaticSubjectId: programmaticSubjectId,
+          conversationTitle: conversation.title,
+          conversationType,
+          history,
+          idempotencyKey: `${invocationNonce}:context`,
+          latestUserText,
+          memoryEnabled,
+          participants: participants.map((participant) => ({
+            displayName: participant.displayName,
+            principalId: participant.principalId,
+            principalType: participant.principalType,
+          })),
+          projectId: conversation.projectId,
+          requestFingerprint,
+          workspaceId: args.workspaceId,
+        }),
+        buildWorkspaceAgentTooling({
+          accessToken: args.accessToken,
+          actorUserId: args.actorUserId,
+          agentPrincipalId: agent.principalId,
+          conversationId: args.conversationId,
+          effectiveModelId,
+          entitlements: runtimeEntitlements,
+          grant: {
+            agentId: agent.id,
+            allowedToolIds: agent.allowedToolIds,
+            isDefaultMaster,
+          },
+          idempotencyKey: invocationNonce,
+          latestUserText,
+          memoryEnabled,
+          paid,
+          requestFingerprint,
+          turnId: `agent_${args.messageId}_${agent.id}`,
+          workspaceId: args.workspaceId,
+        }),
+      ])
+
+      const hasTools = Object.keys(tooling.tools).length > 0
       const result = streamText({
         model,
-        maxOutputTokens: 2_000,
+        maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
         temperature: 0.4,
-        ...(hasTools ? { tools: agentTools, stopWhen: isStepCount(MAX_TOOL_STEPS_AGENT) } : {}),
+        ...(hasTools
+          ? {
+              tools: tooling.tools,
+              stopWhen: isStepCount(maxToolSteps),
+              // Approval-gated MCP tools stay gated for agents too. Nothing in a
+              // room can grant that approval yet, so such a call stalls rather
+              // than running unapproved — the safe failure of the two. The room
+              // approval card lands with durable runs (INTERNAL_TODOs.md).
+              ...(tooling.toolApproval
+                ? {
+                    toolApproval: tooling.toolApproval as unknown as ToolApprovalConfiguration<
+                      typeof tooling.tools,
+                      unknown
+                    >,
+                  }
+                : {}),
+            }
+          : {}),
         abortSignal: args.signal
-          ? AbortSignal.any([args.signal, AbortSignal.timeout(120_000)])
-          : AbortSignal.timeout(120_000),
-        prompt: [
-          `You are ${agent.name}, a named AI teammate in an Overlay workspace.`,
-          agent.instructions,
-          isDefaultMaster
-            ? 'You are the default Overlay master workspace agent with full access to workspace context, files, notes, automations, skills, and tools.'
-            : 'Respond as this agent, not as a generic assistant.',
-          hasTools
-            ? 'Use your available tools when they genuinely help. Never claim to have used a tool or changed a resource unless the tool call actually ran.'
-            : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource.',
-          'Be concise, useful, and explicit when context is insufficient.',
-          '',
-          'Conversation:',
-          transcript,
-        ].join('\n'),
+          ? AbortSignal.any([args.signal, AbortSignal.timeout(AGENT_TURN_TIMEOUT_MS)])
+          : AbortSignal.timeout(AGENT_TURN_TIMEOUT_MS),
+        system: buildAgentSystemPrompt({
+          agentName: agent.name,
+          contextBlock: turnContext.contextBlock,
+          exposedToolIds: tooling.exposedToolIds,
+          hasTools,
+          instructions: agent.instructions,
+          isDefaultMaster,
+        }),
+        messages: turnContext.messages,
       })
       let streamed = ''
       let streamFailed = false
@@ -351,7 +446,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         threadRootMessageId: args.threadRootMessageId,
         turnId: `agent_${args.messageId}_${agent.id}`,
         content,
-        modelId: agent.modelId,
+        modelId: effectiveModelId,
         tokens: usageTokens(usage),
       })
       if (!responseId) {
@@ -366,7 +461,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       const recorded = await server.chatUsagePolicy.recordFinishedUsage({
         forceFreeTierLimits: !paid,
         inputTokens: tokens.input,
-        modelId: agent.modelId,
+        modelId: effectiveModelId,
         outputTokens: tokens.output,
         reservationId,
         userId: args.actorUserId,
@@ -394,6 +489,44 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   if (completedResponses === 0 && alreadyCompletedResponses === 0) {
     throw new WorkspaceAgentInvocationError(lastFailureReason ?? 'model_failed')
   }
+}
+
+/**
+ * The agent's standing instructions plus everything loaded for this turn.
+ *
+ * Kept separate from the transcript: the room history is `messages`, so the
+ * model can tell what it said from what it was told.
+ */
+export function buildAgentSystemPrompt(args: {
+  agentName: string
+  contextBlock: string
+  exposedToolIds: readonly string[]
+  hasTools: boolean
+  instructions: string
+  isDefaultMaster: boolean
+}): string {
+  // Only promise recall when recall is actually on the table. Telling an agent
+  // to search a memory it cannot reach is how it ends up narrating tool calls
+  // that never happened.
+  const canRecall = args.exposedToolIds.includes('search_memory')
+  return [
+    `You are ${args.agentName}, a named AI teammate in an Overlay workspace.`,
+    args.instructions,
+    args.isDefaultMaster
+      ? 'You are the default Overlay master workspace agent with full access to workspace context, files, notes, automations, skills, and tools.'
+      : 'Respond as this agent, not as a generic assistant.',
+    args.hasTools
+      ? [
+          'Use your available tools when they genuinely help, and prefer checking over guessing.',
+          canRecall
+            ? 'Before answering a question about the user, the workspace, or past work, call search_memory rather than assuming you know nothing.'
+            : '',
+          'Never claim to have used a tool or changed a resource unless the tool call actually ran.',
+        ].filter(Boolean).join(' ')
+      : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource.',
+    'Be concise, useful, and explicit when context is insufficient.',
+    args.contextBlock,
+  ].filter((section) => section && section.trim()).join('\n')
 }
 
 function usageTokens(usage: { inputTokens?: number; outputTokens?: number } | undefined) {

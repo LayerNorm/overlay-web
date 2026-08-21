@@ -1,6 +1,7 @@
 const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
+  'search_memory',
   'save_memory',
   'save_memory_batch',
   'list_notes',

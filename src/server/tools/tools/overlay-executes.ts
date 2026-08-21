@@ -2,6 +2,18 @@ import 'server-only'
 
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+
+/**
+ * Memory writes carry an explicit owner when an agent is driving the turn, so
+ * the agent's memory accrues to the agent rather than to whoever summoned it.
+ * Omitted entirely for a human turn, which leaves the route on its default of
+ * the authenticated user.
+ */
+function memoryOwnerBody(options: OverlayToolsOptions): { memoryOwnerId?: string } {
+  return options.memoryOwnerId && options.memoryOwnerId !== options.userId
+    ? { memoryOwnerId: options.memoryOwnerId }
+    : {}
+}
 import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -144,6 +156,7 @@ export async function executeSaveMemory(
         conversationId: options.conversationId,
         turnId: options.turnId,
         tags,
+        ...memoryOwnerBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -160,6 +173,53 @@ export async function executeSaveMemory(
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to save memory',
+    }
+  }
+}
+
+export async function executeSearchMemory(
+  options: OverlayToolsOptions,
+  input: { query: string },
+) {
+  if (options.memoryEnabled === false) {
+    return { success: false, error: 'Memory is off for this turn.' }
+  }
+  const query = input.query?.trim()
+  if (!query) return { success: false, error: 'A query is required to search memory.' }
+  try {
+    const res = await callInternalApi(
+      '/api/v1/knowledge/search',
+      {
+        query,
+        projectId: options.projectId,
+        sourceKind: 'memory',
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch((_error) => ({ error: 'Memory search failed' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Memory search failed' }
+    }
+    const data = (await res.json()) as { chunks?: Array<Record<string, unknown>> }
+    const memories = (data.chunks ?? []).map((chunk) => ({
+      content: chunk.text,
+      memoryId: chunk.sourceId,
+      title: chunk.title,
+    }))
+    return {
+      success: true,
+      memories,
+      ...(memories.length === 0
+        ? { note: 'No memories matched. Nothing has been remembered about this yet.' }
+        : {}),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Memory search failed',
     }
   }
 }
@@ -229,7 +289,7 @@ export async function executeUpdateMemory(
   try {
     const res = await callInternalApi(
       '/api/v1/memory',
-      { memoryId, content, type, importance, tags, ...toolAuthBody(options) },
+      { memoryId, content, type, importance, tags, ...memoryOwnerBody(options), ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -252,7 +312,7 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
   try {
     const res = await callInternalApi(
       '/api/v1/memory',
-      { memoryId, ...toolAuthBody(options) },
+      { memoryId, ...memoryOwnerBody(options), ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
       { method: 'DELETE', forwardCookie: options.forwardCookie },

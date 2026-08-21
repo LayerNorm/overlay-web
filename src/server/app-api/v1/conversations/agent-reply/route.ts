@@ -8,6 +8,12 @@ import {
 import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 /**
+ * An agent turn now runs a real tool loop, so it needs the same headroom the
+ * act route gets rather than a single completion's worth.
+ */
+export const maxDuration = 300
+
+/**
  * Streams the agents' reply to a room message so the sender watches it arrive
  * in the bubble instead of waiting for a finished block of text. Persistence is
  * unchanged: the invocation stores the reply itself, and it is idempotent per

@@ -178,7 +178,10 @@ function knowledgeNote(params: {
       '\n\nMemory is off for this turn. Do not use saved memories, search memory, save memory, update memory, or delete memory. Knowledge search is restricted to indexed files only.'
   }
   const hasMemoryWrites = availableTools.has('save_memory') || availableTools.has('save_memory_batch')
-  return '\n' + base + (hasMemoryWrites
+  const recallNote = availableTools.has('search_memory')
+    ? '\n\nCall search_memory to recall what was remembered earlier when the answer could depend on it, rather than assuming the supplied context is everything you know.'
+    : ''
+  return '\n' + base + recallNote + (hasMemoryWrites
     ? '\n\nYou also have save_memory, update_memory, and delete_memory.\n\n' + params.constants.MEMORY_SAVE_PROTOCOL
     : '\n\nUse the saved memory and AUTO_RETRIEVED_KNOWLEDGE context already supplied. Do not claim to save, update, delete, or search memory unless the matching tool is present.')
 }
@@ -194,7 +197,7 @@ function requestedToolsNote(
       lines.push('- Web Search: the user selected web search for this message. Call perplexity_search or parallel_search before answering.')
     } else if (toolId === 'memory') {
       lines.push(memoryEnabled
-        ? '- Memory: the user selected memory for this message. Use the provided memory context, and call search_knowledge with sourceKind "memory" if stored memory is needed beyond that context.'
+        ? '- Memory: the user selected memory for this message. Use the provided memory context, and call search_memory if stored memory is needed beyond that context.'
         : '- Memory: the user selected memory, but memory is off for this turn. Do not use memory tools or memory context.')
     } else if (toolId === 'sandbox') {
       lines.push('- Sandbox: the user selected sandbox for this message. Call run_daytona_sandbox when a command, script, file transform, or code execution can help answer.')

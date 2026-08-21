@@ -44,7 +44,7 @@ function toUiMessageFromPersisted(message: ActPersistedMessage): UIMessage {
 const MEMORY_CONTEXT_CHAR_BUDGET = 2_000   // ~500 tokens
 const SKILL_DIRECTORY_CHAR_BUDGET = 1_500  // ~375 tokens
 
-function buildMemoryContext(memories: ActMemoryRow[]): string {
+export function buildMemoryContext(memories: ActMemoryRow[]): string {
   if (memories.length === 0) return ''
   const topMemories = memories
     .sort((a, b) => {
@@ -74,7 +74,7 @@ function buildMemoryContext(memories: ActMemoryRow[]): string {
  * instructions). The agent can call list_skills to load full instructions
  * on demand when a skill is relevant to the current task.
  */
-function buildSkillDirectoryContext(skills: Array<{ name: string; description: string }>): string {
+export function buildSkillDirectoryContext(skills: Array<{ name: string; description: string }>): string {
   if (skills.length === 0) return ''
   let directory = skills.map((s) => `- ${s.name}: ${s.description}`).join('\n')
   if (directory.length > SKILL_DIRECTORY_CHAR_BUDGET) {

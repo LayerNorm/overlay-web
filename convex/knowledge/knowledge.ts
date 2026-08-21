@@ -11,6 +11,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import { validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
+import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import {
   resolveWorkspaceBillingRollout,
   workspaceBillingRolloutConfigFromEnv,
@@ -359,14 +360,16 @@ export const listWorkspaceMemoryUserIds = internalQuery({
         .filter((membership) => membership.status === 'active')
         .map((membership) => membership.principalId),
     )
-    const userIds = principals.flatMap((principal) => (
-      principal.type === 'human'
-      && !principal.archivedAt
-      && principal.userId
-      && activePrincipalIds.has(principal.principalId)
-        ? [principal.userId]
-        : []
-    ))
+    // Agents own memories the same way members do, under a synthetic owner id
+    // derived from the agent id. Their memories are workspace knowledge, so
+    // they join the recall scope for every member of the workspace rather than
+    // staying private to the agent that wrote them.
+    const userIds = principals.flatMap((principal) => {
+      if (principal.archivedAt || !activePrincipalIds.has(principal.principalId)) return []
+      if (principal.type === 'human' && principal.userId) return [principal.userId]
+      if (principal.type === 'agent' && principal.agentId) return [agentMemoryOwnerId(principal.agentId)]
+      return []
+    })
     if (!userIds.includes(requestingUserId)) throw new Error('WORKSPACE_ACCESS_DENIED')
     return [...new Set(userIds)]
   },

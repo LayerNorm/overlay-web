@@ -7,6 +7,7 @@ import type {
   WorkspaceAgentUpdateInput,
   WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
+import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
 
@@ -47,8 +48,24 @@ export class WorkspaceAgentService {
 
   async ensureDefaultAgent(args: { workspaceId: string; creatorPrincipalId: string }) {
     const existing = await this.repository.list({ workspaceId: args.workspaceId })
-    const hasDefault = existing.some((a) => a.isDefault || a.name.toLowerCase() === 'overlay')
-    if (hasDefault) return
+    const currentDefault = existing.find((a) => a.isDefault || a.name.toLowerCase() === 'overlay')
+    if (currentDefault) {
+      // Default agents created before agents had a real tool surface were
+      // pinned to the free router, which auto-selects a model that struggles to
+      // drive a multi-step tool loop. Lift those onto the standard default; an
+      // agent a human deliberately moved to some other model is left alone, and
+      // the invocation still falls back to the free router when the payer is
+      // not entitled to this one.
+      if (currentDefault.modelId === FREE_TIER_AUTO_MODEL_ID) {
+        await this.repository.update({
+          agentId: currentDefault.id,
+          workspaceId: args.workspaceId,
+          modelId: DEFAULT_MODEL_ID,
+          now: this.now(),
+        }).catch((_error) => null)
+      }
+      return
+    }
     const agentId = `default-overlay-${args.workspaceId}`
     const principalId = `default-overlay-principal-${args.workspaceId}`
     try {
@@ -58,9 +75,9 @@ export class WorkspaceAgentService {
         workspaceId: args.workspaceId,
         name: 'Overlay',
         description: 'Master workspace agent with full access to workspace context, memory, files, notes, automations, and all tools.',
-        instructions: 'You are Overlay, the master workspace agent. You have full access to workspace context, files, notes, memories, automations, skills, and tools. Execute user tasks thoroughly and precisely using your available tools:\n- Search and read workspace knowledge, files, and notes\n- Save and update memories when important user preferences or durable facts are shared\n- Create and edit notes or documents\n- Use web search and browser tools when live or external information is needed\n- Run code in sandboxes when computation or execution is required\n- Help create automations and skills for repeatable workflows\nAlways choose the most direct and effective tools to complete the user\'s request.',
+        instructions: 'You are Overlay, the master workspace agent. You have full access to workspace context, files, notes, memories, automations, skills, and tools. Execute user tasks thoroughly and precisely using your available tools:\n- Recall before you answer: search your memory whenever the question touches the user, the workspace, past decisions, or how they like things done. Never say you know nothing without searching first.\n- Search and read workspace knowledge, files, and notes\n- Save and update memories when important user preferences or durable facts are shared\n- Create and edit notes or documents\n- Use web search, connected apps, and browser tools when live or external information is needed\n- Run code in sandboxes when computation or execution is required\n- Help create automations and skills for repeatable workflows\nAlways choose the most direct and effective tools to complete the user\'s request.',
         harness: 'overlay',
-        modelId: 'openrouter/free',
+        modelId: DEFAULT_MODEL_ID,
         avatarColor: '#18181b',
         allowedToolIds: [],
         teamIds: [],

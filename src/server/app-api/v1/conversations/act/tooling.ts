@@ -58,6 +58,8 @@ export interface ActTooling {
   allowedOverlayToolIds: string[]
   composioStrippedForCompareSlot: boolean
   exposedMediaTools: string[]
+  /** Tool names contributed by the connected-app provider, for policy filtering. */
+  integrationToolIds: string[]
   gatewaySearchLog: string
   missingGatewaySearchTools: boolean
   tools: ToolSet
@@ -136,6 +138,14 @@ export async function prepareActTooling(params: {
   idempotencyKey?: string
   latestUserText?: string
   memoryEnabled?: boolean
+  /**
+   * Who owns memories written this turn. Defaults to the acting user; a
+   * workspace agent turn passes the agent's memory owner id.
+   */
+  memoryOwnerId?: string
+  /** Set when a workspace agent drives the turn, for attribution on tool calls. */
+  agentId?: string
+  agentPrincipalId?: string
   mediaToolIntent: MediaToolIntent
   mode?: ActMode
   paid: boolean
@@ -207,6 +217,9 @@ export async function prepareActTooling(params: {
         forwardCookie: params.forwardCookie ?? undefined,
         includePaidOnlyOverlayTools: params.paid,
         memoryEnabled,
+        memoryOwnerId: params.memoryOwnerId,
+        agentId: params.agentId,
+        agentPrincipalId: params.agentPrincipalId,
         workspaceId: params.workspaceId,
         activeKnowledgeBaseIds: params.activeKnowledgeBaseIds,
         idempotencyKey: params.idempotencyKey,
@@ -335,6 +348,7 @@ export function buildActTooling(params: {
     allowedOverlayToolIds: params.allowedOverlayToolIds,
     composioStrippedForCompareSlot: params.isMultiModelFollowUpSlot,
     exposedMediaTools: exposedMediaToolIds(params.webToolSet),
+    integrationToolIds: Object.keys(integrationsForAgent),
     gatewaySearchLog: [
       `perplexity:${params.perplexityTool ? 'yes' : 'no'}`,
       `parallel:${params.parallelTool ? 'yes' : 'no'}`,
@@ -389,6 +403,7 @@ function withRequestedOverlayToolIds(
 ): string[] {
   const allowed = new Set(baseToolIds)
   if (!memoryEnabled) {
+    allowed.delete('search_memory')
     allowed.delete('save_memory')
     allowed.delete('save_memory_batch')
     allowed.delete('update_memory')
@@ -398,6 +413,7 @@ function withRequestedOverlayToolIds(
   for (const toolId of requestedToolIds) {
     if (toolId === 'memory' && memoryEnabled) {
       allowed.add('search_knowledge')
+      allowed.add('search_memory')
       allowed.add('save_memory')
       allowed.add('save_memory_batch')
     }
@@ -419,6 +435,7 @@ function applyRuntimeToolGates(
   const allowed = new Set(toolIds)
   if (!capabilities.memory || !capabilities.vectorSearch) {
     allowed.delete('search_knowledge')
+    allowed.delete('search_memory')
     allowed.delete('save_memory')
     allowed.delete('save_memory_batch')
     allowed.delete('update_memory')

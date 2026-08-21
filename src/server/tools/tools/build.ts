@@ -29,6 +29,7 @@ import {
   executeSaveMemoryBatch,
   executeSearchInFiles,
   executeSearchKnowledge,
+  executeSearchMemory,
   executeUpdateAutomation,
   executeUpdateMemory,
 } from './overlay-executes'
@@ -42,9 +43,18 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
   const memoryEnabled = options.memoryEnabled !== false
-  const memoryMutationToolIds = new Set(['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'])
+  // Memory tools — recall included. When memory is off for the turn, the agent
+  // must not be able to read memory either, or "memory off" would only mean
+  // "stop writing".
+  const memoryToolIds = new Set([
+    'save_memory',
+    'save_memory_batch',
+    'update_memory',
+    'delete_memory',
+    'search_memory',
+  ])
   const shouldExposeTool = (toolId: string): boolean => {
-    if (!memoryEnabled && memoryMutationToolIds.has(toolId)) return false
+    if (!memoryEnabled && memoryToolIds.has(toolId)) return false
     return !allowedToolIds || allowedToolIds.has(toolId)
   }
   const assertToolAllowed = (toolId: string): void => assertOverlayToolAllowed(toolId, allowedToolIds)
@@ -345,6 +355,23 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       return executeGetNote(options, input)
     },
   })
+  }
+
+  if (shouldExposeTool('search_memory')) {
+    tools.search_memory = tool({
+      description:
+        'Recall what has been remembered about the user, the workspace, and past work. ' +
+        'Call this FIRST whenever the answer could depend on something learned earlier — the user\'s preferences, identity, ongoing projects, standing instructions, prior decisions, or how they like things done — and whenever the user asks what you know or remember about them. ' +
+        'Searching costs little and guessing costs trust: if you are unsure whether something was remembered, search rather than saying you do not know. ' +
+        'Returns memories from across the workspace, including ones saved by other members and agents.',
+      inputSchema: z.object({
+        query: z.string().describe('What to recall, in natural language — e.g. "the user\'s writing style" or "decisions about the pricing page".'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('search_memory')
+        return executeSearchMemory(options, input)
+      },
+    })
   }
 
   if (shouldExposeTool('save_memory')) {

@@ -13,6 +13,7 @@ export const GENERATION_TOOL_IDS = [
 export const OVERLAY_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
+  'search_memory',
   'save_memory',
   'save_memory_batch',
   'update_memory',

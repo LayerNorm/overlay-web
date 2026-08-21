@@ -1,3 +1,5 @@
+import { isAgentMemoryOwnerId } from '@/shared/agents/agent-memory'
+
 /**
  * Paragraph/sentence-aware chunking (~300 chars) for memory ingestion and optional UI previews.
  * Stored memories are one Convex row per chunk; list API returns one row per memory (no virtual segments).
@@ -156,7 +158,10 @@ export function memoriesToClientListRows(
       turnId: m.turnId,
       tags: m.tags,
       actor: m.actor,
-      canDelete: options?.viewerUserId === m.userId,
+      // An agent's memories are workspace knowledge and the agent has no UI of
+      // its own, so any member of the workspace can prune them. A teammate's
+      // memories stay theirs to delete.
+      canDelete: options?.viewerUserId === m.userId || isAgentMemoryOwnerId(m.userId),
       creatorEmail: attribution?.email,
       creatorName: attribution?.name ?? (options?.viewerUserId === m.userId ? 'You' : 'Former member'),
       creatorPrincipalId: attribution?.principalId,

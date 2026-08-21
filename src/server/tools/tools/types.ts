@@ -28,6 +28,19 @@ export interface OverlayToolsOptions {
   includePaidOnlyOverlayTools?: boolean
   /** When `false`, hides memory mutation tools and restricts knowledge search to files for this turn. */
   memoryEnabled?: boolean
+  /**
+   * Who owns memories written this turn. Defaults to `userId`. A workspace
+   * agent turn sets this to the agent's memory owner id so the agent builds up
+   * its own memory instead of writing into the memory of whoever summoned it.
+   */
+  memoryOwnerId?: string
+  /**
+   * Set when a workspace agent is driving the turn. Tools still authenticate as
+   * `userId` (the delegate model — see INTERNAL_TODOs.md "Agent as principal"),
+   * so this exists to attribute the work, not to authorize it.
+   */
+  agentId?: string
+  agentPrincipalId?: string
   /** Knowledge base ids activated for the current turn. */
   activeKnowledgeBaseIds?: readonly string[]
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
