@@ -40,6 +40,7 @@ import type {
 } from './ActConversationRepository'
 import {
   canTransitionAgentRun,
+  isActiveAgentRunStatus,
   type AgentRun,
   type AgentRunMode,
   type AgentRunMetrics,
@@ -1131,6 +1132,31 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .orderBy(desc(agentRuns.createdAt))
         .limit(1)
       return run ? mapAgentRun(run) : null
+    })
+  }
+
+  async recordAgentRunProgress(args: {
+    content: string
+    runId: string
+    userId: string
+  }): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [run] = await tx.select().from(agentRuns).where(and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+      )).limit(1)
+      if (!run) throw new Error('Unauthorized')
+      // Only a live run writing into a row that is still generating. Progress
+      // must never be able to reopen or rewrite a turn that already landed.
+      if (!isActiveAgentRunStatus(run.status)) return
+      await tx.update(conversationMessages).set({
+        content: args.content,
+        parts: [{ type: 'text', text: args.content }],
+        updatedAt: new Date(),
+      }).where(and(
+        eq(conversationMessages.id, run.assistantMessageId),
+        eq(conversationMessages.status, 'generating'),
+      ))
     })
   }
 

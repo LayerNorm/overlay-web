@@ -144,6 +144,50 @@ A room agent turn is now owned by a durable run rather than by an HTTP request.
 
 ---
 
+## Personal chat Work mode parity
+
+**Status:** streaming metadata and progress persistence landed. One gap remains.
+
+Work mode and room agents share a substrate — both are `"use workflow"` durable
+runs with an `agentRuns` record — but they stream differently, and the
+differences were visible.
+
+- **Source citations** never reached a Work turn. Chat mode attaches them
+  through `toUIMessageStream`'s `messageMetadata` callback; Work mode reaches
+  the client through `createModelCallToUIChunkTransform`, which carries only the
+  raw model call and has no metadata hook. `createUiMessageMetadataTransform`
+  now attaches them to the `start` and `finish` chunks.
+- **A reload mid-turn showed an empty bubble.** Work mode persisted nothing
+  until `finalizePersonalChatWork`. It now publishes absolute content into the
+  run's assistant row from two places: `onStepEnd` inside the workflow (durable,
+  survives a disconnect, model-step granularity) and a tee of the response
+  stream drained in `after()` (finer grained, lasts only as long as the
+  request). Both go through `recordAgentRunProgress`, which writes absolute
+  content and refuses a run or row that is no longer live, so the two writers
+  converge instead of fighting.
+
+### Remaining gap
+
+Per-token persistence that survives a disconnect is **not** reachable while Work
+mode uses `WorkflowAgent`. The workflow body cannot write to the database at all
+— its module graph is bundled for the workflow runtime, where Node built-ins do
+not exist — so every write must be a `"use step"`. Calling a step from a stream
+transform would interleave nondeterministically with the agent loop's own tool
+steps and break replay ordering. `onStepEnd` is the finest deterministic hook
+available, and for a single-step reply it fires once at the end.
+
+Closing that gap means giving Work mode the room treatment: `streamText` inside
+one step. That buys per-token durability and costs the tool-approval flow, which
+depends on `WorkflowAgent`'s approval detection plus `createHook` to pause
+mid-turn — a single step cannot pause. Not worth it until approvals are
+redesigned.
+
+Also still missing in Work mode: `routedModelId` metadata. The chat path reads
+the routed model off the provider response as it streams; in Work mode the model
+call happens inside the workflow, so the route has nothing to read.
+
+---
+
 ## Runtime consolidation (agent Phase 5)
 
 **Status:** not started.

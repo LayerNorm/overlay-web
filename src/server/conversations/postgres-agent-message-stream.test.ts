@@ -11,6 +11,7 @@ import {
 import { agentRuns, users } from '@/server/database/postgres/schema'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
+import { PostgresActConversationRepository } from './PostgresActConversationRepository'
 import { PostgresConversationCollaborationRepository } from './PostgresConversationCollaborationRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
@@ -38,6 +39,7 @@ test('Postgres agent replies stream into a durable transcript row', {
   const workspacesRepository = new PostgresWorkspaceRepository(db)
   const agents = new PostgresWorkspaceAgentRepository(db)
   const collaboration = new PostgresConversationCollaborationRepository(db)
+  const conversations = new PostgresActConversationRepository(db)
 
   try {
     await db.insert(users).values({ id: userId, email: `${userId}@example.com`, emailVerified: true })
@@ -187,6 +189,36 @@ test('Postgres agent replies stream into a durable transcript row', {
     // Without a lease the sweep could never tell an abandoned turn from a slow
     // one, and the reply would stay generating forever.
     assert.ok(runRow?.leaseExpiresAt)
+
+    // Progress writes are what keep a reloaded turn from showing an empty
+    // bubble. Absolute content, and only while the run and its row are live.
+    const readTurnRow = async () => (await collaboration.listMessages({
+      actorUserId: userId,
+      workspaceId,
+      conversationId: channel.conversationId,
+      limit: 100,
+    })).find((message) => message._id === turn.messageId)
+    await conversations.recordAgentRunProgress({
+      content: 'partial answer so far',
+      runId: turn.runId,
+      userId,
+    })
+    assert.equal((await readTurnRow())?.content, 'partial answer so far')
+    await conversations.recordAgentRunProgress({
+      content: 'partial answer so far, extended',
+      runId: turn.runId,
+      userId,
+    })
+    assert.equal((await readTurnRow())?.content, 'partial answer so far, extended')
+
+    // A settled row must not be reopened by a straggling progress write.
+    await collaboration.failAgentMessage({ ...appendArgs, messageId: turn.messageId })
+    await conversations.recordAgentRunProgress({
+      content: 'too late',
+      runId: turn.runId,
+      userId,
+    })
+    assert.notEqual((await readTurnRow())?.content, 'too late')
 
     // A duplicate trigger must recover the same turn rather than opening a
     // second run against the same reply.

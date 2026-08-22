@@ -405,6 +405,18 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     return run ? mapConvexAgentRun(run) : null
   }
 
+  async recordAgentRunProgress(args: {
+    content: string
+    runId: string
+    userId: string
+  }): Promise<void> {
+    await convex.mutation('chat/conversations:recordAgentRunProgress', {
+      ...args,
+      runId: args.runId as Id<'conversationAgentRuns'>,
+      serverSecret: getInternalApiSecret(),
+    }, { throwOnError: true })
+  }
+
   async recordAgentRunMetrics(args: {
     metrics: Partial<AgentRunMetrics>
     runId: string

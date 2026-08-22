@@ -164,6 +164,24 @@ export class AgentRunService {
     }) ?? undefined
   }
 
+  /**
+   * Publishes what the run has produced so far. Best effort by design: the
+   * turn's authoritative persistence is its completion, so a dropped progress
+   * write costs a moment of staleness, never the reply.
+   */
+  async recordProgress(args: {
+    content: string
+    runId?: string
+    userId?: string
+  }): Promise<void> {
+    if (!args.runId || !args.userId) return
+    await this.repository.recordAgentRunProgress({
+      content: args.content,
+      runId: args.runId,
+      userId: args.userId,
+    })
+  }
+
   async recordMetrics(args: {
     metrics: Partial<AgentRunMetrics>
     runId?: string

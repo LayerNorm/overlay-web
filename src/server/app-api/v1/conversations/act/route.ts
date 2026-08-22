@@ -8,6 +8,7 @@ import {
 } from '@/server/security/concurrent-request-limiter'
 import { createModelCallToUIChunkTransform } from '@ai-sdk/workflow'
 import { createUiMessageMetadataTransform } from '@/server/chat/ui-message-metadata-transform'
+import { drainWorkProgress } from '@/server/chat/work-progress-drain'
 import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -798,7 +799,24 @@ export async function POST(
             ? { sourceCitations: sourceCitationMap }
             : undefined,
         ))
-      const _uiResp = createUIMessageStreamResponse({ stream: _uiStream })
+      // One branch to the browser, one to the transcript. The workflow can only
+      // persist at step boundaries; reading the same stream here fills in the
+      // finer grain, so a reload mid-turn shows the reply mid-sentence.
+      const [_clientChunks, _progressChunks] = _uiStream.tee()
+      const _uiResp = createUIMessageStreamResponse({ stream: _clientChunks })
+      const progressRunId = agentRun.id
+      after(async () => {
+        await drainWorkProgress(_progressChunks, {
+          publish: async (content) => {
+            await agentRunService.recordProgress({
+              content,
+              runId: progressRunId,
+              userId: conversationUserId,
+            })
+          },
+          runId: progressRunId,
+        })
+      })
       const responseHeaders = new Headers(_uiResp.headers)
       responseHeaders.set('x-request-id', requestId)
       if (agentRun?.id) responseHeaders.set('x-overlay-agent-run-id', agentRun.id)

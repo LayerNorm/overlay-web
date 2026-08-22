@@ -1058,6 +1058,37 @@ export const getLatestAgentRun = query({
   },
 })
 
+/**
+ * Writes what a run has produced so far into its assistant row.
+ *
+ * The content is absolute rather than appended, so a replayed or duplicated
+ * progress write converges instead of doubling the reply. Only a run that is
+ * still active and a row that is still generating are touched: this must never
+ * be able to reopen or rewrite a finished turn.
+ */
+export const recordAgentRunProgress = mutation({
+  args: {
+    content: v.string(),
+    runId: v.id('conversationAgentRuns'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
+    if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (message?.status !== 'generating') return
+    if (message.content === args.content) return
+    await ctx.db.patch(message._id, {
+      content: args.content,
+      parts: [{ type: 'text', text: args.content }],
+      updatedAt: Date.now(),
+    })
+  },
+})
+
 export const recordAgentRunMetrics = mutation({
   args: {
     metrics: agentRunMetrics,

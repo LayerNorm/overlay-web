@@ -201,6 +201,21 @@ test('Convex agent replies stream into a durable transcript row', {
     assert.equal(attached?.agentId, agentId)
     assert.equal(attached?.agentPrincipalId, agentPrincipalId)
 
+    // Progress writes are what keep a reloaded turn from showing an empty
+    // bubble. Absolute content, and only while the run and its row are live.
+    await conversations.recordAgentRunProgress({
+      content: 'partial answer so far',
+      runId: turn.runId,
+      userId: ownerUserId,
+    })
+    assert.equal((await readRow(turn.messageId))?.content, 'partial answer so far')
+    await conversations.recordAgentRunProgress({
+      content: 'partial answer so far, extended',
+      runId: turn.runId,
+      userId: ownerUserId,
+    })
+    assert.equal((await readRow(turn.messageId))?.content, 'partial answer so far, extended')
+
     await collaboration.appendAgentMessageDelta({
       ...appendArgs,
       messageId: turn.messageId,
@@ -214,6 +229,13 @@ test('Convex agent replies stream into a durable transcript row', {
       userId: ownerUserId,
     })
     assert.equal(finishedRun?.status, 'completed')
+    // A finished turn must not be reopened by a straggling progress write.
+    await conversations.recordAgentRunProgress({
+      content: 'too late',
+      runId: turn.runId,
+      userId: ownerUserId,
+    })
+    assert.notEqual((await readRow(turn.messageId))?.content, 'too late')
     assert.ok(finishedRun?.completedAt)
     assert.equal((await readRow(turn.messageId))?.status, 'completed')
 

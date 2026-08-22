@@ -341,6 +341,16 @@ export interface ActConversationRepository {
     conversationId: Id<'conversations'>
     userId: string
   }): Promise<AgentRun | null>
+  /**
+   * Writes what a run has produced so far into its assistant row, so a reader
+   * who reloads mid-turn sees the reply arriving instead of an empty bubble.
+   * Absolute rather than appended, so a repeated write converges.
+   */
+  recordAgentRunProgress(args: {
+    content: string
+    runId: string
+    userId: string
+  }): Promise<void>
   recordAgentRunMetrics(args: {
     metrics: Partial<AgentRunMetrics>
     runId: string

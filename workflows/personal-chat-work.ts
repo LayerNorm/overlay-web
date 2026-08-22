@@ -16,6 +16,7 @@ import {
   finalizePersonalChatWork,
   markPersonalChatWorkResumed,
   markPersonalChatWorkWaiting,
+  persistPersonalChatWorkProgress,
 } from '@/server/conversations/personal-chat-work-lifecycle'
 
 export type PersonalChatWorkWorkflowInput = {
@@ -136,13 +137,38 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
     } as never)
 
     let messages = input.messages
+    // Text already published to the assistant row. Kept out here so it spans
+    // approval cycles: resuming after an approval must extend the reply the
+    // reader can already see, not restart it.
+    let publishedText = ''
+    const publishProgress = async (steps: StepResult<ToolSet>[]) => {
+      const content = [...allSteps, ...steps]
+        .map((step) => step.text ?? '')
+        .filter(Boolean)
+        .join('')
+      if (!content || content === publishedText) return
+      publishedText = content
+      await persistPersonalChatWorkProgress({
+        agentRunId: input.agentRunId,
+        content,
+        resourceUserId: input.resourceUserId,
+      })
+    }
     for (let approvalCycle = 0; approvalCycle < 20; approvalCycle += 1) {
+      const cycleSteps: StepResult<ToolSet>[] = []
       const result = await agent.stream({
         messages,
         writable,
         preventClose: true,
         sendFinish: false,
-      })
+        // The coarsest hook the loop offers, and the only one deterministic
+        // enough to call a step from. A reader who reloads sees the reply as
+        // far as the last completed step rather than nothing at all.
+        onStepEnd: async (step: StepResult<ToolSet>) => {
+          cycleSteps.push(step)
+          await publishProgress(cycleSteps)
+        },
+      } as never)
       allSteps.push(...result.steps)
       const completedToolCallIds = new Set(result.toolResults.map((part) => part.toolCallId))
       const approvalRequests = result.toolCalls.filter((call) => {

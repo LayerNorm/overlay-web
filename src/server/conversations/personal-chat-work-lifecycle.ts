@@ -27,6 +27,29 @@ export async function attachPersonalChatWorkRun(input: {
   })
 }
 
+/**
+ * Publishes the text produced so far into the run's assistant row.
+ *
+ * A Work turn's live text reaches the client through the workflow's own output
+ * stream, which nobody but the holder of that connection can read. Without this
+ * a reload mid-turn shows an empty bubble until the whole turn lands. Called at
+ * model-step boundaries, which is the coarsest-grained hook the agent loop
+ * offers but the only one that is deterministic enough to be a step.
+ */
+export async function persistPersonalChatWorkProgress(input: {
+  agentRunId: string
+  content: string
+  resourceUserId: string
+}) {
+  'use step'
+  if (!input.content) return
+  await agentRunService.recordProgress({
+    content: input.content,
+    runId: input.agentRunId,
+    userId: input.resourceUserId,
+  }).catch((_error) => undefined)
+}
+
 export async function markPersonalChatWorkWaiting(input: {
   agentRunId: string
   approval: AgentRunApproval
