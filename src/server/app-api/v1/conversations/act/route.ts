@@ -7,6 +7,7 @@ import {
   concurrentRequestLimitResponse,
 } from '@/server/security/concurrent-request-limiter'
 import { createModelCallToUIChunkTransform } from '@ai-sdk/workflow'
+import { createUiMessageMetadataTransform } from '@/server/chat/ui-message-metadata-transform'
 import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -788,7 +789,15 @@ export async function POST(
       budgetReservationFinalized = true
       concurrencySlot?.release()
       concurrencySlot = null
-      const _uiStream = workflowRun.getReadable().pipeThrough(createModelCallToUIChunkTransform())
+      // The model-call transform carries no metadata hook, so source citations
+      // have to be attached here or the client never sees them for a Work turn.
+      const _uiStream = workflowRun.getReadable()
+        .pipeThrough(createModelCallToUIChunkTransform())
+        .pipeThrough(createUiMessageMetadataTransform(
+          Object.keys(sourceCitationMap).length > 0
+            ? { sourceCitations: sourceCitationMap }
+            : undefined,
+        ))
       const _uiResp = createUIMessageStreamResponse({ stream: _uiStream })
       const responseHeaders = new Headers(_uiResp.headers)
       responseHeaders.set('x-request-id', requestId)
