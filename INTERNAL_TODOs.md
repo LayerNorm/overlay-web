@@ -88,64 +88,51 @@ dead channel.
 
 ## Durable agent runs (agent Phase 3)
 
-**Status:** Phase 1a landed. Phase 1b not started.
+**Status:** landed. Follow-ups below.
 
-### Landed: the reply is a transcript row (1a)
+A room agent turn is now owned by a durable run rather than by an HTTP request.
 
-A room agent no longer holds its reply in the SSE response. It writes into a
-`status: 'generating'` row in `conversationMessages` as it generates
-(`src/server/agents/agent-message-stream.ts`), so the reply belongs to the
-conversation rather than to whoever summoned it. Reloading recovers it, and —
-new — every other participant watches it arrive instead of seeing nothing until
-it lands.
+- The reply is a `status: 'generating'` row in `conversationMessages`, written
+  as it is generated (`src/server/agents/agent-message-stream.ts`), so it
+  survives a reload and every participant watches it arrive — not only the
+  person who summoned the agent. Writes batch at 250ms/200 chars; the durable
+  `message.delta` event is throttled to 1s because on the polling transcript
+  each one costs every viewer a refetch.
+- Saving the human message is what starts the turn
+  (`src/server/app-api/v1/conversations/message/route.ts`). The browser is no
+  longer the trigger, so closing the tab cannot end the reply. The client-held
+  `agent-reply` route, its client method, and `deferAgentReply` are all gone.
+- `workflows/workspace-agent-turn.ts` owns the turn, with lifecycle steps in
+  `src/server/agents/workspace-agent-turn-lifecycle.ts`. `conversationAgentRuns`
+  gained a `room` mode and `agentId` / `agentPrincipalId` (migration 0063).
+- Room runs carry a 30-minute lease so the existing stale-run sweep can fail a
+  turn whose workflow the platform lost, instead of leaving a reply generating
+  forever.
+- `resolveWorkspaceAgentInvocations` and `runWorkspaceAgentTurn` are separate:
+  the send path resolves who owes a reply without reading the transcript, and
+  each turn loads the room fresh, because a durable turn can start long after
+  the request that triggered it.
+- `MAX_OUTPUT_TOKENS_AGENT` is 16k now that a turn is not bounded by a response.
 
-Both providers already had `status`, `updatedAt`, and the indexes for this, so
-no migration was needed. `startAgentMessage` / `appendAgentMessageDelta` /
-`finalizeAgentMessage` / `failAgentMessage` on
-`ConversationCollaborationRepository`; opening is idempotent on the existing
-`agent:{messageId}:{agentId}` nonce. Writes batch at 250ms/200 chars, and the
-durable `message.delta` event is throttled to 1s because on the polling
-(Postgres) path each one costs every viewer a refetch. `addAgentMessage`
-remains the fallback when a row cannot be opened.
+### Follow-ups
 
-### Remaining: the trigger is still client-held (1b)
-
-`deferAgentReply` is still read and ignored in
-`src/server/app-api/v1/conversations/message/route.ts`, so
-`agent-reply/route.ts` — a request the browser holds — is still the only thing
-that starts a turn. The model call is not bound to `request.signal`, so a
-disconnect does not abort generation, but nothing restarts a turn the runtime
-reclaims, and there is no run record to resume from.
-
-- Add `agentId` / `agentPrincipalId` to `conversationAgentRuns` and
-  `AgentRunService.startAgentTurn` alongside `startChat` / `startWork`. Room
-  messages already live in `conversationMessages`, which the table keys on, so
-  the migration is additive.
-- Add `workflows/workspace-agent-turn.ts`, a `"use workflow"` of its own rather
-  than a branch inside `personalChatWorkWorkflow`: editing a live workflow body
-  breaks determinism for in-flight replays. Reuse the *step* modules — the
-  dispatcher pattern in `src/server/conversations/personal-chat-work-tools.ts`
-  already solves dynamic tool sets under `"use step"`. Room agents build tools
-  through `buildWorkspaceAgentTooling`, not `prepareActTooling`, so they need a
-  sibling dispatcher.
-- Reserve budget *before* `start()` and pass `reservationId` into the workflow,
-  the way `act/route.ts` does. Reserving inside the workflow double-charges on
-  replay.
-- `message/route.ts` honours `deferAgentReply` by starting that workflow and
-  returning. Keep the `authorKind === 'human'` guard in `mention-policy.ts`
-  intact through the move — the server-side trigger is exactly where agent
-  autonomy could leak in by accident.
-- Retire `agent-reply/route.ts` and its `authorization-route-policy.ts` entry.
-- Extend the stale-lease reaper to agent turns so a reclaimed run cannot leave a
-  row generating forever.
-- Raise `MAX_OUTPUT_TOKENS_AGENT` (4,000 today) once turns survive the request.
-- Wire `personalChatWorkToolNeedsApproval` / `waiting_for_approval` to a
-  room-visible approval card, which is what makes larger step budgets safe.
-
-Deliberately not doing: a `run.readable` live path or a resume route. The row is
-required anyway for the transcript and for late joiners, and `run.readable`
-serves only the single holder of the runId. `workflowStepEvents` is the same
-row-projection choice already made for automations.
+- **`WorkflowAgent` for the inner loop.** The model turn runs as a single
+  `"use step"`, so replay granularity is the whole turn rather than the last
+  completed tool call. `WorkflowAgent` would fix that, but it streams into the
+  workflow's own output stream, which only the holder of the run id can read —
+  a room needs every participant to see the reply, so the transcript row wins.
+  Revisit by teeing the writable, and measure before committing.
+- **Room approval card.** `personalChatWorkToolNeedsApproval` and the
+  `waiting_for_approval` state exist; nothing in a room can grant approval yet,
+  so an approval-gated MCP tool still stalls. This is what makes a larger
+  channel step budget safe (`MAX_TOOL_STEPS_AGENT_CHANNEL` is 8).
+- **Stop control.** Personal chat has `conversations/stop`; a room turn has no
+  cancel. Maps to workflow run cancellation.
+- **Per-agent concurrency.** `MAX_AGENTS_PER_MESSAGE` caps fan-out per message
+  but nothing queues a single agent mentioned repeatedly.
+- **Model fallback on retry.** `agentModelAttempts` handles entitlement
+  fallback within a turn; a failed run does not yet retry on a different model
+  the way automations do.
 
 ---
 

@@ -945,8 +945,12 @@ export default defineSchema({
     userId: v.string(),
     userMessageId: v.id('conversationMessages'),
     assistantMessageId: v.id('conversationMessages'),
-    mode: v.union(v.literal('chat'), v.literal('work')),
+    mode: v.union(v.literal('chat'), v.literal('work'), v.literal('room')),
     runner: v.union(v.literal('tool_loop'), v.literal('workflow')),
+    // Set for `room` runs: which workspace agent answered, and as which
+    // principal. Absent on personal-chat runs, which have no agent author.
+    agentId: v.optional(v.string()),
+    agentPrincipalId: v.optional(v.string()),
     status: v.union(
       v.literal('queued'),
       v.literal('running'),

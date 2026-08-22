@@ -140,6 +140,33 @@ implements ConversationCollaborationRepository {
     return id
   }
 
+  async startAgentTurn(args: {
+    actorUserId: string
+    agentId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    userMessageId: string
+    workspaceId: string
+  }) {
+    const result = await convex.mutation<{ messageId: string; resumed: boolean; runId: string }>(
+      'collaboration/directMessages:startAgentTurn',
+      {
+        ...args,
+        conversationId: args.conversationId as Id<'conversations'>,
+        threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
+        userMessageId: args.userMessageId as Id<'conversationMessages'>,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to open collaboration agent turn')
+    return result
+  }
+
   async appendAgentMessageDelta(args: {
     actorUserId: string
     contentDelta: string

@@ -74,6 +74,12 @@ export function createAgentMessageStream(args: {
   authorPrincipalId: string
   clientNonce: string
   conversationId: string
+  /**
+   * A durable turn opens its row up front, together with the run record, so the
+   * turn is visible and resumable before the model is called. Passing it here
+   * skips the lazy open; the row is already there.
+   */
+  existingMessageId?: string
   modelId: string
   now?: () => number
   store: AgentMessageStreamStore
@@ -82,7 +88,7 @@ export function createAgentMessageStream(args: {
   workspaceId: string
 }) {
   const now = args.now ?? Date.now
-  let messageId: string | null = null
+  let messageId: string | null = args.existingMessageId ?? null
   /** Set when persistence fails; the turn continues without durable rows. */
   let disabled = false
   let pendingText = ''

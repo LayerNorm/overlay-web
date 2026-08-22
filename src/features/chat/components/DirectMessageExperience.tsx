@@ -899,32 +899,16 @@ export function DirectMessageExperience({
         clientNonce,
         mentionedPrincipalIds,
         threadRootMessageId,
-        // When an agent is going to answer, this client watches the reply
-        // stream, so the server must not also run the invocation.
-        ...(invokedAgents.length ? { deferAgentReply: true } : {}),
         ...(parts?.length ? { parts: parts as Array<Record<string, unknown>> } : {}),
         ...(options?.attachmentNames?.length ? { attachmentNames: options.attachmentNames } : {}),
         ...(options?.reply?.replyToTurnId
           ? { replyToTurnId: options.reply.replyToTurnId, replySnippet: options.reply.snippet }
           : {}),
       })
+      // Saving the message is what starts the agent turn; the server owns it
+      // from here. The reply arrives in the transcript on its own, so there is
+      // nothing for this client to hold open and nothing to wait for.
       if (!convexRoomSubscriptionEnabled) await loadMessages()
-      if (invokedAgents.length) {
-        const humanMessageId = saved.messageId ?? messagesRef.current.find((message) => (
-          message.clientNonce === clientNonce
-        ))?.id
-        if (humanMessageId) {
-          await streamAgentReply({
-            humanMessageId,
-            mentionedPrincipalIds,
-            threadRootMessageId,
-            agents: invokedAgents.map((participant) => ({
-              principalId: participant.principalId,
-              displayName: participant.displayName,
-            })),
-          })
-        }
-      }
       void saved
     } catch {
       setMessages((current) => current.map((message) => (
@@ -951,61 +935,6 @@ export function DirectMessageExperience({
    * message itself, so the streamed text is a live preview that the next load
    * replaces with the stored row.
    */
-  /**
-   * Triggers the agent turn and waits for it to finish.
-   *
-   * The reply itself arrives through the transcript: the server writes it into
-   * a `generating` row as it is produced. This request only starts the turn and
-   * reports a refusal, so losing the connection costs the sender nothing — the
-   * turn keeps running and the row keeps filling.
-   */
-  async function streamAgentReply({
-    humanMessageId,
-    mentionedPrincipalIds,
-    threadRootMessageId,
-  }: {
-    humanMessageId: string
-    mentionedPrincipalIds: string[]
-    threadRootMessageId?: string
-    agents: Array<{ principalId: string; displayName: string }>
-  }) {
-    try {
-      const response = await overlayAppClient.conversations.agentReplyStreamResponse({
-        conversationId,
-        messageId: humanMessageId,
-        mentionedPrincipalIds,
-        ...(threadRootMessageId ? { threadRootMessageId } : {}),
-      })
-      const reader = response.body?.getReader()
-      if (!reader) return
-      const decoder = new TextDecoder()
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop() ?? ''
-        for (const frame of frames) {
-          const line = frame.split('\n').find((row) => row.startsWith('data: '))
-          if (!line) continue
-          let event: { type?: string; message?: string }
-          try {
-            event = JSON.parse(line.slice(6))
-          } catch {
-            continue
-          }
-          // Only a refusal needs surfacing here; the room shows the reply.
-          if (event.type === 'error') setNotice(event.message ?? 'The agent could not reply.')
-        }
-      }
-    } catch {
-      // The turn outlives this request. Whatever it writes lands in the room.
-    } finally {
-      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
-    }
-  }
-
   async function handleSend() {
     const text = (inputRef.current ?? input).trim()
     const readyDocuments = pendingChatDocuments.filter((document) => document.status === 'ready')

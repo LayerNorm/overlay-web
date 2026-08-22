@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   conversationEvents,
@@ -65,7 +65,13 @@ export class PostgresBackgroundMaintenanceService {
       .select()
       .from(agentRuns)
       .where(and(
-        eq(agentRuns.runner, 'tool_loop'),
+        // Room turns run as durable workflows rather than in-request tool
+        // loops, but they expire the same way: the lease is the outer bound on
+        // a run whose executor disappeared, whichever executor that was.
+        or(
+          eq(agentRuns.runner, 'tool_loop'),
+          eq(agentRuns.mode, 'room'),
+        ),
         inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
         lt(agentRuns.leaseExpiresAt, now),
       ))

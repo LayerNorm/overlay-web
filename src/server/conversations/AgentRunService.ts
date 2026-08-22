@@ -10,6 +10,7 @@ import {
 import { buildAgentRunMetricsReport } from '@/shared/agents/agent-run-metrics'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { ActConversationRepository } from './ActConversationRepository'
+import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
 
 export class AgentRunService {
   constructor(private readonly repository: ActConversationRepository) {}
@@ -56,6 +57,51 @@ export class AgentRunService {
       userMessageId: args.userMessageId,
       variantIndex: args.variantIndex,
     }) ?? undefined
+  }
+
+  /**
+   * Opens a durable room agent turn. Unlike `startChat` / `startWork`, the run
+   * and its reply row are created by the collaboration repository, because a
+   * room turn is authored by an agent principal and authorized by room
+   * membership rather than by conversation ownership.
+   */
+  async startRoomTurn(args: {
+    actorUserId: string
+    agentId: string
+    agentPrincipalId: string
+    clientNonce: string
+    collaboration: Pick<ConversationCollaborationRepository, 'startAgentTurn'>
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    userMessageId: string
+    workspaceId: string
+  }): Promise<{ messageId: string; resumed: boolean; runId: string }> {
+    return await args.collaboration.startAgentTurn({
+      actorUserId: args.actorUserId,
+      agentId: args.agentId,
+      authorPrincipalId: args.agentPrincipalId,
+      clientNonce: args.clientNonce,
+      conversationId: args.conversationId,
+      modelId: args.modelId,
+      threadRootMessageId: args.threadRootMessageId,
+      turnId: args.turnId,
+      userMessageId: args.userMessageId,
+      workspaceId: args.workspaceId,
+    })
+  }
+
+  async complete(args: {
+    content: string
+    metrics?: Partial<AgentRunMetrics>
+    parts: Array<Record<string, unknown>>
+    routedModelId?: string
+    runId: string
+    tokens: { input: number; output: number }
+    userId: string
+  }): Promise<AgentRun | undefined> {
+    return await this.repository.completeAgentRun(args) ?? undefined
   }
 
   async attachWorkflow(args: {

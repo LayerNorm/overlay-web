@@ -5,6 +5,7 @@ import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, not, or, sql 
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
+  agentRuns,
   conversationEvents,
   conversationMessageReactions,
   conversationMessages,
@@ -38,6 +39,7 @@ import type {
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
 import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
 import { resolveConversationActivityState } from '@/shared/chat/conversation-activity-state'
+import { ROOM_AGENT_RUN_LEASE_MS } from '@/shared/agents/agent-run'
 import type {
   ConversationEventRow,
   ConversationListRow,
@@ -397,6 +399,92 @@ implements ConversationCollaborationRepository {
       })
     })
     return id
+  }
+
+  async startAgentTurn(args: {
+    actorUserId: string
+    agentId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    userMessageId: string
+    workspaceId: string
+  }): Promise<{ messageId: string; resumed: boolean; runId: string }> {
+    await this.requireAgentParticipant(args)
+
+    const [existingMessage] = await this.db.select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.clientNonce, args.clientNonce),
+      ))
+      .limit(1)
+    if (existingMessage) {
+      const [existingRun] = await this.db.select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(eq(agentRuns.assistantMessageId, existingMessage.id))
+        .limit(1)
+      if (existingRun) {
+        return { messageId: existingMessage.id, resumed: true, runId: existingRun.id }
+      }
+    }
+
+    const messageId = existingMessage?.id ?? `message_${randomUUID()}`
+    const runId = `agent_run_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      if (!existingMessage) {
+        await tx.insert(conversationMessages).values({
+          id: messageId,
+          conversationId: args.conversationId,
+          userId: args.actorUserId,
+          turnId: args.turnId,
+          role: 'assistant',
+          mode: 'act',
+          content: '',
+          contentType: 'text',
+          modelId: args.modelId,
+          status: 'generating',
+          authorKind: 'agent',
+          authorPrincipalId: args.authorPrincipalId,
+          clientNonce: args.clientNonce,
+          threadRootMessageId: args.threadRootMessageId,
+          createdAt: now,
+          updatedAt: now,
+        })
+        await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
+          .where(eq(conversations.id, args.conversationId))
+        await emitConversationEvent(tx, {
+          conversationId: args.conversationId,
+          messageId,
+          type: 'message.created',
+          userId: args.actorUserId,
+        })
+      }
+      await tx.insert(agentRuns).values({
+        id: runId,
+        conversationId: args.conversationId,
+        turnId: args.turnId,
+        userId: args.actorUserId,
+        userMessageId: args.userMessageId,
+        assistantMessageId: messageId,
+        agentId: args.agentId,
+        agentPrincipalId: args.authorPrincipalId,
+        mode: 'room',
+        runner: 'workflow',
+        status: 'queued',
+        // A room turn has no heartbeat, so the lease is an outer bound: a sweep
+        // fails whatever is still active past it rather than leaving a reply
+        // generating forever.
+        leaseExpiresAt: new Date(now.getTime() + ROOM_AGENT_RUN_LEASE_MS),
+        createdAt: now,
+        updatedAt: now,
+      })
+    })
+    return { messageId, resumed: Boolean(existingMessage), runId }
   }
 
   async appendAgentMessageDelta(args: {

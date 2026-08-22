@@ -1,5 +1,18 @@
-export const AGENT_RUN_MODES = ['chat', 'work'] as const
+/**
+ * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
+ * from `chat`/`work` because the author is an agent principal rather than the
+ * conversation owner, and because its spend and metrics should not be mixed
+ * into personal-chat reporting.
+ */
+export const AGENT_RUN_MODES = ['chat', 'work', 'room'] as const
 export type AgentRunMode = (typeof AGENT_RUN_MODES)[number]
+
+/**
+ * How long a room turn may stay active before a sweep treats it as abandoned.
+ * Far beyond the 300s turn timeout, so a live turn is never reaped — this only
+ * catches a run whose workflow the platform lost entirely.
+ */
+export const ROOM_AGENT_RUN_LEASE_MS = 30 * 60 * 1_000
 
 export const AGENT_RUN_RUNNERS = ['tool_loop', 'workflow'] as const
 export type AgentRunRunner = (typeof AGENT_RUN_RUNNERS)[number]
@@ -61,6 +74,9 @@ export type AgentRun = {
   userId: string
   userMessageId: string
   assistantMessageId: string
+  /** Set for `room` runs: which agent answered, and as which principal. */
+  agentId?: string
+  agentPrincipalId?: string
   mode: AgentRunMode
   runner: AgentRunRunner
   status: AgentRunStatus

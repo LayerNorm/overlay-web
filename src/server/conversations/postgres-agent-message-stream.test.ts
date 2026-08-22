@@ -3,12 +3,12 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { inArray, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
 } from '@/server/database/postgres/client'
-import { users } from '@/server/database/postgres/schema'
+import { agentRuns, users } from '@/server/database/postgres/schema'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
 import { PostgresConversationCollaborationRepository } from './PostgresConversationCollaborationRepository'
@@ -165,6 +165,41 @@ test('Postgres agent replies stream into a durable transcript row', {
     })).find((message) => message._id === failingId)
     assert.equal(failed?.status, 'error')
     assert.equal(failed?.content, 'I started to')
+
+    // A durable turn opens the reply row and the run that owns it together, so
+    // the turn is visible and resumable before the model is ever called.
+    const turnNonce = `${clientNonce}:durable`
+    const turn = await collaboration.startAgentTurn({
+      ...openArgs,
+      agentId,
+      clientNonce: turnNonce,
+      turnId: `${openArgs.turnId}_durable`,
+      userMessageId: messageId,
+    })
+    assert.equal(turn.resumed, false)
+    const [runRow] = await db.select().from(agentRuns).where(eq(agentRuns.id, turn.runId))
+    assert.equal(runRow?.mode, 'room')
+    assert.equal(runRow?.runner, 'workflow')
+    assert.equal(runRow?.status, 'queued')
+    assert.equal(runRow?.agentId, agentId)
+    assert.equal(runRow?.agentPrincipalId, agentPrincipalId)
+    assert.equal(runRow?.assistantMessageId, turn.messageId)
+    // Without a lease the sweep could never tell an abandoned turn from a slow
+    // one, and the reply would stay generating forever.
+    assert.ok(runRow?.leaseExpiresAt)
+
+    // A duplicate trigger must recover the same turn rather than opening a
+    // second run against the same reply.
+    const again = await collaboration.startAgentTurn({
+      ...openArgs,
+      agentId,
+      clientNonce: turnNonce,
+      turnId: `${openArgs.turnId}_durable`,
+      userMessageId: messageId,
+    })
+    assert.equal(again.resumed, true)
+    assert.equal(again.runId, turn.runId)
+    assert.equal(again.messageId, turn.messageId)
 
     // The polling transcript learns about the turn without refetching on every
     // single write: one event to open it, one throttled delta, one to close it.

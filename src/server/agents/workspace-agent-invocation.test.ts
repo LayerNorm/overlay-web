@@ -30,11 +30,10 @@ test('agent external-action claims require a successful tool result', () => {
 })
 
 test('workspace agents use participant-scoped room history and persistence', async () => {
-  const [service, contract, convexRoom, route] = await Promise.all([
+  const [service, contract, convexRoom] = await Promise.all([
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
-    readFile(`${root}/src/server/app-api/v1/conversations/agent-reply/route.ts`, 'utf8'),
   ])
 
   assert.match(service, /collaboration\.getAccessibleConversation/)
@@ -49,9 +48,75 @@ test('workspace agents use participant-scoped room history and persistence', asy
   assert.match(convexRoom, /authorKind: 'agent'/)
   assert.match(service, /reasonCode/)
   assert.match(service, /no_agent_participant/)
-  assert.match(route, /reasonCode: error\.reasonCode/)
-  assert.match(route, /message: error\.message/)
-  assert.doesNotMatch(route, /signal: request\.signal/)
+})
+
+test('a room agent turn is owned by a durable run, not by an HTTP request', async () => {
+  const [workflow, lifecycle, messageRoute, policy, service] = await Promise.all([
+    readFile(`${root}/workflows/workspace-agent-turn.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
+    readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+    readFile(`${root}/src/server/authorization/authorization-route-policy.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+  ])
+
+  // Saving the human message is what starts the turn. The browser cannot be
+  // the trigger any more, which is what made closing the tab end the reply.
+  assert.match(messageRoute, /start\(workspaceAgentTurnWorkflow/)
+  assert.match(messageRoute, /resolveWorkspaceAgentInvocations/)
+  assert.doesNotMatch(messageRoute, /deferAgentReply/)
+  assert.doesNotMatch(policy, /conversations\/agent-reply/)
+  await assert.rejects(
+    readFile(`${root}/src/server/app-api/v1/conversations/agent-reply/route.ts`, 'utf8'),
+    'the client-held agent-reply route should be gone',
+  )
+
+  // A duplicate trigger must not bill the same reply twice.
+  assert.match(messageRoute, /if \(turn\.resumed\) continue/)
+
+  assert.match(workflow, /'use workflow'/)
+  for (const step of [
+    'attachWorkspaceAgentRun',
+    'executeWorkspaceAgentTurn',
+    'completeWorkspaceAgentRun',
+    'failWorkspaceAgentRun',
+  ]) {
+    assert.match(workflow, new RegExp(step), `workflow is missing ${step}`)
+    assert.match(lifecycle, new RegExp(`export async function ${step}`), `lifecycle is missing ${step}`)
+  }
+  // Every lifecycle hop is a step, or replay cannot resume the turn.
+  assert.equal(lifecycle.match(/'use step'/g)?.length, 5)
+
+  // A durable turn outlives the request that triggered it, so it must not
+  // depend on that request's credential.
+  assert.doesNotMatch(lifecycle, /accessToken/)
+  // Resolution and execution are separate so the trigger can return without
+  // waiting for any turn to finish.
+  assert.match(service, /export async function resolveWorkspaceAgentInvocations/)
+  assert.match(service, /export async function runWorkspaceAgentTurn/)
+  assert.doesNotMatch(service, /invokeWorkspaceAgentsForHumanMessage/)
+
+  // The turn's own reply row carries the invocation nonce, so the
+  // already-replied guard has to exclude it — comparing on the nonce alone
+  // makes every durable turn skip itself and reply to nothing.
+  assert.match(service, /priorReply\._id !== args\.existingMessageId/)
+
+  // Anything a workflow body imports that is not a `"use step"` function gets
+  // bundled for the workflow runtime, where Node built-ins do not exist. One
+  // plain helper imported from the server pulled `node:crypto` in behind it and
+  // failed the build with a hundred errors, so the workflow's only server
+  // imports must be steps, and its plain helpers must live in its own module.
+  const serverImports = [...workflow.matchAll(/import\s*\{([^}]*)\}\s*from\s*'@\/server[^']*'/g)]
+    .flatMap((match) => match[1]!.split(',').map((name) => name.trim()))
+    .filter((name) => name && !name.startsWith('type '))
+  assert.ok(serverImports.length > 0)
+  for (const imported of serverImports) {
+    assert.match(
+      lifecycle,
+      new RegExp(`export async function ${imported}\\b[\\s\\S]*?'use step'`),
+      `${imported} is imported into the workflow but is not a step`,
+    )
+  }
+  assert.match(workflow, /function describeWorkspaceAgentFailure/)
 })
 
 test('an agent reply is persisted as it is generated, not only when it finishes', async () => {

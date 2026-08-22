@@ -53,7 +53,7 @@ export const messageStatus = pgEnum('overlay_message_status', [
   'error',
 ])
 
-export const agentRunMode = pgEnum('overlay_agent_run_mode', ['chat', 'work'])
+export const agentRunMode = pgEnum('overlay_agent_run_mode', ['chat', 'work', 'room'])
 export const agentRunRunner = pgEnum('overlay_agent_run_runner', ['tool_loop', 'workflow'])
 export const agentRunStatus = pgEnum('overlay_agent_run_status', [
   'queued',
@@ -721,6 +721,9 @@ export const agentRuns = pgTable('agent_runs', {
   mode: agentRunMode('mode').notNull(),
   runner: agentRunRunner('runner').notNull(),
   status: agentRunStatus('status').notNull(),
+  // Set for `room` runs; personal-chat runs have no agent author.
+  agentId: text('agent_id'),
+  agentPrincipalId: text('agent_principal_id'),
   variantIndex: integer('variant_index'),
   workflowRunId: text('workflow_run_id'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),

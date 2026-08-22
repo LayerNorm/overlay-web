@@ -9,8 +9,11 @@ test('Convex room sends use one reconciliation transport', async () => {
   assert.match(source, /appDataCapabilities\.provider === 'postgres'/)
   assert.doesNotMatch(source, /appDataCapabilities\.provider === 'convex' && !convexRoomSubscriptionEnabled/)
   assert.match(source, /if \(!convexRoomSubscriptionEnabled\) await loadMessages\(\)/)
-  assert.match(source, /const humanMessageId = saved\.messageId/)
   assert.doesNotMatch(source, /setNotice\('This conversation is unavailable\.'\)/)
+  // Saving the message starts the agent turn server-side; this client neither
+  // triggers it nor waits for it.
+  assert.doesNotMatch(source, /agentReplyStreamResponse/)
+  assert.doesNotMatch(source, /deferAgentReply/)
 })
 
 test('agent response activity keeps dots, omits duplicate copy, and follows streamed text', async () => {

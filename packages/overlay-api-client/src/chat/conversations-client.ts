@@ -374,21 +374,6 @@ export class ConversationsClient {
     )
   }
 
-  agentReplyStreamResponse(
-    body: {
-      conversationId: string
-      messageId: string
-      mentionedPrincipalIds?: string[]
-      threadRootMessageId?: string
-    },
-    init?: MutationRequestInit,
-  ) {
-    return this.http.request(
-      '/api/v1/conversations/agent-reply',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
   editCollaborativeMessage(
     conversationId: string,
     messageId: string,

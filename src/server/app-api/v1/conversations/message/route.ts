@@ -7,7 +7,70 @@ import {
   sanitizeMessagePartsForPersistence,
 } from '@/server/chat/chat-message-persistence'
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
+import { start } from 'workflow/api'
+import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import { workspaceAgentTurnWorkflow } from '@/workflows/workspace-agent-turn'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+
+/**
+ * Opens a durable run per agent that owes a reply, and starts the workflow that
+ * writes it.
+ *
+ * This is the only thing that invokes a room agent. Triggering server-side is
+ * what makes a turn asynchronous: the sender's request returns as soon as the
+ * runs exist, and the turns continue whether or not anyone is still watching.
+ * Failures here are logged rather than raised — the human message is already
+ * saved, and failing the send because an agent could not be started would be
+ * the worse outcome.
+ */
+async function triggerWorkspaceAgentTurns(args: {
+  actorUserId: string
+  conversationId: string
+  messageId: string
+  mentionedPrincipalIds: string[]
+  threadRootMessageId?: string
+  workspaceId: string
+}): Promise<void> {
+  const collaboration = getOverlayServerContext().appData.repositories.conversationCollaboration
+  const invocations = await resolveWorkspaceAgentInvocations(args)
+  for (const invocation of invocations) {
+    try {
+      const turn = await collaboration.startAgentTurn({
+        actorUserId: args.actorUserId,
+        agentId: invocation.agentId,
+        authorPrincipalId: invocation.agentPrincipalId,
+        clientNonce: invocation.invocationNonce,
+        conversationId: args.conversationId,
+        modelId: invocation.modelId,
+        threadRootMessageId: args.threadRootMessageId,
+        turnId: invocation.turnId,
+        userMessageId: args.messageId,
+        workspaceId: args.workspaceId,
+      })
+      // A turn already exists for this (message, agent): a duplicate trigger,
+      // or a retried send. Starting a second workflow against the same reply
+      // row would bill the turn twice.
+      if (turn.resumed) continue
+      await start(workspaceAgentTurnWorkflow, [{
+        actorUserId: args.actorUserId,
+        agentId: invocation.agentId,
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        runId: turn.runId,
+        ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+        turnMessageId: turn.messageId,
+        workspaceId: args.workspaceId,
+      }])
+    } catch (error) {
+      logger.error('[conversations/message POST] Failed to start an agent turn', {
+        agentId: invocation.agentId,
+        conversationId: args.conversationId,
+        error,
+        messageId: args.messageId,
+      })
+    }
+  }
+}
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -30,7 +93,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       mentionedPrincipalIds?: string[]
       threadRootMessageId?: string
       clientNonce?: string
-      deferAgentReply?: boolean
     }
     const { auth } = context
 
@@ -148,6 +210,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           logger.warn('[conversations/message POST] Failed to publish mention lifecycle event', { error })
         }
       }
+    }
+
+    if (isCollaborationConversation && messageId) {
+      await triggerWorkspaceAgentTurns({
+        actorUserId: auth.userId,
+        conversationId: body.conversationId,
+        mentionedPrincipalIds,
+        messageId: String(messageId),
+        ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
+        workspaceId,
+      }).catch((error) => {
+        // `resolveWorkspaceAgentInvocations` throws when no agent was addressed,
+        // which is the common case for a message between people.
+        logger.debug('[conversations/message POST] No agent turn started', { error })
+      })
     }
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId, messageId })

@@ -6,6 +6,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
+import { ROOM_AGENT_RUN_LEASE_MS } from '../../src/shared/agents/agent-run'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -625,6 +626,120 @@ async function loadGeneratingAgentMessage(
  * Everything after this point is a patch on a row every participant is already
  * subscribed to, which is what makes the reply survive the sender's tab.
  */
+/**
+ * Opens (or recovers) the `generating` row a workspace agent writes its reply
+ * into. Idempotent on `clientNonce`: a retried or replayed turn recovers the
+ * same row rather than posting the reply twice.
+ */
+async function openAgentMessageRow(
+  ctx: Pick<MutationCtx, 'db'>,
+  args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: Id<'conversations'>
+    modelId: string
+    threadRootMessageId?: Id<'conversationMessages'>
+    turnId: string
+    workspaceId: string
+  },
+): Promise<{ messageId: Id<'conversationMessages'>; resumed: boolean }> {
+  if (args.threadRootMessageId) {
+    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+  }
+  const existing = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+    .collect()
+  const match = existing.find((message) => message.clientNonce === args.clientNonce)
+  if (match) return { messageId: match._id, resumed: true }
+
+  const now = Date.now()
+  const messageId = await ctx.db.insert('conversationMessages', {
+    conversationId: args.conversationId,
+    userId: args.actorUserId,
+    authorKind: 'agent',
+    authorPrincipalId: args.authorPrincipalId,
+    turnId: args.turnId,
+    role: 'assistant',
+    mode: 'act',
+    content: '',
+    contentType: 'text',
+    modelId: args.modelId,
+    clientNonce: args.clientNonce,
+    threadRootMessageId: args.threadRootMessageId,
+    status: 'generating',
+    createdAt: now,
+    updatedAt: now,
+  })
+  await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
+  await recordConversationEvent(ctx, {
+    conversationId: args.conversationId,
+    workspaceId: args.workspaceId,
+    userId: args.actorUserId,
+    type: 'message.created',
+    messageId,
+  })
+  return { messageId, resumed: false }
+}
+
+/**
+ * Opens a durable room agent turn: the reply row plus the run record that owns
+ * it. Both exist before the model is called, so a turn the runtime loses is
+ * still visible and still resumable rather than silently gone.
+ *
+ * `resumed` tells the caller a turn for this (message, agent) already exists,
+ * which is how a duplicate trigger avoids starting a second workflow against
+ * the same reply.
+ */
+export const startAgentTurn = mutation({
+  args: {
+    actorUserId: v.string(),
+    agentId: v.string(),
+    authorPrincipalId: v.string(),
+    clientNonce: v.string(),
+    conversationId: v.id('conversations'),
+    modelId: v.string(),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    turnId: v.string(),
+    userMessageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAgentAuthor(ctx, args)
+    const { messageId, resumed } = await openAgentMessageRow(ctx, args)
+    // A room turn carries no variant index, so the turn prefix of this index
+    // identifies at most one run.
+    const existingRun = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_turn_variant', (q) => (
+        q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
+      ))
+      .first()
+    if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
+
+    const now = Date.now()
+    const runId = await ctx.db.insert('conversationAgentRuns', {
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      userId: args.actorUserId,
+      userMessageId: args.userMessageId,
+      assistantMessageId: messageId,
+      agentId: args.agentId,
+      agentPrincipalId: args.authorPrincipalId,
+      mode: 'room',
+      runner: 'workflow',
+      status: 'queued',
+      // A room turn has no heartbeat, so the lease is an outer bound: a sweep
+      // fails whatever is still active past it rather than leaving a reply
+      // generating forever.
+      leaseExpiresAt: now + ROOM_AGENT_RUN_LEASE_MS,
+      createdAt: now,
+      updatedAt: now,
+    })
+    return { messageId, resumed, runId }
+  },
+})
+
 export const startAgentMessage = mutation({
   args: {
     actorUserId: v.string(),
@@ -639,42 +754,7 @@ export const startAgentMessage = mutation({
   },
   handler: async (ctx, args) => {
     await requireAgentAuthor(ctx, args)
-    if (args.threadRootMessageId) {
-      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
-    }
-    const existing = await ctx.db.query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    const match = existing.find((message) => message.clientNonce === args.clientNonce)
-    if (match) return match._id
-
-    const now = Date.now()
-    const messageId = await ctx.db.insert('conversationMessages', {
-      conversationId: args.conversationId,
-      userId: args.actorUserId,
-      authorKind: 'agent',
-      authorPrincipalId: args.authorPrincipalId,
-      turnId: args.turnId,
-      role: 'assistant',
-      mode: 'act',
-      content: '',
-      contentType: 'text',
-      modelId: args.modelId,
-      clientNonce: args.clientNonce,
-      threadRootMessageId: args.threadRootMessageId,
-      status: 'generating',
-      createdAt: now,
-      updatedAt: now,
-    })
-    await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
-    await recordConversationEvent(ctx, {
-      conversationId: args.conversationId,
-      workspaceId: args.workspaceId,
-      userId: args.actorUserId,
-      type: 'message.created',
-      messageId,
-    })
-    return messageId
+    return (await openAgentMessageRow(ctx, args)).messageId
   },
 })
 

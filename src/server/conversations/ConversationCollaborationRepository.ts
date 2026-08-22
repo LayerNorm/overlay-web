@@ -91,6 +91,24 @@ export interface ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<string>
+  /**
+   * Opens a durable room agent turn: the reply row plus the run record that
+   * owns it, before the model is called. `resumed` reports that a turn for this
+   * (message, agent) already existed, which is how a duplicate trigger avoids
+   * starting a second workflow against the same reply.
+   */
+  startAgentTurn(args: {
+    actorUserId: string
+    agentId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    userMessageId: string
+    workspaceId: string
+  }): Promise<{ messageId: string; resumed: boolean; runId: string }>
   appendAgentMessageDelta(args: {
     actorUserId: string
     contentDelta: string

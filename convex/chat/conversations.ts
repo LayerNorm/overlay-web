@@ -1225,17 +1225,25 @@ export const expireToolLoopAgentRunLeases = internalMutation({
   handler: async (ctx) => {
     const now = Date.now()
     const expired = []
-    for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
-      const remaining = 100 - expired.length
-      if (remaining <= 0) break
-      const rows = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_runner_status_leaseExpiresAt', (q) => q
-          .eq('runner', 'tool_loop')
-          .eq('status', status)
-          .lt('leaseExpiresAt', now))
-        .take(remaining)
-      expired.push(...rows)
+    // Room turns run as durable workflows rather than in-request tool loops,
+    // but they expire the same way: the lease is the outer bound on a run whose
+    // executor disappeared, whichever executor that was. Work-mode runs carry
+    // no lease and are excluded by the `mode` check below.
+    for (const runner of ['tool_loop', 'workflow'] as const) {
+      for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
+        const remaining = 100 - expired.length
+        if (remaining <= 0) break
+        const rows = await ctx.db
+          .query('conversationAgentRuns')
+          .withIndex('by_runner_status_leaseExpiresAt', (q) => q
+            .eq('runner', runner)
+            .eq('status', status)
+            .lt('leaseExpiresAt', now))
+          .take(remaining)
+        expired.push(...rows.filter((row) => (
+          row.runner === 'tool_loop' || row.mode === 'room'
+        )))
+      }
     }
 
     const errorText = 'Generation was interrupted because the chat process stopped before completion.'

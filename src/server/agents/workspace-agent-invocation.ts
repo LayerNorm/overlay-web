@@ -38,7 +38,17 @@ import { resolveMentionFirstInvocations } from './mention-policy'
 const MAX_TOOL_STEPS_AGENT_DM = 20
 const MAX_TOOL_STEPS_AGENT_CHANNEL = 8
 
-const MAX_OUTPUT_TOKENS_AGENT = 4_000
+/**
+ * A durable turn is no longer bounded by the request that started it, so the
+ * cap can be what the work needs rather than what a response could hold.
+ */
+const MAX_OUTPUT_TOKENS_AGENT = 16_000
+
+/**
+ * Each mentioned agent gets its own budget reservation and its own durable
+ * run, so an uncapped mass-mention is a cost amplifier.
+ */
+const MAX_AGENTS_PER_MESSAGE = 5
 
 /**
  * A tool loop needs longer than a single completion. This is still bounded by
@@ -54,14 +64,6 @@ const AGENT_MEMORY_TOOL_IDS = new Set([
   'update_memory',
   'delete_memory',
 ])
-
-export type WorkspaceAgentDelta = {
-  agentPrincipalId: string
-  agentName: string
-  delta?: string
-  /** Ordered transcript part for live tool/reasoning/generated-UI rendering. */
-  part?: Record<string, unknown>
-}
 
 const UNVERIFIED_NOTE_ACTION_CLAIM = /\b(?:I|we)\s+(?:have\s+)?(?:saved|created|wrote|written|updated|edited)\s+(?:a|the|your)?\s*note\b[^.!?\n]*[.!?]?/gi
 
@@ -182,23 +184,36 @@ async function loadAccessibleConversation(args: {
   throw new WorkspaceAgentInvocationError('room_access_denied')
 }
 
-export async function invokeWorkspaceAgentsForHumanMessage(args: {
-  accessToken?: string
+/** What a completed turn produced, for the run record to close over. */
+export type WorkspaceAgentTurnResult = {
+  content: string
+  modelId: string
+  parts: Array<Record<string, unknown>>
+  tokens: { input: number; output: number }
+}
+
+/** One agent that owes a reply to one human message. */
+export type WorkspaceAgentInvocation = {
+  agentId: string
+  agentName: string
+  agentPrincipalId: string
+  /** Idempotency key for this (message, agent) pair. */
+  invocationNonce: string
+  modelId: string
+  turnId: string
+}
+
+/**
+ * Everything a room turn reads about the room. Loaded fresh per turn rather
+ * than threaded through from the request that triggered it: a durable turn can
+ * start long after that request is gone, and the room may have moved on.
+ */
+async function loadRoomTurnContext(args: {
   actorUserId: string
   conversationId: string
   messageId: string
-  mentionedPrincipalIds?: string[]
-  threadRootMessageId?: string
   workspaceId: string
-  /**
-   * Called for every token as the agent writes. The reply is persisted the same
-   * way with or without a listener; streaming only decides whether the caller
-   * watches it arrive.
-   */
-  onDelta?: (event: WorkspaceAgentDelta) => void
-  /** Reserved for an explicit server-side cancellation; client disconnects do not cancel a turn. */
-  signal?: AbortSignal
-}): Promise<void> {
+}) {
   const server = getOverlayServerContext()
   const collaboration = server.appData.repositories.conversationCollaboration
   const conversation = await loadAccessibleConversation({
@@ -229,10 +244,78 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     })
     throw new WorkspaceAgentInvocationError('not_a_collaboration_room')
   }
-  const threadRoot = args.threadRootMessageId
-    ? history.find((message) => message._id === args.threadRootMessageId)
-    : undefined
-  const resolvedPrincipalIds = resolveMentionFirstInvocations({
+  const triggeringMessage = history.find((message) => message._id === args.messageId)
+  const latestUserText = triggeringMessage?.content
+    ?? history.filter((message) => !message.deletedAt).at(-1)?.content
+    ?? ''
+  return {
+    collaboration,
+    conversation,
+    conversationType,
+    directory,
+    history,
+    latestUserText,
+    maxToolSteps: conversationType === 'dm'
+      ? MAX_TOOL_STEPS_AGENT_DM
+      : MAX_TOOL_STEPS_AGENT_CHANNEL,
+    participants,
+    server,
+  }
+}
+
+/**
+ * Which agents owe a reply to a human message, in the order they should run.
+ *
+ * Split out from execution so the trigger can open a durable run per agent and
+ * return, rather than holding a request open for the length of every turn.
+ * Agents that already replied to this message are omitted, so a duplicate
+ * trigger resolves to nothing rather than answering twice.
+ */
+export async function resolveWorkspaceAgentInvocations(args: {
+  actorUserId: string
+  conversationId: string
+  messageId: string
+  mentionedPrincipalIds?: string[]
+  threadRootMessageId?: string
+  workspaceId: string
+}): Promise<WorkspaceAgentInvocation[]> {
+  const server = getOverlayServerContext()
+  const collaboration = server.appData.repositories.conversationCollaboration
+  const conversation = await loadAccessibleConversation({
+    actorUserId: args.actorUserId,
+    collaboration,
+    conversationId: args.conversationId,
+    messageId: args.messageId,
+    workspaceId: args.workspaceId,
+  })
+  const conversationType = conversation.conversationType ?? 'personal'
+  if (conversationType === 'personal') {
+    throw new WorkspaceAgentInvocationError('not_a_collaboration_room')
+  }
+  // Deliberately lighter than a turn's own load: this runs on the send path for
+  // every room message, including the great majority that address no agent at
+  // all. Only a thread reply needs a message read, and only its root.
+  const [participants, directory, threadRoot] = await Promise.all([
+    collaboration.listParticipants({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    }),
+    server.workspaceAgentService.list({
+      actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId,
+    }),
+    args.threadRootMessageId
+      ? collaboration.listMessages({
+          actorUserId: args.actorUserId,
+          conversationId: args.conversationId,
+          limit: 1,
+          messageId: args.threadRootMessageId,
+          workspaceId: args.workspaceId,
+        }).then((rows) => rows[0])
+      : Promise.resolve(undefined),
+  ])
+  const principalIds = resolveMentionFirstInvocations({
     authorKind: 'human',
     conversationType,
     participants: participants.map((participant) => ({
@@ -244,7 +327,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       ? threadRoot.authorPrincipalId
       : undefined,
   })
-  const principalIds = resolvedPrincipalIds
   if (principalIds.length === 0) {
     logger.warn('[workspace-agent] no agent participant resolved', {
       conversationId: args.conversationId,
@@ -257,7 +339,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   // cost amplification from mass-mentioning agents. Each agent gets its own
   // budget reservation, so without a cap a user could mention many agents
   // and consume significant tokens in a single message.
-  const MAX_AGENTS_PER_MESSAGE = 5
   if (principalIds.length > MAX_AGENTS_PER_MESSAGE) {
     logger.warn('[workspace-agent] too many agents mentioned, capping', {
       conversationId: args.conversationId,
@@ -266,22 +347,11 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       workspaceId: args.workspaceId,
     })
   }
-  const cappedPrincipalIds = principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
-  const triggeringMessage = history.find((message) => message._id === args.messageId)
-  const latestUserText = triggeringMessage?.content
-    ?? history.filter((message) => !message.deletedAt).at(-1)?.content
-    ?? ''
-  const maxToolSteps = conversationType === 'dm'
-    ? MAX_TOOL_STEPS_AGENT_DM
-    : MAX_TOOL_STEPS_AGENT_CHANNEL
-  let completedResponses = 0
-  let alreadyCompletedResponses = 0
-  let lastFailureReason: WorkspaceAgentInvocationReasonCode | undefined
-  for (const principalId of cappedPrincipalIds) {
+  const invocations: WorkspaceAgentInvocation[] = []
+  for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {
     const agent = agentsByPrincipal.get(principalId)
     if (!agent || agent.archivedAt) {
-      lastFailureReason = 'no_agent_participant'
       logger.warn('[workspace-agent] mentioned agent is unavailable', {
         conversationId: args.conversationId,
         principalId,
@@ -290,17 +360,72 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       continue
     }
-    const invocationNonce = `agent:${args.messageId}:${agent.id}`
-    if (history.some((message) => message.clientNonce === invocationNonce)) {
-      alreadyCompletedResponses += 1
-      continue
-    }
-    let reservationId: string | null = null
-    let failureReason: WorkspaceAgentInvocationReasonCode = 'model_failed'
-    // Declared out here so a failure anywhere in the turn can still close the
-    // durable row. A row left `generating` renders as a reply that never
-    // arrives, which is worse than a visibly failed one.
-    let agentStream: AgentMessageStream | null = null
+    invocations.push({
+      agentId: agent.id,
+      agentName: agent.name,
+      agentPrincipalId: agent.principalId,
+      invocationNonce: `agent:${args.messageId}:${agent.id}`,
+      modelId: agent.modelId,
+      turnId: `agent_${args.messageId}_${agent.id}`,
+    })
+  }
+  return invocations
+}
+
+/**
+ * Runs one agent's reply to one human message.
+ *
+ * Everything here is scoped to a single agent so it can be the unit of work of
+ * a durable run: it owns its own budget reservation, its own transcript row,
+ * and its own failure. A turn that throws has already closed its row.
+ */
+export async function runWorkspaceAgentTurn(args: {
+  accessToken?: string
+  actorUserId: string
+  agentId: string
+  conversationId: string
+  /** The row opened with the run record, which this turn writes into. */
+  existingMessageId?: string
+  messageId: string
+  threadRootMessageId?: string
+  workspaceId: string
+  /** Reserved for an explicit server-side cancellation; client disconnects do not cancel a turn. */
+  signal?: AbortSignal
+}): Promise<WorkspaceAgentTurnResult | null> {
+  const {
+    collaboration,
+    conversation,
+    conversationType,
+    directory,
+    history,
+    latestUserText,
+    maxToolSteps,
+    participants,
+    server,
+  } = await loadRoomTurnContext(args)
+  const agent = directory.agents.find((candidate) => candidate.id === args.agentId)
+  const invocationNonce = `agent:${args.messageId}:${args.agentId}`
+  let reservationId: string | null = null
+  let failureReason: WorkspaceAgentInvocationReasonCode = 'model_failed'
+  // Declared out here so a failure anywhere in the turn can still close the
+  // durable row. A row left `generating` renders as a reply that never
+  // arrives, which is worse than a visibly failed one.
+  let agentStream: AgentMessageStream | null = null
+  /** What the run record records once the turn lands. */
+  let turnResult: WorkspaceAgentTurnResult | null = null
+  if (!agent || agent.archivedAt) {
+    logger.warn('[workspace-agent] agent is unavailable for this turn', {
+      agentId: args.agentId,
+      conversationId: args.conversationId,
+      reason: 'no_agent_participant',
+      workspaceId: args.workspaceId,
+    })
+    throw new WorkspaceAgentInvocationError('no_agent_participant')
+  }
+  // A durable turn opens its own row up front, carrying this very nonce, so
+  // "already replied" means a row that is not the one this turn is writing.
+  const priorReply = history.find((message) => message.clientNonce === invocationNonce)
+  if (priorReply && priorReply._id !== args.existingMessageId) return null
     try {
       const requestFingerprint = hashOperationalIdentifier(
         'workspace-agent-invocation',
@@ -359,14 +484,13 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       if (!reservation.ok) {
         failureReason = 'usage_limited'
-        lastFailureReason = failureReason
         logger.warn('[workspace-agent] invocation skipped by usage policy', {
           agentId: agent.id,
           conversationId: args.conversationId,
           reason: failureReason,
           statusCode: reservation.failure.statusCode,
         })
-        continue
+        return null
       }
       reservationId = reservation.reservationId
       const model = await getLanguageModel(effectiveModelId, args.accessToken)
@@ -468,19 +592,15 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         clientNonce: invocationNonce,
         conversationId: args.conversationId,
         modelId: effectiveModelId,
+        ...(args.existingMessageId ? { existingMessageId: args.existingMessageId } : {}),
         store: collaboration,
         threadRootMessageId: args.threadRootMessageId,
         turnId: `agent_${args.messageId}_${agent.id}`,
         workspaceId: args.workspaceId,
       })
       agentStream = turnStream
-      const emitLivePart = (part: Record<string, unknown>) => {
+      const emitLivePart = (_part: Record<string, unknown>) => {
         turnStream.pushParts(liveParts.map((entry) => ({ ...entry })))
-        args.onDelta?.({
-          agentPrincipalId: agent.principalId,
-          agentName: agent.name,
-          part,
-        })
       }
       const findToolPart = (toolCallId: string) => liveParts.findIndex((part) => {
         if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return false
@@ -505,11 +625,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           if (event.type === 'text-delta') {
             streamed += event.text
             turnStream.pushText(event.text)
-            args.onDelta?.({
-              agentPrincipalId: agent.principalId,
-              agentName: agent.name,
-              delta: event.text,
-            })
             continue
           }
           if (event.type === 'reasoning-delta') {
@@ -565,7 +680,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       } catch (streamError) {
         streamFailed = true
         failureReason = 'model_failed'
-        lastFailureReason = failureReason
         // A disconnect or timeout still leaves partial text worth keeping; an
         // empty result falls through to the release path below.
         logger.warn('[workspace-agent] stream ended early', {
@@ -578,7 +692,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       const content = streamed.trim()
       if (!content) {
         failureReason = streamFailed ? 'model_failed' : 'empty_response'
-        lastFailureReason = failureReason
         // Whitespace-only output can still have opened a row; close it as
         // failed rather than leaving an empty bubble generating forever.
         await turnStream.fail()
@@ -593,7 +706,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           reason: failureReason,
         })
         reservationId = null
-        continue
+        return null
       }
       let assistantPersistence = buildAssistantPersistenceFromSteps(
         await Promise.resolve(result.steps).catch((_error) => undefined),
@@ -627,12 +740,11 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       if (!responseId) {
         failureReason = 'model_failed'
-        lastFailureReason = failureReason
         logger.warn('[workspace-agent] response was not persisted', {
           agentId: agent.id,
           reason: failureReason,
         })
-      } else completedResponses += 1
+      }
       const tokens = usageTokens(usage) ?? { input: 0, output: 0 }
       const recorded = await server.chatUsagePolicy.recordFinishedUsage({
         forceFreeTierLimits: !paid,
@@ -643,10 +755,15 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         userId: args.actorUserId,
       })
       reservationId = recorded.reservationId
+      turnResult = {
+        content: assistantPersistence.content,
+        modelId: effectiveModelId,
+        parts: assistantPersistence.parts,
+        tokens,
+      }
     } catch (error) {
       const isEntitlementError = error instanceof ActConversationServiceError
       failureReason = isEntitlementError ? 'not_entitled' : failureReason
-      lastFailureReason = failureReason
       await agentStream?.fail().catch((_error) => undefined)
       await server.chatUsagePolicy.releaseReservation({
         reason: 'workspace_agent_invocation_failed',
@@ -661,11 +778,13 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         reason: failureReason,
         workspaceId: args.workspaceId,
       })
+      // The run record is what reports this turn as failed, so the error has
+      // to reach the workflow rather than being swallowed here.
+      throw error instanceof WorkspaceAgentInvocationError
+        ? error
+        : new WorkspaceAgentInvocationError(failureReason)
     }
-  }
-  if (completedResponses === 0 && alreadyCompletedResponses === 0) {
-    throw new WorkspaceAgentInvocationError(lastFailureReason ?? 'model_failed')
-  }
+    return turnResult
 }
 
 /**

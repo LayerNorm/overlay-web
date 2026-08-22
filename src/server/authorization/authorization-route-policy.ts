@@ -352,12 +352,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
-    // Streams a room agent's answer to a message the caller just posted, so it
-    // carries the same rights as writing in that conversation.
-    path: '/api/v1/conversations/agent-reply',
-    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit', 'models.use') },
-  },
-  {
     path: '/api/v1/conversations/share',
     methods: { PATCH: resource('conversation', 'share', {}, 'conversations.share') },
   },
