@@ -120,6 +120,76 @@ implements ConversationCollaborationRepository {
     return id
   }
 
+  async startAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    workspaceId: string
+  }) {
+    const id = await convex.mutation<string>('collaboration/directMessages:startAgentMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!id) throw new Error('Failed to open collaboration agent message')
+    return id
+  }
+
+  async appendAgentMessageDelta(args: {
+    actorUserId: string
+    contentDelta: string
+    conversationId: string
+    emitEvent?: boolean
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    workspaceId: string
+  }) {
+    await convex.mutation('collaboration/directMessages:appendAgentMessageDelta', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async finalizeAgentMessage(args: {
+    actorUserId: string
+    content: string
+    conversationId: string
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    tokens?: { input: number; output: number }
+    workspaceId: string
+  }) {
+    await convex.mutation('collaboration/directMessages:finalizeAgentMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async failAgentMessage(args: {
+    actorUserId: string
+    content?: string
+    conversationId: string
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    workspaceId: string
+  }) {
+    await convex.mutation('collaboration/directMessages:failAgentMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
   async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }) {
     return await convex.query<number>('collaboration/directMessages:getConversationEventCursor', {
       ...args,

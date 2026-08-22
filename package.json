@@ -58,6 +58,7 @@
     "test:p1:redis": "npm run app-db:up && OVERLAY_REDIS_URL=redis://localhost:56379 NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/shared/providers/redis-rate-limiter.test.ts",
     "check:p1": "npm run test:p1:unit && npm run test:p1:postgres && npm run test:p1:redis && npm run check:on-prem-parity",
     "test:p2:unit": "NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/shared/agents/agent-run.test.ts src/server/conversations/tool-loop-run-registry.test.ts",
+    "test:rooms:postgres": "npm run app-db:up && npm run app-db:migrate && NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local --test src/server/conversations/postgres-direct-messages.test.ts src/server/conversations/postgres-agent-message-stream.test.ts",
     "test:p2:postgres": "npm run test:app-data-contracts:postgres",
     "test:p2:postgres:remote": "npm run test:app-data-contracts:postgres:remote",
     "check:p2": "npm run test:p2:unit && npm run test:p2:postgres && npm run check:on-prem-parity && npm run test:on-prem:no-convex-browser",

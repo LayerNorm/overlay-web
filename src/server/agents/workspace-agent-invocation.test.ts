@@ -54,6 +54,44 @@ test('workspace agents use participant-scoped room history and persistence', asy
   assert.doesNotMatch(route, /signal: request\.signal/)
 })
 
+test('an agent reply is persisted as it is generated, not only when it finishes', async () => {
+  const [service, contract, convexRoom, postgresRoom] = await Promise.all([
+    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+    readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
+    readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
+    readFile(`${root}/src/server/conversations/PostgresConversationCollaborationRepository.ts`, 'utf8'),
+  ])
+
+  // The turn writes into a `generating` row rather than holding the reply in
+  // the response stream, which is what lets it survive the sender's tab.
+  assert.match(service, /createAgentMessageStream/)
+  assert.match(service, /turnStream\.pushText\(event\.text\)/)
+  assert.match(service, /turnStream\.finalize\(/)
+  // A turn that dies partway must not leave a row generating forever.
+  assert.match(service, /await agentStream\?\.fail\(\)/)
+  // The single terminal write stays as the fallback for a failed open.
+  assert.match(service, /collaboration\.addAgentMessage/)
+
+  for (const method of [
+    'startAgentMessage',
+    'appendAgentMessageDelta',
+    'finalizeAgentMessage',
+    'failAgentMessage',
+  ]) {
+    assert.match(contract, new RegExp(`${method}\\(args`), `contract is missing ${method}`)
+    assert.match(convexRoom, new RegExp(`export const ${method} = mutation`), `convex is missing ${method}`)
+    assert.match(postgresRoom, new RegExp(`async ${method}\\(args`), `postgres is missing ${method}`)
+  }
+
+  // Both providers open the row idempotently, so a retried or replayed turn
+  // reuses it instead of posting the reply twice.
+  assert.match(convexRoom, /message\.clientNonce === args\.clientNonce/)
+  assert.match(postgresRoom, /eq\(conversationMessages\.clientNonce, args\.clientNonce\)/)
+  // Agent authorization is not relaxed for the streaming path.
+  assert.match(convexRoom, /requireAgentAuthor/)
+  assert.match(postgresRoom, /requireAgentParticipant/)
+})
+
 test('agent turns run the shared act tool pipeline, not a private subset', async () => {
   const [invocation, tooling] = await Promise.all([
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),

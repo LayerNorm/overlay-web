@@ -88,30 +88,64 @@ dead channel.
 
 ## Durable agent runs (agent Phase 3)
 
-**Status:** not started.
+**Status:** Phase 1a landed. Phase 1b not started.
 
-Room agent turns execute inside the SSE response handler in
-`src/server/app-api/v1/conversations/agent-reply/route.ts` and are aborted by
-`request.signal`. Closing the tab kills the run, and no `conversationAgentRuns`
-row is written for an agent turn, so nothing can resume it.
+### Landed: the reply is a transcript row (1a)
 
-The plan:
+A room agent no longer holds its reply in the SSE response. It writes into a
+`status: 'generating'` row in `conversationMessages` as it generates
+(`src/server/agents/agent-message-stream.ts`), so the reply belongs to the
+conversation rather than to whoever summoned it. Reloading recovers it, and —
+new — every other participant watches it arrive instead of seeing nothing until
+it lands.
 
-- Add `agentId` / `agentPrincipalId` columns to `conversationAgentRuns` and a
-  `AgentRunService.startAgentTurn(...)` alongside `startChat` / `startWork`.
-  Room messages already live in `conversationMessages`, which the table keys on,
-  so the migration is additive.
-- Execute via the `WorkflowAgent` machinery in `workflows/personal-chat-work.ts`
-  with a room-flavored input type. That buys survival past tab close, resume
-  after failure, per-step idempotency, cancellation, and lease-based stale
-  detection.
-- Decouple invocation from the HTTP request: the request enqueues the run and
-  returns; the SSE stream subscribes to run progress instead of hosting it.
-- Persist full turn state (tool calls, tool results, reasoning) on the agent
-  message so the next turn knows what the agent already did. Today only the
-  final text survives, so every agent turn is amnesiac about its own tool use.
-- Wire `personalChatWorkToolNeedsApproval` / the `waiting_for_approval` state to
-  a room-visible approval card, which is also what makes larger step budgets safe.
+Both providers already had `status`, `updatedAt`, and the indexes for this, so
+no migration was needed. `startAgentMessage` / `appendAgentMessageDelta` /
+`finalizeAgentMessage` / `failAgentMessage` on
+`ConversationCollaborationRepository`; opening is idempotent on the existing
+`agent:{messageId}:{agentId}` nonce. Writes batch at 250ms/200 chars, and the
+durable `message.delta` event is throttled to 1s because on the polling
+(Postgres) path each one costs every viewer a refetch. `addAgentMessage`
+remains the fallback when a row cannot be opened.
+
+### Remaining: the trigger is still client-held (1b)
+
+`deferAgentReply` is still read and ignored in
+`src/server/app-api/v1/conversations/message/route.ts`, so
+`agent-reply/route.ts` — a request the browser holds — is still the only thing
+that starts a turn. The model call is not bound to `request.signal`, so a
+disconnect does not abort generation, but nothing restarts a turn the runtime
+reclaims, and there is no run record to resume from.
+
+- Add `agentId` / `agentPrincipalId` to `conversationAgentRuns` and
+  `AgentRunService.startAgentTurn` alongside `startChat` / `startWork`. Room
+  messages already live in `conversationMessages`, which the table keys on, so
+  the migration is additive.
+- Add `workflows/workspace-agent-turn.ts`, a `"use workflow"` of its own rather
+  than a branch inside `personalChatWorkWorkflow`: editing a live workflow body
+  breaks determinism for in-flight replays. Reuse the *step* modules — the
+  dispatcher pattern in `src/server/conversations/personal-chat-work-tools.ts`
+  already solves dynamic tool sets under `"use step"`. Room agents build tools
+  through `buildWorkspaceAgentTooling`, not `prepareActTooling`, so they need a
+  sibling dispatcher.
+- Reserve budget *before* `start()` and pass `reservationId` into the workflow,
+  the way `act/route.ts` does. Reserving inside the workflow double-charges on
+  replay.
+- `message/route.ts` honours `deferAgentReply` by starting that workflow and
+  returning. Keep the `authorKind === 'human'` guard in `mention-policy.ts`
+  intact through the move — the server-side trigger is exactly where agent
+  autonomy could leak in by accident.
+- Retire `agent-reply/route.ts` and its `authorization-route-policy.ts` entry.
+- Extend the stale-lease reaper to agent turns so a reclaimed run cannot leave a
+  row generating forever.
+- Raise `MAX_OUTPUT_TOKENS_AGENT` (4,000 today) once turns survive the request.
+- Wire `personalChatWorkToolNeedsApproval` / `waiting_for_approval` to a
+  room-visible approval card, which is what makes larger step budgets safe.
+
+Deliberately not doing: a `run.readable` live path or a resume route. The row is
+required anyway for the transcript and for late joiners, and `run.readable`
+serves only the single holder of the runId. `workflowStepEvents` is the same
+row-projection choice already made for automations.
 
 ---
 

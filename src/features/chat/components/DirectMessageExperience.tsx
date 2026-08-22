@@ -27,7 +27,6 @@ import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
-import { buildAssistantVisualSequence } from '@overlay/chat-core'
 import type {
   ChannelSummary,
   ConversationPin,
@@ -88,49 +87,6 @@ const FileViewerPanel = dynamic(
 )
 
 type OptimisticMessage = RoomMessageRecord
-
-type StreamingAgentReply = {
-  principalId: string
-  name: string
-  text: string
-  parts: Array<Record<string, unknown>>
-  threadRootMessageId?: string
-}
-
-function mergeStreamingAgentPart(
-  parts: Array<Record<string, unknown>>,
-  incoming: Record<string, unknown>,
-): Array<Record<string, unknown>> {
-  if (incoming.type === 'reasoning') {
-    const index = parts.findIndex((part) => part.type === 'reasoning')
-    if (index >= 0) return parts.map((part, partIndex) => partIndex === index ? incoming : part)
-  }
-  if (incoming.type === 'tool-invocation' && incoming.toolInvocation && typeof incoming.toolInvocation === 'object') {
-    const toolCallId = (incoming.toolInvocation as Record<string, unknown>).toolCallId
-    if (typeof toolCallId === 'string' && toolCallId) {
-      const index = parts.findIndex((part) => (
-        part.type === 'tool-invocation'
-        && part.toolInvocation
-        && typeof part.toolInvocation === 'object'
-        && (part.toolInvocation as Record<string, unknown>).toolCallId === toolCallId
-      ))
-      if (index >= 0) return parts.map((part, partIndex) => partIndex === index ? incoming : part)
-    }
-  }
-  return [...parts, incoming]
-}
-
-function appendStreamingAgentText(
-  parts: Array<Record<string, unknown>>,
-  delta: string,
-): Array<Record<string, unknown>> {
-  if (!delta) return parts
-  const last = parts.at(-1)
-  if (last?.type === 'text' && typeof last.text === 'string') {
-    return [...parts.slice(0, -1), { ...last, text: `${last.text}${delta}` }]
-  }
-  return [...parts, { type: 'text', text: delta }]
-}
 
 const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
 const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
@@ -295,15 +251,14 @@ export function DirectMessageExperience({
   const [threadFollowing, setThreadFollowing] = useState(false)
   const [threadInput, setThreadInput] = useState('')
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
-  /** Live agent text keyed by principal, replaced by the stored row once saved. */
-  const [streamingAgentReplies, setStreamingAgentReplies] = useState<Record<string, StreamingAgentReply>>({})
-  const streamingAgentTextLength = Object.values(streamingAgentReplies)
-    .reduce((length, reply) => length + reply.text.length, 0)
-  // Live previews belong to the room that started them. The server keeps the
-  // turn running, while reopening the room recovers the persisted row.
-  useEffect(() => {
-    setStreamingAgentReplies({})
-  }, [conversationId])
+  /**
+   * A reply in flight is a `generating` row in the transcript, not local state.
+   * That is what lets it survive a reload and what lets every other participant
+   * watch the agent work instead of only the person who summoned it.
+   */
+  const generatingMessages = messages.filter((message) => message.status === 'generating')
+  const generatingTextLength = generatingMessages
+    .reduce((length, message) => length + message.content.length, 0)
   const [shareOpen, setShareOpen] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -566,7 +521,7 @@ export function DirectMessageExperience({
   usePostgresConversationEvents({
     activeChatIdRef: activeConversationRef,
     enabled: roomEventSyncEnabled,
-    hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
+    hasActiveLocalStream: () => false,
     loadChats: async () => {},
     onRemoteStop: () => {},
     onEvents: (events) => {
@@ -693,7 +648,7 @@ export function DirectMessageExperience({
       window.requestAnimationFrame(pin)
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [agentResponding, conversationId, loading, messages.length, streamingAgentTextLength])
+  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength])
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -996,18 +951,24 @@ export function DirectMessageExperience({
    * message itself, so the streamed text is a live preview that the next load
    * replaces with the stored row.
    */
+  /**
+   * Triggers the agent turn and waits for it to finish.
+   *
+   * The reply itself arrives through the transcript: the server writes it into
+   * a `generating` row as it is produced. This request only starts the turn and
+   * reports a refusal, so losing the connection costs the sender nothing — the
+   * turn keeps running and the row keeps filling.
+   */
   async function streamAgentReply({
     humanMessageId,
     mentionedPrincipalIds,
     threadRootMessageId,
-    agents,
   }: {
     humanMessageId: string
     mentionedPrincipalIds: string[]
     threadRootMessageId?: string
     agents: Array<{ principalId: string; displayName: string }>
   }) {
-    const fallbackAgent = agents[0]
     try {
       const response = await overlayAppClient.conversations.agentReplyStreamResponse({
         conversationId,
@@ -1019,7 +980,6 @@ export function DirectMessageExperience({
       if (!reader) return
       const decoder = new TextDecoder()
       let buffer = ''
-      const accumulated = new Map<string, string>()
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -1029,45 +989,19 @@ export function DirectMessageExperience({
         for (const frame of frames) {
           const line = frame.split('\n').find((row) => row.startsWith('data: '))
           if (!line) continue
-          let event: {
-            type?: string
-            agentPrincipalId?: string
-            agentName?: string
-            delta?: string
-            part?: Record<string, unknown>
-          }
+          let event: { type?: string; message?: string }
           try {
             event = JSON.parse(line.slice(6))
           } catch {
             continue
           }
-          if (event.type !== 'delta' || (!event.delta && !event.part)) continue
-          const principalId = event.agentPrincipalId ?? fallbackAgent?.principalId ?? 'agent'
-          const next = (accumulated.get(principalId) ?? '') + (event.delta ?? '')
-          accumulated.set(principalId, next)
-          setStreamingAgentReplies((current) => ({
-            ...current,
-            [principalId]: {
-              principalId,
-              name: event.agentName ?? fallbackAgent?.displayName ?? 'Agent',
-              text: next,
-              parts: event.part
-                ? mergeStreamingAgentPart(
-                    event.delta
-                      ? appendStreamingAgentText(current[principalId]?.parts ?? [], event.delta)
-                      : current[principalId]?.parts ?? [],
-                    event.part,
-                  )
-                : appendStreamingAgentText(current[principalId]?.parts ?? [], event.delta ?? ''),
-              threadRootMessageId,
-            },
-          }))
+          // Only a refusal needs surfacing here; the room shows the reply.
+          if (event.type === 'error') setNotice(event.message ?? 'The agent could not reply.')
         }
       }
     } catch {
-      // The reply is still persisted server-side; the next poll picks it up.
+      // The turn outlives this request. Whatever it writes lands in the room.
     } finally {
-      setStreamingAgentReplies({})
       if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
     }
   }
@@ -1346,55 +1280,6 @@ export function DirectMessageExperience({
     )
   }
 
-  const streamingReplies = Object.values(streamingAgentReplies)
-  const mainStreamingReplies = streamingReplies.filter((reply) => !reply.threadRootMessageId)
-  const threadStreamingReplies = streamingReplies.filter((reply) => (
-    Boolean(threadRootId) && reply.threadRootMessageId === threadRootId
-  ))
-
-  /** A live agent reply renders through the same message body as a stored one. */
-  function renderStreamingAgentReply(reply: StreamingAgentReply) {
-    return (
-      <RoomMessageItem
-        key={`streaming-${reply.principalId}`}
-        message={{
-          id: `streaming-${reply.principalId}`,
-          mine: false,
-          authorName: reply.name,
-          authorKind: 'agent',
-          createdAt: Date.now(),
-          text: reply.text,
-          blocks: buildAssistantVisualSequence(reply.parts),
-          images: [],
-          documentNames: [],
-          mentions: participantMentions,
-          streaming: true,
-        }}
-        reactions={[]}
-        replyCount={0}
-        threadTeaser={null}
-        pinned={false}
-        saved={false}
-        editing={false}
-        editingContent=""
-        onEditingContentChange={() => undefined}
-        onSaveEdit={() => undefined}
-        onCancelEdit={() => undefined}
-        onStartEdit={() => undefined}
-        onDelete={() => undefined}
-        onReport={() => undefined}
-        onToggleReaction={() => undefined}
-        onTogglePinned={() => undefined}
-        onToggleSaved={() => undefined}
-        onOpenThread={() => undefined}
-        onQuoteReply={() => undefined}
-        onRetrySend={() => undefined}
-        onOpenAttachmentPreview={openAttachmentPreview}
-        onCopyPermalink={() => undefined}
-      />
-    )
-  }
-
   const pinnedSummaries = pins
     .map((pin) => {
       const message = messages.find((row) => row.id === pin.messageId)
@@ -1445,7 +1330,6 @@ export function DirectMessageExperience({
       }}
       messages={[
         ...[threadRoot, ...threadReplies].map((message) => renderMessage(message, { inThread: true })),
-        ...threadStreamingReplies.map((reply) => renderStreamingAgentReply(reply)),
       ]}
     />
   ) : null
@@ -1725,8 +1609,7 @@ export function DirectMessageExperience({
                       )
                     })
                   )}
-                  {mainStreamingReplies.map((reply) => renderStreamingAgentReply(reply))}
-                  {agentResponding && mainStreamingReplies.length === 0 ? (
+                  {agentResponding && generatingMessages.length === 0 ? (
                     <div className="flex items-center gap-2 px-1" aria-label={`${agentResponding} response pending`}>
                       <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
                       <span className="flex items-center gap-1">

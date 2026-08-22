@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, not, or } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, not, or, sql } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -242,23 +242,7 @@ implements ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<string> {
-    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
-    const [agent] = await this.db.select({ principalId: workspacePrincipals.id })
-      .from(conversationParticipants)
-      .innerJoin(
-        workspacePrincipals,
-        eq(workspacePrincipals.id, conversationParticipants.principalId),
-      )
-      .where(and(
-        eq(conversationParticipants.conversationId, args.conversationId),
-        eq(conversationParticipants.principalId, args.authorPrincipalId),
-        eq(conversationParticipants.status, 'active'),
-        eq(workspacePrincipals.workspaceId, args.workspaceId),
-        eq(workspacePrincipals.type, 'agent'),
-        isNull(workspacePrincipals.archivedAt),
-      ))
-      .limit(1)
-    if (!agent) throw new Error('AGENT_PARTICIPANT_REQUIRED')
+    await this.requireAgentParticipant(args)
 
     const [existing] = await this.db.select({ id: conversationMessages.id })
       .from(conversationMessages)
@@ -302,6 +286,203 @@ implements ConversationCollaborationRepository {
       })
     })
     return id
+  }
+
+  /**
+   * Both the human invoker's room access and the agent's active participation,
+   * which every agent-authored write must satisfy.
+   */
+  private async requireAgentParticipant(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<void> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [agent] = await this.db.select({ principalId: workspacePrincipals.id })
+      .from(conversationParticipants)
+      .innerJoin(
+        workspacePrincipals,
+        eq(workspacePrincipals.id, conversationParticipants.principalId),
+      )
+      .where(and(
+        eq(conversationParticipants.conversationId, args.conversationId),
+        eq(conversationParticipants.principalId, args.authorPrincipalId),
+        eq(conversationParticipants.status, 'active'),
+        eq(workspacePrincipals.workspaceId, args.workspaceId),
+        eq(workspacePrincipals.type, 'agent'),
+        isNull(workspacePrincipals.archivedAt),
+      ))
+      .limit(1)
+    if (!agent) throw new Error('AGENT_PARTICIPANT_REQUIRED')
+  }
+
+  /**
+   * Resolves a still-generating agent row for a follow-up write. `null` means
+   * the row is already terminal, which makes a late delta a no-op rather than
+   * an error: a straggling flush must not reopen a finished message.
+   */
+  private async loadGeneratingAgentMessage(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    workspaceId: string
+  }): Promise<{ id: string } | null> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [row] = await this.db.select({
+      id: conversationMessages.id,
+      authorKind: conversationMessages.authorKind,
+      status: conversationMessages.status,
+    })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.id, args.messageId),
+        eq(conversationMessages.conversationId, args.conversationId),
+      ))
+      .limit(1)
+    if (!row) throw new Error('MESSAGE_NOT_FOUND')
+    if (row.authorKind !== 'agent') throw new Error('AGENT_MESSAGE_REQUIRED')
+    return row.status === 'generating' ? { id: row.id } : null
+  }
+
+  async startAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    workspaceId: string
+  }): Promise<string> {
+    await this.requireAgentParticipant(args)
+
+    const [existing] = await this.db.select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.clientNonce, args.clientNonce),
+      ))
+      .limit(1)
+    if (existing) return existing.id
+
+    const id = `message_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.insert(conversationMessages).values({
+        id,
+        conversationId: args.conversationId,
+        userId: args.actorUserId,
+        turnId: args.turnId,
+        role: 'assistant',
+        mode: 'act',
+        content: '',
+        contentType: 'text',
+        modelId: args.modelId,
+        status: 'generating',
+        authorKind: 'agent',
+        authorPrincipalId: args.authorPrincipalId,
+        clientNonce: args.clientNonce,
+        threadRootMessageId: args.threadRootMessageId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.actorUserId,
+      })
+    })
+    return id
+  }
+
+  async appendAgentMessageDelta(args: {
+    actorUserId: string
+    contentDelta: string
+    conversationId: string
+    emitEvent?: boolean
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    workspaceId: string
+  }): Promise<void> {
+    const message = await this.loadGeneratingAgentMessage(args)
+    if (!message) return
+    await this.db.transaction(async (tx) => {
+      // Concatenated in SQL so a flush never has to round-trip the accumulated
+      // text back through the application to append to it.
+      await tx.update(conversationMessages).set({
+        content: sql`${conversationMessages.content} || ${args.contentDelta}`,
+        ...(args.parts ? { parts: args.parts } : {}),
+        updatedAt: new Date(),
+      }).where(eq(conversationMessages.id, args.messageId))
+      if (!args.emitEvent) return
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        type: 'message.delta',
+        userId: args.actorUserId,
+      })
+    })
+  }
+
+  async finalizeAgentMessage(args: {
+    actorUserId: string
+    content: string
+    conversationId: string
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    tokens?: { input: number; output: number }
+    workspaceId: string
+  }): Promise<void> {
+    const message = await this.loadGeneratingAgentMessage(args)
+    if (!message) return
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.update(conversationMessages).set({
+        content: args.content,
+        ...(args.parts ? { parts: args.parts } : {}),
+        ...(args.tokens ? { tokens: args.tokens } : {}),
+        status: 'completed',
+        updatedAt: now,
+      }).where(eq(conversationMessages.id, args.messageId))
+      await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        type: 'message.completed',
+        userId: args.actorUserId,
+      })
+    })
+  }
+
+  async failAgentMessage(args: {
+    actorUserId: string
+    content?: string
+    conversationId: string
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    workspaceId: string
+  }): Promise<void> {
+    const message = await this.loadGeneratingAgentMessage(args)
+    if (!message) return
+    await this.db.transaction(async (tx) => {
+      await tx.update(conversationMessages).set({
+        ...(args.content === undefined ? {} : { content: args.content }),
+        ...(args.parts ? { parts: args.parts } : {}),
+        status: 'error',
+        updatedAt: new Date(),
+      }).where(eq(conversationMessages.id, args.messageId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        type: 'message.failed',
+        userId: args.actorUserId,
+      })
+    })
   }
 
   async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }): Promise<number> {

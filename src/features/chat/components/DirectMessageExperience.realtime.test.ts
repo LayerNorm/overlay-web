@@ -16,11 +16,23 @@ test('Convex room sends use one reconciliation transport', async () => {
 test('agent response activity keeps dots, omits duplicate copy, and follows streamed text', async () => {
   const source = await readFile(new URL('./DirectMessageExperience.tsx', import.meta.url), 'utf8')
 
-  assert.match(source, /mainStreamingReplies\.length === 0/)
+  assert.match(source, /generatingMessages\.length === 0/)
   assert.doesNotMatch(source, /\$\{agentResponding\} is responding/)
-  assert.match(source, /streamingAgentTextLength/)
+  assert.match(source, /generatingTextLength/)
   assert.match(
     source,
-    /\[agentResponding, conversationId, loading, messages\.length, streamingAgentTextLength\]/,
+    /\[agentResponding, conversationId, loading, messages\.length, generatingTextLength\]/,
   )
+})
+
+test('a streaming agent reply lives in the transcript, not in local component state', async () => {
+  const source = await readFile(new URL('./DirectMessageExperience.tsx', import.meta.url), 'utf8')
+
+  // A second copy of the reply held in React state is what made the stream die
+  // on reload and kept every other participant from seeing it at all.
+  assert.doesNotMatch(source, /streamingAgentReplies/)
+  assert.match(source, /messages\.filter\(\(message\) => message\.status === 'generating'\)/)
+  // The trigger request must not suppress remote reconciliation any more: the
+  // events it would have masked are now the reply itself.
+  assert.match(source, /hasActiveLocalStream: \(\) => false/)
 })

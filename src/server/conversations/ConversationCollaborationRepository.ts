@@ -74,6 +74,52 @@ export interface ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<string>
+  /**
+   * Durable agent turn persistence. A room agent writes its reply as it is
+   * generated rather than once at the end, so the transcript itself — not a
+   * client-held stream — is what survives a reload and what every other
+   * participant reads. `startAgentMessage` is idempotent on `clientNonce`, so a
+   * retried or replayed turn reuses the same row instead of posting twice.
+   */
+  startAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    turnId: string
+    workspaceId: string
+  }): Promise<string>
+  appendAgentMessageDelta(args: {
+    actorUserId: string
+    contentDelta: string
+    conversationId: string
+    /** Full replacement for the row's parts; omitted when only text advanced. */
+    parts?: Array<Record<string, unknown>>
+    /** Publishes `message.delta`. Throttled by the caller, not per flush. */
+    emitEvent?: boolean
+    messageId: string
+    workspaceId: string
+  }): Promise<void>
+  finalizeAgentMessage(args: {
+    actorUserId: string
+    content: string
+    conversationId: string
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    tokens?: { input: number; output: number }
+    workspaceId: string
+  }): Promise<void>
+  failAgentMessage(args: {
+    actorUserId: string
+    conversationId: string
+    /** Partial text is kept: a truncated reply beats a vanished one. */
+    content?: string
+    messageId: string
+    parts?: Array<Record<string, unknown>>
+    workspaceId: string
+  }): Promise<void>
   getConversationEventCursor(args: {
     actorUserId: string
     workspaceId: string

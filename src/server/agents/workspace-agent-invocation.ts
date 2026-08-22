@@ -17,6 +17,10 @@ import {
   replaceAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import {
+  createAgentMessageStream,
+  type AgentMessageStream,
+} from './agent-message-stream'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations } from './mention-policy'
@@ -293,6 +297,10 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     }
     let reservationId: string | null = null
     let failureReason: WorkspaceAgentInvocationReasonCode = 'model_failed'
+    // Declared out here so a failure anywhere in the turn can still close the
+    // durable row. A row left `generating` renders as a reply that never
+    // arrives, which is worse than a visibly failed one.
+    let agentStream: AgentMessageStream | null = null
     try {
       const requestFingerprint = hashOperationalIdentifier(
         'workspace-agent-invocation',
@@ -451,7 +459,23 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       let streamed = ''
       let streamFailed = false
       const liveParts: Array<Record<string, unknown>> = []
+      // The transcript row is the durable copy of this turn. The SSE callbacks
+      // below stay a latency optimization for the sender; every other reader —
+      // including the sender after a reload — sees the reply through the row.
+      const turnStream = createAgentMessageStream({
+        actorUserId: args.actorUserId,
+        authorPrincipalId: agent.principalId,
+        clientNonce: invocationNonce,
+        conversationId: args.conversationId,
+        modelId: effectiveModelId,
+        store: collaboration,
+        threadRootMessageId: args.threadRootMessageId,
+        turnId: `agent_${args.messageId}_${agent.id}`,
+        workspaceId: args.workspaceId,
+      })
+      agentStream = turnStream
       const emitLivePart = (part: Record<string, unknown>) => {
+        turnStream.pushParts(liveParts.map((entry) => ({ ...entry })))
         args.onDelta?.({
           agentPrincipalId: agent.principalId,
           agentName: agent.name,
@@ -480,6 +504,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         for await (const event of result.fullStream) {
           if (event.type === 'text-delta') {
             streamed += event.text
+            turnStream.pushText(event.text)
             args.onDelta?.({
               agentPrincipalId: agent.principalId,
               agentName: agent.name,
@@ -554,6 +579,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       if (!content) {
         failureReason = streamFailed ? 'model_failed' : 'empty_response'
         lastFailureReason = failureReason
+        // Whitespace-only output can still have opened a row; close it as
+        // failed rather than leaving an empty bubble generating forever.
+        await turnStream.fail()
         await server.chatUsagePolicy.releaseReservation({
           reason: 'workspace_agent_empty_response',
           reservationId,
@@ -576,7 +604,15 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       // Convex's nested-document limits from turning a successful agent turn
       // into a persistence failure.
       assistantPersistence = compactAssistantPersistenceForConvex(assistantPersistence)
-      const responseId = await collaboration.addAgentMessage({
+      // Closing the streamed row is the normal path. `addAgentMessage` remains
+      // the fallback for a turn whose durable row could not be opened — the
+      // reply still lands, just without having streamed. Both are idempotent on
+      // the invocation nonce, so a retry cannot post the reply twice.
+      const responseId = await turnStream.finalize({
+        content: assistantPersistence.content,
+        parts: assistantPersistence.parts,
+        tokens: usageTokens(usage),
+      }) ?? await collaboration.addAgentMessage({
         actorUserId: args.actorUserId,
         conversationId: args.conversationId,
         workspaceId: args.workspaceId,
@@ -611,6 +647,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       const isEntitlementError = error instanceof ActConversationServiceError
       failureReason = isEntitlementError ? 'not_entitled' : failureReason
       lastFailureReason = failureReason
+      await agentStream?.fail().catch((_error) => undefined)
       await server.chatUsagePolicy.releaseReservation({
         reason: 'workspace_agent_invocation_failed',
         reservationId,

@@ -521,29 +521,7 @@ export const addAgentMessage = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    if ((access.conversation.conversationType ?? 'personal') === 'personal') {
-      throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
-    }
-    const [participant, principal] = await Promise.all([
-      ctx.db.query('conversationParticipants')
-        .withIndex('by_conversationId_principalId', (q) => (
-          q.eq('conversationId', args.conversationId).eq('principalId', args.authorPrincipalId)
-        ))
-        .unique(),
-      ctx.db.query('workspacePrincipals')
-        .withIndex('by_principalId', (q) => q.eq('principalId', args.authorPrincipalId))
-        .unique(),
-    ])
-    if (
-      participant?.status !== 'active'
-      || participant.principalType !== 'agent'
-      || principal?.type !== 'agent'
-      || principal.workspaceId !== args.workspaceId
-      || principal.archivedAt
-    ) {
-      throw new Error('AGENT_PARTICIPANT_REQUIRED')
-    }
+    await requireAgentAuthor(ctx, args)
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
@@ -582,6 +560,231 @@ export const addAgentMessage = mutation({
       messageId,
     })
     return messageId
+  },
+})
+
+/**
+ * Both the human invoker's room access and the agent's active participation in
+ * that room, which every agent-authored write must satisfy.
+ */
+async function requireAgentAuthor(
+  ctx: CollaborationCtx,
+  args: {
+    actorUserId: string
+    authorPrincipalId: string
+    conversationId: Id<'conversations'>
+    workspaceId: string
+    serverSecret?: string
+  },
+) {
+  const access = await requireConversationAccess(ctx, args)
+  if ((access.conversation.conversationType ?? 'personal') === 'personal') {
+    throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+  }
+  const [participant, principal] = await Promise.all([
+    ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) => (
+        q.eq('conversationId', args.conversationId).eq('principalId', args.authorPrincipalId)
+      ))
+      .unique(),
+    ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', args.authorPrincipalId))
+      .unique(),
+  ])
+  if (
+    participant?.status !== 'active'
+    || participant.principalType !== 'agent'
+    || principal?.type !== 'agent'
+    || principal.workspaceId !== args.workspaceId
+    || principal.archivedAt
+  ) {
+    throw new Error('AGENT_PARTICIPANT_REQUIRED')
+  }
+  return access
+}
+
+/**
+ * Resolves a generating agent row for a follow-up write. Returning `null` for a
+ * row that is already terminal makes late deltas a no-op rather than an error:
+ * a workflow replay or a straggling flush must not reopen a finished message.
+ */
+async function loadGeneratingAgentMessage(
+  ctx: Pick<MutationCtx, 'db'>,
+  args: { conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'> },
+) {
+  const message = await ctx.db.get(args.messageId)
+  if (!message || message.conversationId !== args.conversationId) {
+    throw new Error('MESSAGE_NOT_FOUND')
+  }
+  if (message.authorKind !== 'agent') throw new Error('AGENT_MESSAGE_REQUIRED')
+  return message.status === 'generating' ? message : null
+}
+
+/**
+ * Opens the durable row for a workspace-agent turn before any tokens exist.
+ * Everything after this point is a patch on a row every participant is already
+ * subscribed to, which is what makes the reply survive the sender's tab.
+ */
+export const startAgentMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    clientNonce: v.string(),
+    conversationId: v.id('conversations'),
+    modelId: v.string(),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAgentAuthor(ctx, args)
+    if (args.threadRootMessageId) {
+      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    }
+    const existing = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const match = existing.find((message) => message.clientNonce === args.clientNonce)
+    if (match) return match._id
+
+    const now = Date.now()
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId,
+      userId: args.actorUserId,
+      authorKind: 'agent',
+      authorPrincipalId: args.authorPrincipalId,
+      turnId: args.turnId,
+      role: 'assistant',
+      mode: 'act',
+      content: '',
+      contentType: 'text',
+      modelId: args.modelId,
+      clientNonce: args.clientNonce,
+      threadRootMessageId: args.threadRootMessageId,
+      status: 'generating',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.created',
+      messageId,
+    })
+    return messageId
+  },
+})
+
+/**
+ * Appends generated text to the open row. Convex subscribers re-render from the
+ * patch itself; `emitEvent` is for the Postgres-style event log and is throttled
+ * by the caller, since a durable event per flush would have every polling
+ * viewer refetch the transcript several times a second.
+ */
+export const appendAgentMessageDelta = mutation({
+  args: {
+    actorUserId: v.string(),
+    contentDelta: v.string(),
+    conversationId: v.id('conversations'),
+    emitEvent: v.optional(v.boolean()),
+    messageId: v.id('conversationMessages'),
+    parts: v.optional(v.array(v.any())),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConversationAccess(ctx, args)
+    const message = await loadGeneratingAgentMessage(ctx, args)
+    if (!message) return
+    await ctx.db.patch(args.messageId, {
+      content: `${message.content}${args.contentDelta}`,
+      ...(args.parts ? { parts: args.parts } : {}),
+      updatedAt: Date.now(),
+    })
+    if (!args.emitEvent) return
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.delta',
+      messageId: args.messageId,
+    })
+  },
+})
+
+/**
+ * Closes the row with the authoritative text the model produced. The final
+ * content replaces rather than extends the accumulated deltas so a partially
+ * flushed row cannot end up duplicated or truncated.
+ */
+export const finalizeAgentMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    content: v.string(),
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    parts: v.optional(v.array(v.any())),
+    tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConversationAccess(ctx, args)
+    const message = await loadGeneratingAgentMessage(ctx, args)
+    if (!message) return
+    const now = Date.now()
+    await ctx.db.patch(args.messageId, {
+      content: args.content,
+      ...(args.parts ? { parts: args.parts } : {}),
+      ...(args.tokens ? { tokens: args.tokens } : {}),
+      status: 'completed',
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.completed',
+      messageId: args.messageId,
+    })
+  },
+})
+
+/**
+ * Marks the turn failed while keeping whatever text arrived. A truncated reply
+ * the reader can see beats a row that silently disappears.
+ */
+export const failAgentMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    content: v.optional(v.string()),
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    parts: v.optional(v.array(v.any())),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConversationAccess(ctx, args)
+    const message = await loadGeneratingAgentMessage(ctx, args)
+    if (!message) return
+    await ctx.db.patch(args.messageId, {
+      ...(args.content === undefined ? {} : { content: args.content }),
+      ...(args.parts ? { parts: args.parts } : {}),
+      status: 'error',
+      updatedAt: Date.now(),
+    })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.failed',
+      messageId: args.messageId,
+    })
   },
 })
 
