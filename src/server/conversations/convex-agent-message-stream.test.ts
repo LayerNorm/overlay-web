@@ -245,6 +245,26 @@ test('Convex agent replies stream into a durable transcript row', {
     assert.equal(failed?.status, 'error')
     assert.equal(failed?.content, 'I started to')
 
+    // A finished agent reply must raise activity the same way a teammate's
+    // message does, or an answer that lands while you are looking elsewhere is
+    // one you never learn about.
+    const notifications = await collaboration.listNotifications({
+      actorUserId: ownerUserId,
+      workspaceId,
+    })
+    const agentNotification = notifications.find((row) => row.messageId === messageId)
+    assert.ok(agentNotification, 'the finished agent reply should have raised a notification')
+    assert.equal(agentNotification.type, 'message')
+    assert.equal(agentNotification.actorPrincipalId, agentPrincipalId)
+    assert.match(agentNotification.title, /Scout/)
+    // The agent authored it, so it must not notify itself.
+    assert.equal(
+      notifications.some((row) => row.recipientPrincipalId === agentPrincipalId),
+      false,
+    )
+    // A reply that failed never finished generating, so it raises nothing.
+    assert.equal(notifications.some((row) => row.messageId === failing.messageId), false)
+
     const events = await collaboration.listConversationEvents({
       actorUserId: ownerUserId,
       afterSequence: 0,

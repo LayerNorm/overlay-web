@@ -287,6 +287,7 @@ implements ConversationCollaborationRepository {
         userId: args.actorUserId,
       })
     })
+    await this.notifyAgentMessage({ ...args, messageId: id })
     return id
   }
 
@@ -545,6 +546,7 @@ implements ConversationCollaborationRepository {
         userId: args.actorUserId,
       })
     })
+    await this.notifyAgentMessage(args)
   }
 
   async failAgentMessage(args: {
@@ -1327,6 +1329,32 @@ implements ConversationCollaborationRepository {
   }): Promise<void> {
     const actor = await this.requireActor(args)
     if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    await this.fanOutMessageNotifications({
+      ...args,
+      actorDisplayName: actor.displayName,
+      actorPrincipalId: actor.id,
+    })
+  }
+
+  /**
+   * Turns one delivered message into activity for everyone else in the room.
+   *
+   * Takes the author as an explicit principal rather than resolving it from a
+   * user id, because an agent has no user: its reply has to raise the same
+   * notification a teammate's would, or an answer that arrives while you are
+   * looking elsewhere is one you never learn about.
+   */
+  private async fanOutMessageNotifications(args: {
+    actorDisplayName: string
+    actorPrincipalId: string
+    body?: string
+    conversationId: string
+    mentionedPrincipalIds?: string[]
+    messageId: string
+    threadRootMessageId?: string
+    workspaceId: string
+  }): Promise<void> {
+    const actor = { displayName: args.actorDisplayName, id: args.actorPrincipalId }
     const now = new Date()
     const [conversation] = await this.db.select({ conversationType: conversations.conversationType }).from(conversations).where(
       and(eq(conversations.id, args.conversationId), eq(conversations.workspaceId, args.workspaceId)),
@@ -1411,6 +1439,42 @@ implements ConversationCollaborationRepository {
           createdAt: now,
         })))
       }
+    })
+  }
+
+  /**
+   * Raises activity for a finished agent reply, exactly as a teammate's message
+   * would. Silent on anything unresolvable: a missing notification must never
+   * fail the turn that produced the reply.
+   */
+  private async notifyAgentMessage(args: {
+    conversationId: string
+    messageId: string
+    workspaceId: string
+  }): Promise<void> {
+    const [message] = await this.db.select({
+      authorKind: conversationMessages.authorKind,
+      authorPrincipalId: conversationMessages.authorPrincipalId,
+      content: conversationMessages.content,
+      threadRootMessageId: conversationMessages.threadRootMessageId,
+    })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.id, args.messageId))
+      .limit(1)
+    if (!message?.authorPrincipalId || message.authorKind !== 'agent') return
+    const [principal] = await this.db.select({ displayName: workspacePrincipals.displayName })
+      .from(workspacePrincipals)
+      .where(eq(workspacePrincipals.id, message.authorPrincipalId))
+      .limit(1)
+    if (!principal) return
+    await this.fanOutMessageNotifications({
+      actorDisplayName: principal.displayName,
+      actorPrincipalId: message.authorPrincipalId,
+      body: message.content,
+      conversationId: args.conversationId,
+      messageId: args.messageId,
+      ...(message.threadRootMessageId ? { threadRootMessageId: message.threadRootMessageId } : {}),
+      workspaceId: args.workspaceId,
     })
   }
 
@@ -2011,6 +2075,7 @@ function mapCollaborationMessage(
     contentType: row.contentType,
     parts: row.parts as Array<Record<string, unknown>> | undefined,
     modelId: row.modelId ?? undefined,
+    tokens: row.tokens ?? undefined,
     variantIndex: row.variantIndex ?? undefined,
     createdAt: row.createdAt.getTime(),
     replyToTurnId: row.replyToTurnId ?? undefined,

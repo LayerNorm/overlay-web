@@ -113,6 +113,14 @@ A room agent turn is now owned by a durable run rather than by an HTTP request.
   each turn loads the room fresh, because a durable turn can start long after
   the request that triggered it.
 - `MAX_OUTPUT_TOKENS_AGENT` is 16k now that a turn is not bounded by a response.
+- A finished agent reply raises workspace activity exactly as a teammate's
+  message does. `recordMessageActivity`'s fan-out is now shared with a
+  `notifyAgentMessage` path on both providers, taking the author as an explicit
+  principal because an agent has no user id. Fires on `finalizeAgentMessage` and
+  on the non-streamed `addAgentMessage` fallback; a failed turn raises nothing.
+- Both Postgres message mappers dropped `tokens`, so usage was visible on Convex
+  and invisible on Postgres. `tokens` is now on `ConversationMessageRow` and
+  mapped by both.
 
 ### Follow-ups
 

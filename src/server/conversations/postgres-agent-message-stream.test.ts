@@ -201,6 +201,26 @@ test('Postgres agent replies stream into a durable transcript row', {
     assert.equal(again.runId, turn.runId)
     assert.equal(again.messageId, turn.messageId)
 
+    // A finished agent reply must raise activity the same way a teammate's
+    // message does, or an answer that lands while you are looking elsewhere is
+    // one you never learn about.
+    const notifications = await collaboration.listNotifications({
+      actorUserId: userId,
+      workspaceId,
+    })
+    const agentNotification = notifications.find((row) => row.messageId === messageId)
+    assert.ok(agentNotification, 'the finished agent reply should have raised a notification')
+    assert.equal(agentNotification.type, 'message')
+    assert.equal(agentNotification.actorPrincipalId, agentPrincipalId)
+    assert.match(agentNotification.title, /Scout/)
+    // The agent authored it, so it must not notify itself.
+    assert.equal(
+      notifications.some((row) => row.recipientPrincipalId === agentPrincipalId),
+      false,
+    )
+    // A reply that failed never finished generating, so it raises nothing.
+    assert.equal(notifications.some((row) => row.messageId === failingId), false)
+
     // The polling transcript learns about the turn without refetching on every
     // single write: one event to open it, one throttled delta, one to close it.
     const events = await collaboration.listConversationEvents({

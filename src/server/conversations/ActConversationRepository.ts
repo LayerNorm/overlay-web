@@ -83,6 +83,8 @@ export type ConversationMessageRow = {
   contentType: 'text' | 'image' | 'video'
   parts?: Array<Record<string, unknown>>
   modelId?: string
+  /** Usage recorded for an assistant/agent turn, when the provider tracked it. */
+  tokens?: { input: number; output: number }
   variantIndex?: number
   createdAt: number
   replyToTurnId?: string

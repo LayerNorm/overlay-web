@@ -1471,6 +1471,7 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     contentType: row.contentType,
     parts: row.parts as Array<Record<string, unknown>> | undefined,
     modelId: row.modelId ?? undefined,
+    tokens: row.tokens ?? undefined,
     variantIndex: row.variantIndex ?? undefined,
     createdAt: toMillis(row.createdAt),
     replyToTurnId: row.replyToTurnId ?? undefined,

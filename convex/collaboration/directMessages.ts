@@ -560,6 +560,7 @@ export const addAgentMessage = mutation({
       type: 'message.created',
       messageId,
     })
+    await notifyAgentMessage(ctx, { ...args, messageId })
     return messageId
   },
 })
@@ -831,6 +832,7 @@ export const finalizeAgentMessage = mutation({
       type: 'message.completed',
       messageId: args.messageId,
     })
+    await notifyAgentMessage(ctx, args)
   },
 })
 
@@ -1471,6 +1473,36 @@ export const recordMessageActivity = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
+    await fanOutMessageNotifications(ctx, {
+      ...args,
+      actorDisplayName: access.actor.displayName,
+      actorPrincipalId: access.actor.principalId,
+    })
+  },
+})
+
+/**
+ * Turns one delivered message into activity for everyone else in the room.
+ *
+ * Takes the author as an explicit principal rather than resolving it from a
+ * user id, because an agent has no user: its reply has to raise the same
+ * notification a teammate's would, or an answer that arrives while you are
+ * looking elsewhere is one you never learn about.
+ */
+async function fanOutMessageNotifications(
+  ctx: Pick<MutationCtx, 'db'>,
+  args: {
+    actorDisplayName: string
+    actorPrincipalId: string
+    body?: string
+    conversationId: Id<'conversations'>
+    mentionedPrincipalIds?: string[]
+    messageId: Id<'conversationMessages'>
+    threadRootMessageId?: Id<'conversationMessages'>
+    workspaceId: string
+  },
+) {
+  {
     const now = Date.now()
     const mentions = new Set(args.mentionedPrincipalIds ?? [])
     const conversation = await ctx.db.get(args.conversationId)
@@ -1502,7 +1534,7 @@ export const recordMessageActivity = mutation({
       )).collect()
     for (const participant of participants) {
       const mentioned = mentions.has(participant.principalId)
-      if (participant.principalId === access.actor.principalId) continue
+      if (participant.principalId === args.actorPrincipalId) continue
       const broadcast = hasChannelMention || (hasHereMention && activeHere.has(participant.principalId))
       const followedThread = Boolean(args.threadRootMessageId && followerIds.has(participant.principalId))
       const preferences = await ctx.db.query('workspaceNotificationPreferences')
@@ -1526,21 +1558,47 @@ export const recordMessageActivity = mutation({
         type,
         conversationId: args.conversationId,
         messageId: args.messageId,
-        actorPrincipalId: access.actor.principalId,
+        actorPrincipalId: args.actorPrincipalId,
         threadRootMessageId: args.threadRootMessageId,
         eventSequence,
         mentionScope,
         title: mentioned
-          ? `${access.actor.displayName} mentioned you`
+          ? `${args.actorDisplayName} mentioned you`
           : type === 'thread'
-            ? `${access.actor.displayName} replied in a thread`
-            : `New message from ${access.actor.displayName}`,
+            ? `${args.actorDisplayName} replied in a thread`
+            : `New message from ${args.actorDisplayName}`,
         body: args.body?.slice(0, 240),
         createdAt: now,
       })
     }
-  },
-})
+  }
+}
+
+/**
+ * Raises activity for a finished agent reply, exactly as a teammate's message
+ * would. Silent on anything unresolvable: a missing notification must never
+ * fail the turn that produced the reply.
+ */
+async function notifyAgentMessage(
+  ctx: Pick<MutationCtx, 'db'>,
+  args: { conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'>; workspaceId: string },
+) {
+  const message = await ctx.db.get(args.messageId)
+  if (!message?.authorPrincipalId || message.authorKind !== 'agent') return
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', message.authorPrincipalId!))
+    .unique()
+  if (!principal) return
+  await fanOutMessageNotifications(ctx, {
+    actorDisplayName: principal.displayName,
+    actorPrincipalId: message.authorPrincipalId,
+    body: message.content,
+    conversationId: args.conversationId,
+    messageId: args.messageId,
+    threadRootMessageId: message.threadRootMessageId,
+    workspaceId: args.workspaceId,
+  })
+}
 
 async function accessibleConversationIdsForEvents(
   ctx: CollaborationCtx,
