@@ -104,6 +104,10 @@ export class SqliteHostStateStore {
     return { runId: String(row.run_id), adapterId: String(row.adapter_id), remoteSessionId: String(row.remote_session_id), workingDirectory: String(row.working_directory) }
   }
 
+  deleteSession(runId: string): void {
+    this.database.prepare('DELETE FROM remote_sessions WHERE run_id = ?').run(runId)
+  }
+
   appendEvent(event: Omit<AgentHostEvent, 'sourceSequence'>): AgentHostEvent {
     this.database.exec('BEGIN IMMEDIATE')
     try {

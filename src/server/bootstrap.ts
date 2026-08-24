@@ -170,6 +170,7 @@ export function createOverlayServerContext(
     assertSelectedProviderConfig(runtimeConfig)
   }
   const appData = createAppDataContext(runtimeConfig)
+  const objectStore = appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig)
   const chatUsagePolicy = createActUsagePolicy({
     appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
@@ -278,10 +279,22 @@ export function createOverlayServerContext(
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
+    objectStore,
     repository: appData.repositories.connectedAgents,
     workspaces: workspaceService,
     settleUsage: async (usage) => {
       if (!usage.userId) return
+      if (usage.outcome === 'cancelled') {
+        await chatUsagePolicy.releaseReservation({
+          reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_cancelled',
+        })
+        return
+      }
+      if (usage.outcome !== 'completed' && usage.inputTokens === 0 && usage.outputTokens === 0) {
+        await chatUsagePolicy.markReservationForReconcile({ reservationId: usage.reservationId,
+          userId: usage.userId, errorMessage: `remote_agent_${usage.outcome}` })
+        return
+      }
       await chatUsagePolicy.recordFinishedUsage(usage)
     },
   })
@@ -377,7 +390,7 @@ export function createOverlayServerContext(
       appData.repositories.billing,
       appData.repositories.usage,
     ),
-    objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
+    objectStore,
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter,

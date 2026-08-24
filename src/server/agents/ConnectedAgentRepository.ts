@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type {
-  AgentApprovalRequest, AgentApprovalResolution, AgentBinding, AgentEnrollmentSession,
+  AgentApprovalRequest, AgentApprovalResolution, AgentArtifact, AgentBinding, AgentEnrollmentSession,
   AgentEnvironment, AgentEnvironmentCredential, AgentEnvironmentEnrollmentView, AgentEnvironmentProofChallenge,
   AgentFilesystemGrant, AgentRemoteEvent, AgentRemoteSession, AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
@@ -31,6 +31,7 @@ export type ApplyRemoteEventsResult =
         modelId: string
         operationId: string
         outputTokens: number
+        outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
         reservationId: string | null
         userId: string
       }
@@ -40,6 +41,20 @@ export type ApplyRemoteEventsResult =
 export type ConnectedAgentInvocationTarget = {
   binding: AgentBinding
   environment: AgentEnvironment
+}
+
+export type RemoteAgentUsageSettlement = NonNullable<Extract<ApplyRemoteEventsResult, { accepted: true }>['terminal']>
+
+export type ConnectedAgentControlRemoteTurnResult = {
+  applied: boolean
+  messageId?: string
+  commandId?: string
+  terminal?: RemoteAgentUsageSettlement
+}
+
+export type ConnectedAgentSweepResult = {
+  expiredRunIds: string[]
+  settlements: RemoteAgentUsageSettlement[]
 }
 
 export type ConnectedAgentStartRemoteTurn = {
@@ -158,15 +173,15 @@ export interface ConnectedAgentRepository {
     onlineWithinMs: number
   }): Promise<ConnectedAgentInvocationTarget | null>
   startRemoteAgentTurn(input: ConnectedAgentStartRemoteTurn): Promise<ConnectedAgentStartRemoteTurnResult>
-  controlQueuedRemoteAgentTurn(args: {
+  controlRemoteAgentTurn(args: {
     actorUserId: string
     conversationId: string
     workspaceId: string
     runId: string
-    action: 'cancel' | 'retry'
+    action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
     queueExpiresAt: number
     now: number
-  }): Promise<{ applied: boolean; messageId?: string }>
+  }): Promise<ConnectedAgentControlRemoteTurnResult>
   createRemoteSession(input: ConnectedAgentCreateSession): Promise<AgentRemoteSession>
   getRemoteSessionForRun(args: {
     workspaceId: string
@@ -194,6 +209,43 @@ export interface ConnectedAgentRepository {
     approvalId: string
     resolution: AgentApprovalResolution
   }): Promise<AgentApprovalRequest | null>
+  resolveRemoteRequest(args: {
+    actorUserId: string
+    workspaceId: string
+    conversationId: string
+    runId: string
+    requestKey: string
+    decision: string
+    response?: Record<string, unknown>
+    now: number
+  }): Promise<{ applied: boolean; commandId?: string; messageId?: string }>
+  createArtifact(input: AgentArtifact): Promise<AgentArtifact>
+  getArtifact(args: {
+    workspaceId: string
+    environmentId: string
+    artifactId: string
+  }): Promise<AgentArtifact | null>
+  getArtifactForDownload(args: {
+    actorUserId: string
+    workspaceId: string
+    artifactId: string
+  }): Promise<AgentArtifact | null>
+  finalizeArtifact(args: {
+    workspaceId: string
+    environmentId: string
+    artifactId: string
+    status: 'clean' | 'rejected'
+    scanResult: string
+    expiresAt?: number
+    now: number
+  }): Promise<AgentArtifact | null>
+  listArtifactsForCleanup(args: { now: number; limit: number }): Promise<AgentArtifact[]>
+  markArtifactDeleted(args: { artifactId: string; now: number }): Promise<boolean>
+  sweepRemoteRuns(args: {
+    now: number
+    hostOfflineBefore: number
+    limit: number
+  }): Promise<ConnectedAgentSweepResult>
   createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
   updateSandboxLease(input: ConnectedAgentUpdateSandboxLease): Promise<AgentSandboxLease | null>
   applyRemoteEvents(args: {

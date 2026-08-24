@@ -16,6 +16,9 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/[environmentId]/commands': agentHostException(['GET'], 'Signed, environment-scoped command polling.'),
   '/api/v1/agent-environments/[environmentId]/commands/[commandId]/ack': agentHostException(['POST'], 'Signed, environment-scoped command acknowledgement.'),
   '/api/v1/agent-environments/[environmentId]/events': agentHostException(['POST'], 'Signed, size-limited, sequenced event upload.'),
+  '/api/v1/agent-environments/[environmentId]/artifacts': agentHostException(['POST'], 'Signed, scoped artifact upload-intent creation.'),
+  '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete': agentHostException(['POST'], 'Signed artifact completion with checksum and malware validation.'),
+  '/api/v1/agent-environments/artifacts/cleanup': internalServiceException(['POST'], 'Internal-secret authenticated artifact retention cleanup.'),
   '/api/v1/capabilities': {
     methods: ['GET'],
     reason: 'Public, read-only deployment capability discovery.',
@@ -65,6 +68,21 @@ function agentHostException(methods: readonly string[], reason: string) {
       csrf: 'no browser cookie authority; signed request proof covers method, path, body, time, and nonce',
       idempotency: 'single-use enrollment/challenge secrets and atomic replay-nonce consumption',
       audit: 'enrollment and credential lifecycle writes canonical workspace audit events',
+    },
+  } as const
+}
+
+function internalServiceException(methods: readonly string[], reason: string) {
+  return {
+    methods,
+    reason,
+    controls: {
+      authentication: 'deployment-scoped internal service secret',
+      authorization: 'service identity can only invoke the bounded cleanup operation',
+      rateLimit: 'scheduler cadence plus bounded batch size',
+      csrf: 'no browser cookie authority',
+      idempotency: 'object deletion and metadata tombstoning are idempotent',
+      audit: 'artifact metadata retains cleanup state and timestamps',
     },
   } as const
 }

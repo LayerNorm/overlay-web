@@ -93,6 +93,9 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/commands/:commandId/ack', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/events', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/artifacts', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/artifacts/:artifactId/complete', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/artifacts/cleanup', methods: { POST: publicPolicy() } },
   {
     path: '/api/v1/shares',
     methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() },
@@ -402,6 +405,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/conversations/run/remote',
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run/remote/request',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run/remote/artifacts/:artifactId',
+    methods: { GET: capability('conversations.read') },
   },
   {
     path: '/api/v1/conversations/run/metrics',

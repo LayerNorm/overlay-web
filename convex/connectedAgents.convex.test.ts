@@ -24,6 +24,9 @@ describe('Convex connected-agent provider contract', () => {
     const call = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
       return await convex.mutation(reference(operation), { ...args, serverSecret: secret }) as T
     }
+    const read = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
+      return await convex.query(queryReference(operation), { ...args, serverSecret: secret }) as T
+    }
     const controlCall = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
       return await convex.mutation(controlReference(operation), { ...args, serverSecret: secret }) as T
     }
@@ -53,6 +56,11 @@ describe('Convex connected-agent provider contract', () => {
       acknowledgeCommand: (input) => call('acknowledgeCommandByServer', input),
       createApprovalRequest: (input) => call('createApprovalRequestByServer', input),
       resolveApprovalRequest: (input) => call('resolveApprovalRequestByServer', input),
+      createArtifact: (input) => call('createArtifactByServer', input),
+      getArtifact: (input) => read('getArtifactByServer', input),
+      finalizeArtifact: (input) => call('finalizeArtifactByServer', input),
+      listArtifactsForCleanup: (input) => read('listArtifactsForCleanupByServer', input),
+      markArtifactDeleted: (input) => call('markArtifactDeletedByServer', input),
       createSandboxLease: (input) => call('createSandboxLeaseByServer', input),
       updateSandboxLease: (input) => call('updateSandboxLeaseByServer', input),
       applyRemoteEvents: (input) => call('applyRemoteEventsByServer', input),
@@ -68,6 +76,10 @@ describe('Convex connected-agent provider contract', () => {
 
 function reference(operation: string) {
   return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`)
+}
+
+function queryReference(operation: string) {
+  return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`)
 }
 
 function controlReference(operation: string) {

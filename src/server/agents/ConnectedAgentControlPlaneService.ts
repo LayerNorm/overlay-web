@@ -17,6 +17,7 @@ import {
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
 } from '@overlay/workspace-contracts'
+import type { ObjectStore } from '@overlay/app-core'
 import {
   MAX_HOST_REQUEST_BYTES,
   MAX_COMMAND_BYTES,
@@ -30,6 +31,7 @@ import {
   type CommandAcknowledgement,
   type EventBatch,
   type HostCapabilities,
+  type ArtifactUploadRequest,
 } from '@overlay/agent-bridge-protocol'
 import type { AuditService } from '@/server/admin'
 import { getOverlayRuntimeConfig } from '@/server/config'
@@ -42,6 +44,9 @@ const CREDENTIAL_TTL_MS = 15 * 60_000
 const REQUEST_CLOCK_SKEW_MS = 60_000
 const PROOF_NONCE_TTL_MS = 2 * 60_000
 const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
+const ARTIFACT_UPLOAD_TTL_MS = 5 * 60_000
+const ARTIFACT_RETENTION_MS = 30 * 24 * 60 * 60_000
+const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
 
 const PHRASE_WORDS = [
   'amber', 'birch', 'cedar', 'coral', 'dawn', 'ember', 'fern', 'harbor',
@@ -71,6 +76,7 @@ type RemoteAgentUsageSettlement = {
   inputTokens: number
   modelId: string
   operationId: string
+  outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
   outputTokens: number
   reservationId: string | null
   userId: string
@@ -81,6 +87,7 @@ export class ConnectedAgentControlPlaneService {
     audit: AuditService
     repository: ConnectedAgentRepository
     workspaces: WorkspaceService
+    objectStore?: ObjectStore
     now?: () => number
     isEnabled?: () => boolean | Promise<boolean>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
@@ -320,21 +327,135 @@ export class ConnectedAgentControlPlaneService {
     return disabled
   }
 
-  async controlQueuedRemoteTurn(args: {
+  async controlRemoteTurn(args: {
     actorUserId: string
     conversationId: string
     workspaceId: string
     runId: string
-    action: 'cancel' | 'retry'
+    action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
     await this.assertEnabled()
     const now = this.now()
-    const result = await this.dependencies.repository.controlQueuedRemoteAgentTurn({
+    const result = await this.dependencies.repository.controlRemoteAgentTurn({
       ...args,
       now,
       queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
     })
     if (!result.applied) throw controlPlaneError('Queued remote run was not found', 404, 'remote_run_not_found')
+    if (result.terminal?.reservationId && this.dependencies.settleUsage) await this.dependencies.settleUsage(result.terminal)
+    await this.audit(`agent_remote_run.${args.action}`, 'user', args.actorUserId, {
+      workspaceId: args.workspaceId, conversationId: args.conversationId, runId: args.runId,
+      commandId: result.commandId,
+    }, args.runId, 'agent_remote_run')
+    return result
+  }
+
+  async resolveRemoteRequest(args: {
+    actorUserId: string
+    workspaceId: string
+    conversationId: string
+    runId: string
+    requestKey: string
+    decision: string
+    response?: Record<string, unknown>
+  }) {
+    await this.assertEnabled()
+    const result = await this.dependencies.repository.resolveRemoteRequest({ ...args, now: this.now() })
+    if (!result.applied) throw controlPlaneError('This agent request is no longer pending or you are not authorized to resolve it', 409, 'remote_request_not_pending')
+    await this.audit('agent_remote_request.resolved', 'user', args.actorUserId, {
+      workspaceId: args.workspaceId, conversationId: args.conversationId, runId: args.runId,
+      requestKey: args.requestKey, decision: args.decision,
+    }, args.requestKey, 'agent_remote_request')
+    return result
+  }
+
+  async createArtifactUpload(auth: HostAuthentication, input: ArtifactUploadRequest) {
+    const objectStore = this.requireObjectStore()
+    const now = this.now()
+    const name = safeArtifactName(input.name)
+    const mediaType = safeArtifactMediaType(input.mediaType)
+    if (input.size < 1 || input.size > MAX_ARTIFACT_BYTES) throw controlPlaneError('Artifact size is outside the allowed range', 413, 'artifact_size_invalid')
+    const session = await this.dependencies.repository.getRemoteSessionForRun({
+      workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, runId: input.runId,
+    })
+    if (!session || ['completed', 'failed', 'cancelled'].includes(session.status)) throw controlPlaneError('Remote session is not active', 409, 'remote_session_inactive')
+    const artifactId = `artifact_${randomUUID()}`
+    const objectKey = `workspaces/${encodeURIComponent(auth.credential.workspaceId)}/agent-artifacts/${encodeURIComponent(auth.environment.id)}/${encodeURIComponent(input.runId)}/${artifactId}`
+    const artifact = await this.dependencies.repository.createArtifact({
+      id: artifactId, workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id,
+      runId: input.runId, remoteSessionId: session.id, name, mediaType, size: input.size,
+      sha256: input.sha256, objectKey, status: 'pending_upload', expiresAt: now + ARTIFACT_UPLOAD_TTL_MS,
+      createdAt: now, updatedAt: now,
+    })
+    const checksum = Buffer.from(input.sha256, 'hex').toString('base64')
+    const upload = await objectStore.getUploadUrl(objectKey, mediaType, {
+      expiresIn: ARTIFACT_UPLOAD_TTL_MS / 1_000, contentLength: input.size, checksumSha256: input.sha256,
+    })
+    return { protocolVersion: 1 as const, artifactId: artifact.id, uploadReference: artifact.id,
+      uploadUrl: upload.url, headers: { 'content-type': mediaType, 'x-amz-checksum-sha256': checksum },
+      expiresAt: now + ARTIFACT_UPLOAD_TTL_MS }
+  }
+
+  async completeArtifactUpload(auth: HostAuthentication, uploadReference: string) {
+    const objectStore = this.requireObjectStore()
+    const now = this.now()
+    const artifact = await this.dependencies.repository.getArtifact({
+      workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, artifactId: uploadReference,
+    })
+    if (!artifact) throw controlPlaneError('Artifact upload was not found', 404, 'artifact_not_found')
+    if (artifact.status === 'clean' || artifact.status === 'linked') return artifact
+    if (artifact.status !== 'pending_upload' || artifact.createdAt + ARTIFACT_UPLOAD_TTL_MS < now) {
+      throw controlPlaneError('Artifact upload is no longer completable', 409, 'artifact_upload_expired')
+    }
+    if (!objectStore.headObject || !objectStore.downloadBuffer) throw controlPlaneError('Object store cannot validate agent artifacts', 503, 'artifact_validation_unavailable')
+    const metadata = await objectStore.headObject(artifact.objectKey)
+    if (!metadata || metadata.sizeBytes !== artifact.size || normalizeMediaType(metadata.contentType) !== normalizeMediaType(artifact.mediaType)) {
+      await this.rejectArtifact(artifact, 'metadata_mismatch')
+      throw controlPlaneError('Uploaded artifact metadata does not match the intent', 409, 'artifact_metadata_mismatch')
+    }
+    const bytes = await objectStore.downloadBuffer(artifact.objectKey, MAX_ARTIFACT_BYTES)
+    const checksum = createHash('sha256').update(bytes).digest('hex')
+    if (checksum !== artifact.sha256) {
+      await this.rejectArtifact(artifact, 'checksum_mismatch')
+      throw controlPlaneError('Uploaded artifact checksum does not match the intent', 409, 'artifact_checksum_mismatch')
+    }
+    const scan = scanArtifact(bytes, artifact.mediaType)
+    if (!scan.clean) {
+      await this.rejectArtifact(artifact, scan.result)
+      throw controlPlaneError('Uploaded artifact failed malware validation', 422, 'artifact_malware_rejected')
+    }
+    const finalized = await this.dependencies.repository.finalizeArtifact({
+      workspaceId: artifact.workspaceId, environmentId: artifact.environmentId, artifactId: artifact.id,
+      status: 'clean', scanResult: scan.result, expiresAt: now + ARTIFACT_RETENTION_MS, now,
+    })
+    if (!finalized) throw controlPlaneError('Artifact state changed while validating', 409, 'artifact_state_conflict')
+    return finalized
+  }
+
+  async getArtifactDownload(args: { actorUserId: string; workspaceId: string; artifactId: string }) {
+    const artifact = await this.dependencies.repository.getArtifactForDownload(args)
+    if (!artifact) throw controlPlaneError('Artifact was not found', 404, 'artifact_not_found')
+    return { artifact, url: await this.requireObjectStore().getDownloadUrl(artifact.objectKey) }
+  }
+
+  async cleanupArtifacts(limit = 100) {
+    const now = this.now()
+    const artifacts = await this.dependencies.repository.listArtifactsForCleanup({ now, limit })
+    for (const artifact of artifacts) {
+      await this.requireObjectStore().deleteObject(artifact.objectKey)
+      await this.dependencies.repository.markArtifactDeleted({ artifactId: artifact.id, now })
+    }
+    return { deleted: artifacts.length }
+  }
+
+  async sweepRemoteRuns() {
+    const now = this.now()
+    const result = await this.dependencies.repository.sweepRemoteRuns({
+      now, hostOfflineBefore: now - 90_000, limit: 100,
+    })
+    if (this.dependencies.settleUsage) for (const settlement of result.settlements) {
+      if (settlement.reservationId) await this.dependencies.settleUsage(settlement)
+    }
     return result
   }
 
@@ -571,6 +692,17 @@ export class ConnectedAgentControlPlaneService {
 
   private now() { return this.dependencies.now?.() ?? Date.now() }
 
+  private requireObjectStore() {
+    if (!this.dependencies.objectStore) throw controlPlaneError('Object storage is unavailable', 503, 'object_storage_unavailable')
+    return this.dependencies.objectStore
+  }
+
+  private async rejectArtifact(artifact: { id: string; workspaceId: string; environmentId: string; objectKey: string }, result: string) {
+    await this.dependencies.repository.finalizeArtifact({ workspaceId: artifact.workspaceId,
+      environmentId: artifact.environmentId, artifactId: artifact.id, status: 'rejected', scanResult: result, now: this.now() })
+    await this.requireObjectStore().deleteObject(artifact.objectKey).catch((_error) => undefined)
+  }
+
   private async audit(
     action: string,
     actorType: 'user' | 'service',
@@ -684,6 +816,31 @@ function verifyDeviceSignature(publicKey: string | undefined, value: string, sig
 
 function randomSecret(bytes = 32) { return randomBytes(bytes).toString('base64url') }
 function sha256(value: string | Uint8Array) { return createHash('sha256').update(value).digest('hex') }
+function safeArtifactName(value: string) {
+  const name = value.trim()
+  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || /[\u0000-\u001f]/.test(name)) {
+    throw controlPlaneError('Artifact name is invalid', 400, 'artifact_name_invalid')
+  }
+  return name
+}
+function safeArtifactMediaType(value: string) {
+  const mediaType = normalizeMediaType(value)
+  if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(mediaType)
+    || ['application/x-msdownload', 'application/x-executable', 'application/x-sh'].includes(mediaType)) {
+    throw controlPlaneError('Artifact media type is not allowed', 400, 'artifact_media_type_invalid')
+  }
+  return mediaType
+}
+function normalizeMediaType(value: string | undefined) { return (value ?? '').split(';', 1)[0]!.trim().toLowerCase() }
+function scanArtifact(bytes: Uint8Array, mediaType: string): { clean: boolean; result: string } {
+  const prefix = bytes.slice(0, Math.min(bytes.byteLength, 8_192))
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(prefix)
+  if (text.includes('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) return { clean: false, result: 'eicar_signature' }
+  const executableMagic = (prefix[0] === 0x4d && prefix[1] === 0x5a)
+    || (prefix[0] === 0x7f && prefix[1] === 0x45 && prefix[2] === 0x4c && prefix[3] === 0x46)
+  if (executableMagic && !normalizeMediaType(mediaType).includes('wasm')) return { clean: false, result: 'executable_binary' }
+  return { clean: true, result: 'signature_scan_clean' }
+}
 function verificationPhrase() {
   const bytes = randomBytes(3)
   return [...bytes].map((value) => PHRASE_WORDS[value % PHRASE_WORDS.length]).join('-')

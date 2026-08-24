@@ -6,22 +6,22 @@ import { agentEnvironmentErrorResponse } from '../../../agent-environments/share
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const body = context.parsedJson as Partial<{
-      action: 'cancel' | 'retry'
+      action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
       conversationId: string
       runId: string
     }>
-    const action = body.action === 'cancel' || body.action === 'retry' ? body.action : null
+    const action = ['cancel', 'retry', 'resume', 'start_fresh'].includes(String(body.action)) ? body.action : null
     const conversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
     const runId = typeof body.runId === 'string' ? body.runId.trim() : ''
     if (!action || !conversationId || !runId) {
       return NextResponse.json({ error: 'action, conversationId, and runId are required' }, { status: 400 })
     }
-    const result = await getOverlayServerContext().connectedAgentControlPlane.controlQueuedRemoteTurn({
+    const result = await getOverlayServerContext().connectedAgentControlPlane.controlRemoteTurn({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
       conversationId,
       runId,
-      action,
+      action: action!,
     })
     return NextResponse.json(result)
   } catch (error) {

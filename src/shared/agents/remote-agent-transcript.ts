@@ -2,6 +2,10 @@ import type { AgentRemoteEvent, AgentRemoteSessionStatus } from '@overlay/worksp
 import type { AgentRunStatus, AgentRunTerminalError } from './agent-run'
 
 export const REMOTE_AGENT_STATUS_PART_TYPE = 'data-remote-agent-status'
+export const REMOTE_AGENT_REQUEST_PART_TYPE = 'data-remote-agent-request'
+export const REMOTE_AGENT_PLAN_PART_TYPE = 'data-remote-agent-plan'
+export const REMOTE_AGENT_DIFF_PART_TYPE = 'data-remote-agent-diff'
+export const REMOTE_AGENT_TERMINAL_PART_TYPE = 'data-remote-agent-terminal'
 
 export type RemoteAgentStatusPart = {
   type: typeof REMOTE_AGENT_STATUS_PART_TYPE
@@ -9,7 +13,9 @@ export type RemoteAgentStatusPart = {
     environmentName: string
     queueExpiresAt: number
     runId: string
-    state: 'waiting' | 'running' | 'completed' | 'failed' | 'cancelled'
+    state: 'waiting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'completed' | 'failed' | 'cancelled'
+    retryable?: boolean
+    retryClass?: 'transient' | 'timeout' | 'host_offline' | 'permission' | 'fatal'
   }
 }
 
@@ -67,6 +73,7 @@ export function projectRemoteAgentEvents(input: {
     if (event.type === 'session_started') {
       removeWaiting()
       remoteSessionId = stringValue(event.payload.remoteSessionId)
+      parts = upsertStatusPart(parts, input, 'running')
       continue
     }
     if (event.type === 'text_checkpoint') {
@@ -80,8 +87,59 @@ export function projectRemoteAgentEvents(input: {
       parts = upsertActionPart(parts, event.payload)
       continue
     }
+    if (event.type === 'approval_requested' || event.type === 'elicitation_requested') {
+      removeWaiting()
+      const kind = event.type === 'approval_requested' ? 'permission' : 'elicitation'
+      parts = upsertRequestPart(parts, {
+        kind,
+        requestKey: stringValue(event.payload.requestKey) ?? event.eventId,
+        prompt: stringValue(event.payload.prompt) ?? (kind === 'permission' ? 'Permission requested' : 'Input requested'),
+        options: Array.isArray(event.payload.options) ? event.payload.options : [],
+        requestedSchema: objectValue(event.payload.requestedSchema),
+        runId: input.runId,
+        state: 'pending',
+      })
+      runStatus = 'waiting_for_approval'
+      sessionStatus = kind === 'permission' ? 'waiting_for_approval' : 'waiting_for_input'
+      parts = upsertStatusPart(parts, input, kind === 'permission' ? 'waiting_for_approval' : 'waiting_for_input')
+      continue
+    }
+    if (event.type === 'plan') {
+      removeWaiting()
+      parts = upsertDataPart(parts, REMOTE_AGENT_PLAN_PART_TYPE, 'plan', { entries: event.payload.entries ?? [] })
+      continue
+    }
+    if (event.type === 'diff') {
+      removeWaiting()
+      parts = upsertDataPart(parts, REMOTE_AGENT_DIFF_PART_TYPE, stringValue(event.payload.diffId) ?? event.eventId, event.payload)
+      continue
+    }
+    if (event.type === 'terminal') {
+      removeWaiting()
+      parts = upsertDataPart(parts, REMOTE_AGENT_TERMINAL_PART_TYPE, stringValue(event.payload.terminalId) ?? event.eventId, event.payload)
+      continue
+    }
+    if (event.type === 'artifact') {
+      removeWaiting()
+      const url = stringValue(event.payload.url)
+      const name = stringValue(event.payload.name) ?? 'Agent artifact'
+      const artifactId = stringValue(event.payload.uploadReference) ?? event.eventId
+      const filePart = {
+        type: 'file', url, fileName: name,
+        mediaType: stringValue(event.payload.mediaType) ?? 'application/octet-stream',
+        size: event.payload.size, sha256: event.payload.sha256, artifactId,
+      }
+      const index = parts.findIndex((part) => part.type === 'file' && part.artifactId === artifactId)
+      if (index < 0) parts = [...parts, filePart]
+      else {
+        parts = [...parts]
+        parts[index] = filePart
+      }
+      continue
+    }
     if (event.type === 'completed') {
       removeWaiting()
+      parts = closePendingRequestParts(parts, 'run_completed', event.occurredAt)
       const summary = stringValue(event.payload.summary)
       if (!content.trim() && summary) {
         content = summary
@@ -96,6 +154,7 @@ export function projectRemoteAgentEvents(input: {
     }
     if (event.type === 'failed') {
       removeWaiting()
+      parts = closePendingRequestParts(parts, 'run_failed', event.occurredAt)
       const message = stringValue(event.payload.message) ?? 'The connected agent failed.'
       terminalError = {
         code: stringValue(event.payload.code) ?? 'remote_agent_failed',
@@ -107,11 +166,16 @@ export function projectRemoteAgentEvents(input: {
       runStatus = 'failed'
       sessionStatus = 'failed'
       terminal = true
-      parts = upsertStatusPart(parts, input, 'failed')
+      const retryable = event.payload.retryable === true
+      parts = upsertStatusPart(parts, input, retryable ? 'recoverable' : 'failed', {
+        retryable,
+        retryClass: retryable ? retryClass(event.payload.code) : 'fatal',
+      })
       continue
     }
     if (event.type === 'cancelled') {
       removeWaiting()
+      parts = closePendingRequestParts(parts, 'cancelled', event.occurredAt)
       if (!content.trim()) content = stringValue(event.payload.reason) ?? 'Cancelled'
       parts = replaceTextPart(parts, content)
       runStatus = 'cancelled'
@@ -131,6 +195,16 @@ export function projectRemoteAgentEvents(input: {
     terminal,
     tokens,
   }
+}
+
+function closePendingRequestParts(parts: Array<Record<string, unknown>>, decision: string, resolvedAt: number) {
+  return parts.map((part) => {
+    const data = objectValue(part.data)
+    if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || data?.state !== 'pending') return part
+    return { ...part, data: { ...data, state: 'resolved', resolution: {
+      decision, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt,
+    } } }
+  })
 }
 
 function replaceTextPart(parts: Array<Record<string, unknown>>, text: string) {
@@ -172,6 +246,7 @@ function upsertStatusPart(
   parts: Array<Record<string, unknown>>,
   input: { environmentName: string; queueExpiresAt: number; runId: string },
   state: RemoteAgentStatusPart['data']['state'],
+  extra?: Pick<RemoteAgentStatusPart['data'], 'retryable' | 'retryClass'>,
 ) {
   const status: RemoteAgentStatusPart = {
     type: REMOTE_AGENT_STATUS_PART_TYPE,
@@ -180,9 +255,52 @@ function upsertStatusPart(
       queueExpiresAt: input.queueExpiresAt,
       runId: input.runId,
       state,
+      ...extra,
     },
   }
   return [...parts.filter((part) => part.type !== REMOTE_AGENT_STATUS_PART_TYPE), status]
+}
+
+function upsertRequestPart(parts: Array<Record<string, unknown>>, data: Record<string, unknown>) {
+  return upsertDataPart(parts, REMOTE_AGENT_REQUEST_PART_TYPE, String(data.requestKey), data)
+}
+
+function upsertDataPart(
+  parts: Array<Record<string, unknown>>,
+  type: string,
+  key: string,
+  data: Record<string, unknown>,
+) {
+  const part = { type, data: { ...data, key } }
+  const index = parts.findIndex((candidate) => candidate.type === type
+    && objectValue(candidate.data)?.key === key)
+  if (index < 0) return [...parts, part]
+  const next = [...parts]
+  next[index] = part
+  return next
+}
+
+export function resolveRemoteRequestPart(
+  parts: Array<Record<string, unknown>>,
+  requestKey: string,
+  resolution: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
+) {
+  return parts.map((part) => {
+    if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || objectValue(part.data)?.requestKey !== requestKey) return part
+    return { ...part, data: { ...objectValue(part.data), state: 'resolved', resolution } }
+  })
+}
+
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function retryClass(code: unknown): RemoteAgentStatusPart['data']['retryClass'] {
+  const normalized = String(code ?? '').toLowerCase()
+  if (normalized.includes('timeout') || normalized.includes('lease')) return 'timeout'
+  if (normalized.includes('offline') || normalized.includes('connection') || normalized.includes('host')) return 'host_offline'
+  if (normalized.includes('permission') || normalized.includes('approval')) return 'permission'
+  return 'transient'
 }
 
 function usageTokens(value: unknown) {

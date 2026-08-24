@@ -41,7 +41,19 @@ await acp.agent({ name: 'overlay-agent-host-test-fixture' })
       update: {
         sessionUpdate: 'tool_call', toolCallId: 'fixture-write', title: 'Write fixture file',
         status: permission.outcome.outcome === 'selected' ? 'completed' : 'failed',
+        content: [
+          { type: 'diff', path: '/workspace/fixture.txt', oldText: '', newText: 'fixture output\n' },
+          { type: 'terminal', terminalId: 'fixture-terminal' },
+        ],
       },
+    })
+    await client.notify(acp.methods.client.session.update, {
+      sessionId: params.sessionId,
+      update: { sessionUpdate: 'plan', entries: [{ content: 'Verify the fixture', status: 'completed', priority: 'high' }] },
+    })
+    await client.request(acp.methods.client.elicitation.create, {
+      sessionId: params.sessionId, mode: 'form', message: 'Choose the fixture label',
+      requestedSchema: { type: 'object', properties: { label: { type: 'string', title: 'Label' } }, required: ['label'] },
     })
     return { stopReason: 'end_turn' }
   })

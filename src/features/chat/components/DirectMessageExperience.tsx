@@ -1146,7 +1146,7 @@ export function DirectMessageExperience({
     renderAttachmentViewer,
   })
 
-  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry') {
+  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') {
     if (!activeWorkspaceId) return
     try {
       await overlayAppClient.conversations.controlRemoteQueue({
@@ -1158,6 +1158,21 @@ export function DirectMessageExperience({
       await loadMessages()
     } catch (value) {
       setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
+    }
+  }
+
+  async function resolveRemoteRequest(
+    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
+    decision: string,
+    response?: Record<string, unknown>,
+  ) {
+    if (!activeWorkspaceId) return
+    try {
+      await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
+        conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
+      await loadMessages()
+    } catch (value) {
+      setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
     }
   }
 
@@ -1219,6 +1234,7 @@ export function DirectMessageExperience({
         onOpenAttachmentPreview={openAttachmentPreview}
         onCopyPermalink={() => void copyMessagePermalink(message.id)}
         onControlRemoteQueue={(runId, action) => void controlRemoteQueue(runId, action)}
+        onResolveRemoteRequest={(request, decision, response) => void resolveRemoteRequest(request, decision, response)}
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
       />

@@ -30,6 +30,10 @@ export class FakeAgentAdapter implements AgentAdapter {
         await emit({ type: 'action', payload: { actionId: requestKey, title: `Approval: ${optionId}`, status: 'completed' } })
         await emit({ type: 'completed', payload: { summary: 'Fake approval resolved', usage: {} } })
       },
+      elicit: async (requestKey, action, content) => {
+        await emit({ type: 'action', payload: { actionId: requestKey, title: `Elicitation: ${action}`, status: 'completed', detail: JSON.stringify(content ?? {}) } })
+        await emit({ type: 'completed', payload: { summary: 'Fake elicitation resolved', usage: {} } })
+      },
       cancel: async (reason) => { stopped = true; await emit({ type: 'cancelled', payload: { ...(reason ? { reason } : {}) } }) },
       resume: async () => { stopped = false; await emit({ type: 'action', payload: { actionId: 'resume', title: 'Session resumed', status: 'completed' } }) },
       stop: async (reason) => { stopped = true; if (reason) approvals.set('stop-reason', reason) },

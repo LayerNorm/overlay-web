@@ -29,7 +29,7 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 4 are implemented. The connected-agent repository now includes command
+Phases 0 through 5 are implemented. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
@@ -92,6 +92,32 @@ granted working directory. The host ships data-only manifests for Codex
 another ACP target extends the manifest and conformance fixtures, not conversation orchestration.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
 nullable conversation-message edit-history column required by the shared transcript writer.
+
+Phase 5 completes the supervised-work contract. ACP permission requests and form elicitations
+become immutable, workspace-scoped request records and structured message parts. Resolution
+rechecks active human membership and room participation, accepts only an outstanding option or a
+schema-valid form response, and emits one idempotent response command; a host cannot resolve its
+own request. Room controls propagate cancellation to the harness and expose recovery as explicit
+`Resume` and `Start fresh` actions backed by the persisted remote session and original start
+payload. The agent principal remains the message/action actor while the summoning human remains
+the initiator and billing source.
+
+ACP plans, file diffs, terminal references/summaries, tool actions, and Markdown checkpoints are
+stored as structured parts on the existing assistant row. Artifact intents create five-minute,
+run/environment/workspace-scoped object-store uploads capped at 25 MiB. Completion verifies exact
+type and size, recomputes SHA-256, rejects EICAR and executable signatures, and makes only clean
+artifacts linkable through a participant-authorized short-lived download redirect. Artifact rows
+expire after 30 days and cleanup deletes the object before tombstoning metadata. PostgreSQL runs
+cleanup in its maintenance worker; Convex schedules an internal-secret BFF cleanup bridge because
+object-store credentials remain on the application host. Convex deployments therefore require
+`OVERLAY_BFF_URL` and the same `INTERNAL_API_SECRET` as the corresponding web deployment.
+
+Remote leases are extended only by accepted contiguous events. Convex supervises expired or
+disappeared hosts every minute; the PostgreSQL background worker performs the same bounded sweep.
+Both project a recoverable state, cancel outstanding commands, close pending requests, and settle
+or reconcile the original billing reservation exactly once. PostgreSQL migration 0067 adds
+request kinds and artifact metadata. The shared provider contract now covers artifact tenancy,
+validation state, retention cleanup, and idempotent tombstones.
 
 ## Trust boundaries and threat model
 
@@ -185,9 +211,10 @@ upgrade error. Additive optional fields are backward compatible, while semantic 
 field changes increment the version. WebSockets may optimize latency but durable HTTP polling
 and acknowledged cursors remain authoritative.
 
-Protocol version 1 transports `start`, `prompt`, approval response, `cancel`, `reconnect`, and
-`shutdown` commands and normalizes session start, text checkpoints, actions, approval requests,
-artifacts, completion, failure, and cancellation events. The HTTP client treats route URLs as
+Protocol version 1 transports `start`, `prompt`, permission and elicitation responses, `cancel`,
+`reconnect`, and `shutdown` commands and normalizes session start, text checkpoints, actions,
+permission/elicitation requests, plans, diffs, terminal summaries, validated artifacts,
+completion, failure, and cancellation events. The HTTP client treats route URLs as
 control-plane configuration; `/api/v1/agent-environments/**` is the canonical Phase 3 control
 plane. Credentials are bearer-scoped by that control plane and are never included in logs.
 

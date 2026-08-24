@@ -49,8 +49,16 @@ the idempotency store.
 agent to one approved environment, advertised ACP adapter, and granted working directory. A bound
 agent follows the ordinary `POST /api/v1/conversations/message` mention path; no second remote-chat
 endpoint or transcript exists. `POST /api/v1/conversations/run/remote` is the narrow browser
-control for an offline queued run's Cancel and Retry actions. Both controls are authenticated and
-workspace-scoped through `@overlay/api-client`.
+control for Cancel, Retry, Resume, and Start fresh. `POST /api/v1/conversations/run/remote/request`
+resolves a pending permission or structured elicitation only after rechecking the human's current
+workspace and room authority. `GET /api/v1/conversations/run/remote/artifacts/:artifactId`
+authorizes the current participant before redirecting to a short-lived object-store URL. Hosts
+create and complete scoped artifact uploads through the environment's `artifacts` subresource;
+only checksum-, type-, size-, malware-, tenancy-, and retention-validated objects may be projected
+into the transcript. These controls are authenticated and workspace-scoped through
+`@overlay/api-client`. The internal-secret-only
+`POST /api/v1/agent-environments/artifacts/cleanup` endpoint lets the Convex scheduler request
+object deletion from the BFF without moving object-store credentials into Convex.
 
 ## Cross-Surface Adoption
 

@@ -3,19 +3,22 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, max, or, sql } from 'drizzle-orm'
 import type {
-  AgentApprovalRequest, AgentBinding, AgentEnrollmentSession, AgentEnvironment,
+  AgentApprovalRequest, AgentArtifact, AgentBinding, AgentEnrollmentSession, AgentEnvironment,
   AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentRemoteSession,
   AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
 import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@overlay/agent-bridge-protocol'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
-  agentApprovalRequests, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
+  agentApprovalRequests, agentArtifacts, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
   agentEnvironmentProofChallenges, agentEnvironmentProofNonces, agentEnvironments,
   agentRemoteSessions, agentRunCommands, agentRuns, agentSandboxLeases, conversationEvents,
   conversationMessages, conversationParticipants, conversations, workspaceMemberships, workspacePrincipals,
 } from '@/server/database/postgres/schema'
-import { projectRemoteAgentEvents, waitingRemoteAgentParts } from '@/shared/agents/remote-agent-transcript'
+import {
+  projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts,
+} from '@/shared/agents/remote-agent-transcript'
+import { assertValidElicitationResponse } from '@/shared/agents/elicitation-schema'
 import type {
   ApplyRemoteEventsResult, ConnectedAgentCreateBinding, ConnectedAgentCreateEnvironment,
   ConnectedAgentCreateSession, ConnectedAgentEnqueueCommand, ConnectedAgentRepository,
@@ -534,6 +537,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           },
           queueExpiresAt: input.queueExpiresAt,
           environmentName: target.environment.name,
+          startPayload: input.startPayload,
         },
         createdAt: now,
         updatedAt: now,
@@ -572,8 +576,28 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
     })
   }
 
-  async controlQueuedRemoteAgentTurn(args: Parameters<ConnectedAgentRepository['controlQueuedRemoteAgentTurn']>[0]) {
+  async controlRemoteAgentTurn(args: Parameters<ConnectedAgentRepository['controlRemoteAgentTurn']>[0]) {
     return await this.db.transaction(async (tx) => {
+      const [actor] = await tx.select({ principalId: workspacePrincipals.id })
+        .from(workspacePrincipals)
+        .innerJoin(workspaceMemberships, and(
+          eq(workspaceMemberships.workspaceId, workspacePrincipals.workspaceId),
+          eq(workspaceMemberships.principalId, workspacePrincipals.id),
+        ))
+        .innerJoin(conversationParticipants, and(
+          eq(conversationParticipants.workspaceId, workspacePrincipals.workspaceId),
+          eq(conversationParticipants.principalId, workspacePrincipals.id),
+        ))
+        .where(and(
+          eq(workspacePrincipals.workspaceId, args.workspaceId),
+          eq(workspacePrincipals.userId, args.actorUserId),
+          eq(workspacePrincipals.type, 'human'),
+          isNull(workspacePrincipals.archivedAt),
+          eq(workspaceMemberships.status, 'active'),
+          eq(conversationParticipants.conversationId, args.conversationId),
+          eq(conversationParticipants.status, 'active'),
+        )).limit(1)
+      if (!actor) return { applied: false }
       const [row] = await tx.select({
         run: agentRuns,
         session: agentRemoteSessions,
@@ -584,19 +608,38 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         .where(and(
           eq(agentRuns.id, args.runId),
           eq(agentRuns.conversationId, args.conversationId),
-          eq(agentRuns.userId, args.actorUserId),
           eq(agentRuns.runner, 'remote'),
           eq(agentRemoteSessions.workspaceId, args.workspaceId),
         )).limit(1).for('update')
-      if (!row || row.run.status !== 'queued') return { applied: false }
+      if (!row) return { applied: false }
       const now = new Date(args.now)
       if (args.action === 'cancel') {
+        if (row.run.status === 'cancelled') return { applied: true, messageId: row.run.assistantMessageId }
+        if (row.run.status === 'completed') return { applied: false }
+        const [existingCancel] = await tx.select({ id: agentRunCommands.id }).from(agentRunCommands).where(and(
+          eq(agentRunCommands.runId, row.run.id), eq(agentRunCommands.type, 'cancel'),
+          inArray(agentRunCommands.status, ['pending', 'claimed']),
+        )).limit(1)
+        let commandId = existingCancel?.id
+        if (!commandId) {
+          const [cursor] = await tx.select({ value: max(agentRunCommands.sequence) }).from(agentRunCommands)
+            .where(eq(agentRunCommands.environmentId, row.session.environmentId))
+          commandId = `command_${randomUUID()}`
+          await tx.insert(agentRunCommands).values({
+            id: commandId, workspaceId: args.workspaceId, environmentId: row.session.environmentId,
+            runId: row.run.id, type: 'cancel', sequence: (cursor?.value ?? 0) + 1,
+            payload: { reason: 'Cancelled from Overlay' }, status: 'pending', createdAt: now, updatedAt: now,
+          })
+        }
         await tx.update(agentRuns).set({ status: 'cancelled', cancelledAt: now, updatedAt: now })
           .where(eq(agentRuns.id, row.run.id))
         await tx.update(agentRemoteSessions).set({ status: 'cancelled', endedAt: now, updatedAt: now })
           .where(eq(agentRemoteSessions.id, row.session.id))
         await tx.update(agentRunCommands).set({ status: 'cancelled', claimExpiresAt: null, updatedAt: now })
-          .where(and(eq(agentRunCommands.runId, row.run.id), inArray(agentRunCommands.status, ['pending', 'claimed'])))
+          .where(and(eq(agentRunCommands.runId, row.run.id), inArray(agentRunCommands.status, ['pending', 'claimed']), sql`${agentRunCommands.type} <> 'cancel'`))
+        await tx.update(agentApprovalRequests).set({ resolution: {
+          decision: 'cancelled', resolvedByPrincipalId: actor.principalId, resolvedAt: args.now,
+        } }).where(and(eq(agentApprovalRequests.runId, row.run.id), isNull(agentApprovalRequests.resolution)))
         await tx.update(conversationMessages).set({
           content: 'Cancelled',
           parts: [{ type: 'text', text: 'Cancelled' }, {
@@ -606,7 +649,16 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           status: 'completed',
           updatedAt: now,
         }).where(eq(conversationMessages.id, row.run.assistantMessageId))
-      } else {
+        await tx.insert(conversationEvents).values({
+          conversationId: row.run.conversationId, messageId: row.run.assistantMessageId,
+          type: 'message.completed', userId: row.run.userId, createdAt: now,
+        })
+        return {
+          applied: true, commandId, messageId: row.run.assistantMessageId,
+          terminal: terminalBilling(row.session.capabilitySnapshot, { input: 0, output: 0 }, 'cancelled'),
+        }
+      }
+      if (args.action === 'retry' && row.run.status === 'queued') {
         await tx.update(agentRuns).set({ leaseExpiresAt: new Date(args.queueExpiresAt), updatedAt: now })
           .where(eq(agentRuns.id, row.run.id))
         await tx.update(agentRunCommands).set({ status: 'pending', claimedAt: null, claimExpiresAt: null, updatedAt: now })
@@ -624,15 +676,52 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           status: 'generating',
           updatedAt: now,
         }).where(eq(conversationMessages.id, row.run.assistantMessageId))
+        await tx.insert(conversationEvents).values({
+          conversationId: row.run.conversationId, messageId: row.run.assistantMessageId,
+          type: 'message.delta', userId: row.run.userId, createdAt: now,
+        })
+        return { applied: true, messageId: row.run.assistantMessageId }
       }
+      if (!['failed', 'cancelled'].includes(row.run.status)) return { applied: false }
+      const snapshot = row.session.capabilitySnapshot as Record<string, unknown>
+      const storedStart = snapshot.startPayload && typeof snapshot.startPayload === 'object'
+        ? snapshot.startPayload as Record<string, unknown> : null
+      const remoteSessionId = row.session.remoteSessionId
+      const mode = args.action === 'start_fresh' ? 'start_fresh'
+        : args.action === 'resume' ? 'resume'
+          : remoteSessionId ? 'resume' : 'start_fresh'
+      if (mode === 'resume' && !remoteSessionId) return { applied: false }
+      if (mode === 'start_fresh' && !storedStart) return { applied: false }
+      const [cursor] = await tx.select({ value: max(agentRunCommands.sequence) }).from(agentRunCommands)
+        .where(eq(agentRunCommands.environmentId, row.session.environmentId))
+      const commandId = `command_${randomUUID()}`
+      await tx.insert(agentRunCommands).values({
+        id: commandId, workspaceId: args.workspaceId, environmentId: row.session.environmentId,
+        runId: row.run.id, type: mode === 'resume' ? 'reconnect' : 'start',
+        sequence: (cursor?.value ?? 0) + 1,
+        payload: mode === 'resume'
+          ? { remoteSessionId }
+          : { ...storedStart, sessionId: undefined, fresh: true },
+        status: 'pending', createdAt: now, updatedAt: now,
+      })
+      await tx.update(agentRuns).set({
+        status: 'queued', leaseExpiresAt: new Date(args.queueExpiresAt), failedAt: null,
+        cancelledAt: null, terminalError: null, updatedAt: now,
+        metrics: { ...(row.run.metrics ?? {}), workflowRetryCount: (row.run.metrics?.workflowRetryCount ?? 0) + 1 },
+      }).where(eq(agentRuns.id, row.run.id))
+      await tx.update(agentRemoteSessions).set({
+        status: 'recovering', endedAt: null,
+        capabilitySnapshot: { ...snapshot, queueExpiresAt: args.queueExpiresAt }, updatedAt: now,
+      }).where(eq(agentRemoteSessions.id, row.session.id))
+      await tx.update(conversationMessages).set({ status: 'generating', updatedAt: now })
+        .where(eq(conversationMessages.id, row.run.assistantMessageId))
       await tx.insert(conversationEvents).values({
         conversationId: row.run.conversationId,
         messageId: row.run.assistantMessageId,
-        type: args.action === 'cancel' ? 'message.completed' : 'message.delta',
-        userId: args.actorUserId,
+        type: 'message.delta', userId: row.run.userId,
         createdAt: now,
       })
-      return { applied: true, messageId: row.run.assistantMessageId }
+      return { applied: true, commandId, messageId: row.run.assistantMessageId }
     })
   }
 
@@ -698,8 +787,13 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       const candidates = await tx.select({ id: agentRunCommands.id }).from(agentRunCommands)
         .innerJoin(agentRuns, eq(agentRuns.id, agentRunCommands.runId)).where(and(
         eq(agentRunCommands.workspaceId, args.workspaceId), eq(agentRunCommands.environmentId, args.environmentId),
-        inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
-        or(isNull(agentRuns.leaseExpiresAt), gt(agentRuns.leaseExpiresAt, new Date(args.now))),
+        or(
+          and(
+            inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+            or(isNull(agentRuns.leaseExpiresAt), gt(agentRuns.leaseExpiresAt, new Date(args.now))),
+          ),
+          eq(agentRunCommands.type, 'cancel'),
+        ),
         or(eq(agentRunCommands.status, 'pending'), and(
           eq(agentRunCommands.status, 'claimed'), lte(agentRunCommands.claimExpiresAt, new Date(args.now)),
         )),
@@ -766,6 +860,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         runId: input.runId,
         remoteSessionId: input.remoteSessionId,
         requestKey: input.requestKey,
+        kind: input.kind,
         prompt: input.prompt,
         options: input.options,
         payload: input.payload,
@@ -792,6 +887,218 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       const [row] = await tx.update(agentApprovalRequests).set({ resolution: args.resolution })
         .where(eq(agentApprovalRequests.id, args.approvalId)).returning()
       return approval(row)
+    })
+  }
+
+  async resolveRemoteRequest(args: Parameters<ConnectedAgentRepository['resolveRemoteRequest']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [actor] = await tx.select({ principalId: workspacePrincipals.id })
+        .from(workspacePrincipals)
+        .innerJoin(workspaceMemberships, and(
+          eq(workspaceMemberships.workspaceId, workspacePrincipals.workspaceId),
+          eq(workspaceMemberships.principalId, workspacePrincipals.id),
+        ))
+        .innerJoin(conversationParticipants, and(
+          eq(conversationParticipants.workspaceId, workspacePrincipals.workspaceId),
+          eq(conversationParticipants.principalId, workspacePrincipals.id),
+        ))
+        .where(and(
+          eq(workspacePrincipals.workspaceId, args.workspaceId),
+          eq(workspacePrincipals.userId, args.actorUserId),
+          eq(workspacePrincipals.type, 'human'),
+          isNull(workspacePrincipals.archivedAt),
+          eq(workspaceMemberships.status, 'active'),
+          eq(conversationParticipants.conversationId, args.conversationId),
+          eq(conversationParticipants.status, 'active'),
+        )).limit(1)
+      if (!actor) return { applied: false }
+      const [row] = await tx.select({
+        request: agentApprovalRequests,
+        run: agentRuns,
+        session: agentRemoteSessions,
+        message: conversationMessages,
+      }).from(agentApprovalRequests)
+        .innerJoin(agentRuns, eq(agentRuns.id, agentApprovalRequests.runId))
+        .innerJoin(agentRemoteSessions, eq(agentRemoteSessions.id, agentApprovalRequests.remoteSessionId))
+        .innerJoin(conversationMessages, eq(conversationMessages.id, agentRuns.assistantMessageId))
+        .where(and(
+          eq(agentApprovalRequests.workspaceId, args.workspaceId),
+          eq(agentApprovalRequests.requestKey, args.requestKey),
+          eq(agentRuns.id, args.runId),
+          eq(agentRuns.conversationId, args.conversationId),
+        )).limit(1).for('update')
+      if (!row || !['waiting_for_approval', 'running'].includes(row.run.status)) return { applied: false }
+      if (row.request.resolution) {
+        if (row.request.resolution.decision !== args.decision
+          || !sameJson(row.request.resolution.response ?? null, args.response ?? null)) {
+          throw new Error('AGENT_REMOTE_REQUEST_ALREADY_RESOLVED')
+        }
+        const [existing] = await tx.select({ id: agentRunCommands.id }).from(agentRunCommands).where(and(
+          eq(agentRunCommands.runId, row.run.id),
+          sql`${agentRunCommands.payload}->>'requestKey' = ${args.requestKey}`,
+        )).limit(1)
+        return { applied: true, commandId: existing?.id, messageId: row.message.id }
+      }
+      const kind = row.request.kind === 'elicitation' ? 'elicitation' : 'permission'
+      if (kind === 'permission' && !row.request.options.includes(args.decision)) throw new Error('AGENT_APPROVAL_OPTION_INVALID')
+      if (kind === 'elicitation' && !['accept', 'decline', 'cancel'].includes(args.decision)) throw new Error('AGENT_ELICITATION_ACTION_INVALID')
+      if (kind === 'elicitation' && args.decision === 'accept') assertValidElicitationResponse(row.request.payload, args.response)
+      const resolution = {
+        decision: args.decision,
+        ...(args.response ? { response: args.response } : {}),
+        resolvedByPrincipalId: actor.principalId,
+        resolvedAt: args.now,
+      }
+      await tx.update(agentApprovalRequests).set({ resolution }).where(eq(agentApprovalRequests.id, row.request.id))
+      const [cursor] = await tx.select({ value: max(agentRunCommands.sequence) }).from(agentRunCommands)
+        .where(eq(agentRunCommands.environmentId, row.session.environmentId))
+      const commandId = `command_${randomUUID()}`
+      await tx.insert(agentRunCommands).values({
+        id: commandId, workspaceId: args.workspaceId, environmentId: row.session.environmentId,
+        runId: row.run.id, type: kind === 'permission' ? 'approval_response' : 'elicitation_response',
+        sequence: (cursor?.value ?? 0) + 1,
+        payload: kind === 'permission'
+          ? { requestKey: args.requestKey, optionId: args.decision }
+          : { requestKey: args.requestKey, action: args.decision, ...(args.response ? { content: args.response } : {}) },
+        status: 'pending', createdAt: new Date(args.now), updatedAt: new Date(args.now),
+      })
+      await tx.update(agentRuns).set({ status: 'running', approval: null, updatedAt: new Date(args.now) })
+        .where(eq(agentRuns.id, row.run.id))
+      await tx.update(agentRemoteSessions).set({ status: 'running', updatedAt: new Date(args.now) })
+        .where(eq(agentRemoteSessions.id, row.session.id))
+      await tx.update(conversationMessages).set({
+        parts: resolveRemoteRequestPart(
+          Array.isArray(row.message.parts) ? row.message.parts as Array<Record<string, unknown>> : [],
+          args.requestKey,
+          resolution,
+        ),
+        status: 'generating', updatedAt: new Date(args.now),
+      }).where(eq(conversationMessages.id, row.message.id))
+      await tx.insert(conversationEvents).values({
+        conversationId: row.run.conversationId, messageId: row.message.id,
+        type: 'message.delta', userId: row.run.userId, createdAt: new Date(args.now),
+      })
+      return { applied: true, commandId, messageId: row.message.id }
+    })
+  }
+
+  async createArtifact(input: AgentArtifact) {
+    const [sessionRow] = await this.db.select({ id: agentRemoteSessions.id }).from(agentRemoteSessions).where(and(
+      eq(agentRemoteSessions.id, input.remoteSessionId), eq(agentRemoteSessions.workspaceId, input.workspaceId),
+      eq(agentRemoteSessions.environmentId, input.environmentId), eq(agentRemoteSessions.runId, input.runId),
+    ))
+    if (!sessionRow) throw new Error('AGENT_REMOTE_SESSION_NOT_FOUND')
+    const [row] = await this.db.insert(agentArtifacts).values({
+      id: input.id, workspaceId: input.workspaceId, environmentId: input.environmentId,
+      runId: input.runId, remoteSessionId: input.remoteSessionId, name: input.name,
+      mediaType: input.mediaType, size: input.size, sha256: input.sha256, objectKey: input.objectKey,
+      status: input.status, scanResult: input.scanResult, expiresAt: new Date(input.expiresAt),
+      linkedAt: date(input.linkedAt), deletedAt: date(input.deletedAt),
+      createdAt: new Date(input.createdAt), updatedAt: new Date(input.updatedAt),
+    }).returning()
+    return artifact(row)
+  }
+
+  async getArtifact(args: Parameters<ConnectedAgentRepository['getArtifact']>[0]) {
+    const [row] = await this.db.select().from(agentArtifacts).where(and(
+      eq(agentArtifacts.id, args.artifactId), eq(agentArtifacts.workspaceId, args.workspaceId),
+      eq(agentArtifacts.environmentId, args.environmentId),
+    ))
+    return row ? artifact(row) : null
+  }
+
+  async getArtifactForDownload(args: Parameters<ConnectedAgentRepository['getArtifactForDownload']>[0]) {
+    const [row] = await this.db.select({ artifact: agentArtifacts }).from(agentArtifacts)
+      .innerJoin(agentRuns, eq(agentRuns.id, agentArtifacts.runId))
+      .innerJoin(workspacePrincipals, and(
+        eq(workspacePrincipals.workspaceId, agentArtifacts.workspaceId),
+        eq(workspacePrincipals.userId, args.actorUserId),
+        eq(workspacePrincipals.type, 'human'),
+      ))
+      .innerJoin(workspaceMemberships, and(
+        eq(workspaceMemberships.workspaceId, agentArtifacts.workspaceId),
+        eq(workspaceMemberships.principalId, workspacePrincipals.id),
+        eq(workspaceMemberships.status, 'active'),
+      ))
+      .innerJoin(conversationParticipants, and(
+        eq(conversationParticipants.conversationId, agentRuns.conversationId),
+        eq(conversationParticipants.principalId, workspacePrincipals.id),
+        eq(conversationParticipants.status, 'active'),
+      ))
+      .where(and(
+        eq(agentArtifacts.id, args.artifactId), eq(agentArtifacts.workspaceId, args.workspaceId),
+        inArray(agentArtifacts.status, ['clean', 'linked']), isNull(agentArtifacts.deletedAt),
+        isNull(workspacePrincipals.archivedAt),
+      )).limit(1)
+    return row ? artifact(row.artifact) : null
+  }
+
+  async finalizeArtifact(args: Parameters<ConnectedAgentRepository['finalizeArtifact']>[0]) {
+    const [row] = await this.db.update(agentArtifacts).set({
+      status: args.status, scanResult: args.scanResult,
+      ...(args.expiresAt === undefined ? {} : { expiresAt: new Date(args.expiresAt) }),
+      updatedAt: new Date(args.now),
+    }).where(and(
+      eq(agentArtifacts.id, args.artifactId), eq(agentArtifacts.workspaceId, args.workspaceId),
+      eq(agentArtifacts.environmentId, args.environmentId), inArray(agentArtifacts.status, ['pending_upload', 'scanning']),
+    )).returning()
+    return row ? artifact(row) : null
+  }
+
+  async listArtifactsForCleanup(args: Parameters<ConnectedAgentRepository['listArtifactsForCleanup']>[0]) {
+    const rows = await this.db.select().from(agentArtifacts).where(and(
+      lte(agentArtifacts.expiresAt, new Date(args.now)),
+      inArray(agentArtifacts.status, ['pending_upload', 'clean', 'rejected', 'linked']),
+    )).orderBy(asc(agentArtifacts.expiresAt)).limit(args.limit)
+    return rows.map(artifact)
+  }
+
+  async markArtifactDeleted(args: Parameters<ConnectedAgentRepository['markArtifactDeleted']>[0]) {
+    const rows = await this.db.update(agentArtifacts).set({
+      status: 'deleted', deletedAt: new Date(args.now), updatedAt: new Date(args.now),
+    }).where(and(eq(agentArtifacts.id, args.artifactId), sql`${agentArtifacts.status} <> 'deleted'`))
+      .returning({ id: agentArtifacts.id })
+    return rows.length === 1
+  }
+
+  async sweepRemoteRuns(args: Parameters<ConnectedAgentRepository['sweepRemoteRuns']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const rows = await tx.select({ run: agentRuns, session: agentRemoteSessions, environment: agentEnvironments, message: conversationMessages })
+        .from(agentRuns)
+        .innerJoin(agentRemoteSessions, eq(agentRemoteSessions.runId, agentRuns.id))
+        .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentRemoteSessions.environmentId))
+        .innerJoin(conversationMessages, eq(conversationMessages.id, agentRuns.assistantMessageId))
+        .where(and(
+          eq(agentRuns.runner, 'remote'), inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+          or(lte(agentRuns.leaseExpiresAt, new Date(args.now)), lte(agentEnvironments.lastSeenAt, new Date(args.hostOfflineBefore))),
+        )).limit(args.limit).for('update')
+      const settlements = []
+      for (const row of rows) {
+        const offline = (row.environment.lastSeenAt?.getTime() ?? 0) <= args.hostOfflineBefore
+        const code = offline ? 'remote_host_offline' : 'remote_run_timeout'
+        const message = offline ? 'The connected environment disappeared.' : 'The connected agent run timed out.'
+        const now = new Date(args.now)
+        await tx.update(agentRuns).set({ status: 'failed', failedAt: now, terminalError: { code, message, retryable: true }, updatedAt: now })
+          .where(eq(agentRuns.id, row.run.id))
+        await tx.update(agentRemoteSessions).set({ status: 'failed', endedAt: now, updatedAt: now })
+          .where(eq(agentRemoteSessions.id, row.session.id))
+        await tx.update(conversationMessages).set({
+          content: row.message.content || message,
+          parts: recoveryParts(row.message.parts, row.run.id, row.environment.name, code, message, args.now),
+          status: 'error', updatedAt: now,
+        }).where(eq(conversationMessages.id, row.message.id))
+        await tx.update(agentRunCommands).set({ status: 'cancelled', claimExpiresAt: null, updatedAt: now })
+          .where(and(eq(agentRunCommands.runId, row.run.id), inArray(agentRunCommands.status, ['pending', 'claimed'])))
+        await tx.update(agentApprovalRequests).set({ resolution: {
+          decision: code, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt: args.now,
+        } }).where(and(eq(agentApprovalRequests.runId, row.run.id), isNull(agentApprovalRequests.resolution)))
+        await tx.insert(conversationEvents).values({
+          conversationId: row.run.conversationId, messageId: row.message.id,
+          type: 'message.failed', userId: row.run.userId, createdAt: now,
+        })
+        settlements.push(terminalBilling(row.session.capabilitySnapshot, row.message.tokens, 'timeout'))
+      }
+      return { expiredRunIds: rows.map((row) => row.run.id), settlements }
     })
   }
 
@@ -861,7 +1168,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         acknowledgedSequence: current.eventCursor,
         duplicate: true,
         ...(['completed', 'failed', 'cancelled'].includes(runRow.status)
-          ? { terminal: terminalBilling(current.capabilitySnapshot, messageRow.tokens) }
+          ? { terminal: terminalBilling(current.capabilitySnapshot, messageRow.tokens, terminalOutcome(runRow.status)) }
           : {}),
       })
       if (args.events.length === 0) return duplicateResult()
@@ -883,13 +1190,59 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       }
       const expected = current.eventCursor + 1
       if (first !== expected) return { accepted: false, expectedSequence: expected }
-      if (['completed', 'failed', 'cancelled'].includes(runRow.status)) throw new Error('AGENT_RUN_TERMINAL')
+      if (['completed', 'failed', 'cancelled'].includes(runRow.status)) {
+        if (!isCompatibleTerminalAcknowledgement(runRow.status, args.events)) throw new Error('AGENT_RUN_TERMINAL')
+        await tx.update(agentRemoteSessions).set({ eventCursor: sequences.at(-1)!, updatedAt: new Date(args.now) })
+          .where(eq(agentRemoteSessions.id, current.id))
+        return { accepted: true, acknowledgedSequence: sequences.at(-1)!, duplicate: false,
+          terminal: terminalBilling(current.capabilitySnapshot, messageRow.tokens, terminalOutcome(runRow.status)) }
+      }
 
       const snapshot = current.capabilitySnapshot as Record<string, unknown>
+      const normalizedEvents: typeof args.events = []
+      for (const event of args.events) {
+        if (event.type === 'approval_requested' || event.type === 'elicitation_requested') {
+          const requestKey = typeof event.payload.requestKey === 'string' ? event.payload.requestKey : ''
+          if (!requestKey) throw new Error('AGENT_REMOTE_REQUEST_INVALID')
+          const options = event.type === 'approval_requested' && Array.isArray(event.payload.options)
+            ? event.payload.options.map((option) => option && typeof option === 'object'
+              ? String((option as Record<string, unknown>).id ?? '') : '').filter(Boolean)
+            : ['accept', 'decline', 'cancel']
+          if (options.length === 0) throw new Error('AGENT_REMOTE_REQUEST_INVALID')
+          await tx.insert(agentApprovalRequests).values({
+            id: `approval_${randomUUID()}`, workspaceId: args.workspaceId, runId: runRow.id,
+            remoteSessionId: current.id, requestKey,
+            kind: event.type === 'approval_requested' ? 'permission' : 'elicitation',
+            prompt: typeof event.payload.prompt === 'string' ? event.payload.prompt : 'Agent request',
+            options, payload: event.payload, requestedAt: new Date(event.occurredAt),
+          }).onConflictDoNothing()
+        }
+        if (event.type === 'artifact') {
+          const reference = typeof event.payload.uploadReference === 'string' ? event.payload.uploadReference : ''
+          const [artifactRow] = await tx.select().from(agentArtifacts).where(and(
+            eq(agentArtifacts.id, reference), eq(agentArtifacts.workspaceId, args.workspaceId),
+            eq(agentArtifacts.environmentId, args.environmentId), eq(agentArtifacts.runId, runRow.id),
+            eq(agentArtifacts.remoteSessionId, current.id), inArray(agentArtifacts.status, ['clean', 'linked']),
+          )).limit(1).for('update')
+          if (!artifactRow || artifactRow.name !== event.payload.name || artifactRow.mediaType !== event.payload.mediaType
+            || artifactRow.size !== event.payload.size || artifactRow.sha256 !== event.payload.sha256) {
+            throw new Error('AGENT_ARTIFACT_NOT_VALIDATED')
+          }
+          if (artifactRow.status !== 'linked') {
+            await tx.update(agentArtifacts).set({ status: 'linked', linkedAt: new Date(args.now), updatedAt: new Date(args.now) })
+              .where(eq(agentArtifacts.id, artifactRow.id))
+          }
+          normalizedEvents.push({ ...event, payload: {
+            ...event.payload, url: `/api/v1/conversations/run/remote/artifacts/${artifactRow.id}`,
+          } })
+          continue
+        }
+        normalizedEvents.push(event)
+      }
       const projection = projectRemoteAgentEvents({
         content: messageRow.content,
         parts: Array.isArray(messageRow.parts) ? messageRow.parts as Array<Record<string, unknown>> : [],
-        events: args.events,
+        events: normalizedEvents,
         environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : 'connected environment',
         queueExpiresAt: typeof snapshot.queueExpiresAt === 'number' ? snapshot.queueExpiresAt : args.now,
         runId: runRow.id,
@@ -911,6 +1264,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         ...(projection.runStatus === 'failed' ? { failedAt: now, terminalError: projection.terminalError } : {}),
         ...(projection.runStatus === 'cancelled' ? { cancelledAt: now } : {}),
         ...(projection.terminal ? { metrics: { ...(runRow.metrics ?? {}), inputTokens: projection.tokens.input, outputTokens: projection.tokens.output } } : {}),
+        ...(!projection.terminal ? { leaseExpiresAt: new Date(args.now + REMOTE_RUN_LEASE_MS) } : {}),
         updatedAt: now,
       }).where(eq(agentRuns.id, runRow.id))
       await tx.update(conversationMessages).set({
@@ -932,6 +1286,10 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         createdAt: now,
       })
       if (projection.terminal) {
+        await tx.update(agentApprovalRequests).set({ resolution: {
+          decision: projection.runStatus === 'cancelled' ? 'cancelled' : projection.runStatus === 'failed' ? 'run_failed' : 'run_completed',
+          resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt: args.now,
+        } }).where(and(eq(agentApprovalRequests.runId, runRow.id), isNull(agentApprovalRequests.resolution)))
         await tx.update(agentRunCommands).set({
           status: 'acknowledged',
           acknowledgedAt: sql`COALESCE(${agentRunCommands.acknowledgedAt}, ${now})`,
@@ -943,7 +1301,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         accepted: true,
         acknowledgedSequence: sequences.at(-1)!,
         duplicate: false,
-        ...(projection.terminal ? { terminal: terminalBilling(current.capabilitySnapshot, projection.tokens) } : {}),
+        ...(projection.terminal ? { terminal: terminalBilling(current.capabilitySnapshot, projection.tokens, terminalOutcome(projection.runStatus)) } : {}),
       }
     })
   }
@@ -993,6 +1351,7 @@ type BindingRow = typeof agentBindings.$inferSelect
 type SessionRow = typeof agentRemoteSessions.$inferSelect
 type CommandRow = typeof agentRunCommands.$inferSelect
 type ApprovalRow = typeof agentApprovalRequests.$inferSelect
+type ArtifactRow = typeof agentArtifacts.$inferSelect
 type SandboxLeaseRow = typeof agentSandboxLeases.$inferSelect
 type EnrollmentRow = typeof agentEnrollmentSessions.$inferSelect
 type ProofChallengeRow = typeof agentEnvironmentProofChallenges.$inferSelect
@@ -1003,7 +1362,8 @@ function environment(row: EnvironmentRow): AgentEnvironment { return { ...row, k
 function binding(row: BindingRow): AgentBinding { return { ...row, protocolAdapter: row.protocolAdapter as AgentBinding['protocolAdapter'], createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function session(row: SessionRow): AgentRemoteSession { return { ...row, status: row.status as AgentRemoteSession['status'], remoteSessionId: row.remoteSessionId ?? undefined, startedAt: ms(row.startedAt), endedAt: ms(row.endedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function command(row: CommandRow): AgentRunCommand { return { ...row, type: row.type as AgentRunCommand['type'], status: row.status as AgentRunCommand['status'], claimedAt: ms(row.claimedAt), claimExpiresAt: ms(row.claimExpiresAt), acknowledgedAt: ms(row.acknowledgedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
-function approval(row: ApprovalRow): AgentApprovalRequest { return { ...row, requestedAt: row.requestedAt.getTime(), resolution: row.resolution ?? undefined } }
+function approval(row: ApprovalRow): AgentApprovalRequest { return { ...row, kind: row.kind === 'elicitation' ? 'elicitation' : 'permission', requestedAt: row.requestedAt.getTime(), resolution: row.resolution ?? undefined } }
+function artifact(row: ArtifactRow): AgentArtifact { return { ...row, status: row.status as AgentArtifact['status'], scanResult: row.scanResult ?? undefined, expiresAt: row.expiresAt.getTime(), linkedAt: ms(row.linkedAt), deletedAt: ms(row.deletedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function sandboxLease(row: SandboxLeaseRow): AgentSandboxLease { return { ...row, status: row.status as AgentSandboxLease['status'], providerReference: row.providerReference ?? undefined, runId: row.runId ?? undefined, reservationId: row.reservationId ?? undefined, reservedUntil: row.reservedUntil.getTime(), runtimeStartedAt: ms(row.runtimeStartedAt), runtimeEndedAt: ms(row.runtimeEndedAt), cleanupAfter: ms(row.cleanupAfter), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function sameResolution(
   left: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
@@ -1015,7 +1375,14 @@ function credential(row: CredentialRow): AgentEnvironmentCredential { return { .
 function credentialValues(value: AgentEnvironmentCredential): typeof agentEnvironmentCredentials.$inferInsert { return { id: value.id, workspaceId: value.workspaceId, environmentId: value.environmentId, tokenHash: value.tokenHash, audience: value.audience, methods: value.methods, tokenNonce: value.tokenNonce, expiresAt: new Date(value.expiresAt), revokedAt: date(value.revokedAt), createdAt: new Date(value.createdAt) } }
 function sameMethods(left: string[], right: string[]) { return left.length === right.length && left.every((method) => right.includes(method)) }
 function jsonByteLength(value: unknown) { return new TextEncoder().encode(JSON.stringify(value)).byteLength }
-function terminalBilling(snapshotValue: unknown, tokensValue: unknown) {
+function sameJson(left: unknown, right: unknown) { return JSON.stringify(sortJson(left)) === JSON.stringify(sortJson(right)) }
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => [key, sortJson(item)]))
+}
+function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 'completed' | 'failed' | 'cancelled' | 'timeout') {
   const snapshot = snapshotValue && typeof snapshotValue === 'object'
     ? snapshotValue as Record<string, unknown> : {}
   const billing = snapshot.billing && typeof snapshot.billing === 'object'
@@ -1027,8 +1394,34 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown) {
     inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
     modelId: typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
     operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
+    outcome,
     outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
     reservationId: typeof billing.reservationId === 'string' ? billing.reservationId : null,
     userId: typeof billing.userId === 'string' ? billing.userId : '',
   }
+}
+function terminalOutcome(status: string): 'completed' | 'failed' | 'cancelled' {
+  return status === 'completed' ? 'completed' : status === 'cancelled' ? 'cancelled' : 'failed'
+}
+function isCompatibleTerminalAcknowledgement(status: string, events: Array<{ type: string }>) {
+  const expected = status === 'cancelled' ? 'cancelled' : status === 'completed' ? 'completed' : 'failed'
+  return events.every((event) => event.type === expected)
+}
+
+function recoveryParts(value: unknown, runId: string, environmentName: string, code: string, message: string, resolvedAt: number) {
+  const parts = Array.isArray(value) ? value as Array<Record<string, unknown>> : []
+  return [
+    ...parts.filter((part) => part.type !== 'data-remote-agent-status').map((part) => {
+      const data = part.data && typeof part.data === 'object' ? part.data as Record<string, unknown> : null
+      return part.type === 'data-remote-agent-request' && data?.state === 'pending'
+        ? { ...part, data: { ...data, state: 'resolved', resolution: {
+          decision: code, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt,
+        } } }
+        : part
+    }),
+    { type: 'data-remote-agent-status', data: {
+      runId, environmentName, queueExpiresAt: 0, state: 'recoverable', retryable: true,
+      retryClass: code.includes('offline') ? 'host_offline' : 'timeout', message,
+    } },
+  ]
 }

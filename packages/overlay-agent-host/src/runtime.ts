@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { platform, release } from 'node:os'
 import {
   eventBatchSchema,
@@ -115,6 +115,21 @@ export class AgentHostRuntime {
     await this.acknowledge(command, true)
   }
 
+  async uploadArtifact(runId: string, input: { name: string; mediaType: string; bytes: Uint8Array }): Promise<string> {
+    const controlPlane = this.options.controlPlane
+    if (!controlPlane.createArtifactUpload || !controlPlane.uploadArtifactBytes || !controlPlane.completeArtifactUpload) {
+      throw new Error('control plane does not support artifact uploads')
+    }
+    const sha256 = createHash('sha256').update(input.bytes).digest('hex')
+    const upload = await controlPlane.createArtifactUpload({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
+      runId, name: input.name, mediaType: input.mediaType, size: input.bytes.byteLength, sha256 })
+    await controlPlane.uploadArtifactBytes(upload, input.bytes)
+    await controlPlane.completeArtifactUpload(upload.artifactId)
+    await this.emit(runId, { type: 'artifact', payload: { name: input.name, mediaType: input.mediaType,
+      size: input.bytes.byteLength, sha256, uploadReference: upload.uploadReference } })
+    return upload.artifactId
+  }
+
   async flushOutbox(): Promise<void> {
     if (this.flushing) return this.flushing
     this.flushing = this.flushOutboxInternal().finally(() => { this.flushing = undefined })
@@ -151,7 +166,11 @@ export class AgentHostRuntime {
 
   private async dispatch(command: AgentHostCommand): Promise<void> {
     if (command.type === 'start') {
-      if (this.sessions.has(command.runId)) return
+      if (command.payload.fresh) {
+        await this.sessions.get(command.runId)?.stop('Starting a fresh session')
+        this.sessions.delete(command.runId)
+        this.options.state.deleteSession(command.runId)
+      } else if (this.sessions.has(command.runId)) return
       const adapter = this.requireAdapter(command.payload.adapterId)
       const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
       const session = await adapter.start({
@@ -177,6 +196,7 @@ export class AgentHostRuntime {
     const session = await this.requireSession(command.runId, command.type === 'reconnect' ? command.payload.remoteSessionId : undefined)
     if (command.type === 'prompt') await session.prompt(command.payload.prompt)
     else if (command.type === 'approval_response') await session.approve(command.payload.requestKey, command.payload.optionId)
+    else if (command.type === 'elicitation_response') await session.elicit(command.payload.requestKey, command.payload.action, command.payload.content)
     else if (command.type === 'cancel') await session.cancel(command.payload.reason)
     else if (command.type === 'reconnect') await session.resume()
   }

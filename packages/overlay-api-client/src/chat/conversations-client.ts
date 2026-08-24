@@ -76,7 +76,7 @@ export class ConversationsClient {
     workspaceId: string
     conversationId: string
     runId: string
-    action: 'cancel' | 'retry'
+    action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }, init?: RequestInit) {
     const headers = new Headers(init?.headers)
     headers.set('x-overlay-workspace-id', input.workspaceId)
@@ -87,6 +87,24 @@ export class ConversationsClient {
         runId: input.runId,
         action: input.action,
       }, { ...init, headers, method: 'POST' }),
+    )
+  }
+
+  resolveRemoteRequest(input: {
+    workspaceId: string
+    conversationId: string
+    runId: string
+    requestKey: string
+    decision: string
+    response?: Record<string, unknown>
+  }, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    headers.set('x-overlay-workspace-id', input.workspaceId)
+    return this.http.json<{ applied: boolean; messageId?: string; commandId?: string }>(
+      '/api/v1/conversations/run/remote/request',
+      this.http.jsonRequest({ conversationId: input.conversationId, runId: input.runId,
+        requestKey: input.requestKey, decision: input.decision, response: input.response },
+      { ...init, headers, method: 'POST' }),
     )
   }
 

@@ -84,6 +84,7 @@ export const environmentCredentialResponseSchema = z.object({
     'agent:commands:poll',
     'agent:commands:ack',
     'agent:events:write',
+    'agent:artifacts:write',
     'agent:credentials:refresh',
   ])).min(1),
   token: z.string().trim().min(32).max(512),
@@ -141,7 +142,7 @@ const sessionCommand = {
 export const agentHostCommandSchema = z.discriminatedUnion('type', [
   commandBase.extend({
     type: z.literal('start'),
-    payload: z.object({ ...sessionCommand, prompt: z.string(), sessionId: identifier.optional(), metadata: jsonObject.default({}) }).strict(),
+    payload: z.object({ ...sessionCommand, prompt: z.string(), sessionId: identifier.optional(), fresh: z.boolean().optional(), metadata: jsonObject.default({}) }).strict(),
   }).strict(),
   commandBase.extend({
     type: z.literal('prompt'),
@@ -150,6 +151,10 @@ export const agentHostCommandSchema = z.discriminatedUnion('type', [
   commandBase.extend({
     type: z.literal('approval_response'),
     payload: z.object({ requestKey: identifier, optionId: identifier }).strict(),
+  }).strict(),
+  commandBase.extend({
+    type: z.literal('elicitation_response'),
+    payload: z.object({ requestKey: identifier, action: z.enum(['accept', 'decline', 'cancel']), content: jsonObject.optional() }).strict(),
   }).strict(),
   commandBase.extend({ type: z.literal('cancel'), payload: z.object({ reason: z.string().max(2_000).optional() }).strict() }).strict(),
   commandBase.extend({ type: z.literal('reconnect'), payload: z.object({ remoteSessionId: identifier }).strict() }).strict(),
@@ -193,12 +198,41 @@ export const agentHostEventSchema = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('action'), payload: z.object({ actionId: identifier, title: z.string().max(2_000), status: z.enum(['started', 'updated', 'completed', 'failed']), detail: z.string().max(20_000).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('approval_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), options: z.array(z.object({ id: identifier, label: z.string().max(500) }).strict()).min(1).max(20), context: jsonObject.default({}) }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('elicitation_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), requestedSchema: jsonObject, context: jsonObject.default({}) }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('plan'), payload: z.object({ entries: z.array(z.object({ id: identifier, title: z.string().max(2_000), status: z.enum(['pending', 'in_progress', 'completed', 'failed']) }).strict()).max(100) }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('diff'), payload: z.object({ diffId: identifier, title: z.string().max(2_000), patch: z.string().max(200_000), language: z.string().max(100).optional() }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('terminal'), payload: z.object({ terminalId: identifier, title: z.string().max(2_000), summary: z.string().max(20_000), exitCode: z.number().int().optional(), status: z.enum(['running', 'completed', 'failed']) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('artifact'), payload: z.object({ name: z.string().min(1).max(500), mediaType: z.string().min(1).max(200), size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/), uploadReference: identifier }).strict() }).strict(),
   eventBase.extend({ type: z.literal('completed'), payload: z.object({ summary: z.string().max(20_000).optional(), usage: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('failed'), payload: z.object({ code: identifier, message: z.string().max(20_000), retryable: z.boolean() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('cancelled'), payload: z.object({ reason: z.string().max(2_000).optional() }).strict() }).strict(),
 ])
 export type AgentHostEvent = z.infer<typeof agentHostEventSchema>
+
+export const artifactUploadRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  runId: identifier,
+  name: z.string().trim().min(1).max(500),
+  mediaType: z.string().trim().min(1).max(200),
+  size: z.number().int().positive().max(25 * 1024 * 1024),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict()
+export type ArtifactUploadRequest = z.infer<typeof artifactUploadRequestSchema>
+
+export const artifactUploadResponseSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  artifactId: identifier,
+  uploadReference: identifier,
+  uploadUrl: z.string().url(),
+  headers: z.record(z.string(), z.string()).default({}),
+  expiresAt: z.number().int().positive(),
+}).strict()
+export type ArtifactUploadResponse = z.infer<typeof artifactUploadResponseSchema>
+
+export const artifactCompleteRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  uploadReference: identifier,
+}).strict()
 
 export const eventBatchSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),

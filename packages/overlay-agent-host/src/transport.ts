@@ -10,6 +10,9 @@ import {
   type EventAcknowledgement,
   type EventBatch,
   type HostCapabilities,
+  type ArtifactUploadRequest,
+  type ArtifactUploadResponse,
+  artifactUploadResponseSchema,
 } from '@overlay/agent-bridge-protocol'
 import { createHash, randomBytes, sign } from 'node:crypto'
 
@@ -19,6 +22,9 @@ export interface AgentControlPlaneClient {
   uploadEvents(batch: EventBatch): Promise<EventAcknowledgement>
   heartbeat?(): Promise<void>
   updateCapabilities?(capabilities: HostCapabilities): Promise<void>
+  createArtifactUpload?(input: ArtifactUploadRequest): Promise<ArtifactUploadResponse>
+  uploadArtifactBytes?(upload: ArtifactUploadResponse, bytes: Uint8Array): Promise<void>
+  completeArtifactUpload?(artifactId: string): Promise<void>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -81,6 +87,26 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
   async updateCapabilities(capabilities: HostCapabilities): Promise<void> {
     await this.request(new URL('capabilities', withSlash(this.options.baseUrl)), {
       method: 'PUT', body: JSON.stringify(capabilities), headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  async createArtifactUpload(input: ArtifactUploadRequest): Promise<ArtifactUploadResponse> {
+    const response = await this.request(new URL('artifacts', withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify(input), headers: { 'content-type': 'application/json' },
+    })
+    return artifactUploadResponseSchema.parse(await response.json())
+  }
+
+  async uploadArtifactBytes(upload: ArtifactUploadResponse, bytes: Uint8Array): Promise<void> {
+    const response = await this.fetch(upload.uploadUrl, { method: 'PUT', headers: upload.headers, body: bytes as BodyInit,
+      signal: AbortSignal.timeout(this.requestTimeoutMs) })
+    if (!response.ok) throw new Error(`artifact upload failed with ${response.status}`)
+  }
+
+  async completeArtifactUpload(artifactId: string): Promise<void> {
+    await this.request(new URL(`artifacts/${encodeURIComponent(artifactId)}/complete`, withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, uploadReference: artifactId }),
+      headers: { 'content-type': 'application/json' },
     })
   }
 

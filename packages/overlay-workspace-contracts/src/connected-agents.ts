@@ -43,7 +43,7 @@ export type AgentBinding = {
 }
 
 export const AGENT_RUN_COMMAND_TYPES = [
-  'start', 'prompt', 'cancel', 'approval_response', 'reconnect', 'shutdown',
+  'start', 'prompt', 'cancel', 'approval_response', 'elicitation_response', 'reconnect', 'shutdown',
 ] as const
 export type AgentRunCommandType = (typeof AGENT_RUN_COMMAND_TYPES)[number]
 export const AGENT_RUN_COMMAND_STATUSES = ['pending', 'claimed', 'acknowledged', 'cancelled'] as const
@@ -66,7 +66,8 @@ export type AgentRunCommand = {
 }
 
 export const AGENT_REMOTE_SESSION_STATUSES = [
-  'starting', 'running', 'waiting_for_approval', 'completed', 'failed', 'cancelled',
+  'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering',
+  'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteSessionStatus = (typeof AGENT_REMOTE_SESSION_STATUSES)[number]
 
@@ -89,9 +90,13 @@ export type AgentRemoteSession = {
 
 export type AgentApprovalResolution = {
   decision: string
+  response?: unknown
   resolvedByPrincipalId: string
   resolvedAt: number
 }
+
+export const AGENT_REMOTE_REQUEST_KINDS = ['permission', 'elicitation'] as const
+export type AgentRemoteRequestKind = (typeof AGENT_REMOTE_REQUEST_KINDS)[number]
 
 export type AgentApprovalRequest = {
   id: string
@@ -99,6 +104,7 @@ export type AgentApprovalRequest = {
   runId: string
   remoteSessionId: string
   requestKey: string
+  kind: AgentRemoteRequestKind
   prompt: string
   options: string[]
   payload: Record<string, unknown>
@@ -131,8 +137,8 @@ export type AgentSandboxLease = {
 }
 
 export const AGENT_REMOTE_EVENT_TYPES = [
-  'session_started', 'text_checkpoint', 'action', 'approval_requested',
-  'artifact', 'completed', 'failed', 'cancelled',
+  'session_started', 'text_checkpoint', 'action', 'approval_requested', 'elicitation_requested',
+  'plan', 'diff', 'terminal', 'artifact', 'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteEventType = (typeof AGENT_REMOTE_EVENT_TYPES)[number]
 
@@ -145,6 +151,32 @@ export type AgentRemoteEvent = {
   type: AgentRemoteEventType
   occurredAt: number
   payload: Record<string, unknown>
+}
+
+export const AGENT_ARTIFACT_STATUSES = [
+  'pending_upload', 'scanning', 'clean', 'rejected', 'linked', 'deleted',
+] as const
+export type AgentArtifactStatus = (typeof AGENT_ARTIFACT_STATUSES)[number]
+
+/** Server-owned artifact metadata; hosts provide only the declared upload values. */
+export type AgentArtifact = {
+  id: string
+  workspaceId: string
+  environmentId: string
+  runId: string
+  remoteSessionId: string
+  name: string
+  mediaType: string
+  size: number
+  sha256: string
+  objectKey: string
+  status: AgentArtifactStatus
+  scanResult?: string
+  expiresAt: number
+  linkedAt?: number
+  deletedAt?: number
+  createdAt: number
+  updatedAt: number
 }
 
 export const AGENT_ENROLLMENT_SESSION_STATUSES = ['created', 'redeemed', 'approved', 'expired'] as const
@@ -183,6 +215,7 @@ export const AGENT_ENVIRONMENT_CREDENTIAL_METHODS = [
   'agent:commands:poll',
   'agent:commands:ack',
   'agent:events:write',
+  'agent:artifacts:write',
   'agent:credentials:refresh',
 ] as const
 export type AgentEnvironmentCredentialMethod = (typeof AGENT_ENVIRONMENT_CREDENTIAL_METHODS)[number]

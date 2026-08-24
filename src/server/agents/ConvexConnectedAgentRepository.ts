@@ -2,6 +2,7 @@ import 'server-only'
 
 import type {
   AgentApprovalRequest,
+  AgentArtifact,
   AgentBinding,
   AgentEnrollmentSession,
   AgentEnvironment,
@@ -83,8 +84,8 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   startRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['startRemoteAgentTurn']>[0]) {
     return mutation<Awaited<ReturnType<ConnectedAgentRepository['startRemoteAgentTurn']>>>('startRemoteAgentTurnByServer', input)
   }
-  controlQueuedRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['controlQueuedRemoteAgentTurn']>[0]) {
-    return mutation<Awaited<ReturnType<ConnectedAgentRepository['controlQueuedRemoteAgentTurn']>>>('controlQueuedRemoteAgentTurnByServer', input)
+  controlRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['controlRemoteAgentTurn']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['controlRemoteAgentTurn']>>>('controlRemoteAgentTurnByServer', input)
   }
   createRemoteSession(input: Parameters<ConnectedAgentRepository['createRemoteSession']>[0]) {
     return mutation<AgentRemoteSession>('createRemoteSessionByServer', input)
@@ -106,6 +107,30 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   }
   resolveApprovalRequest(input: Parameters<ConnectedAgentRepository['resolveApprovalRequest']>[0]) {
     return mutation<AgentApprovalRequest | null>('resolveApprovalRequestByServer', input)
+  }
+  resolveRemoteRequest(input: Parameters<ConnectedAgentRepository['resolveRemoteRequest']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['resolveRemoteRequest']>>>('resolveRemoteRequestByServer', input)
+  }
+  createArtifact(input: Parameters<ConnectedAgentRepository['createArtifact']>[0]) {
+    return mutation<AgentArtifact>('createArtifactByServer', input)
+  }
+  getArtifact(input: Parameters<ConnectedAgentRepository['getArtifact']>[0]) {
+    return connectedQuery<AgentArtifact | null>('getArtifactByServer', input)
+  }
+  getArtifactForDownload(input: Parameters<ConnectedAgentRepository['getArtifactForDownload']>[0]) {
+    return connectedQuery<AgentArtifact | null>('getArtifactForDownloadByServer', input)
+  }
+  finalizeArtifact(input: Parameters<ConnectedAgentRepository['finalizeArtifact']>[0]) {
+    return mutation<AgentArtifact | null>('finalizeArtifactByServer', input)
+  }
+  listArtifactsForCleanup(input: Parameters<ConnectedAgentRepository['listArtifactsForCleanup']>[0]) {
+    return connectedQuery<AgentArtifact[]>('listArtifactsForCleanupByServer', input)
+  }
+  markArtifactDeleted(input: Parameters<ConnectedAgentRepository['markArtifactDeleted']>[0]) {
+    return mutation<boolean>('markArtifactDeletedByServer', input)
+  }
+  sweepRemoteRuns(input: Parameters<ConnectedAgentRepository['sweepRemoteRuns']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['sweepRemoteRuns']>>>('sweepRemoteRunsByServer', input)
   }
   createSandboxLease(input: Parameters<ConnectedAgentRepository['createSandboxLease']>[0]) {
     return mutation<AgentSandboxLease>('createSandboxLeaseByServer', input)

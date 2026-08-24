@@ -17,6 +17,7 @@ export interface AgentAdapterSession {
   readonly remoteSessionId: string
   prompt(prompt: string): Promise<void>
   approve(requestKey: string, optionId: string): Promise<void>
+  elicit(requestKey: string, action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>): Promise<void>
   cancel(reason?: string): Promise<void>
   resume(): Promise<void>
   stop(reason?: string): Promise<void>

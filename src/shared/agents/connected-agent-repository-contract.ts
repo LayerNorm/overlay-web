@@ -1,6 +1,7 @@
 import type {
   AgentApprovalRequest,
   AgentApprovalResolution,
+  AgentArtifact,
   AgentBinding,
   AgentEnrollmentSession,
   AgentEnvironment,
@@ -48,6 +49,11 @@ export interface ConnectedAgentContractRepository {
   acknowledgeCommand(args: { workspaceId: string; environmentId: string; commandId: string; now: number }): Promise<boolean>
   createApprovalRequest(input: AgentApprovalRequest): Promise<AgentApprovalRequest>
   resolveApprovalRequest(args: { workspaceId: string; approvalId: string; resolution: AgentApprovalResolution }): Promise<AgentApprovalRequest | null>
+  createArtifact(input: AgentArtifact): Promise<AgentArtifact>
+  getArtifact(args: { workspaceId: string; environmentId: string; artifactId: string }): Promise<AgentArtifact | null>
+  finalizeArtifact(args: { workspaceId: string; environmentId: string; artifactId: string; status: 'clean' | 'rejected'; scanResult: string; expiresAt?: number; now: number }): Promise<AgentArtifact | null>
+  listArtifactsForCleanup(args: { now: number; limit: number }): Promise<AgentArtifact[]>
+  markArtifactDeleted(args: { artifactId: string; now: number }): Promise<boolean>
   createSandboxLease(input: Omit<AgentSandboxLease, 'createdAt' | 'updatedAt'> & { now: number }): Promise<AgentSandboxLease>
   updateSandboxLease(input: Partial<Pick<
     AgentSandboxLease,
@@ -302,6 +308,7 @@ export async function verifyConnectedAgentRepositoryContract(fixture: ConnectedA
     runId,
     remoteSessionId: sessionId,
     requestKey: 'permission-1',
+    kind: 'permission',
     prompt: 'Allow write?',
     options: ['allow_once', 'reject'],
     payload: { path: '/workspace/file.ts' },
@@ -309,7 +316,7 @@ export async function verifyConnectedAgentRepositoryContract(fixture: ConnectedA
   })
   const repeatedApproval = await repository.createApprovalRequest({
     id: `${prefix}_approval_retry`, workspaceId: approval.workspaceId, runId: approval.runId,
-    remoteSessionId: approval.remoteSessionId, requestKey: approval.requestKey,
+    remoteSessionId: approval.remoteSessionId, requestKey: approval.requestKey, kind: approval.kind,
     prompt: approval.prompt, options: approval.options, payload: approval.payload,
     requestedAt: approval.requestedAt, ...(approval.resolution ? { resolution: approval.resolution } : {}),
   })
@@ -326,6 +333,26 @@ export async function verifyConnectedAgentRepositoryContract(fixture: ConnectedA
     }),
     'a resolved approval must be immutable',
   )
+
+  const artifact = await repository.createArtifact({
+    id: `${prefix}_artifact`, workspaceId, environmentId, runId, remoteSessionId: sessionId,
+    name: 'contract.txt', mediaType: 'text/plain', size: 8, sha256: 'a'.repeat(64),
+    objectKey: `workspaces/${workspaceId}/agent-artifacts/${prefix}`, status: 'pending_upload',
+    expiresAt: now + 25, createdAt: now + 22, updatedAt: now + 22,
+  })
+  equal(await repository.getArtifact({ workspaceId: otherWorkspaceId, environmentId, artifactId: artifact.id }), null,
+    'foreign workspaces must not inspect agent artifacts')
+  equal(await repository.finalizeArtifact({ workspaceId: otherWorkspaceId, environmentId, artifactId: artifact.id,
+    status: 'clean', scanResult: 'forged', now: now + 23 }), null, 'foreign workspaces must not validate agent artifacts')
+  equal((await repository.finalizeArtifact({ workspaceId, environmentId, artifactId: artifact.id,
+    status: 'clean', scanResult: 'contract_clean', now: now + 23 }))?.status, 'clean',
+  'validated artifacts must advance atomically')
+  equal((await repository.listArtifactsForCleanup({ now: now + 26, limit: 10 })).some((row) => row.id === artifact.id), true,
+    'expired artifacts must be visible to bounded retention cleanup')
+  equal(await repository.markArtifactDeleted({ artifactId: artifact.id, now: now + 27 }), true,
+    'artifact cleanup must tombstone metadata')
+  equal(await repository.markArtifactDeleted({ artifactId: artifact.id, now: now + 28 }), false,
+    'artifact cleanup tombstones must be idempotent')
 
   const lease = await repository.createSandboxLease({
     id: `${prefix}_lease`,

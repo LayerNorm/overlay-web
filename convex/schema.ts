@@ -1097,10 +1097,17 @@ export default defineSchema({
               queueExpiresAt: v.number(),
               runId: v.string(),
               state: v.union(
-                v.literal('waiting'), v.literal('running'), v.literal('completed'),
+                v.literal('waiting'), v.literal('running'), v.literal('waiting_for_approval'),
+                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('completed'),
                 v.literal('failed'), v.literal('cancelled'),
               ),
+              retryable: v.optional(v.boolean()),
+              retryClass: v.optional(v.union(v.literal('transient'), v.literal('timeout'), v.literal('host_offline'), v.literal('permission'), v.literal('fatal'))),
             }),
+          }),
+          v.object({
+            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal')),
+            data: v.any(),
           }),
           v.object({
             type: v.literal('tool-invocation'),
@@ -1119,6 +1126,9 @@ export default defineSchema({
             mediaType: v.optional(v.string()),
             /** Optional display name for file parts */
             fileName: v.optional(v.string()),
+            artifactId: v.optional(v.string()),
+            size: v.optional(v.number()),
+            sha256: v.optional(v.string()),
             state: v.optional(v.string()),
           }),
         ),
@@ -2221,14 +2231,27 @@ export default defineSchema({
 
   agentApprovalRequests: defineTable({
     approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),
-    requestKey: v.string(), prompt: v.string(), options: v.array(v.string()), payload: v.any(),
+    requestKey: v.string(), kind: v.optional(v.union(v.literal('permission'), v.literal('elicitation'))),
+    prompt: v.string(), options: v.array(v.string()), payload: v.any(),
     requestedAt: v.number(), resolution: v.optional(v.object({
-      decision: v.string(), resolvedByPrincipalId: v.string(), resolvedAt: v.number(),
+      decision: v.string(), response: v.optional(v.any()), resolvedByPrincipalId: v.string(), resolvedAt: v.number(),
     })),
   }).index('by_approvalId', ['approvalId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_remoteSessionId_requestKey', ['remoteSessionId', 'requestKey'])
     .index('by_workspaceId_runId', ['workspaceId', 'runId']),
+
+  agentArtifacts: defineTable({
+    artifactId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
+    remoteSessionId: v.string(), name: v.string(), mediaType: v.string(), size: v.number(),
+    sha256: v.string(), objectKey: v.string(), status: v.string(), scanResult: v.optional(v.string()),
+    expiresAt: v.number(), linkedAt: v.optional(v.number()), deletedAt: v.optional(v.number()),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_artifactId', ['artifactId'])
+    .index('by_objectKey', ['objectKey'])
+    .index('by_runId_status', ['runId', 'status'])
+    .index('by_status_expiresAt', ['status', 'expiresAt'])
+    .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId']),
 
   agentSandboxLeases: defineTable({
     leaseId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.optional(v.string()),

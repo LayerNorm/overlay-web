@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { and, eq } from 'drizzle-orm'
+import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
 import { PostgresConnectedAgentRepository } from '@/server/agents/PostgresConnectedAgentRepository'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import {
@@ -208,7 +209,7 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
     assert.equal((await repository.claimCommands({
       workspaceId, environmentId, now: queueExpiresAt + 1, leaseMs: 5_000, limit: 10,
     })).length, 0)
-    assert.deepEqual(await repository.controlQueuedRemoteAgentTurn({
+    assert.deepEqual(await repository.controlRemoteAgentTurn({
       actorUserId: userId,
       conversationId,
       workspaceId,
@@ -221,19 +222,61 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
       workspaceId, environmentId, now: queueExpiresAt + 3, leaseMs: 5_000, limit: 10,
     })).length, 1)
 
-    const events = [
+    const requestEvents = [
       remoteEvent(1, 'session_started', { remoteSessionId: `acp_${suffix}` }),
-      remoteEvent(2, 'text_checkpoint', { text: 'Work completed' }),
-      remoteEvent(3, 'action', { actionId: 'shell', title: 'Run tests', status: 'completed' }),
-      remoteEvent(4, 'completed', { summary: 'Done', usage: { inputTokens: 12, outputTokens: 7 } }),
+      remoteEvent(2, 'approval_requested', { requestKey: 'permission-1', prompt: 'Write files?',
+        options: [{ id: 'allow_once', label: 'Allow once' }, { id: 'reject', label: 'Reject' }], context: {} }),
     ]
-    const accepted = await repository.applyRemoteEvents({
+    assert.equal((await repository.applyRemoteEvents({
       workspaceId,
       environmentId,
       sessionId,
-      events: events.map((event) => ({ ...event, environmentId, runId })),
+      events: requestEvents.map((event) => ({ ...event, environmentId, runId })),
       now: queueExpiresAt + 4,
-    })
+    })).accepted, true)
+    assert.deepEqual(await repository.resolveRemoteRequest({ actorUserId: 'foreign-user', workspaceId,
+      conversationId, runId, requestKey: 'permission-1', decision: 'allow_once', now: queueExpiresAt + 5 }), { applied: false })
+    await assert.rejects(() => repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'permission-1', decision: 'forged', now: queueExpiresAt + 6 }),
+    /AGENT_APPROVAL_OPTION_INVALID/)
+    const approved = await repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'permission-1', decision: 'allow_once', now: queueExpiresAt + 7 })
+    assert.equal(approved.applied, true)
+    assert.deepEqual(await repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'permission-1', decision: 'allow_once', now: queueExpiresAt + 8 }),
+    { applied: true, commandId: approved.commandId, messageId: started.messageId })
+    await assert.rejects(() => repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'permission-1', decision: 'reject', now: queueExpiresAt + 8 }),
+    /AGENT_REMOTE_REQUEST_ALREADY_RESOLVED/)
+    assert.equal((await repository.applyRemoteEvents({ workspaceId, environmentId, sessionId,
+      events: [{ ...remoteEvent(3, 'elicitation_requested', { requestKey: 'input-1', prompt: 'Choose branch',
+        requestedSchema: { type: 'object', properties: { branch: { type: 'string' } }, required: ['branch'] }, context: {} }),
+        environmentId, runId }], now: queueExpiresAt + 9 })).accepted, true)
+    await assert.rejects(() => repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'input-1', decision: 'accept', response: {}, now: queueExpiresAt + 10 }),
+    /AGENT_ELICITATION_RESPONSE_INVALID/)
+    await assert.rejects(() => repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'input-1', decision: 'accept', response: { branch: 42 }, now: queueExpiresAt + 10 }),
+    /AGENT_ELICITATION_RESPONSE_INVALID/)
+    assert.equal((await repository.resolveRemoteRequest({ actorUserId: userId, workspaceId,
+      conversationId, runId, requestKey: 'input-1', decision: 'accept', response: { branch: 'byo-agents' },
+      now: queueExpiresAt + 11 })).applied, true)
+    await repository.createArtifact({ id: `artifact_${suffix}`, workspaceId, environmentId, runId,
+      remoteSessionId: sessionId, name: 'report.txt', mediaType: 'text/plain', size: 6,
+      sha256: 'a'.repeat(64), objectKey: `scoped/${suffix}`, status: 'clean', scanResult: 'clean',
+      expiresAt: queueExpiresAt + 60_000, createdAt: now, updatedAt: now })
+    const events = [
+      remoteEvent(4, 'text_checkpoint', { text: 'Work completed' }),
+      remoteEvent(5, 'action', { actionId: 'shell', title: 'Run tests', status: 'completed' }),
+      remoteEvent(6, 'plan', { entries: [{ id: 'step-1', title: 'Implement', status: 'completed' }] }),
+      remoteEvent(7, 'diff', { diffId: 'diff-1', title: 'app.ts', patch: '+ready' }),
+      remoteEvent(8, 'terminal', { terminalId: 'terminal-1', title: 'Tests', summary: 'Passed', status: 'completed', exitCode: 0 }),
+      remoteEvent(9, 'artifact', { name: 'report.txt', mediaType: 'text/plain', size: 6,
+        sha256: 'a'.repeat(64), uploadReference: `artifact_${suffix}` }),
+      remoteEvent(10, 'completed', { summary: 'Done', usage: { inputTokens: 12, outputTokens: 7 } }),
+    ]
+    const accepted = await repository.applyRemoteEvents({ workspaceId, environmentId, sessionId,
+      events: events.map((event) => ({ ...event, environmentId, runId })), now: queueExpiresAt + 12 })
     assert.equal(accepted.accepted, true)
     if (!accepted.accepted) assert.fail('remote events should be accepted')
     assert.equal(accepted.duplicate, false)
@@ -248,7 +291,7 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
       environmentId,
       sessionId,
       events: events.map((event) => ({ ...event, environmentId, runId })),
-      now: queueExpiresAt + 5,
+      now: queueExpiresAt + 13,
     })
     assert.equal(duplicateEvents.accepted, true)
     if (!duplicateEvents.accepted) assert.fail('duplicate terminal events should be acknowledged')
@@ -261,13 +304,49 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
     assert.equal(message?.content, 'Work completed')
     assert.equal(message?.status, 'completed')
     assert.deepEqual(message?.tokens, { input: 12, output: 7 })
+    const partTypes = (message?.parts ?? []).map((part) => part.type)
+    for (const type of ['data-remote-agent-request', 'data-remote-agent-plan', 'data-remote-agent-diff', 'data-remote-agent-terminal', 'file']) {
+      assert.ok(partTypes.includes(type as never), `${type} should persist`)
+    }
     assert.equal(run?.status, 'completed')
-    assert.equal(session?.eventCursor, 4)
+    assert.equal(session?.eventCursor, 10)
     assert.equal(command?.status, 'acknowledged')
     assert.equal((await db.select().from(conversationEvents).where(and(
       eq(conversationEvents.conversationId, conversationId),
       eq(conversationEvents.messageId, started.messageId),
     ))).length, eventCountBeforeDuplicate)
+
+    const recoveryRunId = `${runId}_recovery`
+    const recoverySessionId = `${sessionId}_recovery`
+    const recoveryUserMessageId = `${userMessageId}_recovery`
+    await db.insert(conversationMessages).values({ id: recoveryUserMessageId, conversationId, userId,
+      turnId: `${turnId}_recovery`, role: 'user', mode: 'act', content: 'Resume this', contentType: 'text',
+      authorKind: 'human', authorPrincipalId: actorPrincipalId, status: 'completed' })
+    const recovery = await repository.startRemoteAgentTurn({ ...startInput, clientNonce: `${clientNonce}_recovery`,
+      commandId: `${commandId}_recovery`, runId: recoveryRunId, sessionId: recoverySessionId,
+      turnId: `${turnId}_recovery`, userMessageId: recoveryUserMessageId })
+    await repository.applyRemoteEvents({ workspaceId, environmentId, sessionId: recoverySessionId,
+      events: [{ ...remoteEvent(1, 'session_started', { remoteSessionId: `resume_${suffix}`, adapterId: 'acp' }),
+        environmentId, runId: recoveryRunId }], now: queueExpiresAt + 20 })
+    assert.deepEqual((await repository.sweepRemoteRuns({ now: queueExpiresAt + 21,
+      hostOfflineBefore: queueExpiresAt + 20, limit: 10 })).expiredRunIds, [recoveryRunId])
+    const [recoveryMessage] = await db.select().from(conversationMessages).where(eq(conversationMessages.id, recovery.messageId))
+    assert.ok((recoveryMessage?.parts ?? []).some((part) => part.type === 'data-remote-agent-status'
+      && part.data?.state === 'recoverable'))
+    const resumed = await repository.controlRemoteAgentTurn({ actorUserId: userId, conversationId, workspaceId,
+      runId: recoveryRunId, action: 'resume', queueExpiresAt: queueExpiresAt + 120_000, now: queueExpiresAt + 22 })
+    assert.equal(resumed.applied, true)
+    assert.equal((await db.select().from(agentRunCommands).where(eq(agentRunCommands.id, resumed.commandId!)))[0]?.type, 'reconnect')
+    assert.equal((await repository.controlRemoteAgentTurn({ actorUserId: userId, conversationId, workspaceId,
+      runId: recoveryRunId, action: 'cancel', queueExpiresAt: queueExpiresAt + 120_000,
+      now: queueExpiresAt + 23 })).applied, true)
+    const fresh = await repository.controlRemoteAgentTurn({ actorUserId: userId, conversationId, workspaceId,
+      runId: recoveryRunId, action: 'start_fresh', queueExpiresAt: queueExpiresAt + 180_000,
+      now: queueExpiresAt + 24 })
+    assert.equal(fresh.applied, true)
+    const [freshCommand] = await db.select().from(agentRunCommands).where(eq(agentRunCommands.id, fresh.commandId!))
+    assert.equal(freshCommand?.type, 'start')
+    assert.equal(freshCommand?.payload.fresh, true)
   } finally {
     await db.delete(conversations).where(eq(conversations.id, conversationId))
     await db.delete(workspaces).where(eq(workspaces.id, workspaceId))
@@ -278,9 +357,9 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
 
 function remoteEvent(
   sourceSequence: number,
-  type: 'session_started' | 'text_checkpoint' | 'action' | 'completed',
+  type: AgentRemoteEvent['type'],
   payload: Record<string, unknown>,
-) {
+): AgentRemoteEvent {
   return {
     protocolVersion: 1,
     eventId: `remote_event_${sourceSequence}`,

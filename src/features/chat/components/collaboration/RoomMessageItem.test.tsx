@@ -222,6 +222,26 @@ test('attachment summaries become chips, not body text', () => {
   assert.equal(view.images.length, 1)
 })
 
+test('remote supervised state survives transcript reload as actionable view data', () => {
+  const view = toRoomMessageView({
+    message: record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',
+      parts: [
+        { type: 'text', text: 'I need a branch name.' },
+        { type: 'data-remote-agent-request', data: { runId: 'run-1', requestKey: 'input-1', kind: 'elicitation',
+          prompt: 'Choose branch', state: 'pending', options: [],
+          requestedSchema: { type: 'object', properties: { branch: { title: 'Branch' } }, required: ['branch'] } } },
+        { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'MacBook',
+          queueExpiresAt: 0, state: 'waiting_for_input' } },
+        { type: 'data-remote-agent-plan', data: { key: 'plan', entries: [{ id: 'one', title: 'Inspect', status: 'completed' }] } },
+      ] }),
+    currentPrincipalId: ME, authorName: 'Agent', streaming: true,
+  })
+  assert.deepEqual(view.remoteRequest, { runId: 'run-1', requestKey: 'input-1', kind: 'elicitation',
+    prompt: 'Choose branch', options: [], requestedSchema: { type: 'object', properties: { branch: { title: 'Branch' } }, required: ['branch'] } })
+  assert.deepEqual(view.remoteRun, { runId: 'run-1', state: 'waiting_for_input', retryable: false, retryClass: undefined })
+  assert.ok(view.blocks.some((block) => block.kind === 'tool' && block.name === 'remote_plan'))
+})
+
 test('room reconciliation uses deterministic ordering and replaces optimistic duplicates', () => {
   const persisted = record({ id: 'message_real', createdAt: 20, clientNonce: 'nonce_1', content: 'saved' })
   const pending = record({ id: 'optimistic_nonce_1', createdAt: 19, clientNonce: 'nonce_1', content: 'pending', delivery: 'sending' })

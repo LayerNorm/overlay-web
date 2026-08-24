@@ -4,6 +4,7 @@ export type {
   ObjectStore,
   ObjectSummary,
   QueryResult,
+  UploadConstraints,
   UploadUrl,
   VectorStore,
 } from './types'

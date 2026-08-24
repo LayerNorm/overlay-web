@@ -2158,14 +2158,39 @@ export const agentApprovalRequests = pgTable('agent_approval_requests', {
   runId: text('run_id').notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
   remoteSessionId: text('remote_session_id').notNull().references(() => agentRemoteSessions.id, { onDelete: 'cascade' }),
   requestKey: text('request_key').notNull(),
+  kind: text('kind').notNull().default('permission'),
   prompt: text('prompt').notNull(),
   options: jsonb('options').$type<string[]>().notNull(),
   payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
   requestedAt: timestamp('requested_at', { withTimezone: true }).notNull(),
-  resolution: jsonb('resolution').$type<{ decision: string; resolvedByPrincipalId: string; resolvedAt: number }>(),
+  resolution: jsonb('resolution').$type<{ decision: string; response?: unknown; resolvedByPrincipalId: string; resolvedAt: number }>(),
 }, (table) => [
   uniqueIndex('agent_approval_requests_session_request_idx').on(table.remoteSessionId, table.requestKey),
   index('agent_approval_requests_workspace_run_idx').on(table.workspaceId, table.runId),
+])
+
+export const agentArtifacts = pgTable('agent_artifacts', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  runId: text('run_id').notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+  remoteSessionId: text('remote_session_id').notNull().references(() => agentRemoteSessions.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  mediaType: text('media_type').notNull(),
+  size: bigint('size', { mode: 'number' }).notNull(),
+  sha256: text('sha256').notNull(),
+  objectKey: text('object_key').notNull().unique(),
+  status: text('status').notNull(),
+  scanResult: text('scan_result'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  linkedAt: timestamp('linked_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('agent_artifacts_run_status_idx').on(table.runId, table.status),
+  index('agent_artifacts_cleanup_idx').on(table.status, table.expiresAt),
+  index('agent_artifacts_workspace_environment_idx').on(table.workspaceId, table.environmentId),
 ])
 
 export const agentSandboxLeases = pgTable('agent_sandbox_leases', {

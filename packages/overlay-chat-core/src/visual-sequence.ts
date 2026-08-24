@@ -16,6 +16,17 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
   if (!parts?.length) return []
   const out: AssistantVisualBlock[] = []
   for (const p of parts) {
+    const remote = p as { type?: string; data?: Record<string, unknown> }
+    const remoteToolName = remote.type === 'data-remote-agent-plan' ? 'remote_plan'
+      : remote.type === 'data-remote-agent-diff' ? 'remote_diff'
+        : remote.type === 'data-remote-agent-terminal' ? 'remote_terminal' : null
+    if (remoteToolName && remote.data) {
+      out.push({ kind: 'tool', key: String(remote.data.key ?? `${remoteToolName}-${out.length}`),
+        name: remoteToolName, state: remoteToolName === 'remote_terminal' && remote.data.status === 'running'
+          ? 'input-available' : 'output-available', toolInput: remote.data,
+        toolOutput: remote.data })
+      continue
+    }
     const legacy = p as {
       type?: string
       toolInvocation?: {

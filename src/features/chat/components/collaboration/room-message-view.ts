@@ -24,6 +24,30 @@ function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageVie
   }
 }
 
+function remoteRequest(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteRequest'] {
+  const data = parts?.find((part) => part.type === 'data-remote-agent-request')?.data
+  if (!data || data.state !== 'pending' || typeof data.runId !== 'string' || typeof data.requestKey !== 'string') return undefined
+  return {
+    runId: data.runId, requestKey: data.requestKey,
+    kind: data.kind === 'elicitation' ? 'elicitation' : 'permission',
+    prompt: typeof data.prompt === 'string' ? data.prompt : 'Agent request',
+    options: Array.isArray(data.options) ? data.options.flatMap((option) => {
+      if (!option || typeof option !== 'object') return []
+      const record = option as Record<string, unknown>
+      return typeof record.id === 'string' ? [{ id: record.id, label: typeof record.label === 'string' ? record.label : record.id }] : []
+    }) : [],
+    requestedSchema: data.requestedSchema && typeof data.requestedSchema === 'object'
+      ? data.requestedSchema as Record<string, unknown> : undefined,
+  }
+}
+
+function remoteRunStatus(parts: RoomMessagePart[] | undefined) {
+  const data = parts?.find((part) => part.type === 'data-remote-agent-status')?.data
+  if (!data || typeof data.runId !== 'string' || typeof data.state !== 'string') return undefined
+  return { runId: data.runId, state: data.state,
+    retryable: data.retryable === true, retryClass: typeof data.retryClass === 'string' ? data.retryClass : undefined }
+}
+
 export type RoomMessageRecord = {
   id: string
   turnId: string
@@ -173,6 +197,8 @@ export function toRoomMessageView({
     documentNames: docNames,
     mentions,
     remoteQueue: remoteQueueStatus(message.parts),
+    remoteRequest: remoteRequest(message.parts),
+    remoteRun: remoteRunStatus(message.parts),
     streaming: streaming || message.status === 'generating',
   }
 }

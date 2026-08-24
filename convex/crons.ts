@@ -21,6 +21,22 @@ crons.interval(
   internal.chat.conversations.expireToolLoopAgentRunLeases,
 )
 
+crons.interval(
+  'connected agent run supervision',
+  { minutes: 1 },
+  // Generated API types are refreshed on the next Convex codegen/deploy.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).agents.connectedAgents.sweepRemoteRunsInternal,
+)
+
+crons.interval(
+  'connected agent artifact cleanup',
+  { minutes: 15 },
+  // Generated API types are refreshed on the next Convex codegen/deploy.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).agents.artifactCleanup.runCleanupTick,
+)
+
 // Removes conversations that were created (e.g. user opened a new chat) but never
 // received a single message. Reduces storage and keeps the sidebar list clean.
 crons.interval(

@@ -72,17 +72,20 @@ describe('Convex remote agent room turns', () => {
     expect(await call('claimCommandsByServer', {
       workspaceId, environmentId, now: now + 60_001, leaseMs: 5_000, limit: 10,
     })).toEqual([])
-    expect(await call('controlQueuedRemoteAgentTurnByServer', {
-      actorUserId, workspaceId, runId: 'run-remote-turn', action: 'retry',
+    expect(await call('controlRemoteAgentTurnByServer', {
+      actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'retry',
       queueExpiresAt: now + 120_000, now: now + 60_002,
     })).toEqual(expect.objectContaining({ applied: true, messageId: result.messageId }))
     expect(await call<unknown[]>('claimCommandsByServer', {
       workspaceId, environmentId, now: now + 60_003, leaseMs: 5_000, limit: 10,
     })).toHaveLength(1)
-    expect(await call('controlQueuedRemoteAgentTurnByServer', {
-      actorUserId, workspaceId, runId: 'run-remote-turn', action: 'cancel',
+    expect(await call('controlRemoteAgentTurnByServer', {
+      actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel',
       queueExpiresAt: now + 120_000, now: now + 60_004,
     })).toEqual(expect.objectContaining({ applied: true, messageId: result.messageId }))
+    expect(await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, 'cancelled', { reason: 'Cancelled from Overlay' })], now: now + 60_005 }))
+      .toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 1, duplicate: false }))
   })
 
   test('contiguous events project once and duplicate terminal delivery is harmless', async () => {
@@ -120,6 +123,121 @@ describe('Convex remote agent room turns', () => {
       events: [event(4, 'text_checkpoint', { text: 'must not apply' })], now: now + 102,
     })).rejects.toThrow(/AGENT_RUN_TERMINAL/)
   })
+
+  test('approval, elicitation, artifacts, and structured work remain server-authorized and exactly once', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 10,
+      events: [
+        event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' }),
+        event(2, 'approval_requested', { requestKey: 'permission-1', prompt: 'Write files?',
+          options: [{ id: 'allow_once', label: 'Allow once' }, { id: 'reject', label: 'Reject' }], context: {} }),
+      ] })
+    expect(await call('resolveRemoteRequestByServer', { actorUserId: 'foreign-user', workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'permission-1',
+      decision: 'allow_once', now: now + 11 })).toEqual({ applied: false })
+    await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'permission-1',
+      decision: 'forged-option', now: now + 12 })).rejects.toThrow(/AGENT_APPROVAL_OPTION_INVALID/)
+    const approved = await call<{ applied: boolean; commandId: string }>('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'permission-1',
+      decision: 'allow_once', now: now + 13 })
+    expect(approved.applied).toBe(true)
+    expect(await call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'permission-1',
+      decision: 'allow_once', now: now + 14 })).toEqual(expect.objectContaining({ applied: true, commandId: approved.commandId }))
+    await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'permission-1',
+      decision: 'reject', now: now + 14 })).rejects.toThrow(/AGENT_REMOTE_REQUEST_ALREADY_RESOLVED/)
+
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 15,
+      events: [event(3, 'elicitation_requested', { requestKey: 'input-1', prompt: 'Choose branch',
+        requestedSchema: { type: 'object', properties: { branch: { type: 'string' } }, required: ['branch'] }, context: {} })] })
+    await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'input-1',
+      decision: 'accept', response: {}, now: now + 16 })).rejects.toThrow(/AGENT_ELICITATION_RESPONSE_INVALID/)
+    await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'input-1',
+      decision: 'accept', response: { branch: 42 }, now: now + 16 })).rejects.toThrow(/AGENT_ELICITATION_RESPONSE_INVALID/)
+    await call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'input-1',
+      decision: 'accept', response: { branch: 'byo-agents' }, now: now + 17 })
+    await call('createArtifactByServer', { id: 'artifact-remote-turn', workspaceId, environmentId,
+      runId: 'run-remote-turn', remoteSessionId: 'session-remote-turn', name: 'report.txt', mediaType: 'text/plain',
+      size: 6, sha256: 'a'.repeat(64), objectKey: 'scoped/report', status: 'clean', scanResult: 'clean',
+      expiresAt: now + 60_000, createdAt: now, updatedAt: now })
+    const terminal = await call<{ accepted: boolean; terminal?: { inputTokens: number } }>('applyRemoteEventsByServer', {
+      workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 18,
+      events: [
+        event(4, 'plan', { entries: [{ id: 'step-1', title: 'Implement', status: 'completed' }] }),
+        event(5, 'diff', { diffId: 'diff-1', title: 'app.ts', patch: '+ready' }),
+        event(6, 'terminal', { terminalId: 'terminal-1', title: 'Tests', summary: 'Passed', status: 'completed', exitCode: 0 }),
+        event(7, 'artifact', { name: 'report.txt', mediaType: 'text/plain', size: 6,
+          sha256: 'a'.repeat(64), uploadReference: 'artifact-remote-turn' }),
+        event(8, 'completed', { summary: 'Done', usage: { inputTokens: 4, outputTokens: 2 } }),
+      ],
+    })
+    expect(terminal.terminal?.inputTokens).toBe(4)
+    const state = await projectedState(convex, started.messageId)
+    const types = (state.message?.parts ?? []).map(part => part.type)
+    for (const type of ['data-remote-agent-request', 'data-remote-agent-plan', 'data-remote-agent-diff', 'data-remote-agent-terminal', 'file']) {
+      expect(types).toContain(type)
+    }
+    const snapshot = await convex.run(async ctx => ({
+      resolved: (await ctx.db.query('agentApprovalRequests').withIndex('by_workspaceId_runId', q => q.eq('workspaceId', workspaceId).eq('runId', 'run-remote-turn')).collect()).every(request => Boolean(request.resolution)),
+      linked: (await ctx.db.query('agentArtifacts').withIndex('by_artifactId', q => q.eq('artifactId', 'artifact-remote-turn')).unique())?.status,
+    }))
+    expect(snapshot).toEqual({ resolved: true, linked: 'linked' })
+  })
+
+  test('host disappearance becomes recoverable and supports resume or a deliberate fresh start', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await seedWorkspaceReservation(convex)
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, {
+      reservationId: 'reservation-remote-turn',
+    }))
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, 'session_started', { remoteSessionId: 'resume-session', adapterId: 'acp' })], now: now + 1 })
+    const swept = await convex.mutation(mutationRef('sweepRemoteRunsInternal'), {
+      now: now + 2, hostOfflineBefore: now - 30_000,
+    }) as { expiredRunIds: string[] }
+    expect(swept.expiredRunIds).toEqual(['run-remote-turn'])
+    expect(await convex.run(async ctx => ctx.db.query('budgetReservations')
+      .withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()))
+      .toEqual(expect.objectContaining({ status: 'reconcile_required', reconciliationAttempts: 1 }))
+    expect((await projectedState(convex, started.messageId)).message?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'data-remote-agent-status', data: expect.objectContaining({ state: 'recoverable', retryClass: 'host_offline' }) }),
+    ]))
+    const resumed = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+      actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn',
+      action: 'resume', queueExpiresAt: now + 60_000, now: now + 3,
+    })
+    expect(resumed.applied).toBe(true)
+    const resumeCommand = await convex.run(async ctx => ctx.db.query('agentRunCommands')
+      .withIndex('by_commandId', q => q.eq('commandId', resumed.commandId)).unique())
+    expect(resumeCommand).toEqual(expect.objectContaining({ type: 'reconnect', payload: { remoteSessionId: 'resume-session' } }))
+    await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId,
+      workspaceId, runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 4 })
+    const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+      actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn',
+      action: 'start_fresh', queueExpiresAt: now + 120_000, now: now + 5,
+    })
+    expect(fresh.applied).toBe(true)
+    const freshCommand = await convex.run(async ctx => ctx.db.query('agentRunCommands')
+      .withIndex('by_commandId', q => q.eq('commandId', fresh.commandId)).unique())
+    expect(freshCommand).toEqual(expect.objectContaining({ type: 'start', payload: expect.objectContaining({ fresh: true }) }))
+    expect((await call<{ expiredRunIds: string[] }>('sweepRemoteRunsByServer', {
+      now: now + 6, hostOfflineBefore: 0, limit: 10,
+    })).expiredRunIds).toEqual([])
+  })
 })
 
 async function seedRoom(convex: ReturnType<typeof convexTest>) {
@@ -134,6 +252,26 @@ async function seedRoom(convex: ReturnType<typeof convexTest>) {
     const userMessageId = await ctx.db.insert('conversationMessages', { conversationId, userId: actorUserId, authorKind: 'human', authorPrincipalId: actorPrincipalId, turnId: 'turn-remote-turn', role: 'user', mode: 'act', content: '@Agent work', contentType: 'text', status: 'completed', createdAt: now, updatedAt: now })
     await ctx.db.insert('agentEnvironments', { environmentId, workspaceId, kind: 'local', name: 'Offline Mac', status: 'offline', capabilities: { adapters: ['acp'] }, filesystemGrant: { mode: 'selected_roots', roots: ['/repo'] }, approvedAt: now - 1_000, approvedByUserId: actorUserId, lastSeenAt: now - 60_000, createdAt: now - 2_000, updatedAt: now })
     return { conversationId, userMessageId }
+  })
+}
+
+async function seedWorkspaceReservation(convex: ReturnType<typeof convexTest>) {
+  await convex.run(async ctx => {
+    const billingAccountId = 'billing-account-remote-turn'
+    await ctx.db.insert('billingAccounts', {
+      billingAccountId, scope: 'workspace', workspaceId, status: 'active', pricingVersion: 'markup_25_v1',
+      markupBasisPoints: 2_500, createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('billingAccountBalances', {
+      billingAccountId, mode: 'budgeted', includedMicros: 100_000, institutionalGrantMicros: 0,
+      allowanceUsedMicros: 0, topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0,
+      reservedMicros: 10_000, version: 1, createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('budgetReservations', {
+      userId: actorUserId, billingAccountId, spendSubjectKind: 'programmatic', spendSubjectId: `agent:${agentId}`,
+      reservationId: 'reservation-remote-turn', status: 'reserved', kind: 'agent', modelId: 'openrouter/free',
+      operationId: 'workspace-agent:remote-turn', reservedCents: 1, createdAt: now, updatedAt: now,
+    })
   })
 }
 

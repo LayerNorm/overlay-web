@@ -2,6 +2,8 @@ import 'server-only'
 
 import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
+import { PostgresConnectedAgentRepository } from '@/server/agents/PostgresConnectedAgentRepository'
+import type { ConnectedAgentSweepResult } from '@/server/agents/ConnectedAgentRepository'
 import {
   conversationEvents,
   agentRuns,
@@ -17,6 +19,7 @@ export interface PostgresBackgroundMaintenanceSummary {
   expiredAgentRuns: {
     failed: number
   }
+  remoteAgentRuns: ConnectedAgentSweepResult
   oldConversationEvents: {
     deleted: number
   }
@@ -38,6 +41,11 @@ export class PostgresBackgroundMaintenanceService {
       limit,
       now: options.now,
     })
+    const remoteAgentRuns = await new PostgresConnectedAgentRepository(this.db).sweepRemoteRuns({
+      now: (options.now ?? new Date()).getTime(),
+      hostOfflineBefore: (options.now ?? new Date()).getTime() - 90_000,
+      limit,
+    })
     const oldConversationEvents = await this.cleanupOldConversationEvents({
       limit,
       now: options.now,
@@ -50,6 +58,7 @@ export class PostgresBackgroundMaintenanceService {
 
     return {
       expiredAgentRuns,
+      remoteAgentRuns,
       oldConversationEvents,
       emptyConversations,
     }
@@ -70,7 +79,7 @@ export class PostgresBackgroundMaintenanceService {
         // a run whose executor disappeared, whichever executor that was.
         or(
           eq(agentRuns.runner, 'tool_loop'),
-          eq(agentRuns.mode, 'room'),
+          and(eq(agentRuns.runner, 'workflow'), eq(agentRuns.mode, 'room')),
         ),
         inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
         lt(agentRuns.leaseExpiresAt, now),
