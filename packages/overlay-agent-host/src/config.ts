@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { filesystemGrantSchema } from '@overlay/agent-bridge-protocol'
+import { loadStoredConnection } from './connection'
 
 export const agentHostConfigSchema = z.object({
   environmentId: z.string().min(1),
@@ -19,6 +20,10 @@ export type AgentHostConfig = AgentHostFileConfig & { credential?: string }
 
 export async function loadAgentHostConfig(path: string): Promise<AgentHostConfig> {
   const config = agentHostConfigSchema.parse(JSON.parse(await readFile(path, 'utf8')))
-  const credential = process.env[config.credentialEnv]?.trim()
+  const stored = await loadStoredConnection(config.stateDirectory)
+  if (stored && (stored.environmentId !== config.environmentId || stored.workspaceId !== config.workspaceId)) {
+    throw new Error('stored connection scope does not match the host configuration')
+  }
+  const credential = process.env[config.credentialEnv]?.trim() ?? stored?.token
   return { ...config, ...(credential ? { credential } : {}) }
 }

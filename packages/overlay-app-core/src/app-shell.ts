@@ -165,6 +165,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory'] },
   { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
   { id: 'webhooks', label: 'Webhooks', requiredCapabilities: ['webhooks'] },
+  { id: 'agent-environments', label: 'Agent environments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },
   { id: 'contact', label: 'Contact' },
 ] as const
 
@@ -284,6 +285,7 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory'], order: 40 },
   { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', requiredCapabilities: ['modelRouting'], order: 50 },
   { id: 'webhooks', sectionId: 'webhooks', label: 'Webhooks', componentKey: 'overlay.settings.webhooks', requiredCapabilities: ['webhooks'], order: 60 },
+  { id: 'agent-environments', sectionId: 'agent-environments', label: 'Agent environments', componentKey: 'overlay.settings.agentEnvironments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'], order: 65 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 70 },
 ] as const
 

@@ -2125,10 +2125,53 @@ export default defineSchema({
     environmentId: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(),
     status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()),
     platform: v.optional(v.string()), capabilities: v.any(), lastSeenAt: v.optional(v.number()),
+    filesystemGrant: v.optional(v.any()), approvedByUserId: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_environmentId', ['environmentId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_status', ['workspaceId', 'status']),
+
+  agentEnrollmentSessions: defineTable({
+    enrollmentSessionId: v.string(), workspaceId: v.string(), createdByUserId: v.string(),
+    codeHash: v.string(), verificationPhrase: v.string(), status: v.union(
+      v.literal('created'), v.literal('redeemed'), v.literal('approved'), v.literal('expired'),
+    ),
+    environmentId: v.optional(v.string()), expiresAt: v.number(), redeemedAt: v.optional(v.number()),
+    approvedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_enrollmentSessionId', ['enrollmentSessionId'])
+    .index('by_codeHash', ['codeHash'])
+    .index('by_environmentId', ['environmentId'])
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
+    .index('by_status_expiresAt', ['status', 'expiresAt']),
+
+  agentEnvironmentProofChallenges: defineTable({
+    challengeId: v.string(), workspaceId: v.string(), environmentId: v.string(),
+    challengeHash: v.string(), expiresAt: v.number(), consumedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index('by_challengeId', ['challengeId'])
+    .index('by_challengeHash', ['challengeHash'])
+    .index('by_environmentId_expiresAt', ['environmentId', 'expiresAt'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  agentEnvironmentCredentials: defineTable({
+    credentialId: v.string(), workspaceId: v.string(), environmentId: v.string(),
+    tokenHash: v.string(), audience: v.string(), methods: v.array(v.string()), tokenNonce: v.string(),
+    expiresAt: v.number(), revokedAt: v.optional(v.number()), createdAt: v.number(),
+  }).index('by_credentialId', ['credentialId'])
+    .index('by_tokenHash', ['tokenHash'])
+    .index('by_tokenNonce', ['tokenNonce'])
+    .index('by_environmentId_expiresAt', ['environmentId', 'expiresAt'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  agentEnvironmentCredentialNonces: defineTable({
+    nonceId: v.string(), credentialId: v.string(), nonceHash: v.string(),
+    expiresAt: v.number(), createdAt: v.number(),
+  }).index('by_nonceId', ['nonceId'])
+    .index('by_nonceHash', ['nonceHash'])
+    .index('by_credentialId_nonceHash', ['credentialId', 'nonceHash'])
+    .index('by_credentialId_expiresAt', ['credentialId', 'expiresAt'])
+    .index('by_expiresAt', ['expiresAt']),
 
   agentBindings: defineTable({
     bindingId: v.string(), workspaceId: v.string(), agentId: v.string(), environmentId: v.string(),

@@ -66,6 +66,7 @@ export function withObservabilityProviderCapabilities(
     ...capabilities,
     analytics: capabilities.analytics && analyticsProvider === 'posthog',
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
+    connectedAgents: runtimeConfig.features?.connectedAgentControlPlane === true,
   }
 }
 

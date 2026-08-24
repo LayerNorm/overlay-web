@@ -47,6 +47,7 @@ test('Postgres connected-agent provider contract', {
       workspaceId, otherWorkspaceId, runId,
     })
   } finally {
+    await db.delete(agentRuns).where(eq(agentRuns.id, runId))
     await db.delete(conversations).where(eq(conversations.id, conversationId))
     await db.delete(workspaces).where(eq(workspaces.id, workspaceId))
     await db.delete(workspaces).where(eq(workspaces.id, otherWorkspaceId))

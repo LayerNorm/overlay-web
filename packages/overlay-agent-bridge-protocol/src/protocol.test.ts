@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { agentHostCommandSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
+import { agentHostCommandSchema, canonicalEnrollmentProof, canonicalHostRequestProof, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
 
 test('filesystem grants require explicit roots or explicit all-user access', () => {
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'selected_roots', roots: [] }).success, false)
@@ -31,4 +31,20 @@ test('event batches reject gaps and cross-run substitution', () => {
     environmentId: 'e1', runId: 'r1',
     events: [{ ...base, eventId: 'a', runId: 'other', sourceSequence: 1, payload: { text: 'a' } }],
   }).success, false)
+})
+
+test('proof canonicalization binds every security-relevant request field', () => {
+  assert.equal(canonicalEnrollmentProof('environment-1', 'challenge-1'), 'overlay-agent-enrollment-v1\nenvironment-1\nchallenge-1')
+  const baseline = canonicalHostRequestProof({
+    method: 'POST', pathname: '/api/v1/agent-environments/e1/events', timestamp: '1800000000000',
+    nonce: 'request-nonce', bodySha256: 'body-hash', tokenSha256: 'token-hash',
+  })
+  assert.notEqual(baseline, canonicalHostRequestProof({
+    method: 'POST', pathname: '/api/v1/agent-environments/e2/events', timestamp: '1800000000000',
+    nonce: 'request-nonce', bodySha256: 'body-hash', tokenSha256: 'token-hash',
+  }))
+  assert.notEqual(baseline, canonicalHostRequestProof({
+    method: 'POST', pathname: '/api/v1/agent-environments/e1/events', timestamp: '1800000000000',
+    nonce: 'request-nonce', bodySha256: 'forged-body', tokenSha256: 'token-hash',
+  }))
 })

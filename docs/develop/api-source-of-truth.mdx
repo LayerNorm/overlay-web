@@ -29,6 +29,22 @@ The web app owns backend route contracts for every surface. Desktop, mobile, Chr
 
 Surfaces should use bootstrap first, then render their native shell from those registries.
 
+## Agent environments
+
+`/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
+clients use `AgentEnvironmentsClient` for list, enrollment creation, approval, root-scope changes,
+and revocation. The portable host uses the bridge protocol for enrollment, credential issuance
+and refresh, heartbeat, capability refresh, command polling/acknowledgement, and event batches.
+
+Browser mutations require the signed-in workspace owner or admin. Host routes accept no browser
+cookie authority: a redeemed one-time code establishes a pending environment, initial credentials
+require an Ed25519 proof, and every later request is bound to the exact environment, workspace,
+audience, allowed method, expiry, request body, timestamp, and single-use nonce. Raw enrollment
+codes, proof challenges, credentials, and request nonces are never persisted.
+Enrollment-session creation opts out of BFF response idempotency because its response contains the
+only copy of the code; retrying creates a new short-lived code instead of persisting that secret in
+the idempotency store.
+
 ## Cross-Surface Adoption
 
 Desktop and Chrome can use the React DOM packages directly where practical. Mobile should use `@overlay/app-core`, `@overlay/api-client`, and pure controllers from `@overlay/app-core/modules`, while keeping React Native rendering in mobile-specific components.

@@ -29,7 +29,7 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 and 1 are implemented. The connected-agent repository now includes command
+Phases 0 through 3 are implemented. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
@@ -45,12 +45,28 @@ Phase 2 is implemented in two Apache-licensed workspace packages:
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
   official ACP TypeScript SDK adapter.
 
-The host executable currently accepts a manually provisioned environment-scoped credential
-through a named environment variable. Phase 3 replaces that bootstrap step with short-lived
-enrollment, proof of possession, browser approval, and canonical control-plane routes; Phase 2
-does not create shadow endpoints. Conformance tests cover start, stream, approval, cancel,
+The host executable supports `connect <code> --server <origin>`. It creates or reuses an Ed25519
+device key, displays the same short phrase shown in Settings, waits for browser approval, stores
+the resulting short-lived credential in a mode-0600 connection file, signs every control-plane
+request, and rotates credentials before expiry. A named environment-variable credential remains
+available for operational compatibility. Conformance tests cover start, stream, approval, cancel,
 duplicate delivery, out-of-order rejection, server outage, host restart, reconnect/resume, and
 an actual ACP subprocess exchange.
+
+Phase 3 browser management lives in Settings > Agent environments. Workspace owners and admins
+can create a ten-minute, single-use enrollment code, approve a pending host with one or more
+absolute project roots, change its scope, list environments, and revoke them. Public host routes
+never accept browser-session authority. Initial issuance requires the one-time challenge plus an
+Ed25519 signature; subsequent calls require an opaque 15-minute credential and a signature over
+the exact method, pathname and query, body hash, timestamp, request nonce, and token hash.
+
+Canonical routes are `/api/v1/agent-environments`, `/enrollment-sessions`, `/enroll`, and the
+environment-scoped `approve`, `roots`, `revoke`, `credentials`, `credentials/refresh`, `heartbeat`,
+`capabilities`, `commands`, command acknowledgement, and `events` subresources. Enrollment-code,
+challenge, credential, and request-nonce consumption is atomic in Convex and PostgreSQL. Only
+hashes of enrollment codes, proof challenges, opaque credentials, and request nonces are stored.
+Revocation cancels unclaimed work, revokes active credentials, disables bindings, and moves live
+managed leases to immediate cleanup.
 
 ## Trust boundaries and threat model
 
@@ -147,8 +163,8 @@ and acknowledged cursors remain authoritative.
 Protocol version 1 transports `start`, `prompt`, approval response, `cancel`, `reconnect`, and
 `shutdown` commands and normalizes session start, text checkpoints, actions, approval requests,
 artifacts, completion, failure, and cancellation events. The HTTP client treats route URLs as
-control-plane configuration; `/api/v1/agent-environments/**` route implementation remains Phase
-3. Credentials are bearer-scoped by that future control plane and are never included in logs.
+control-plane configuration; `/api/v1/agent-environments/**` is the canonical Phase 3 control
+plane. Credentials are bearer-scoped by that control plane and are never included in logs.
 
 ## Provider-neutral persistence contract
 

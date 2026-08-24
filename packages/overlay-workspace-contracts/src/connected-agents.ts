@@ -4,6 +4,10 @@ export type AgentEnvironmentKind = (typeof AGENT_ENVIRONMENT_KINDS)[number]
 export const AGENT_ENVIRONMENT_STATUSES = ['pending', 'online', 'offline', 'revoked'] as const
 export type AgentEnvironmentStatus = (typeof AGENT_ENVIRONMENT_STATUSES)[number]
 
+export type AgentFilesystemGrant =
+  | { mode: 'selected_roots'; roots: string[] }
+  | { mode: 'all_user_files' }
+
 export type AgentEnvironment = {
   id: string
   workspaceId: string
@@ -14,6 +18,9 @@ export type AgentEnvironment = {
   hostVersion?: string
   platform?: string
   capabilities: Record<string, unknown>
+  filesystemGrant?: AgentFilesystemGrant
+  approvedAt?: number
+  approvedByUserId?: string
   lastSeenAt?: number
   revokedAt?: number
   createdAt: number
@@ -36,7 +43,7 @@ export type AgentBinding = {
 }
 
 export const AGENT_RUN_COMMAND_TYPES = [
-  'start', 'cancel', 'approval_response', 'reconnect', 'shutdown',
+  'start', 'prompt', 'cancel', 'approval_response', 'reconnect', 'shutdown',
 ] as const
 export type AgentRunCommandType = (typeof AGENT_RUN_COMMAND_TYPES)[number]
 export const AGENT_RUN_COMMAND_STATUSES = ['pending', 'claimed', 'acknowledged', 'cancelled'] as const
@@ -138,4 +145,72 @@ export type AgentRemoteEvent = {
   type: AgentRemoteEventType
   occurredAt: number
   payload: Record<string, unknown>
+}
+
+export const AGENT_ENROLLMENT_SESSION_STATUSES = ['created', 'redeemed', 'approved', 'expired'] as const
+export type AgentEnrollmentSessionStatus = (typeof AGENT_ENROLLMENT_SESSION_STATUSES)[number]
+
+/** Security-sensitive persistence record. `codeHash` is never returned by a public API. */
+export type AgentEnrollmentSession = {
+  id: string
+  workspaceId: string
+  createdByUserId: string
+  codeHash: string
+  verificationPhrase: string
+  status: AgentEnrollmentSessionStatus
+  expiresAt: number
+  environmentId?: string
+  redeemedAt?: number
+  approvedAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type AgentEnvironmentProofChallenge = {
+  id: string
+  workspaceId: string
+  environmentId: string
+  challengeHash: string
+  expiresAt: number
+  consumedAt?: number
+  createdAt: number
+}
+
+export const AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE = 'overlay-agent-control-plane' as const
+export const AGENT_ENVIRONMENT_CREDENTIAL_METHODS = [
+  'agent:heartbeat',
+  'agent:capabilities:update',
+  'agent:commands:poll',
+  'agent:commands:ack',
+  'agent:events:write',
+  'agent:credentials:refresh',
+] as const
+export type AgentEnvironmentCredentialMethod = (typeof AGENT_ENVIRONMENT_CREDENTIAL_METHODS)[number]
+
+/** Security-sensitive persistence record. Only a SHA-256 token hash is stored. */
+export type AgentEnvironmentCredential = {
+  id: string
+  workspaceId: string
+  environmentId: string
+  tokenHash: string
+  audience: typeof AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE
+  methods: AgentEnvironmentCredentialMethod[]
+  tokenNonce: string
+  expiresAt: number
+  revokedAt?: number
+  createdAt: number
+}
+
+export type AgentEnvironmentProofNonce = {
+  id: string
+  credentialId: string
+  nonceHash: string
+  expiresAt: number
+  createdAt: number
+}
+
+export type AgentEnvironmentEnrollmentView = {
+  environment: AgentEnvironment
+  verificationPhrase: string
+  enrollmentExpiresAt: number
 }

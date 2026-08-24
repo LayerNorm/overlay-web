@@ -1,8 +1,9 @@
 import 'server-only'
 
 import type {
-  AgentApprovalRequest, AgentApprovalResolution, AgentBinding, AgentEnvironment,
-  AgentRemoteEvent, AgentRemoteSession, AgentRunCommand, AgentSandboxLease,
+  AgentApprovalRequest, AgentApprovalResolution, AgentBinding, AgentEnrollmentSession,
+  AgentEnvironment, AgentEnvironmentCredential, AgentEnvironmentEnrollmentView, AgentEnvironmentProofChallenge,
+  AgentFilesystemGrant, AgentRemoteEvent, AgentRemoteSession, AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
@@ -23,11 +24,83 @@ export type ApplyRemoteEventsResult =
   | { accepted: true; acknowledgedSequence: number; duplicate: boolean }
   | { accepted: false; expectedSequence: number }
 
+export type RedeemEnrollmentResult = {
+  enrollment: AgentEnrollmentSession
+  environment: AgentEnvironment
+  proofChallenge: AgentEnvironmentProofChallenge
+}
+
 /** Atomic persistence boundary shared by Convex and PostgreSQL connected-agent flows. */
 export interface ConnectedAgentRepository {
+  createEnrollmentSession(input: AgentEnrollmentSession): Promise<AgentEnrollmentSession>
+  redeemEnrollmentSession(args: {
+    codeHash: string
+    now: number
+    environment: ConnectedAgentCreateEnvironment
+    proofChallenge: AgentEnvironmentProofChallenge
+  }): Promise<RedeemEnrollmentResult | null>
+  listEnvironments(args: { workspaceId: string }): Promise<AgentEnvironment[]>
+  getEnvironment(args: { workspaceId: string; environmentId: string }): Promise<AgentEnvironment | null>
+  getEnvironmentEnrollment(args: {
+    workspaceId: string
+    environmentId: string
+  }): Promise<AgentEnvironmentEnrollmentView | null>
+  approveEnvironment(args: {
+    workspaceId: string
+    environmentId: string
+    approvedByUserId: string
+    filesystemGrant: AgentFilesystemGrant
+    now: number
+  }): Promise<AgentEnvironment | null>
+  updateEnvironmentFilesystemGrant(args: {
+    workspaceId: string
+    environmentId: string
+    filesystemGrant: AgentFilesystemGrant
+    now: number
+  }): Promise<AgentEnvironment | null>
+  getEnvironmentProofChallenge(args: {
+    environmentId: string
+    now: number
+  }): Promise<{ environment: AgentEnvironment; proofChallenge: AgentEnvironmentProofChallenge } | null>
+  issueEnvironmentCredential(args: {
+    workspaceId: string
+    environmentId: string
+    proofChallengeId: string
+    proofChallengeHash: string
+    credential: AgentEnvironmentCredential
+    now: number
+  }): Promise<AgentEnvironmentCredential | null>
+  findEnvironmentCredential(args: { tokenHash: string }): Promise<AgentEnvironmentCredential | null>
+  consumeEnvironmentProofNonce(args: {
+    credentialId: string
+    nonceHash: string
+    expiresAt: number
+    now: number
+  }): Promise<boolean>
+  rotateEnvironmentCredential(args: {
+    currentCredentialId: string
+    credential: AgentEnvironmentCredential
+    now: number
+  }): Promise<AgentEnvironmentCredential | null>
+  heartbeatEnvironment(args: {
+    workspaceId: string
+    environmentId: string
+    now: number
+  }): Promise<AgentEnvironment | null>
+  updateEnvironmentCapabilities(args: {
+    workspaceId: string
+    environmentId: string
+    capabilities: Record<string, unknown>
+    now: number
+  }): Promise<AgentEnvironment | null>
   createEnvironment(input: ConnectedAgentCreateEnvironment): Promise<AgentEnvironment>
   createBinding(input: ConnectedAgentCreateBinding): Promise<AgentBinding>
   createRemoteSession(input: ConnectedAgentCreateSession): Promise<AgentRemoteSession>
+  getRemoteSessionForRun(args: {
+    workspaceId: string
+    environmentId: string
+    runId: string
+  }): Promise<AgentRemoteSession | null>
   enqueueCommand(input: ConnectedAgentEnqueueCommand): Promise<AgentRunCommand>
   claimCommands(args: {
     workspaceId: string
@@ -40,6 +113,7 @@ export interface ConnectedAgentRepository {
     workspaceId: string
     environmentId: string
     commandId: string
+    accepted?: boolean
     now: number
   }): Promise<boolean>
   createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>

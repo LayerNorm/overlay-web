@@ -72,6 +72,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'api-keys',
   },
   {
+    id: 'connected-agent-control-plane',
+    methods: '*',
+    prefixes: ['/api/v1/agent-environments'],
+    status: 'supported',
+    feature: 'connected-agent-control-plane',
+  },
+  {
     id: 'automations',
     methods: '*',
     prefixes: ['/api/v1/automations'],

@@ -20,6 +20,7 @@ export interface CapabilityCheck {
   vectorSearch: boolean
   automations: boolean
   multiTenant: boolean
+  connectedAgents: boolean
 }
 
 export type OverlayCapability = keyof CapabilityCheck
@@ -46,6 +47,7 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   vectorSearch: true,
   automations: true,
   multiTenant: false,
+  connectedAgents: false,
 }
 
 export function deriveOverlayCapabilities(

@@ -60,6 +60,7 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
 import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
@@ -132,6 +133,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceService: WorkspaceService
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
+  connectedAgentControlPlane: ConnectedAgentControlPlaneService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
@@ -274,6 +276,11 @@ export function createOverlayServerContext(
     ? new PostgresWorkspaceAgentRepository(postgresDb)
     : new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
+    audit: auditService,
+    repository: appData.repositories.connectedAgents,
+    workspaces: workspaceService,
+  })
 
   const workspaceSharingRepository = isPostgres && postgresDb
     ? new PostgresWorkspaceSharingRepository(postgresDb)
@@ -387,6 +394,7 @@ export function createOverlayServerContext(
     workspaceService,
     workspaceGovernanceService,
     workspaceAgentService,
+    connectedAgentControlPlane,
     workspaceSharingService,
     workspaceSearchService,
     knowledgeSourceIngestionService,
@@ -737,7 +745,10 @@ function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config 
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {
-  return resolveOverlayCapabilities(config)
+  return {
+    ...resolveOverlayCapabilities(config),
+    connectedAgents: config.features.connectedAgentControlPlane === true,
+  }
 }
 
 function selectedProvider(

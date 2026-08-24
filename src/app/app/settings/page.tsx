@@ -32,6 +32,7 @@ import { renderExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
+import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { isWorkspaceSettingsTab, WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
@@ -56,6 +57,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'memories',
   'models',
   'webhooks',
+  'agent-environments',
   'contact',
 ])
 
@@ -288,6 +290,8 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'webhooks' && <WebhookSettings />}
+
+          {!isLoading && section === 'agent-environments' && <AgentEnvironmentSettings />}
 
           {!isLoading && section === 'contact' && (
             <SettingsCard title="Contact">

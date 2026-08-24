@@ -62,6 +62,34 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), PATCH: authenticated(), DELETE: authenticated() },
   },
   {
+    path: '/api/v1/agent-environments',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/enrollment-sessions',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/:environmentId/approve',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/:environmentId/roots',
+    methods: { PATCH: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/:environmentId/revoke',
+    methods: { POST: authenticated() },
+  },
+  { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/commands/:commandId/ack', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/events', methods: { POST: publicPolicy() } },
+  {
     path: '/api/v1/shares',
     methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() },
   },

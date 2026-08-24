@@ -24,7 +24,27 @@ describe('Convex connected-agent provider contract', () => {
     const call = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
       return await convex.mutation(reference(operation), { ...args, serverSecret: secret }) as T
     }
+    const controlCall = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
+      return await convex.mutation(controlReference(operation), { ...args, serverSecret: secret }) as T
+    }
+    const controlRead = async <T>(operation: string, args: Record<string, unknown>): Promise<T> => {
+      return await convex.query(controlQueryReference(operation), { ...args, serverSecret: secret }) as T
+    }
     const repository: ConnectedAgentContractRepository = {
+      createEnrollmentSession: (input) => controlCall('createEnrollmentSessionByServer', input),
+      redeemEnrollmentSession: (input) => controlCall('redeemEnrollmentSessionByServer', input),
+      listEnvironments: (input) => controlRead('listEnvironmentsByServer', input),
+      getEnvironment: (input) => controlRead('getEnvironmentByServer', input),
+      getEnvironmentEnrollment: (input) => controlRead('getEnvironmentEnrollmentByServer', input),
+      approveEnvironment: (input) => controlCall('approveEnvironmentByServer', input),
+      updateEnvironmentFilesystemGrant: (input) => controlCall('updateEnvironmentFilesystemGrantByServer', input),
+      getEnvironmentProofChallenge: (input) => controlRead('getEnvironmentProofChallengeByServer', input),
+      issueEnvironmentCredential: (input) => controlCall('issueEnvironmentCredentialByServer', input),
+      findEnvironmentCredential: (input) => controlRead('findEnvironmentCredentialByServer', input),
+      consumeEnvironmentProofNonce: (input) => controlCall('consumeEnvironmentProofNonceByServer', input),
+      rotateEnvironmentCredential: (input) => controlCall('rotateEnvironmentCredentialByServer', input),
+      heartbeatEnvironment: (input) => controlCall('heartbeatEnvironmentByServer', input),
+      updateEnvironmentCapabilities: (input) => controlCall('updateEnvironmentCapabilitiesByServer', input),
       createEnvironment: (input) => call('createEnvironmentByServer', input),
       createBinding: (input) => call('createBindingByServer', input),
       createRemoteSession: (input) => call('createRemoteSessionByServer', input),
@@ -48,4 +68,12 @@ describe('Convex connected-agent provider contract', () => {
 
 function reference(operation: string) {
   return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`)
+}
+
+function controlReference(operation: string) {
+  return makeFunctionReference<'mutation'>(`agents/environmentControlPlane:${operation}`)
+}
+
+function controlQueryReference(operation: string) {
+  return makeFunctionReference<'query'>(`agents/environmentControlPlane:${operation}`)
 }

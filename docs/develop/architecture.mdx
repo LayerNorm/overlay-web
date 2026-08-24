@@ -29,7 +29,8 @@ only; Postgres must not silently fall back to Convex for them.
 
 Connected-agent persistence is provider-neutral through
 `ConnectedAgentRepository`. Environment, binding, command, remote-session,
-approval, and sandbox-lease records have matching Convex and PostgreSQL schemas.
+approval, sandbox-lease, enrollment, proof-challenge, short-lived credential, and
+request-replay records have matching Convex and PostgreSQL schemas.
 Remote output advances a per-session contiguous event cursor transactionally;
 it projects into the existing conversation and `AgentRun` lifecycle rather than
 creating a second transcript.
@@ -37,8 +38,15 @@ creating a second transcript.
 A connected-agent environment is a machine or runtime boundary, not a working-directory or
 single-agent boundary. Bindings choose an agent and adapter; each command chooses an explicitly
 granted working directory. The host can grant multiple roots or explicit OS-user-wide access.
-Protocol versioning, validation, sequencing, and HTTP transport remain in the bridge/host
+Protocol versioning, validation, sequencing, enrollment proof canonicalization, and signed HTTP
+transport remain in the bridge/host
 packages so neither Convex nor PostgreSQL becomes a public host API.
+
+`ConnectedAgentControlPlaneService` is the server-only policy boundary for enrollment and host
+traffic. Browser management routes use the normal authenticated BFF and active-workspace
+resolution. Host routes are explicit BFF exceptions because they use outbound machine auth:
+method-scoped opaque credentials plus Ed25519 request proofs and atomic nonces. Route handlers
+never select a provider directly; both modes use `ConnectedAgentRepository` from app data.
 
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 

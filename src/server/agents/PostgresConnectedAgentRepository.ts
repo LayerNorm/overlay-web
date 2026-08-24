@@ -1,14 +1,17 @@
 import 'server-only'
 
-import { and, asc, eq, inArray, lte, max, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, max, or, sql } from 'drizzle-orm'
 import type {
-  AgentApprovalRequest, AgentBinding, AgentEnvironment, AgentRemoteSession,
+  AgentApprovalRequest, AgentBinding, AgentEnrollmentSession, AgentEnvironment,
+  AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentRemoteSession,
   AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
+import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@overlay/agent-bridge-protocol'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
-  agentApprovalRequests, agentBindings, agentEnvironments, agentRemoteSessions,
-  agentRunCommands, agentSandboxLeases,
+  agentApprovalRequests, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
+  agentEnvironmentProofChallenges, agentEnvironmentProofNonces, agentEnvironments,
+  agentRemoteSessions, agentRunCommands, agentSandboxLeases,
 } from '@/server/database/postgres/schema'
 import type {
   ApplyRemoteEventsResult, ConnectedAgentCreateBinding, ConnectedAgentCreateEnvironment,
@@ -17,6 +20,257 @@ import type {
 
 export class PostgresConnectedAgentRepository implements ConnectedAgentRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
+
+  async createEnrollmentSession(input: AgentEnrollmentSession) {
+    const [row] = await this.db.insert(agentEnrollmentSessions).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      createdByUserId: input.createdByUserId,
+      codeHash: input.codeHash,
+      verificationPhrase: input.verificationPhrase,
+      status: input.status,
+      expiresAt: new Date(input.expiresAt),
+      environmentId: input.environmentId,
+      redeemedAt: date(input.redeemedAt),
+      approvedAt: date(input.approvedAt),
+      createdAt: new Date(input.createdAt),
+      updatedAt: new Date(input.updatedAt),
+    }).returning()
+    return enrollment(row)
+  }
+
+  async redeemEnrollmentSession(args: Parameters<ConnectedAgentRepository['redeemEnrollmentSession']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(agentEnrollmentSessions)
+        .where(eq(agentEnrollmentSessions.codeHash, args.codeHash)).for('update')
+      if (!current || current.status !== 'created') return null
+      if (current.expiresAt.getTime() <= args.now) {
+        await tx.update(agentEnrollmentSessions).set({ status: 'expired', updatedAt: new Date(args.now) })
+          .where(eq(agentEnrollmentSessions.id, current.id))
+        return null
+      }
+      const [environmentRow] = await tx.insert(agentEnvironments).values({
+        id: args.environment.id,
+        workspaceId: current.workspaceId,
+        kind: args.environment.kind,
+        name: args.environment.name,
+        status: 'pending',
+        publicKey: args.environment.publicKey,
+        hostVersion: args.environment.hostVersion,
+        platform: args.environment.platform,
+        capabilities: args.environment.capabilities,
+        createdAt: new Date(args.now),
+        updatedAt: new Date(args.now),
+      }).returning()
+      const [challengeRow] = await tx.insert(agentEnvironmentProofChallenges).values({
+        id: args.proofChallenge.id,
+        workspaceId: current.workspaceId,
+        environmentId: args.environment.id,
+        challengeHash: args.proofChallenge.challengeHash,
+        expiresAt: new Date(args.proofChallenge.expiresAt),
+        createdAt: new Date(args.proofChallenge.createdAt),
+      }).returning()
+      const [enrollmentRow] = await tx.update(agentEnrollmentSessions).set({
+        status: 'redeemed',
+        environmentId: args.environment.id,
+        redeemedAt: new Date(args.now),
+        updatedAt: new Date(args.now),
+      }).where(eq(agentEnrollmentSessions.id, current.id)).returning()
+      return {
+        enrollment: enrollment(enrollmentRow),
+        environment: environment(environmentRow),
+        proofChallenge: proofChallenge(challengeRow),
+      }
+    })
+  }
+
+  async listEnvironments(args: { workspaceId: string }) {
+    const rows = await this.db.select().from(agentEnvironments)
+      .where(eq(agentEnvironments.workspaceId, args.workspaceId))
+      .orderBy(desc(agentEnvironments.createdAt))
+    return rows.map(environment)
+  }
+
+  async getEnvironment(args: { workspaceId: string; environmentId: string }) {
+    const [row] = await this.db.select().from(agentEnvironments).where(and(
+      eq(agentEnvironments.id, args.environmentId),
+      eq(agentEnvironments.workspaceId, args.workspaceId),
+    ))
+    return row ? environment(row) : null
+  }
+
+  async getEnvironmentEnrollment(args: Parameters<ConnectedAgentRepository['getEnvironmentEnrollment']>[0]) {
+    const [row] = await this.db.select({
+      environment: agentEnvironments,
+      verificationPhrase: agentEnrollmentSessions.verificationPhrase,
+      enrollmentExpiresAt: agentEnrollmentSessions.expiresAt,
+    }).from(agentEnvironments).innerJoin(agentEnrollmentSessions, and(
+      eq(agentEnrollmentSessions.environmentId, agentEnvironments.id),
+      eq(agentEnrollmentSessions.workspaceId, agentEnvironments.workspaceId),
+    )).where(and(
+      eq(agentEnvironments.id, args.environmentId),
+      eq(agentEnvironments.workspaceId, args.workspaceId),
+    )).orderBy(desc(agentEnrollmentSessions.createdAt)).limit(1)
+    return row ? {
+      environment: environment(row.environment),
+      verificationPhrase: row.verificationPhrase,
+      enrollmentExpiresAt: row.enrollmentExpiresAt.getTime(),
+    } : null
+  }
+
+  async approveEnvironment(args: Parameters<ConnectedAgentRepository['approveEnvironment']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(agentEnvironments).where(and(
+        eq(agentEnvironments.id, args.environmentId),
+        eq(agentEnvironments.workspaceId, args.workspaceId),
+      )).for('update')
+      if (!current || current.status !== 'pending') return null
+      const [enrollmentRow] = await tx.select().from(agentEnrollmentSessions).where(and(
+        eq(agentEnrollmentSessions.environmentId, args.environmentId),
+        eq(agentEnrollmentSessions.workspaceId, args.workspaceId),
+      )).for('update')
+      if (!enrollmentRow || enrollmentRow.status !== 'redeemed' || enrollmentRow.expiresAt.getTime() <= args.now) return null
+      const [row] = await tx.update(agentEnvironments).set({
+        status: 'offline',
+        filesystemGrant: args.filesystemGrant,
+        approvedByUserId: args.approvedByUserId,
+        approvedAt: new Date(args.now),
+        updatedAt: new Date(args.now),
+      }).where(eq(agentEnvironments.id, args.environmentId)).returning()
+      await tx.update(agentEnrollmentSessions).set({
+        status: 'approved', approvedAt: new Date(args.now), updatedAt: new Date(args.now),
+      }).where(and(
+        eq(agentEnrollmentSessions.environmentId, args.environmentId),
+        eq(agentEnrollmentSessions.workspaceId, args.workspaceId),
+      ))
+      return environment(row)
+    })
+  }
+
+  async updateEnvironmentFilesystemGrant(args: Parameters<ConnectedAgentRepository['updateEnvironmentFilesystemGrant']>[0]) {
+    const [row] = await this.db.update(agentEnvironments).set({
+      filesystemGrant: args.filesystemGrant,
+      updatedAt: new Date(args.now),
+    }).where(and(
+      eq(agentEnvironments.id, args.environmentId),
+      eq(agentEnvironments.workspaceId, args.workspaceId),
+      isNotNull(agentEnvironments.approvedAt),
+      sql`${agentEnvironments.status} <> 'pending'`,
+      sql`${agentEnvironments.status} <> 'revoked'`,
+    )).returning()
+    return row ? environment(row) : null
+  }
+
+  async getEnvironmentProofChallenge(args: Parameters<ConnectedAgentRepository['getEnvironmentProofChallenge']>[0]) {
+    const [row] = await this.db.select({ environment: agentEnvironments, challenge: agentEnvironmentProofChallenges })
+      .from(agentEnvironmentProofChallenges)
+      .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentEnvironmentProofChallenges.environmentId))
+      .where(and(
+        eq(agentEnvironmentProofChallenges.environmentId, args.environmentId),
+        isNull(agentEnvironmentProofChallenges.consumedAt),
+        gt(agentEnvironmentProofChallenges.expiresAt, new Date(args.now)),
+        isNull(agentEnvironments.revokedAt),
+      )).orderBy(desc(agentEnvironmentProofChallenges.createdAt)).limit(1)
+    if (!row || !row.environment.approvedAt || !row.environment.filesystemGrant) return null
+    return { environment: environment(row.environment), proofChallenge: proofChallenge(row.challenge) }
+  }
+
+  async issueEnvironmentCredential(args: Parameters<ConnectedAgentRepository['issueEnvironmentCredential']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [challenge] = await tx.select().from(agentEnvironmentProofChallenges).where(and(
+        eq(agentEnvironmentProofChallenges.id, args.proofChallengeId),
+        eq(agentEnvironmentProofChallenges.workspaceId, args.workspaceId),
+        eq(agentEnvironmentProofChallenges.environmentId, args.environmentId),
+      )).for('update')
+      if (!challenge || challenge.consumedAt || challenge.expiresAt.getTime() <= args.now ||
+        challenge.challengeHash !== args.proofChallengeHash) return null
+      const [environmentRow] = await tx.select().from(agentEnvironments).where(and(
+        eq(agentEnvironments.id, args.environmentId),
+        eq(agentEnvironments.workspaceId, args.workspaceId),
+      )).for('update')
+      if (!environmentRow || environmentRow.status === 'revoked' || !environmentRow.approvedAt || !environmentRow.filesystemGrant) return null
+      const [row] = await tx.insert(agentEnvironmentCredentials).values(credentialValues(args.credential)).returning()
+      await tx.update(agentEnvironmentProofChallenges).set({ consumedAt: new Date(args.now) })
+        .where(eq(agentEnvironmentProofChallenges.id, challenge.id))
+      return credential(row)
+    })
+  }
+
+  async findEnvironmentCredential(args: { tokenHash: string }) {
+    const [row] = await this.db.select().from(agentEnvironmentCredentials)
+      .where(eq(agentEnvironmentCredentials.tokenHash, args.tokenHash))
+    return row ? credential(row) : null
+  }
+
+  async consumeEnvironmentProofNonce(args: Parameters<ConnectedAgentRepository['consumeEnvironmentProofNonce']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(agentEnvironmentCredentials).where(
+        eq(agentEnvironmentCredentials.id, args.credentialId),
+      ).for('update')
+      if (!current || current.revokedAt || current.expiresAt.getTime() <= args.now) return false
+      const [environmentRow] = await tx.select({ status: agentEnvironments.status, approvedAt: agentEnvironments.approvedAt })
+        .from(agentEnvironments).where(and(
+          eq(agentEnvironments.id, current.environmentId),
+          eq(agentEnvironments.workspaceId, current.workspaceId),
+        )).for('update')
+      if (!environmentRow || !environmentRow.approvedAt || environmentRow.status === 'pending' || environmentRow.status === 'revoked') return false
+      const rows = await tx.insert(agentEnvironmentProofNonces).values({
+        id: crypto.randomUUID(),
+        credentialId: args.credentialId,
+        nonceHash: args.nonceHash,
+        expiresAt: new Date(args.expiresAt),
+        createdAt: new Date(args.now),
+      }).onConflictDoNothing().returning({ id: agentEnvironmentProofNonces.id })
+      return rows.length === 1
+    })
+  }
+
+  async rotateEnvironmentCredential(args: Parameters<ConnectedAgentRepository['rotateEnvironmentCredential']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(agentEnvironmentCredentials)
+        .where(eq(agentEnvironmentCredentials.id, args.currentCredentialId)).for('update')
+      if (!current || current.revokedAt || current.expiresAt.getTime() <= args.now ||
+        current.workspaceId !== args.credential.workspaceId || current.environmentId !== args.credential.environmentId ||
+        current.audience !== args.credential.audience || !sameMethods(current.methods, args.credential.methods)) return null
+      const [environmentRow] = await tx.select().from(agentEnvironments).where(and(
+        eq(agentEnvironments.id, current.environmentId),
+        eq(agentEnvironments.workspaceId, current.workspaceId),
+      )).for('update')
+      if (!environmentRow || !environmentRow.approvedAt || environmentRow.status === 'pending' || environmentRow.status === 'revoked') return null
+      await tx.update(agentEnvironmentCredentials).set({ revokedAt: new Date(args.now) })
+        .where(eq(agentEnvironmentCredentials.id, current.id))
+      const [row] = await tx.insert(agentEnvironmentCredentials).values(credentialValues(args.credential)).returning()
+      return credential(row)
+    })
+  }
+
+  async heartbeatEnvironment(args: Parameters<ConnectedAgentRepository['heartbeatEnvironment']>[0]) {
+    const [row] = await this.db.update(agentEnvironments).set({
+      status: 'online', lastSeenAt: new Date(args.now), updatedAt: new Date(args.now),
+    }).where(and(
+      eq(agentEnvironments.id, args.environmentId),
+      eq(agentEnvironments.workspaceId, args.workspaceId),
+      isNotNull(agentEnvironments.approvedAt),
+      sql`${agentEnvironments.status} <> 'pending'`,
+      sql`${agentEnvironments.status} <> 'revoked'`,
+    )).returning()
+    return row ? environment(row) : null
+  }
+
+  async updateEnvironmentCapabilities(args: Parameters<ConnectedAgentRepository['updateEnvironmentCapabilities']>[0]) {
+    const [row] = await this.db.update(agentEnvironments).set({
+      capabilities: args.capabilities,
+      lastSeenAt: new Date(args.now),
+      updatedAt: new Date(args.now),
+    }).where(and(
+      eq(agentEnvironments.id, args.environmentId),
+      eq(agentEnvironments.workspaceId, args.workspaceId),
+      isNotNull(agentEnvironments.approvedAt),
+      sql`${agentEnvironments.status} <> 'pending'`,
+      sql`${agentEnvironments.status} <> 'revoked'`,
+    )).returning()
+    return row ? environment(row) : null
+  }
 
   async createEnvironment(input: ConnectedAgentCreateEnvironment) {
     const [row] = await this.db.insert(agentEnvironments).values({
@@ -56,14 +310,26 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
     return session(row)
   }
 
+  async getRemoteSessionForRun(args: Parameters<ConnectedAgentRepository['getRemoteSessionForRun']>[0]) {
+    const [row] = await this.db.select().from(agentRemoteSessions).where(and(
+      eq(agentRemoteSessions.workspaceId, args.workspaceId),
+      eq(agentRemoteSessions.environmentId, args.environmentId),
+      eq(agentRemoteSessions.runId, args.runId),
+    ))
+    return row ? session(row) : null
+  }
+
   async enqueueCommand(input: ConnectedAgentEnqueueCommand) {
+    if (!input.type || input.type.length > 64 || jsonByteLength(input.payload) > MAX_COMMAND_BYTES) {
+      throw new Error('AGENT_COMMAND_TOO_LARGE')
+    }
     return await this.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.environmentId}, 0))`)
       const [environmentRow] = await tx.select({ status: agentEnvironments.status }).from(agentEnvironments).where(and(
         eq(agentEnvironments.id, input.environmentId),
         eq(agentEnvironments.workspaceId, input.workspaceId),
       ))
-      if (!environmentRow || environmentRow.status === 'revoked') {
+      if (!environmentRow || environmentRow.status === 'pending' || environmentRow.status === 'revoked') {
         throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
       }
       const [cursor] = await tx.select({ value: max(agentRunCommands.sequence) })
@@ -107,6 +373,12 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         eq(agentRunCommands.environmentId, args.environmentId),
       )).for('update')
       if (!row || row.status === 'cancelled') return false
+      if (args.accepted === false) {
+        await tx.update(agentRunCommands).set({
+          status: 'cancelled', claimExpiresAt: null, updatedAt: new Date(args.now),
+        }).where(eq(agentRunCommands.id, row.id))
+        return true
+      }
       if (row.status !== 'acknowledged') {
         await tx.update(agentRunCommands).set({
           status: 'acknowledged',
@@ -218,12 +490,25 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
 
   async applyRemoteEvents(args: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]): Promise<ApplyRemoteEventsResult> {
     return await this.db.transaction(async (tx) => {
+      const [environmentRow] = await tx.select({ status: agentEnvironments.status }).from(agentEnvironments).where(and(
+        eq(agentEnvironments.id, args.environmentId), eq(agentEnvironments.workspaceId, args.workspaceId),
+      )).for('update')
+      if (!environmentRow || environmentRow.status === 'pending' || environmentRow.status === 'revoked') {
+        throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
+      }
       const [current] = await tx.select().from(agentRemoteSessions).where(and(
         eq(agentRemoteSessions.id, args.sessionId), eq(agentRemoteSessions.workspaceId, args.workspaceId),
         eq(agentRemoteSessions.environmentId, args.environmentId),
       )).for('update')
       if (!current) throw new Error('AGENT_REMOTE_SESSION_NOT_FOUND')
       if (args.events.length === 0) return { accepted: true, acknowledgedSequence: current.eventCursor, duplicate: true }
+      if (args.events.length > 100 || jsonByteLength(args.events) > MAX_EVENT_BATCH_BYTES) {
+        throw new Error('AGENT_EVENT_BATCH_TOO_LARGE')
+      }
+      if (args.events.some((event) => event.protocolVersion !== 1) ||
+        new Set(args.events.map((event) => event.eventId)).size !== args.events.length) {
+        throw new Error('AGENT_EVENT_BATCH_INVALID')
+      }
       const sequences = args.events.map((event) => event.sourceSequence)
       const first = sequences[0]!
       if (sequences.some((value, index) => value !== first + index)) throw new Error('AGENT_EVENT_BATCH_NOT_CONTIGUOUS')
@@ -254,6 +539,17 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         eq(agentRunCommands.environmentId, args.environmentId),
         inArray(agentRunCommands.status, ['pending', 'claimed']),
       ))
+      await tx.update(agentEnvironmentCredentials).set({ revokedAt: new Date(args.now) }).where(and(
+        eq(agentEnvironmentCredentials.environmentId, args.environmentId),
+        isNull(agentEnvironmentCredentials.revokedAt),
+      ))
+      await tx.update(agentSandboxLeases).set({
+        status: 'stopping', reservedUntil: new Date(args.now), cleanupAfter: new Date(args.now),
+        updatedAt: new Date(args.now),
+      }).where(and(
+        eq(agentSandboxLeases.environmentId, args.environmentId),
+        inArray(agentSandboxLeases.status, ['reserved', 'provisioning', 'running']),
+      ))
       return true
     })
   }
@@ -276,9 +572,12 @@ type SessionRow = typeof agentRemoteSessions.$inferSelect
 type CommandRow = typeof agentRunCommands.$inferSelect
 type ApprovalRow = typeof agentApprovalRequests.$inferSelect
 type SandboxLeaseRow = typeof agentSandboxLeases.$inferSelect
+type EnrollmentRow = typeof agentEnrollmentSessions.$inferSelect
+type ProofChallengeRow = typeof agentEnvironmentProofChallenges.$inferSelect
+type CredentialRow = typeof agentEnvironmentCredentials.$inferSelect
 const ms = (value: Date | null) => value?.getTime()
 const date = (value?: number) => value === undefined ? undefined : new Date(value)
-function environment(row: EnvironmentRow): AgentEnvironment { return { ...row, kind: row.kind as AgentEnvironment['kind'], status: row.status as AgentEnvironment['status'], lastSeenAt: ms(row.lastSeenAt), revokedAt: ms(row.revokedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), publicKey: row.publicKey ?? undefined, hostVersion: row.hostVersion ?? undefined, platform: row.platform ?? undefined } }
+function environment(row: EnvironmentRow): AgentEnvironment { return { ...row, kind: row.kind as AgentEnvironment['kind'], status: row.status as AgentEnvironment['status'], filesystemGrant: row.filesystemGrant ?? undefined, approvedAt: ms(row.approvedAt), approvedByUserId: row.approvedByUserId ?? undefined, lastSeenAt: ms(row.lastSeenAt), revokedAt: ms(row.revokedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), publicKey: row.publicKey ?? undefined, hostVersion: row.hostVersion ?? undefined, platform: row.platform ?? undefined } }
 function binding(row: BindingRow): AgentBinding { return { ...row, protocolAdapter: row.protocolAdapter as AgentBinding['protocolAdapter'], createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function session(row: SessionRow): AgentRemoteSession { return { ...row, status: row.status as AgentRemoteSession['status'], remoteSessionId: row.remoteSessionId ?? undefined, startedAt: ms(row.startedAt), endedAt: ms(row.endedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function command(row: CommandRow): AgentRunCommand { return { ...row, type: row.type as AgentRunCommand['type'], status: row.status as AgentRunCommand['status'], claimedAt: ms(row.claimedAt), claimExpiresAt: ms(row.claimExpiresAt), acknowledgedAt: ms(row.acknowledgedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
@@ -288,3 +587,9 @@ function sameResolution(
   left: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
   right: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
 ) { return left.decision === right.decision && left.resolvedByPrincipalId === right.resolvedByPrincipalId && left.resolvedAt === right.resolvedAt }
+function enrollment(row: EnrollmentRow): AgentEnrollmentSession { return { ...row, status: row.status as AgentEnrollmentSession['status'], environmentId: row.environmentId ?? undefined, expiresAt: row.expiresAt.getTime(), redeemedAt: ms(row.redeemedAt), approvedAt: ms(row.approvedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
+function proofChallenge(row: ProofChallengeRow): AgentEnvironmentProofChallenge { return { ...row, expiresAt: row.expiresAt.getTime(), consumedAt: ms(row.consumedAt), createdAt: row.createdAt.getTime() } }
+function credential(row: CredentialRow): AgentEnvironmentCredential { return { ...row, audience: row.audience as AgentEnvironmentCredential['audience'], methods: row.methods as AgentEnvironmentCredential['methods'], expiresAt: row.expiresAt.getTime(), revokedAt: ms(row.revokedAt), createdAt: row.createdAt.getTime() } }
+function credentialValues(value: AgentEnvironmentCredential): typeof agentEnvironmentCredentials.$inferInsert { return { id: value.id, workspaceId: value.workspaceId, environmentId: value.environmentId, tokenHash: value.tokenHash, audience: value.audience, methods: value.methods, tokenNonce: value.tokenNonce, expiresAt: new Date(value.expiresAt), revokedAt: date(value.revokedAt), createdAt: new Date(value.createdAt) } }
+function sameMethods(left: string[], right: string[]) { return left.length === right.length && left.every((method) => right.includes(method)) }
+function jsonByteLength(value: unknown) { return new TextEncoder().encode(JSON.stringify(value)).byteLength }

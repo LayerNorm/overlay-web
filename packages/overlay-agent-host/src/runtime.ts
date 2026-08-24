@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { platform, release } from 'node:os'
 import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
@@ -29,6 +30,7 @@ export class AgentHostRuntime {
   private readonly sessions = new Map<string, AgentAdapterSession>()
   private readonly logger: StructuredLogger
   private flushing?: Promise<void>
+  private lastHeartbeatAt = 0
 
   constructor(private readonly options: AgentHostRuntimeOptions) {
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.capability.id, adapter]))
@@ -52,8 +54,10 @@ export class AgentHostRuntime {
 
   async run(signal: AbortSignal): Promise<void> {
     let attempt = 0
+    await this.refreshHostState()
     while (!signal.aborted) {
       try {
+        if (Date.now() - this.lastHeartbeatAt >= 30_000) await this.heartbeat()
         const retryAfterMs = await this.pollOnce(25_000, signal)
         attempt = 0
         if (retryAfterMs > 0) await abortableDelay(retryAfterMs, signal)
@@ -64,6 +68,25 @@ export class AgentHostRuntime {
         await abortableDelay(delay, signal)
       }
     }
+  }
+
+  private async refreshHostState(): Promise<void> {
+    if (this.options.controlPlane.updateCapabilities) {
+      await this.options.controlPlane.updateCapabilities({
+        protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
+        hostVersion: '0.0.1',
+        platform: `${platform()} ${release()}`,
+        adapters: await this.discoverCapabilities(),
+        filesystem: this.options.filesystem,
+        maxConcurrentRuns: Math.max(1, this.adapters.size),
+      })
+    }
+    await this.heartbeat()
+  }
+
+  private async heartbeat(): Promise<void> {
+    await this.options.controlPlane.heartbeat?.()
+    this.lastHeartbeatAt = Date.now()
   }
 
   async processCommand(command: AgentHostCommand): Promise<void> {

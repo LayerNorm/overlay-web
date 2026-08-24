@@ -8,6 +8,14 @@ import 'server-only'
  * replacement controls here.
  */
 export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
+  '/api/v1/agent-environments/enroll': agentHostException(['POST'], 'Single-use enrollment code redemption plus device public-key registration.'),
+  '/api/v1/agent-environments/[environmentId]/credentials': agentHostException(['POST'], 'One-time challenge and Ed25519 proof-of-possession credential issuance.'),
+  '/api/v1/agent-environments/[environmentId]/credentials/refresh': agentHostException(['POST'], 'Signed environment credential rotation.'),
+  '/api/v1/agent-environments/[environmentId]/heartbeat': agentHostException(['POST'], 'Signed environment heartbeat.'),
+  '/api/v1/agent-environments/[environmentId]/capabilities': agentHostException(['PUT'], 'Signed environment capability refresh.'),
+  '/api/v1/agent-environments/[environmentId]/commands': agentHostException(['GET'], 'Signed, environment-scoped command polling.'),
+  '/api/v1/agent-environments/[environmentId]/commands/[commandId]/ack': agentHostException(['POST'], 'Signed, environment-scoped command acknowledgement.'),
+  '/api/v1/agent-environments/[environmentId]/events': agentHostException(['POST'], 'Signed, size-limited, sequenced event upload.'),
   '/api/v1/capabilities': {
     methods: ['GET'],
     reason: 'Public, read-only deployment capability discovery.',
@@ -45,3 +53,18 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
     },
   },
 } as const
+
+function agentHostException(methods: readonly string[], reason: string) {
+  return {
+    methods,
+    reason,
+    controls: {
+      authentication: 'short-lived opaque credential plus Ed25519 request proof',
+      authorization: 'credential is bound to workspace, environment, audience, and method',
+      rateLimit: 'endpoint-specific IP and credential limits',
+      csrf: 'no browser cookie authority; signed request proof covers method, path, body, time, and nonce',
+      idempotency: 'single-use enrollment/challenge secrets and atomic replay-nonce consumption',
+      audit: 'enrollment and credential lifecycle writes canonical workspace audit events',
+    },
+  } as const
+}

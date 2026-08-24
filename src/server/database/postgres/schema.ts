@@ -2024,12 +2024,76 @@ export const agentEnvironments = pgTable('agent_environments', {
   hostVersion: text('host_version'),
   platform: text('platform'),
   capabilities: jsonb('capabilities').$type<Record<string, unknown>>().notNull().default({}),
+  filesystemGrant: jsonb('filesystem_grant').$type<
+    { mode: 'selected_roots'; roots: string[] } | { mode: 'all_user_files' }
+  >(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  approvedByUserId: text('approved_by_user_id'),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('agent_environments_workspace_status_idx').on(table.workspaceId, table.status),
+])
+
+export const agentEnrollmentSessions = pgTable('agent_enrollment_sessions', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  createdByUserId: text('created_by_user_id').notNull(),
+  codeHash: text('code_hash').notNull(),
+  verificationPhrase: text('verification_phrase').notNull(),
+  status: text('status').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  environmentId: text('environment_id').references(() => agentEnvironments.id, { onDelete: 'set null' }),
+  redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_enrollment_sessions_code_hash_idx').on(table.codeHash),
+  index('agent_enrollment_sessions_workspace_created_idx').on(table.workspaceId, table.createdAt),
+  index('agent_enrollment_sessions_expiry_idx').on(table.status, table.expiresAt),
+])
+
+export const agentEnvironmentProofChallenges = pgTable('agent_environment_proof_challenges', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  challengeHash: text('challenge_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_environment_proof_challenges_hash_idx').on(table.challengeHash),
+  index('agent_environment_proof_challenges_environment_idx').on(table.environmentId, table.expiresAt),
+])
+
+export const agentEnvironmentCredentials = pgTable('agent_environment_credentials', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  audience: text('audience').notNull(),
+  methods: jsonb('methods').$type<string[]>().notNull(),
+  tokenNonce: text('token_nonce').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_environment_credentials_token_hash_idx').on(table.tokenHash),
+  index('agent_environment_credentials_environment_expiry_idx').on(table.environmentId, table.expiresAt),
+])
+
+export const agentEnvironmentProofNonces = pgTable('agent_environment_proof_nonces', {
+  id: text('id').primaryKey(),
+  credentialId: text('credential_id').notNull().references(() => agentEnvironmentCredentials.id, { onDelete: 'cascade' }),
+  nonceHash: text('nonce_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_environment_proof_nonces_credential_nonce_idx').on(table.credentialId, table.nonceHash),
+  index('agent_environment_proof_nonces_expiry_idx').on(table.expiresAt),
 ])
 
 export const agentBindings = pgTable('agent_bindings', {

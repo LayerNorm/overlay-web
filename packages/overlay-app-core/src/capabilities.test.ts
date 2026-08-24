@@ -55,6 +55,19 @@ test('resolveOverlayAppShellConfig exposes webhook settings when enabled', () =>
   assert.equal(shell.settingsPanels.some((item) => item.id === 'webhooks'), true)
 })
 
+test('connected-agent settings require both the product flag and server capability', () => {
+  const hidden = resolveOverlayAppShellConfig({
+    featureFlags: [{ id: 'agents', label: 'Agents', enabled: true }],
+  })
+  assert.equal(hidden.settingsSections.some((item) => item.id === 'agent-environments'), false)
+
+  const visible = resolveOverlayAppShellConfig({
+    featureFlags: [{ id: 'agents', label: 'Agents', enabled: true }],
+  }, { capabilities: { connectedAgents: true } })
+  assert.equal(visible.settingsSections.some((item) => item.id === 'agent-environments'), true)
+  assert.equal(visible.settingsPanels.some((item) => item.id === 'agent-environments'), true)
+})
+
 test('resolveOverlayAppShellConfig exposes memory management without vector search', () => {
   const shell = resolveOverlayAppShellConfig(undefined, {
     capabilities: { memory: true, vectorSearch: false },

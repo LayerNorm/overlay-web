@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash, createPublicKey, verify } from 'node:crypto'
 import test from 'node:test'
-import { OVERLAY_AGENT_PROTOCOL_VERSION, type AgentHostCommand, type CommandAcknowledgement, type EventAcknowledgement, type EventBatch } from '@overlay/agent-bridge-protocol'
+import { OVERLAY_AGENT_PROTOCOL_VERSION, canonicalEnrollmentProof, canonicalHostRequestProof, type AgentHostCommand, type CommandAcknowledgement, type EventAcknowledgement, type EventBatch } from '@overlay/agent-bridge-protocol'
 import { loadOrCreateDeviceKeyPair } from './device-key'
 import { diagnoseHost } from './doctor'
 import { FakeAgentAdapter } from './fake-adapter'
@@ -12,6 +13,9 @@ import { redact } from './logger'
 import { AgentHostRuntime } from './runtime'
 import { SqliteHostStateStore } from './state'
 import type { AgentControlPlaneClient } from './transport'
+import { HttpAgentControlPlaneClient } from './transport'
+import { connectAgentHost } from './enrollment'
+import { loadStoredConnection } from './connection'
 
 class FakeControlPlane implements AgentControlPlaneClient {
   commands: AgentHostCommand[] = []
@@ -148,6 +152,80 @@ test('doctor validates state, device key, SQLite and adapter discovery', async (
       filesystem: { mode: 'all_user_files' }, adapters: [{ id: 'fake', displayName: 'Fake', protocol: 'fake' }],
     }, [new FakeAgentAdapter()])
     assert.equal(checks.every((check) => check.ok), true)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('connect enrolls a device, proves key possession, and stores only the short-lived credential privately', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-connect-'))
+  let publicKey = ''
+  let credentialAttempts = 0
+  try {
+    const connection = await connectAgentHost({
+      code: 'single-use-enrollment-code-1234',
+      serverUrl: 'https://overlay.example',
+      stateDirectory: directory,
+      waitTimeoutMs: 5_000,
+      fetch: async (input, init) => {
+        const url = String(input)
+        if (url.endsWith('/enroll')) {
+          const body = JSON.parse(String(init?.body)) as { publicKey: string }
+          publicKey = body.publicKey
+          return Response.json({
+            protocolVersion: 1, workspaceId: 'workspace-1', environmentId: 'environment-1',
+            verificationPhrase: 'amber-river-sage', proofChallenge: 'proof-challenge-with-enough-entropy-1234',
+            proofChallengeExpiresAt: Date.now() + 60_000,
+          }, { status: 201 })
+        }
+        credentialAttempts += 1
+        const body = JSON.parse(String(init?.body)) as { proofChallenge: string; signature: string }
+        assert.equal(verify(
+          null,
+          Buffer.from(canonicalEnrollmentProof('environment-1', body.proofChallenge)),
+          createPublicKey(publicKey),
+          Buffer.from(body.signature, 'base64url'),
+        ), true)
+        if (credentialAttempts === 1) return Response.json({ code: 'environment_pending' }, { status: 425 })
+        return Response.json({
+          protocolVersion: 1, workspaceId: 'workspace-1', environmentId: 'environment-1',
+          audience: 'overlay-agent-control-plane', methods: ['agent:commands:poll'],
+          token: 'short-lived-environment-credential-123456789', expiresAt: Date.now() + 60_000,
+          filesystemGrant: { mode: 'selected_roots', roots: ['/workspace/project'] },
+        }, { status: 201 })
+      },
+    })
+    assert.equal(connection.environmentId, 'environment-1')
+    assert.equal((await loadStoredConnection(directory))?.token, 'short-lived-environment-credential-123456789')
+    assert.equal((await stat(join(directory, 'connection.json'))).mode & 0o777, 0o600)
+    assert.equal((await readFile(join(directory, 'connection.json'), 'utf8')).includes('single-use-enrollment-code'), false)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('HTTP transport signs the exact method, path, body and credential hash', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-signed-http-'))
+  try {
+    const keys = await loadOrCreateDeviceKeyPair(directory)
+    const credential = 'environment-credential-with-enough-entropy'
+    const client = new HttpAgentControlPlaneClient({
+      baseUrl: 'https://overlay.example/api/v1/agent-environments/environment-1/',
+      environmentId: 'environment-1',
+      credential,
+      privateKey: keys.privateKey,
+      fetch: async (input, init) => {
+        const url = new URL(String(input))
+        const headers = new Headers(init?.headers)
+        const timestamp = headers.get('x-overlay-agent-timestamp')!
+        const nonce = headers.get('x-overlay-agent-nonce')!
+        const signature = headers.get('x-overlay-agent-signature')!
+        const canonical = canonicalHostRequestProof({
+          method: init?.method ?? 'GET', pathname: `${url.pathname}${url.search}`, timestamp, nonce,
+          bodySha256: createHash('sha256').update(typeof init?.body === 'string' ? init.body : '').digest('hex'),
+          tokenSha256: createHash('sha256').update(credential).digest('hex'),
+        })
+        assert.equal(verify(null, Buffer.from(canonical), createPublicKey(keys.publicKey), Buffer.from(signature, 'base64url')), true)
+        return Response.json({ protocolVersion: 1, commands: [], retryAfterMs: 1_000 })
+      },
+    })
+    await client.pollCommands({ waitMs: 1_000 })
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 

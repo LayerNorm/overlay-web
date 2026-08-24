@@ -154,9 +154,9 @@ application, duplicate delivery, cancellation races, revocation, and deletion.
 ## Phase 2: Overlay Agent Host and protocol conformance
 
 Implementation status: complete in `@overlay/agent-bridge-protocol` and
-`@overlay/agent-host`. Phase 3 enrollment and server routes remain intentionally
-out of scope. The live PostgreSQL Phase 1 contract must still be rerun whenever
-the contract database is available.
+`@overlay/agent-host`. Phase 3 layers enrollment and server routes onto these
+packages without changing the Phase 2 execution protocol. The live PostgreSQL
+contract must still be rerun whenever the contract database is available.
 
 Build a portable `overlay-agent-host` executable and an original, versioned,
 Zod-validated bridge protocol. The host must provide:
@@ -182,6 +182,10 @@ cancel, host crash, server crash, duplicate frames, out-of-order frames,
 reconnect, and resume without duplicate user-visible effects.
 
 ## Phase 3: secure enrollment and environment management
+
+Implementation status: complete. Browser management, one-command host enrollment, Ed25519 proof
+of possession, short-lived method-scoped credentials, replay protection, explicit project-root
+approval, command/event limits, revocation, audit, and Convex/PostgreSQL parity are implemented.
 
 Add canonical `/api/v1/agent-environments/**` routes for enrollment-session
 creation, enrollment, browser approval, listing, heartbeat, command polling,
