@@ -51,7 +51,7 @@ These files import directly from `'ai'` and must be updated alongside the chokep
 | `src/server/web/web-tools.ts` | `ToolSet` (type only) |
 | `src/server/tools/tools/composio-filter.ts` | `ToolSet` (type only) |
 | `src/server/ai/gateway/tool-schema-compat.ts` | `asSchema`, `ToolSet` |
-| `src/shared/chat/cloudflare-chat-transport.ts` | `DefaultChatTransport`, `ChatTransport`, `HttpChatTransportInitOptions`, `UIMessage`, `UIMessageChunk` |
+| `src/shared/chat/direct-chat-transport.ts` | `DefaultChatTransport`, `ChatTransport`, `HttpChatTransportInitOptions`, `UIMessage`, `UIMessageChunk` |
 | `src/shared/chat/persist-assistant-turn.ts` | `StepResult`, `ToolSet` |
 | `src/shared/chat/leaked-perplexity-tool-repair.ts` | `StepResult`, `ToolSet` |
 | `src/shared/chat/sanitize-ui-messages-for-model.ts` | `UIMessage` (type only) |
@@ -334,7 +334,7 @@ If anything breaks in production:
 | `src/server/tools/mcp-tools.ts` | 3 | `needsApproval` → `toolApproval` + MCP redirect audit |
 | `src/server/ai/gateway/openrouter-service.ts` | 1 | Codemod (if any names change) |
 | `src/server/agents/workspace-agent-invocation.ts` | 1 | Codemod (if `streamText` signature changes) |
-| `src/shared/chat/cloudflare-chat-transport.ts` | 1 | Codemod (if transport names change) |
+| `src/shared/chat/direct-chat-transport.ts` | 1 | Codemod (if transport names change) |
 | `src/shared/chat/persist-assistant-turn.ts` | 2 | Audit `step.response.messages` usage |
 | `src/features/chat/components/chat/useChatRuntimes.ts` | 1 | `experimental_throttle` → `throttle` (5 call sites) |
 | `src/server/app-api/v1/generate-video/route.ts` | 1 | Codemod (no rename needed — `experimental_generateVideo` still experimental in v7) |
