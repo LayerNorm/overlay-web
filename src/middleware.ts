@@ -113,8 +113,6 @@ function buildConnectSrc(): string[] {
     'https://us-assets.i.posthog.com',
     parseOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN),
     parseOrigin(process.env.SENTRY_DSN),
-    'https://cloudflareinsights.com',
-    'https://static.cloudflareinsights.com',
     prodConvexOrigin,
     devConvexOrigin,
     toWebSocketOrigin(prodConvexOrigin),
@@ -142,7 +140,6 @@ function buildCspPolicy(): string {
     IS_DEVELOPMENT ? "'unsafe-eval'" : null,
     'https://va.vercel-scripts.com',
     'https://us-assets.i.posthog.com',
-    'https://static.cloudflareinsights.com',
   ])
 
   const directives = [
