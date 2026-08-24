@@ -6,6 +6,7 @@ import {
   calculateGatewayImageCostOrNull,
   calculateGatewayLanguageTokenCostOrNull,
   calculateGatewayVideoCostOrNull,
+  IMAGE_GENERATION_RESERVATION_USAGE,
   isExplicitFreeModel,
   isPremiumModel,
 } from '@/shared/ai/gateway/model-pricing'
@@ -46,6 +47,28 @@ test('media and embedding calculators use Gateway fields', () => {
     video_duration_pricing: [{ cost_per_second: '0.15' }],
   }, 8), 1.2)
   assert.equal(calculateGatewayEmbeddingCostOrNull({ input: '0.00000002' }, 1_000), 0.00002)
+})
+
+test('image pricing supports Gateway token rates and requires measured or reserved usage', () => {
+  const pricing = {
+    input: '0.000005',
+    output: '0.000032',
+  }
+  assert.equal(calculateGatewayImageCostOrNull('openai/gpt-image-1.5', pricing), null)
+  assert.equal(
+    calculateGatewayImageCostOrNull('openai/gpt-image-1.5', pricing, {
+      inputTokens: 16,
+      outputTokens: 389,
+    }),
+    0.012528,
+  )
+  assert.ok(
+    (calculateGatewayImageCostOrNull(
+      'openai/gpt-image-1.5',
+      pricing,
+      IMAGE_GENERATION_RESERVATION_USAGE,
+    ) ?? 0) > 0,
+  )
 })
 
 test('only explicit free models bypass premium usage', () => {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { SimpleAuthPageChrome } from '../_components/AuthPageChrome'
+import { SimpleAuthPageChrome } from '../../_components/AuthPageChrome'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')

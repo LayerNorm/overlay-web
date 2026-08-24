@@ -21,7 +21,9 @@ function LegalPageInner({
   intro,
   sections,
   crossLink,
+  embedded = false,
 }: {
+  embedded?: boolean;
   label: string;
   title: string;
   updated: string;
@@ -29,9 +31,8 @@ function LegalPageInner({
   sections: LegalSection[];
   crossLink: { href: string; label: string };
 }) {
-  return (
-    <StaticMarketingShell>
-      <main className="px-5 py-16 md:px-8 md:py-24">
+  const content = (
+      <main className="min-h-full px-5 py-16 md:px-8 md:py-24">
         <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[220px_minmax(0,760px)]">
           <aside className="hidden lg:block">
             <div className="sticky top-24">
@@ -75,12 +76,20 @@ function LegalPageInner({
           </article>
         </div>
       </main>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <StaticMarketingShell>
+      {content}
       <MarketingFooter />
     </StaticMarketingShell>
   );
 }
 
 export function LegalPageTemplate(props: {
+  embedded?: boolean;
   label: string;
   title: string;
   updated: string;

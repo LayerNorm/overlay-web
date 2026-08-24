@@ -20,6 +20,19 @@ export type ProviderCostEstimate = {
   pricingType: 'language' | 'image' | 'video' | 'embedding' | 'browser-use' | 'transcription'
 }
 
+export type GatewayImageTokenUsage = {
+  inputTokens: number | undefined
+  outputTokens: number | undefined
+}
+
+// Image providers with token pricing do not expose the final token count until
+// generation completes. Reserve enough for a high-detail image, then finalize
+// against the provider-reported usage.
+export const IMAGE_GENERATION_RESERVATION_USAGE: GatewayImageTokenUsage = {
+  inputTokens: 8_192,
+  outputTokens: 8_192,
+}
+
 export interface BrowserUseV3Pricing {
   inputPer1M: number
   outputPer1M: number
@@ -103,8 +116,24 @@ export function calculateGatewayEmbeddingCostOrNull(
 export function calculateGatewayImageCostOrNull(
   _modelId: string,
   pricing: Record<string, unknown>,
+  usage?: GatewayImageTokenUsage,
 ): number | null {
-  return parsePrice(pricing.image)
+  const flatImagePrice = parsePrice(pricing.image)
+  if (flatImagePrice !== null) return flatImagePrice
+  if (usage?.inputTokens === undefined || usage.outputTokens === undefined) return null
+
+  const input = tieredTokenCost(
+    usage.inputTokens,
+    parsePrice(pricing.input),
+    pricing.input_tiers,
+  )
+  const output = tieredTokenCost(
+    usage.outputTokens,
+    parsePrice(pricing.output),
+    pricing.output_tiers,
+  )
+  if (input === null || output === null) return null
+  return input + output
 }
 
 function highestVideoDurationRate(pricing: Record<string, unknown>): number | null {

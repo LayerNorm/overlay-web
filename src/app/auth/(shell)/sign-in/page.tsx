@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
-import { LandingAuthBoundary, LandingAuthPageChrome } from "../_components/AuthPageChrome";
+import { LandingAuthBoundary, LandingAuthPageChrome } from "../../_components/AuthPageChrome";
 import { sanitizeClientAuthRedirect } from "@/shared/auth/auth-redirect";
 import {
   persistMobilePkceChallengeFromUrl,
@@ -19,7 +19,7 @@ import {
   marketingSubmitButton,
 } from "@/features/landing/lib/landingPageStyles";
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from "@overlay/app-core";
-import { SsoProviderIcon, useAuthUiOptions } from "../_components/useAuthUiOptions";
+import { SsoProviderIcon, useAuthUiOptions } from "../../_components/useAuthUiOptions";
 import { shouldReuseExistingWebSession } from "@/shared/auth/desktop-auth-handoff";
 
 function SignInContent() {

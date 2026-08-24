@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { LandingAuthBoundary, LandingAuthPageChrome } from '../_components/AuthPageChrome'
+import { LandingAuthBoundary, LandingAuthPageChrome } from '../../_components/AuthPageChrome'
 import { sanitizeClientAuthRedirect } from '@/shared/auth/auth-redirect'
 import {
   persistMobilePkceChallengeFromUrl,
@@ -18,7 +18,7 @@ import {
   marketingSubmitButton,
 } from '@/features/landing/lib/landingPageStyles'
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from '@overlay/app-core'
-import { SsoProviderIcon, useAuthUiOptions } from '../_components/useAuthUiOptions'
+import { SsoProviderIcon, useAuthUiOptions } from '../../_components/useAuthUiOptions'
 
 function SignUpContent() {
   const card = marketingAuthCard()

@@ -10,6 +10,7 @@ import { outputService } from '@/server/outputs/http'
 import { getGatewayImageModel } from '@/server/ai/model-runtime'
 import { IMAGE_MODELS } from '@/shared/ai/gateway/model-data'
 import { calculateImageModelCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { IMAGE_GENERATION_RESERVATION_USAGE } from '@/shared/ai/gateway/model-pricing'
 import { uploadBuffer, keyForOutput } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { deleteObject } from '@/server/storage/object-store'
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const priceEntries = await Promise.all(
       priorityList.map(async (candidateId) => [
         candidateId,
-        await calculateImageModelCostOrNull(candidateId),
+        await calculateImageModelCostOrNull(candidateId, IMAGE_GENERATION_RESERVATION_USAGE),
       ] as const),
     )
     const priceByModelId = new Map(priceEntries)
@@ -131,6 +132,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     let lastError: Error | null = null
     let usedModelId: string | null = null
     let imageBase64: string | null = null
+    let imageUsage: { inputTokens: number | undefined; outputTokens: number | undefined } | null = null
 
     await generationUsagePolicy.markStarted({
       userId: auth.userId,
@@ -151,6 +153,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           aspectRatio: (aspectRatio as `${number}:${number}` | undefined) ?? '1:1',
         })
         imageBase64 = result.image.base64
+        imageUsage = result.usage
         usedModelId = tryModelId
         break
       } catch (err) {
@@ -178,9 +181,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const finalModelId = usedModelId
 
     const recordUsage = async () => {
+      const measuredCost = imageUsage
+        ? await calculateImageModelCostOrNull(finalModelId, imageUsage)
+        : null
       const costDollars = generationUsagePolicy.mode === 'unlimited'
-        ? priceByModelId.get(finalModelId) ?? 0
-        : priceByModelId.get(finalModelId) ?? null
+        ? measuredCost ?? priceByModelId.get(finalModelId) ?? 0
+        : measuredCost
       if (costDollars === null) {
         await generationUsagePolicy.markForReconcile({
           userId: auth.userId,
@@ -215,8 +221,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             events: [{
               type: 'generation',
               modelId: finalModelId,
-              inputTokens: 0,
-              outputTokens: 0,
+              inputTokens: imageUsage?.inputTokens ?? 0,
+              outputTokens: imageUsage?.outputTokens ?? 0,
               cachedTokens: 0,
               cost: costCents,
               timestamp: Date.now(),

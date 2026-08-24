@@ -23,9 +23,9 @@ import {
 } from '@/features/workspaces/lib/workspace-routing'
 import { useCollaborationRealtime } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
-export function AppShellSidebar() {
+export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }: { publicShowcase?: boolean }) {
   const searchParams = useSearchParams()
-  const publicShowcase = searchParams?.get('showcase') === '1'
+  const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   const { activeWorkspaceId } = useWorkspace()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
   const chatBaseHref = activeWorkspaceId

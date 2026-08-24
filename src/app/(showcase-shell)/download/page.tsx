@@ -8,6 +8,8 @@ import {
 } from '@/shared/web/latest-release'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 
+export const instant = false
+
 export const metadata: Metadata = {
   title: 'Download Overlay for macOS',
   description:
@@ -41,6 +43,7 @@ async function DownloadContent() {
   return (
     <DesktopDownloadPage
       downloadsEnabled={downloadsEnabled}
+      embedded
       release={release}
       releaseError={releaseError}
     />

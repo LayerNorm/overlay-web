@@ -56,7 +56,7 @@ export default function MobileCompletePage() {
   }, [])
 
   return (
-    <main className="min-h-screen gradient-bg flex items-center justify-center px-6 py-12">
+    <main className="flex min-h-full items-center justify-center bg-[var(--background)] px-6 py-12">
       <div className="glass-dark rounded-2xl p-8 w-full max-w-md text-center">
         <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)] mb-3">
           Mobile Auth

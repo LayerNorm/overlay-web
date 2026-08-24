@@ -11,9 +11,9 @@ import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
 import { prefetchGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 
-function GatewayModelCatalogPrefetch() {
+function GatewayModelCatalogPrefetch({ publicShowcase: forcedPublicShowcase }: { publicShowcase: boolean }) {
   const searchParams = useSearchParams()
-  const publicShowcase = searchParams?.get('showcase') === '1'
+  const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   const { user, isLoading } = useAuth()
   const enabled = shouldLoadGatewayModelCatalog({
     isAuthenticated: Boolean(user),
@@ -29,10 +29,12 @@ function GatewayModelCatalogPrefetch() {
 export function AppClientProviders({
   children,
   initialUser,
+  publicShowcase = false,
   requiresConvexClient,
 }: {
   children: ReactNode
   initialUser: AuthUser | null
+  publicShowcase?: boolean
   requiresConvexClient?: boolean
 }) {
   return (
@@ -42,7 +44,7 @@ export function AppClientProviders({
     >
       <AppSettingsProvider>
         <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
-          <GatewayModelCatalogPrefetch />
+          <GatewayModelCatalogPrefetch publicShowcase={publicShowcase} />
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>

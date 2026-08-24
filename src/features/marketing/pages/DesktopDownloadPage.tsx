@@ -15,6 +15,7 @@ import { LATEST_RELEASE_DOWNLOAD_PATH } from '@/shared/web/latest-release'
 
 export type DesktopDownloadPageProps = {
   downloadsEnabled: boolean
+  embedded?: boolean
   release: LatestReleaseInfo | null
   releaseError: string | null
 }
@@ -32,15 +33,15 @@ function formatPublishedAt(iso: string | undefined): string | null {
 
 export function DesktopDownloadPage({
   downloadsEnabled,
+  embedded = false,
   release,
   releaseError,
 }: DesktopDownloadPageProps) {
   const published = formatPublishedAt(release?.publishedAt ?? undefined)
   const canDownload = downloadsEnabled && Boolean(release)
 
-  return (
-    <StaticMarketingShell>
-      <main className="flex-1">
+  const content = (
+      <main className="min-h-full flex-1">
         <section className={minimalSection()}>
           <div className="mx-auto max-w-2xl">
             <p className={minimalLabel()}>Desktop</p>
@@ -182,6 +183,13 @@ export function DesktopDownloadPage({
           </div>
         </section>
       </main>
+  )
+
+  if (embedded) return content
+
+  return (
+    <StaticMarketingShell>
+      {content}
       <MarketingFooter />
     </StaticMarketingShell>
   )

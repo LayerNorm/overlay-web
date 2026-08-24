@@ -38,8 +38,10 @@ const FADE_MS = 200
 
 export function GuestGateProvider({
   children,
+  suppressPrompts = false,
 }: {
   children: ReactNode
+  suppressPrompts?: boolean
 }) {
   const { user, isLoading } = useAuth()
   const isAuthenticated = Boolean(user)
@@ -53,17 +55,17 @@ export function GuestGateProvider({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (authSettled && !isAuthenticated && params.get('signin') === 'nav') {
+    if (!suppressPrompts && authSettled && !isAuthenticated && params.get('signin') === 'nav') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setModalReason('nav')
     }
-  }, [authSettled, isAuthenticated, pathname])
+  }, [authSettled, isAuthenticated, pathname, suppressPrompts])
 
   const requireAuth = useCallback(
     (reason: GateReason) => {
-      if (authSettled && !isAuthenticated) setModalReason(reason)
+      if (!suppressPrompts && authSettled && !isAuthenticated) setModalReason(reason)
     },
-    [authSettled, isAuthenticated],
+    [authSettled, isAuthenticated, suppressPrompts],
   )
 
   const closeModal = useCallback(() => {
@@ -84,7 +86,7 @@ export function GuestGateProvider({
   }, [])
 
   const showCorner =
-    authSettled && !isAuthenticated && !cornerDismissed && !modalReason
+    !suppressPrompts && authSettled && !isAuthenticated && !cornerDismissed && !modalReason
 
   return (
     <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>

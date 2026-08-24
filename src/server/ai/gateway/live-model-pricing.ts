@@ -47,10 +47,13 @@ export async function calculateEmbeddingModelCostOrNull(
     : null
 }
 
-export async function calculateImageModelCostOrNull(modelId: string): Promise<number | null> {
+export async function calculateImageModelCostOrNull(
+  modelId: string,
+  usage?: { inputTokens: number | undefined; outputTokens: number | undefined },
+): Promise<number | null> {
   const model = await getGatewayCatalogModel(modelId)
   return model?.type === 'image'
-    ? calculateGatewayImageCostOrNull(modelId, model.pricing)
+    ? calculateGatewayImageCostOrNull(modelId, model.pricing, usage)
     : null
 }
 

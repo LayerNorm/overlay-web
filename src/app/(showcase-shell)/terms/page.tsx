@@ -1,5 +1,7 @@
 import { LegalPageTemplate } from "@/features/marketing/components/LegalPageTemplate";
 
+export const instant = false;
+
 const TERMS = [
   {
     title: "Use Overlay responsibly",
@@ -39,6 +41,7 @@ export default function TermsOfService() {
   return (
     <LegalPageTemplate
       label="Legal"
+      embedded
       title="Terms of service."
       updated="April 24, 2026"
       intro="These terms are the rules for using Overlay. The short version: use the product legally, keep your account secure, and review AI outputs before relying on them."

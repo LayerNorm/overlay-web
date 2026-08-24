@@ -1,9 +1,6 @@
 'use client'
 
 import { Suspense, type ReactNode } from 'react'
-import Image from 'next/image'
-import Link from 'next/link'
-import { MarketingNavbar } from '@/features/marketing/components/MarketingNavbar'
 import { AuthBoundary } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 
@@ -12,35 +9,12 @@ type AuthPageChromeProps = {
   footer?: boolean
 }
 
-export function SimpleAuthPageChrome({
-  children,
-  footer = true,
-}: AuthPageChromeProps) {
+export function SimpleAuthPageChrome({ children }: AuthPageChromeProps) {
   return (
-    <div className="min-h-screen gradient-bg flex flex-col">
-      <div className="liquid-glass" />
-
-      <header className="relative z-10 py-6 px-8">
-        <Link href="/" className="inline-flex items-center gap-2">
-          <Image
-            src="/assets/overlay-logo.png"
-            alt="Overlay"
-            width={32}
-            height={32}
-          />
-          <span className="text-xl font-serif">overlay</span>
-        </Link>
-      </header>
-
-      <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
+    <div className="flex min-h-full w-full items-center justify-center bg-[var(--background)] px-4 py-10 text-[var(--foreground)] md:px-8">
+      <main className="w-full">
         {children}
       </main>
-
-      {footer ? (
-        <footer className="relative z-10 py-6 px-8 text-center text-sm text-[var(--muted)]">
-          <p>© 2026 overlay</p>
-        </footer>
-      ) : null}
     </div>
   )
 }
@@ -52,23 +26,10 @@ type LandingAuthPageChromeProps = {
   footer?: boolean
 }
 
-export function LandingAuthPageChrome({
-  children,
-  footer = true,
-  footerClassName = 'relative z-10 mt-auto flex justify-center border-t px-8 py-6 text-sm sm:justify-start',
-  mainClassName = 'relative z-10 flex-1 flex items-center justify-center px-6 py-12',
-}: LandingAuthPageChromeProps) {
+export function LandingAuthPageChrome({ children }: LandingAuthPageChromeProps) {
   return (
-    <div className="flex min-h-screen w-full flex-col bg-[var(--background)] text-[var(--foreground)]">
-      <MarketingNavbar />
-
-      <main className={mainClassName}>{children}</main>
-
-      {footer ? (
-        <footer className={footerClassName}>
-          <p>© 2026 overlay</p>
-        </footer>
-      ) : null}
+    <div className="flex min-h-full w-full items-center justify-center bg-[var(--background)] px-4 py-10 text-[var(--foreground)] md:px-8">
+      <main className="w-full">{children}</main>
     </div>
   )
 }
@@ -85,7 +46,7 @@ export function AuthLoadingScreen({
   const textClass = 'mt-4 text-[var(--muted)]'
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex min-h-full items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
       <div className="relative z-10 text-center">
         <div className={spinnerClass} />
         <p className={textClass}>Loading...</p>

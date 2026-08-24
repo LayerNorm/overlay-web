@@ -15,12 +15,12 @@ were enabled. Routes are then converted in batches by removing the opt-out and
 resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 `<Suspense>` boundaries).
 
-## Converted routes (Batches 1-4)
+## Converted routes (Batches 1-4; 20 remain independently validated)
 
 ### Batch 1 — Static pages (5 routes)
 
-1. `/privacy` — `src/app/privacy/page.tsx` — Pure static, no I/O. Removed opt-out.
-2. `/terms` — `src/app/terms/page.tsx` — Pure static, no I/O. Removed opt-out.
+1. `/privacy` — moved under the public showcase shell; see the route-group opt-out below.
+2. `/terms` — moved under the public showcase shell; see the route-group opt-out below.
 3. `/manifesto` — `src/app/manifesto/page.tsx` — Pure static, no I/O. Removed opt-out.
 4. `/about` — `src/app/about/page.tsx` — Pure static, no I/O. Removed opt-out.
 5. `/pricing` — `src/app/pricing/page.tsx` — Pure static, no I/O. Removed opt-out.
@@ -42,8 +42,7 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 11. `/app/pricing` — `src/app/app/pricing/page.tsx` — `getOverlayCapabilitiesSync()`
     reads `process.env` only. Removed opt-out.
 12. `/app/manifesto` — `src/app/app/manifesto/page.tsx` — No I/O. Removed opt-out.
-13. `/download` — `src/app/download/page.tsx` — Wrapped `fetchLatestReleaseInfo()`
-    in `<Suspense>`. Route became fully static (`○`).
+13. `/download` — moved under the public showcase shell; see the route-group opt-out below.
 
 ### Batch 4 — Low-risk /app/* child routes (10 routes)
 
@@ -67,11 +66,23 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
     `searchParams` inside Suspense. `getOverlayCapabilities()` (async, env-only)
     + `notFound()` stay outside.
 
-## Routes intentionally NOT converted (14 routes)
+## Routes intentionally NOT converted (22 routes across 19 segment opt-outs)
 
 These routes keep `export const instant = false` permanently. The opt-out is a
 supported Next.js feature, not a debt marker. Each route is documented below
 with the specific reason.
+
+### Shared shell route groups (2 layouts)
+
+- `/(showcase-shell)` — `src/app/(showcase-shell)/layout.tsx` plus its three
+  page segments — wraps `/privacy`,
+  `/terms`, and `/download` in the canonical product shell. The shell resolves a
+  private session before selecting authenticated or public showcase data, so
+  entry into the group may block at this layout while navigation within it can
+  still be validated independently.
+- `/auth/(shell)` — `src/app/auth/(shell)/layout.tsx` — provides the same shell
+  for sign-in, sign-up, password recovery, and mobile auth completion while
+  suppressing recursive guest prompts. It has the same private-session boundary.
 
 ### Medium-risk — Complex I/O patterns (6 routes)
 
@@ -171,12 +182,13 @@ with the specific reason.
 
 | Category | Count | Status |
 | --- | --- | --- |
-| Converted (Batches 1-4) | 23 | `instant = false` removed, PPR active |
+| Converted (Batches 1-4) | 20 | `instant = false` removed, PPR active |
+| Shared shell opt-outs | 8 routes across 2 layouts and 3 public pages | Private session boundary may block group entry |
 | Medium-risk, kept as opt-out | 6 | `instant = false` retained permanently |
 | Higher-risk, kept as opt-out | 5 | `instant = false` retained permanently |
 | Low-value, kept as opt-out | 1 | `instant = false` retained permanently |
 | Test fixtures, kept as opt-out | 2 | `instant = false` retained permanently |
-| **Total** | **37** | |
+| **Total inventoried routes** | **42** | |
 
 The `instant = false` opt-out is a supported Next.js feature for routes that
 cannot or should not be validated for instant navigation. It does not disable

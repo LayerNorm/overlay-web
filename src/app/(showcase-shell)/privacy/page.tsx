@@ -1,5 +1,7 @@
 import { LegalPageTemplate } from "@/features/marketing/components/LegalPageTemplate";
 
+export const instant = false;
+
 const PRIVACY = [
   {
     title: "What we collect",
@@ -39,6 +41,7 @@ export default function PrivacyPolicy() {
   return (
     <LegalPageTemplate
       label="Privacy"
+      embedded
       title="Privacy policy."
       updated="April 24, 2026"
       intro="Overlay is a workspace for real work, so privacy needs to be understandable. This page explains what we collect and why."

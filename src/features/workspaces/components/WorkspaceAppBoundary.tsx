@@ -51,13 +51,15 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
 export function WorkspaceAppBoundary({
   children,
   hasAuthenticatedUser,
+  publicShowcase: forcedPublicShowcase = false,
 }: {
   children: ReactNode
   hasAuthenticatedUser: boolean
+  publicShowcase?: boolean
 }) {
   const searchParams = useSearchParams()
   const { user } = useAuth()
-  const publicShowcase = searchParams?.get('showcase') === '1'
+  const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   const showcaseClient = useMemo(
     () => createShowcaseWorkspaceClient(SHOWCASE_WORKSPACES),
     [],

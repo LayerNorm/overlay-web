@@ -24,6 +24,13 @@ only; Postgres must not silently fall back to Convex for them.
 
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 
+`src/app/_components/AppShellLayout.tsx` is the reusable web shell boundary.
+Canonical `/app/**` routes, ordinary auth flows, and public full-page product
+destinations compose it from their route-group layouts. The shell accepts an
+explicit showcase mode so public routes do not depend on hidden rewrite query
+parameters. Protocol callbacks, integration popups, public share links, and
+visual fixtures remain standalone by contract.
+
 ## Domain Decomposition
 
 Workspace behavior stays behind the existing provider/repository contracts while

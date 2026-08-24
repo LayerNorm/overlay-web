@@ -369,16 +369,14 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Preserve /account as a compatibility alias for the account settings section.
+  // Preserve /account as a compatibility alias while making the canonical
+  // settings query visible to client navigation. Internal rewrite query params
+  // are not reliable input to useSearchParams during hydration.
   if (pathname === '/account') {
     const destination = new URL('/app/settings' + request.nextUrl.search, request.url)
     destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
-      NextResponse.rewrite(destination, {
-        request: {
-          headers: requestHeaders,
-        },
-      }),
+      NextResponse.redirect(destination),
       cspHeaderName,
       cspPolicy,
     )
