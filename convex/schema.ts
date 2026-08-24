@@ -946,11 +946,15 @@ export default defineSchema({
     userMessageId: v.id('conversationMessages'),
     assistantMessageId: v.id('conversationMessages'),
     mode: v.union(v.literal('chat'), v.literal('work'), v.literal('room')),
-    runner: v.union(v.literal('tool_loop'), v.literal('workflow')),
+    runner: v.union(v.literal('tool_loop'), v.literal('workflow'), v.literal('remote')),
     // Set for `room` runs: which workspace agent answered, and as which
     // principal. Absent on personal-chat runs, which have no agent author.
     agentId: v.optional(v.string()),
     agentPrincipalId: v.optional(v.string()),
+    initiatorPrincipalId: v.optional(v.string()),
+    environmentId: v.optional(v.string()),
+    bindingId: v.optional(v.string()),
+    remoteSessionId: v.optional(v.string()),
     status: v.union(
       v.literal('queued'),
       v.literal('running'),
@@ -1007,6 +1011,7 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
     .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
@@ -2116,6 +2121,68 @@ export default defineSchema({
   // Maps Slack source IDs to Overlay conversation/message IDs for dedup and
   // resume support. Each (workspaceId, sourceChannelId, sourceMessageTs) tuple
   // maps to exactly one Overlay conversation + message.
+  agentEnvironments: defineTable({
+    environmentId: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(),
+    status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()),
+    platform: v.optional(v.string()), capabilities: v.any(), lastSeenAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_environmentId', ['environmentId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_status', ['workspaceId', 'status']),
+
+  agentBindings: defineTable({
+    bindingId: v.string(), workspaceId: v.string(), agentId: v.string(), environmentId: v.string(),
+    protocolAdapter: v.string(), adapterConfig: v.any(), enabled: v.boolean(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_bindingId', ['bindingId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
+    .index('by_environmentId', ['environmentId']),
+
+  agentRunCommands: defineTable({
+    commandId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
+    type: v.string(), sequence: v.number(), payload: v.any(), status: v.string(),
+    claimedAt: v.optional(v.number()), claimExpiresAt: v.optional(v.number()),
+    acknowledgedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_commandId', ['commandId'])
+    .index('by_environmentId_sequence', ['environmentId', 'sequence'])
+    .index('by_environmentId_status_sequence', ['environmentId', 'status', 'sequence'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  agentRemoteSessions: defineTable({
+    sessionId: v.string(), workspaceId: v.string(), environmentId: v.string(), bindingId: v.string(),
+    runId: v.string(), remoteSessionId: v.optional(v.string()), status: v.string(),
+    commandCursor: v.number(), eventCursor: v.number(), capabilitySnapshot: v.any(),
+    startedAt: v.optional(v.number()), endedAt: v.optional(v.number()),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_sessionId', ['sessionId'])
+    .index('by_runId', ['runId'])
+    .index('by_environmentId_status', ['environmentId', 'status'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  agentApprovalRequests: defineTable({
+    approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),
+    requestKey: v.string(), prompt: v.string(), options: v.array(v.string()), payload: v.any(),
+    requestedAt: v.number(), resolution: v.optional(v.object({
+      decision: v.string(), resolvedByPrincipalId: v.string(), resolvedAt: v.number(),
+    })),
+  }).index('by_approvalId', ['approvalId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_remoteSessionId_requestKey', ['remoteSessionId', 'requestKey'])
+    .index('by_workspaceId_runId', ['workspaceId', 'runId']),
+
+  agentSandboxLeases: defineTable({
+    leaseId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.optional(v.string()),
+    provider: v.string(), providerReference: v.optional(v.string()), status: v.string(),
+    reservationId: v.optional(v.string()), reservedUntil: v.number(),
+    runtimeStartedAt: v.optional(v.number()), runtimeEndedAt: v.optional(v.number()), usage: v.any(),
+    cleanupAttempts: v.number(), cleanupAfter: v.optional(v.number()),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_leaseId', ['leaseId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
+    .index('by_status_cleanupAfter', ['status', 'cleanupAfter']),
+
   slackImportMappings: defineTable({
     importJobId: v.id('slackImportJobs'),
     workspaceId: v.string(),

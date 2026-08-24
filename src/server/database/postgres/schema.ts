@@ -54,7 +54,7 @@ export const messageStatus = pgEnum('overlay_message_status', [
 ])
 
 export const agentRunMode = pgEnum('overlay_agent_run_mode', ['chat', 'work', 'room'])
-export const agentRunRunner = pgEnum('overlay_agent_run_runner', ['tool_loop', 'workflow'])
+export const agentRunRunner = pgEnum('overlay_agent_run_runner', ['tool_loop', 'workflow', 'remote'])
 export const agentRunStatus = pgEnum('overlay_agent_run_status', [
   'queued',
   'running',
@@ -724,6 +724,10 @@ export const agentRuns = pgTable('agent_runs', {
   // Set for `room` runs; personal-chat runs have no agent author.
   agentId: text('agent_id'),
   agentPrincipalId: text('agent_principal_id'),
+  initiatorPrincipalId: text('initiator_principal_id'),
+  environmentId: text('environment_id'),
+  bindingId: text('binding_id'),
+  remoteSessionId: text('remote_session_id'),
   variantIndex: integer('variant_index'),
   workflowRunId: text('workflow_run_id'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
@@ -740,6 +744,7 @@ export const agentRuns = pgTable('agent_runs', {
   index('agent_runs_conversation_created_idx').on(table.conversationId, table.createdAt),
   index('agent_runs_conversation_status_updated_idx').on(table.conversationId, table.status, table.updatedAt),
   index('agent_runs_user_created_idx').on(table.userId, table.createdAt),
+  index('agent_runs_environment_created_idx').on(table.environmentId, table.createdAt),
   index('agent_runs_runner_status_lease_idx').on(table.runner, table.status, table.leaseExpiresAt),
   uniqueIndex('agent_runs_assistant_message_idx').on(table.assistantMessageId),
   uniqueIndex('agent_runs_turn_variant_idx').on(
@@ -2007,4 +2012,116 @@ export const conversationSavedMessages = pgTable('conversation_saved_messages', 
 }, (table) => [
   primaryKey({ columns: [table.messageId, table.principalId] }),
   index('conversation_saved_messages_workspace_principal_idx').on(table.workspaceId, table.principalId),
+])
+
+export const agentEnvironments = pgTable('agent_environments', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  name: text('name').notNull(),
+  status: text('status').notNull(),
+  publicKey: text('public_key'),
+  hostVersion: text('host_version'),
+  platform: text('platform'),
+  capabilities: jsonb('capabilities').$type<Record<string, unknown>>().notNull().default({}),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('agent_environments_workspace_status_idx').on(table.workspaceId, table.status),
+])
+
+export const agentBindings = pgTable('agent_bindings', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  agentId: text('agent_id').notNull(),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  protocolAdapter: text('protocol_adapter').notNull(),
+  adapterConfig: jsonb('adapter_config').$type<Record<string, unknown>>().notNull().default({}),
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_bindings_workspace_agent_environment_adapter_idx')
+    .on(table.workspaceId, table.agentId, table.environmentId, table.protocolAdapter),
+  index('agent_bindings_environment_idx').on(table.environmentId),
+])
+
+export const agentRemoteSessions = pgTable('agent_remote_sessions', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  bindingId: text('binding_id').notNull().references(() => agentBindings.id, { onDelete: 'cascade' }),
+  runId: text('run_id').notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+  remoteSessionId: text('remote_session_id'),
+  status: text('status').notNull(),
+  commandCursor: bigint('command_cursor', { mode: 'number' }).notNull().default(0),
+  eventCursor: bigint('event_cursor', { mode: 'number' }).notNull().default(0),
+  capabilitySnapshot: jsonb('capability_snapshot').$type<Record<string, unknown>>().notNull().default({}),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_remote_sessions_run_idx').on(table.runId),
+  index('agent_remote_sessions_environment_status_idx').on(table.environmentId, table.status),
+])
+
+export const agentRunCommands = pgTable('agent_run_commands', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  runId: text('run_id').notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  sequence: bigint('sequence', { mode: 'number' }).notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+  status: text('status').notNull(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  claimExpiresAt: timestamp('claim_expires_at', { withTimezone: true }),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_run_commands_environment_sequence_idx').on(table.environmentId, table.sequence),
+  index('agent_run_commands_claim_idx').on(table.environmentId, table.status, table.sequence),
+  index('agent_run_commands_run_idx').on(table.runId),
+])
+
+export const agentApprovalRequests = pgTable('agent_approval_requests', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  runId: text('run_id').notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+  remoteSessionId: text('remote_session_id').notNull().references(() => agentRemoteSessions.id, { onDelete: 'cascade' }),
+  requestKey: text('request_key').notNull(),
+  prompt: text('prompt').notNull(),
+  options: jsonb('options').$type<string[]>().notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull(),
+  resolution: jsonb('resolution').$type<{ decision: string; resolvedByPrincipalId: string; resolvedAt: number }>(),
+}, (table) => [
+  uniqueIndex('agent_approval_requests_session_request_idx').on(table.remoteSessionId, table.requestKey),
+  index('agent_approval_requests_workspace_run_idx').on(table.workspaceId, table.runId),
+])
+
+export const agentSandboxLeases = pgTable('agent_sandbox_leases', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  runId: text('run_id').references(() => agentRuns.id, { onDelete: 'set null' }),
+  provider: text('provider').notNull(),
+  providerReference: text('provider_reference'),
+  status: text('status').notNull(),
+  reservationId: text('reservation_id'),
+  reservedUntil: timestamp('reserved_until', { withTimezone: true }).notNull(),
+  runtimeStartedAt: timestamp('runtime_started_at', { withTimezone: true }),
+  runtimeEndedAt: timestamp('runtime_ended_at', { withTimezone: true }),
+  usage: jsonb('usage').$type<Record<string, unknown>>().notNull().default({}),
+  cleanupAttempts: integer('cleanup_attempts').notNull().default(0),
+  cleanupAfter: timestamp('cleanup_after', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('agent_sandbox_leases_cleanup_idx').on(table.status, table.cleanupAfter),
+  index('agent_sandbox_leases_workspace_environment_idx').on(table.workspaceId, table.environmentId),
 ])

@@ -103,3 +103,15 @@ during a documented host-upgrade window; unknown major versions fail closed with
 upgrade error. Additive optional fields are backward compatible, while semantic or required
 field changes increment the version. WebSockets may optimize latency but durable HTTP polling
 and acknowledged cursors remain authoritative.
+
+## Provider-neutral persistence contract
+
+`AgentEnvironment`, `AgentBinding`, `AgentRunCommand`, `AgentRemoteSession`,
+`AgentApprovalRequest`, and `AgentSandboxLease` are separate domain records. Agent identity,
+harness adapter, environment, sandbox provider, and protocol adapter must not collapse into
+one enum. The existing `AgentRun` state machine remains lifecycle authority and gains a
+`remote` runner plus optional environment, binding, and remote-session references.
+
+Both repositories must authorize workspace ownership on every operation, claim commands with
+a lease atomically, apply contiguous event checkpoints exactly once, make revocation win over
+new claims, preserve cancellation as terminal, and cascade workspace/account deletion.

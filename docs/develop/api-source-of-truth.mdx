@@ -53,6 +53,13 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 
 ## Personal Chat AgentRun contracts
 
+Connected-agent public resources are reserved under
+`/api/v1/agent-environments/**` and `/api/v1/agent-bindings`; they remain
+unmounted while the default-off control-plane flags are disabled. Both database
+providers use `ConnectedAgentRepository` for durable command claims and ordered
+event acknowledgement. Provider-branded sandbox identifiers and reusable host
+credentials are never public contract fields.
+
 - `POST /api/v1/conversations/act` streams Chat mode directly over SSE. For a
   persistent conversation, the server drains a second stream branch after a
   browser disconnect and performs one final assistant-message write; it does

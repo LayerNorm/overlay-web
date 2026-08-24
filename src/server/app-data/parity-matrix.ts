@@ -37,6 +37,14 @@ export type OnPremParityDomain = {
  */
 export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
+    id: 'connected-agents',
+    name: 'Connected-agent persistence',
+    targetPhase: 'P1',
+    capabilities: [{ key: 'supportsConnectedAgents', expectedAtParity: true }],
+    routeRuleIds: [],
+    exitGate: 'Environment, binding, command, remote-session, approval, and lease contracts pass the shared provider suite.',
+  },
+  {
     id: 'runtime-isolation',
     name: 'Runtime isolation',
     targetPhase: 'P0',

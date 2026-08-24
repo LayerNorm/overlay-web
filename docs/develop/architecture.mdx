@@ -22,6 +22,13 @@ Postgres mode exposes. Unsupported routes must return the structured
 called. Workspace collaboration and connector mappings are currently Convex
 only; Postgres must not silently fall back to Convex for them.
 
+Connected-agent persistence is provider-neutral through
+`ConnectedAgentRepository`. Environment, binding, command, remote-session,
+approval, and sandbox-lease records have matching Convex and PostgreSQL schemas.
+Remote output advances a per-session contiguous event cursor transactionally;
+it projects into the existing conversation and `AgentRun` lifecycle rather than
+creating a second transcript.
+
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 
 `src/app/_components/AppShellLayout.tsx` is the reusable web shell boundary.
