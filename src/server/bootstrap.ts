@@ -280,6 +280,10 @@ export function createOverlayServerContext(
     audit: auditService,
     repository: appData.repositories.connectedAgents,
     workspaces: workspaceService,
+    settleUsage: async (usage) => {
+      if (!usage.userId) return
+      await chatUsagePolicy.recordFinishedUsage(usage)
+    },
   })
 
   const workspaceSharingRepository = isPostgres && postgresDb

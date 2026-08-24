@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, max, or, sql } from 'drizzle-orm'
 import type {
   AgentApprovalRequest, AgentBinding, AgentEnrollmentSession, AgentEnvironment,
@@ -11,12 +12,16 @@ import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   agentApprovalRequests, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
   agentEnvironmentProofChallenges, agentEnvironmentProofNonces, agentEnvironments,
-  agentRemoteSessions, agentRunCommands, agentSandboxLeases,
+  agentRemoteSessions, agentRunCommands, agentRuns, agentSandboxLeases, conversationEvents,
+  conversationMessages, conversationParticipants, conversations, workspaceMemberships, workspacePrincipals,
 } from '@/server/database/postgres/schema'
+import { projectRemoteAgentEvents, waitingRemoteAgentParts } from '@/shared/agents/remote-agent-transcript'
 import type {
   ApplyRemoteEventsResult, ConnectedAgentCreateBinding, ConnectedAgentCreateEnvironment,
   ConnectedAgentCreateSession, ConnectedAgentEnqueueCommand, ConnectedAgentRepository,
 } from './ConnectedAgentRepository'
+
+const REMOTE_RUN_LEASE_MS = 30 * 60_000
 
 export class PostgresConnectedAgentRepository implements ConnectedAgentRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
@@ -277,6 +282,8 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       id: input.id, workspaceId: input.workspaceId, kind: input.kind, name: input.name,
       status: input.status, publicKey: input.publicKey, hostVersion: input.hostVersion,
       platform: input.platform, capabilities: input.capabilities,
+      filesystemGrant: input.filesystemGrant,
+      approvedAt: date(input.approvedAt), approvedByUserId: input.approvedByUserId,
       lastSeenAt: date(input.lastSeenAt), revokedAt: date(input.revokedAt),
       createdAt: new Date(input.now), updatedAt: new Date(input.now),
     }).returning()
@@ -289,6 +296,344 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       ...input, createdAt: new Date(input.now), updatedAt: new Date(input.now),
     }).returning()
     return binding(row)
+  }
+
+  async upsertBinding(input: ConnectedAgentCreateBinding) {
+    await this.requireActiveEnvironment(input.workspaceId, input.environmentId)
+    const [agent] = await this.db.select({ id: workspacePrincipals.id }).from(workspacePrincipals).where(and(
+      eq(workspacePrincipals.workspaceId, input.workspaceId),
+      eq(workspacePrincipals.agentId, input.agentId),
+      eq(workspacePrincipals.type, 'agent'),
+      isNull(workspacePrincipals.archivedAt),
+    )).limit(1)
+    if (!agent) throw new Error('AGENT_NOT_FOUND')
+    return await this.db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(agentBindings).where(and(
+        eq(agentBindings.workspaceId, input.workspaceId),
+        eq(agentBindings.agentId, input.agentId),
+      )).orderBy(desc(agentBindings.updatedAt)).limit(1).for('update')
+      if (existing) {
+        const [row] = await tx.update(agentBindings).set({
+          environmentId: input.environmentId,
+          protocolAdapter: input.protocolAdapter,
+          adapterConfig: input.adapterConfig,
+          enabled: input.enabled,
+          updatedAt: new Date(input.now),
+        }).where(eq(agentBindings.id, existing.id)).returning()
+        return binding(row)
+      }
+      const [row] = await tx.insert(agentBindings).values({
+        ...input, createdAt: new Date(input.now), updatedAt: new Date(input.now),
+      }).returning()
+      return binding(row)
+    })
+  }
+
+  async listBindings(args: { workspaceId: string; agentId?: string }) {
+    const rows = await this.db.select().from(agentBindings).where(and(
+      eq(agentBindings.workspaceId, args.workspaceId),
+      ...(args.agentId ? [eq(agentBindings.agentId, args.agentId)] : []),
+    )).orderBy(desc(agentBindings.updatedAt))
+    return rows.map(binding)
+  }
+
+  async disableBindingsForAgent(args: { workspaceId: string; agentId: string; now: number }) {
+    const rows = await this.db.update(agentBindings).set({ enabled: false, updatedAt: new Date(args.now) }).where(and(
+      eq(agentBindings.workspaceId, args.workspaceId),
+      eq(agentBindings.agentId, args.agentId),
+      eq(agentBindings.enabled, true),
+    )).returning({ id: agentBindings.id })
+    return rows.length > 0
+  }
+
+  async findInvocationTarget(args: {
+    workspaceId: string
+    agentId: string
+    now: number
+    onlineWithinMs: number
+  }) {
+    const [row] = await this.db.select({ binding: agentBindings, environment: agentEnvironments })
+      .from(agentBindings)
+      .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentBindings.environmentId))
+      .where(and(
+        eq(agentBindings.workspaceId, args.workspaceId),
+        eq(agentBindings.agentId, args.agentId),
+        eq(agentBindings.enabled, true),
+        eq(agentEnvironments.workspaceId, args.workspaceId),
+        isNotNull(agentEnvironments.approvedAt),
+        isNull(agentEnvironments.revokedAt),
+      )).orderBy(desc(agentBindings.updatedAt)).limit(1)
+    if (!row) return null
+    const targetEnvironment = environment(row.environment)
+    const lastSeenAt = targetEnvironment.lastSeenAt ?? 0
+    targetEnvironment.status = targetEnvironment.status === 'online'
+      && lastSeenAt >= args.now - args.onlineWithinMs ? 'online' : 'offline'
+    return { binding: binding(row.binding), environment: targetEnvironment }
+  }
+
+  async startRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['startRemoteAgentTurn']>[0]) {
+    if (jsonByteLength(input.startPayload) > MAX_COMMAND_BYTES) {
+      throw new Error('AGENT_COMMAND_TOO_LARGE')
+    }
+
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.clientNonce}, 0))`)
+      const [actor] = await tx.select({ principalId: workspacePrincipals.id })
+        .from(workspacePrincipals)
+        .innerJoin(workspaceMemberships, and(
+          eq(workspaceMemberships.workspaceId, workspacePrincipals.workspaceId),
+          eq(workspaceMemberships.principalId, workspacePrincipals.id),
+        ))
+        .innerJoin(conversationParticipants, and(
+          eq(conversationParticipants.workspaceId, workspacePrincipals.workspaceId),
+          eq(conversationParticipants.principalId, workspacePrincipals.id),
+        ))
+        .where(and(
+          eq(workspacePrincipals.workspaceId, input.workspaceId),
+          eq(workspacePrincipals.userId, input.actorUserId),
+          eq(workspacePrincipals.type, 'human'),
+          isNull(workspacePrincipals.archivedAt),
+          eq(workspaceMemberships.status, 'active'),
+          eq(conversationParticipants.conversationId, input.conversationId),
+          eq(conversationParticipants.status, 'active'),
+        )).limit(1)
+      const [agent] = await tx.select({ principalId: workspacePrincipals.id })
+        .from(workspacePrincipals)
+        .innerJoin(conversationParticipants, and(
+          eq(conversationParticipants.workspaceId, workspacePrincipals.workspaceId),
+          eq(conversationParticipants.principalId, workspacePrincipals.id),
+        ))
+        .where(and(
+          eq(workspacePrincipals.id, input.authorPrincipalId),
+          eq(workspacePrincipals.workspaceId, input.workspaceId),
+          eq(workspacePrincipals.agentId, input.agentId),
+          eq(workspacePrincipals.type, 'agent'),
+          isNull(workspacePrincipals.archivedAt),
+          eq(conversationParticipants.conversationId, input.conversationId),
+          eq(conversationParticipants.status, 'active'),
+        )).limit(1)
+      const [target] = await tx.select({ binding: agentBindings, environment: agentEnvironments })
+        .from(agentBindings)
+        .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentBindings.environmentId))
+        .where(and(
+          eq(agentBindings.id, input.bindingId),
+          eq(agentBindings.workspaceId, input.workspaceId),
+          eq(agentBindings.agentId, input.agentId),
+          eq(agentBindings.enabled, true),
+          eq(agentEnvironments.id, input.environmentId),
+          eq(agentEnvironments.workspaceId, input.workspaceId),
+          isNotNull(agentEnvironments.approvedAt),
+          isNull(agentEnvironments.revokedAt),
+        )).limit(1).for('update')
+      const [conversation] = await tx.select({ id: conversations.id }).from(conversations).where(and(
+        eq(conversations.id, input.conversationId),
+        eq(conversations.workspaceId, input.workspaceId),
+        isNull(conversations.deletedAt),
+      )).limit(1)
+      const [userMessage] = await tx.select({ id: conversationMessages.id }).from(conversationMessages).where(and(
+        eq(conversationMessages.id, input.userMessageId),
+        eq(conversationMessages.conversationId, input.conversationId),
+        eq(conversationMessages.userId, input.actorUserId),
+        eq(conversationMessages.turnId, input.turnId),
+        eq(conversationMessages.role, 'user'),
+      )).limit(1)
+      if (!actor || actor.principalId !== input.initiatorPrincipalId || !agent || !conversation || !userMessage) {
+        throw new Error('CONVERSATION_ACCESS_DENIED')
+      }
+      if (!target) throw new Error('AGENT_BINDING_UNAVAILABLE')
+
+      const [resumed] = await tx.select({
+        messageId: conversationMessages.id,
+        runId: agentRuns.id,
+        commandId: agentRunCommands.id,
+        environmentName: agentEnvironments.name,
+        environmentStatus: agentEnvironments.status,
+        lastSeenAt: agentEnvironments.lastSeenAt,
+      }).from(conversationMessages)
+        .innerJoin(agentRuns, eq(agentRuns.assistantMessageId, conversationMessages.id))
+        .innerJoin(agentRemoteSessions, eq(agentRemoteSessions.runId, agentRuns.id))
+        .innerJoin(agentRunCommands, eq(agentRunCommands.runId, agentRuns.id))
+        .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentRuns.environmentId))
+        .where(and(
+          eq(conversationMessages.conversationId, input.conversationId),
+          eq(conversationMessages.clientNonce, input.clientNonce),
+        )).limit(1)
+      if (resumed) return {
+        commandId: resumed.commandId,
+        environmentName: resumed.environmentName,
+        messageId: resumed.messageId,
+        resumed: true,
+        runId: resumed.runId,
+        waiting: resumed.environmentStatus !== 'online'
+          || (resumed.lastSeenAt?.getTime() ?? 0) < input.now - 45_000,
+      }
+
+      const online = target.environment.status === 'online'
+        && (target.environment.lastSeenAt?.getTime() ?? 0) >= input.now - 45_000
+      const now = new Date(input.now)
+      const messageId = `message_${randomUUID()}`
+      const waitingParts = waitingRemoteAgentParts({
+        environmentName: target.environment.name,
+        queueExpiresAt: input.queueExpiresAt,
+        runId: input.runId,
+      })
+      await tx.insert(conversationMessages).values({
+        id: messageId,
+        conversationId: input.conversationId,
+        userId: input.actorUserId,
+        turnId: input.turnId,
+        role: 'assistant',
+        mode: 'act',
+        content: online ? '' : `Waiting for ${target.environment.name}`,
+        contentType: 'text',
+        modelId: input.modelId,
+        parts: online ? [] : waitingParts,
+        status: 'generating',
+        authorKind: 'agent',
+        authorPrincipalId: input.authorPrincipalId,
+        clientNonce: input.clientNonce,
+        threadRootMessageId: input.threadRootMessageId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.insert(agentRuns).values({
+        id: input.runId,
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        userId: input.actorUserId,
+        userMessageId: input.userMessageId,
+        assistantMessageId: messageId,
+        agentId: input.agentId,
+        agentPrincipalId: input.authorPrincipalId,
+        initiatorPrincipalId: input.initiatorPrincipalId,
+        environmentId: input.environmentId,
+        bindingId: input.bindingId,
+        mode: 'room',
+        runner: 'remote',
+        status: 'queued',
+        leaseExpiresAt: new Date(online ? input.now + REMOTE_RUN_LEASE_MS : input.queueExpiresAt),
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.insert(agentRemoteSessions).values({
+        id: input.sessionId,
+        workspaceId: input.workspaceId,
+        environmentId: input.environmentId,
+        bindingId: input.bindingId,
+        runId: input.runId,
+        status: 'starting',
+        commandCursor: 0,
+        eventCursor: 0,
+        capabilitySnapshot: {
+          ...target.environment.capabilities,
+          billing: {
+            reservationId: input.reservationId,
+            modelId: input.modelId,
+            userId: input.actorUserId,
+            operationId: `workspace-agent:${input.turnId}`,
+          },
+          queueExpiresAt: input.queueExpiresAt,
+          environmentName: target.environment.name,
+        },
+        createdAt: now,
+        updatedAt: now,
+      })
+      const [cursor] = await tx.select({ value: max(agentRunCommands.sequence) })
+        .from(agentRunCommands).where(eq(agentRunCommands.environmentId, input.environmentId))
+      await tx.insert(agentRunCommands).values({
+        id: input.commandId,
+        workspaceId: input.workspaceId,
+        environmentId: input.environmentId,
+        runId: input.runId,
+        type: 'start',
+        sequence: (cursor?.value ?? 0) + 1,
+        payload: input.startPayload,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
+        .where(and(eq(conversations.id, input.conversationId), eq(conversations.workspaceId, input.workspaceId)))
+      await tx.insert(conversationEvents).values({
+        conversationId: input.conversationId,
+        messageId,
+        type: 'message.created',
+        userId: input.actorUserId,
+        createdAt: now,
+      })
+      return {
+        commandId: input.commandId,
+        environmentName: target.environment.name,
+        messageId,
+        resumed: false,
+        runId: input.runId,
+        waiting: !online,
+      }
+    })
+  }
+
+  async controlQueuedRemoteAgentTurn(args: Parameters<ConnectedAgentRepository['controlQueuedRemoteAgentTurn']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [row] = await tx.select({
+        run: agentRuns,
+        session: agentRemoteSessions,
+        environmentName: agentEnvironments.name,
+      }).from(agentRuns)
+        .innerJoin(agentRemoteSessions, eq(agentRemoteSessions.runId, agentRuns.id))
+        .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentRemoteSessions.environmentId))
+        .where(and(
+          eq(agentRuns.id, args.runId),
+          eq(agentRuns.conversationId, args.conversationId),
+          eq(agentRuns.userId, args.actorUserId),
+          eq(agentRuns.runner, 'remote'),
+          eq(agentRemoteSessions.workspaceId, args.workspaceId),
+        )).limit(1).for('update')
+      if (!row || row.run.status !== 'queued') return { applied: false }
+      const now = new Date(args.now)
+      if (args.action === 'cancel') {
+        await tx.update(agentRuns).set({ status: 'cancelled', cancelledAt: now, updatedAt: now })
+          .where(eq(agentRuns.id, row.run.id))
+        await tx.update(agentRemoteSessions).set({ status: 'cancelled', endedAt: now, updatedAt: now })
+          .where(eq(agentRemoteSessions.id, row.session.id))
+        await tx.update(agentRunCommands).set({ status: 'cancelled', claimExpiresAt: null, updatedAt: now })
+          .where(and(eq(agentRunCommands.runId, row.run.id), inArray(agentRunCommands.status, ['pending', 'claimed'])))
+        await tx.update(conversationMessages).set({
+          content: 'Cancelled',
+          parts: [{ type: 'text', text: 'Cancelled' }, {
+            type: 'data-remote-agent-status',
+            data: { environmentName: row.environmentName, queueExpiresAt: args.queueExpiresAt, runId: row.run.id, state: 'cancelled' },
+          }],
+          status: 'completed',
+          updatedAt: now,
+        }).where(eq(conversationMessages.id, row.run.assistantMessageId))
+      } else {
+        await tx.update(agentRuns).set({ leaseExpiresAt: new Date(args.queueExpiresAt), updatedAt: now })
+          .where(eq(agentRuns.id, row.run.id))
+        await tx.update(agentRunCommands).set({ status: 'pending', claimedAt: null, claimExpiresAt: null, updatedAt: now })
+          .where(and(eq(agentRunCommands.runId, row.run.id), sql`${agentRunCommands.status} <> 'acknowledged'`))
+        await tx.update(agentRemoteSessions).set({
+          capabilitySnapshot: {
+            ...(row.session.capabilitySnapshot as Record<string, unknown>),
+            queueExpiresAt: args.queueExpiresAt,
+          },
+          updatedAt: now,
+        }).where(eq(agentRemoteSessions.id, row.session.id))
+        await tx.update(conversationMessages).set({
+          content: `Waiting for ${row.environmentName}`,
+          parts: waitingRemoteAgentParts({ environmentName: row.environmentName, queueExpiresAt: args.queueExpiresAt, runId: row.run.id }),
+          status: 'generating',
+          updatedAt: now,
+        }).where(eq(conversationMessages.id, row.run.assistantMessageId))
+      }
+      await tx.insert(conversationEvents).values({
+        conversationId: row.run.conversationId,
+        messageId: row.run.assistantMessageId,
+        type: args.action === 'cancel' ? 'message.completed' : 'message.delta',
+        userId: args.actorUserId,
+        createdAt: now,
+      })
+      return { applied: true, messageId: row.run.assistantMessageId }
+    })
   }
 
   async createRemoteSession(input: ConnectedAgentCreateSession) {
@@ -350,8 +695,11 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         eq(agentEnvironments.id, args.environmentId), eq(agentEnvironments.workspaceId, args.workspaceId),
       )).for('update')
       if (!environmentRow || environmentRow.status === 'revoked') return []
-      const candidates = await tx.select({ id: agentRunCommands.id }).from(agentRunCommands).where(and(
+      const candidates = await tx.select({ id: agentRunCommands.id }).from(agentRunCommands)
+        .innerJoin(agentRuns, eq(agentRuns.id, agentRunCommands.runId)).where(and(
         eq(agentRunCommands.workspaceId, args.workspaceId), eq(agentRunCommands.environmentId, args.environmentId),
+        inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+        or(isNull(agentRuns.leaseExpiresAt), gt(agentRuns.leaseExpiresAt, new Date(args.now))),
         or(eq(agentRunCommands.status, 'pending'), and(
           eq(agentRunCommands.status, 'claimed'), lte(agentRunCommands.claimExpiresAt, new Date(args.now)),
         )),
@@ -501,7 +849,22 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         eq(agentRemoteSessions.environmentId, args.environmentId),
       )).for('update')
       if (!current) throw new Error('AGENT_REMOTE_SESSION_NOT_FOUND')
-      if (args.events.length === 0) return { accepted: true, acknowledgedSequence: current.eventCursor, duplicate: true }
+      const [runRow] = await tx.select().from(agentRuns).where(eq(agentRuns.id, current.runId)).for('update')
+      if (!runRow || runRow.runner !== 'remote' || runRow.environmentId !== args.environmentId) {
+        throw new Error('AGENT_REMOTE_RUN_NOT_FOUND')
+      }
+      const [messageRow] = await tx.select().from(conversationMessages)
+        .where(eq(conversationMessages.id, runRow.assistantMessageId)).for('update')
+      if (!messageRow) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
+      const duplicateResult = () => ({
+        accepted: true as const,
+        acknowledgedSequence: current.eventCursor,
+        duplicate: true,
+        ...(['completed', 'failed', 'cancelled'].includes(runRow.status)
+          ? { terminal: terminalBilling(current.capabilitySnapshot, messageRow.tokens) }
+          : {}),
+      })
+      if (args.events.length === 0) return duplicateResult()
       if (args.events.length > 100 || jsonByteLength(args.events) > MAX_EVENT_BATCH_BYTES) {
         throw new Error('AGENT_EVENT_BATCH_TOO_LARGE')
       }
@@ -516,13 +879,72 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         throw new Error('AGENT_EVENT_SCOPE_MISMATCH')
       }
       if (sequences.at(-1)! <= current.eventCursor) {
-        return { accepted: true, acknowledgedSequence: current.eventCursor, duplicate: true }
+        return duplicateResult()
       }
       const expected = current.eventCursor + 1
       if (first !== expected) return { accepted: false, expectedSequence: expected }
-      await tx.update(agentRemoteSessions).set({ eventCursor: sequences.at(-1)!, updatedAt: new Date(args.now) })
-        .where(eq(agentRemoteSessions.id, args.sessionId))
-      return { accepted: true, acknowledgedSequence: sequences.at(-1)!, duplicate: false }
+      if (['completed', 'failed', 'cancelled'].includes(runRow.status)) throw new Error('AGENT_RUN_TERMINAL')
+
+      const snapshot = current.capabilitySnapshot as Record<string, unknown>
+      const projection = projectRemoteAgentEvents({
+        content: messageRow.content,
+        parts: Array.isArray(messageRow.parts) ? messageRow.parts as Array<Record<string, unknown>> : [],
+        events: args.events,
+        environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : 'connected environment',
+        queueExpiresAt: typeof snapshot.queueExpiresAt === 'number' ? snapshot.queueExpiresAt : args.now,
+        runId: runRow.id,
+      })
+      const now = new Date(args.now)
+      await tx.update(agentRemoteSessions).set({
+        eventCursor: sequences.at(-1)!,
+        status: projection.sessionStatus,
+        ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
+        ...(!current.startedAt ? { startedAt: now } : {}),
+        ...(projection.terminal ? { endedAt: now } : {}),
+        updatedAt: now,
+      }).where(eq(agentRemoteSessions.id, args.sessionId))
+      await tx.update(agentRuns).set({
+        status: projection.runStatus,
+        ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
+        ...(!runRow.startedAt ? { startedAt: now } : {}),
+        ...(projection.runStatus === 'completed' ? { completedAt: now } : {}),
+        ...(projection.runStatus === 'failed' ? { failedAt: now, terminalError: projection.terminalError } : {}),
+        ...(projection.runStatus === 'cancelled' ? { cancelledAt: now } : {}),
+        ...(projection.terminal ? { metrics: { ...(runRow.metrics ?? {}), inputTokens: projection.tokens.input, outputTokens: projection.tokens.output } } : {}),
+        updatedAt: now,
+      }).where(eq(agentRuns.id, runRow.id))
+      await tx.update(conversationMessages).set({
+        content: projection.content,
+        parts: projection.parts,
+        ...(projection.terminal ? { tokens: projection.tokens } : {}),
+        status: projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating',
+        updatedAt: now,
+      }).where(eq(conversationMessages.id, messageRow.id))
+      await tx.update(conversations).set({ lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, runRow.conversationId))
+      await tx.insert(conversationEvents).values({
+        conversationId: runRow.conversationId,
+        messageId: messageRow.id,
+        type: projection.runStatus === 'failed'
+          ? 'message.failed'
+          : projection.terminal ? 'message.completed' : 'message.delta',
+        userId: runRow.userId,
+        createdAt: now,
+      })
+      if (projection.terminal) {
+        await tx.update(agentRunCommands).set({
+          status: 'acknowledged',
+          acknowledgedAt: sql`COALESCE(${agentRunCommands.acknowledgedAt}, ${now})`,
+          claimExpiresAt: null,
+          updatedAt: now,
+        }).where(and(eq(agentRunCommands.runId, runRow.id), sql`${agentRunCommands.status} <> 'cancelled'`))
+      }
+      return {
+        accepted: true,
+        acknowledgedSequence: sequences.at(-1)!,
+        duplicate: false,
+        ...(projection.terminal ? { terminal: terminalBilling(current.capabilitySnapshot, projection.tokens) } : {}),
+      }
     })
   }
 
@@ -593,3 +1015,20 @@ function credential(row: CredentialRow): AgentEnvironmentCredential { return { .
 function credentialValues(value: AgentEnvironmentCredential): typeof agentEnvironmentCredentials.$inferInsert { return { id: value.id, workspaceId: value.workspaceId, environmentId: value.environmentId, tokenHash: value.tokenHash, audience: value.audience, methods: value.methods, tokenNonce: value.tokenNonce, expiresAt: new Date(value.expiresAt), revokedAt: date(value.revokedAt), createdAt: new Date(value.createdAt) } }
 function sameMethods(left: string[], right: string[]) { return left.length === right.length && left.every((method) => right.includes(method)) }
 function jsonByteLength(value: unknown) { return new TextEncoder().encode(JSON.stringify(value)).byteLength }
+function terminalBilling(snapshotValue: unknown, tokensValue: unknown) {
+  const snapshot = snapshotValue && typeof snapshotValue === 'object'
+    ? snapshotValue as Record<string, unknown> : {}
+  const billing = snapshot.billing && typeof snapshot.billing === 'object'
+    ? snapshot.billing as Record<string, unknown> : {}
+  const tokens = tokensValue && typeof tokensValue === 'object'
+    ? tokensValue as Record<string, unknown> : {}
+  return {
+    forceFreeTierLimits: false,
+    inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
+    modelId: typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
+    operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
+    outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
+    reservationId: typeof billing.reservationId === 'string' ? billing.reservationId : null,
+    userId: typeof billing.userId === 'string' ? billing.userId : '',
+  }
+}

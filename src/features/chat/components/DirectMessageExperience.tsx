@@ -363,7 +363,7 @@ export function DirectMessageExperience({
         importedAuthorEmail?: string
         importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
         content?: string
-        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
         createdAt: number
         eventSequence?: number
         editedAt?: number
@@ -389,7 +389,7 @@ export function DirectMessageExperience({
             importedAuthorEmail?: string
             importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
             content?: string
-            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
             createdAt: number
             eventSequence?: number
             editedAt?: number
@@ -1146,6 +1146,21 @@ export function DirectMessageExperience({
     renderAttachmentViewer,
   })
 
+  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry') {
+    if (!activeWorkspaceId) return
+    try {
+      await overlayAppClient.conversations.controlRemoteQueue({
+        workspaceId: activeWorkspaceId,
+        conversationId,
+        runId,
+        action,
+      })
+      await loadMessages()
+    } catch (value) {
+      setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
+    }
+  }
+
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
     const authorName = author?.displayName
@@ -1203,6 +1218,7 @@ export function DirectMessageExperience({
         onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
         onOpenAttachmentPreview={openAttachmentPreview}
         onCopyPermalink={() => void copyMessagePermalink(message.id)}
+        onControlRemoteQueue={(runId, action) => void controlRemoteQueue(runId, action)}
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
       />

@@ -72,6 +72,24 @@ export class ConversationsClient {
     return this.http.request(path, init)
   }
 
+  controlRemoteQueue(input: {
+    workspaceId: string
+    conversationId: string
+    runId: string
+    action: 'cancel' | 'retry'
+  }, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    headers.set('x-overlay-workspace-id', input.workspaceId)
+    return this.http.json<{ applied: boolean; messageId?: string }>(
+      '/api/v1/conversations/run/remote',
+      this.http.jsonRequest({
+        conversationId: input.conversationId,
+        runId: input.runId,
+        action: input.action,
+      }, { ...init, headers, method: 'POST' }),
+    )
+  }
+
   create(body: CreateConversationRequest, init?: MutationRequestInit) {
     return this.http.json<CreateConversationResponse>(
       '/api/v1/conversations',

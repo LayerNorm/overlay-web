@@ -940,6 +940,7 @@ export default defineSchema({
     }),
 
   conversationAgentRuns: defineTable({
+    externalRunId: v.optional(v.string()),
     conversationId: v.id('conversations'),
     turnId: v.string(),
     userId: v.string(),
@@ -1012,6 +1013,7 @@ export default defineSchema({
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
+    .index('by_externalRunId', ['externalRunId'])
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
     .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
@@ -1089,6 +1091,18 @@ export default defineSchema({
             transient: v.optional(v.boolean()),
           }),
           v.object({
+            type: v.literal('data-remote-agent-status'),
+            data: v.object({
+              environmentName: v.string(),
+              queueExpiresAt: v.number(),
+              runId: v.string(),
+              state: v.union(
+                v.literal('waiting'), v.literal('running'), v.literal('completed'),
+                v.literal('failed'), v.literal('cancelled'),
+              ),
+            }),
+          }),
+          v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
               toolCallId: v.optional(v.string()),
@@ -1133,6 +1147,7 @@ export default defineSchema({
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
+    .index('by_conversationId_clientNonce', ['conversationId', 'clientNonce'])
     .index('by_userId', ['userId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
@@ -2190,6 +2205,7 @@ export default defineSchema({
   }).index('by_commandId', ['commandId'])
     .index('by_environmentId_sequence', ['environmentId', 'sequence'])
     .index('by_environmentId_status_sequence', ['environmentId', 'status', 'sequence'])
+    .index('by_environmentId_status_claimExpiresAt', ['environmentId', 'status', 'claimExpiresAt'])
     .index('by_workspaceId', ['workspaceId']),
 
   agentRemoteSessions: defineTable({

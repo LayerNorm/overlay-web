@@ -1,4 +1,4 @@
-import type { AgentEnvironment, AgentFilesystemGrant } from '@overlay/workspace-contracts'
+import type { AgentBinding, AgentEnvironment, AgentFilesystemGrant } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 
 const WORKSPACE_HEADER = 'x-overlay-workspace-id'
@@ -48,6 +48,32 @@ export class AgentEnvironmentsClient {
     return this.http.json<{ revoked: true; environmentId: string }>(
       `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/revoke`,
       workspaceInit(workspaceId, { ...init, method: 'POST' }),
+    )
+  }
+
+  listBindings(workspaceId: string, agentId?: string, init?: RequestInit) {
+    const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''
+    return this.http.json<{ bindings: AgentBinding[] }>(
+      `/api/v1/agent-bindings${query}`, workspaceInit(workspaceId, init),
+    )
+  }
+
+  upsertBinding(workspaceId: string, input: {
+    agentId: string
+    environmentId: string
+    adapterId: string
+    workingDirectory: string
+  }, init?: RequestInit) {
+    return this.http.json<{ binding: AgentBinding }>(
+      '/api/v1/agent-bindings',
+      this.http.jsonRequest(input, { ...workspaceInit(workspaceId, init), method: 'PUT' }),
+    )
+  }
+
+  disableBindings(workspaceId: string, agentId: string, init?: RequestInit) {
+    return this.http.json<{ disabled: boolean }>(
+      `/api/v1/agent-bindings?agentId=${encodeURIComponent(agentId)}`,
+      workspaceInit(workspaceId, { ...init, method: 'DELETE' }),
     )
   }
 }

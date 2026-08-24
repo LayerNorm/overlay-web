@@ -81,6 +81,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },
   },
+  {
+    path: '/api/v1/agent-bindings',
+    methods: { GET: authenticated(), PUT: authenticated(), DELETE: authenticated() },
+  },
   { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
@@ -393,6 +397,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/conversations/run/approval',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run/remote',
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
   {

@@ -1,5 +1,6 @@
 export * from './acp-adapter'
 export * from './adapter'
+export * from './adapter-manifests'
 export * from './config'
 export * from './connection'
 export * from './device-key'

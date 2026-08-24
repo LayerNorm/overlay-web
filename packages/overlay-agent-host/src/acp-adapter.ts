@@ -33,6 +33,7 @@ export class AcpAgentAdapter implements AgentAdapter {
     let child: ChildProcessWithoutNullStreams | undefined
     let activeContext: acp.ClientContext | undefined
     let sessionId = input.remoteSessionId
+    let textCheckpoint = ''
 
     const app = acp.client({ name: 'overlay-agent-host' })
       .onRequest(acp.methods.client.session.requestPermission, async ({ params }) => {
@@ -53,7 +54,12 @@ export class AcpAgentAdapter implements AgentAdapter {
         return optionId ? { outcome: { outcome: 'selected' as const, optionId } } : { outcome: { outcome: 'cancelled' as const } }
       })
       .onNotification(acp.methods.client.session.update, async ({ params }) => {
-        await normalizeAcpUpdate(params.update, emit)
+        await normalizeAcpUpdate(params.update, emit, {
+          appendText(chunk) {
+            textCheckpoint += chunk
+            return textCheckpoint
+          },
+        })
       })
 
     const background = async () => {
@@ -128,9 +134,13 @@ export class AcpAgentAdapter implements AgentAdapter {
   }
 }
 
-async function normalizeAcpUpdate(update: acp.SessionUpdate, emit: EmitAgentEvent): Promise<void> {
+async function normalizeAcpUpdate(
+  update: acp.SessionUpdate,
+  emit: EmitAgentEvent,
+  checkpoint: { appendText(chunk: string): string },
+): Promise<void> {
   if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
-    await emit({ type: 'text_checkpoint', payload: { text: update.content.text } })
+    await emit({ type: 'text_checkpoint', payload: { text: checkpoint.appendText(update.content.text) } })
     return
   }
   if (update.sessionUpdate === 'tool_call') {

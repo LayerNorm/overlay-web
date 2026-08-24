@@ -21,8 +21,61 @@ export type ConnectedAgentUpdateSandboxLease = Partial<Pick<
 >> & { workspaceId: string; leaseId: string; now: number }
 
 export type ApplyRemoteEventsResult =
-  | { accepted: true; acknowledgedSequence: number; duplicate: boolean }
+  | {
+      accepted: true
+      acknowledgedSequence: number
+      duplicate: boolean
+      terminal?: {
+        forceFreeTierLimits: boolean
+        inputTokens: number
+        modelId: string
+        operationId: string
+        outputTokens: number
+        reservationId: string | null
+        userId: string
+      }
+    }
   | { accepted: false; expectedSequence: number }
+
+export type ConnectedAgentInvocationTarget = {
+  binding: AgentBinding
+  environment: AgentEnvironment
+}
+
+export type ConnectedAgentStartRemoteTurn = {
+  actorUserId: string
+  agentId: string
+  authorPrincipalId: string
+  bindingId: string
+  clientNonce: string
+  commandId: string
+  conversationId: string
+  environmentId: string
+  environmentName: string
+  environmentOnline: boolean
+  initiatorPrincipalId: string
+  modelId: string
+  prompt: string
+  queueExpiresAt: number
+  reservationId: string | null
+  runId: string
+  sessionId: string
+  startPayload: Record<string, unknown>
+  threadRootMessageId?: string
+  turnId: string
+  userMessageId: string
+  workspaceId: string
+  now: number
+}
+
+export type ConnectedAgentStartRemoteTurnResult = {
+  commandId: string
+  environmentName: string
+  messageId: string
+  resumed: boolean
+  runId: string
+  waiting: boolean
+}
 
 export type RedeemEnrollmentResult = {
   enrollment: AgentEnrollmentSession
@@ -95,6 +148,25 @@ export interface ConnectedAgentRepository {
   }): Promise<AgentEnvironment | null>
   createEnvironment(input: ConnectedAgentCreateEnvironment): Promise<AgentEnvironment>
   createBinding(input: ConnectedAgentCreateBinding): Promise<AgentBinding>
+  upsertBinding(input: ConnectedAgentCreateBinding): Promise<AgentBinding>
+  listBindings(args: { workspaceId: string; agentId?: string }): Promise<AgentBinding[]>
+  disableBindingsForAgent(args: { workspaceId: string; agentId: string; now: number }): Promise<boolean>
+  findInvocationTarget(args: {
+    workspaceId: string
+    agentId: string
+    now: number
+    onlineWithinMs: number
+  }): Promise<ConnectedAgentInvocationTarget | null>
+  startRemoteAgentTurn(input: ConnectedAgentStartRemoteTurn): Promise<ConnectedAgentStartRemoteTurnResult>
+  controlQueuedRemoteAgentTurn(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+    runId: string
+    action: 'cancel' | 'retry'
+    queueExpiresAt: number
+    now: number
+  }): Promise<{ applied: boolean; messageId?: string }>
   createRemoteSession(input: ConnectedAgentCreateSession): Promise<AgentRemoteSession>
   getRemoteSessionForRun(args: {
     workspaceId: string

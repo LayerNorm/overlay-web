@@ -68,6 +68,7 @@ export type RoomMessageView = {
   /** Room members named in the body, so `@name` renders as a chip. */
   mentions: Array<{ type: string; id: string; name: string }>
   streaming?: boolean
+  remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
 }
 
 export type RoomMessageItemProps = {
@@ -94,6 +95,7 @@ export type RoomMessageItemProps = {
   onRetrySend: () => void
   onOpenAttachmentPreview: (preview: AttachmentPreview) => void
   onCopyPermalink: () => void
+  onControlRemoteQueue?: (runId: string, action: 'cancel' | 'retry') => void
   /** Briefly outlines the message after a jump from the pinned or thread list. */
   highlighted?: boolean
   /** Consecutive messages from the same author use a compact transcript row. */
@@ -231,6 +233,7 @@ export function RoomMessageItem({
   onRetrySend,
   onOpenAttachmentPreview,
   onCopyPermalink,
+  onControlRemoteQueue,
   highlighted = false,
   grouped = false,
 }: RoomMessageItemProps) {
@@ -535,6 +538,9 @@ export function RoomMessageItem({
                 ))}
               </div>
             ) : null}
+            {message.remoteQueue && onControlRemoteQueue ? (
+              <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
+            ) : null}
           </>
         ) : (
           humanBody
@@ -542,6 +548,31 @@ export function RoomMessageItem({
         {reactionRow}
         {threadEntry}
       </div>
+    </div>
+  )
+}
+
+function RemoteQueueControls({
+  queue,
+  onControl,
+}: {
+  queue: NonNullable<RoomMessageView['remoteQueue']>
+  onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
+}) {
+  const [elapsed, setElapsed] = useState(false)
+
+  useEffect(() => {
+    const refresh = () => setElapsed(Date.now() >= queue.queueExpiresAt)
+    refresh()
+    const timeout = window.setTimeout(refresh, Math.max(0, queue.queueExpiresAt - Date.now()))
+    return () => window.clearTimeout(timeout)
+  }, [queue.queueExpiresAt])
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+      <span>{elapsed ? 'The 2-minute waiting window elapsed.' : 'Waiting up to 2 minutes for the environment to reconnect.'}</span>
+      <button type="button" onClick={() => onControl(queue.runId, 'cancel')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel</button>
+      <button type="button" onClick={() => onControl(queue.runId, 'retry')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]">Retry</button>
     </div>
   )
 }

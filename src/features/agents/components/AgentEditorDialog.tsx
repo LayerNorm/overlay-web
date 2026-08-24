@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Bot, Check, ChevronDown } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Bot, Check, ChevronDown, Laptop } from 'lucide-react'
 import { Button, DialogFrame, Input, ListboxSelect } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
@@ -15,6 +15,8 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   AGENT_TOOL_GROUPS,
   DEFAULT_AGENT_TOOL_GROUP_IDS,
@@ -39,10 +41,15 @@ export function AgentEditorDialog({
   busy: boolean
   error: string | null
   onOpenChange(open: boolean): void
-  onSave(input: WorkspaceAgentCreateInput): void
+  onSave(input: WorkspaceAgentCreateInput, binding?: {
+    environmentId: string
+    adapterId: string
+    workingDirectory: string
+  } | null): void
   onArchive?(): void
 }) {
   const { revision } = useGatewayModelCatalog({ enabled: open })
+  const { activeWorkspaceId } = useWorkspace()
   const { settings } = useAppSettings()
   const enabledModelIds = settings.enabledChatModelIds
   const [name, setName] = useState(agent?.name ?? '')
@@ -58,6 +65,44 @@ export function AgentEditorDialog({
       : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)),
   )
   const [advanced, setAdvanced] = useState(false)
+  const [execution, setExecution] = useState<'overlay' | 'connected'>('overlay')
+  const [environments, setEnvironments] = useState<Array<{
+    id: string
+    name: string
+    status: string
+    capabilities: Record<string, unknown>
+    filesystemGrant?: { mode: 'selected_roots'; roots: string[] } | { mode: 'all_user_files' }
+  }>>([])
+  const [environmentId, setEnvironmentId] = useState('')
+  const [adapterId, setAdapterId] = useState('')
+  const [workingDirectory, setWorkingDirectory] = useState('')
+
+  useEffect(() => {
+    if (!open || !activeWorkspaceId) return
+    void Promise.all([
+      overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' }),
+      agent ? overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId, agent.id) : Promise.resolve({ bindings: [] }),
+    ]).then(([environmentResult, bindingResult]) => {
+      const available = environmentResult.environments.filter((environment) => (
+        environment.status !== 'pending' && environment.status !== 'revoked'
+      ))
+      setEnvironments(available)
+      const binding = bindingResult.bindings[0]
+      if (!binding) return
+      setExecution('connected')
+      setEnvironmentId(binding.environmentId)
+      setAdapterId(typeof binding.adapterConfig.adapterId === 'string' ? binding.adapterConfig.adapterId : '')
+      setWorkingDirectory(typeof binding.adapterConfig.workingDirectory === 'string' ? binding.adapterConfig.workingDirectory : '')
+      setAdvanced(true)
+    }).catch(() => undefined)
+  }, [activeWorkspaceId, agent, open])
+
+  const selectedEnvironment = environments.find((environment) => environment.id === environmentId)
+  const adapterOptions = Array.isArray(selectedEnvironment?.capabilities.adapters)
+    ? (selectedEnvironment.capabilities.adapters as Array<Record<string, unknown>>)
+        .filter((adapter) => adapter.protocol === 'acp' && typeof adapter.id === 'string')
+        .map((adapter) => ({ value: String(adapter.id), label: typeof adapter.displayName === 'string' ? adapter.displayName : String(adapter.id) }))
+    : []
 
   const toggleToolGroup = (groupId: string) => {
     setEnabledToolGroups((current) => {
@@ -79,7 +124,8 @@ export function AgentEditorDialog({
   }, [enabledModelIds, revision])
 
   const isDefaultMaster = Boolean(agent?.isDefault || agent?.name.toLowerCase() === 'overlay')
-  const valid = name.trim() && instructions.trim() && modelId.trim()
+  const bindingValid = execution === 'overlay' || (environmentId && adapterId && workingDirectory.trim())
+  const valid = name.trim() && instructions.trim() && modelId.trim() && bindingValid
   return (
     <DialogFrame
       open={open}
@@ -104,7 +150,11 @@ export function AgentEditorDialog({
               avatarColor,
               allowedToolIds: toolIdsForEnabledGroups(enabledToolGroups),
               teamIds: agent?.teamIds ?? [],
-            })}
+            }, execution === 'connected' ? {
+              environmentId,
+              adapterId,
+              workingDirectory: workingDirectory.trim(),
+            } : environments.length > 0 ? null : undefined)}
           >
             {busy ? 'Saving…' : agent ? 'Save changes' : 'Create agent'}
           </Button>
@@ -205,10 +255,53 @@ export function AgentEditorDialog({
             Advanced <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
           </button>
           {advanced ? (
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+            <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
               <p className="text-[11px] leading-4 text-[var(--muted)]">
                 Mention-first is enforced. One-to-one agent DMs invoke implicitly; channels and group DMs require a human mention or reply in the agent’s thread.
               </p>
+              {environments.length > 0 ? (
+                <div className="space-y-3 border-t border-[var(--border)] pt-3">
+                  <label className="block text-xs font-medium">Execution
+                    <ListboxSelect
+                      className="mt-1.5"
+                      aria-label="Agent execution"
+                      value={execution}
+                      options={[{ value: 'overlay', label: 'Overlay' }, { value: 'connected', label: 'Connected environment' }]}
+                      onChange={(value) => setExecution(value as 'overlay' | 'connected')}
+                      portal
+                    />
+                  </label>
+                  {execution === 'connected' ? (
+                    <>
+                      <label className="block text-xs font-medium">Environment
+                        <ListboxSelect
+                          className="mt-1.5"
+                          aria-label="Connected environment"
+                          value={environmentId}
+                          options={environments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))}
+                          onChange={(value) => {
+                            setEnvironmentId(value)
+                            const selected = environments.find((environment) => environment.id === value)
+                            const firstAdapter = Array.isArray(selected?.capabilities.adapters)
+                              ? (selected.capabilities.adapters as Array<Record<string, unknown>>).find((candidate) => candidate.protocol === 'acp') : undefined
+                            setAdapterId(typeof firstAdapter?.id === 'string' ? firstAdapter.id : '')
+                            const firstRoot = selected?.filesystemGrant?.mode === 'selected_roots' ? selected.filesystemGrant.roots[0] : ''
+                            setWorkingDirectory(firstRoot ?? '')
+                          }}
+                          portal
+                        />
+                      </label>
+                      <label className="block text-xs font-medium">Harness
+                        <ListboxSelect className="mt-1.5" aria-label="ACP harness" value={adapterId} options={adapterOptions} onChange={setAdapterId} portal />
+                      </label>
+                      <label className="block text-xs font-medium">Working directory
+                        <Input className="mt-1.5" value={workingDirectory} onChange={(event) => setWorkingDirectory(event.target.value)} placeholder="/Users/you/Projects/app" />
+                      </label>
+                      <p className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]"><Laptop size={12} /> Work runs on this environment and streams back into the room.</p>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
           {error ? <p className="text-xs text-red-500">{error}</p> : null}

@@ -8,6 +8,20 @@ export type RoomMessagePart = {
   url?: string
   mediaType?: string
   fileName?: string
+  data?: Record<string, unknown>
+}
+
+function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteQueue'] {
+  const part = parts?.find((candidate) => candidate.type === 'data-remote-agent-status')
+  const data = part?.data
+  if (!data || data.state !== 'waiting' || typeof data.runId !== 'string' || typeof data.environmentName !== 'string') {
+    return undefined
+  }
+  return {
+    runId: data.runId,
+    environmentName: data.environmentName,
+    queueExpiresAt: typeof data.queueExpiresAt === 'number' ? data.queueExpiresAt : 0,
+  }
 }
 
 export type RoomMessageRecord = {
@@ -158,6 +172,7 @@ export function toRoomMessageView({
     images: imageAttachments(message.parts),
     documentNames: docNames,
     mentions,
+    remoteQueue: remoteQueueStatus(message.parts),
     streaming: streaming || message.status === 'generating',
   }
 }

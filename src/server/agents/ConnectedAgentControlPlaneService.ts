@@ -41,6 +41,7 @@ const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
 const CREDENTIAL_TTL_MS = 15 * 60_000
 const REQUEST_CLOCK_SKEW_MS = 60_000
 const PROOF_NONCE_TTL_MS = 2 * 60_000
+const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
 
 const PHRASE_WORDS = [
   'amber', 'birch', 'cedar', 'coral', 'dawn', 'ember', 'fern', 'harbor',
@@ -65,6 +66,16 @@ export type HostAuthentication = {
   environment: AgentEnvironment
 }
 
+type RemoteAgentUsageSettlement = {
+  forceFreeTierLimits: boolean
+  inputTokens: number
+  modelId: string
+  operationId: string
+  outputTokens: number
+  reservationId: string | null
+  userId: string
+}
+
 export class ConnectedAgentControlPlaneService {
   constructor(private readonly dependencies: {
     audit: AuditService
@@ -72,6 +83,7 @@ export class ConnectedAgentControlPlaneService {
     workspaces: WorkspaceService
     now?: () => number
     isEnabled?: () => boolean | Promise<boolean>
+    settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
@@ -229,6 +241,101 @@ export class ConnectedAgentControlPlaneService {
       workspaceId: args.workspaceId,
       environmentId: args.environmentId,
     }, args.environmentId)
+  }
+
+  async listBindings(args: { actorUserId: string; workspaceId: string; agentId?: string }) {
+    await this.assertEnabled()
+    await this.requireManager(args.actorUserId, args.workspaceId)
+    return await this.dependencies.repository.listBindings({
+      workspaceId: args.workspaceId,
+      ...(args.agentId ? { agentId: args.agentId } : {}),
+    })
+  }
+
+  async upsertBinding(args: {
+    actorUserId: string
+    workspaceId: string
+    agentId: string
+    environmentId: string
+    adapterId: string
+    workingDirectory: string
+  }) {
+    await this.assertEnabled()
+    await this.requireManager(args.actorUserId, args.workspaceId)
+    if (!args.agentId.trim() || args.agentId.length > 256 ||
+      !args.environmentId.trim() || args.environmentId.length > 256 ||
+      !args.adapterId.trim() || args.adapterId.length > 128 ||
+      !args.workingDirectory.trim() || args.workingDirectory.length > 4_096) {
+      throw controlPlaneError('Agent binding fields are invalid', 400, 'binding_invalid')
+    }
+    const environment = await this.dependencies.repository.getEnvironment({
+      workspaceId: args.workspaceId,
+      environmentId: args.environmentId,
+    })
+    if (!environment || environment.status === 'pending' || environment.status === 'revoked' || !environment.approvedAt) {
+      throw controlPlaneError('Environment is unavailable', 409, 'environment_unavailable')
+    }
+    this.assertWorkingDirectory(environment, args.workingDirectory)
+    const adapters = Array.isArray(environment.capabilities.adapters)
+      ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
+    const adapter = adapters.find((candidate) => candidate.id === args.adapterId)
+    if (!adapter || adapter.protocol !== 'acp') {
+      throw controlPlaneError('The selected ACP adapter is not installed on this environment', 409, 'adapter_unavailable')
+    }
+    const now = this.now()
+    const binding = await this.dependencies.repository.upsertBinding({
+      id: randomUUID(),
+      workspaceId: args.workspaceId,
+      agentId: args.agentId,
+      environmentId: args.environmentId,
+      protocolAdapter: 'acp',
+      adapterConfig: { adapterId: args.adapterId, workingDirectory: args.workingDirectory },
+      enabled: true,
+      now,
+    })
+    await this.audit('agent_binding.upserted', 'user', args.actorUserId, {
+      workspaceId: args.workspaceId,
+      agentId: args.agentId,
+      environmentId: args.environmentId,
+      adapterId: args.adapterId,
+      workingDirectory: args.workingDirectory,
+    }, binding.id, 'agent_binding')
+    return binding
+  }
+
+  async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    await this.assertEnabled()
+    await this.requireManager(args.actorUserId, args.workspaceId)
+    const disabled = await this.dependencies.repository.disableBindingsForAgent({
+      workspaceId: args.workspaceId,
+      agentId: args.agentId,
+      now: this.now(),
+    })
+    if (disabled) {
+      await this.audit('agent_binding.disabled', 'user', args.actorUserId, {
+        workspaceId: args.workspaceId,
+        agentId: args.agentId,
+      }, args.agentId, 'agent_binding')
+    }
+    return disabled
+  }
+
+  async controlQueuedRemoteTurn(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+    runId: string
+    action: 'cancel' | 'retry'
+  }) {
+    await this.assertEnabled()
+    const now = this.now()
+    const result = await this.dependencies.repository.controlQueuedRemoteAgentTurn({
+      ...args,
+      now,
+      queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
+    })
+    if (!result.applied) throw controlPlaneError('Queued remote run was not found', 404, 'remote_run_not_found')
+    return result
   }
 
   async issueInitialCredential(args: {
@@ -419,13 +526,17 @@ export class ConnectedAgentControlPlaneService {
       runId: batch.runId,
     })
     if (!session) throw controlPlaneError('Remote session was not found', 404, 'remote_session_not_found')
-    return await this.dependencies.repository.applyRemoteEvents({
+    const result = await this.dependencies.repository.applyRemoteEvents({
       workspaceId: auth.credential.workspaceId,
       environmentId: auth.credential.environmentId,
       sessionId: session.id,
       events: batch.events,
       now: this.now(),
     })
+    if (result.accepted && result.terminal?.reservationId && this.dependencies.settleUsage) {
+      await this.dependencies.settleUsage(result.terminal)
+    }
+    return result
   }
 
   assertWorkingDirectory(environment: AgentEnvironment, workingDirectory: string): void {
@@ -466,6 +577,7 @@ export class ConnectedAgentControlPlaneService {
     actorUserId: string | undefined,
     metadata: Record<string, unknown>,
     resourceId: string,
+    resourceType = 'agent_environment',
   ) {
     await this.dependencies.audit.record({
       action,
@@ -474,7 +586,7 @@ export class ConnectedAgentControlPlaneService {
       metadata,
       outcome: 'success',
       resourceId,
-      resourceType: 'agent_environment',
+      resourceType,
     })
   }
 }

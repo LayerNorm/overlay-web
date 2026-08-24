@@ -68,6 +68,24 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   createBinding(input: Parameters<ConnectedAgentRepository['createBinding']>[0]) {
     return mutation<AgentBinding>('createBindingByServer', input)
   }
+  upsertBinding(input: Parameters<ConnectedAgentRepository['upsertBinding']>[0]) {
+    return mutation<AgentBinding>('upsertBindingByServer', input)
+  }
+  listBindings(input: Parameters<ConnectedAgentRepository['listBindings']>[0]) {
+    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['listBindings']>>>('listBindingsByServer', input)
+  }
+  disableBindingsForAgent(input: Parameters<ConnectedAgentRepository['disableBindingsForAgent']>[0]) {
+    return mutation<boolean>('disableBindingsForAgentByServer', input)
+  }
+  findInvocationTarget(input: Parameters<ConnectedAgentRepository['findInvocationTarget']>[0]) {
+    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['findInvocationTarget']>>>('findInvocationTargetByServer', input)
+  }
+  startRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['startRemoteAgentTurn']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['startRemoteAgentTurn']>>>('startRemoteAgentTurnByServer', input)
+  }
+  controlQueuedRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['controlQueuedRemoteAgentTurn']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['controlQueuedRemoteAgentTurn']>>>('controlQueuedRemoteAgentTurnByServer', input)
+  }
   createRemoteSession(input: Parameters<ConnectedAgentRepository['createRemoteSession']>[0]) {
     return mutation<AgentRemoteSession>('createRemoteSessionByServer', input)
   }

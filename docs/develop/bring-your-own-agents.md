@@ -29,7 +29,7 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 3 are implemented. The connected-agent repository now includes command
+Phases 0 through 4 are implemented. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
@@ -67,6 +67,31 @@ challenge, credential, and request-nonce consumption is atomic in Convex and Pos
 hashes of enrollment codes, proof challenges, opaque credentials, and request nonces are stored.
 Revocation cancels unclaimed work, revokes active credentials, disables bindings, and moves live
 managed leases to immediate cleanup.
+
+Phase 4 routes an agent with an enabled binding through the existing room mention path. Mention,
+room membership, agent participation, binding, environment scope, and the host's advertised ACP
+adapter are revalidated before dispatch. PostgreSQL and Convex each use one provider transaction
+to create the existing assistant placeholder, a `remote` AgentRun, its remote-session record, and
+one start command. The payer allowance check happens before that transaction; a non-null billing
+reservation is released if the transaction cannot commit and its idempotency key is the
+message-agent invocation nonce. User-owned ACP model execution is not charged as Overlay model
+usage.
+
+Host event batches advance the remote cursor and project full Markdown checkpoints plus stable
+action parts into that one assistant message in the same transaction. Session start binds the
+harness session ID; completion, failure, and cancellation settle the session, run, message,
+command, token metrics, and existing conversation event exactly once. Duplicate terminal batches
+return the existing acknowledgement and never append a second transcript row. Interactive offline
+mentions have a two-minute claim window and visibly render `Waiting for <environment>` with Cancel
+and Retry; expired leases cannot be claimed.
+
+Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
+The agent editor exposes approved environments, their advertised ACP adapters, and an explicitly
+granted working directory. The host ships data-only manifests for Codex
+(`@agentclientprotocol/codex-acp`) and Claude Code (`@agentclientprotocol/claude-agent-acp`); adding
+another ACP target extends the manifest and conformance fixtures, not conversation orchestration.
+PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
+nullable conversation-message edit-history column required by the shared transcript writer.
 
 ## Trust boundaries and threat model
 

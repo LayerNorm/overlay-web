@@ -19,16 +19,16 @@ Keep credentials out of the JSON file:
     "roots": ["/absolute/project-one", "/absolute/project-two"]
   },
   "adapters": [
-    {
-      "id": "my-acp-agent",
-      "displayName": "My ACP agent",
-      "protocol": "acp",
-      "command": "my-agent",
-      "args": ["acp"]
-    }
+    { "manifest": "codex" },
+    { "manifest": "claude-code" }
   ]
 }
 ```
+
+The built-in manifests resolve to the maintained
+`@agentclientprotocol/codex-acp` and `@agentclientprotocol/claude-agent-acp` packages. A custom
+ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
+shape.
 
 Run diagnostics and then the host:
 

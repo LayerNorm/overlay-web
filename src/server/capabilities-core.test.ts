@@ -12,6 +12,7 @@ test('enterprise feature routes map to deterministic capabilities', () => {
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/memory/search'), 'memory')
   assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/knowledge/search'), 'vectorSearch')
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/agent-environments/enrollment-sessions'), 'connectedAgents')
+  assert.equal(getRequiredCapabilityForRoute('PUT', '/api/v1/agent-bindings'), 'connectedAgents')
 })
 
 test('disabled capability payload uses stable machine-readable shape', () => {
