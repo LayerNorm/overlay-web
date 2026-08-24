@@ -52,7 +52,7 @@ export const enrollmentRequestSchema = z.object({
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   capabilities: hostCapabilitiesSchema,
-  kind: z.enum(['local', 'vps', 'external']).default('local'),
+  kind: z.enum(['local', 'vps', 'overlay_cloud', 'external']).default('local'),
 }).strict()
 export type EnrollmentRequest = z.infer<typeof enrollmentRequestSchema>
 

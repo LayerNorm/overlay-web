@@ -29,7 +29,9 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 5 are implemented. The connected-agent repository now includes command
+Phases 0 through 5 and the Phase 6 code path are implemented. Overlay Cloud activation remains
+gated on publishing the Agent Host image and passing live Vercel conformance in the target
+project. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
@@ -119,6 +121,35 @@ or reconcile the original billing reservation exactly once. PostgreSQL migration
 request kinds and artifact metadata. The shared provider contract now covers artifact tenancy,
 validation state, retention cleanup, and idempotent tombstones.
 
+Phase 6 adds `@overlay/sandbox-runtime` as the only managed-sandbox boundary. Its contract covers
+lifecycle and reconnect, streamed and cancellable commands, files, process environment, ports,
+snapshots and persistence, network policy, broker-owned credential references, idle and hard
+timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Vercel Sandbox
+uses the official `@vercel/sandbox` SDK and is the default `Overlay Cloud` backend. Daytona uses
+the official `@daytona/sdk` adapter, and the legacy `/api/v1/daytona/run` execution and artifact
+path now performs command and file operations through the same runtime contract.
+
+`POST /api/v1/agent-environments/managed` is the provider-neutral provisioning resource. The
+ordinary Settings choice is labeled `Overlay Cloud`; provider selection is available only to
+operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Both providers boot
+the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
+`@overlay/agent-host` executable used on user-owned machines and invokes the same one-time
+enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
+Managed hosts enroll as `overlay_cloud` and default their explicit approval root to `/workspace`.
+No provider receives a privileged alternate host credential.
+
+Credential bindings contain an opaque broker reference, placeholder environment variable, and
+allowed domains. Vercel translates resolved header material into network-policy transforms;
+Daytona maps the reference to an existing organization Secret and relies on its egress-time
+substitution. Provider SDK objects and references are never public response fields. Deterministic
+conformance runs for both provider identities on every package test; live provider conformance is
+opt-in with `OVERLAY_SANDBOX_LIVE_CONFORMANCE=1` and remains the release gate for provision,
+reconnect, provider-supported snapshot/restore or persistent stop/resume, command
+timeout/cancellation, network enforcement, usage, and cleanup. Daytona snapshot creation remains
+experimental and timed out in live verification, so the Daytona adapter currently advertises
+persistence and reconnect but not snapshots. It must not claim the capability until the live test
+passes reliably.
+
 ## Trust boundaries and threat model
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
@@ -188,11 +219,20 @@ The server-side runtime config has three independent, default-off flags:
 2. `features.remoteAgentRuns` gates command dispatch and remote `AgentRun` execution.
 3. `features.overlayCloudEnvironments` gates managed-environment provisioning.
 
+The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
+`OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, and `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
+
 Route services read these flags before selecting a database repository, so Convex and
 PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly
 enable its prerequisite: Overlay Cloud requires all three, and remote runs require the first
 two. These are server policy switches, not client assertions; bootstrap may expose only the
 resulting authorized capability.
+
+Managed provisioning additionally requires `OVERLAY_AGENT_HOST_IMAGE`. Vercel deployments use a
+Vercel Container Registry reference; Daytona may use the equivalent OCI image in its configured
+registry. `VERCEL_OIDC_TOKEN` is preferred on Vercel. An operator running elsewhere may instead
+provide `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID`; Daytona uses its existing API
+URL and key configuration.
 
 ## Public resources and protocol policy
 

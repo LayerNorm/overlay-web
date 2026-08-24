@@ -255,6 +255,7 @@
     "@overlay/extension-sdk": "file:./packages/overlay-extension-sdk",
     "@overlay/llm-gateway": "file:./packages/overlay-llm-gateway",
     "@overlay/modules-react": "file:./packages/overlay-modules-react",
+    "@overlay/sandbox-runtime": "file:./packages/overlay-sandbox-runtime",
     "@overlay/storage-contracts": "file:./packages/overlay-storage-contracts",
     "@overlay/tools-core": "file:./packages/overlay-tools-core",
     "@overlay/ui": "file:./packages/overlay-ui",

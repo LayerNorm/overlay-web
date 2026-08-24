@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { agentHostCommandSchema, canonicalEnrollmentProof, canonicalHostRequestProof, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
+import { agentHostCommandSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
 
 test('filesystem grants require explicit roots or explicit all-user access', () => {
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'selected_roots', roots: [] }).success, false)
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'selected_roots', roots: ['/repo', '/data'] }).success, true)
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'all_user_files' }).success, true)
+})
+
+test('managed hosts enroll through the same strict protocol as user-owned hosts', () => {
+  assert.equal(enrollmentRequestSchema.parse({
+    code: 'a'.repeat(32), kind: 'overlay_cloud', name: 'Overlay Cloud', publicKey: 'a'.repeat(64),
+    hostVersion: '0.0.1', platform: 'linux',
+    capabilities: {
+      protocolVersion: 1, hostVersion: '0.0.1', platform: 'linux', adapters: [],
+      filesystem: { mode: 'selected_roots', roots: ['/workspace'] }, maxConcurrentRuns: 1,
+    },
+  }).kind, 'overlay_cloud')
 })
 
 test('commands reject unknown protocol versions', () => {

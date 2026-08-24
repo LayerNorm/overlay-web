@@ -19,6 +19,10 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `packages/overlay-agent-host/**` is the portable outbound-only host executable. It owns local
   device keys, SQLite delivery state, filesystem grants, and fake/ACP adapters; it does not own
   workspace identity, transcripts, approvals, policy, or billing.
+- `packages/overlay-sandbox-runtime/**` is the provider-neutral managed execution boundary. It
+  owns sandbox lifecycle, command/file/port/snapshot/network/usage contracts and Vercel/Daytona
+  translations. Provider SDK types and raw handles do not cross into public routes, billing, or
+  connected-agent persistence.
 
 App-data portability is capability-driven: `src/server/app-data/capabilities.ts`
 and `src/server/app-data/route-support.ts` are the source of truth for what
@@ -47,6 +51,10 @@ traffic. Browser management routes use the normal authenticated BFF and active-w
 resolution. Host routes are explicit BFF exceptions because they use outbound machine auth:
 method-scoped opaque credentials plus Ed25519 request proofs and atomic nonces. Route handlers
 never select a provider directly; both modes use `ConnectedAgentRepository` from app data.
+
+`ManagedAgentSandboxService` provisions the private runtime selected by operators, starts the
+same Agent Host image used by every environment, and records the provider-neutral sandbox lease.
+The browser sees `Overlay Cloud`, an environment, and lease state, not a Vercel or Daytona object.
 
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 

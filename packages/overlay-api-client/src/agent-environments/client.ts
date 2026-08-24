@@ -30,6 +30,17 @@ export class AgentEnvironmentsClient {
     )
   }
 
+  createManaged(workspaceId: string, init?: RequestInit) {
+    return this.http.json<{
+      environment: AgentEnvironmentResource
+      lease: { id: string; status: string }
+      setup: { label: 'Overlay Cloud'; approvedRoot: string }
+    }>(
+      '/api/v1/agent-environments/managed',
+      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+    )
+  }
+
   approve(workspaceId: string, environmentId: string, filesystemGrant: AgentFilesystemGrant, init?: RequestInit) {
     return this.http.json<{ environment: AgentEnvironmentResource }>(
       `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/approve`,

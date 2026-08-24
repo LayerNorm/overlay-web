@@ -16,6 +16,8 @@ export type ConnectAgentHostOptions = {
   serverUrl: string
   stateDirectory?: string
   name?: string
+  kind?: 'local' | 'vps' | 'overlay_cloud' | 'external'
+  adapters?: HostCapabilities['adapters']
   fetch?: typeof globalThis.fetch
   waitTimeoutMs?: number
   onPendingApproval?: (value: { verificationPhrase: string; environmentId: string }) => void
@@ -30,7 +32,7 @@ export async function connectAgentHost(options: ConnectAgentHostOptions): Promis
     protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
     hostVersion: '0.0.1',
     platform: `${platform()} ${release()}`,
-    adapters: [],
+    adapters: options.adapters ?? [],
     filesystem: { mode: 'all_user_files' },
     maxConcurrentRuns: 1,
   }
@@ -39,7 +41,7 @@ export async function connectAgentHost(options: ConnectAgentHostOptions): Promis
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       code: options.code,
-      kind: 'local',
+      kind: options.kind ?? 'local',
       name: options.name?.trim() || hostname(),
       publicKey: keys.publicKey,
       hostVersion: capabilities.hostVersion,

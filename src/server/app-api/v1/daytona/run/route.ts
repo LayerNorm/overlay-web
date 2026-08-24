@@ -1,5 +1,7 @@
 import { logger } from '@/server/observability/logger'
-import type { Sandbox } from '@daytona/sdk'
+import { wrapDaytonaSandbox } from '@overlay/sandbox-runtime/daytona'
+import type { SandboxInstance } from '@overlay/sandbox-runtime'
+import { posix as pathPosix } from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
@@ -7,14 +9,10 @@ import {
   concurrentRequestLimitResponse,
 } from '@/server/security/concurrent-request-limiter'
 import {
-  downloadSandboxFile,
   ensureWorkspaceSandbox,
-  executeSandboxCommand,
   getSandboxPaths,
-  prepareSandboxWorkspace,
   refreshWorkspaceActivity,
   startIfNeeded,
-  uploadSandboxBuffer,
 } from '@/server/ai/sandbox/daytona'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { outputService } from '@/server/outputs/http'
@@ -50,17 +48,16 @@ async function readOverlayFileBuffer(file: OverlayFileRecord): Promise<Buffer> {
 }
 
 async function waitForSandboxFile(
-  sandbox: Sandbox,
+  sandbox: SandboxInstance,
   remotePath: string,
   attempts = 5,
   delayMs = 300,
 ) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const details = await sandbox.fs.getFileDetails(remotePath)
-      if (details && !details.isDir) {
-        return details
-      }
+      const entries = await sandbox.listFiles(pathPosix.dirname(remotePath))
+      const details = entries.find((entry) => entry.path === remotePath)
+      if (details && details.kind !== 'directory') return { isDir: false }
     } catch (_error) {
       // retry
     }
@@ -156,9 +153,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     await refreshWorkspaceActivity(workspaceRun)
 
     const sandbox = workspaceRun.sandbox
+    const runtimeSandbox = wrapDaytonaSandbox(sandbox)
     const paths = await getSandboxPaths(sandbox)
     meteringStartedAt = workspaceRun.workspace.lastMeteredAt ?? Date.now()
-    await prepareSandboxWorkspace(sandbox, paths)
+    await prepareRuntimeWorkspace(runtimeSandbox, paths)
 
     const uploadedFiles = await stageDaytonaInputFiles({
       fileIds: inputFileIds,
@@ -168,26 +166,26 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }) as Promise<OverlayFileRecord | null>,
       paths,
       readFileBuffer: readOverlayFileBuffer,
-      sandbox,
-      uploadBuffer: uploadSandboxBuffer,
+      sandbox: runtimeSandbox,
+      uploadBuffer: uploadRuntimeBuffer,
     })
 
     const inlineCodePath = await stageInlineCodeFile({
       code,
       paths,
       runtime,
-      sandbox,
-      uploadBuffer: uploadSandboxBuffer,
+      sandbox: runtimeSandbox,
+      uploadBuffer: uploadRuntimeBuffer,
     })
 
     const normalizedCommand = command
     const normalizedTask = task
     const execution = await (async () => {
       try {
-        return await executeSandboxCommand(sandbox, {
+        return await executeRuntimeCommand(runtimeSandbox, {
           command: normalizedCommand,
           cwd: paths.rootDir,
-          env: {
+          environment: {
             OVERLAY_TASK: normalizedTask,
             OVERLAY_WORK_DIR: paths.rootDir,
             OVERLAY_INPUT_DIR: paths.inputDir,
@@ -197,6 +195,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           },
           stdoutPath: paths.stdoutPath,
           stderrPath: paths.stderrPath,
+          timeoutMs: maxDuration * 1_000,
         })
       } finally {
         meteringEndedAt = Date.now()
@@ -209,12 +208,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       conversationId,
       createOutput: (args) => outputService.create({ ...args, workspaceId: context.workspace.workspace.id } as Parameters<typeof outputService.create>[0]),
       deleteObject,
-      downloadFile: downloadSandboxFile,
+      downloadFile: downloadRuntimeFile,
       expectedOutputs,
       findSandboxFile: waitForSandboxFile,
       paths,
       runtime,
-      sandbox,
+      sandbox: runtimeSandbox,
       serverSecret: '',
       task: normalizedTask,
       turnId,
@@ -255,4 +254,74 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     concurrencySlot?.release()
   }
+}
+
+async function uploadRuntimeBuffer(
+  sandbox: SandboxInstance,
+  remotePath: string,
+  contents: Buffer | string,
+) {
+  await sandbox.writeFiles([{ path: remotePath, contents: typeof contents === 'string' ? Buffer.from(contents) : contents }])
+}
+
+async function downloadRuntimeFile(sandbox: SandboxInstance, remotePath: string) {
+  const contents = await sandbox.readFile(remotePath)
+  if (!contents) throw new Error(`Sandbox file not found: ${remotePath}`)
+  return Buffer.from(contents)
+}
+
+async function prepareRuntimeWorkspace(sandbox: SandboxInstance, paths: Awaited<ReturnType<typeof getSandboxPaths>>) {
+  const handle = await sandbox.runCommand({
+    command: '/bin/sh',
+    args: ['-lc', `mkdir -p "$OVERLAY_INPUT_DIR" "$OVERLAY_RUN_DIR" "$OVERLAY_OUTPUT_DIR" && rm -rf "$OVERLAY_INPUT_DIR"/* "$OVERLAY_RUN_DIR"/* "$OVERLAY_OUTPUT_DIR"/*`],
+    environment: {
+      OVERLAY_INPUT_DIR: paths.inputDir,
+      OVERLAY_RUN_DIR: paths.runDir,
+      OVERLAY_OUTPUT_DIR: paths.outputDir,
+    },
+    timeoutMs: 30_000,
+  })
+  const result = await handle.wait()
+  if (result.exitCode !== 0) throw new Error(result.stderr || 'Failed to prepare sandbox workspace')
+}
+
+async function executeRuntimeCommand(sandbox: SandboxInstance, input: {
+  command: string
+  cwd: string
+  environment: Record<string, string>
+  stdoutPath: string
+  stderrPath: string
+  timeoutMs: number
+}) {
+  const commandPath = pathPosix.join(input.cwd, '.overlay-command.sh')
+  await sandbox.writeFiles([{
+    path: commandPath,
+    contents: Buffer.from(`#!/usr/bin/env bash\nset -o pipefail\n${input.command.trimEnd()}\n`),
+    mode: 0o700,
+  }])
+  const wrapped = [
+    `mkdir -p ${shellQuote(pathPosix.dirname(input.stdoutPath))}`,
+    `bash ${shellQuote(commandPath)} > ${shellQuote(input.stdoutPath)} 2> ${shellQuote(input.stderrPath)}`,
+    'EXIT_CODE=$?',
+    `if [ -f ${shellQuote(input.stdoutPath)} ]; then cat ${shellQuote(input.stdoutPath)}; fi`,
+    'exit $EXIT_CODE',
+  ].join('; ')
+  const handle = await sandbox.runCommand({
+    command: '/bin/sh',
+    args: ['-lc', wrapped],
+    cwd: input.cwd,
+    environment: input.environment,
+    timeoutMs: input.timeoutMs,
+  })
+  const result = await handle.wait()
+  const stderr = await sandbox.readFile(input.stderrPath).catch((_error) => null)
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: stderr ? Buffer.from(stderr).toString('utf8') : result.stderr,
+  }
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`
 }

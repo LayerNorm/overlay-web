@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { Check, Cloud, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -59,8 +59,24 @@ export function AgentEnvironmentSettings() {
     }
   }
 
+  async function createManagedEnvironment() {
+    setBusy('managed')
+    setError(null)
+    try {
+      if (!activeWorkspaceId) throw new Error('Choose a workspace first')
+      const data = await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId)
+      setRoots((current) => ({ ...current, [data.environment.id]: data.setup.approvedRoot }))
+      await refresh()
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Overlay Cloud provisioning failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function approve(environmentId: string) {
-    const selectedRoots = parseRoots(roots[environmentId] ?? '')
+    const environment = environments.find((candidate) => candidate.id === environmentId)
+    const selectedRoots = parseRoots(roots[environmentId] ?? (environment?.kind === 'overlay_cloud' ? '/workspace' : ''))
     if (selectedRoots.length === 0) {
       setError('Enter at least one absolute project root')
       return
@@ -142,6 +158,21 @@ export function AgentEnvironmentSettings() {
         ) : null}
       </div>
 
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 gap-3">
+            <div className="rounded-xl bg-[var(--surface-elevated)] p-2 text-[var(--muted)]"><Cloud size={17} /></div>
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">Overlay Cloud</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">A managed environment for running connected agents without setting up your own machine.</p>
+            </div>
+          </div>
+          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createManagedEnvironment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:opacity-85 disabled:opacity-50">
+            {busy === 'managed' ? 'Creating…' : 'Create environment'}
+          </button>
+        </div>
+      </div>
+
       {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
 
       <div className="space-y-2">
@@ -164,7 +195,7 @@ export function AgentEnvironmentSettings() {
                   <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
                     <div className="flex items-center gap-2 text-sm text-[var(--foreground)]"><ShieldCheck size={16} className="text-[var(--muted)]" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting'}</strong></div>
                     <label className="block text-xs text-[var(--muted)]">Approved project roots, one per line
-                      <textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder="/Users/you/Projects" className="mt-2 min-h-20 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--muted)]" />
+                      <textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className="mt-2 min-h-20 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--muted)]" />
                     </label>
                     <button type="button" disabled={busy !== null} onClick={() => void approve(environment.id)} className="rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:opacity-85 disabled:opacity-50">Approve environment</button>
                   </div>

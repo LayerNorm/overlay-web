@@ -410,6 +410,9 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     modelRouting: readFeatureBool(env, 'MODEL_ROUTING'),
     sso: readFeatureBool(env, 'SSO'),
     multiTenant: readFeatureBool(env, 'MULTI_TENANT') ?? readBool(env, 'MULTI_TENANT_ENABLED'),
+    connectedAgentControlPlane: readFeatureBool(env, 'CONNECTED_AGENT_CONTROL_PLANE'),
+    remoteAgentRuns: readFeatureBool(env, 'REMOTE_AGENT_RUNS'),
+    overlayCloudEnvironments: readFeatureBool(env, 'OVERLAY_CLOUD_ENVIRONMENTS'),
   })
 }
 

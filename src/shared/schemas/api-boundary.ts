@@ -138,6 +138,10 @@ export const webApiBoundaryDefinitions = [
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
   },
   {
+    method: 'POST', path: '/api/v1/agent-environments/managed', schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Provision an Overlay Cloud agent environment', tag: 'Agent environments',
+  },
+  {
     method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
     summary: 'Redeem an enrollment code and register a device public key', tag: 'Agent environments',
   },

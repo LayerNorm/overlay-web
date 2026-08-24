@@ -33,7 +33,7 @@ Surfaces should use bootstrap first, then render their native shell from those r
 
 `/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
 clients use `AgentEnvironmentsClient` for list, enrollment creation, approval, root-scope changes,
-and revocation. The portable host uses the bridge protocol for enrollment, credential issuance
+managed `Overlay Cloud` provisioning, and revocation. The portable host uses the bridge protocol for enrollment, credential issuance
 and refresh, heartbeat, capability refresh, command polling/acknowledgement, and event batches.
 
 Browser mutations require the signed-in workspace owner or admin. Host routes accept no browser
@@ -44,6 +44,13 @@ codes, proof challenges, credentials, and request nonces are never persisted.
 Enrollment-session creation opts out of BFF response idempotency because its response contains the
 only copy of the code; retrying creates a new short-lived code instead of persisting that secret in
 the idempotency store.
+
+`POST /api/v1/agent-environments/managed` provisions an Overlay-managed environment through the
+private `@overlay/sandbox-runtime` contract. The response contains only the environment, public
+lease status, and the `/workspace` approval hint. Provider selection, raw diagnostics, provider
+references, credentials, image details, and billing remain server/operator concerns. Managed
+provisioning deliberately redeems the normal one-time enrollment inside the sandbox and waits for
+the same browser approval; it is not a second host authentication path.
 
 `GET`, `PUT`, and `DELETE /api/v1/agent-bindings` list, upsert, and disable the workspace-owned mapping from an Overlay
 agent to one approved environment, advertised ACP adapter, and granted working directory. A bound
