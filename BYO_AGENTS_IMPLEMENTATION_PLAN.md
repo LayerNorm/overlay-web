@@ -6,7 +6,7 @@
 > PostgreSQL parity. After it stabilizes, freeze new Convex product work and
 > begin the separate PostgreSQL cutover.
 >
-> Last reviewed: 2026-08-23.
+> Last reviewed: 2026-08-24.
 
 
 ## Decision and boundary
@@ -153,12 +153,18 @@ application, duplicate delivery, cancellation races, revocation, and deletion.
 
 ## Phase 2: Overlay Agent Host and protocol conformance
 
+Implementation status: complete in `@overlay/agent-bridge-protocol` and
+`@overlay/agent-host`. Phase 3 enrollment and server routes remain intentionally
+out of scope. The live PostgreSQL Phase 1 contract must still be rerun whenever
+the contract database is available.
+
 Build a portable `overlay-agent-host` executable and an original, versioned,
 Zod-validated bridge protocol. The host must provide:
 
 - Device key generation and secure local storage.
 - Capability and adapter discovery.
-- Explicit workspace-root grants; never default to the whole home directory.
+- Explicit filesystem grants: multiple selected roots or deliberate
+  `all_user_files`; never infer whole-home access from an omitted grant.
 - Outbound command polling with bounded long polls and reconnect backoff.
 - A SQLite command-deduplication store and event outbox.
 - Batching, sequence acknowledgement, gap recovery, and backpressure.

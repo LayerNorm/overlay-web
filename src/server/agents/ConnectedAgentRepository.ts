@@ -1,8 +1,8 @@
 import 'server-only'
 
 import type {
-  AgentBinding, AgentEnvironment, AgentRemoteEvent, AgentRemoteSession,
-  AgentRunCommand,
+  AgentApprovalRequest, AgentApprovalResolution, AgentBinding, AgentEnvironment,
+  AgentRemoteEvent, AgentRemoteSession, AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
@@ -11,6 +11,13 @@ export type ConnectedAgentCreateSession = Omit<AgentRemoteSession, 'createdAt' |
 export type ConnectedAgentEnqueueCommand = Omit<AgentRunCommand,
   'sequence' | 'status' | 'claimedAt' | 'claimExpiresAt' | 'acknowledgedAt' | 'createdAt' | 'updatedAt'
 > & { now: number }
+export type ConnectedAgentCreateApprovalRequest = AgentApprovalRequest
+export type ConnectedAgentCreateSandboxLease = Omit<AgentSandboxLease, 'createdAt' | 'updatedAt'> & { now: number }
+export type ConnectedAgentUpdateSandboxLease = Partial<Pick<
+  AgentSandboxLease,
+  | 'status' | 'providerReference' | 'reservationId' | 'reservedUntil'
+  | 'runtimeStartedAt' | 'runtimeEndedAt' | 'usage' | 'cleanupAttempts' | 'cleanupAfter'
+>> & { workspaceId: string; leaseId: string; now: number }
 
 export type ApplyRemoteEventsResult =
   | { accepted: true; acknowledgedSequence: number; duplicate: boolean }
@@ -29,6 +36,20 @@ export interface ConnectedAgentRepository {
     leaseMs: number
     limit: number
   }): Promise<AgentRunCommand[]>
+  acknowledgeCommand(args: {
+    workspaceId: string
+    environmentId: string
+    commandId: string
+    now: number
+  }): Promise<boolean>
+  createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>
+  resolveApprovalRequest(args: {
+    workspaceId: string
+    approvalId: string
+    resolution: AgentApprovalResolution
+  }): Promise<AgentApprovalRequest | null>
+  createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
+  updateSandboxLease(input: ConnectedAgentUpdateSandboxLease): Promise<AgentSandboxLease | null>
   applyRemoteEvents(args: {
     workspaceId: string
     environmentId: string

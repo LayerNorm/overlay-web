@@ -19,6 +19,39 @@ and billing. It explicitly excludes remote desktop, unrestricted terminals, gene
 browsing, port forwarding, browser DevTools, implicit home-directory access, and
 cross-workspace agent commerce.
 
+An environment is an execution boundary such as one computer, VPS, container, or managed
+sandbox. It is not an agent and it is not a folder: one environment may expose multiple
+adapters and agent bindings. Filesystem authority is a separate explicit grant. A host may be
+granted several selected roots, or the user may deliberately choose `all_user_files`, which
+inherits only the files available to the host's OS account. The host never converts an omitted
+grant into home-directory access. Managed sandboxes may default to one agent for operational
+simplicity, but neither the protocol nor persistence schema enforces that cardinality.
+
+## Implementation status
+
+Phases 0 and 1 are implemented. The connected-agent repository now includes command
+acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
+validation, and a shared positive and negative provider contract. The contract passes against
+an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
+required live gate whenever the local or remote contract database is available.
+
+Phase 2 is implemented in two Apache-licensed workspace packages:
+
+- `@overlay/agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
+  payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
+  and explicit filesystem grants.
+- `@overlay/agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
+  outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
+  redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
+  official ACP TypeScript SDK adapter.
+
+The host executable currently accepts a manually provisioned environment-scoped credential
+through a named environment variable. Phase 3 replaces that bootstrap step with short-lived
+enrollment, proof of possession, browser approval, and canonical control-plane routes; Phase 2
+does not create shadow endpoints. Conformance tests cover start, stream, approval, cancel,
+duplicate delivery, out-of-order rejection, server outage, host restart, reconnect/resume, and
+an actual ACP subprocess exchange.
+
 ## Trust boundaries and threat model
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
@@ -36,6 +69,13 @@ cross-workspace agent commerce.
   revoked-host continuation. Durable idempotency, contiguous cursors, proof of possession,
   explicit root grants, scoped upload URLs, quotas, redaction, revocation, and lease expiry
   are mandatory mitigations.
+- The local SQLite database and Ed25519 private key are created under an explicit state
+  directory with restrictive permissions. Unacknowledged output is written before upload;
+  acknowledged frames are removed while the per-run sequence remains monotonic across restarts.
+- Selected roots authorize command working directories and the roots advertised to ACP. They
+  do not claim to sandbox an arbitrary child process at the operating-system layer. Strict file
+  isolation requires a restricted OS account, container, VM, or managed sandbox; the explicit
+  `all_user_files` choice accurately represents an unrestricted local harness.
 - A human initiator and the agent principal are distinct. Authorization and billing remain
   attributable to the initiator; messages and delegated actions are authored by the agent.
 
@@ -103,6 +143,12 @@ during a documented host-upgrade window; unknown major versions fail closed with
 upgrade error. Additive optional fields are backward compatible, while semantic or required
 field changes increment the version. WebSockets may optimize latency but durable HTTP polling
 and acknowledged cursors remain authoritative.
+
+Protocol version 1 transports `start`, `prompt`, approval response, `cancel`, `reconnect`, and
+`shutdown` commands and normalizes session start, text checkpoints, actions, approval requests,
+artifacts, completion, failure, and cancellation events. The HTTP client treats route URLs as
+control-plane configuration; `/api/v1/agent-environments/**` route implementation remains Phase
+3. Credentials are bearer-scoped by that future control plane and are never included in logs.
 
 ## Provider-neutral persistence contract
 

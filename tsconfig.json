@@ -53,6 +53,18 @@
       "@overlay/agent-runtime/*": [
         "./packages/overlay-agent-runtime/src/*"
       ],
+      "@overlay/agent-bridge-protocol": [
+        "./packages/overlay-agent-bridge-protocol/src/index.ts"
+      ],
+      "@overlay/agent-bridge-protocol/*": [
+        "./packages/overlay-agent-bridge-protocol/src/*"
+      ],
+      "@overlay/agent-host": [
+        "./packages/overlay-agent-host/src/index.ts"
+      ],
+      "@overlay/agent-host/*": [
+        "./packages/overlay-agent-host/src/*"
+      ],
       "@overlay/app-core": [
         "./packages/overlay-app-core/src/index.ts"
       ],
