@@ -10,7 +10,6 @@ import {
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
   resolveActMultiModelState,
-  resolveActStreamPersistence,
   resolveActTurnId,
   runActModelAttempts,
 } from './route-helpers'
@@ -21,25 +20,6 @@ test('resolveActAbortTimeoutMs preserves timeout defaults and clamps', () => {
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 1 }), MIN_ACT_ABORT_TIMEOUT_MS)
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 999_999 }), MAX_ACT_ABORT_TIMEOUT_MS)
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 45_500.9 }), 45_500)
-})
-
-test('resolveActStreamPersistence resolves persistence mode without relay verification', () => {
-  assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'direct',
-  }), {
-    mode: 'direct',
-    useCloudflareStreamMirror: false,
-  })
-  assert.deepEqual(resolveActStreamPersistence({
-    requestedMode: 'cloudflare-mirror',
-  }), {
-    mode: 'cloudflare-mirror',
-    useCloudflareStreamMirror: true,
-  })
-  assert.deepEqual(resolveActStreamPersistence({}), {
-    mode: 'cloudflare-mirror',
-    useCloudflareStreamMirror: true,
-  })
 })
 
 test('resolveActMultiModelState clamps slots and marks follow-up slots', () => {

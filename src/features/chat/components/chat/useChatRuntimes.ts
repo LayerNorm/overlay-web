@@ -6,10 +6,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import { Chat, useChat } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
-import {
-  createPersistentChatTransport,
-  getCloudflareChatStreamRelayApi,
-} from '@/shared/chat/cloudflare-chat-transport'
+import { createDirectChatTransport } from '@/shared/chat/direct-chat-transport'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 import { buildActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
 
@@ -23,13 +20,12 @@ function createConversationRuntime(
   uiOverrides: Partial<ConversationUiState> = {},
 ): ConversationRuntime {
   const actTransport = '/api/v1/conversations/act'
-  const transport = () => createPersistentChatTransport({
+  const transport = () => createDirectChatTransport({
     api: actTransport,
     prepareSendMessagesRequest: ({ api, id, messages, body, headers, credentials, trigger, messageId }) => {
       const bodyRecord = (body ?? {}) as Record<string, unknown>
       const turnId = typeof bodyRecord.turnId === 'string' ? bodyRecord.turnId.trim() : ''
       const includeFullHistory = bodyRecord.temporaryChat === true
-      const streamPersistenceMode = includeFullHistory ? 'direct' : bodyRecord.streamPersistenceMode
       const slotFromBody = bodyRecord.multiModelSlotIndex ?? bodyRecord.variantIndex
       let slotIndex = typeof slotFromBody === 'number' && Number.isFinite(slotFromBody)
         ? slotFromBody
@@ -53,7 +49,6 @@ function createConversationRuntime(
         credentials: credentials ?? 'same-origin',
         body: {
           ...body,
-          streamPersistenceMode,
           id,
           messages: includeFullHistory ? messages : (messages.at(-1) ? [messages.at(-1)] : []),
           trigger,
@@ -135,7 +130,6 @@ export function useChatRuntimes(activeChatId: string | null) {
   }, [])
 
   const activeRuntime = activeChatId ? ensureConversationRuntime(activeChatId) : emptyRuntimeRef.current
-  const chatStreamRelayApi = getCloudflareChatStreamRelayApi()
   // Throttle streamed UI state updates so re-renders are coalesced to ~15fps instead of
   // firing on every token. Tokens still accumulate at full speed in the underlying Chat
   // store; only how often React re-renders the message list is capped. This is the main
@@ -163,7 +157,6 @@ export function useChatRuntimes(activeChatId: string | null) {
     ensureConversationRuntime,
     replaceConversationRuntime,
     activeRuntime,
-    chatStreamRelayApi,
     chat0,
     chat1,
     chat2,

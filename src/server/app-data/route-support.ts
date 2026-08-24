@@ -92,7 +92,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
       '/api/v1/conversations/message',
       '/api/v1/conversations/share',
       '/api/v1/conversations/stop',
-      '/api/v1/conversations/stream-auth',
     ],
     status: 'supported',
     feature: 'chat-realtime',

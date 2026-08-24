@@ -19,7 +19,6 @@ import type {
   LiveConversationMessage,
   LiveMessageDelta,
 } from '../chat-interface/types'
-import { shouldResumeChatStreamIntoAskSlot } from './chatStreamResume'
 import {
   applyLiveDeltasToRuntime,
   cloneRuntimeMessageArrays,
@@ -36,7 +35,6 @@ type ChatView = {
   setMessages: (messages: UIMessage[]) => void
   status?: string
   error?: Error | null
-  resumeStream: (options: { body: Record<string, unknown> }) => Promise<unknown>
 }
 
 type AsyncSession = {
@@ -50,7 +48,6 @@ type UseLiveConversationSyncParams = {
   actChat: ChatView
   authUserId: string | null | undefined
   chatInstances: ChatView[]
-  chatStreamRelayApi: string | null | undefined
   completeSession: (chatId: string, isActive: boolean) => void
   convexAccessToken: string | null | undefined
   enableConvexLiveSync: boolean
@@ -140,43 +137,6 @@ function syncRuntimeMessagesToChatViews({
   }
 }
 
-function collectResumeTargets({
-  liveMessages,
-  runtime,
-}: {
-  liveMessages: readonly LiveConversationMessage[] | undefined
-  runtime: ConversationRuntime
-}) {
-  const targets = new Map<string, { turnId: string; variantIndex: number }>()
-  const collect = (messages: UIMessage[]) => {
-    for (const message of messages) {
-      const m = message as unknown as {
-        role?: string
-        status?: string
-        turnId?: string
-        variantIndex?: number
-      }
-      if (m.role !== 'assistant' || m.status !== 'generating') continue
-      const turnId = m.turnId?.trim() || ''
-      if (!turnId) continue
-      const variantIndex = m.variantIndex ?? 0
-      targets.set(`${turnId}:${variantIndex}`, { turnId, variantIndex })
-    }
-  }
-
-  for (const message of liveMessages ?? []) {
-    if (message.role !== 'assistant' || message.status !== 'generating') continue
-    const turnId = message.turnId?.trim() || ''
-    if (!turnId) continue
-    const variantIndex = message.variantIndex ?? 0
-    targets.set(`${turnId}:${variantIndex}`, { turnId, variantIndex })
-  }
-  collect(runtime.actChat.messages as UIMessage[])
-  for (const chat of runtime.askChats) collect(chat.messages as UIMessage[])
-
-  return targets
-}
-
 export function useLiveConversationSync({
   activeChatId,
   activeChatIdRef,
@@ -184,7 +144,6 @@ export function useLiveConversationSync({
   actChat,
   authUserId,
   chatInstances,
-  chatStreamRelayApi,
   completeSession,
   convexAccessToken,
   enableConvexLiveSync,
@@ -197,7 +156,6 @@ export function useLiveConversationSync({
 }: UseLiveConversationSyncParams) {
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
-  const resumedCloudflareStreamsRef = useRef(new Set<string>())
   const [liveQueryState, setLiveQueryState] = useState<ConvexLiveQueryState>({
     liveMessages: undefined,
     liveMessageDeltas: undefined,
@@ -229,78 +187,6 @@ export function useLiveConversationSync({
   const activePersistedGenerating =
     liveMessagesHaveGeneratingAssistant(liveMessages) ||
     hasGeneratingRuntimeMessage(activeRuntime)
-
-  useEffect(() => {
-    if (!activeChatId || !chatStreamRelayApi) return
-    const hasLocalHttpStream =
-      hasStreamingChat(actChat) ||
-      chatInstances.some(hasStreamingChat)
-    if (hasLocalHttpStream) return
-
-    const targets = collectResumeTargets({
-      liveMessages,
-      runtime: activeRuntime,
-    })
-
-    const activeVariantCountByTurn = new Map<string, number>()
-    for (const target of targets.values()) {
-      activeVariantCountByTurn.set(
-        target.turnId,
-        (activeVariantCountByTurn.get(target.turnId) ?? 0) + 1,
-      )
-    }
-
-    for (const target of targets.values()) {
-      const key = `${activeChatId}:${target.turnId}:${target.variantIndex}`
-      if (resumedCloudflareStreamsRef.current.has(key)) continue
-      const slotChat = chatInstances[target.variantIndex]
-      const resumeIntoAskSlot = shouldResumeChatStreamIntoAskSlot({
-        runtime: activeRuntime,
-        turnId: target.turnId,
-        variantIndex: target.variantIndex,
-        activeVariantCount: activeVariantCountByTurn.get(target.turnId) ?? 1,
-      })
-      const targetChat = resumeIntoAskSlot && slotChat ? slotChat : actChat
-      console.info('[chat-stream] resume dispatch', {
-        conversationId: activeChatId,
-        turnId: target.turnId,
-        variantIndex: target.variantIndex,
-        targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
-      })
-      resumedCloudflareStreamsRef.current.add(key)
-      void (async () => {
-        try {
-          await targetChat.resumeStream({
-            body: {
-              conversationId: activeChatId,
-              turnId: target.turnId,
-              variantIndex: target.variantIndex,
-              multiModelSlotIndex: target.variantIndex,
-            },
-          })
-          if (targetChat.status === 'error') {
-            console.error('[chat-stream] resume failed', {
-              conversationId: activeChatId,
-              turnId: target.turnId,
-              variantIndex: target.variantIndex,
-              targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
-              reason: targetChat.error?.message ?? 'Chat runtime entered an error state',
-            })
-            resumedCloudflareStreamsRef.current.delete(key)
-          }
-        } catch (error) {
-          console.error('[chat-stream] resume failed', {
-            conversationId: activeChatId,
-            turnId: target.turnId,
-            variantIndex: target.variantIndex,
-            targetRuntime: resumeIntoAskSlot && slotChat ? 'ask-slot' : 'act',
-            reason: error instanceof Error ? error.message : String(error),
-          })
-          resumedCloudflareStreamsRef.current.delete(key)
-        }
-      })()
-    }
-  }, [activeChatId, activeRuntime, actChat, chatInstances, chatStreamRelayApi, liveMessages])
 
   useEffect(() => {
     if (!activeChatId || !liveMessages) return

@@ -11,6 +11,7 @@ The web app owns backend route contracts for every surface. Desktop, mobile, Chr
 - Keep route behavior backward compatible unless a real bug is found.
 - Prefer parsed typed methods when callers only need data.
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
+- Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
 ## Bootstrap
 

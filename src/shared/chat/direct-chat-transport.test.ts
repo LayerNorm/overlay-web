@@ -3,35 +3,14 @@ import test from 'node:test'
 import {
   ChatTransportHttpError,
   createChatDiagnosticFetch,
-  resolvePersistentChatStreamMode,
-} from './cloudflare-chat-transport'
+} from './direct-chat-transport'
 
-test('defaults persistent sends to cloudflare mirror mode', () => {
-  assert.equal(resolvePersistentChatStreamMode({
-    conversationId: 'conversation-123',
-    turnId: 'turn-123',
-  }), 'cloudflare-mirror')
-  assert.equal(resolvePersistentChatStreamMode({
-    conversationClientId: 'client-123',
-    turnId: 'turn-123',
-  }), 'cloudflare-mirror')
-  assert.equal(resolvePersistentChatStreamMode({
-    temporaryChat: true,
-    turnId: 'turn-123',
-  }), 'direct')
-  assert.equal(resolvePersistentChatStreamMode({
-    conversationId: 'conversation-123',
-    streamPersistenceMode: 'direct',
-    turnId: 'turn-123',
-  }), 'direct')
-})
-
-test('preserves structured relay error details for browser diagnostics', async () => {
+test('preserves structured upstream error details for browser diagnostics', async () => {
   const originalConsoleError = console.error
   console.error = () => {}
   try {
     const diagnosticFetch = createChatDiagnosticFetch(async () => new Response(JSON.stringify({
-      code: 'relay_upstream_failed',
+      code: 'provider_upstream_failed',
       error: 'Provider rejected the request',
       fallbackSafe: false,
       phase: 'upstream',

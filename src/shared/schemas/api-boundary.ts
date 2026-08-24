@@ -66,7 +66,6 @@ import {
   ShareConversationRequest,
   ShareFileRequest,
   StopConversationRequest,
-  StreamAuthRequest,
   SubscriptionQuery,
   TestAutomationRequest,
   TranscribeRequest,
@@ -282,13 +281,6 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/stop',
     schema: { json: StopConversationRequest },
     summary: 'Stop a running conversation turn',
-    tag: 'Conversations',
-  },
-  {
-    method: 'POST',
-    path: '/api/v1/conversations/stream-auth',
-    schema: { json: StreamAuthRequest },
-    summary: 'Create a stream auth token',
     tag: 'Conversations',
   },
   {
