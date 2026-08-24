@@ -37,7 +37,6 @@ const agplPackageJsonPaths = [
   'overlay-desktop/package.json',
   'overlay-mobile/package.json',
   'overlay-chrome/package.json',
-  'workers/chat-stream/package.json',
 ]
 
 const requiredDocs = [

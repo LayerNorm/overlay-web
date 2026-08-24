@@ -33,10 +33,6 @@ import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
 } from '@/server/ai/model-runtime'
-import {
-  canMirrorToCloudflareStream,
-  mirrorChatStreamToCloudflare,
-} from '@/server/chat/cloudflare-stream-mirror'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
@@ -64,7 +60,6 @@ import {
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
   resolveActMultiModelState,
-  resolveActStreamPersistence,
   resolveActTurnId,
   resolveEffectiveActModelId,
   runActModelAttempts,
@@ -140,7 +135,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
       actAbortTimeoutMs,
-      streamPersistenceMode,
       mentions: rawMentions,
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
@@ -154,24 +148,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
     actWebhookSkip = automationExecution === true || isPostgresAppData
     const { auth } = context
-	    const userId = auth.userId
-	    currentUserId = userId
+    const userId = auth.userId
+    currentUserId = userId
     const accessToken = auth.accessToken || undefined
-	    const streamPersistence = resolveActStreamPersistence({
-	      requestedMode: streamPersistenceMode,
-	    })
-	    const useCloudflareStreamMirror = streamPersistence.useCloudflareStreamMirror
-	    const resolvedStreamPersistenceMode = streamPersistence.mode
-    logger.info('[conversations/act] streamPersistence', {
-      requestId,
-      mode: resolvedStreamPersistenceMode,
-      conversationMode: mode,
-      automationMode: automationMode === true,
-      automationExecution: automationExecution === true,
-      conversationId,
-      turnId,
-      variantIndex: rawMultiModelSlotIndex,
-    })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
     requestModelId = effectiveModelId
     const serverSecret = getInternalApiSecret()
@@ -675,13 +654,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
     responseHeaders.set('x-request-id', requestId)
-    if (useCloudflareStreamMirror) {
-      responseHeaders.set('x-overlay-generating-message-id', generatingMessageId ?? '')
-      responseHeaders.set('x-overlay-auth-user-id', userId)
-      responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
-    }
     if (responseBody) {
-      if (isPostgresAppData || resolvedStreamPersistenceMode !== 'direct') {
+      // Persistent chats keep a server-side reader so generation and message
+      // persistence continue if the browser disconnects. Temporary chats have
+      // no conversation id and stream only to the connected client.
+      if (isPostgresAppData || Boolean(cid)) {
         const [clientBody, backgroundBody] = responseBody.tee()
         responseBody = clientBody
         after(async () => {
@@ -711,46 +688,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             })
           }
         })
-      }
-      if (useCloudflareStreamMirror) {
-        if (cid && canMirrorToCloudflareStream(request)) {
-          const [clientBody, mirrorBody] = responseBody.tee()
-          responseBody = clientBody
-          after(async () => {
-            try {
-              await mirrorChatStreamToCloudflare({
-                request,
-                stream: mirrorBody,
-                metadata: {
-                  conversationId: cid,
-                  messageId: generatingMessageId,
-                  mode,
-                  modelId: attemptModelId,
-                  requestId,
-                  turnId: tid,
-                  userId,
-                  variantIndex: multiModelSlotIndex,
-                },
-              })
-            } catch (err) {
-              logger.warn('[chat-stream] cloudflare mirror failed', {
-                requestId,
-                conversationId: cid,
-                turnId: tid,
-                variantIndex: multiModelSlotIndex,
-                reason: summarizeErrorForLog(err),
-              })
-            }
-          })
-        } else {
-          logger.warn('[chat-stream] cloudflare mirror unavailable', {
-            requestId,
-            conversationId: cid,
-            hasConversationId: Boolean(cid),
-            turnId: tid,
-            variantIndex: multiModelSlotIndex,
-          })
-        }
       }
     }
     if (_ttftDebug && responseBody) {

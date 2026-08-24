@@ -102,7 +102,7 @@ test('file mutations accept null parent and project IDs', async () => {
 test('module feature methods use canonical app endpoints', async () => {
   const { calls, client } = createRecordedClient()
 
-  await client.conversations.streamAuthResponse({ conversationId: 'conv_1' })
+  await client.conversations.getResponse({ conversationId: 'conv_1' })
   await client.conversations.actResponse({ conversationId: 'conv_1', messages: [] })
   await client.conversations.extensionPlanResponse({ prompt: 'Plan this' })
   await client.chat.browserTaskResponse({ task: 'Open the docs' })
@@ -125,9 +125,8 @@ test('module feature methods use canonical app endpoints', async () => {
   await client.automations.testResponse({ automationId: 'auto_1' })
   await client.automations.getRuns('auto_1')
 
-  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/stream-auth')
-  assert.equal(calls[0]!.init?.method, 'POST')
-  assert.deepEqual(await jsonBody(calls[0]!), { conversationId: 'conv_1' })
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations?conversationId=conv_1')
+  assert.equal(calls[0]!.init?.method, undefined)
 
   assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/conversations/act')
   assert.equal(calls[1]!.init?.method, 'POST')

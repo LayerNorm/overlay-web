@@ -43,7 +43,6 @@ export function useChatStopController({
   chat1,
   chat2,
   chat3,
-  chatStreamRelayApi,
   forceLiveSyncRender,
   getActiveRuntime,
   isActiveLoading,
@@ -64,7 +63,6 @@ export function useChatStopController({
   chat1: ChatView
   chat2: ChatView
   chat3: ChatView
-  chatStreamRelayApi: string | null | undefined
   forceLiveSyncRender: () => void
   getActiveRuntime: () => ConversationRuntime
   isActiveLoading: boolean
@@ -88,58 +86,10 @@ export function useChatStopController({
     const userTurns = primaryMessages.filter((message) => message.role === 'user').length
     const idx = userTurns > 0 ? userTurns - 1 : -1
     const chatId = activeChatIdRef.current ?? activeChatId
-    const cloudflareStopTargets = new Map<string, { turnId: string; variantIndex: number }>()
-    const collectCloudflareStopTargets = (messages: UIMessage[]) => {
-      for (const message of messages) {
-        const m = message as unknown as {
-          role?: string
-          status?: string
-          turnId?: string
-          id?: string
-          variantIndex?: number
-        }
-        if (m.role === 'assistant' && m.status === 'generating' && m.turnId?.trim()) {
-          const variantIndex = m.variantIndex ?? 0
-          cloudflareStopTargets.set(`${m.turnId}:${variantIndex}`, {
-            turnId: m.turnId,
-            variantIndex,
-          })
-        }
-      }
-    }
-    collectCloudflareStopTargets(runtime.actChat.messages as UIMessage[])
-    for (const chat of runtime.askChats) {
-      collectCloudflareStopTargets(chat.messages as UIMessage[])
-    }
-    if (cloudflareStopTargets.size === 0) {
-      const lastUser = [...primaryMessages].reverse().find((message) => message.role === 'user') as
-        | (UIMessage & { id?: string })
-        | undefined
-      const turnId = lastUser?.id?.trim()
-      if (turnId) {
-        cloudflareStopTargets.set(`${turnId}:0`, { turnId, variantIndex: 0 })
-      }
-    }
-
     activeAskChats.forEach((chat) => chat.stop())
     runtime.actChat.stop()
 
     if (chatId) {
-      if (chatStreamRelayApi && cloudflareStopTargets.size > 0) {
-        await Promise.allSettled([...cloudflareStopTargets.values()].map((target) =>
-          fetch(`${chatStreamRelayApi}/stop`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-              conversationId: chatId,
-              turnId: target.turnId,
-              variantIndex: target.variantIndex,
-              multiModelSlotIndex: target.variantIndex,
-            }),
-          }),
-        ))
-      }
       try {
         await Promise.race([
           overlayAppClient.conversations.stopResponse({ conversationId: chatId }),
@@ -197,7 +147,6 @@ export function useChatStopController({
     chat1,
     chat2,
     chat3,
-    chatStreamRelayApi,
     forceLiveSyncRender,
     getActiveRuntime,
     isActiveLoading,

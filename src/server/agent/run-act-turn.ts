@@ -127,9 +127,6 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
         modelId: input.modelId || DEFAULT_MODEL_ID,
         userId: input.userId,
         automationExecution: true,
-        // Server-run automations drain this response directly. Self-hosted
-        // Postgres deployments do not require the managed stream mirror.
-        streamPersistenceMode: 'direct',
         actAbortTimeoutMs: SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS,
         // Forward any @mention tokens embedded in the saved instructions so the act
         // route's mention-context resolver can inject the same lightweight metadata
