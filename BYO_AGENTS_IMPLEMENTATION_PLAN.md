@@ -7,6 +7,10 @@
 > begin the separate PostgreSQL cutover.
 >
 > Last reviewed: 2026-08-24.
+>
+> Completion legend: ✅ means the phase implementation has landed. Live
+> cross-provider, production-like, and release evidence remains governed by
+> each phase's exit gate and the Phase 9 release matrix.
 
 
 ## Decision and boundary
@@ -105,7 +109,7 @@ project them into the existing message, and retain durable lifecycle and audit
 events. The host keeps unacknowledged frames in a local SQLite outbox so a
 server or network failure cannot lose accepted output.
 
-## Phase 0: lock the contract and release boundary
+## ✅ Phase 0: lock the contract and release boundary
 
 Deliverables:
 
@@ -124,7 +128,7 @@ Exit gate: the control-plane contract, trust boundaries, first adapters, and
 non-goals are approved; no unresolved decision changes the schema or auth
 model.
 
-## Phase 1: provider-neutral domain and persistence
+## ✅ Phase 1: provider-neutral domain and persistence
 
 Create provider-neutral contracts for:
 
@@ -151,7 +155,7 @@ Exit gate: one shared repository contract suite passes against real Convex and
 real PostgreSQL for creation, authorization, command claiming, ordered event
 application, duplicate delivery, cancellation races, revocation, and deletion.
 
-## Phase 2: Overlay Agent Host and protocol conformance
+## ✅ Phase 2: Overlay Agent Host and protocol conformance
 
 Implementation status: complete in `@overlay/agent-bridge-protocol` and
 `@overlay/agent-host`. Phase 3 layers enrollment and server routes onto these
@@ -181,7 +185,7 @@ Exit gate: a protocol conformance test proves start, streaming, approval,
 cancel, host crash, server crash, duplicate frames, out-of-order frames,
 reconnect, and resume without duplicate user-visible effects.
 
-## Phase 3: secure enrollment and environment management
+## ✅ Phase 3: secure enrollment and environment management
 
 Implementation status: complete. Browser management, one-command host enrollment, Ed25519 proof
 of possession, short-lived method-scoped credentials, replay protection, explicit project-root
@@ -214,7 +218,12 @@ Exit gate: cross-workspace access, expired codes, replay, forged events,
 revoked hosts, unauthorized roots, and command/event size abuse are rejected
 identically in Convex and PostgreSQL.
 
-## Phase 4: first native vertical slice
+## ✅ Phase 4: first native vertical slice
+
+Implementation status: complete. The Convex staging path has passed an authenticated browser
+smoke from enrollment through a local Codex run, persisted transcript, terminal run, command
+acknowledgement, and revocation. The equivalent live PostgreSQL browser run remains release
+evidence for Phase 9.
 
 Route a connected workspace agent through the existing
 `workspace-agent-invocation` path:
@@ -240,7 +249,10 @@ Exit gate: in both provider modes, a human can `@mention` the connected agent,
 watch stable Markdown and action updates, refresh or open a second tab, and see
 one correct final transcript and one terminal run.
 
-## Phase 5: complete supervised-work semantics
+## ✅ Phase 5: complete supervised-work semantics
+
+Implementation status: complete. The full approval, recovery, restart, and artifact-cleanup
+browser matrix remains release evidence for Phase 9.
 
 Add:
 
@@ -264,7 +276,10 @@ Exit gate: approval, rejection, elicitation, cancellation, timeout, browser
 refresh, app restart, host restart, and artifact cleanup pass end to end with no
 stuck reservations or duplicate side effects.
 
-## Phase 6: provider-neutral managed sandboxes
+## ✅ Phase 6: provider-neutral managed sandboxes
+
+Implementation status: complete. Production-like Vercel and Daytona lifecycle evidence remains
+required before broad release.
 
 Define `@overlay/sandbox-runtime` before adding another managed provider. Its
 contract must cover lifecycle, command streaming, files, environment variables,
@@ -289,7 +304,22 @@ Exit gate: the sandbox conformance suite passes for Vercel and Daytona;
 provision, reconnect, snapshot or restore, idle stop, hard timeout, cancellation,
 network policy, and cleanup are proven in a production-like environment.
 
-## Phase 7: VPS and non-ACP adapters
+### Overlay Cloud model authentication policy
+
+- Offer Overlay-funded models as the lowest-friction default. Overlay owns those credentials,
+  meters their use, and applies the workspace's billing and policy controls.
+- Make API keys/BYOK the first authentication path for a user's own provider account. Broker each
+  secret into the sandbox at execution time; never persist it in an image, snapshot, transcript,
+  command, or agent-visible configuration file.
+- Add browser or device login separately only where that provider officially supports a remote or
+  headless flow. Do not generalize an unofficial login flow across providers.
+- Never copy, mount, archive, upload, or otherwise transplant a user's local Codex, Claude, or
+  equivalent authentication directory into an Overlay Cloud sandbox.
+
+## ✅ Phase 7: VPS and non-ACP adapters
+
+Implementation status: complete. Publishing the npm packages and Agent Host image, plus a clean
+VPS conformance run against staging, remain release evidence rather than code-completeness gates.
 
 Package the same host for foreground CLI, background service, Docker, and a
 documented systemd deployment. A VPS needs only outbound HTTPS and persistent

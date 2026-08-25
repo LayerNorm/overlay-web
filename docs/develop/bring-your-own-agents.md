@@ -29,9 +29,10 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 5 and the Phase 6 code path are implemented. Overlay Cloud activation remains
+Phases 0 through 7 are implemented. Overlay Cloud activation remains
 gated on publishing the Agent Host image and passing live Vercel conformance in the target
-project. The connected-agent repository now includes command
+project; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
+conformance run against staging. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
@@ -149,6 +150,30 @@ timeout/cancellation, network enforcement, usage, and cleanup. Daytona snapshot 
 experimental and timed out in live verification, so the Daytona adapter currently advertises
 persistence and reconnect but not snapshots. It must not claim the capability until the live test
 passes reliably.
+
+Overlay Cloud model access follows a fixed priority. Overlay-funded models are the default and
+lowest-friction path. BYOK/API keys are the first customer-owned authentication path and are
+brokered at execution time rather than embedded in images, snapshots, commands, or transcripts.
+Provider-specific browser or device login may be added only when that provider officially supports
+a remote or headless flow. Overlay never copies, mounts, uploads, or imports a user's local Codex,
+Claude, or equivalent authentication directory into a managed sandbox.
+
+Phase 7 makes `@overlay/agent-host` and `@overlay/agent-bridge-protocol` publishable packages and
+requires Node.js 24. The same executable runs as a foreground CLI, a restartable systemd service,
+or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
+inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
+unit runs under a dedicated OS account; operators must align `ReadWritePaths` with the exact roots
+approved in Overlay.
+
+The bounded Eve adapter uses only the public `eve/client` session API and durable event stream. It
+is pinned to Eve 0.44.4 while Eve is preview. Overlay projects visible message checkpoints,
+actions, usage, terminal state, and pending input requests, never private reasoning. Approval and
+elicitation replies are checked against the outstanding Eve request, and the host persists the Eve
+session ID plus stream cursor after every event. A reconnect without that cursor fails closed and
+requires the deliberate `start fresh` path. The Eve service should run beside the host on loopback
+or a private network; Overlay does not require it to be publicly reachable. Hermes, OpenClaw, and
+other native adapters remain ineligible unless ACP is unavailable and the unchanged host
+conformance suite passes.
 
 ## Trust boundaries and threat model
 

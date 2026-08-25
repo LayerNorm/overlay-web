@@ -5,6 +5,7 @@ import { agentHostEventSchema, type AgentHostEvent } from '@overlay/agent-bridge
 
 export type StoredRemoteSession = { runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
 export type StoredCommandResult = { accepted: boolean; errorCode?: string; errorMessage?: string; sequence: number }
+export type StoredAdapterSessionState = { runId: string; adapterId: string; state: Record<string, unknown> }
 
 export class SqliteHostStateStore {
   private readonly database: DatabaseSync
@@ -31,6 +32,12 @@ export class SqliteHostStateStore {
         adapter_id TEXT NOT NULL,
         remote_session_id TEXT NOT NULL,
         working_directory TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS adapter_session_state (
+        run_id TEXT PRIMARY KEY,
+        adapter_id TEXT NOT NULL,
+        state_json TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS event_outbox (
@@ -106,6 +113,28 @@ export class SqliteHostStateStore {
 
   deleteSession(runId: string): void {
     this.database.prepare('DELETE FROM remote_sessions WHERE run_id = ?').run(runId)
+  }
+
+  saveAdapterSessionState(runId: string, adapterId: string, state: Record<string, unknown>, now = Date.now()): void {
+    this.database.prepare(`
+      INSERT INTO adapter_session_state(run_id, adapter_id, state_json, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(run_id) DO UPDATE SET adapter_id=excluded.adapter_id,
+        state_json=excluded.state_json, updated_at=excluded.updated_at
+    `).run(runId, adapterId, JSON.stringify(state), now)
+  }
+
+  getAdapterSessionState(runId: string, adapterId: string): Record<string, unknown> | undefined {
+    const row = this.database.prepare('SELECT adapter_id, state_json FROM adapter_session_state WHERE run_id = ?').get(runId) as { adapter_id: string; state_json: string } | undefined
+    if (!row) return undefined
+    if (row.adapter_id !== adapterId) throw new Error('adapter session state belongs to a different adapter')
+    const parsed: unknown = JSON.parse(row.state_json)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('adapter session state is invalid')
+    return parsed as Record<string, unknown>
+  }
+
+  deleteAdapterSessionState(runId: string): void {
+    this.database.prepare('DELETE FROM adapter_session_state WHERE run_id = ?').run(runId)
   }
 
   appendEvent(event: Omit<AgentHostEvent, 'sourceSequence'>): AgentHostEvent {

@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates git openssh-client \
@@ -15,4 +15,5 @@ RUN npm ci --omit=dev --workspace=@overlay/agent-host --include-workspace-root=f
 
 USER node
 WORKDIR /workspace
-CMD ["sleep", "infinity"]
+ENTRYPOINT ["overlay-agent-host"]
+CMD ["run", "--config", "/etc/overlay-agent-host/config.json"]

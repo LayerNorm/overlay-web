@@ -13,15 +13,24 @@ export const agentHostConfigSchema = z.object({
   filesystem: filesystemGrantSchema,
   adapters: z.array(z.union([
     z.object({ manifest: z.enum(Object.keys(ACP_ADAPTER_MANIFESTS) as [keyof typeof ACP_ADAPTER_MANIFESTS, ...(keyof typeof ACP_ADAPTER_MANIFESTS)[]]), env: z.record(z.string(), z.string()).optional() }).strict(),
+    z.object({ id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('fake') }).strict(),
     z.object({
-      id: z.string().min(1), displayName: z.string().min(1), protocol: z.enum(['fake', 'acp']),
-      command: z.string().min(1).optional(), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional(),
+      id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('acp'),
+      command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional(),
+    }).strict(),
+    z.object({
+      id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('eve'),
+      host: z.string().url(), bearerTokenEnv: z.string().min(1).optional(),
     }).strict(),
   ])).min(1),
 }).strict()
 type AgentHostFileConfig = z.infer<typeof agentHostConfigSchema>
 export type AgentHostConfig = Omit<AgentHostFileConfig, 'adapters'> & {
-  adapters: Array<{ id: string; displayName: string; protocol: 'fake' | 'acp'; command?: string; args?: string[]; env?: Record<string, string> }>
+  adapters: Array<
+    | { id: string; displayName: string; protocol: 'fake' }
+    | { id: string; displayName: string; protocol: 'acp'; command: string; args?: string[]; env?: Record<string, string> }
+    | { id: string; displayName: string; protocol: 'eve'; host: string; bearerTokenEnv?: string }
+  >
   credential?: string
 }
 

@@ -1,8 +1,20 @@
 # Overlay Agent Host
 
-`@overlay/agent-host` runs user-owned agents on a local computer, VPS, container, or managed
-sandbox. It makes outbound requests only and persists command outcomes, remote sessions, and
-unacknowledged events in SQLite.
+`@overlay/agent-host` runs the same outbound-only bridge on a local computer, VPS, container, or
+managed sandbox. It persists command outcomes, remote sessions, adapter stream cursors, and
+unacknowledged events in SQLite, so restarting the host does not duplicate accepted work.
+
+Node.js 24 or newer is required. Run it in the foreground with the one-copy command from Overlay:
+
+```sh
+npx @overlay/agent-host connect <enrollment-code> \
+  --server https://getoverlay.io \
+  --kind vps \
+  --run
+```
+
+The machine needs outbound HTTPS access to Overlay and durable storage for the state directory.
+It does not need an inbound port.
 
 Phase 2 uses a manual config while Phase 3 adds browser enrollment and short-lived credentials.
 Keep credentials out of the JSON file:
@@ -30,6 +42,58 @@ The built-in manifests resolve to the maintained
 ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
 shape.
 
+## Eve
+
+Eve is connected through its supported `eve/client` session and durable NDJSON stream contract.
+Run the Agent Host beside the private Eve service and point the adapter at its loopback or private
+network URL:
+
+```json
+{
+  "id": "eve",
+  "displayName": "My Eve agent",
+  "protocol": "eve",
+  "host": "http://127.0.0.1:3000",
+  "bearerTokenEnv": "EVE_AGENT_TOKEN"
+}
+```
+
+The equivalent enrollment form is:
+
+```sh
+npx @overlay/agent-host connect <enrollment-code> \
+  --server https://getoverlay.io \
+  --kind vps \
+  --adapter eve \
+  --eve-url http://127.0.0.1:3000 \
+  --eve-auth-env EVE_AGENT_TOKEN \
+  --run
+```
+
+Overlay remains authoritative for approvals, commands, billing attribution, audit, and transcript
+projection. The adapter ignores private reasoning events, validates replies against Eve's pending
+input requests, and persists Eve's session ID and stream cursor for exact reconnects. Eve is pinned
+because its APIs are still preview. A missing cursor fails closed and requires `start fresh`.
+
+## Background and container operation
+
+For a Linux VPS, create a dedicated `overlay-agent` system account, install the CLI globally, copy
+`systemd/overlay-agent-host.service` to `/etc/systemd/system/`, and place configuration under
+`/etc/overlay-agent-host/`. Adjust `ReadWritePaths` in the unit to exactly the project roots granted
+in Overlay, then enable it:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now overlay-agent-host
+sudo systemctl status overlay-agent-host
+```
+
+The unit restarts after process or machine failure and keeps state in `/var/lib/overlay-agent-host`.
+Upgrades are `npm install -g @overlay/agent-host@<version>` followed by `systemctl restart`; do not
+delete the state directory. `docker-compose.example.yml` provides the same persistent, outbound-only
+shape for Docker. It exposes no host ports. Mount the approved workspaces and state volume, pull a
+pinned image version, and recreate the service to upgrade.
+
 Run diagnostics and then the host:
 
 ```sh
@@ -42,3 +106,7 @@ all filesystem access available to the host OS account. Selected roots validate 
 directory and ACP workspace roots; they are not an operating-system sandbox. For strict file
 isolation, run the host and harness under a restricted OS account, container, VM, or managed
 sandbox.
+
+Native adapters such as Hermes or OpenClaw are added only when the harness cannot expose ACP and
+only after the unchanged Agent Host conformance suite passes. MCP remains a tool/resource protocol;
+it is not used as the execution lifecycle transport.

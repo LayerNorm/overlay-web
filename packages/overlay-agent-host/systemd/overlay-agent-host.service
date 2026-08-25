@@ -1,0 +1,32 @@
+[Unit]
+Description=Overlay Agent Host
+Documentation=https://getoverlay.io
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=overlay-agent
+Group=overlay-agent
+EnvironmentFile=-/etc/overlay-agent-host/agent-host.env
+ExecStart=/usr/local/bin/overlay-agent-host run --config /etc/overlay-agent-host/config.json
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+StateDirectory=overlay-agent-host
+WorkingDirectory=/var/lib/overlay-agent-host
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# Keep these paths aligned with the explicit roots approved in Overlay.
+ReadWritePaths=/var/lib/overlay-agent-host /srv/overlay-workspaces
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

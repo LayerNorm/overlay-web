@@ -1,0 +1,15 @@
+services:
+  agent-host:
+    image: ghcr.io/layernorm/overlay-agent-host:0.0.1
+    restart: unless-stopped
+    init: true
+    # No ports: the host and its harnesses connect to Overlay over outbound HTTPS.
+    volumes:
+      - ./config.json:/etc/overlay-agent-host/config.json:ro
+      - agent-host-state:/var/lib/overlay-agent-host
+      - ./workspaces:/workspace
+    env_file:
+      - ./agent-host.env
+
+volumes:
+  agent-host-state:
