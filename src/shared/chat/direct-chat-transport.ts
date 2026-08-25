@@ -113,7 +113,6 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
         requestId: resolvedRequestId,
         errorCode: typeof payload.code === 'string' ? payload.code : undefined,
         message,
-        cfRay: response.headers.get('cf-ray') ?? undefined,
         vercelId: response.headers.get('x-vercel-id') ?? undefined,
         elapsedMs: Math.round(performance.now() - startedAt),
       })

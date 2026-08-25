@@ -68,6 +68,8 @@ environment-scoped `approve`, `roots`, `revoke`, `credentials`, `credentials/ref
 `capabilities`, `commands`, command acknowledgement, and `events` subresources. Enrollment-code,
 challenge, credential, and request-nonce consumption is atomic in Convex and PostgreSQL. Only
 hashes of enrollment codes, proof challenges, opaque credentials, and request nonces are stored.
+The Convex credential validator derives its method allowlist from the canonical workspace
+contract so artifact upload authority and future method additions cannot drift by provider.
 Revocation cancels unclaimed work, revokes active credentials, disables bindings, and moves live
 managed leases to immediate cleanup.
 

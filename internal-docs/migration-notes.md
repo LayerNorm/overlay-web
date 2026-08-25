@@ -24,7 +24,7 @@ Every file under `src/server/**/*.ts` starts with `import 'server-only'`. Import
 
 - `billing/billing-pricing.ts`
 - `ai/gateway/{model-types,model-data,model-fallbacks,generated/}`
-- `chat/{chat-title,chat-model-prefs,chat-list-cache,chat-suggestions-defaults,cloudflare-chat-transport}`
+- `chat/{chat-title,chat-model-prefs,chat-list-cache,chat-suggestions-defaults,direct-chat-transport}`
 - `auth/session-types.ts` (`AuthUser`, `AuthSession` for UI)
 - `knowledge/ask-knowledge-types.ts` (citation types for chat UI)
 

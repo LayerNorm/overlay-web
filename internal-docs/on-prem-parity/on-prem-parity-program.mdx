@@ -271,7 +271,7 @@ P2 makes persisted chat behavior independent of Convex:
 - Refresh and second-tab recovery reload the authoritative persisted message snapshot. Local active streams are not overwritten by their own event notifications.
 - Stop locks generating rows, persists the interruption sentinel, deletes obsolete deltas, and prevents a late model completion from overwriting the stopped result. Other tabs stop their local reader when they observe the event.
 - Conversation share visibility, public-token reads, turn deletion, generated UI updates, and stream relay ownership checks all use the selected repository.
-- The optional chat-stream relay can still replay exact UI stream frames. Postgres recovery does not require that relay: without it, recovery resumes from the latest durable text/message snapshot.
+- Chat streams directly from the web runtime. Recovery resumes from the latest durable text/message snapshot and does not depend on an external relay.
 
 Knowledge suggestions, notebook-agent behavior, and extension planning are not P2 chat dependencies. Core knowledge retrieval is owned by P4; notebook usage accounting and extension planning remain separately gated.
 

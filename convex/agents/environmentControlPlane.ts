@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
@@ -61,7 +62,7 @@ function assertFilesystemGrant(grant: { mode: 'selected_roots'; roots: string[] 
 function assertCredentialClaims(credential: { audience: string; methods: string[]; tokenHash: string; tokenNonce: string; expiresAt: number; createdAt: number }, now: number) {
   assertHash(credential.tokenHash, 'AGENT_CREDENTIAL_TOKEN_HASH_INVALID')
   if (credential.audience !== 'overlay-agent-control-plane' || !credential.tokenNonce || credential.tokenNonce.length > 256) throw new Error('AGENT_CREDENTIAL_CLAIMS_INVALID')
-  const allowed = new Set(['agent:heartbeat', 'agent:capabilities:update', 'agent:commands:poll', 'agent:commands:ack', 'agent:events:write', 'agent:credentials:refresh'])
+  const allowed = new Set<string>(AGENT_ENVIRONMENT_CREDENTIAL_METHODS)
   if (credential.methods.length === 0 || credential.methods.length > 32 || new Set(credential.methods).size !== credential.methods.length || credential.methods.some(method => !allowed.has(method))) throw new Error('AGENT_CREDENTIAL_METHODS_INVALID')
   assertExpiry(credential.expiresAt, now, MAX_CREDENTIAL_LIFETIME_MS, 'AGENT_CREDENTIAL_EXPIRY_INVALID')
   if (credential.createdAt !== now) throw new Error('AGENT_CREDENTIAL_ISSUED_AT_INVALID')

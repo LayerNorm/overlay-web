@@ -6,9 +6,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import { Chat, useChat } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
-import {
-  createDirectChatTransport,
-} from '@/shared/chat/cloudflare-chat-transport'
+import { createDirectChatTransport } from '@/shared/chat/direct-chat-transport'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 import { buildActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
 

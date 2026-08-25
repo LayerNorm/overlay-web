@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
+import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
@@ -166,7 +167,7 @@ function proofChallengeInput(overrides: Record<string, unknown> = {}) {
 }
 function credentialInput(overrides: Record<string, unknown> = {}) {
   return { id: 'credential-owner', workspaceId, environmentId, tokenHash: 'c'.repeat(64),
-    audience: 'overlay-agent-control-plane', methods: ['agent:heartbeat', 'agent:commands:poll', 'agent:events:write'],
+    audience: 'overlay-agent-control-plane', methods: [...AGENT_ENVIRONMENT_CREDENTIAL_METHODS],
     tokenNonce: 'token-nonce-owner', expiresAt: now + 14 * 60_000, createdAt: now + 2, ...overrides }
 }
 function eventInput(overrides: Record<string, unknown> = {}) {
