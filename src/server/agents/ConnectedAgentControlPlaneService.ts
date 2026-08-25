@@ -80,13 +80,13 @@ export class ConnectedAgentControlPlaneService {
     workspaces: WorkspaceService
     objectStore?: ObjectStore
     now?: () => number
-    isEnabled?: () => boolean | Promise<boolean>
+    isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     const access = await this.requireManager(args.actorUserId, args.workspaceId)
     let maxEnvironments: number | undefined
     if (this.dependencies.policyLimits) {
@@ -175,7 +175,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async listEnvironments(args: { actorUserId: string; workspaceId: string }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.dependencies.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
     return await Promise.all(environments.map(async (environment) => {
@@ -201,7 +201,7 @@ export class ConnectedAgentControlPlaneService {
     environmentId: string
     filesystemGrant: AgentFilesystemGrant
   }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     const grant = validateFilesystemGrant(args.filesystemGrant)
     const environment = await this.dependencies.repository.approveEnvironment({
@@ -226,7 +226,7 @@ export class ConnectedAgentControlPlaneService {
     environmentId: string
     filesystemGrant: AgentFilesystemGrant
   }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     const grant = validateFilesystemGrant(args.filesystemGrant)
     const environment = await this.dependencies.repository.updateEnvironmentFilesystemGrant({
@@ -245,7 +245,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async revokeEnvironment(args: { actorUserId: string; workspaceId: string; environmentId: string }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     const revoked = await this.dependencies.repository.revokeEnvironment({
       workspaceId: args.workspaceId,
@@ -260,7 +260,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async listBindings(args: { actorUserId: string; workspaceId: string; agentId?: string }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     return await this.dependencies.repository.listBindings({
       workspaceId: args.workspaceId,
@@ -276,7 +276,7 @@ export class ConnectedAgentControlPlaneService {
     adapterId: string
     workingDirectory: string
   }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     if (!args.agentId.trim() || args.agentId.length > 256 ||
       !args.environmentId.trim() || args.environmentId.length > 256 ||
@@ -320,7 +320,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     const disabled = await this.dependencies.repository.disableBindingsForAgent({
       workspaceId: args.workspaceId,
@@ -343,7 +343,7 @@ export class ConnectedAgentControlPlaneService {
     runId: string
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     const now = this.now()
     const result = await this.dependencies.repository.controlRemoteAgentTurn({
       ...args,
@@ -371,7 +371,7 @@ export class ConnectedAgentControlPlaneService {
     decision: string
     response?: Record<string, unknown>
   }) {
-    await this.assertEnabled()
+    await this.assertEnabled(args.workspaceId)
     const result = await this.dependencies.repository.resolveRemoteRequest({ ...args, now: this.now() })
     if (!result.applied) throw controlPlaneError('This agent request is no longer pending or you are not authorized to resolve it', 409, 'remote_request_not_pending')
     await this.audit('agent_remote_request.resolved', 'user', args.actorUserId, {
@@ -790,9 +790,9 @@ export class ConnectedAgentControlPlaneService {
     return access
   }
 
-  private async assertEnabled() {
+  private async assertEnabled(workspaceId?: string) {
     if (this.dependencies.isEnabled) {
-      if (!await this.dependencies.isEnabled()) {
+      if (!await this.dependencies.isEnabled(workspaceId)) {
         throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
       }
       return

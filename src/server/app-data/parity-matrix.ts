@@ -106,7 +106,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       { key: 'supportsFileUploads', expectedAtParity: true },
       { key: 'supportsNotes', expectedAtParity: true },
     ],
-    routeRuleIds: ['notes', 'files'],
+    routeRuleIds: ['notes', 'files', 'convex-file-ingest-worker'],
     exitGate: 'File and note routes are fully supported, including atomic ingestion, durable object cleanup, reconciliation, sharing, and deletion.',
   },
   {
@@ -146,7 +146,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Integrations and extensions',
     targetPhase: 'P7',
     capabilities: [{ key: 'supportsIntegrations', expectedAtParity: true }],
-    routeRuleIds: ['integrations', 'extension-proxy', 'chat-extension-plan'],
+    routeRuleIds: ['integrations', 'extension-proxy', 'chat-extension-plan', 'slack-imports-convex-only'],
     exitGate: 'Connector state, OAuth lifecycle, proxy execution, scoping, and audits work without Convex.',
   },
   {
@@ -154,7 +154,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Workspace and collaboration surfaces',
     targetPhase: 'P1',
     capabilities: [],
-    routeRuleIds: ['workspace-collaboration-gated'],
+    routeRuleIds: ['workspace-collaboration-gated', 'mention-search-convex-only'],
     exitGate: 'Until provider-neutral workspace repositories land, every workspace, sharing, agent, and collaboration route is explicitly gated in Postgres mode and makes no Convex request.',
   },
   {

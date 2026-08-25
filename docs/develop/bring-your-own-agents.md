@@ -29,7 +29,10 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 8 are implemented. Overlay Cloud activation remains
+Phases 0 through 8 are implemented. Phase 9 release controls and repeatable local evidence are
+implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
+cross-platform CI, managed-provider conformance, and production stability gates are recorded.
+Overlay Cloud activation remains
 gated on publishing the Agent Host image and passing live Vercel conformance in the target
 project; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
 conformance run against staging. The connected-agent repository now includes command
@@ -203,6 +206,22 @@ provider spend. The one-minute supervisor also reports offline environments, exp
 commands, aged approvals, and failed sandbox cleanup. PostgreSQL maintenance prunes event-rate
 windows; Convex performs the same cleanup through its scheduled mutation.
 
+Phase 9 adds a fail-closed workspace rollout independent of the three incident kill switches.
+`OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` progresses through `off`, `internal`, `invited`, and
+`general`. Internal workspaces come from `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`; the
+invited stage additionally includes `OVERLAY_CONNECTED_AGENTS_INVITED_WORKSPACE_IDS`. A workspace
+outside the active stage cannot create or manage environments and cannot dispatch a new remote run.
+Existing host credentials remain governed by the global control-plane kill switch so operators can
+choose between stopping new tenant dispatch and immediately stopping the entire fleet.
+
+The repeatable local release gate is `npm run check:byo-agents:release`. It covers unit, protocol,
+host crash/reconnect, Convex repository, authorization, billing, route inventory, migration-version,
+no-Convex PostgreSQL bootstrap, bounded command/event/fan-out load, managed sandbox, and cleanup
+tests. `npm run check:byo-agents:release:postgres` runs the migrated PostgreSQL provider contract
+against the configured remote contract database. Host compatibility runs in GitHub Actions on
+macOS 14, Ubuntu 24.04, and Windows Server 2022. These automated checks do not replace authenticated
+browser QA, live provider conformance, invoice reconciliation, or production soak evidence.
+
 ## Trust boundaries and threat model
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
@@ -275,6 +294,10 @@ The server-side runtime config has three independent, default-off flags:
 The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
 `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, and `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
 
+Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
+workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
+does not make any workspace eligible.
+
 Route services read these flags before selecting a database repository, so Convex and
 PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly
 enable its prerequisite: Overlay Cloud requires all three, and remote runs require the first
@@ -322,3 +345,5 @@ one enum. The existing `AgentRun` state machine remains lifecycle authority and 
 Both repositories must authorize workspace ownership on every operation, claim commands with
 a lease atomically, apply contiguous event checkpoints exactly once, make revocation win over
 new claims, preserve cancellation as terminal, and cascade workspace/account deletion.
+The triggering human message and the remote agent run deliberately have distinct turn IDs;
+dispatch binds them through the validated user-message ID, conversation, actor, and run row.

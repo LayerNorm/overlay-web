@@ -56,6 +56,11 @@ import {
   workspaceBillingRolloutConfigFromEnv,
   workspaceBillingRolloutEnabled,
 } from '@/shared/billing/workspace-billing-rollout'
+import {
+  connectedAgentRolloutConfigFromEnv,
+  connectedAgentRolloutEnabled,
+  resolveConnectedAgentRollout,
+} from '@/shared/agents/connected-agent-rollout'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
@@ -288,6 +293,13 @@ export function createOverlayServerContext(
     objectStore,
     repository: appData.repositories.connectedAgents,
     workspaces: workspaceService,
+    isEnabled: (workspaceId) => {
+      if (runtimeConfig?.features.connectedAgentControlPlane !== true) return false
+      const rollout = connectedAgentRolloutConfigFromEnv(process.env)
+      return workspaceId
+        ? resolveConnectedAgentRollout(rollout, workspaceId).eligible
+        : connectedAgentRolloutEnabled(rollout)
+    },
     policyLimits: async ({ userId, workspaceId }) => {
       const entitlements = await chatUsagePolicy.getEntitlements({ userId, workspaceId })
       if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')

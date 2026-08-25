@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict'
+import { readdirSync } from 'node:fs'
 import test from 'node:test'
 import {
   APP_DATA_MINIMUM_SCHEMA_VERSION,
   APP_DATA_SCHEMA_VERSION,
   evaluateAppDataSchemaCompatibility,
 } from './schema-compatibility'
+
+test('runtime schema version matches the newest checked-in app-data migration', () => {
+  const latestMigration = readdirSync('migrations/app-data')
+    .map((name) => Number(name.match(/^(\d{4})_/)?.[1]))
+    .filter(Number.isSafeInteger)
+    .sort((left, right) => right - left)[0]
+  assert.equal(APP_DATA_SCHEMA_VERSION, latestMigration)
+})
 
 test('schema compatibility permits a one-release rolling upgrade and rollback window', () => {
   assert.equal(

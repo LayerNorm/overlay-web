@@ -370,6 +370,12 @@ redacted audit trail.
 
 ## Phase 9: dual-provider release and production rollout
 
+Implementation status: release machinery is implemented, including fail-closed workspace stages,
+independent incident switches, cross-platform host CI, bounded load rehearsals, route/provider
+inventory enforcement, and schema-version rollback checks. The phase remains open until the live
+Convex and PostgreSQL browser matrices, managed-provider conformance, invoice reconciliation,
+cross-platform CI run, and production soak satisfy the exit gate; do not mark it ✅ from local tests.
+
 Before broad release:
 
 - Run unit, protocol, repository, route, authorization, billing, deletion,

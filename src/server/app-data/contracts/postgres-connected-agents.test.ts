@@ -96,6 +96,7 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
   const runId = `remote_run_${suffix}`
   const sessionId = `remote_session_${suffix}`
   const commandId = `remote_command_${suffix}`
+  const humanMessageTurnId = `remote_human_turn_${suffix}`
   const turnId = `remote_turn_${suffix}`
   const clientNonce = `remote_nonce_${suffix}`
   const queueExpiresAt = now + 60_000
@@ -152,7 +153,7 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
       { conversationId, workspaceId, principalId: agentPrincipalId, principalType: 'agent', role: 'member', status: 'active' },
     ])
     await db.insert(conversationMessages).values({
-      id: userMessageId, conversationId, userId, turnId, role: 'user', mode: 'act',
+      id: userMessageId, conversationId, userId, turnId: humanMessageTurnId, role: 'user', mode: 'act',
       content: '@Connected agent do the work', contentType: 'text', authorKind: 'human',
       authorPrincipalId: actorPrincipalId, status: 'completed',
     })

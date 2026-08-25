@@ -20,6 +20,8 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete': agentHostException(['POST'], 'Signed artifact completion with checksum and malware validation.'),
   '/api/v1/agent-environments/artifacts/cleanup': internalServiceException(['POST'], 'Internal-secret authenticated artifact retention cleanup.'),
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated remote-run supervision and settlement reconciliation.'),
+  '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
+  '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
   '/api/v1/capabilities': {
     methods: ['GET'],
     reason: 'Public, read-only deployment capability discovery.',

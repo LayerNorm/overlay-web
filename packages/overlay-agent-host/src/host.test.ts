@@ -93,6 +93,55 @@ test('host conformance: start, stream, approval, cancel, duplicates, outage, cra
   }
 })
 
+test('host load rehearsal drains a command burst and reconnects every persisted session after restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-host-storm-'))
+  const root = join(directory, 'workspace')
+  const databasePath = join(directory, 'state', 'host.sqlite')
+  await mkdir(root)
+  const controlPlane = new FakeControlPlane()
+  let state = new SqliteHostStateStore(databasePath)
+  let runtime = createRuntime(state, controlPlane, root)
+  const runCount = 25
+  try {
+    for (let index = 0; index < runCount; index += 1) {
+      controlPlane.commands.push(command(
+        `storm-start-${index}`,
+        `storm-run-${index}`,
+        index + 1,
+        'start',
+        { bindingId: 'binding-1', adapterId: 'fake', workingDirectory: root, prompt: `storm ${index}`, metadata: {} },
+      ))
+    }
+    await runtime.pollOnce(0)
+    await waitFor(() => eventTypes(controlPlane).filter((type) => type === 'completed').length >= runCount)
+    assert.equal(state.commandCursor(), runCount)
+
+    const sessions = Array.from({ length: runCount }, (_, index) => state.getSession(`storm-run-${index}`)!)
+    state.close()
+    state = new SqliteHostStateStore(databasePath)
+    runtime = createRuntime(state, controlPlane, root)
+    for (let index = 0; index < runCount; index += 1) {
+      controlPlane.commands.push(command(
+        `storm-reconnect-${index}`,
+        `storm-run-${index}`,
+        runCount + index + 1,
+        'reconnect',
+        { remoteSessionId: sessions[index].remoteSessionId },
+      ))
+    }
+    await runtime.pollOnce(0)
+    assert.equal(state.commandCursor(), runCount * 2)
+    assert.equal(
+      controlPlane.applied.flatMap((batch) => batch.events)
+        .filter((event) => event.type === 'action' && event.payload.actionId === 'resume').length,
+      runCount,
+    )
+  } finally {
+    state.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('filesystem policy supports multiple roots and never grants outside paths', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-roots-'))
   const first = join(directory, 'first')

@@ -28,6 +28,10 @@ import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations } from './mention-policy'
 import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling, ManagedAgentSandboxBudgetError } from './ManagedAgentSandboxBilling'
+import {
+  connectedAgentRolloutConfigFromEnv,
+  resolveConnectedAgentRollout,
+} from '@/shared/agents/connected-agent-rollout'
 
 /**
  * Step budgets.
@@ -366,8 +370,13 @@ export async function resolveWorkspaceAgentInvocations(args: {
   }
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
   const runtime = await getOverlayRuntimeConfig()
+  const connectedAgentRollout = resolveConnectedAgentRollout(
+    connectedAgentRolloutConfigFromEnv(process.env),
+    args.workspaceId,
+  )
   const remoteRunsEnabled = runtime.features.connectedAgentControlPlane === true
     && runtime.features.remoteAgentRuns === true
+    && connectedAgentRollout.eligible
   const invocations: WorkspaceAgentInvocation[] = []
   for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {
     const agent = agentsByPrincipal.get(principalId)

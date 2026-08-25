@@ -211,7 +211,7 @@ export const startRemoteAgentTurnByServer = mutation({
     if (!membership || membership.status !== 'active' || !actorParticipant || actorParticipant.status !== 'active' ||
       !conversation || conversation.deletedAt || conversation.workspaceId !== args.workspaceId ||
       !userMessage || userMessage.conversationId !== args.conversationId || userMessage.role !== 'user' ||
-      userMessage.userId !== args.actorUserId || userMessage.turnId !== args.turnId ||
+      userMessage.userId !== args.actorUserId ||
       !agent || agent.type !== 'agent' || agent.archivedAt || agent.workspaceId !== args.workspaceId ||
       agent.agentId !== args.agentId || !agentParticipant || agentParticipant.status !== 'active') {
       throw new Error('CONVERSATION_ACCESS_DENIED')
