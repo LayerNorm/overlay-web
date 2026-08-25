@@ -31,7 +31,7 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 Phases 0 through 8 are implemented. Phase 9 release controls and repeatable local evidence are
 implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
-cross-platform CI, managed-provider conformance, and production stability gates are recorded.
+managed-provider conformance, and production stability gates are recorded.
 Overlay Cloud activation remains
 gated on publishing the Agent Host image and passing live Vercel conformance in the target
 project; Phase 7 release remains gated on publishing the host packages and passing a clean VPS

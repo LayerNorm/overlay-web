@@ -374,7 +374,7 @@ Implementation status: release machinery is implemented, including fail-closed w
 independent incident switches, cross-platform host CI, bounded load rehearsals, route/provider
 inventory enforcement, and schema-version rollback checks. The phase remains open until the live
 Convex and PostgreSQL browser matrices, managed-provider conformance, invoice reconciliation,
-cross-platform CI run, and production soak satisfy the exit gate; do not mark it ✅ from local tests.
+and production soak satisfy the exit gate; do not mark it ✅ from local tests.
 
 Release rehearsal on 2026-08-25 established the current baseline at staging commit `5ea8534fe`:
 
