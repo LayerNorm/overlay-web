@@ -207,6 +207,10 @@ commands, aged approvals, and failed sandbox cleanup. PostgreSQL maintenance pru
 windows; Convex performs the same cleanup through its scheduled mutation.
 
 Phase 9 adds a fail-closed workspace rollout independent of the three incident kill switches.
+The PostgreSQL browser smoke treats console errors as failures in addition to page errors and
+network/WebSocket activity. Convex subscription hooks must live in provider-gated bridge components;
+passing `"skip"` to `useQuery` still requires a mounted `ConvexProvider` and is therefore not a
+valid PostgreSQL fallback.
 `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` progresses through `off`, `internal`, `invited`, and
 `general`. Internal workspaces come from `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`; the
 invited stage additionally includes `OVERLAY_CONNECTED_AGENTS_INVITED_WORKSPACE_IDS`. A workspace

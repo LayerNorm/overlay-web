@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { AgentRunResource } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { trackAgentRunRecovery } from '@/shared/observability/client-metrics'
@@ -30,6 +38,38 @@ type ConvexAgentRunDoc = {
     browserReconnectedAt?: number
   }
 } | null
+
+type ConvexAgentRunQueryState = {
+  conversationId: string | null
+  run: ConvexAgentRunDoc | undefined
+}
+
+function ConvexAgentRunSubscription({
+  accessToken,
+  conversationId,
+  onUpdate,
+  userId,
+}: {
+  accessToken: string
+  conversationId: string
+  onUpdate: (next: ConvexAgentRunQueryState) => void
+  userId: string
+}) {
+  const run = useQuery(
+    api.chat.conversations.watchAgentRun,
+    {
+      conversationId: conversationId as Id<'conversations'>,
+      userId,
+      accessToken,
+    },
+  ) as ConvexAgentRunDoc | undefined
+
+  useEffect(() => {
+    onUpdate({ conversationId, run })
+  }, [conversationId, onUpdate, run])
+
+  return null
+}
 
 // The Convex doc has fewer fields than AgentRunResource.  We only use
 // id, conversationId, status, and metrics in this hook, so we cast.
@@ -67,22 +107,32 @@ export function useAgentRunLifecycle({
   const reconnectedRunIdsRef = useRef(new Set<string>())
   const [terminalSyncUntil, setTerminalSyncUntil] = useState(0)
   const [terminalSyncConversationId, setTerminalSyncConversationId] = useState<string | null>(null)
+  const [convexQueryState, setConvexQueryState] = useState<ConvexAgentRunQueryState>({
+    conversationId: null,
+    run: undefined,
+  })
   const run = snapshot.conversationId === conversationId ? snapshot.run : null
 
   // --- Convex subscription path ---
   const useConvexSubscription = Boolean(enabled && conversationId && enableConvexLiveSync && convexAccessToken && userId)
-  const convexQueryArgs = useConvexSubscription && conversationId && userId && convexAccessToken
-    ? {
-        conversationId: conversationId as Id<'conversations'>,
-        userId,
+  const onConvexRunUpdate = useCallback((next: ConvexAgentRunQueryState) => {
+    setConvexQueryState((current) => (
+      current.conversationId === next.conversationId && current.run === next.run
+        ? current
+        : next
+    ))
+  }, [])
+  const convexRunDoc = convexQueryState.conversationId === conversationId
+    ? convexQueryState.run
+    : undefined
+  const convexQueryBridge: ReactNode = useConvexSubscription && conversationId && userId && convexAccessToken
+    ? createElement(ConvexAgentRunSubscription, {
         accessToken: convexAccessToken,
-      }
-    : 'skip'
-
-  const convexRunDoc = useQuery(
-    api.chat.conversations.watchAgentRun,
-    convexQueryArgs === 'skip' ? 'skip' : convexQueryArgs,
-  ) as ConvexAgentRunDoc | undefined
+        conversationId,
+        onUpdate: onConvexRunUpdate,
+        userId,
+      })
+    : null
 
   // When the Convex subscription delivers a run, update the snapshot.
   // The setState calls here are intentional — we're syncing external
@@ -249,10 +299,11 @@ export function useAgentRunLifecycle({
 
   return useMemo(() => ({
     active,
+    convexQueryBridge,
     run,
     refresh,
     shouldSyncMessages: active || (
       terminalSyncConversationId === conversationId && terminalSyncUntil > 0
     ),
-  }), [active, conversationId, refresh, run, terminalSyncConversationId, terminalSyncUntil])
+  }), [active, conversationId, convexQueryBridge, refresh, run, terminalSyncConversationId, terminalSyncUntil])
 }

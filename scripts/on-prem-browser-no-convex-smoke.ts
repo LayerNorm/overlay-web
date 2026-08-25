@@ -30,6 +30,7 @@ async function main(): Promise<void> {
   const page = await context.newPage()
   const convexConnections = new Set<string>()
   const pageErrors: string[] = []
+  const consoleErrors: string[] = []
 
   page.on('request', (request) => {
     if (isConvexNetworkUrl(request.url())) convexConnections.add(request.url())
@@ -38,6 +39,9 @@ async function main(): Promise<void> {
     if (isConvexNetworkUrl(socket.url())) convexConnections.add(socket.url())
   })
   page.on('pageerror', (error) => pageErrors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
 
   try {
     const sessionResponse = await context.request.get(`${baseUrl}/api/auth/session`)
@@ -86,6 +90,7 @@ async function main(): Promise<void> {
       `Postgres browser flow opened Convex connections: ${[...convexConnections].join(', ')}`,
     )
     assert.deepEqual(pageErrors, [], `Browser page errors: ${pageErrors.join(' | ')}`)
+    assert.deepEqual(consoleErrors, [], `Browser console errors: ${consoleErrors.join(' | ')}`)
 
     console.log(JSON.stringify({
       authenticated: expectAuthenticated,

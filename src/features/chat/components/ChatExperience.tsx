@@ -2031,6 +2031,7 @@ export default function ChatExperience({
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <>
+      {agentRunLifecycle.convexQueryBridge}
       {liveQueryBridge}
       <LinkOpenInterceptor
         preference={settings.linkOpenPreference}
