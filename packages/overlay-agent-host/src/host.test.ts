@@ -186,7 +186,7 @@ test('device keys persist privately and logs redact credential fields', async ()
     const second = await loadOrCreateDeviceKeyPair(directory)
     assert.deepEqual(first, second)
     const keyPath = join(directory, 'keys', 'device-private.pem')
-    assert.equal((await stat(keyPath)).mode & 0o777, 0o600)
+    await assertPrivateStateFile(keyPath)
     assert.match(await readFile(keyPath, 'utf8'), /PRIVATE KEY/)
     assert.deepEqual(redact({ token: 'secret', nested: { password: 'secret', safe: 'value' } }), { token: '[REDACTED]', nested: { password: '[REDACTED]', safe: 'value' } })
   } finally { await rm(directory, { recursive: true, force: true }) }
@@ -244,10 +244,21 @@ test('connect enrolls a device, proves key possession, and stores only the short
     })
     assert.equal(connection.environmentId, 'environment-1')
     assert.equal((await loadStoredConnection(directory))?.token, 'short-lived-environment-credential-123456789')
-    assert.equal((await stat(join(directory, 'connection.json'))).mode & 0o777, 0o600)
+    await assertPrivateStateFile(join(directory, 'connection.json'))
     assert.equal((await readFile(join(directory, 'connection.json'), 'utf8')).includes('single-use-enrollment-code'), false)
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+async function assertPrivateStateFile(path: string): Promise<void> {
+  const mode = (await stat(path)).mode & 0o777
+  if (process.platform === 'win32') {
+    // Node maps Windows ACLs onto synthetic POSIX mode bits and reports 0o666
+    // even when the file inherits the current user's private profile ACL.
+    assert.equal(mode, 0o666)
+    return
+  }
+  assert.equal(mode, 0o600)
+}
 
 test('HTTP transport signs the exact method, path, body and credential hash', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-signed-http-'))

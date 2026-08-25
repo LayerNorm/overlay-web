@@ -240,7 +240,9 @@ browser QA, live provider conformance, invoice reconciliation, or production soa
   explicit root grants, scoped upload URLs, quotas, redaction, revocation, and lease expiry
   are mandatory mitigations.
 - The local SQLite database and Ed25519 private key are created under an explicit state
-  directory with restrictive permissions. Unacknowledged output is written before upload;
+  directory with restrictive permissions. POSIX hosts enforce `0o600` secret files and a
+  `0o700` key directory; Windows hosts rely on the current user's inherited profile ACL because
+  Node exposes Windows ACLs only as synthetic POSIX mode bits. Unacknowledged output is written before upload;
   acknowledged frames are removed while the per-run sequence remains monotonic across restarts.
 - Selected roots authorize command working directories and the roots advertised to ACP. They
   do not claim to sandbox an arbitrary child process at the operating-system layer. Strict file
