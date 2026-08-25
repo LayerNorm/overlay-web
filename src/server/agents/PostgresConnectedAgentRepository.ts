@@ -437,7 +437,6 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         eq(conversationMessages.id, input.userMessageId),
         eq(conversationMessages.conversationId, input.conversationId),
         eq(conversationMessages.userId, input.actorUserId),
-        eq(conversationMessages.turnId, input.turnId),
         eq(conversationMessages.role, 'user'),
       )).limit(1)
       if (!actor || actor.principalId !== input.initiatorPrincipalId || !agent || !conversation || !userMessage) {

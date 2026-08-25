@@ -271,3 +271,5 @@ one enum. The existing `AgentRun` state machine remains lifecycle authority and 
 Both repositories must authorize workspace ownership on every operation, claim commands with
 a lease atomically, apply contiguous event checkpoints exactly once, make revocation win over
 new claims, preserve cancellation as terminal, and cascade workspace/account deletion.
+The triggering human message and the remote agent run deliberately have distinct turn IDs;
+dispatch binds them through the validated user-message ID, conversation, actor, and run row.
