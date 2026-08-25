@@ -29,6 +29,17 @@ describe('Convex agent-environment control plane', () => {
     })).toBeNull()
   })
 
+  test('enforces the workspace environment limit again when a code is redeemed', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(controlMutation('createEnrollmentSessionByServer'), {
+      ...enrollmentInput({ maxEnvironments: 0 }), serverSecret: secret,
+    })
+    await expect(convex.mutation(controlMutation('redeemEnrollmentSessionByServer'), {
+      serverSecret: secret, codeHash, now,
+      environment: environmentInput(), proofChallenge: proofChallengeInput(),
+    })).rejects.toThrow(/CONNECTED_AGENT_POLICY_LIMIT:environments/)
+  })
+
   test('enrolls once, enforces tenant/root scope, and consumes proof and request nonces once', async () => {
     const convex = convexTest(schema, modules)
     const call = <T>(operation: string, args: Record<string, unknown>) =>

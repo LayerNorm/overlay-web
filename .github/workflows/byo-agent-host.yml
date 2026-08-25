@@ -1,0 +1,39 @@
+name: BYO Agent Host compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'packages/overlay-agent-bridge-protocol/**'
+      - 'packages/overlay-agent-host/**'
+      - '.github/workflows/byo-agent-host.yml'
+  push:
+    branches: [main, staging]
+    paths:
+      - 'packages/overlay-agent-bridge-protocol/**'
+      - 'packages/overlay-agent-host/**'
+      - '.github/workflows/byo-agent-host.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    name: Agent Host (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:agent-bridge-protocol
+      - run: npm --prefix packages/overlay-agent-bridge-protocol run typecheck
+      - run: npm run test:agent-host
+      - run: npm --prefix packages/overlay-agent-host run typecheck

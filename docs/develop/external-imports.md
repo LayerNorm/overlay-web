@@ -148,6 +148,10 @@ Source-to-Overlay ID mappings for dedup and resume. Indexed by `(workspaceId, so
 | GET | `/api/v1/imports/slack?action=job&jobId=...` | Get single job status |
 | POST | `/api/v1/imports/slack` | `action=start` or `action=cancel` |
 
+Slack import job persistence and the scheduled processing bridge remain Convex-only. PostgreSQL
+deployments classify these routes as unavailable; they must not silently call Convex or advertise
+live import support until the import job repository is provider-neutral.
+
 ## Slack conversation mapping
 
 - `public_channel` and `private_channel` are persisted as `conversationType: 'channel'`.

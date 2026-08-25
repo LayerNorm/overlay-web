@@ -30,6 +30,21 @@ crons.interval(
 )
 
 crons.interval(
+  'connected agent settlement reconciliation',
+  { minutes: 1 },
+  // Provider credentials remain in the BFF rather than the Convex deployment.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).agents.settlementReconciliation.runReconciliationTick,
+)
+
+crons.interval(
+  'connected agent event rate window cleanup',
+  { minutes: 5 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).agents.connectedAgents.pruneEventRateWindowsInternal,
+)
+
+crons.interval(
   'connected agent artifact cleanup',
   { minutes: 15 },
   // Generated API types are refreshed on the next Convex codegen/deploy.

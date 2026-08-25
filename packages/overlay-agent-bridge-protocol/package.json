@@ -1,7 +1,7 @@
 {
   "name": "@overlay/agent-bridge-protocol",
   "version": "0.0.1",
-  "private": true,
+  "description": "Versioned command and event contracts for Overlay Agent Host.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -9,6 +9,12 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "files": [
+    "src/index.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "tsx --test src/*.test.ts",

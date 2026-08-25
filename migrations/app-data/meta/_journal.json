@@ -470,6 +470,20 @@
       "when": 1787558402000,
       "tag": "0066_repair_conversation_message_edit_history",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1787558403000,
+      "tag": "0067_supervised_remote_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787558404000,
+      "tag": "0068_connected_agent_operations",
+      "breakpoints": true
     }
   ]
 }

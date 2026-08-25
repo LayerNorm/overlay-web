@@ -14,6 +14,7 @@ import { connectAgentHost } from './enrollment'
 import { loadOrCreateDeviceKeyPair } from './device-key'
 import { loadStoredConnection, saveStoredConnection } from './connection'
 import { resolveAcpAdapterManifest } from './adapter-manifests'
+import { EveAgentAdapter } from './eve-adapter'
 
 const [command, ...args] = process.argv.slice(2)
 const configPath = option(args, '--config')
@@ -23,10 +24,16 @@ if (command === 'connect') {
   if (!code || !serverUrl) usage()
   const stateDirectory = option(args, '--state-dir') ?? join(homedir(), '.overlay', 'agent-host')
   const adapterIds = options(args, '--adapter')
-  const adapterManifests = (adapterIds.length ? adapterIds : ['codex', 'claude-code']).map((id) => {
+  const adapterConfigs: AgentHostConfig['adapters'] = (adapterIds.length ? adapterIds : ['codex', 'claude-code']).map((id) => {
+    if (id === 'eve') {
+      const host = option(args, '--eve-url')
+      if (!host) throw new Error('--adapter eve requires --eve-url <url>')
+      return { id: 'eve', displayName: 'Eve agent', protocol: 'eve' as const, host,
+        ...(option(args, '--eve-auth-env') ? { bearerTokenEnv: option(args, '--eve-auth-env') } : {}) }
+    }
     const manifest = resolveAcpAdapterManifest(id)
     if (!manifest) throw new Error(`unknown ACP adapter manifest: ${id}`)
-    return manifest
+    return { ...manifest, args: [...manifest.args] }
   })
   const connection = await connectAgentHost({
     code,
@@ -34,7 +41,7 @@ if (command === 'connect') {
     stateDirectory,
     name: option(args, '--name'),
     kind: option(args, '--kind') as 'local' | 'vps' | 'overlay_cloud' | 'external' | undefined,
-    adapters: adapterManifests.map((adapter) => ({
+    adapters: adapterConfigs.map((adapter) => ({
       id: adapter.id,
       displayName: adapter.displayName,
       protocol: adapter.protocol,
@@ -54,7 +61,7 @@ if (command === 'connect') {
       credential: connection.token,
       stateDirectory,
       filesystem: connection.filesystemGrant,
-      adapters: adapterManifests.map((adapter) => ({ ...adapter, args: [...adapter.args] })),
+      adapters: adapterConfigs,
     })
   }
 } else if (!configPath || (command !== 'run' && command !== 'doctor')) {
@@ -106,7 +113,14 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
 function buildAdapters(configs: AgentHostConfigAdapter[]): AgentAdapter[] {
   return configs.map((adapter) => {
     if (adapter.protocol === 'fake') return new FakeAgentAdapter()
-    if (!adapter.command) throw new Error(`ACP adapter ${adapter.id} requires a command`)
+    if (adapter.protocol === 'eve') return new EveAgentAdapter({
+      id: adapter.id, displayName: adapter.displayName, host: adapter.host,
+      ...(adapter.bearerTokenEnv ? { bearerToken: () => {
+        const token = process.env[adapter.bearerTokenEnv!]?.trim()
+        if (!token) throw new Error(`Eve bearer token is missing from ${adapter.bearerTokenEnv}`)
+        return token
+      } } : {}),
+    })
     return new AcpAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, command: adapter.command,
       ...(adapter.args ? { args: adapter.args } : {}), ...(adapter.env ? { env: adapter.env } : {}),
@@ -126,6 +140,6 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
   process.exit(2)
 }

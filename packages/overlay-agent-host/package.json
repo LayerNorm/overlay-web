@@ -1,7 +1,7 @@
 {
   "name": "@overlay/agent-host",
   "version": "0.0.1",
-  "private": true,
+  "description": "Outbound-only host for connecting user-owned and managed agents to Overlay.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -12,8 +12,20 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "src/*.ts",
+    "src/*.mjs",
+    "!src/*.test.ts",
+    "Dockerfile",
+    "docker-compose.example.yml",
+    "README.md",
+    "systemd"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24"
   },
   "scripts": {
     "test": "tsx --test src/*.test.ts",
@@ -21,12 +33,13 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
-    "@overlay/agent-bridge-protocol": "file:../overlay-agent-bridge-protocol",
+    "@overlay/agent-bridge-protocol": "0.0.1",
+    "eve": "0.44.4",
     "tsx": "^4.8.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^24",
     "typescript": "^5"
   }
 }

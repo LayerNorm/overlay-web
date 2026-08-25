@@ -38,7 +38,11 @@ import {
 } from '@/server/memory'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { BillingBackedActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import { BillingGenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { PostgresConnectedAgentRepository } from '@/server/agents/PostgresConnectedAgentRepository'
+import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
+import type { RemoteAgentUsageSettlement } from '@/server/agents/ConnectedAgentRepository'
+import { logger } from '@/server/observability/logger'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import {
   DAYTONA_RECONCILE_JOB,
@@ -96,6 +100,39 @@ export function createPostgresRuntime(args: {
   const usage = new PostgresUsageRepository(args.db)
   const remoteAgentUsage = new BillingBackedActUsagePolicy({ repository: usage, accountAllUsage: true })
   const connectedAgents = new PostgresConnectedAgentRepository(args.db)
+  const connectedAgentSandboxBilling = new ManagedAgentSandboxBilling({
+    policy: new BillingGenerationUsagePolicy(usage),
+    repository: connectedAgents,
+  })
+  const audit = new AuditService(new PostgresAuditRepository(args.db))
+  const settleRemoteAgentUsage = async (settlement: RemoteAgentUsageSettlement) => {
+    try {
+      if (settlement.modelUsageBilling !== 'overlay') {
+        if (settlement.reservationId) await remoteAgentUsage.releaseReservation({
+          reservationId: settlement.reservationId, userId: settlement.userId, reason: 'remote_agent_byok',
+        })
+      } else if (settlement.outcome === 'cancelled') {
+        await remoteAgentUsage.releaseReservation({ reservationId: settlement.reservationId,
+          userId: settlement.userId, reason: 'remote_agent_cancelled' })
+      } else if (settlement.outcome !== 'completed' && settlement.inputTokens === 0 && settlement.outputTokens === 0) {
+        await remoteAgentUsage.markReservationForReconcile({ reservationId: settlement.reservationId,
+          userId: settlement.userId, errorMessage: `remote_agent_${settlement.outcome}` })
+      } else if (settlement.reservationId) {
+        await remoteAgentUsage.recordFinishedUsage(settlement)
+      }
+    } finally {
+      await connectedAgentSandboxBilling.settle(settlement)
+    }
+    await audit.record({
+      action: 'agent_remote_run.usage_settled', actorType: 'service', outcome: 'success',
+      resourceType: 'agent_run', resourceId: settlement.runId,
+      metadata: { workspaceId: settlement.workspaceId, agentId: settlement.agentId,
+        environmentId: settlement.environmentId, runId: settlement.runId,
+        reservationId: settlement.reservationId,
+        sandboxReservationId: settlement.sandboxBilling?.reservationId,
+        sandboxProviderReference: settlement.sandboxBilling?.providerReference },
+    })
+  }
   let daytonaReconciler = args.daytonaReconciler
   const getDaytonaReconciler = () => {
     daytonaReconciler ??= new PostgresDaytonaReconciliationService({
@@ -138,16 +175,31 @@ export function createPostgresRuntime(args: {
       'app-data.maintenance': async () => {
         const summary = await maintenance.runAll()
         for (const settlement of summary.remoteAgentRuns.settlements) {
-          if (!settlement.reservationId || !settlement.userId) continue
-          if (settlement.outcome === 'cancelled') {
-            await remoteAgentUsage.releaseReservation({ reservationId: settlement.reservationId,
-              userId: settlement.userId, reason: 'remote_agent_cancelled' })
-          } else if (settlement.outcome !== 'completed' && settlement.inputTokens === 0 && settlement.outputTokens === 0) {
-            await remoteAgentUsage.markReservationForReconcile({ reservationId: settlement.reservationId,
-              userId: settlement.userId, errorMessage: `remote_agent_${settlement.outcome}` })
-          } else {
-            await remoteAgentUsage.recordFinishedUsage(settlement)
+          if (!settlement.userId) continue
+          try {
+            await settleRemoteAgentUsage(settlement)
+          } catch (error) {
+            logger.error('Connected-agent timeout settlement deferred', { runId: settlement.runId, error })
           }
+        }
+        const pendingSettlements = await connectedAgents.listPendingSandboxSettlements({ limit: 100 })
+        let reconciledSandboxSettlements = 0
+        for (const settlement of pendingSettlements) {
+          try {
+            await settleRemoteAgentUsage(settlement)
+            reconciledSandboxSettlements += 1
+          } catch (error) {
+            logger.error('Connected-agent sandbox settlement retry deferred', { runId: settlement.runId, error })
+          }
+        }
+        for (const alert of summary.remoteAgentRuns.alerts) {
+          logger.warn('Connected-agent operational alert', alert)
+          await audit.record({
+            action: `agent_operations.${alert.code}`, actorType: 'service', outcome: 'failure',
+            resourceType: alert.runId ? 'agent_run' : 'agent_environment',
+            resourceId: alert.runId ?? alert.environmentId ?? alert.workspaceId,
+            metadata: alert,
+          })
         }
         const remoteAgentArtifacts = { deleted: 0, skipped: !args.objectStore }
         if (args.objectStore) {
@@ -159,7 +211,7 @@ export function createPostgresRuntime(args: {
             }
           }
         }
-        return { ...summary, remoteAgentArtifacts }
+        return { ...summary, reconciledSandboxSettlements, remoteAgentArtifacts }
       },
       'coordination.cleanup': async () => {
         const [expiredIdempotencyKeys, expiredReplayNonces] = await Promise.all([

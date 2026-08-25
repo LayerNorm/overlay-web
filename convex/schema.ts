@@ -2155,7 +2155,8 @@ export default defineSchema({
     revokedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_environmentId', ['environmentId'])
     .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_status', ['workspaceId', 'status']),
+    .index('by_workspaceId_status', ['workspaceId', 'status'])
+    .index('by_status_lastSeenAt', ['status', 'lastSeenAt']),
 
   agentEnrollmentSessions: defineTable({
     enrollmentSessionId: v.string(), workspaceId: v.string(), createdByUserId: v.string(),
@@ -2164,6 +2165,7 @@ export default defineSchema({
     ),
     environmentId: v.optional(v.string()), expiresAt: v.number(), redeemedAt: v.optional(v.number()),
     approvedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
+    maxEnvironments: v.optional(v.number()),
   }).index('by_enrollmentSessionId', ['enrollmentSessionId'])
     .index('by_codeHash', ['codeHash'])
     .index('by_environmentId', ['environmentId'])
@@ -2216,7 +2218,8 @@ export default defineSchema({
     .index('by_environmentId_sequence', ['environmentId', 'sequence'])
     .index('by_environmentId_status_sequence', ['environmentId', 'status', 'sequence'])
     .index('by_environmentId_status_claimExpiresAt', ['environmentId', 'status', 'claimExpiresAt'])
-    .index('by_workspaceId', ['workspaceId']),
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
 
   agentRemoteSessions: defineTable({
     sessionId: v.string(), workspaceId: v.string(), environmentId: v.string(), bindingId: v.string(),
@@ -2227,7 +2230,19 @@ export default defineSchema({
   }).index('by_sessionId', ['sessionId'])
     .index('by_runId', ['runId'])
     .index('by_environmentId_status', ['environmentId', 'status'])
-    .index('by_workspaceId', ['workspaceId']),
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_status', ['workspaceId', 'status']),
+
+  agentEventRateWindows: defineTable({
+    environmentId: v.string(), workspaceId: v.string(), windowStartedAt: v.number(),
+    eventCount: v.number(), updatedAt: v.number(),
+  }).index('by_environmentId_windowStartedAt', ['environmentId', 'windowStartedAt'])
+    .index('by_workspaceId_windowStartedAt', ['workspaceId', 'windowStartedAt'])
+    .index('by_windowStartedAt', ['windowStartedAt']),
+
+  agentWorkspacePolicyUsage: defineTable({
+    workspaceId: v.string(), activeArtifactBytes: v.number(), updatedAt: v.number(),
+  }).index('by_workspaceId', ['workspaceId']),
 
   agentApprovalRequests: defineTable({
     approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),
@@ -2239,7 +2254,8 @@ export default defineSchema({
   }).index('by_approvalId', ['approvalId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_remoteSessionId_requestKey', ['remoteSessionId', 'requestKey'])
-    .index('by_workspaceId_runId', ['workspaceId', 'runId']),
+    .index('by_workspaceId_runId', ['workspaceId', 'runId'])
+    .index('by_requestedAt', ['requestedAt']),
 
   agentArtifacts: defineTable({
     artifactId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
@@ -2251,7 +2267,8 @@ export default defineSchema({
     .index('by_objectKey', ['objectKey'])
     .index('by_runId_status', ['runId', 'status'])
     .index('by_status_expiresAt', ['status', 'expiresAt'])
-    .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId']),
+    .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
+    .index('by_workspaceId_status', ['workspaceId', 'status']),
 
   agentSandboxLeases: defineTable({
     leaseId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.optional(v.string()),
@@ -2264,6 +2281,14 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
     .index('by_status_cleanupAfter', ['status', 'cleanupAfter']),
+
+  agentSandboxSettlements: defineTable({
+    reservationId: v.string(), workspaceId: v.string(), environmentId: v.string(),
+    runId: v.string(), leaseId: v.string(), status: v.string(),
+    settledAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_reservationId', ['reservationId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt'])
+    .index('by_workspaceId', ['workspaceId']),
 
   slackImportMappings: defineTable({
     importJobId: v.id('slackImportJobs'),

@@ -74,9 +74,25 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
   {
     id: 'connected-agent-control-plane',
     methods: '*',
-    prefixes: ['/api/v1/agent-environments'],
+    prefixes: ['/api/v1/agent-environments', '/api/v1/agent-bindings'],
     status: 'supported',
     feature: 'connected-agent-control-plane',
+  },
+  {
+    id: 'slack-imports-convex-only',
+    methods: '*',
+    prefixes: ['/api/v1/imports/slack'],
+    status: 'unsupported',
+    feature: 'external-imports',
+    reason: 'Slack import job state and its worker bridge still use Convex.',
+  },
+  {
+    id: 'mention-search-convex-only',
+    methods: ['GET'],
+    paths: ['/api/v1/mention-search'],
+    status: 'degraded',
+    feature: 'workspace-search',
+    reason: 'PostgreSQL mode returns an empty bounded result until provider-neutral mention indexes land.',
   },
   {
     id: 'automations',
@@ -172,6 +188,14 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     paths: ['/api/v1/notes'],
     status: 'supported',
     feature: 'notes',
+  },
+  {
+    id: 'convex-file-ingest-worker',
+    methods: ['POST'],
+    paths: ['/api/v1/files/ingest-jobs/process'],
+    status: 'unsupported',
+    feature: 'file-lifecycle',
+    reason: 'This internal worker bridge updates the Convex ingestion queue and is disabled in PostgreSQL mode.',
   },
   {
     id: 'files',

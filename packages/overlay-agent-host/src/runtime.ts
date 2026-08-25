@@ -170,6 +170,7 @@ export class AgentHostRuntime {
         await this.sessions.get(command.runId)?.stop('Starting a fresh session')
         this.sessions.delete(command.runId)
         this.options.state.deleteSession(command.runId)
+        this.options.state.deleteAdapterSessionState(command.runId)
       } else if (this.sessions.has(command.runId)) return
       const adapter = this.requireAdapter(command.payload.adapterId)
       const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
@@ -180,11 +181,15 @@ export class AgentHostRuntime {
         prompt: command.payload.prompt,
         ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
         metadata: command.payload.metadata,
+        adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
+        persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
       }, (event) => this.emit(command.runId, event))
       this.sessions.set(command.runId, session)
       this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory })
       await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
-      void session.prompt(command.payload.prompt).catch((error) => this.emit(command.runId, { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
+      if (!session.initialPromptHandled) {
+        void session.prompt(command.payload.prompt).catch((error) => this.emit(command.runId, { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
+      }
       return
     }
     if (command.type === 'shutdown') {
@@ -211,6 +216,8 @@ export class AgentHostRuntime {
     const session = await this.requireAdapter(stored.adapterId).start({
       runId, workingDirectory: scope.workingDirectory, additionalDirectories: scope.additionalDirectories,
       prompt: '', remoteSessionId: stored.remoteSessionId, metadata: {},
+      adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
+      persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
     }, (event) => this.emit(runId, event))
     this.sessions.set(runId, session)
     return session

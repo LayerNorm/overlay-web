@@ -100,6 +100,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agent-environments/:environmentId/artifacts', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/artifacts/:artifactId/complete', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/artifacts/cleanup', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/operations/reconcile', methods: { POST: publicPolicy() } },
   {
     path: '/api/v1/shares',
     methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() },

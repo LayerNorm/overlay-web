@@ -29,9 +29,13 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 5 and the Phase 6 code path are implemented. Overlay Cloud activation remains
+Phases 0 through 8 are implemented. Phase 9 release controls and repeatable local evidence are
+implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
+cross-platform CI, managed-provider conformance, and production stability gates are recorded.
+Overlay Cloud activation remains
 gated on publishing the Agent Host image and passing live Vercel conformance in the target
-project. The connected-agent repository now includes command
+project; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
+conformance run against staging. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
@@ -152,6 +156,72 @@ experimental and timed out in live verification, so the Daytona adapter currentl
 persistence and reconnect but not snapshots. It must not claim the capability until the live test
 passes reliably.
 
+Overlay Cloud model access follows a fixed priority. Overlay-funded models are the default and
+lowest-friction path. BYOK/API keys are the first customer-owned authentication path and are
+brokered at execution time rather than embedded in images, snapshots, commands, or transcripts.
+Provider-specific browser or device login may be added only when that provider officially supports
+a remote or headless flow. Overlay never copies, mounts, uploads, or imports a user's local Codex,
+Claude, or equivalent authentication directory into a managed sandbox.
+
+Phase 7 makes `@overlay/agent-host` and `@overlay/agent-bridge-protocol` publishable packages and
+requires Node.js 24. The same executable runs as a foreground CLI, a restartable systemd service,
+or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
+inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
+unit runs under a dedicated OS account; operators must align `ReadWritePaths` with the exact roots
+approved in Overlay.
+
+The bounded Eve adapter uses only the public `eve/client` session API and durable event stream. It
+is pinned to Eve 0.44.4 while Eve is preview. Overlay projects visible message checkpoints,
+actions, usage, terminal state, and pending input requests, never private reasoning. Approval and
+elicitation replies are checked against the outstanding Eve request, and the host persists the Eve
+session ID plus stream cursor after every event. A reconnect without that cursor fails closed and
+requires the deliberate `start fresh` path. The Eve service should run beside the host on loopback
+or a private network; Overlay does not require it to be publicly reachable. Hermes, OpenClaw, and
+other native adapters remain ineligible unless ACP is unavailable and the unchanged host
+conformance suite passes.
+
+Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
+rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
+workspace concurrency and one active run per managed environment. Hard run deadlines cap lease
+renewal. Event uploads use per-environment minute windows, and artifact creation reserves workspace
+bytes before issuing an object-store URL. Free, paid, and max plans also bound idle time, sandbox
+egress, and managed runtime; the existing billing ledger remains the monthly-spend gate.
+
+Host-side BYOK model tokens remain observable but never become Overlay model usage. A local or VPS
+environment has no sandbox reservation. Overlay Cloud creates a distinct pre-dispatch `sandbox`
+reservation under `agent:<agentId>` in addition to any explicitly Overlay-funded model reservation.
+Actual Vercel usage settles active CPU, provisioned memory, and outbound transfer; Daytona settles
+its resource-time dimensions. The reservation ledger is the exact-once boundary, and an unavailable
+provider or failed usage read moves the reservation to reconciliation instead of guessing at a
+charge. A durable settlement marker is created atomically with each managed run and is cleared only
+after the idempotent usage ledger and lease usage record both succeed. PostgreSQL maintenance retries
+pending markers directly; the Convex scheduler calls the internal BFF reconciliation route so
+provider credentials never move into Convex. `OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD` controls the per-run provider-spend warning
+threshold and defaults to USD 10.
+
+Every dispatch and accepted cursor checkpoint writes a redacted audit record correlated by
+workspace, agent, environment, run, command, remote session, provider reference, reservation, and
+event cursor. Immediate alerts cover cursor gaps, settlement and artifact-cleanup failure, and high
+provider spend. The one-minute supervisor also reports offline environments, expired leases, stuck
+commands, aged approvals, and failed sandbox cleanup. PostgreSQL maintenance prunes event-rate
+windows; Convex performs the same cleanup through its scheduled mutation.
+
+Phase 9 adds a fail-closed workspace rollout independent of the three incident kill switches.
+`OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` progresses through `off`, `internal`, `invited`, and
+`general`. Internal workspaces come from `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`; the
+invited stage additionally includes `OVERLAY_CONNECTED_AGENTS_INVITED_WORKSPACE_IDS`. A workspace
+outside the active stage cannot create or manage environments and cannot dispatch a new remote run.
+Existing host credentials remain governed by the global control-plane kill switch so operators can
+choose between stopping new tenant dispatch and immediately stopping the entire fleet.
+
+The repeatable local release gate is `npm run check:byo-agents:release`. It covers unit, protocol,
+host crash/reconnect, Convex repository, authorization, billing, route inventory, migration-version,
+no-Convex PostgreSQL bootstrap, bounded command/event/fan-out load, managed sandbox, and cleanup
+tests. `npm run check:byo-agents:release:postgres` runs the migrated PostgreSQL provider contract
+against the configured remote contract database. Host compatibility runs in GitHub Actions on
+macOS 14, Ubuntu 24.04, and Windows Server 2022. These automated checks do not replace authenticated
+browser QA, live provider conformance, invoice reconciliation, or production soak evidence.
+
 ## Trust boundaries and threat model
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
@@ -223,6 +293,10 @@ The server-side runtime config has three independent, default-off flags:
 
 The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
 `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, and `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
+
+Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
+workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
+does not make any workspace eligible.
 
 Route services read these flags before selecting a database repository, so Convex and
 PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly

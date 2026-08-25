@@ -11,10 +11,14 @@ export type StartAdapterSessionInput = {
   prompt: string
   remoteSessionId?: string
   metadata: Record<string, unknown>
+  adapterState?: Record<string, unknown>
+  persistAdapterState?: (state: Record<string, unknown>) => void
 }
 
 export interface AgentAdapterSession {
   readonly remoteSessionId: string
+  /** The adapter dispatched the first prompt while creating the remote session. */
+  readonly initialPromptHandled?: boolean
   prompt(prompt: string): Promise<void>
   approve(requestKey: string, optionId: string): Promise<void>
   elicit(requestKey: string, action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>): Promise<void>

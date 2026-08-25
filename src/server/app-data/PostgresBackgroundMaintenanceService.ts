@@ -20,6 +20,7 @@ export interface PostgresBackgroundMaintenanceSummary {
     failed: number
   }
   remoteAgentRuns: ConnectedAgentSweepResult
+  connectedAgentRateWindows: { deleted: number }
   oldConversationEvents: {
     deleted: number
   }
@@ -46,6 +47,7 @@ export class PostgresBackgroundMaintenanceService {
       hostOfflineBefore: (options.now ?? new Date()).getTime() - 90_000,
       limit,
     })
+    const connectedAgentRateWindows = await this.cleanupConnectedAgentRateWindows({ now: options.now, limit })
     const oldConversationEvents = await this.cleanupOldConversationEvents({
       limit,
       now: options.now,
@@ -59,9 +61,31 @@ export class PostgresBackgroundMaintenanceService {
     return {
       expiredAgentRuns,
       remoteAgentRuns,
+      connectedAgentRateWindows,
       oldConversationEvents,
       emptyConversations,
     }
+  }
+
+  async cleanupConnectedAgentRateWindows(options: { limit?: number; now?: Date } = {}) {
+    const cutoff = new Date((options.now ?? new Date()).getTime() - 10 * 60_000)
+    const result = await this.db.execute<{ environment_id: string }>(sql`
+      WITH candidates AS (
+        SELECT environment_id, window_started_at
+        FROM agent_event_rate_windows
+        WHERE window_started_at < ${cutoff}
+        ORDER BY window_started_at ASC
+        LIMIT ${normalizeLimit(options.limit)}
+      ), deleted AS (
+        DELETE FROM agent_event_rate_windows w
+        USING candidates c
+        WHERE w.environment_id = c.environment_id
+          AND w.window_started_at = c.window_started_at
+        RETURNING w.environment_id
+      )
+      SELECT environment_id FROM deleted
+    `)
+    return { deleted: result.rows.length }
   }
 
   async expireToolLoopAgentRunLeases(options: {

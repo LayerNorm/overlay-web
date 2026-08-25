@@ -3,6 +3,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import { ManagedAgentSandboxError, ManagedAgentSandboxService } from '@/server/agents/ManagedAgentSandboxService'
+import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { agentEnvironmentErrorResponse } from '../shared'
 
 export const maxDuration = 300
@@ -18,6 +19,11 @@ export async function POST(request: Request, context: AppApiRouteContext) {
       audit: server.auditService,
       controlPlane: server.connectedAgentControlPlane,
       repository: server.appData.repositories.connectedAgents,
+      policyLimits: async ({ userId, workspaceId }) => {
+        const entitlements = await server.chatUsagePolicy.getEntitlements({ userId, workspaceId })
+        if (!entitlements) throw new ManagedAgentSandboxError('Could not verify subscription', 401, 'not_entitled')
+        return connectedAgentPolicyFor(entitlements)
+      },
     })
     const provisioned = await service.provision({
       actorUserId: context.auth.userId,
