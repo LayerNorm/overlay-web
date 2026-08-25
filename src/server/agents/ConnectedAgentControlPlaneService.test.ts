@@ -188,6 +188,39 @@ test('artifact retention cleanup removes expired objects and tombstones metadata
   assert.deepEqual(setup.deletedKeys, [artifact.objectKey])
 })
 
+test('artifact retention cleanup drains multiple bounded batches without touching live artifacts', async () => {
+  const setup = artifactFixture(new TextEncoder().encode('retention soak'))
+  const expiredCount = 257
+  for (let index = 0; index < expiredCount; index += 1) {
+    const artifact = artifactRecord(`artifact-expired-${index}`, setup.auth, setup.session, {
+      expiresAt: NOW - index - 1,
+      status: 'linked',
+    })
+    setup.artifacts.set(artifact.id, artifact)
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const artifact = artifactRecord(`artifact-live-${index}`, setup.auth, setup.session, {
+      expiresAt: NOW + 60_000 + index,
+      status: 'linked',
+    })
+    setup.artifacts.set(artifact.id, artifact)
+  }
+
+  const batches: number[] = []
+  for (;;) {
+    const result = await setup.service.cleanupArtifacts(100)
+    batches.push(result.deleted)
+    if (result.deleted === 0) break
+  }
+
+  assert.deepEqual(batches, [100, 100, 57, 0])
+  assert.equal(new Set(setup.deletedKeys).size, expiredCount)
+  assert.equal(setup.deletedKeys.length, expiredCount)
+  assert.equal([...setup.artifacts.values()].filter((artifact) => artifact.status === 'deleted').length, expiredCount)
+  assert.equal([...setup.artifacts.values()].filter((artifact) => artifact.status === 'linked').length, 3)
+  assert.deepEqual(await setup.service.cleanupArtifacts(100), { deleted: 0 })
+})
+
 async function assertControlPlaneError(operation: () => Promise<unknown>, code: string) {
   await assert.rejects(operation, (error: unknown) =>
     error instanceof ConnectedAgentControlPlaneError && error.code === code)

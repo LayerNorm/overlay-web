@@ -237,10 +237,33 @@ contracts. Runtime deployment `dpl_FLjfy6pSMRx5vpmQJ5wgShyxkswR` passed the stre
 browser matrix across the public shell, sign-in, chat, and environment settings with zero Convex
 connections and zero JavaScript/runtime errors; fresh Chrome tabs loaded both provider surfaces
 without console errors. The unauthenticated enrollment boundary matched Convex at HTTP 401. This is
-a release baseline, not Phase 9 completion: the
-authenticated PostgreSQL browser matrix, fresh enrollment and room invocation matrix, live Vercel
-and Daytona conformance, invoice reconciliation, artifact-retention soak, and production rollout
-remain outstanding.
+a release baseline, not Phase 9 completion.
+
+The PostgreSQL release deployment must enable the provider-neutral workspace, agent, room, and
+conversation routes as well as the connected-agent control plane. A signed-out 401/403 matrix is
+insufficient: authenticated QA must create its Personal workspace, load Agent Environments, and
+exercise the same enrollment-to-mention flow without any Convex request.
+
+Deployment `dpl_HsV4gn8EmABm75xATvxbTkeg1uiE` passed the authenticated PostgreSQL shell matrix for
+the Personal workspace, Agent Environments, Agents, and Chat. The browser resource inventory
+contained no Convex URL, emitted no runtime error, and the server no-Convex bootstrap and release
+safety suites passed. The same rehearsal found and repaired a stale route-support gate that had
+incorrectly hidden provider-neutral workspace collaboration routes in PostgreSQL mode.
+
+Artifact release evidence includes an accelerated bounded-batch soak: more than two cleanup pages
+of expired objects must drain exactly once, tombstones must remain idempotent, and unexpired objects
+must survive. This deterministic rehearsal complements rather than replaces the calendar-time
+production retention observation.
+
+Live sandbox conformance uses the strictest portable lifecycle constraint shared by the supported
+providers. In particular, Vercel snapshot fixtures request a one-day expiry because the live API
+rejects shorter expirations. Resume the original persistent sandbox before deleting its snapshot,
+then delete the snapshot explicitly during cleanup.
+
+The 2026-08-25 live conformance run passed for both Vercel Sandbox and Daytona. Phase 9 remains open
+until the fresh enrollment-to-mention matrix, provider-invoice reconciliation, calendar-time
+artifact-retention observation, and matching production Convex rollout and stability evidence are
+complete.
 
 ## Trust boundaries and threat model
 

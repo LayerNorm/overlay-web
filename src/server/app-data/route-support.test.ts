@@ -150,12 +150,30 @@ test('Postgres app-data mode supports bootstrap and gates external integration r
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/workspaces/acme',
-  }).status, 'unsupported')
+  }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/conversations/abc/participants',
-  }).status, 'unsupported')
+  }).status, 'supported')
+})
+
+test('Postgres app-data mode exposes the provider-neutral workspace and agent vertical slice', () => {
+  for (const [method, pathname] of [
+    ['GET', '/api/v1/workspaces'],
+    ['POST', '/api/v1/workspaces/active'],
+    ['GET', '/api/v1/agents'],
+    ['POST', '/api/v1/conversations/channels'],
+    ['POST', '/api/v1/conversations/message'],
+  ] as const) {
+    const support = getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+      method,
+      pathname,
+    })
+    assert.equal(support.status, 'supported', `${method} ${pathname}`)
+    assert.notEqual(support.feature, 'workspace-collaboration-gated')
+  }
 })
 
 test('Postgres app-data mode supports chat title generation', () => {
