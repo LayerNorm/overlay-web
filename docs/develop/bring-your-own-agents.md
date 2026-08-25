@@ -227,6 +227,21 @@ against the configured remote contract database. Host compatibility runs in GitH
 macOS 14, Ubuntu 24.04, and Windows Server 2022. These automated checks do not replace authenticated
 browser QA, live provider conformance, invoice reconciliation, or production soak evidence.
 
+The PostgreSQL release deployment must enable the provider-neutral workspace, agent, room, and
+conversation routes as well as the connected-agent control plane. A signed-out 401/403 matrix is
+insufficient: authenticated QA must create its Personal workspace, load Agent Environments, and
+exercise the same enrollment-to-mention flow without any Convex request.
+
+Artifact release evidence includes an accelerated bounded-batch soak: more than two cleanup pages
+of expired objects must drain exactly once, tombstones must remain idempotent, and unexpired objects
+must survive. This deterministic rehearsal complements rather than replaces the calendar-time
+production retention observation.
+
+Live sandbox conformance uses the strictest portable lifecycle constraint shared by the supported
+providers. In particular, Vercel snapshot fixtures request a one-day expiry because the live API
+rejects shorter expirations. Resume the original persistent sandbox before deleting its snapshot,
+then delete the snapshot explicitly during cleanup.
+
 ## Trust boundaries and threat model
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,

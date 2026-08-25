@@ -89,7 +89,9 @@ export async function runSandboxConformance(
   checks.push('idle-stop-and-reconnect')
 
   if (sandbox.capabilities.snapshots) {
-    snapshotId = (await sandbox.snapshot({ expiresInMs: 60_000 })).id
+    // Vercel snapshots require either no expiry or a minimum lifetime of one day.
+    // Use the portable provider minimum so the same black-box suite remains live-safe.
+    snapshotId = (await sandbox.snapshot({ expiresInMs: 24 * 60 * 60_000 })).id
     assert.ok(snapshotId)
     checks.push('snapshot')
   }
@@ -99,11 +101,13 @@ export async function runSandboxConformance(
     assert.equal(await restored.status(), 'running')
     await restored.delete()
     restored = null
+    // Vercel stops a persistent sandbox while snapshotting and needs the snapshot
+    // to resume it. Resume before deleting the snapshot used by the original.
+    await sandbox.resume()
+    assert.equal(await sandbox.status(), 'running')
     await runtime.deleteSnapshot(snapshotId)
     snapshotId = undefined
     checks.push('restore')
-    await sandbox.resume()
-    assert.equal(await sandbox.status(), 'running')
   }
 
   // Runtime policy changes are monotonic. Some provider/account tiers correctly refuse

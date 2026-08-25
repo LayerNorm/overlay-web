@@ -192,9 +192,11 @@ Convex search indexes have been added to:
 `search/mentions:searchMentions` (in `convex/search/mentions.ts`) uses these indexes to return bounded top-10 results per category. `GET /api/v1/mention-search?q=<query>` is the BFF route that calls this query. The client `searchMentions` function tries the indexed endpoint first and falls back to scan-and-filter if unavailable. Knowledge bases and connectors remain client-side filtered (not in Convex search indexes).
 
 PostgreSQL route classification is explicit for release safety: connected-agent environments and
-bindings are supported, mention search is degraded to an empty bounded result, and the Convex file
-ingestion worker plus Slack import job routes are unavailable. PostgreSQL mode must not enter those
-Convex-only worker paths.
+bindings are supported. The provider-neutral workspace, agent, room, and conversation APIs are also
+enabled so an authenticated PostgreSQL browser can complete the same connected-agent vertical slice.
+Mention search is degraded to an empty bounded result, while sharing/search surfaces without a
+PostgreSQL repository and the Convex file-ingestion and Slack-import workers remain unavailable.
+PostgreSQL mode must not enter those Convex-only worker paths.
 
 `searchWorkspaceChats` (in `convex/collaboration/channels.ts`) now uses the `conversations.search_title` index for title matching instead of iterating all participant conversations. Message content search is still scan-based but limited to accessible conversations with a reduced message scan window (50 instead of 200).
 
