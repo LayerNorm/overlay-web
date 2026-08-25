@@ -376,7 +376,8 @@ inventory enforcement, and schema-version rollback checks. The phase remains ope
 Convex and PostgreSQL browser matrices, managed-provider conformance, invoice reconciliation,
 and production soak satisfy the exit gate; do not mark it ✅ from local tests.
 
-Release rehearsal on 2026-08-25 established the current baseline at staging commit `5ea8534fe`:
+Release rehearsal on 2026-08-25 established the current runtime baseline at staging commit
+`c0e56958e`:
 
 - The complete release gate, runtime configuration suite, TypeScript check, isomorphic-boundary
   check, bounded load rehearsal, and deterministic sandbox conformance suite passed.
@@ -385,8 +386,11 @@ Release rehearsal on 2026-08-25 established the current baseline at staging comm
 - GitHub Actions run `32828571507` passed the host protocol, tests, and typecheck on macOS 14,
   Ubuntu 24.04, and Windows Server 2022.
 - PostgreSQL schema 68 passed both live connected-agent contracts in deployment
-  `dpl_42BEd1gxBJ3UTRbWoVYH5mfTTfDb`. The live browser smoke observed zero Convex connections, and
-  unauthenticated enrollment rejection now matches Convex at HTTP 401.
+  `dpl_42BEd1gxBJ3UTRbWoVYH5mfTTfDb`. Runtime deployment
+  `dpl_FLjfy6pSMRx5vpmQJ5wgShyxkswR` passed the strengthened signed-out browser matrix across the
+  public shell, sign-in, chat, and environment settings with zero Convex connections and zero
+  JavaScript/runtime errors. Fresh Chrome tabs loaded both provider surfaces without console errors,
+  and unauthenticated enrollment rejection matches Convex at HTTP 401.
 
 Phase 9 remains open. The authenticated PostgreSQL browser matrix, a fresh end-to-end enrollment
 and room invocation matrix, live Vercel and Daytona sandbox conformance, provider invoice
