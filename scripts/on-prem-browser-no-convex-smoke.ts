@@ -40,7 +40,11 @@ async function main(): Promise<void> {
   })
   page.on('pageerror', (error) => pageErrors.push(error.message))
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text())
+    if (message.type() !== 'error') return
+    const text = message.text()
+    const expectedSignedOutDenial = !expectAuthenticated &&
+      /^Failed to load resource: the server responded with a status of (401|403) \(\)$/.test(text)
+    if (!expectedSignedOutDenial) consoleErrors.push(text)
   })
 
   try {
