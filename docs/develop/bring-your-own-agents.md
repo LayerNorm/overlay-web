@@ -222,6 +222,18 @@ against the configured remote contract database. Host compatibility runs in GitH
 macOS 14, Ubuntu 24.04, and Windows Server 2022. These automated checks do not replace authenticated
 browser QA, live provider conformance, invoice reconciliation, or production soak evidence.
 
+The 2026-08-25 release rehearsal at staging commit `5ea8534fe` passed that gate and the full
+configuration, TypeScript, and isomorphic-boundary checks. Convex dev `different-caiman-77` served
+the allowlisted internal workspace through `staging.getoverlay.io`; authenticated Chrome QA loaded
+its environment inventory without fresh console errors. GitHub Actions run `32828571507` passed on
+macOS 14, Ubuntu 24.04, and Windows Server 2022. PostgreSQL deployment
+`dpl_42BEd1gxBJ3UTRbWoVYH5mfTTfDb` migrated to schema 68 and passed both connected-agent provider
+contracts; the browser smoke observed zero Convex connections and the unauthenticated enrollment
+boundary matched Convex at HTTP 401. This is a release baseline, not Phase 9 completion: the
+authenticated PostgreSQL browser matrix, fresh enrollment and room invocation matrix, live Vercel
+and Daytona conformance, invoice reconciliation, artifact-retention soak, and production rollout
+remain outstanding.
+
 ## Trust boundaries and threat model
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,

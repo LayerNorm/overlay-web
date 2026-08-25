@@ -376,6 +376,22 @@ inventory enforcement, and schema-version rollback checks. The phase remains ope
 Convex and PostgreSQL browser matrices, managed-provider conformance, invoice reconciliation,
 cross-platform CI run, and production soak satisfy the exit gate; do not mark it ✅ from local tests.
 
+Release rehearsal on 2026-08-25 established the current baseline at staging commit `5ea8534fe`:
+
+- The complete release gate, runtime configuration suite, TypeScript check, isomorphic-boundary
+  check, bounded load rehearsal, and deterministic sandbox conformance suite passed.
+- Convex dev `different-caiman-77` and `staging.getoverlay.io` serve the allowlisted internal
+  workspace. Authenticated Chrome QA loaded the environment inventory without fresh console errors.
+- GitHub Actions run `32828571507` passed the host protocol, tests, and typecheck on macOS 14,
+  Ubuntu 24.04, and Windows Server 2022.
+- PostgreSQL schema 68 passed both live connected-agent contracts in deployment
+  `dpl_42BEd1gxBJ3UTRbWoVYH5mfTTfDb`. The live browser smoke observed zero Convex connections, and
+  unauthenticated enrollment rejection now matches Convex at HTTP 401.
+
+Phase 9 remains open. The authenticated PostgreSQL browser matrix, a fresh end-to-end enrollment
+and room invocation matrix, live Vercel and Daytona sandbox conformance, provider invoice
+reconciliation, artifact-retention soak, and production Convex rollout still require evidence.
+
 Before broad release:
 
 - Run unit, protocol, repository, route, authorization, billing, deletion,
