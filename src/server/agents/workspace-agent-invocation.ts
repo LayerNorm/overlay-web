@@ -1,11 +1,13 @@
 import 'server-only'
 
+import { randomUUID } from 'node:crypto'
 import { streamText } from 'ai'
 import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import { getOverlayRuntimeConfig } from '@/server/config'
 import {
   ActConversationServiceError,
   ActEntitlementService,
@@ -200,8 +202,19 @@ export type WorkspaceAgentInvocation = {
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
+  remoteTarget?: {
+    adapterId: string
+    bindingId: string
+    environmentId: string
+    environmentName: string
+    online: boolean
+    workingDirectory: string
+  }
   turnId: string
 }
+
+const CONNECTED_AGENT_ONLINE_WITHIN_MS = 45_000
+export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 2 * 60_000
 
 /**
  * Everything a room turn reads about the room. Loaded fresh per turn rather
@@ -348,6 +361,9 @@ export async function resolveWorkspaceAgentInvocations(args: {
     })
   }
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
+  const runtime = await getOverlayRuntimeConfig()
+  const remoteRunsEnabled = runtime.features.connectedAgentControlPlane === true
+    && runtime.features.remoteAgentRuns === true
   const invocations: WorkspaceAgentInvocation[] = []
   for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {
     const agent = agentsByPrincipal.get(principalId)
@@ -360,16 +376,125 @@ export async function resolveWorkspaceAgentInvocations(args: {
       })
       continue
     }
+    const target = remoteRunsEnabled
+      ? await server.appData.repositories.connectedAgents.findInvocationTarget({
+          workspaceId: args.workspaceId,
+          agentId: agent.id,
+          now: Date.now(),
+          onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
+        })
+      : null
+    const adapterId = target && typeof target.binding.adapterConfig.adapterId === 'string'
+      ? target.binding.adapterConfig.adapterId.trim() : ''
+    const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'
+      ? target.binding.adapterConfig.workingDirectory.trim() : ''
     invocations.push({
       agentId: agent.id,
       agentName: agent.name,
       agentPrincipalId: agent.principalId,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
+      ...(target && adapterId && workingDirectory ? {
+        remoteTarget: {
+          adapterId,
+          bindingId: target.binding.id,
+          environmentId: target.environment.id,
+          environmentName: target.environment.name,
+          online: target.environment.status === 'online',
+          workingDirectory,
+        },
+      } : {}),
       turnId: `agent_${args.messageId}_${agent.id}`,
     })
   }
   return invocations
+}
+
+export async function startRemoteWorkspaceAgentTurn(args: {
+  actorUserId: string
+  conversationId: string
+  initiatorPrincipalId: string
+  invocation: WorkspaceAgentInvocation & { remoteTarget: NonNullable<WorkspaceAgentInvocation['remoteTarget']> }
+  messageId: string
+  prompt: string
+  threadRootMessageId?: string
+  workspaceId: string
+}) {
+  const server = getOverlayServerContext()
+  const requestFingerprint = hashOperationalIdentifier(
+    'workspace-agent-remote-invocation',
+    args.invocation.invocationNonce,
+  )
+  const entitlements = await server.chatUsagePolicy.getEntitlements({
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    programmaticSubjectId: `agent:${args.invocation.agentId}`,
+  })
+  if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
+  // User-owned ACP execution has no Overlay model charge. This reservation call
+  // still applies the payer's agent allowance before dispatch; paid provider
+  // reservations remain null until Overlay itself supplies metered compute.
+  const reservation = await server.chatUsagePolicy.reserveForAttempt({
+    entitlements,
+    estimatedInputTokens: 0,
+    idempotencyKey: args.invocation.invocationNonce,
+    maxOutputTokens: 0,
+    modelId: FREE_TIER_AUTO_MODEL_ID,
+    operationId: `workspace-agent:${args.invocation.turnId}`,
+    paid: false,
+    requestFingerprint,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    programmaticSubjectId: `agent:${args.invocation.agentId}`,
+  })
+  if (!reservation.ok) throw new WorkspaceAgentInvocationError(
+    reservation.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
+  )
+  const now = Date.now()
+  try {
+    return await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
+      actorUserId: args.actorUserId,
+      agentId: args.invocation.agentId,
+      authorPrincipalId: args.invocation.agentPrincipalId,
+      bindingId: args.invocation.remoteTarget.bindingId,
+      clientNonce: args.invocation.invocationNonce,
+      commandId: `agent_command_${randomUUID()}`,
+      conversationId: args.conversationId,
+      environmentId: args.invocation.remoteTarget.environmentId,
+      environmentName: args.invocation.remoteTarget.environmentName,
+      environmentOnline: args.invocation.remoteTarget.online,
+      initiatorPrincipalId: args.initiatorPrincipalId,
+      modelId: args.invocation.modelId,
+      prompt: args.prompt,
+      queueExpiresAt: now + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
+      reservationId: reservation.reservationId,
+      runId: `agent_run_${randomUUID()}`,
+      sessionId: `agent_session_${randomUUID()}`,
+      startPayload: {
+        bindingId: args.invocation.remoteTarget.bindingId,
+        adapterId: args.invocation.remoteTarget.adapterId,
+        workingDirectory: args.invocation.remoteTarget.workingDirectory,
+        prompt: args.prompt,
+        metadata: {
+          conversationId: args.conversationId,
+          messageId: args.messageId,
+          initiatorPrincipalId: args.initiatorPrincipalId,
+        },
+      },
+      threadRootMessageId: args.threadRootMessageId,
+      turnId: args.invocation.turnId,
+      userMessageId: args.messageId,
+      workspaceId: args.workspaceId,
+      now,
+    })
+  } catch (error) {
+    await server.chatUsagePolicy.releaseReservation({
+      reason: 'remote_agent_dispatch_failed',
+      reservationId: reservation.reservationId,
+      userId: args.actorUserId,
+    }).catch((_error) => undefined)
+    throw error
+  }
 }
 
 /**

@@ -60,6 +60,7 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
 import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
@@ -132,6 +133,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceService: WorkspaceService
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
+  connectedAgentControlPlane: ConnectedAgentControlPlaneService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
@@ -168,6 +170,7 @@ export function createOverlayServerContext(
     assertSelectedProviderConfig(runtimeConfig)
   }
   const appData = createAppDataContext(runtimeConfig)
+  const objectStore = appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig)
   const chatUsagePolicy = createActUsagePolicy({
     appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
@@ -274,6 +277,27 @@ export function createOverlayServerContext(
     ? new PostgresWorkspaceAgentRepository(postgresDb)
     : new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
+    audit: auditService,
+    objectStore,
+    repository: appData.repositories.connectedAgents,
+    workspaces: workspaceService,
+    settleUsage: async (usage) => {
+      if (!usage.userId) return
+      if (usage.outcome === 'cancelled') {
+        await chatUsagePolicy.releaseReservation({
+          reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_cancelled',
+        })
+        return
+      }
+      if (usage.outcome !== 'completed' && usage.inputTokens === 0 && usage.outputTokens === 0) {
+        await chatUsagePolicy.markReservationForReconcile({ reservationId: usage.reservationId,
+          userId: usage.userId, errorMessage: `remote_agent_${usage.outcome}` })
+        return
+      }
+      await chatUsagePolicy.recordFinishedUsage(usage)
+    },
+  })
 
   const workspaceSharingRepository = isPostgres && postgresDb
     ? new PostgresWorkspaceSharingRepository(postgresDb)
@@ -366,7 +390,7 @@ export function createOverlayServerContext(
       appData.repositories.billing,
       appData.repositories.usage,
     ),
-    objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
+    objectStore,
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter,
@@ -387,6 +411,7 @@ export function createOverlayServerContext(
     workspaceService,
     workspaceGovernanceService,
     workspaceAgentService,
+    connectedAgentControlPlane,
     workspaceSharingService,
     workspaceSearchService,
     knowledgeSourceIngestionService,
@@ -737,7 +762,10 @@ function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config 
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {
-  return resolveOverlayCapabilities(config)
+  return {
+    ...resolveOverlayCapabilities(config),
+    connectedAgents: config.features.connectedAgentControlPlane === true,
+  }
 }
 
 function selectedProvider(

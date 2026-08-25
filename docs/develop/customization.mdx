@@ -80,6 +80,13 @@ Use `featureFlags` for coarse product areas and `policyGates` for enterprise pol
 
 Capability gates are evaluated per registry entry. Memory management in Settings requires the `memory` capability only; `vectorSearch` controls semantic retrieval and search tooling independently, so disabling vector search must not hide saved-memory management.
 
+The default `agent-environments` settings section is gated by the `agents` feature flag and the
+server-derived `connectedAgents` capability. Its web
+renderer creates the copyable host command, shows pending verification phrases, collects explicit
+project roots, and exposes environment revocation. The backend additionally requires
+`features.connectedAgentControlPlane`; the capability mirrors that server policy and cannot be
+enabled by a client assertion.
+
 ## Workspace Memories
 
 Memories are shared workspace resources with member attribution. Settings > Memories defaults to `All` and uses one dropdown containing `All` plus every active human member; selecting a member reloads only memories attributed to that member. Creator names are shown on memory cards. Members may copy any visible workspace memory, while selection and delete controls appear only on memories they created.

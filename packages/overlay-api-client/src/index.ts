@@ -45,6 +45,7 @@ export type {
 } from './admin-authorization/client'
 
 export { ConversationsClient } from './chat/conversations-client'
+export { AgentEnvironmentsClient, type AgentEnvironmentResource } from './agent-environments/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'

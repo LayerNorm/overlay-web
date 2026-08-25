@@ -14,7 +14,7 @@ export type AgentRunMode = (typeof AGENT_RUN_MODES)[number]
  */
 export const ROOM_AGENT_RUN_LEASE_MS = 30 * 60 * 1_000
 
-export const AGENT_RUN_RUNNERS = ['tool_loop', 'workflow'] as const
+export const AGENT_RUN_RUNNERS = ['tool_loop', 'workflow', 'remote'] as const
 export type AgentRunRunner = (typeof AGENT_RUN_RUNNERS)[number]
 
 export const AGENT_RUN_STATUSES = [
@@ -77,6 +77,11 @@ export type AgentRun = {
   /** Set for `room` runs: which agent answered, and as which principal. */
   agentId?: string
   agentPrincipalId?: string
+  /** The human who requested delegated work; distinct from the agent author. */
+  initiatorPrincipalId?: string
+  environmentId?: string
+  bindingId?: string
+  remoteSessionId?: string
   mode: AgentRunMode
   runner: AgentRunRunner
   status: AgentRunStatus

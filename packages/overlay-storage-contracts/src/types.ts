@@ -17,6 +17,12 @@ export interface UploadUrl {
   maxSizeBytes?: number
 }
 
+export type UploadConstraints = {
+  expiresIn?: number
+  contentLength?: number
+  checksumSha256?: string
+}
+
 /** Presigned or public URL for downloading an object. */
 export type DownloadUrl = string
 
@@ -27,10 +33,12 @@ export interface QueryResult {
 }
 
 export interface ObjectStore {
-  getUploadUrl(key: string, contentType: string): Promise<UploadUrl>
+  getUploadUrl(key: string, contentType: string, constraints?: UploadConstraints): Promise<UploadUrl>
   getDownloadUrl(key: string): Promise<DownloadUrl>
   deleteObject(key: string): Promise<void>
   listObjects(prefix: string): Promise<FileMetadata[]>
+  headObject?(key: string): Promise<{ sizeBytes: number; contentType: string | undefined } | null>
+  downloadBuffer?(key: string, maximumBytes?: number): Promise<Uint8Array>
 }
 
 export interface VectorStore {

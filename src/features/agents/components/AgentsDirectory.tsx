@@ -82,7 +82,11 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     return () => window.removeEventListener(NEW_AGENT_EVENT, openCreateDialog)
   }, [])
 
-  async function save(input: WorkspaceAgentCreateInput) {
+  async function save(input: WorkspaceAgentCreateInput, binding?: {
+    environmentId: string
+    adapterId: string
+    workingDirectory: string
+  } | null) {
     if (showcase) {
       const now = Date.now()
       if (editing) {
@@ -107,8 +111,17 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     setBusy(true)
     setError(null)
     try {
-      if (editing) await overlayAppClient.agents.update(activeWorkspaceId, editing.id, input)
-      else await overlayAppClient.agents.create(activeWorkspaceId, input)
+      const saved = editing
+        ? await overlayAppClient.agents.update(activeWorkspaceId, editing.id, input)
+        : await overlayAppClient.agents.create(activeWorkspaceId, input)
+      if (binding) {
+        await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+          agentId: saved.agent.id,
+          ...binding,
+        })
+      } else if (binding === null && editing) {
+        await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+      }
       dispatchAgentDirectoryChanged(activeWorkspaceId)
       setDialogOpen(false)
       setEditing(null)
@@ -216,7 +229,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
         )}
       </AppScreenBody>
       </AppScreenShell>
-      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input) => void save(input)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
+      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input, binding) => void save(input, binding)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
       <ShareDialog
         workspaceId={activeWorkspaceId}
         isOpen={Boolean(sharingAgent)}

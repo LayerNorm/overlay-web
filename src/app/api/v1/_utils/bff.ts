@@ -69,10 +69,16 @@ export type BffDomainService = (
   context: AppApiRouteContext,
 ) => Response | Promise<Response>
 
+export type BffRouteOptions = {
+  /** Never persist the response body in the idempotency store (for one-time secrets). */
+  sensitiveResponse?: boolean
+}
+
 export async function handleBffRoute(
   request: NextRequest,
   context: unknown,
   service: BffDomainService,
+  options: BffRouteOptions = {},
 ): Promise<Response> {
   const startTime = performance.now()
   const route = request.nextUrl.pathname
@@ -257,18 +263,21 @@ export async function handleBffRoute(
     workspace,
   } as AppApiRouteContext
 
-  const response = await handleIdempotentMutation(
-    request,
-    auth.userId,
-    async () => await withObservabilityContext(
+  const invokeService = async () => await withObservabilityContext(
       contextForRequest(request, {
         provider: appDataCapabilities.provider,
         tenantId: auth.organizationId,
       }),
       async () => await service(request, serviceContext),
-    ),
-    { repository: idempotencyRepository },
-  )
+    )
+  const response = options.sensitiveResponse
+    ? await invokeService()
+    : await handleIdempotentMutation(
+        request,
+        auth.userId,
+        invokeService,
+        { repository: idempotencyRepository },
+      )
   const standardizedResponse = await standardizePaginatedListResponse(request, response)
   await recordBffMutationAuditIfNeeded({
     auth,

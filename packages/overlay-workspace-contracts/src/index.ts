@@ -108,3 +108,5 @@ export {
   type WorkspaceAuditExportRecord,
   type WorkspaceOperationalMetrics,
 } from './types'
+
+export * from './connected-agents'

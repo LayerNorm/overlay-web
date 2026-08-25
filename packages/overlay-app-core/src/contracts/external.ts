@@ -30,6 +30,7 @@ export type {
   ObjectSummary,
   QueryResult,
   UploadUrl,
+  UploadConstraints,
   VectorStore,
 } from '@overlay/storage-contracts'
 export type {

@@ -1,0 +1,29 @@
+{
+  "name": "@overlay/sandbox-runtime",
+  "version": "0.0.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./conformance": "./src/conformance.ts",
+    "./daytona": "./src/daytona.ts",
+    "./vercel": "./src/vercel.ts"
+  },
+  "scripts": {
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@daytona/sdk": "0.200.1",
+    "@vercel/sandbox": "3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.8.1",
+    "typescript": "^5"
+  }
+}

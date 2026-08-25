@@ -11,7 +11,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import type { ObjectStore, ObjectSummary } from '@overlay/app-core'
+import type { ObjectStore, ObjectSummary, UploadConstraints } from '@overlay/app-core'
 export { keyForFile, keyForOutput } from '@/server/storage/storage-keys'
 
 export interface R2ObjectStoreConfig {
@@ -299,6 +299,7 @@ export class R2ObjectStore implements ObjectStore {
   async getUploadUrl(
     key: string,
     contentType: string,
+    constraints?: UploadConstraints,
   ): Promise<{ url: string; fields?: Record<string, string> }> {
     return {
       url: await getSignedUrl(
@@ -307,8 +308,10 @@ export class R2ObjectStore implements ObjectStore {
           Bucket: this.bucketName(),
           Key: key,
           ContentType: contentType,
+          ...(constraints?.contentLength ? { ContentLength: constraints.contentLength } : {}),
+          ...(constraints?.checksumSha256 ? { ChecksumSHA256: Buffer.from(constraints.checksumSha256, 'hex').toString('base64') } : {}),
         }),
-        { expiresIn: this.presignTtlSeconds() },
+        { expiresIn: Math.min(this.presignTtlSeconds(), constraints?.expiresIn ?? this.presignTtlSeconds()) },
       ),
     }
   }
@@ -354,6 +357,14 @@ export class R2ObjectStore implements ObjectStore {
       if (code === 'NotFound' || code === 'NoSuchKey') return null
       throw err
     }
+  }
+
+  async downloadBuffer(key: string, maximumBytes = 25 * 1024 * 1024): Promise<Uint8Array> {
+    const response = await this.client().send(new GetObjectCommand({ Bucket: this.bucketName(), Key: key }))
+    if (!response.Body) throw new Error('Object body is unavailable')
+    const bytes = await response.Body.transformToByteArray()
+    if (bytes.byteLength > maximumBytes) throw new Error('Object exceeds the download validation limit')
+    return bytes
   }
 
   async listObjects(prefix: string): Promise<ObjectSummary[]> {

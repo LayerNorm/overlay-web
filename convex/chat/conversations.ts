@@ -817,7 +817,7 @@ export const startAgentRun = mutation({
     leaseExpiresAt: v.optional(v.number()),
     mode: v.union(v.literal('chat'), v.literal('work')),
     modelId: v.string(),
-    runner: v.union(v.literal('tool_loop'), v.literal('workflow')),
+    runner: v.union(v.literal('tool_loop'), v.literal('workflow'), v.literal('remote')),
     serverSecret: v.string(),
     turnId: v.string(),
     userId: v.string(),

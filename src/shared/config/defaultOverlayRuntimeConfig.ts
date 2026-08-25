@@ -45,6 +45,11 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     modelRouting: true,
     sso: true,
     multiTenant: false,
+    // Connected agents launch behind independent server-side kill switches.
+    // Keep all three disabled until their respective release gates pass.
+    connectedAgentControlPlane: false,
+    remoteAgentRuns: false,
+    overlayCloudEnvironments: false,
   },
   providers: {
     auth: { provider: 'workos' },

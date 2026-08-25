@@ -8,7 +8,10 @@ import {
 } from '@/server/chat/chat-message-persistence'
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { start } from 'workflow/api'
-import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import {
+  resolveWorkspaceAgentInvocations,
+  startRemoteWorkspaceAgentTurn,
+} from '@/server/agents/workspace-agent-invocation'
 import { workspaceAgentTurnWorkflow } from '@/workflows/workspace-agent-turn'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -28,6 +31,8 @@ async function triggerWorkspaceAgentTurns(args: {
   conversationId: string
   messageId: string
   mentionedPrincipalIds: string[]
+  initiatorPrincipalId: string
+  prompt: string
   threadRootMessageId?: string
   workspaceId: string
 }): Promise<void> {
@@ -35,6 +40,19 @@ async function triggerWorkspaceAgentTurns(args: {
   const invocations = await resolveWorkspaceAgentInvocations(args)
   for (const invocation of invocations) {
     try {
+      if (invocation.remoteTarget) {
+        await startRemoteWorkspaceAgentTurn({
+          actorUserId: args.actorUserId,
+          conversationId: args.conversationId,
+          initiatorPrincipalId: args.initiatorPrincipalId,
+          invocation: { ...invocation, remoteTarget: invocation.remoteTarget },
+          messageId: args.messageId,
+          prompt: args.prompt,
+          ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+          workspaceId: args.workspaceId,
+        })
+        continue
+      }
       const turn = await collaboration.startAgentTurn({
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,
@@ -216,8 +234,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       await triggerWorkspaceAgentTurns({
         actorUserId: auth.userId,
         conversationId: body.conversationId,
+        initiatorPrincipalId: context.workspace.principal.id,
         mentionedPrincipalIds,
         messageId: String(messageId),
+        prompt: normalizedContent,
         ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
         workspaceId,
       }).catch((error) => {

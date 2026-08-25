@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { posix as pathPosix } from 'node:path'
-import type { Sandbox } from '@daytona/sdk'
+import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { classifyOutputType } from '@/shared/tools/output-types'
 import { keyForOutput } from '@/server/storage/storage-keys'
 import {
@@ -47,8 +47,8 @@ export async function stageDaytonaInputFiles(params: {
   findFile(fileId: string): Promise<OverlayFileRecord | null>
   paths: Pick<SandboxRunPaths, 'inputDir'>
   readFileBuffer(file: OverlayFileRecord): Promise<Buffer>
-  sandbox: Sandbox
-  uploadBuffer(sandbox: Sandbox, remotePath: string, contents: Buffer): Promise<void>
+  sandbox: SandboxInstance
+  uploadBuffer(sandbox: SandboxInstance, remotePath: string, contents: Buffer): Promise<void>
 }): Promise<Array<{ fileId: string; fileName: string; sandboxPath: string }>> {
   const uploadedFiles: Array<{ fileId: string; fileName: string; sandboxPath: string }> = []
   const seenNames = new Map<string, number>()
@@ -76,8 +76,8 @@ export async function stageInlineCodeFile(params: {
   code?: string
   paths: Pick<SandboxRunPaths, 'runDir'>
   runtime: 'node' | 'python'
-  sandbox: Sandbox
-  uploadBuffer(sandbox: Sandbox, remotePath: string, contents: string): Promise<void>
+  sandbox: SandboxInstance
+  uploadBuffer(sandbox: SandboxInstance, remotePath: string, contents: string): Promise<void>
 }): Promise<string | undefined> {
   if (typeof params.code !== 'string' || params.code.length === 0) return undefined
   const inlineCodePath = pathPosix.join(params.paths.runDir, params.runtime === 'node' ? 'main.js' : 'main.py')
@@ -91,12 +91,12 @@ export async function collectDaytonaArtifacts(params: {
   conversationId?: string
   createOutput(args: Record<string, unknown>): Promise<string | null>
   deleteObject(key: string): Promise<void>
-  downloadFile(sandbox: Sandbox, remotePath: string): Promise<Buffer>
+  downloadFile(sandbox: SandboxInstance, remotePath: string): Promise<Buffer>
   expectedOutputs: string[]
-  findSandboxFile(sandbox: Sandbox, remotePath: string): Promise<{ isDir?: boolean } | null>
+  findSandboxFile(sandbox: SandboxInstance, remotePath: string): Promise<{ isDir?: boolean } | null>
   paths: Pick<SandboxRunPaths, 'rootDir'>
   runtime: 'node' | 'python'
-  sandbox: Sandbox
+  sandbox: SandboxInstance
   serverSecret: string
   task: string
   turnId?: string
@@ -165,11 +165,11 @@ async function importDaytonaArtifact(params: {
   conversationId?: string
   createOutput(args: Record<string, unknown>): Promise<string | null>
   deleteObject(key: string): Promise<void>
-  downloadFile(sandbox: Sandbox, remotePath: string): Promise<Buffer>
+  downloadFile(sandbox: SandboxInstance, remotePath: string): Promise<Buffer>
   rawExpected: string
   remotePath: string
   runtime: 'node' | 'python'
-  sandbox: Sandbox
+  sandbox: SandboxInstance
   serverSecret: string
   task: string
   turnId?: string

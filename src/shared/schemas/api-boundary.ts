@@ -1,5 +1,13 @@
 import { z, type ZodTypeAny } from 'zod'
 import {
+  commandAcknowledgementSchema,
+  enrollmentRequestSchema,
+  eventBatchSchema,
+  filesystemGrantSchema,
+  hostCapabilitiesSchema,
+  initialCredentialRequestSchema,
+} from '@overlay/agent-bridge-protocol'
+import {
   CreateWebhookSubscriptionRequest,
   DeleteWebhookSubscriptionRequest,
   UpdateWebhookSubscriptionRequest,
@@ -121,6 +129,82 @@ const ConversationRunQuery = z.object({
 })
 
 export const webApiBoundaryDefinitions = [
+  {
+    method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },
+    summary: 'List connected agent environments in the active workspace', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/enrollment-sessions', schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/managed', schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Provision an Overlay Cloud agent environment', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
+    summary: 'Redeem an enrollment code and register a device public key', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/approve', routePath: '/api/v1/agent-environments/[environmentId]/approve',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/approve$/,
+    schema: { json: z.object({ filesystemGrant: filesystemGrantSchema }).strict(), response: UnknownResponse },
+    summary: 'Approve a pending environment with explicit filesystem roots', tag: 'Agent environments',
+  },
+  {
+    method: 'PATCH', path: '/api/v1/agent-environments/{environmentId}/roots', routePath: '/api/v1/agent-environments/[environmentId]/roots',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/roots$/,
+    schema: { json: z.object({ filesystemGrant: filesystemGrantSchema }).strict(), response: UnknownResponse },
+    summary: 'Change an environment filesystem grant', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/revoke', routePath: '/api/v1/agent-environments/[environmentId]/revoke',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/revoke$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Revoke an environment and its credentials', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/credentials', routePath: '/api/v1/agent-environments/[environmentId]/credentials',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/credentials$/,
+    schema: { json: initialCredentialRequestSchema, response: UnknownResponse },
+    summary: 'Issue an initial short-lived environment credential after device proof', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/credentials/refresh', routePath: '/api/v1/agent-environments/[environmentId]/credentials/refresh',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/credentials\/refresh$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Rotate a signed environment credential', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/heartbeat', routePath: '/api/v1/agent-environments/[environmentId]/heartbeat',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/heartbeat$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Record an authenticated environment heartbeat', tag: 'Agent environments',
+  },
+  {
+    method: 'PUT', path: '/api/v1/agent-environments/{environmentId}/capabilities', routePath: '/api/v1/agent-environments/[environmentId]/capabilities',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/capabilities$/,
+    schema: { json: hostCapabilitiesSchema, response: UnknownResponse },
+    summary: 'Refresh authenticated host capabilities', tag: 'Agent environments',
+  },
+  {
+    method: 'GET', path: '/api/v1/agent-environments/{environmentId}/commands', routePath: '/api/v1/agent-environments/[environmentId]/commands',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/commands$/,
+    schema: { query: z.object({ limit: z.coerce.number().int().min(1).max(50).optional(), waitMs: z.coerce.number().int().min(0).max(30_000).optional() }), response: UnknownResponse },
+    summary: 'Poll durable commands for an authenticated environment', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/commands/{commandId}/ack', routePath: '/api/v1/agent-environments/[environmentId]/commands/[commandId]/ack',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/commands\/[^/]+\/ack$/,
+    schema: { json: commandAcknowledgementSchema, response: UnknownResponse },
+    summary: 'Acknowledge or reject a claimed environment command', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/events', routePath: '/api/v1/agent-environments/[environmentId]/events',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/events$/,
+    schema: { json: eventBatchSchema, response: UnknownResponse },
+    summary: 'Upload a validated contiguous batch of remote agent events', tag: 'Agent environments',
+  },
   {
     method: 'GET',
     path: '/api/v1/automations',

@@ -5,6 +5,7 @@ import { TopUpsClient } from './auth/topups-client'
 import { AdminAuthorizationClient } from './admin-authorization/client'
 import { AdminGovernanceClient } from './admin-governance/client'
 import { AgentsClient } from './agents/client'
+import { AgentEnvironmentsClient } from './agent-environments/client'
 import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
@@ -61,6 +62,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     knowledgeBases: new KnowledgeBasesClient(http),
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
+    agentEnvironments: new AgentEnvironmentsClient(http),
   }
 }
 

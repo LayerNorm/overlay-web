@@ -363,7 +363,7 @@ export function DirectMessageExperience({
         importedAuthorEmail?: string
         importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
         content?: string
-        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
         createdAt: number
         eventSequence?: number
         editedAt?: number
@@ -389,7 +389,7 @@ export function DirectMessageExperience({
             importedAuthorEmail?: string
             importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
             content?: string
-            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
             createdAt: number
             eventSequence?: number
             editedAt?: number
@@ -1146,6 +1146,36 @@ export function DirectMessageExperience({
     renderAttachmentViewer,
   })
 
+  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') {
+    if (!activeWorkspaceId) return
+    try {
+      await overlayAppClient.conversations.controlRemoteQueue({
+        workspaceId: activeWorkspaceId,
+        conversationId,
+        runId,
+        action,
+      })
+      await loadMessages()
+    } catch (value) {
+      setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
+    }
+  }
+
+  async function resolveRemoteRequest(
+    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
+    decision: string,
+    response?: Record<string, unknown>,
+  ) {
+    if (!activeWorkspaceId) return
+    try {
+      await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
+        conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
+      await loadMessages()
+    } catch (value) {
+      setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
+    }
+  }
+
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
     const authorName = author?.displayName
@@ -1203,6 +1233,8 @@ export function DirectMessageExperience({
         onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
         onOpenAttachmentPreview={openAttachmentPreview}
         onCopyPermalink={() => void copyMessagePermalink(message.id)}
+        onControlRemoteQueue={(runId, action) => void controlRemoteQueue(runId, action)}
+        onResolveRemoteRequest={(request, decision, response) => void resolveRemoteRequest(request, decision, response)}
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
       />

@@ -139,6 +139,9 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_FEATURE_API_MUTATION_ORIGIN_GUARD: 'false',
     OVERLAY_FEATURE_LIFECYCLE_EVENTS: 'false',
     OVERLAY_FEATURE_OPEN_TELEMETRY: 'true',
+    OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE: 'true',
+    OVERLAY_FEATURE_REMOTE_AGENT_RUNS: 'true',
+    OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS: 'true',
     OVERLAY_PROVIDER_SANDBOX: 'none',
     OVERLAY_PROVIDER_BROWSER: 'none',
     OVERLAY_PROVIDER_WEB_SEARCH: 'none',
@@ -159,6 +162,9 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     apiMutationOriginGuard: false,
     lifecycleEvents: false,
     openTelemetry: true,
+    connectedAgentControlPlane: true,
+    remoteAgentRuns: true,
+    overlayCloudEnvironments: true,
   })
   assert.deepEqual(overrides.providers, {
     database: { provider: 'convex' },

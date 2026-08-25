@@ -124,6 +124,7 @@ export function buildAgentRunMetricsReport(args: {
     runners: {
       tool_loop: forRunner(args.runs, 'tool_loop'),
       workflow: forRunner(args.runs, 'workflow'),
+      remote: forRunner(args.runs, 'remote'),
     },
     caveats: [
       'Work first-token latency has zero samples while Work mode uses final-only WorkflowAgent output.',

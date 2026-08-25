@@ -108,6 +108,9 @@ import {
   ConvexWorkspaceConnectorRepository,
   type WorkspaceConnectorRepository,
 } from '@/server/integrations'
+import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
+import { ConvexConnectedAgentRepository } from '@/server/agents/ConvexConnectedAgentRepository'
+import { PostgresConnectedAgentRepository } from '@/server/agents/PostgresConnectedAgentRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -140,6 +143,7 @@ export interface AppDataRepositories {
   webhooks: WebhookRepository
   usage: UsageRepository
   workspaceConnectors: WorkspaceConnectorRepository
+  connectedAgents: ConnectedAgentRepository
 }
 
 export interface AppDataContext {
@@ -202,6 +206,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         // Connector mappings are intentionally gated in Postgres mode until a
         // provider-neutral repository and migration are shipped.
         workspaceConnectors: unsupportedRepository<WorkspaceConnectorRepository>('WorkspaceConnectorRepository'),
+        connectedAgents: new PostgresConnectedAgentRepository(db),
       },
     }
   }
@@ -239,6 +244,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       webhooks: new ConvexWebhookRepository(),
       usage: new ConvexUsageRepository(),
       workspaceConnectors: new ConvexWorkspaceConnectorRepository(),
+      connectedAgents: new ConvexConnectedAgentRepository(),
     },
   }
 }

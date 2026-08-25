@@ -47,7 +47,7 @@ export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', '
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
-export const OverlaySandboxProviderSchema = z.enum(['daytona', 'e2b', 'local-firecracker', 'none'])
+export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'e2b', 'local-firecracker', 'none'])
 export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
@@ -85,6 +85,9 @@ const OverlayFeatureFlagsSchema = z
     modelRouting: z.boolean().optional(),
     sso: z.boolean().optional(),
     multiTenant: z.boolean().optional(),
+    connectedAgentControlPlane: z.boolean().optional(),
+    remoteAgentRuns: z.boolean().optional(),
+    overlayCloudEnvironments: z.boolean().optional(),
   })
   .strict()
 

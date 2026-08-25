@@ -37,6 +37,8 @@ import {
   type MemoryExtractionProvider,
 } from '@/server/memory'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
+import { BillingBackedActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import { PostgresConnectedAgentRepository } from '@/server/agents/PostgresConnectedAgentRepository'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import {
   DAYTONA_RECONCILE_JOB,
@@ -92,6 +94,8 @@ export function createPostgresRuntime(args: {
   const automationExecutor = args.automationExecutor ?? runActTurnForScheduledAutomation
   const webhookDeliveries = new PostgresWebhookDeliveryService(args.db)
   const usage = new PostgresUsageRepository(args.db)
+  const remoteAgentUsage = new BillingBackedActUsagePolicy({ repository: usage, accountAllUsage: true })
+  const connectedAgents = new PostgresConnectedAgentRepository(args.db)
   let daytonaReconciler = args.daytonaReconciler
   const getDaytonaReconciler = () => {
     daytonaReconciler ??= new PostgresDaytonaReconciliationService({
@@ -131,7 +135,32 @@ export function createPostgresRuntime(args: {
         checkedAt: Date.now(),
         requestedBy: job.payload.requestedBy ?? 'unknown',
       }),
-      'app-data.maintenance': async () => await maintenance.runAll(),
+      'app-data.maintenance': async () => {
+        const summary = await maintenance.runAll()
+        for (const settlement of summary.remoteAgentRuns.settlements) {
+          if (!settlement.reservationId || !settlement.userId) continue
+          if (settlement.outcome === 'cancelled') {
+            await remoteAgentUsage.releaseReservation({ reservationId: settlement.reservationId,
+              userId: settlement.userId, reason: 'remote_agent_cancelled' })
+          } else if (settlement.outcome !== 'completed' && settlement.inputTokens === 0 && settlement.outputTokens === 0) {
+            await remoteAgentUsage.markReservationForReconcile({ reservationId: settlement.reservationId,
+              userId: settlement.userId, errorMessage: `remote_agent_${settlement.outcome}` })
+          } else {
+            await remoteAgentUsage.recordFinishedUsage(settlement)
+          }
+        }
+        const remoteAgentArtifacts = { deleted: 0, skipped: !args.objectStore }
+        if (args.objectStore) {
+          const artifacts = await connectedAgents.listArtifactsForCleanup({ now: Date.now(), limit: 100 })
+          for (const artifact of artifacts) {
+            await args.objectStore.deleteObject(artifact.objectKey)
+            if (await connectedAgents.markArtifactDeleted({ artifactId: artifact.id, now: Date.now() })) {
+              remoteAgentArtifacts.deleted += 1
+            }
+          }
+        }
+        return { ...summary, remoteAgentArtifacts }
+      },
       'coordination.cleanup': async () => {
         const [expiredIdempotencyKeys, expiredReplayNonces] = await Promise.all([
           idempotency.cleanupExpired(),

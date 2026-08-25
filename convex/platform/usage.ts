@@ -1779,29 +1779,40 @@ export const markBudgetReservationReconcileByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, errorMessage }) => {
     requireServerSecret(serverSecret)
-    const reservation = await ctx.db
-      .query('budgetReservations')
-      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
-      .first()
-    if (!reservation) return { success: true, status: 'missing' }
-    if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
-    if (reservation.status === 'finalized') return { success: true, status: 'finalized' }
-    const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
-    const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, userId)
-    const now = Date.now()
-    await ctx.db.patch(reservation._id, {
-      billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
-      status: 'reconcile_required',
-      providerWorkStarted: true,
-      errorMessage: errorMessage?.slice(0, 2000),
-      reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
-      reconciliationLastAttemptAt: now,
-      updatedAt: now,
-    })
-    if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
-    return { success: true, status: 'reconcile_required' }
+    return await markBudgetReservationReconcile(ctx, { userId, reservationId, errorMessage })
   },
 })
+
+/** Internal callers use this helper when terminal provider state is committed in the same mutation. */
+export async function markBudgetReservationReconcile(
+  ctx: MutationCtx,
+  args: { userId: string; reservationId: string; errorMessage?: string },
+) {
+  const reservation = await ctx.db
+    .query('budgetReservations')
+    .withIndex('by_reservationId', (q) => q.eq('reservationId', args.reservationId.trim()))
+    .first()
+  if (!reservation) return { success: true, status: 'missing' as const }
+  if (reservation.userId !== args.userId) throw new Error('reservation_user_mismatch')
+  if (reservation.status === 'finalized' || reservation.status === 'reconcile_required') {
+    return { success: true, status: reservation.status }
+  }
+  if (reservation.status !== 'reserved') return { success: true, status: reservation.status }
+  const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+  const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, args.userId)
+  const now = Date.now()
+  await ctx.db.patch(reservation._id, {
+    billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
+    status: 'reconcile_required',
+    providerWorkStarted: true,
+    errorMessage: args.errorMessage?.slice(0, 2000),
+    reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+    reconciliationLastAttemptAt: now,
+    updatedAt: now,
+  })
+  if (billingAccount) await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
+  return { success: true, status: 'reconcile_required' as const }
+}
 
 export const tryReserveBackgroundWorkInternal = internalMutation({
   args: {

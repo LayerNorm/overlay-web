@@ -22,6 +22,7 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   vectorSearch: 'Vector search',
   automations: 'Automation scheduling',
   multiTenant: 'Multi-tenant support',
+  connectedAgents: 'Connected agents',
 }
 
 export type CapabilityDisabledError = {
@@ -50,6 +51,8 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/webhooks')) return 'webhooks'
   if (startsWithRoute(normalizedPath, '/api/v1/api-keys')) return 'apiKeys'
   if (startsWithRoute(normalizedPath, '/api/v1/automations')) return 'automations'
+  if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) return 'connectedAgents'
+  if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/integrations')) return 'integrations'
   if (startsWithRoute(normalizedPath, '/api/v1/projects')) return 'projects'
   if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'

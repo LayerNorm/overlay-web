@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@overlay/workspace-contracts": "file:../overlay-workspace-contracts",
     "zod": "^3.25.76"
   },
   "peerDependencies": {

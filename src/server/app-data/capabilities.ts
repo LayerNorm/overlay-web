@@ -30,6 +30,7 @@ export interface AppDataCapabilities {
   supportsManagedScheduler: boolean
   supportsPersistentIdempotency: boolean
   supportsServiceAuthReplayStore: boolean
+  supportsConnectedAgents: boolean
   requiresConvexClient: boolean
 }
 
@@ -58,6 +59,7 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsManagedScheduler: true,
   supportsPersistentIdempotency: true,
   supportsServiceAuthReplayStore: true,
+  supportsConnectedAgents: true,
   requiresConvexClient: true,
 }
 
@@ -88,6 +90,7 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsManagedScheduler: true,
   supportsPersistentIdempotency: true,
   supportsServiceAuthReplayStore: true,
+  supportsConnectedAgents: true,
   requiresConvexClient: false,
 }
 

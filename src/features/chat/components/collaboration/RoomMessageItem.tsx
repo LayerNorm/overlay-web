@@ -68,6 +68,10 @@ export type RoomMessageView = {
   /** Room members named in the body, so `@name` renders as a chip. */
   mentions: Array<{ type: string; id: string; name: string }>
   streaming?: boolean
+  remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
+  remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
+    options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
+  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
 }
 
 export type RoomMessageItemProps = {
@@ -94,6 +98,8 @@ export type RoomMessageItemProps = {
   onRetrySend: () => void
   onOpenAttachmentPreview: (preview: AttachmentPreview) => void
   onCopyPermalink: () => void
+  onControlRemoteQueue?: (runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') => void
+  onResolveRemoteRequest?: (request: NonNullable<RoomMessageView['remoteRequest']>, decision: string, response?: Record<string, unknown>) => void
   /** Briefly outlines the message after a jump from the pinned or thread list. */
   highlighted?: boolean
   /** Consecutive messages from the same author use a compact transcript row. */
@@ -231,6 +237,8 @@ export function RoomMessageItem({
   onRetrySend,
   onOpenAttachmentPreview,
   onCopyPermalink,
+  onControlRemoteQueue,
+  onResolveRemoteRequest,
   highlighted = false,
   grouped = false,
 }: RoomMessageItemProps) {
@@ -535,6 +543,15 @@ export function RoomMessageItem({
                 ))}
               </div>
             ) : null}
+            {message.remoteQueue && onControlRemoteQueue ? (
+              <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
+            ) : null}
+            {message.remoteRequest && onResolveRemoteRequest ? (
+              <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
+            ) : null}
+            {message.remoteRun && onControlRemoteQueue && message.remoteRun.state !== 'waiting' ? (
+              <RemoteRunControls run={message.remoteRun} onControl={onControlRemoteQueue} />
+            ) : null}
           </>
         ) : (
           humanBody
@@ -542,6 +559,115 @@ export function RoomMessageItem({
         {reactionRow}
         {threadEntry}
       </div>
+    </div>
+  )
+}
+
+function RemoteRequestControls({ request, onResolve }: {
+  request: NonNullable<RoomMessageView['remoteRequest']>
+  onResolve: NonNullable<RoomMessageItemProps['onResolveRemoteRequest']>
+}) {
+  const properties = request.requestedSchema?.properties && typeof request.requestedSchema.properties === 'object'
+    ? request.requestedSchema.properties as Record<string, { title?: string; type?: string; enum?: unknown[]; oneOf?: Array<{ const?: unknown; title?: string }> }> : {}
+  const required = Array.isArray(request.requestedSchema?.required)
+    ? request.requestedSchema.required.filter((key): key is string => typeof key === 'string') : []
+  const [values, setValues] = useState<Record<string, unknown>>(() => initialElicitationValues(properties, required))
+  return (
+    <div className="mt-3 max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+      <p className="text-xs font-medium text-[var(--foreground)]">{request.kind === 'permission' ? 'Permission requested' : 'Input requested'}</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{request.prompt}</p>
+      {request.kind === 'elicitation' ? Object.entries(properties).map(([key, property]) => (
+        <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
+          {property.title ?? key}{required.includes(key) ? ' *' : ''}
+          {property.type === 'boolean' ? (
+            <input type="checkbox" checked={values[key] === true}
+              onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.checked }))}
+              className="ml-2 align-middle" />
+          ) : elicitationOptions(property).length > 0 ? (
+            <select value={String(values[key] ?? '')}
+              onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
+              className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
+              <option value="">Select…</option>
+              {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          ) : (
+            <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+              value={String(values[key] ?? '')}
+              onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
+              className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
+          )}
+        </label>
+      )) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {request.kind === 'permission' ? request.options.map((option) => (
+          <button key={option.id} type="button" onClick={() => onResolve(request, option.id)}
+            className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]">{option.label}</button>
+        )) : <>
+          <button type="button" onClick={() => onResolve(request, 'accept', values)} className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]">Submit</button>
+          <button type="button" onClick={() => onResolve(request, 'decline')} className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)]">Decline</button>
+        </>}
+      </div>
+    </div>
+  )
+}
+
+function initialElicitationValues(
+  properties: Record<string, { type?: string }>,
+  required: string[],
+) {
+  return Object.fromEntries(required.flatMap((key) => properties[key]?.type === 'boolean' ? [[key, false]] : []))
+}
+
+function elicitationFieldValue(type: string | undefined, value: string): unknown {
+  if (type === 'number' || type === 'integer') return value === '' ? '' : Number(value)
+  if (type === 'boolean') return value === 'true'
+  if (type === 'array') return value.split(',').map((item) => item.trim()).filter(Boolean)
+  return value
+}
+
+function elicitationOptions(property: { enum?: unknown[]; oneOf?: Array<{ const?: unknown; title?: string }> }) {
+  if (Array.isArray(property.enum)) return property.enum.map((value) => ({ value: String(value), label: String(value) }))
+  if (Array.isArray(property.oneOf)) return property.oneOf.flatMap((option) => option.const === undefined
+    ? [] : [{ value: String(option.const), label: option.title ?? String(option.const) }])
+  return []
+}
+
+function RemoteRunControls({ run, onControl }: {
+  run: NonNullable<RoomMessageView['remoteRun']>
+  onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
+}) {
+  if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
+  if (run.state === 'recoverable') return (
+    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+      <span>{run.retryClass === 'host_offline' ? 'The environment went offline.' : 'This run can be recovered.'}</span>
+      <button type="button" onClick={() => onControl(run.runId, 'resume')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)]">Resume</button>
+      <button type="button" onClick={() => onControl(run.runId, 'start_fresh')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)]">Start fresh</button>
+    </div>
+  )
+  return <button type="button" onClick={() => onControl(run.runId, 'cancel')} className="mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel run</button>
+}
+
+function RemoteQueueControls({
+  queue,
+  onControl,
+}: {
+  queue: NonNullable<RoomMessageView['remoteQueue']>
+  onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
+}) {
+  const [elapsed, setElapsed] = useState(false)
+
+  useEffect(() => {
+    const refresh = () => setElapsed(Date.now() >= queue.queueExpiresAt)
+    refresh()
+    const timeout = window.setTimeout(refresh, Math.max(0, queue.queueExpiresAt - Date.now()))
+    return () => window.clearTimeout(timeout)
+  }, [queue.queueExpiresAt])
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+      <span>{elapsed ? 'The 2-minute waiting window elapsed.' : 'Waiting up to 2 minutes for the environment to reconnect.'}</span>
+      <button type="button" onClick={() => onControl(queue.runId, 'cancel')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel</button>
+      <button type="button" onClick={() => onControl(queue.runId, 'retry')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]">Retry</button>
     </div>
   )
 }

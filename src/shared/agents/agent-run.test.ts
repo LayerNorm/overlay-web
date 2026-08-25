@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  AGENT_RUN_RUNNERS,
   canTransitionAgentRun,
   isActiveAgentRunStatus,
   isTerminalAgentRunStatus,
 } from './agent-run'
 
 describe('AgentRun lifecycle', () => {
+  it('keeps remote execution behind the canonical runner discriminator', () => {
+    assert.deepEqual(AGENT_RUN_RUNNERS, ['tool_loop', 'workflow', 'remote'])
+  })
   it('allows only the declared forward transitions', () => {
     assert.equal(canTransitionAgentRun('queued', 'running'), true)
     assert.equal(canTransitionAgentRun('running', 'waiting_for_approval'), true)

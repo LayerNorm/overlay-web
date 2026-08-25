@@ -29,6 +29,44 @@ The web app owns backend route contracts for every surface. Desktop, mobile, Chr
 
 Surfaces should use bootstrap first, then render their native shell from those registries.
 
+## Agent environments
+
+`/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
+clients use `AgentEnvironmentsClient` for list, enrollment creation, approval, root-scope changes,
+managed `Overlay Cloud` provisioning, and revocation. The portable host uses the bridge protocol for enrollment, credential issuance
+and refresh, heartbeat, capability refresh, command polling/acknowledgement, and event batches.
+
+Browser mutations require the signed-in workspace owner or admin. Host routes accept no browser
+cookie authority: a redeemed one-time code establishes a pending environment, initial credentials
+require an Ed25519 proof, and every later request is bound to the exact environment, workspace,
+audience, allowed method, expiry, request body, timestamp, and single-use nonce. Raw enrollment
+codes, proof challenges, credentials, and request nonces are never persisted.
+Enrollment-session creation opts out of BFF response idempotency because its response contains the
+only copy of the code; retrying creates a new short-lived code instead of persisting that secret in
+the idempotency store.
+
+`POST /api/v1/agent-environments/managed` provisions an Overlay-managed environment through the
+private `@overlay/sandbox-runtime` contract. The response contains only the environment, public
+lease status, and the `/workspace` approval hint. Provider selection, raw diagnostics, provider
+references, credentials, image details, and billing remain server/operator concerns. Managed
+provisioning deliberately redeems the normal one-time enrollment inside the sandbox and waits for
+the same browser approval; it is not a second host authentication path.
+
+`GET`, `PUT`, and `DELETE /api/v1/agent-bindings` list, upsert, and disable the workspace-owned mapping from an Overlay
+agent to one approved environment, advertised ACP adapter, and granted working directory. A bound
+agent follows the ordinary `POST /api/v1/conversations/message` mention path; no second remote-chat
+endpoint or transcript exists. `POST /api/v1/conversations/run/remote` is the narrow browser
+control for Cancel, Retry, Resume, and Start fresh. `POST /api/v1/conversations/run/remote/request`
+resolves a pending permission or structured elicitation only after rechecking the human's current
+workspace and room authority. `GET /api/v1/conversations/run/remote/artifacts/:artifactId`
+authorizes the current participant before redirecting to a short-lived object-store URL. Hosts
+create and complete scoped artifact uploads through the environment's `artifacts` subresource;
+only checksum-, type-, size-, malware-, tenancy-, and retention-validated objects may be projected
+into the transcript. These controls are authenticated and workspace-scoped through
+`@overlay/api-client`. The internal-secret-only
+`POST /api/v1/agent-environments/artifacts/cleanup` endpoint lets the Convex scheduler request
+object deletion from the BFF without moving object-store credentials into Convex.
+
 ## Cross-Surface Adoption
 
 Desktop and Chrome can use the React DOM packages directly where practical. Mobile should use `@overlay/app-core`, `@overlay/api-client`, and pure controllers from `@overlay/app-core/modules`, while keeping React Native rendering in mobile-specific components.
@@ -52,6 +90,13 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` is reserved for the Postgres provider and must not be mounted as a Convex fallback.
 
 ## Personal Chat AgentRun contracts
+
+Connected-agent public resources are reserved under
+`/api/v1/agent-environments/**` and `/api/v1/agent-bindings`; they remain
+unmounted while the default-off control-plane flags are disabled. Both database
+providers use `ConnectedAgentRepository` for durable command claims and ordered
+event acknowledgement. Provider-branded sandbox identifiers and reusable host
+credentials are never public contract fields.
 
 - `POST /api/v1/conversations/act` streams Chat mode directly over SSE. For a
   persistent conversation, the server drains a second stream branch after a
