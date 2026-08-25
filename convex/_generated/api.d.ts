@@ -14,6 +14,7 @@ import type * as admin_governance from "../admin/governance.js";
 import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
 import type * as agents_connectedAgents from "../agents/connectedAgents.js";
 import type * as agents_environmentControlPlane from "../agents/environmentControlPlane.js";
+import type * as agents_settlementReconciliation from "../agents/settlementReconciliation.js";
 import type * as ai_sandbox_daytona from "../ai/sandbox/daytona.js";
 import type * as ai_sandbox_daytonaReconcile from "../ai/sandbox/daytonaReconcile.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -102,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "agents/artifactCleanup": typeof agents_artifactCleanup;
   "agents/connectedAgents": typeof agents_connectedAgents;
   "agents/environmentControlPlane": typeof agents_environmentControlPlane;
+  "agents/settlementReconciliation": typeof agents_settlementReconciliation;
   "ai/sandbox/daytona": typeof ai_sandbox_daytona;
   "ai/sandbox/daytonaReconcile": typeof ai_sandbox_daytonaReconcile;
   "auth/apiKeys": typeof auth_apiKeys;
