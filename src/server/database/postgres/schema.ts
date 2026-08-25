@@ -2035,6 +2035,7 @@ export const agentEnvironments = pgTable('agent_environments', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('agent_environments_workspace_status_idx').on(table.workspaceId, table.status),
+  index('agent_environments_status_seen_idx').on(table.status, table.lastSeenAt),
 ])
 
 export const agentEnrollmentSessions = pgTable('agent_enrollment_sessions', {
@@ -2048,6 +2049,7 @@ export const agentEnrollmentSessions = pgTable('agent_enrollment_sessions', {
   environmentId: text('environment_id').references(() => agentEnvironments.id, { onDelete: 'set null' }),
   redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
+  maxEnvironments: integer('max_environments'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -2130,6 +2132,19 @@ export const agentRemoteSessions = pgTable('agent_remote_sessions', {
 }, (table) => [
   uniqueIndex('agent_remote_sessions_run_idx').on(table.runId),
   index('agent_remote_sessions_environment_status_idx').on(table.environmentId, table.status),
+  index('agent_remote_sessions_workspace_status_idx').on(table.workspaceId, table.status),
+])
+
+export const agentEventRateWindows = pgTable('agent_event_rate_windows', {
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  windowStartedAt: timestamp('window_started_at', { withTimezone: true }).notNull(),
+  eventCount: integer('event_count').notNull().default(0),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.environmentId, table.windowStartedAt] }),
+  index('agent_event_rate_windows_workspace_started_idx').on(table.workspaceId, table.windowStartedAt),
+  index('agent_event_rate_windows_started_idx').on(table.windowStartedAt),
 ])
 
 export const agentRunCommands = pgTable('agent_run_commands', {
@@ -2150,6 +2165,7 @@ export const agentRunCommands = pgTable('agent_run_commands', {
   uniqueIndex('agent_run_commands_environment_sequence_idx').on(table.environmentId, table.sequence),
   index('agent_run_commands_claim_idx').on(table.environmentId, table.status, table.sequence),
   index('agent_run_commands_run_idx').on(table.runId),
+  index('agent_run_commands_status_updated_idx').on(table.status, table.updatedAt),
 ])
 
 export const agentApprovalRequests = pgTable('agent_approval_requests', {
@@ -2167,6 +2183,7 @@ export const agentApprovalRequests = pgTable('agent_approval_requests', {
 }, (table) => [
   uniqueIndex('agent_approval_requests_session_request_idx').on(table.remoteSessionId, table.requestKey),
   index('agent_approval_requests_workspace_run_idx').on(table.workspaceId, table.runId),
+  index('agent_approval_requests_requested_idx').on(table.requestedAt),
 ])
 
 export const agentArtifacts = pgTable('agent_artifacts', {
@@ -2213,4 +2230,19 @@ export const agentSandboxLeases = pgTable('agent_sandbox_leases', {
 }, (table) => [
   index('agent_sandbox_leases_cleanup_idx').on(table.status, table.cleanupAfter),
   index('agent_sandbox_leases_workspace_environment_idx').on(table.workspaceId, table.environmentId),
+])
+
+export const agentSandboxSettlements = pgTable('agent_sandbox_settlements', {
+  reservationId: text('reservation_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  environmentId: text('environment_id').notNull().references(() => agentEnvironments.id, { onDelete: 'cascade' }),
+  runId: text('run_id').notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+  leaseId: text('lease_id').notNull().references(() => agentSandboxLeases.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('pending'),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('agent_sandbox_settlements_status_updated_idx').on(table.status, table.updatedAt),
+  index('agent_sandbox_settlements_workspace_idx').on(table.workspaceId),
 ])

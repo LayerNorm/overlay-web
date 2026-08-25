@@ -30,6 +30,9 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   listEnvironments(input: Parameters<ConnectedAgentRepository['listEnvironments']>[0]) {
     return controlQuery<AgentEnvironment[]>('listEnvironmentsByServer', input)
   }
+  getWorkspacePolicyUsage(input: Parameters<ConnectedAgentRepository['getWorkspacePolicyUsage']>[0]) {
+    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['getWorkspacePolicyUsage']>>>('getWorkspacePolicyUsageByServer', input)
+  }
   getEnvironment(input: Parameters<ConnectedAgentRepository['getEnvironment']>[0]) {
     return controlQuery<AgentEnvironment | null>('getEnvironmentByServer', input)
   }
@@ -132,11 +135,22 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   sweepRemoteRuns(input: Parameters<ConnectedAgentRepository['sweepRemoteRuns']>[0]) {
     return mutation<Awaited<ReturnType<ConnectedAgentRepository['sweepRemoteRuns']>>>('sweepRemoteRunsByServer', input)
   }
+  listPendingSandboxSettlements(input: Parameters<ConnectedAgentRepository['listPendingSandboxSettlements']>[0]) {
+    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['listPendingSandboxSettlements']>>>(
+      'listPendingSandboxSettlementsByServer', input,
+    )
+  }
+  markSandboxSettlementComplete(input: Parameters<ConnectedAgentRepository['markSandboxSettlementComplete']>[0]) {
+    return mutation<boolean>('markSandboxSettlementCompleteByServer', input)
+  }
   createSandboxLease(input: Parameters<ConnectedAgentRepository['createSandboxLease']>[0]) {
     return mutation<AgentSandboxLease>('createSandboxLeaseByServer', input)
   }
   updateSandboxLease(input: Parameters<ConnectedAgentRepository['updateSandboxLease']>[0]) {
     return mutation<AgentSandboxLease | null>('updateSandboxLeaseByServer', input)
+  }
+  getActiveSandboxLease(input: Parameters<ConnectedAgentRepository['getActiveSandboxLease']>[0]) {
+    return connectedQuery<AgentSandboxLease | null>('getActiveSandboxLeaseByServer', input)
   }
   applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
     return mutation<ApplyRemoteEventsResult>('applyRemoteEventsByServer', input)

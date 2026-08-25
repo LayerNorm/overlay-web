@@ -29,7 +29,7 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 7 are implemented. Overlay Cloud activation remains
+Phases 0 through 8 are implemented. Overlay Cloud activation remains
 gated on publishing the Agent Host image and passing live Vercel conformance in the target
 project; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
 conformance run against staging. The connected-agent repository now includes command
@@ -174,6 +174,32 @@ requires the deliberate `start fresh` path. The Eve service should run beside th
 or a private network; Overlay does not require it to be publicly reachable. Hermes, OpenClaw, and
 other native adapters remain ineligible unless ACP is unavailable and the unchanged host
 conformance suite passes.
+
+Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
+rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
+workspace concurrency and one active run per managed environment. Hard run deadlines cap lease
+renewal. Event uploads use per-environment minute windows, and artifact creation reserves workspace
+bytes before issuing an object-store URL. Free, paid, and max plans also bound idle time, sandbox
+egress, and managed runtime; the existing billing ledger remains the monthly-spend gate.
+
+Host-side BYOK model tokens remain observable but never become Overlay model usage. A local or VPS
+environment has no sandbox reservation. Overlay Cloud creates a distinct pre-dispatch `sandbox`
+reservation under `agent:<agentId>` in addition to any explicitly Overlay-funded model reservation.
+Actual Vercel usage settles active CPU, provisioned memory, and outbound transfer; Daytona settles
+its resource-time dimensions. The reservation ledger is the exact-once boundary, and an unavailable
+provider or failed usage read moves the reservation to reconciliation instead of guessing at a
+charge. A durable settlement marker is created atomically with each managed run and is cleared only
+after the idempotent usage ledger and lease usage record both succeed. PostgreSQL maintenance retries
+pending markers directly; the Convex scheduler calls the internal BFF reconciliation route so
+provider credentials never move into Convex. `OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD` controls the per-run provider-spend warning
+threshold and defaults to USD 10.
+
+Every dispatch and accepted cursor checkpoint writes a redacted audit record correlated by
+workspace, agent, environment, run, command, remote session, provider reference, reservation, and
+event cursor. Immediate alerts cover cursor gaps, settlement and artifact-cleanup failure, and high
+provider spend. The one-minute supervisor also reports offline environments, expired leases, stuck
+commands, aged approvals, and failed sandbox cleanup. PostgreSQL maintenance prunes event-rate
+windows; Convex performs the same cleanup through its scheduled mutation.
 
 ## Trust boundaries and threat model
 

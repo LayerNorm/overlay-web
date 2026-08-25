@@ -119,6 +119,29 @@ export const listBindingsByServer = query({
   },
 })
 
+export const getWorkspacePolicyUsageByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string() },
+  returns: v.object({ activeArtifactBytes: v.number(), activeRuns: v.number(), environments: v.number() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const environmentStatuses = ['pending', 'offline', 'online'] as const
+    const runStatuses = ['starting', 'running', 'waiting_for_approval', 'recovering'] as const
+    const [environmentGroups, runGroups, artifactUsage] = await Promise.all([
+      Promise.all(environmentStatuses.map(status => ctx.db.query('agentEnvironments')
+        .withIndex('by_workspaceId_status', q => q.eq('workspaceId', args.workspaceId).eq('status', status)).take(101))),
+      Promise.all(runStatuses.map(status => ctx.db.query('agentRemoteSessions')
+        .withIndex('by_workspaceId_status', q => q.eq('workspaceId', args.workspaceId).eq('status', status)).take(101))),
+      ctx.db.query('agentWorkspacePolicyUsage')
+        .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).unique(),
+    ])
+    return {
+      activeArtifactBytes: artifactUsage?.activeArtifactBytes ?? 0,
+      activeRuns: runGroups.flat().length,
+      environments: environmentGroups.flat().length,
+    }
+  },
+})
+
 export const disableBindingsForAgentByServer = mutation({
   args: { serverSecret: v.string(), workspaceId: v.string(), agentId: v.string(), now: v.number() },
   handler: async (ctx, args) => {
@@ -161,8 +184,10 @@ export const startRemoteAgentTurnByServer = mutation({
     serverSecret: v.string(), actorUserId: v.string(), agentId: v.string(), authorPrincipalId: v.string(),
     bindingId: v.string(), clientNonce: v.string(), commandId: v.string(), conversationId: v.id('conversations'),
     environmentId: v.string(), environmentName: v.string(), environmentOnline: v.boolean(),
-    initiatorPrincipalId: v.string(), modelId: v.string(), prompt: v.string(), queueExpiresAt: v.number(),
+    initiatorPrincipalId: v.string(), modelId: v.string(), modelUsageBilling: v.union(v.literal('byok'), v.literal('overlay')),
+    maxConcurrentRuns: v.number(), maxRunTimeMs: v.number(), prompt: v.string(), queueExpiresAt: v.number(),
     reservationId: v.union(v.string(), v.null()), runId: v.string(), sessionId: v.string(),
+    sandboxBilling: v.optional(anyObject),
     startPayload: anyObject, threadRootMessageId: v.optional(v.id('conversationMessages')),
     turnId: v.string(), userMessageId: v.id('conversationMessages'), workspaceId: v.string(), now: v.number(),
   },
@@ -225,6 +250,17 @@ export const startRemoteAgentTurnByServer = mutation({
       ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', args.commandId)).first(),
     ])
     if (runCollision || sessionCollision || commandCollision) throw new Error('AGENT_REMOTE_TURN_EXISTS')
+    const activeStatuses = ['starting', 'running', 'waiting_for_approval', 'recovering'] as const
+    const activeRuns = (await Promise.all(activeStatuses.map(status => ctx.db.query('agentRemoteSessions')
+      .withIndex('by_workspaceId_status', q => q.eq('workspaceId', args.workspaceId).eq('status', status))
+      .take(args.maxConcurrentRuns + 1)))).flat()
+    if (activeRuns.length >= args.maxConcurrentRuns) throw new Error('CONNECTED_AGENT_POLICY_LIMIT:concurrent_runs')
+    if (environment.kind === 'overlay_cloud') {
+      const activeManagedRuns = (await Promise.all(activeStatuses.map(status => ctx.db.query('agentRemoteSessions')
+        .withIndex('by_environmentId_status', q => q.eq('environmentId', args.environmentId).eq('status', status)).first())))
+        .filter(Boolean)
+      if (activeManagedRuns.length > 0) throw new Error('CONNECTED_AGENT_POLICY_LIMIT:managed_environment_concurrency')
+    }
     const online = environment.status === 'online' && (environment.lastSeenAt ?? 0) >= args.now - 45_000
     const waitingParts = waitingRemoteAgentParts({ environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId })
     const messageId = await ctx.db.insert('conversationMessages', {
@@ -240,18 +276,37 @@ export const startRemoteAgentTurnByServer = mutation({
       agentId: args.agentId, agentPrincipalId: args.authorPrincipalId,
       initiatorPrincipalId: args.initiatorPrincipalId, environmentId: args.environmentId,
       bindingId: args.bindingId, mode: 'room', runner: 'remote', status: 'queued',
-      leaseExpiresAt: online ? args.now + REMOTE_RUN_LEASE_MS : args.queueExpiresAt,
+      leaseExpiresAt: Math.min(args.now + args.maxRunTimeMs, online ? args.now + REMOTE_RUN_LEASE_MS : args.queueExpiresAt),
       createdAt: args.now, updatedAt: args.now,
     })
     await ctx.db.insert('agentRemoteSessions', {
       sessionId: args.sessionId, workspaceId: args.workspaceId, environmentId: args.environmentId,
       bindingId: args.bindingId, runId: args.runId, status: 'starting', commandCursor: 0, eventCursor: 0,
       capabilitySnapshot: { ...environment.capabilities, billing: { reservationId: args.reservationId,
-        modelId: args.modelId, userId: args.actorUserId, operationId: `workspace-agent:${args.turnId}` },
+        agentId: args.agentId, environmentId: args.environmentId, modelId: args.modelId,
+        modelUsageBilling: args.modelUsageBilling, runId: args.runId, userId: args.actorUserId,
+        workspaceId: args.workspaceId, operationId: `workspace-agent:${args.turnId}` },
+        hardExpiresAt: args.now + args.maxRunTimeMs,
+        ...(args.sandboxBilling ? { sandboxBilling: args.sandboxBilling } : {}),
         queueExpiresAt: args.queueExpiresAt, environmentName: environment.name,
         startPayload: args.startPayload },
       createdAt: args.now, updatedAt: args.now,
     })
+    if (args.sandboxBilling && typeof args.sandboxBilling.reservationId === 'string') {
+      if (typeof args.sandboxBilling.leaseId !== 'string' || !args.sandboxBilling.leaseId) {
+        throw new Error('MANAGED_SANDBOX_BILLING_INVALID')
+      }
+      await ctx.db.insert('agentSandboxSettlements', {
+        reservationId: args.sandboxBilling.reservationId,
+        workspaceId: args.workspaceId,
+        environmentId: args.environmentId,
+        runId: args.runId,
+        leaseId: args.sandboxBilling.leaseId,
+        status: 'pending',
+        createdAt: args.now,
+        updatedAt: args.now,
+      })
+    }
     const latest = await ctx.db.query('agentRunCommands')
       .withIndex('by_environmentId_sequence', q => q.eq('environmentId', args.environmentId)).order('desc').first()
     await ctx.db.insert('agentRunCommands', {
@@ -528,14 +583,21 @@ export const createArtifactByServer = mutation({
     runId: v.string(), remoteSessionId: v.string(), name: v.string(), mediaType: v.string(), size: v.number(),
     sha256: v.string(), objectKey: v.string(), status: v.string(), scanResult: v.optional(v.string()),
     expiresAt: v.number(), linkedAt: v.optional(v.number()), deletedAt: v.optional(v.number()),
-    createdAt: v.number(), updatedAt: v.number() },
+    createdAt: v.number(), updatedAt: v.number(), maxWorkspaceArtifactBytes: v.optional(v.number()) },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const session = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', args.remoteSessionId)).unique()
     if (!session || session.workspaceId !== args.workspaceId || session.environmentId !== args.environmentId || session.runId !== args.runId) throw new Error('AGENT_REMOTE_SESSION_NOT_FOUND')
-    const { serverSecret, id, ...value } = args
+    const usage = await artifactPolicyUsage(ctx, args.workspaceId, args.updatedAt)
+    if (args.maxWorkspaceArtifactBytes !== undefined &&
+      usage.activeArtifactBytes + args.size > args.maxWorkspaceArtifactBytes) {
+      throw new Error('CONNECTED_AGENT_POLICY_LIMIT:artifact_bytes')
+    }
+    const { serverSecret, id, maxWorkspaceArtifactBytes: _maxWorkspaceArtifactBytes, ...value } = args
     void serverSecret
+    void _maxWorkspaceArtifactBytes
     await ctx.db.insert('agentArtifacts', { ...value, artifactId: id })
+    await ctx.db.patch(usage._id, { activeArtifactBytes: usage.activeArtifactBytes + args.size, updatedAt: args.updatedAt })
     return { ...value, id }
   },
 })
@@ -572,8 +634,12 @@ export const finalizeArtifactByServer = mutation({
     requireServerSecret(args.serverSecret)
     const row = await ctx.db.query('agentArtifacts').withIndex('by_artifactId', q => q.eq('artifactId', args.artifactId)).unique()
     if (!row || row.workspaceId !== args.workspaceId || row.environmentId !== args.environmentId || !['pending_upload', 'scanning'].includes(row.status)) return null
+    const usage = args.status === 'rejected' ? await artifactPolicyUsage(ctx, row.workspaceId, args.now) : null
     await ctx.db.patch(row._id, { status: args.status, scanResult: args.scanResult,
       ...(args.expiresAt === undefined ? {} : { expiresAt: args.expiresAt }), updatedAt: args.now })
+    if (usage) await ctx.db.patch(usage._id, {
+      activeArtifactBytes: Math.max(0, usage.activeArtifactBytes - row.size), updatedAt: args.now,
+    })
     return { ...clean(row), id: row.artifactId, status: args.status, scanResult: args.scanResult,
       ...(args.expiresAt === undefined ? {} : { expiresAt: args.expiresAt }), updatedAt: args.now }
   },
@@ -595,7 +661,12 @@ export const markArtifactDeletedByServer = mutation({
     requireServerSecret(args.serverSecret)
     const row = await ctx.db.query('agentArtifacts').withIndex('by_artifactId', q => q.eq('artifactId', args.artifactId)).unique()
     if (!row || row.status === 'deleted') return false
+    const usage = ['pending_upload', 'scanning', 'clean', 'linked'].includes(row.status)
+      ? await artifactPolicyUsage(ctx, row.workspaceId, args.now) : null
     await ctx.db.patch(row._id, { status: 'deleted', deletedAt: args.now, updatedAt: args.now })
+    if (usage) await ctx.db.patch(usage._id, {
+      activeArtifactBytes: Math.max(0, usage.activeArtifactBytes - row.size), updatedAt: args.now,
+    })
     return true
   },
 })
@@ -618,6 +689,57 @@ export const sweepRemoteRunsInternal = internalMutation({
       limit: 100,
       settleBilling: true,
     })
+  },
+})
+
+export const pruneEventRateWindowsInternal = internalMutation({
+  args: { now: v.optional(v.number()) },
+  returns: v.object({ deleted: v.number() }),
+  handler: async (ctx, args) => {
+    const cutoff = (args.now ?? Date.now()) - 10 * 60_000
+    const rows = await ctx.db.query('agentEventRateWindows')
+      .withIndex('by_windowStartedAt', q => q.lt('windowStartedAt', cutoff)).take(1_000)
+    for (const row of rows) await ctx.db.delete(row._id)
+    return { deleted: rows.length }
+  },
+})
+
+export const listPendingSandboxSettlementsByServer = query({
+  args: { serverSecret: v.string(), limit: v.number() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.max(1, Math.min(100, Math.floor(args.limit)))
+    const markers = await ctx.db.query('agentSandboxSettlements')
+      .withIndex('by_status_updatedAt', q => q.eq('status', 'pending'))
+      .take(limit)
+    const settlements = []
+    for (const marker of markers) {
+      const session = await ctx.db.query('agentRemoteSessions')
+        .withIndex('by_runId', q => q.eq('runId', marker.runId)).unique()
+      if (!session || !['completed', 'failed', 'cancelled'].includes(session.status)) continue
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_externalRunId', q => q.eq('externalRunId', marker.runId)).unique()
+      const message = run ? await ctx.db.get(run.assistantMessageId) : null
+      settlements.push(terminalBilling(
+        session.capabilitySnapshot,
+        message?.tokens,
+        terminalOutcome(session.status),
+      ))
+    }
+    return settlements
+  },
+})
+
+export const markSandboxSettlementCompleteByServer = mutation({
+  args: { serverSecret: v.string(), workspaceId: v.string(), reservationId: v.string(), settledAt: v.number() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const marker = await ctx.db.query('agentSandboxSettlements')
+      .withIndex('by_reservationId', q => q.eq('reservationId', args.reservationId)).unique()
+    if (!marker || marker.workspaceId !== args.workspaceId) return false
+    if (marker.status === 'settled') return true
+    await ctx.db.patch(marker._id, { status: 'settled', settledAt: args.settledAt, updatedAt: args.settledAt })
+    return true
   },
 })
 
@@ -663,6 +785,19 @@ export const updateSandboxLeaseByServer = mutation({
   },
 })
 
+export const getActiveSandboxLeaseByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('agentSandboxLeases')
+      .withIndex('by_workspaceId_environmentId', q => q.eq('workspaceId', args.workspaceId).eq('environmentId', args.environmentId))
+      .take(100)
+    const current = rows.filter(row => ['reserved', 'provisioning', 'running'].includes(row.status))
+      .sort((left, right) => right.updatedAt - left.updatedAt)[0]
+    return current ? { ...clean(current), id: current.leaseId } : null
+  },
+})
+
 export const claimCommandsByServer = mutation({
   args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), now: v.number(), leaseMs: v.number(), limit: v.number() },
   handler: async (ctx, args) => {
@@ -702,7 +837,7 @@ export const claimCommandsByServer = mutation({
 })
 
 export const applyRemoteEventsByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), sessionId: v.string(), events: v.array(v.object({ protocolVersion: v.number(), eventId: v.string(), environmentId: v.string(), runId: v.string(), sourceSequence: v.number(), type: v.string(), occurredAt: v.number(), payload: anyObject })), now: v.number() },
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), sessionId: v.string(), events: v.array(v.object({ protocolVersion: v.number(), eventId: v.string(), environmentId: v.string(), runId: v.string(), sourceSequence: v.number(), type: v.string(), occurredAt: v.number(), payload: anyObject })), maxEventsPerMinute: v.optional(v.number()), now: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const session = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', args.sessionId)).unique()
@@ -732,6 +867,19 @@ export const applyRemoteEventsByServer = mutation({
     if (last <= session.eventCursor) return duplicateResult()
     const expected = session.eventCursor + 1
     if (first !== expected) return { accepted: false, expectedSequence: expected }
+    if (args.maxEventsPerMinute !== undefined) {
+      const windowStartedAt = Math.floor(args.now / 60_000) * 60_000
+      const window = await ctx.db.query('agentEventRateWindows')
+        .withIndex('by_environmentId_windowStartedAt', q => q.eq('environmentId', args.environmentId).eq('windowStartedAt', windowStartedAt))
+        .unique()
+      const eventCount = (window?.eventCount ?? 0) + args.events.length
+      if (eventCount > args.maxEventsPerMinute) throw new Error('CONNECTED_AGENT_POLICY_LIMIT:event_rate')
+      if (window) await ctx.db.patch(window._id, { eventCount, updatedAt: args.now })
+      else await ctx.db.insert('agentEventRateWindows', {
+        environmentId: args.environmentId, workspaceId: args.workspaceId,
+        windowStartedAt, eventCount, updatedAt: args.now,
+      })
+    }
     // Compatibility for sessions created through the lower-level Phase 1 repository contract.
     if (!run) {
       await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now })
@@ -803,7 +951,10 @@ export const applyRemoteEventsByServer = mutation({
       ...(projection.runStatus === 'failed' ? { failedAt: args.now, terminalError: projection.terminalError } : {}),
       ...(projection.runStatus === 'cancelled' ? { cancelledAt: args.now } : {}),
       ...(projection.terminal ? { metrics: { ...(run.metrics ?? {}), inputTokens: projection.tokens.input, outputTokens: projection.tokens.output } } : {}),
-      ...(!projection.terminal ? { leaseExpiresAt: args.now + REMOTE_RUN_LEASE_MS } : {}),
+      ...(!projection.terminal ? { leaseExpiresAt: Math.min(
+        args.now + REMOTE_RUN_LEASE_MS,
+        typeof snapshot.hardExpiresAt === 'number' ? snapshot.hardExpiresAt : args.now + REMOTE_RUN_LEASE_MS,
+      ) } : {}),
       updatedAt: args.now,
     })
     await ctx.db.patch(message._id, {
@@ -874,6 +1025,9 @@ export const deleteWorkspaceDataByServer = mutation({
       ctx.db.query('agentApprovalRequests').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentArtifacts').withIndex('by_workspaceId_environmentId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentRunCommands').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
+      ctx.db.query('agentEventRateWindows').withIndex('by_workspaceId_windowStartedAt', q => q.eq('workspaceId', args.workspaceId)).collect(),
+      ctx.db.query('agentWorkspacePolicyUsage').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
+      ctx.db.query('agentSandboxSettlements').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentRemoteSessions').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentSandboxLeases').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentBindings').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
@@ -883,6 +1037,22 @@ export const deleteWorkspaceDataByServer = mutation({
     return true
   },
 })
+
+async function artifactPolicyUsage(ctx: MutationCtx, workspaceId: string, now: number) {
+  const existing = await ctx.db.query('agentWorkspacePolicyUsage')
+    .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
+  if (existing) return existing
+  const statuses = ['pending_upload', 'scanning', 'clean', 'linked'] as const
+  const groups = await Promise.all(statuses.map(status => ctx.db.query('agentArtifacts')
+    .withIndex('by_workspaceId_status', q => q.eq('workspaceId', workspaceId).eq('status', status))
+    .take(10_001)))
+  if (groups.some(group => group.length > 10_000)) throw new Error('CONNECTED_AGENT_POLICY_USAGE_RECONCILIATION_REQUIRED')
+  const activeArtifactBytes = groups.flat().reduce((sum, artifact) => sum + artifact.size, 0)
+  const _id = await ctx.db.insert('agentWorkspacePolicyUsage', { workspaceId, activeArtifactBytes, updatedAt: now })
+  const inserted = await ctx.db.get(_id)
+  if (!inserted) throw new Error('CONNECTED_AGENT_POLICY_USAGE_UNAVAILABLE')
+  return inserted
+}
 
 function sameResolution(
   left: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
@@ -901,14 +1071,22 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 
   const tokens = tokensValue && typeof tokensValue === 'object'
     ? tokensValue as Record<string, unknown> : {}
   return {
+    agentId: typeof billing.agentId === 'string' ? billing.agentId : '',
+    environmentId: typeof billing.environmentId === 'string' ? billing.environmentId : '',
     forceFreeTierLimits: false,
     inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
     modelId: typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
+    modelUsageBilling: billing.modelUsageBilling === 'overlay' ? 'overlay' as const : 'byok' as const,
     operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
     outcome,
     outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
     reservationId: typeof billing.reservationId === 'string' ? billing.reservationId : null,
+    runId: typeof billing.runId === 'string' ? billing.runId : '',
+    sandboxBilling: snapshot.sandboxBilling && typeof snapshot.sandboxBilling === 'object'
+      ? snapshot.sandboxBilling as Record<string, unknown>
+      : null,
     userId: typeof billing.userId === 'string' ? billing.userId : '',
+    workspaceId: typeof billing.workspaceId === 'string' ? billing.workspaceId : '',
   }
 }
 function terminalOutcome(status: string): 'completed' | 'failed' | 'cancelled' {
@@ -931,6 +1109,7 @@ async function sweepRemoteRuns(
   ))).flat().slice(0, args.limit)
   const expiredRunIds: string[] = []
   const settlements = []
+  const alerts: Array<Record<string, unknown>> = []
   for (const run of active) {
     const session = run.externalRunId
       ? await ctx.db.query('agentRemoteSessions').withIndex('by_runId', q => q.eq('runId', run.externalRunId!)).unique()
@@ -970,6 +1149,29 @@ async function sweepRemoteRuns(
     expiredRunIds.push(run.externalRunId)
     const settlement = terminalBilling(session.capabilitySnapshot, message.tokens, 'timeout')
     settlements.push(settlement)
+    alerts.push({
+      code: offline ? 'offline_environment' : 'lease_expired',
+      workspaceId: session.workspaceId,
+      agentId: settlement.agentId || run.agentId,
+      environmentId: session.environmentId,
+      runId: run.externalRunId,
+      remoteSessionId: session.sessionId,
+      ...(settlement.reservationId ? { reservationId: settlement.reservationId } : {}),
+      eventCursor: session.eventCursor,
+    })
+    for (const command of commands) if (
+      (command.status === 'pending' || command.status === 'claimed') && command.updatedAt <= args.now - 2 * 60_000
+    ) alerts.push({
+      code: 'stuck_command', workspaceId: command.workspaceId, environmentId: command.environmentId,
+      runId: command.runId, commandId: command.commandId, ageMs: args.now - command.updatedAt,
+    })
+    for (const request of requests) if (!request.resolution && request.requestedAt <= args.now - 15 * 60_000) {
+      alerts.push({
+        code: 'approval_age', workspaceId: request.workspaceId, environmentId: session.environmentId,
+        runId: request.runId, remoteSessionId: request.remoteSessionId,
+        eventCursor: session.eventCursor, ageMs: args.now - request.requestedAt,
+      })
+    }
     if (args.settleBilling && settlement.reservationId && settlement.userId) {
       await markBudgetReservationReconcile(ctx, {
         userId: settlement.userId,
@@ -978,7 +1180,54 @@ async function sweepRemoteRuns(
       })
     }
   }
-  return { expiredRunIds, settlements }
+  const [offlineEnvironments, staleOnlineEnvironments] = await Promise.all([
+    ctx.db.query('agentEnvironments').withIndex('by_status_lastSeenAt', q => q.eq('status', 'offline')).take(args.limit),
+    ctx.db.query('agentEnvironments').withIndex('by_status_lastSeenAt', q => q
+      .eq('status', 'online').lte('lastSeenAt', args.hostOfflineBefore)).take(args.limit),
+  ])
+  const alertedEnvironments = new Set(alerts.map(alert => alert.environmentId).filter(Boolean))
+  for (const environment of [...offlineEnvironments, ...staleOnlineEnvironments]) {
+    if (!environment.approvedAt || environment.revokedAt || alertedEnvironments.has(environment.environmentId)) continue
+    alerts.push({
+      code: 'offline_environment', workspaceId: environment.workspaceId,
+      environmentId: environment.environmentId,
+      ...(environment.lastSeenAt === undefined ? {} : { ageMs: args.now - environment.lastSeenAt }),
+    })
+  }
+  const oldCommands = (await Promise.all((['pending', 'claimed'] as const).map(status =>
+    ctx.db.query('agentRunCommands').withIndex('by_status_updatedAt', q => q
+      .eq('status', status).lte('updatedAt', args.now - 2 * 60_000)).take(args.limit),
+  ))).flat().slice(0, args.limit)
+  const alertedCommands = new Set(alerts.map(alert => alert.commandId).filter(Boolean))
+  for (const command of oldCommands) if (!alertedCommands.has(command.commandId)) alerts.push({
+    code: 'stuck_command', workspaceId: command.workspaceId, environmentId: command.environmentId,
+    runId: command.runId, commandId: command.commandId, ageMs: args.now - command.updatedAt,
+  })
+  const oldApprovals = await ctx.db.query('agentApprovalRequests')
+    .withIndex('by_requestedAt', q => q.lte('requestedAt', args.now - 15 * 60_000)).take(args.limit)
+  const alertedApprovals = new Set(alerts.map(alert => `${alert.remoteSessionId}:${alert.runId}`).filter(Boolean))
+  for (const approval of oldApprovals) {
+    if (approval.resolution || alertedApprovals.has(`${approval.remoteSessionId}:${approval.runId}`)) continue
+    const session = await ctx.db.query('agentRemoteSessions')
+      .withIndex('by_sessionId', q => q.eq('sessionId', approval.remoteSessionId)).unique()
+    alerts.push({
+      code: 'approval_age', workspaceId: approval.workspaceId,
+      ...(session ? { environmentId: session.environmentId, eventCursor: session.eventCursor } : {}),
+      runId: approval.runId, remoteSessionId: approval.remoteSessionId,
+      ageMs: args.now - approval.requestedAt,
+    })
+  }
+  const cleanupFailures = await ctx.db.query('agentSandboxLeases')
+    .withIndex('by_status_cleanupAfter', q => q.eq('status', 'cleanup_failed')).take(args.limit)
+  alerts.push(...cleanupFailures.map(lease => ({
+    code: 'cleanup_failure', workspaceId: lease.workspaceId, environmentId: lease.environmentId,
+    ...(lease.runId ? { runId: lease.runId } : {}),
+    ...(lease.providerReference ? { providerReference: lease.providerReference } : {}),
+    ...(lease.reservationId ? { reservationId: lease.reservationId } : {}),
+    ageMs: args.now - lease.updatedAt,
+  })))
+  if (args.settleBilling) for (const alert of alerts) console.warn('connected_agent_operational_alert', alert)
+  return { alerts, expiredRunIds, settlements }
 }
 
 function recoveryParts(value: unknown, runId: string, environmentName: string, code: string, message: string, resolvedAt: number) {

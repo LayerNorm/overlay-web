@@ -66,6 +66,10 @@ into the transcript. These controls are authenticated and workspace-scoped throu
 `@overlay/api-client`. The internal-secret-only
 `POST /api/v1/agent-environments/artifacts/cleanup` endpoint lets the Convex scheduler request
 object deletion from the BFF without moving object-store credentials into Convex.
+The same internal-secret boundary protects
+`POST /api/v1/agent-environments/operations/reconcile`: the Convex scheduler keeps run supervision
+durable while the BFF performs provider-credentialed sandbox settlement retries. PostgreSQL runs
+the equivalent work through its application-data maintenance scheduler.
 
 ## Cross-Surface Adoption
 

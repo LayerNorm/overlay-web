@@ -56,6 +56,10 @@ describe('Convex remote agent room turns', () => {
       commandId: 'different-command', runId: 'different-run', sessionId: 'different-session',
     }))
     expect(duplicate).toEqual(expect.objectContaining({ messageId: result.messageId, resumed: true }))
+    await expect(call('startRemoteAgentTurnByServer', startInput(seeded, {
+      clientNonce: 'concurrent-invocation', commandId: 'concurrent-command', runId: 'concurrent-run',
+      sessionId: 'concurrent-session', maxConcurrentRuns: 1,
+    }))).rejects.toThrow(/CONNECTED_AGENT_POLICY_LIMIT:concurrent_runs/)
 
     const snapshot = await convex.run(async ctx => {
       const message = await ctx.db.get(result.messageId as never)
@@ -83,8 +87,12 @@ describe('Convex remote agent room turns', () => {
       actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel',
       queueExpiresAt: now + 120_000, now: now + 60_004,
     })).toEqual(expect.objectContaining({ applied: true, messageId: result.messageId }))
+    await expect(call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, 'cancelled', { reason: 'Cancelled from Overlay' })], maxEventsPerMinute: 0,
+      now: now + 60_005 })).rejects.toThrow(/CONNECTED_AGENT_POLICY_LIMIT:event_rate/)
     expect(await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
-      events: [event(1, 'cancelled', { reason: 'Cancelled from Overlay' })], now: now + 60_005 }))
+      events: [event(1, 'cancelled', { reason: 'Cancelled from Overlay' })], maxEventsPerMinute: 1,
+      now: now + 60_005 }))
       .toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 1, duplicate: false }))
   })
 
@@ -94,7 +102,13 @@ describe('Convex remote agent room turns', () => {
     const call = <T>(operation: string, args: Record<string, unknown>) =>
       convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
     await call('upsertBindingByServer', bindingInput())
-    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, {
+      sandboxBilling: {
+        baselineUsage: {}, leaseId: 'lease-remote-turn', provider: 'vercel',
+        providerReference: 'sandbox-remote-turn', reservationId: 'sandbox-reservation-remote-turn',
+        resources: { diskGiB: 20, memoryGiB: 4, vcpus: 2 }, startedAt: now,
+      },
+    }))
     const events = [
       event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' }),
       event(2, 'text_checkpoint', { text: 'Work completed', final: true }),
@@ -118,6 +132,20 @@ describe('Convex remote agent room turns', () => {
     expect(duplicate).toEqual(expect.objectContaining({ accepted: true, duplicate: true }))
     const afterDuplicate = await projectedState(convex, started.messageId)
     expect(afterDuplicate.eventCount).toBe(beforeDuplicate.eventCount)
+    const pendingSettlements = await convex.query(queryRef('listPendingSandboxSettlementsByServer'), {
+      serverSecret: secret, limit: 10,
+    }) as Array<{ runId: string; sandboxBilling: { reservationId: string } }>
+    expect(pendingSettlements).toEqual([
+      expect.objectContaining({ runId: 'run-remote-turn', sandboxBilling: expect.objectContaining({
+        reservationId: 'sandbox-reservation-remote-turn',
+      }) }),
+    ])
+    expect(await call('markSandboxSettlementCompleteByServer', {
+      workspaceId, reservationId: 'sandbox-reservation-remote-turn', settledAt: now + 102,
+    })).toBe(true)
+    expect(await convex.query(queryRef('listPendingSandboxSettlementsByServer'), {
+      serverSecret: secret, limit: 10,
+    })).toEqual([])
     await expect(call('applyRemoteEventsByServer', {
       workspaceId, environmentId, sessionId: 'session-remote-turn',
       events: [event(4, 'text_checkpoint', { text: 'must not apply' })], now: now + 102,
@@ -166,10 +194,15 @@ describe('Convex remote agent room turns', () => {
     await call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
       conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'input-1',
       decision: 'accept', response: { branch: 'byo-agents' }, now: now + 17 })
+    await expect(call('createArtifactByServer', { id: 'artifact-too-large', workspaceId, environmentId,
+      runId: 'run-remote-turn', remoteSessionId: 'session-remote-turn', name: 'report.txt', mediaType: 'text/plain',
+      size: 6, sha256: 'a'.repeat(64), objectKey: 'scoped/rejected', status: 'clean', scanResult: 'clean',
+      expiresAt: now + 60_000, createdAt: now, updatedAt: now, maxWorkspaceArtifactBytes: 5,
+    })).rejects.toThrow(/CONNECTED_AGENT_POLICY_LIMIT:artifact_bytes/)
     await call('createArtifactByServer', { id: 'artifact-remote-turn', workspaceId, environmentId,
       runId: 'run-remote-turn', remoteSessionId: 'session-remote-turn', name: 'report.txt', mediaType: 'text/plain',
       size: 6, sha256: 'a'.repeat(64), objectKey: 'scoped/report', status: 'clean', scanResult: 'clean',
-      expiresAt: now + 60_000, createdAt: now, updatedAt: now })
+      expiresAt: now + 60_000, createdAt: now, updatedAt: now, maxWorkspaceArtifactBytes: 10 })
     const terminal = await call<{ accepted: boolean; terminal?: { inputTokens: number } }>('applyRemoteEventsByServer', {
       workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 18,
       events: [
@@ -208,8 +241,11 @@ describe('Convex remote agent room turns', () => {
       events: [event(1, 'session_started', { remoteSessionId: 'resume-session', adapterId: 'acp' })], now: now + 1 })
     const swept = await convex.mutation(mutationRef('sweepRemoteRunsInternal'), {
       now: now + 2, hostOfflineBefore: now - 30_000,
-    }) as { expiredRunIds: string[] }
+    }) as { alerts: Array<{ code: string; runId?: string }>; expiredRunIds: string[] }
     expect(swept.expiredRunIds).toEqual(['run-remote-turn'])
+    expect(swept.alerts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'offline_environment', runId: 'run-remote-turn' }),
+    ]))
     expect(await convex.run(async ctx => ctx.db.query('budgetReservations')
       .withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()))
       .toEqual(expect.objectContaining({ status: 'reconcile_required', reconciliationAttempts: 1 }))
@@ -282,7 +318,8 @@ function startInput(seeded: { conversationId: string; userMessageId: string }, o
   return { actorUserId, agentId, authorPrincipalId: agentPrincipalId, bindingId: 'binding-remote-turn',
     clientNonce: 'invocation-remote-turn', commandId: 'command-remote-turn', conversationId: seeded.conversationId,
     environmentId, environmentName: 'untrusted-name', environmentOnline: true, initiatorPrincipalId: actorPrincipalId,
-    modelId: 'openrouter/free', prompt: 'work', queueExpiresAt: now + 60_000, reservationId: null,
+    modelId: 'openrouter/free', modelUsageBilling: 'byok', maxConcurrentRuns: 10,
+    maxRunTimeMs: 30 * 60_000, prompt: 'work', queueExpiresAt: now + 60_000, reservationId: null,
     runId: 'run-remote-turn', sessionId: 'session-remote-turn', startPayload: { bindingId: 'binding-remote-turn', adapterId: 'acp', workingDirectory: '/repo', prompt: 'work', metadata: {} },
     turnId: 'turn-remote-turn', userMessageId: seeded.userMessageId, workspaceId, now, ...overrides }
 }

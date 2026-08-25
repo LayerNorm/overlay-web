@@ -61,6 +61,8 @@ import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspa
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
+import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
 import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
 import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
@@ -277,25 +279,45 @@ export function createOverlayServerContext(
     ? new PostgresWorkspaceAgentRepository(postgresDb)
     : new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
+    policy: generationUsagePolicy,
+    repository: appData.repositories.connectedAgents,
+  })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
     objectStore,
     repository: appData.repositories.connectedAgents,
     workspaces: workspaceService,
+    policyLimits: async ({ userId, workspaceId }) => {
+      const entitlements = await chatUsagePolicy.getEntitlements({ userId, workspaceId })
+      if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')
+      return connectedAgentPolicyFor(entitlements)
+    },
     settleUsage: async (usage) => {
       if (!usage.userId) return
-      if (usage.outcome === 'cancelled') {
-        await chatUsagePolicy.releaseReservation({
-          reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_cancelled',
-        })
-        return
+      try {
+        // Host-owned/BYOK model calls are observable token counts, not Overlay model spend.
+        if (usage.modelUsageBilling !== 'overlay') {
+          if (usage.reservationId) await chatUsagePolicy.releaseReservation({
+            reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_byok',
+          })
+          return
+        }
+        if (usage.outcome === 'cancelled') {
+          await chatUsagePolicy.releaseReservation({
+            reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_cancelled',
+          })
+          return
+        }
+        if (usage.outcome !== 'completed' && usage.inputTokens === 0 && usage.outputTokens === 0) {
+          await chatUsagePolicy.markReservationForReconcile({ reservationId: usage.reservationId,
+            userId: usage.userId, errorMessage: `remote_agent_${usage.outcome}` })
+          return
+        }
+        await chatUsagePolicy.recordFinishedUsage(usage)
+      } finally {
+        await managedAgentSandboxBilling.settle(usage)
       }
-      if (usage.outcome !== 'completed' && usage.inputTokens === 0 && usage.outputTokens === 0) {
-        await chatUsagePolicy.markReservationForReconcile({ reservationId: usage.reservationId,
-          userId: usage.userId, errorMessage: `remote_agent_${usage.outcome}` })
-        return
-      }
-      await chatUsagePolicy.recordFinishedUsage(usage)
     },
   })
 

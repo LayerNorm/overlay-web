@@ -26,14 +26,20 @@ export type ApplyRemoteEventsResult =
       acknowledgedSequence: number
       duplicate: boolean
       terminal?: {
+        agentId: string
+        environmentId: string
         forceFreeTierLimits: boolean
         inputTokens: number
         modelId: string
+        modelUsageBilling: 'byok' | 'overlay'
         operationId: string
         outputTokens: number
         outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
         reservationId: string | null
+        runId: string
+        sandboxBilling: ConnectedAgentSandboxBilling | null
         userId: string
+        workspaceId: string
       }
     }
   | { accepted: false; expectedSequence: number }
@@ -53,8 +59,40 @@ export type ConnectedAgentControlRemoteTurnResult = {
 }
 
 export type ConnectedAgentSweepResult = {
+  alerts: ConnectedAgentOperationalAlert[]
   expiredRunIds: string[]
   settlements: RemoteAgentUsageSettlement[]
+}
+
+export type ConnectedAgentOperationalAlert = {
+  code:
+    | 'approval_age'
+    | 'cleanup_failure'
+    | 'lease_expired'
+    | 'offline_environment'
+    | 'provider_spend'
+    | 'stuck_command'
+  workspaceId: string
+  agentId?: string
+  environmentId?: string
+  runId?: string
+  commandId?: string
+  remoteSessionId?: string
+  providerReference?: string
+  reservationId?: string
+  eventCursor?: number
+  ageMs?: number
+  providerCostUsd?: number
+}
+
+export type ConnectedAgentSandboxBilling = {
+  baselineUsage: Record<string, unknown>
+  leaseId: string
+  provider: string
+  providerReference: string
+  reservationId: string | null
+  resources: { diskGiB: number; memoryGiB: number; vcpus: number }
+  startedAt: number
 }
 
 export type ConnectedAgentStartRemoteTurn = {
@@ -70,9 +108,13 @@ export type ConnectedAgentStartRemoteTurn = {
   environmentOnline: boolean
   initiatorPrincipalId: string
   modelId: string
+  modelUsageBilling: 'byok' | 'overlay'
+  maxConcurrentRuns: number
+  maxRunTimeMs: number
   prompt: string
   queueExpiresAt: number
   reservationId: string | null
+  sandboxBilling?: ConnectedAgentSandboxBilling
   runId: string
   sessionId: string
   startPayload: Record<string, unknown>
@@ -108,6 +150,11 @@ export interface ConnectedAgentRepository {
     proofChallenge: AgentEnvironmentProofChallenge
   }): Promise<RedeemEnrollmentResult | null>
   listEnvironments(args: { workspaceId: string }): Promise<AgentEnvironment[]>
+  getWorkspacePolicyUsage(args: { workspaceId: string }): Promise<{
+    activeArtifactBytes: number
+    activeRuns: number
+    environments: number
+  }>
   getEnvironment(args: { workspaceId: string; environmentId: string }): Promise<AgentEnvironment | null>
   getEnvironmentEnrollment(args: {
     workspaceId: string
@@ -219,7 +266,7 @@ export interface ConnectedAgentRepository {
     response?: Record<string, unknown>
     now: number
   }): Promise<{ applied: boolean; commandId?: string; messageId?: string }>
-  createArtifact(input: AgentArtifact): Promise<AgentArtifact>
+  createArtifact(input: AgentArtifact & { maxWorkspaceArtifactBytes?: number }): Promise<AgentArtifact>
   getArtifact(args: {
     workspaceId: string
     environmentId: string
@@ -246,13 +293,21 @@ export interface ConnectedAgentRepository {
     hostOfflineBefore: number
     limit: number
   }): Promise<ConnectedAgentSweepResult>
+  listPendingSandboxSettlements(args: { limit: number }): Promise<RemoteAgentUsageSettlement[]>
+  markSandboxSettlementComplete(args: {
+    workspaceId: string
+    reservationId: string
+    settledAt: number
+  }): Promise<boolean>
   createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
+  getActiveSandboxLease(args: { workspaceId: string; environmentId: string }): Promise<AgentSandboxLease | null>
   updateSandboxLease(input: ConnectedAgentUpdateSandboxLease): Promise<AgentSandboxLease | null>
   applyRemoteEvents(args: {
     workspaceId: string
     environmentId: string
     sessionId: string
     events: AgentRemoteEvent[]
+    maxEventsPerMinute?: number
     now: number
   }): Promise<ApplyRemoteEventsResult>
   revokeEnvironment(args: { workspaceId: string; environmentId: string; now: number }): Promise<boolean>

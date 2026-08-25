@@ -11,6 +11,7 @@ import { VercelSandboxRuntime } from '@overlay/sandbox-runtime/vercel'
 import type { AuditService } from '@/server/admin'
 import type { ConnectedAgentControlPlaneService } from './ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
+import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
 const DEFAULT_HARD_TIMEOUT_MS = 24 * 60 * 60_000
@@ -23,6 +24,7 @@ export class ManagedAgentSandboxService {
     repository: ConnectedAgentRepository
     runtime?: SandboxRuntime
     sleep?: (ms: number) => Promise<void>
+    policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
   }) {}
 
   async provision(args: {
@@ -31,6 +33,9 @@ export class ManagedAgentSandboxService {
     serverUrl: string
   }) {
     const runtime = this.dependencies.runtime ?? managedSandboxRuntimeFromEnv()
+    const limits = await this.dependencies.policyLimits?.({ userId: args.actorUserId, workspaceId: args.workspaceId })
+    const idleTimeoutMs = Math.min(DEFAULT_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? DEFAULT_IDLE_TIMEOUT_MS)
+    const hardTimeoutMs = Math.min(DEFAULT_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? DEFAULT_HARD_TIMEOUT_MS)
     const image = process.env.OVERLAY_AGENT_HOST_IMAGE?.trim()
     if (!image) throw managedSandboxError('OVERLAY_AGENT_HOST_IMAGE is not configured', 503, 'managed_sandbox_image_missing')
     const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
@@ -51,8 +56,8 @@ export class ManagedAgentSandboxService {
           domains: managedAllowedDomains(args.serverUrl),
           deniedCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16'],
         },
-        idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS,
-        hardTimeoutMs: DEFAULT_HARD_TIMEOUT_MS,
+        idleTimeoutMs,
+        hardTimeoutMs,
         resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
         metadata: { overlay: 'true', kind: 'agent-host', workspace: args.workspaceId },
       })
@@ -71,9 +76,9 @@ export class ManagedAgentSandboxService {
         provider: runtime.provider,
         providerReference: sandbox.reference,
         status: 'running',
-        reservedUntil: now + DEFAULT_HARD_TIMEOUT_MS,
+        reservedUntil: now + hardTimeoutMs,
         runtimeStartedAt: now,
-        usage: {},
+        usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
         cleanupAttempts: 0,
         now,
       })
@@ -122,8 +127,10 @@ export class ManagedAgentSandboxError extends Error {
   }
 }
 
-export function managedSandboxRuntimeFromEnv(): SandboxRuntime {
-  const provider = process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER?.trim().toLowerCase() || 'vercel'
+export function managedSandboxRuntimeFromEnv(providerOverride?: string): SandboxRuntime {
+  const provider = providerOverride?.trim().toLowerCase()
+    || process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER?.trim().toLowerCase()
+    || 'vercel'
   if (provider === 'vercel') {
     const token = process.env.VERCEL_TOKEN?.trim()
     const teamId = process.env.VERCEL_TEAM_ID?.trim()

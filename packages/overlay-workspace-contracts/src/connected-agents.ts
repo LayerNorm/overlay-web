@@ -194,6 +194,7 @@ export type AgentEnrollmentSession = {
   environmentId?: string
   redeemedAt?: number
   approvedAt?: number
+  maxEnvironments?: number
   createdAt: number
   updatedAt: number
 }

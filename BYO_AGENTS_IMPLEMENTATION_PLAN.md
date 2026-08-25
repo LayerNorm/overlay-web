@@ -336,7 +336,16 @@ Exit gate: a clean VPS installation can enroll, survive host and Overlay
 restarts, run a mentioned agent, request approval, cancel, resume, and upgrade
 without opening an inbound port.
 
-## Phase 8: billing, policy, observability, and operations
+## ✅ Phase 8: billing, policy, observability, and operations
+
+Implementation status: complete. BYOK host calls are excluded from Overlay model usage, while
+Overlay Cloud creates an independent `sandbox` reservation against `agent:<agentId>` before the
+start command and settles metered CPU, provisioned memory, and egress through the existing
+idempotent usage ledger. Environment, concurrency, hard-runtime, event-rate, artifact-byte,
+idle-time, egress, and monthly-spend limits are enforced through shared policy values and atomic
+provider operations. Correlated run/event audits and maintenance alerts cover the operational
+matrix below. A durable per-reservation settlement marker makes provider-read and post-ledger crash
+retries automatic in both provider modes. Live invoice reconciliation remains Phase 9 release evidence.
 
 Use the existing workspace billing and programmatic spend subject
 `agent:<agentId>`:

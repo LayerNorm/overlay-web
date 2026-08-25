@@ -36,7 +36,9 @@ import {
 import type { AuditService } from '@/server/admin'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
+import type { ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
+import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
+import { logger } from '@/server/observability/logger'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
 const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
@@ -71,17 +73,6 @@ export type HostAuthentication = {
   environment: AgentEnvironment
 }
 
-type RemoteAgentUsageSettlement = {
-  forceFreeTierLimits: boolean
-  inputTokens: number
-  modelId: string
-  operationId: string
-  outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
-  outputTokens: number
-  reservationId: string | null
-  userId: string
-}
-
 export class ConnectedAgentControlPlaneService {
   constructor(private readonly dependencies: {
     audit: AuditService
@@ -90,12 +81,24 @@ export class ConnectedAgentControlPlaneService {
     objectStore?: ObjectStore
     now?: () => number
     isEnabled?: () => boolean | Promise<boolean>
+    policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
     await this.assertEnabled()
     const access = await this.requireManager(args.actorUserId, args.workspaceId)
+    let maxEnvironments: number | undefined
+    if (this.dependencies.policyLimits) {
+      const [limits, usage] = await Promise.all([
+        this.dependencies.policyLimits({ userId: args.actorUserId, workspaceId: args.workspaceId }),
+        this.dependencies.repository.getWorkspacePolicyUsage({ workspaceId: args.workspaceId }),
+      ])
+      if (usage.environments >= limits.maxEnvironments) {
+        throw controlPlaneError('This workspace has reached its connected-environment limit', 429, 'environment_limit_reached')
+      }
+      maxEnvironments = limits.maxEnvironments
+    }
     const now = this.now()
     const code = randomSecret()
     const record = await this.dependencies.repository.createEnrollmentSession({
@@ -105,6 +108,7 @@ export class ConnectedAgentControlPlaneService {
       codeHash: sha256(code),
       verificationPhrase: verificationPhrase(),
       status: 'created',
+      ...(maxEnvironments === undefined ? {} : { maxEnvironments }),
       expiresAt: now + ENROLLMENT_TTL_MS,
       createdAt: now,
       updatedAt: now,
@@ -123,7 +127,9 @@ export class ConnectedAgentControlPlaneService {
     const now = this.now()
     const proofChallenge = randomSecret()
     const environmentId = randomUUID()
-    const result = await this.dependencies.repository.redeemEnrollmentSession({
+    let result
+    try {
+      result = await this.dependencies.repository.redeemEnrollmentSession({
       codeHash: sha256(input.code),
       now,
       environment: {
@@ -146,7 +152,10 @@ export class ConnectedAgentControlPlaneService {
         expiresAt: now + PROOF_CHALLENGE_TTL_MS,
         createdAt: now,
       },
-    })
+      })
+    } catch (error) {
+      throw translatePolicyError(error)
+    }
     if (!result) throw controlPlaneError('Enrollment code is invalid, expired, or already used', 410, 'enrollment_invalid')
     await this.audit('agent_environment.enrolled', 'service', undefined, {
       workspaceId: result.environment.workspaceId,
@@ -342,7 +351,10 @@ export class ConnectedAgentControlPlaneService {
       queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
     })
     if (!result.applied) throw controlPlaneError('Queued remote run was not found', 404, 'remote_run_not_found')
-    if (result.terminal?.reservationId && this.dependencies.settleUsage) await this.dependencies.settleUsage(result.terminal)
+    if (result.terminal && this.dependencies.settleUsage &&
+      (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
+      await this.settleWithAudit(result.terminal)
+    }
     await this.audit(`agent_remote_run.${args.action}`, 'user', args.actorUserId, {
       workspaceId: args.workspaceId, conversationId: args.conversationId, runId: args.runId,
       commandId: result.commandId,
@@ -381,12 +393,24 @@ export class ConnectedAgentControlPlaneService {
     if (!session || ['completed', 'failed', 'cancelled'].includes(session.status)) throw controlPlaneError('Remote session is not active', 409, 'remote_session_inactive')
     const artifactId = `artifact_${randomUUID()}`
     const objectKey = `workspaces/${encodeURIComponent(auth.credential.workspaceId)}/agent-artifacts/${encodeURIComponent(auth.environment.id)}/${encodeURIComponent(input.runId)}/${artifactId}`
-    const artifact = await this.dependencies.repository.createArtifact({
-      id: artifactId, workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id,
-      runId: input.runId, remoteSessionId: session.id, name, mediaType, size: input.size,
-      sha256: input.sha256, objectKey, status: 'pending_upload', expiresAt: now + ARTIFACT_UPLOAD_TTL_MS,
-      createdAt: now, updatedAt: now,
-    })
+    const billing = session.capabilitySnapshot?.billing
+    const billingUserId = billing && typeof billing === 'object' && typeof (billing as Record<string, unknown>).userId === 'string'
+      ? String((billing as Record<string, unknown>).userId) : ''
+    const limits = this.dependencies.policyLimits && billingUserId
+      ? await this.dependencies.policyLimits({ userId: billingUserId, workspaceId: auth.credential.workspaceId })
+      : undefined
+    let artifact
+    try {
+      artifact = await this.dependencies.repository.createArtifact({
+        id: artifactId, workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id,
+        runId: input.runId, remoteSessionId: session.id, name, mediaType, size: input.size,
+        sha256: input.sha256, objectKey, status: 'pending_upload', expiresAt: now + ARTIFACT_UPLOAD_TTL_MS,
+        createdAt: now, updatedAt: now,
+        ...(limits ? { maxWorkspaceArtifactBytes: limits.maxArtifactBytes } : {}),
+      })
+    } catch (error) {
+      throw translatePolicyError(error)
+    }
     const checksum = Buffer.from(input.sha256, 'hex').toString('base64')
     const upload = await objectStore.getUploadUrl(objectKey, mediaType, {
       expiresIn: ARTIFACT_UPLOAD_TTL_MS / 1_000, contentLength: input.size, checksumSha256: input.sha256,
@@ -441,11 +465,29 @@ export class ConnectedAgentControlPlaneService {
   async cleanupArtifacts(limit = 100) {
     const now = this.now()
     const artifacts = await this.dependencies.repository.listArtifactsForCleanup({ now, limit })
+    let failed = 0
     for (const artifact of artifacts) {
-      await this.requireObjectStore().deleteObject(artifact.objectKey)
-      await this.dependencies.repository.markArtifactDeleted({ artifactId: artifact.id, now })
+      try {
+        await this.requireObjectStore().deleteObject(artifact.objectKey)
+        await this.dependencies.repository.markArtifactDeleted({ artifactId: artifact.id, now })
+      } catch (error) {
+        failed += 1
+        logger.error('Connected-agent artifact cleanup failed', {
+          workspaceId: artifact.workspaceId,
+          environmentId: artifact.environmentId,
+          runId: artifact.runId,
+          artifactId: artifact.id,
+          error,
+        })
+        await this.dependencies.audit.record({
+          action: 'agent_artifact.cleanup_failed', actorType: 'service', outcome: 'failure',
+          resourceType: 'agent_artifact', resourceId: artifact.id,
+          metadata: { workspaceId: artifact.workspaceId, environmentId: artifact.environmentId,
+            runId: artifact.runId, remoteSessionId: artifact.remoteSessionId },
+        }).catch((_error) => undefined)
+      }
     }
-    return { deleted: artifacts.length }
+    return { deleted: artifacts.length - failed, ...(failed > 0 ? { failed } : {}) }
   }
 
   async sweepRemoteRuns() {
@@ -454,9 +496,38 @@ export class ConnectedAgentControlPlaneService {
       now, hostOfflineBefore: now - 90_000, limit: 100,
     })
     if (this.dependencies.settleUsage) for (const settlement of result.settlements) {
-      if (settlement.reservationId) await this.dependencies.settleUsage(settlement)
+      if (settlement.reservationId || settlement.sandboxBilling?.reservationId) {
+        await this.settleWithAudit(settlement).catch((_error) => undefined)
+      }
+    }
+    for (const alert of result.alerts) {
+      logger.warn('Connected-agent operational alert', alert)
+      await this.dependencies.audit.record({
+        action: `agent_operations.${alert.code}`, actorType: 'service', outcome: 'failure',
+        resourceType: alert.runId ? 'agent_run' : 'agent_environment',
+        resourceId: alert.runId ?? alert.environmentId ?? alert.workspaceId,
+        metadata: alert,
+      }).catch((_error) => undefined)
     }
     return result
+  }
+
+  async reconcileSandboxSettlements(limit = 100) {
+    if (!this.dependencies.settleUsage) return { attempted: 0, failed: 0, settled: 0 }
+    const pending = await this.dependencies.repository.listPendingSandboxSettlements({
+      limit: Math.max(1, Math.min(100, Math.floor(limit))),
+    })
+    let failed = 0
+    let settled = 0
+    for (const settlement of pending) {
+      try {
+        await this.settleWithAudit(settlement)
+        settled += 1
+      } catch (_error) {
+        failed += 1
+      }
+    }
+    return { attempted: pending.length, failed, settled }
   }
 
   async issueInitialCredential(args: {
@@ -647,15 +718,57 @@ export class ConnectedAgentControlPlaneService {
       runId: batch.runId,
     })
     if (!session) throw controlPlaneError('Remote session was not found', 404, 'remote_session_not_found')
-    const result = await this.dependencies.repository.applyRemoteEvents({
-      workspaceId: auth.credential.workspaceId,
-      environmentId: auth.credential.environmentId,
-      sessionId: session.id,
-      events: batch.events,
-      now: this.now(),
-    })
-    if (result.accepted && result.terminal?.reservationId && this.dependencies.settleUsage) {
-      await this.dependencies.settleUsage(result.terminal)
+    const billing = session.capabilitySnapshot?.billing
+    const billingUserId = billing && typeof billing === 'object' && typeof (billing as Record<string, unknown>).userId === 'string'
+      ? String((billing as Record<string, unknown>).userId) : ''
+    const limits = this.dependencies.policyLimits && billingUserId
+      ? await this.dependencies.policyLimits({ userId: billingUserId, workspaceId: auth.credential.workspaceId })
+      : undefined
+    let result
+    try {
+      result = await this.dependencies.repository.applyRemoteEvents({
+        workspaceId: auth.credential.workspaceId,
+        environmentId: auth.credential.environmentId,
+        sessionId: session.id,
+        events: batch.events,
+        ...(limits ? { maxEventsPerMinute: limits.maxEventsPerMinute } : {}),
+        now: this.now(),
+      })
+    } catch (error) {
+      throw translatePolicyError(error)
+    }
+    if (!result.accepted) {
+      logger.warn('Connected-agent cursor gap', {
+        workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id,
+        runId: batch.runId, remoteSessionId: session.id, eventCursor: session.eventCursor,
+        expectedSequence: result.expectedSequence,
+      })
+      await this.audit('agent_remote_run.cursor_gap', 'service', undefined, {
+        workspaceId: auth.credential.workspaceId, agentId: billingAgentId(session.capabilitySnapshot),
+        environmentId: auth.environment.id, runId: batch.runId, remoteSessionId: session.id,
+        eventCursor: session.eventCursor, expectedSequence: result.expectedSequence,
+      }, batch.runId, 'agent_run')
+      return result
+    }
+    await this.audit(
+      result.terminal ? `agent_remote_run.${result.terminal.outcome}` : 'agent_remote_run.events_applied',
+      'service', undefined, {
+        workspaceId: auth.credential.workspaceId,
+        agentId: result.terminal?.agentId || billingAgentId(session.capabilitySnapshot),
+        environmentId: auth.environment.id,
+        runId: batch.runId,
+        remoteSessionId: session.id,
+        sandboxProviderReference: result.terminal?.sandboxBilling?.providerReference,
+        reservationId: result.terminal?.reservationId,
+        sandboxReservationId: result.terminal?.sandboxBilling?.reservationId,
+        eventCursor: result.acknowledgedSequence,
+        eventCount: batch.events.length,
+        duplicate: result.duplicate,
+      }, batch.runId, 'agent_run',
+    )
+    if (result.terminal && this.dependencies.settleUsage &&
+      (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
+      await this.settleWithAudit(result.terminal)
     }
     return result
   }
@@ -703,6 +816,37 @@ export class ConnectedAgentControlPlaneService {
     await this.requireObjectStore().deleteObject(artifact.objectKey).catch((_error) => undefined)
   }
 
+  private async settleWithAudit(settlement: RemoteAgentUsageSettlement) {
+    try {
+      await this.dependencies.settleUsage?.(settlement)
+      await this.audit('agent_remote_run.usage_settled', 'service', undefined, {
+        workspaceId: settlement.workspaceId, agentId: settlement.agentId,
+        environmentId: settlement.environmentId, runId: settlement.runId,
+        reservationId: settlement.reservationId,
+        sandboxReservationId: settlement.sandboxBilling?.reservationId,
+        sandboxProviderReference: settlement.sandboxBilling?.providerReference,
+      }, settlement.runId, 'agent_run')
+    } catch (error) {
+      logger.error('Connected-agent settlement failed', {
+        workspaceId: settlement.workspaceId, agentId: settlement.agentId,
+        environmentId: settlement.environmentId, runId: settlement.runId,
+        reservationId: settlement.reservationId,
+        sandboxReservationId: settlement.sandboxBilling?.reservationId,
+        error,
+      })
+      await this.dependencies.audit.record({
+        action: 'agent_remote_run.settlement_failed', actorType: 'service', outcome: 'failure',
+        resourceType: 'agent_run', resourceId: settlement.runId,
+        metadata: { workspaceId: settlement.workspaceId, agentId: settlement.agentId,
+          environmentId: settlement.environmentId, runId: settlement.runId,
+          reservationId: settlement.reservationId,
+          sandboxReservationId: settlement.sandboxBilling?.reservationId,
+          sandboxProviderReference: settlement.sandboxBilling?.providerReference },
+      }).catch((_error) => undefined)
+      throw error
+    }
+  }
+
   private async audit(
     action: string,
     actorType: 'user' | 'service',
@@ -721,6 +865,19 @@ export class ConnectedAgentControlPlaneService {
       resourceType,
     })
   }
+}
+
+function translatePolicyError(error: unknown) {
+  if (error instanceof Error && error.message.includes('CONNECTED_AGENT_POLICY_LIMIT:')) {
+    return controlPlaneError('Connected-agent plan limit exceeded', 429, 'connected_agent_policy_limit')
+  }
+  return error
+}
+
+function billingAgentId(snapshot: Record<string, unknown>) {
+  const billing = snapshot.billing && typeof snapshot.billing === 'object'
+    ? snapshot.billing as Record<string, unknown> : {}
+  return typeof billing.agentId === 'string' ? billing.agentId : ''
 }
 
 function createCredential(environment: AgentEnvironment, now: number) {

@@ -26,6 +26,8 @@ import {
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations } from './mention-policy'
+import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
+import { ManagedAgentSandboxBilling, ManagedAgentSandboxBudgetError } from './ManagedAgentSandboxBilling'
 
 /**
  * Step budgets.
@@ -207,6 +209,8 @@ export type WorkspaceAgentInvocation = {
     bindingId: string
     environmentId: string
     environmentName: string
+    environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
+    modelUsageBilling: 'byok' | 'overlay'
     online: boolean
     workingDirectory: string
   }
@@ -399,7 +403,10 @@ export async function resolveWorkspaceAgentInvocations(args: {
           adapterId,
           bindingId: target.binding.id,
           environmentId: target.environment.id,
+          environmentKind: target.environment.kind,
           environmentName: target.environment.name,
+          modelUsageBilling: target.environment.kind === 'overlay_cloud'
+            && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
           workingDirectory,
         },
@@ -431,17 +438,16 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     programmaticSubjectId: `agent:${args.invocation.agentId}`,
   })
   if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
-  // User-owned ACP execution has no Overlay model charge. This reservation call
-  // still applies the payer's agent allowance before dispatch; paid provider
-  // reservations remain null until Overlay itself supplies metered compute.
+  const policy = connectedAgentPolicyFor(entitlements)
+  const overlayModelUsage = args.invocation.remoteTarget.modelUsageBilling === 'overlay'
   const reservation = await server.chatUsagePolicy.reserveForAttempt({
     entitlements,
-    estimatedInputTokens: 0,
+    estimatedInputTokens: overlayModelUsage ? Math.max(1, Math.ceil(args.prompt.length / 4)) : 0,
     idempotencyKey: args.invocation.invocationNonce,
-    maxOutputTokens: 0,
-    modelId: FREE_TIER_AUTO_MODEL_ID,
+    maxOutputTokens: overlayModelUsage ? MAX_OUTPUT_TOKENS_AGENT : 0,
+    modelId: overlayModelUsage ? args.invocation.modelId : FREE_TIER_AUTO_MODEL_ID,
     operationId: `workspace-agent:${args.invocation.turnId}`,
-    paid: false,
+    paid: overlayModelUsage,
     requestFingerprint,
     userId: args.actorUserId,
     workspaceId: args.workspaceId,
@@ -451,8 +457,29 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     reservation.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
   )
   const now = Date.now()
+  const runId = `agent_run_${randomUUID()}`
+  const remoteSessionId = `agent_session_${randomUUID()}`
+  const sandboxBillingService = new ManagedAgentSandboxBilling({
+    policy: server.generationUsagePolicy,
+    repository: server.appData.repositories.connectedAgents,
+  })
+  let sandboxBilling: Awaited<ReturnType<ManagedAgentSandboxBilling['reserve']>> | undefined
   try {
-    return await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
+    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
+      sandboxBilling = await sandboxBillingService.reserve({
+        agentId: args.invocation.agentId,
+        entitlements,
+        environmentId: args.invocation.remoteTarget.environmentId,
+        idempotencyKey: `${args.invocation.invocationNonce}:sandbox`,
+        maxRunTimeMs: policy.maxRunTimeMs,
+        maxSandboxEgressBytes: policy.maxSandboxEgressBytes,
+        operationId: `workspace-agent-sandbox:${args.invocation.turnId}`,
+        requestFingerprint,
+        userId: args.actorUserId,
+        workspaceId: args.workspaceId,
+      })
+    }
+    const started = await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
       actorUserId: args.actorUserId,
       agentId: args.invocation.agentId,
       authorPrincipalId: args.invocation.agentPrincipalId,
@@ -465,11 +492,15 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       environmentOnline: args.invocation.remoteTarget.online,
       initiatorPrincipalId: args.initiatorPrincipalId,
       modelId: args.invocation.modelId,
+      modelUsageBilling: args.invocation.remoteTarget.modelUsageBilling,
+      maxConcurrentRuns: policy.maxConcurrentRuns,
+      maxRunTimeMs: policy.maxRunTimeMs,
       prompt: args.prompt,
       queueExpiresAt: now + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
       reservationId: reservation.reservationId,
-      runId: `agent_run_${randomUUID()}`,
-      sessionId: `agent_session_${randomUUID()}`,
+      runId,
+      ...(sandboxBilling ? { sandboxBilling } : {}),
+      sessionId: remoteSessionId,
       startPayload: {
         bindingId: args.invocation.remoteTarget.bindingId,
         adapterId: args.invocation.remoteTarget.adapterId,
@@ -487,12 +518,60 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       workspaceId: args.workspaceId,
       now,
     })
+    await server.auditService.record({
+      action: 'agent_remote_run.dispatched',
+      actorType: 'user',
+      actorUserId: args.actorUserId,
+      outcome: 'success',
+      resourceType: 'agent_run',
+      resourceId: started.runId,
+      metadata: {
+        workspaceId: args.workspaceId,
+        agentId: args.invocation.agentId,
+        environmentId: args.invocation.remoteTarget.environmentId,
+        runId: started.runId,
+        commandId: started.commandId,
+        remoteSessionId,
+        sandboxProviderReference: sandboxBilling?.providerReference,
+        reservationId: reservation.reservationId,
+        sandboxReservationId: sandboxBilling?.reservationId,
+        eventCursor: 0,
+      },
+    })
+    return started
   } catch (error) {
     await server.chatUsagePolicy.releaseReservation({
       reason: 'remote_agent_dispatch_failed',
       reservationId: reservation.reservationId,
       userId: args.actorUserId,
     }).catch((_error) => undefined)
+    await sandboxBillingService.release({
+      billing: sandboxBilling,
+      userId: args.actorUserId,
+      reason: 'remote_agent_dispatch_failed',
+    }).catch((_error) => undefined)
+    await server.auditService.record({
+      action: 'agent_remote_run.dispatch_failed',
+      actorType: 'user',
+      actorUserId: args.actorUserId,
+      outcome: 'failure',
+      resourceType: 'agent_run',
+      resourceId: runId,
+      metadata: {
+        workspaceId: args.workspaceId,
+        agentId: args.invocation.agentId,
+        environmentId: args.invocation.remoteTarget.environmentId,
+        runId,
+        remoteSessionId,
+        reservationId: reservation.reservationId,
+        sandboxReservationId: sandboxBilling?.reservationId,
+        errorCode: error instanceof Error ? error.message.slice(0, 160) : 'remote_agent_dispatch_failed',
+      },
+    }).catch((_auditError) => undefined)
+    if (error instanceof ManagedAgentSandboxBudgetError ||
+      (error instanceof Error && error.message.startsWith('CONNECTED_AGENT_POLICY_LIMIT:'))) {
+      throw new WorkspaceAgentInvocationError('usage_limited')
+    }
     throw error
   }
 }

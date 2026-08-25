@@ -11,8 +11,8 @@ import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@overlay/agent-bridge-
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   agentApprovalRequests, agentArtifacts, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
-  agentEnvironmentProofChallenges, agentEnvironmentProofNonces, agentEnvironments,
-  agentRemoteSessions, agentRunCommands, agentRuns, agentSandboxLeases, conversationEvents,
+  agentEnvironmentProofChallenges, agentEnvironmentProofNonces, agentEnvironments, agentEventRateWindows,
+  agentRemoteSessions, agentRunCommands, agentRuns, agentSandboxLeases, agentSandboxSettlements, conversationEvents,
   conversationMessages, conversationParticipants, conversations, workspaceMemberships, workspacePrincipals,
 } from '@/server/database/postgres/schema'
 import {
@@ -22,6 +22,7 @@ import { assertValidElicitationResponse } from '@/shared/agents/elicitation-sche
 import type {
   ApplyRemoteEventsResult, ConnectedAgentCreateBinding, ConnectedAgentCreateEnvironment,
   ConnectedAgentCreateSession, ConnectedAgentEnqueueCommand, ConnectedAgentRepository,
+  RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
 
 const REMOTE_RUN_LEASE_MS = 30 * 60_000
@@ -41,6 +42,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       environmentId: input.environmentId,
       redeemedAt: date(input.redeemedAt),
       approvedAt: date(input.approvedAt),
+      maxEnvironments: input.maxEnvironments,
       createdAt: new Date(input.createdAt),
       updatedAt: new Date(input.updatedAt),
     }).returning()
@@ -56,6 +58,15 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         await tx.update(agentEnrollmentSessions).set({ status: 'expired', updatedAt: new Date(args.now) })
           .where(eq(agentEnrollmentSessions.id, current.id))
         return null
+      }
+      if (current.maxEnvironments !== null) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`connected-agent-environments:${current.workspaceId}`}, 0))`)
+        const [usage] = await tx.select({ value: sql<number>`count(*)::int` }).from(agentEnvironments).where(and(
+          eq(agentEnvironments.workspaceId, current.workspaceId), isNull(agentEnvironments.revokedAt),
+        ))
+        if (Number(usage?.value ?? 0) >= current.maxEnvironments) {
+          throw new Error('CONNECTED_AGENT_POLICY_LIMIT:environments')
+        }
       }
       const [environmentRow] = await tx.insert(agentEnvironments).values({
         id: args.environment.id,
@@ -97,6 +108,29 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       .where(eq(agentEnvironments.workspaceId, args.workspaceId))
       .orderBy(desc(agentEnvironments.createdAt))
     return rows.map(environment)
+  }
+
+  async getWorkspacePolicyUsage(args: { workspaceId: string }) {
+    const [environmentCount, runCount, artifactTotal] = await Promise.all([
+      this.db.select({ value: sql<number>`count(*)::int` }).from(agentEnvironments).where(and(
+        eq(agentEnvironments.workspaceId, args.workspaceId), isNull(agentEnvironments.revokedAt),
+      )),
+      this.db.select({ value: sql<number>`count(*)::int` }).from(agentRemoteSessions).where(and(
+        eq(agentRemoteSessions.workspaceId, args.workspaceId),
+        inArray(agentRemoteSessions.status, ['starting', 'running', 'waiting_for_approval', 'recovering']),
+      )),
+      this.db.select({ value: sql<number>`COALESCE(sum(${agentArtifacts.size}), 0)::bigint` })
+        .from(agentArtifacts).where(and(
+          eq(agentArtifacts.workspaceId, args.workspaceId),
+          inArray(agentArtifacts.status, ['pending_upload', 'scanning', 'clean', 'linked']),
+          isNull(agentArtifacts.deletedAt),
+        )),
+    ])
+    return {
+      activeArtifactBytes: Number(artifactTotal[0]?.value ?? 0),
+      activeRuns: Number(runCount[0]?.value ?? 0),
+      environments: Number(environmentCount[0]?.value ?? 0),
+    }
   }
 
   async getEnvironment(args: { workspaceId: string; environmentId: string }) {
@@ -471,6 +505,22 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           || (resumed.lastSeenAt?.getTime() ?? 0) < input.now - 45_000,
       }
 
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`connected-agent-policy:${input.workspaceId}`}, 0))`)
+      const [activeRuns] = await tx.select({ value: sql<number>`count(*)::int` }).from(agentRemoteSessions).where(and(
+        eq(agentRemoteSessions.workspaceId, input.workspaceId),
+        inArray(agentRemoteSessions.status, ['starting', 'running', 'waiting_for_approval', 'recovering']),
+      ))
+      if (Number(activeRuns?.value ?? 0) >= input.maxConcurrentRuns) {
+        throw new Error('CONNECTED_AGENT_POLICY_LIMIT:concurrent_runs')
+      }
+      if (target.environment.kind === 'overlay_cloud') {
+        const [managedEnvironmentRun] = await tx.select({ id: agentRemoteSessions.id }).from(agentRemoteSessions).where(and(
+          eq(agentRemoteSessions.environmentId, input.environmentId),
+          inArray(agentRemoteSessions.status, ['starting', 'running', 'waiting_for_approval', 'recovering']),
+        )).limit(1)
+        if (managedEnvironmentRun) throw new Error('CONNECTED_AGENT_POLICY_LIMIT:managed_environment_concurrency')
+      }
+
       const online = target.environment.status === 'online'
         && (target.environment.lastSeenAt?.getTime() ?? 0) >= input.now - 45_000
       const now = new Date(input.now)
@@ -514,7 +564,10 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         mode: 'room',
         runner: 'remote',
         status: 'queued',
-        leaseExpiresAt: new Date(online ? input.now + REMOTE_RUN_LEASE_MS : input.queueExpiresAt),
+        leaseExpiresAt: new Date(Math.min(
+          input.now + input.maxRunTimeMs,
+          online ? input.now + REMOTE_RUN_LEASE_MS : input.queueExpiresAt,
+        )),
         createdAt: now,
         updatedAt: now,
       })
@@ -531,14 +584,31 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           ...target.environment.capabilities,
           billing: {
             reservationId: input.reservationId,
+            agentId: input.agentId,
+            environmentId: input.environmentId,
             modelId: input.modelId,
+            modelUsageBilling: input.modelUsageBilling,
+            runId: input.runId,
             userId: input.actorUserId,
+            workspaceId: input.workspaceId,
             operationId: `workspace-agent:${input.turnId}`,
           },
+          hardExpiresAt: input.now + input.maxRunTimeMs,
+          ...(input.sandboxBilling ? { sandboxBilling: input.sandboxBilling } : {}),
           queueExpiresAt: input.queueExpiresAt,
           environmentName: target.environment.name,
           startPayload: input.startPayload,
         },
+        createdAt: now,
+        updatedAt: now,
+      })
+      if (input.sandboxBilling?.reservationId) await tx.insert(agentSandboxSettlements).values({
+        reservationId: input.sandboxBilling.reservationId,
+        workspaceId: input.workspaceId,
+        environmentId: input.environmentId,
+        runId: input.runId,
+        leaseId: input.sandboxBilling.leaseId,
+        status: 'pending',
         createdAt: now,
         updatedAt: now,
       })
@@ -982,21 +1052,35 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
     })
   }
 
-  async createArtifact(input: AgentArtifact) {
-    const [sessionRow] = await this.db.select({ id: agentRemoteSessions.id }).from(agentRemoteSessions).where(and(
-      eq(agentRemoteSessions.id, input.remoteSessionId), eq(agentRemoteSessions.workspaceId, input.workspaceId),
-      eq(agentRemoteSessions.environmentId, input.environmentId), eq(agentRemoteSessions.runId, input.runId),
-    ))
-    if (!sessionRow) throw new Error('AGENT_REMOTE_SESSION_NOT_FOUND')
-    const [row] = await this.db.insert(agentArtifacts).values({
-      id: input.id, workspaceId: input.workspaceId, environmentId: input.environmentId,
-      runId: input.runId, remoteSessionId: input.remoteSessionId, name: input.name,
-      mediaType: input.mediaType, size: input.size, sha256: input.sha256, objectKey: input.objectKey,
-      status: input.status, scanResult: input.scanResult, expiresAt: new Date(input.expiresAt),
-      linkedAt: date(input.linkedAt), deletedAt: date(input.deletedAt),
-      createdAt: new Date(input.createdAt), updatedAt: new Date(input.updatedAt),
-    }).returning()
-    return artifact(row)
+  async createArtifact(input: Parameters<ConnectedAgentRepository['createArtifact']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`connected-agent-artifacts:${input.workspaceId}`}, 0))`)
+      const [sessionRow] = await tx.select({ id: agentRemoteSessions.id }).from(agentRemoteSessions).where(and(
+        eq(agentRemoteSessions.id, input.remoteSessionId), eq(agentRemoteSessions.workspaceId, input.workspaceId),
+        eq(agentRemoteSessions.environmentId, input.environmentId), eq(agentRemoteSessions.runId, input.runId),
+      ))
+      if (!sessionRow) throw new Error('AGENT_REMOTE_SESSION_NOT_FOUND')
+      if (input.maxWorkspaceArtifactBytes !== undefined) {
+        const [total] = await tx.select({ value: sql<number>`COALESCE(sum(${agentArtifacts.size}), 0)::bigint` })
+          .from(agentArtifacts).where(and(
+            eq(agentArtifacts.workspaceId, input.workspaceId),
+            inArray(agentArtifacts.status, ['pending_upload', 'scanning', 'clean', 'linked']),
+            isNull(agentArtifacts.deletedAt),
+          ))
+        if (Number(total?.value ?? 0) + input.size > input.maxWorkspaceArtifactBytes) {
+          throw new Error('CONNECTED_AGENT_POLICY_LIMIT:artifact_bytes')
+        }
+      }
+      const [row] = await tx.insert(agentArtifacts).values({
+        id: input.id, workspaceId: input.workspaceId, environmentId: input.environmentId,
+        runId: input.runId, remoteSessionId: input.remoteSessionId, name: input.name,
+        mediaType: input.mediaType, size: input.size, sha256: input.sha256, objectKey: input.objectKey,
+        status: input.status, scanResult: input.scanResult, expiresAt: new Date(input.expiresAt),
+        linkedAt: date(input.linkedAt), deletedAt: date(input.deletedAt),
+        createdAt: new Date(input.createdAt), updatedAt: new Date(input.updatedAt),
+      }).returning()
+      return artifact(row)
+    })
   }
 
   async getArtifact(args: Parameters<ConnectedAgentRepository['getArtifact']>[0]) {
@@ -1073,6 +1157,7 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           or(lte(agentRuns.leaseExpiresAt, new Date(args.now)), lte(agentEnvironments.lastSeenAt, new Date(args.hostOfflineBefore))),
         )).limit(args.limit).for('update')
       const settlements = []
+      const alerts: import('./ConnectedAgentRepository').ConnectedAgentOperationalAlert[] = []
       for (const row of rows) {
         const offline = (row.environment.lastSeenAt?.getTime() ?? 0) <= args.hostOfflineBefore
         const code = offline ? 'remote_host_offline' : 'remote_run_timeout'
@@ -1097,9 +1182,122 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           type: 'message.failed', userId: row.run.userId, createdAt: now,
         })
         settlements.push(terminalBilling(row.session.capabilitySnapshot, row.message.tokens, 'timeout'))
+        const settlement = settlements.at(-1)!
+        alerts.push({
+          code: offline ? 'offline_environment' : 'lease_expired',
+          workspaceId: row.session.workspaceId,
+          agentId: settlement.agentId || row.run.agentId || undefined,
+          environmentId: row.session.environmentId,
+          runId: row.run.id,
+          remoteSessionId: row.session.id,
+          reservationId: settlement.reservationId ?? undefined,
+          eventCursor: row.session.eventCursor,
+        })
       }
-      return { expiredRunIds: rows.map((row) => row.run.id), settlements }
+      const offlineEnvironments = await tx.select({
+        environmentId: agentEnvironments.id,
+        workspaceId: agentEnvironments.workspaceId,
+        lastSeenAt: agentEnvironments.lastSeenAt,
+      }).from(agentEnvironments).where(and(
+        isNotNull(agentEnvironments.approvedAt),
+        isNull(agentEnvironments.revokedAt),
+        or(eq(agentEnvironments.status, 'offline'), lte(agentEnvironments.lastSeenAt, new Date(args.hostOfflineBefore))),
+      )).limit(args.limit)
+      const alertedEnvironments = new Set(alerts.map((alert) => alert.environmentId).filter(Boolean))
+      alerts.push(...offlineEnvironments.filter(environment => !alertedEnvironments.has(environment.environmentId)).map(environment => ({
+        code: 'offline_environment' as const,
+        workspaceId: environment.workspaceId,
+        environmentId: environment.environmentId,
+        ageMs: environment.lastSeenAt ? args.now - environment.lastSeenAt.getTime() : undefined,
+      })))
+      const oldCommands = await tx.select({
+        commandId: agentRunCommands.id,
+        environmentId: agentRunCommands.environmentId,
+        runId: agentRunCommands.runId,
+        workspaceId: agentRunCommands.workspaceId,
+        updatedAt: agentRunCommands.updatedAt,
+      }).from(agentRunCommands).where(and(
+        inArray(agentRunCommands.status, ['pending', 'claimed']),
+        lte(agentRunCommands.updatedAt, new Date(args.now - 2 * 60_000)),
+      )).limit(args.limit)
+      alerts.push(...oldCommands.map((command) => ({
+        code: 'stuck_command' as const,
+        workspaceId: command.workspaceId,
+        environmentId: command.environmentId,
+        runId: command.runId,
+        commandId: command.commandId,
+        ageMs: args.now - command.updatedAt.getTime(),
+      })))
+      const oldApprovals = await tx.select({
+        approvalId: agentApprovalRequests.id,
+        workspaceId: agentApprovalRequests.workspaceId,
+        runId: agentApprovalRequests.runId,
+        remoteSessionId: agentApprovalRequests.remoteSessionId,
+        requestedAt: agentApprovalRequests.requestedAt,
+        environmentId: agentRemoteSessions.environmentId,
+        eventCursor: agentRemoteSessions.eventCursor,
+      }).from(agentApprovalRequests).innerJoin(
+        agentRemoteSessions, eq(agentRemoteSessions.id, agentApprovalRequests.remoteSessionId),
+      ).where(and(
+        isNull(agentApprovalRequests.resolution),
+        lte(agentApprovalRequests.requestedAt, new Date(args.now - 15 * 60_000)),
+      )).limit(args.limit)
+      alerts.push(...oldApprovals.map((approval) => ({
+        code: 'approval_age' as const,
+        workspaceId: approval.workspaceId,
+        environmentId: approval.environmentId,
+        runId: approval.runId,
+        remoteSessionId: approval.remoteSessionId,
+        eventCursor: approval.eventCursor,
+        ageMs: args.now - approval.requestedAt.getTime(),
+      })))
+      const failedCleanups = await tx.select().from(agentSandboxLeases).where(
+        eq(agentSandboxLeases.status, 'cleanup_failed'),
+      ).limit(args.limit)
+      alerts.push(...failedCleanups.map((lease) => ({
+        code: 'cleanup_failure' as const,
+        workspaceId: lease.workspaceId,
+        environmentId: lease.environmentId,
+        runId: lease.runId ?? undefined,
+        providerReference: lease.providerReference ?? undefined,
+        reservationId: lease.reservationId ?? undefined,
+        ageMs: args.now - lease.updatedAt.getTime(),
+      })))
+      return { alerts, expiredRunIds: rows.map((row) => row.run.id), settlements }
     })
+  }
+
+  async listPendingSandboxSettlements(args: { limit: number }) {
+    const rows = await this.db.select({ session: agentRemoteSessions, tokens: conversationMessages.tokens })
+      .from(agentSandboxSettlements)
+      .innerJoin(agentRemoteSessions, eq(agentRemoteSessions.runId, agentSandboxSettlements.runId))
+      .innerJoin(agentRuns, eq(agentRuns.id, agentSandboxSettlements.runId))
+      .innerJoin(conversationMessages, eq(conversationMessages.id, agentRuns.assistantMessageId))
+      .where(and(
+        eq(agentSandboxSettlements.status, 'pending'),
+        inArray(agentRemoteSessions.status, ['completed', 'failed', 'cancelled']),
+      ))
+      .orderBy(asc(agentSandboxSettlements.updatedAt))
+      .limit(args.limit)
+    return rows.map((row): RemoteAgentUsageSettlement => terminalBilling(
+      row.session.capabilitySnapshot, row.tokens, terminalOutcome(row.session.status),
+    ))
+  }
+
+  async markSandboxSettlementComplete(args: { workspaceId: string; reservationId: string; settledAt: number }) {
+    const rows = await this.db.update(agentSandboxSettlements).set({
+      status: 'settled', settledAt: new Date(args.settledAt), updatedAt: new Date(args.settledAt),
+    }).where(and(
+      eq(agentSandboxSettlements.reservationId, args.reservationId),
+      eq(agentSandboxSettlements.workspaceId, args.workspaceId),
+      eq(agentSandboxSettlements.status, 'pending'),
+    )).returning({ reservationId: agentSandboxSettlements.reservationId })
+    if (rows.length === 1) return true
+    const [existing] = await this.db.select({ status: agentSandboxSettlements.status }).from(agentSandboxSettlements).where(and(
+      eq(agentSandboxSettlements.reservationId, args.reservationId),
+      eq(agentSandboxSettlements.workspaceId, args.workspaceId),
+    )).limit(1)
+    return existing?.status === 'settled'
   }
 
   async createSandboxLease(input: Parameters<ConnectedAgentRepository['createSandboxLease']>[0]) {
@@ -1140,6 +1338,15 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       eq(agentSandboxLeases.id, input.leaseId),
       eq(agentSandboxLeases.workspaceId, input.workspaceId),
     )).returning()
+    return row ? sandboxLease(row) : null
+  }
+
+  async getActiveSandboxLease(args: { workspaceId: string; environmentId: string }) {
+    const [row] = await this.db.select().from(agentSandboxLeases).where(and(
+      eq(agentSandboxLeases.workspaceId, args.workspaceId),
+      eq(agentSandboxLeases.environmentId, args.environmentId),
+      inArray(agentSandboxLeases.status, ['reserved', 'provisioning', 'running']),
+    )).orderBy(desc(agentSandboxLeases.updatedAt)).limit(1)
     return row ? sandboxLease(row) : null
   }
 
@@ -1190,6 +1397,25 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       }
       const expected = current.eventCursor + 1
       if (first !== expected) return { accepted: false, expectedSequence: expected }
+      if (args.maxEventsPerMinute !== undefined) {
+        const windowStartedAt = new Date(Math.floor(args.now / 60_000) * 60_000)
+        const [window] = await tx.insert(agentEventRateWindows).values({
+          environmentId: args.environmentId,
+          windowStartedAt,
+          eventCount: args.events.length,
+          workspaceId: args.workspaceId,
+          updatedAt: new Date(args.now),
+        }).onConflictDoUpdate({
+          target: [agentEventRateWindows.environmentId, agentEventRateWindows.windowStartedAt],
+          set: {
+            eventCount: sql`${agentEventRateWindows.eventCount} + ${args.events.length}`,
+            updatedAt: new Date(args.now),
+          },
+        }).returning({ eventCount: agentEventRateWindows.eventCount })
+        if ((window?.eventCount ?? 0) > args.maxEventsPerMinute) {
+          throw new Error('CONNECTED_AGENT_POLICY_LIMIT:event_rate')
+        }
+      }
       if (['completed', 'failed', 'cancelled'].includes(runRow.status)) {
         if (!isCompatibleTerminalAcknowledgement(runRow.status, args.events)) throw new Error('AGENT_RUN_TERMINAL')
         await tx.update(agentRemoteSessions).set({ eventCursor: sequences.at(-1)!, updatedAt: new Date(args.now) })
@@ -1264,7 +1490,10 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
         ...(projection.runStatus === 'failed' ? { failedAt: now, terminalError: projection.terminalError } : {}),
         ...(projection.runStatus === 'cancelled' ? { cancelledAt: now } : {}),
         ...(projection.terminal ? { metrics: { ...(runRow.metrics ?? {}), inputTokens: projection.tokens.input, outputTokens: projection.tokens.output } } : {}),
-        ...(!projection.terminal ? { leaseExpiresAt: new Date(args.now + REMOTE_RUN_LEASE_MS) } : {}),
+        ...(!projection.terminal ? { leaseExpiresAt: new Date(Math.min(
+          args.now + REMOTE_RUN_LEASE_MS,
+          typeof snapshot.hardExpiresAt === 'number' ? snapshot.hardExpiresAt : args.now + REMOTE_RUN_LEASE_MS,
+        )) } : {}),
         updatedAt: now,
       }).where(eq(agentRuns.id, runRow.id))
       await tx.update(conversationMessages).set({
@@ -1369,7 +1598,7 @@ function sameResolution(
   left: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
   right: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
 ) { return left.decision === right.decision && left.resolvedByPrincipalId === right.resolvedByPrincipalId && left.resolvedAt === right.resolvedAt }
-function enrollment(row: EnrollmentRow): AgentEnrollmentSession { return { ...row, status: row.status as AgentEnrollmentSession['status'], environmentId: row.environmentId ?? undefined, expiresAt: row.expiresAt.getTime(), redeemedAt: ms(row.redeemedAt), approvedAt: ms(row.approvedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
+function enrollment(row: EnrollmentRow): AgentEnrollmentSession { return { ...row, status: row.status as AgentEnrollmentSession['status'], environmentId: row.environmentId ?? undefined, expiresAt: row.expiresAt.getTime(), redeemedAt: ms(row.redeemedAt), approvedAt: ms(row.approvedAt), maxEnvironments: row.maxEnvironments ?? undefined, createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function proofChallenge(row: ProofChallengeRow): AgentEnvironmentProofChallenge { return { ...row, expiresAt: row.expiresAt.getTime(), consumedAt: ms(row.consumedAt), createdAt: row.createdAt.getTime() } }
 function credential(row: CredentialRow): AgentEnvironmentCredential { return { ...row, audience: row.audience as AgentEnvironmentCredential['audience'], methods: row.methods as AgentEnvironmentCredential['methods'], expiresAt: row.expiresAt.getTime(), revokedAt: ms(row.revokedAt), createdAt: row.createdAt.getTime() } }
 function credentialValues(value: AgentEnvironmentCredential): typeof agentEnvironmentCredentials.$inferInsert { return { id: value.id, workspaceId: value.workspaceId, environmentId: value.environmentId, tokenHash: value.tokenHash, audience: value.audience, methods: value.methods, tokenNonce: value.tokenNonce, expiresAt: new Date(value.expiresAt), revokedAt: date(value.revokedAt), createdAt: new Date(value.createdAt) } }
@@ -1390,14 +1619,22 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 
   const tokens = tokensValue && typeof tokensValue === 'object'
     ? tokensValue as Record<string, unknown> : {}
   return {
+    agentId: typeof billing.agentId === 'string' ? billing.agentId : '',
+    environmentId: typeof billing.environmentId === 'string' ? billing.environmentId : '',
     forceFreeTierLimits: false,
     inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
     modelId: typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
+    modelUsageBilling: billing.modelUsageBilling === 'overlay' ? 'overlay' as const : 'byok' as const,
     operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
     outcome,
     outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
     reservationId: typeof billing.reservationId === 'string' ? billing.reservationId : null,
+    runId: typeof billing.runId === 'string' ? billing.runId : '',
+    sandboxBilling: snapshot.sandboxBilling && typeof snapshot.sandboxBilling === 'object'
+      ? snapshot.sandboxBilling as import('./ConnectedAgentRepository').ConnectedAgentSandboxBilling
+      : null,
     userId: typeof billing.userId === 'string' ? billing.userId : '',
+    workspaceId: typeof billing.workspaceId === 'string' ? billing.workspaceId : '',
   }
 }
 function terminalOutcome(status: string): 'completed' | 'failed' | 'cancelled' {

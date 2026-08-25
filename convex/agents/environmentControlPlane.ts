@@ -78,7 +78,7 @@ async function requireActiveEnvironment(ctx: MutationCtx, workspaceId: string, e
 }
 
 export const createEnrollmentSessionByServer = mutation({
-  args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), createdByUserId: v.string(), codeHash: v.string(), verificationPhrase: v.string(), status: v.string(), expiresAt: v.number(), environmentId: v.optional(v.string()), redeemedAt: v.optional(v.number()), approvedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number() },
+  args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), createdByUserId: v.string(), codeHash: v.string(), verificationPhrase: v.string(), status: v.string(), expiresAt: v.number(), environmentId: v.optional(v.string()), redeemedAt: v.optional(v.number()), approvedAt: v.optional(v.number()), maxEnvironments: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     assertHash(args.codeHash, 'AGENT_ENROLLMENT_CODE_HASH_INVALID')
@@ -109,6 +109,14 @@ export const redeemEnrollmentSessionByServer = mutation({
     if (args.environment.publicKey && (args.environment.publicKey.length < 8 || args.environment.publicKey.length > 8_192)) throw new Error('AGENT_PUBLIC_KEY_INVALID')
     const enrollment = await ctx.db.query('agentEnrollmentSessions').withIndex('by_codeHash', q => q.eq('codeHash', args.codeHash)).unique()
     if (!enrollment || enrollment.expiresAt <= args.now || enrollment.status !== 'created') return null
+    if (enrollment.maxEnvironments !== undefined) {
+      const environments = await ctx.db.query('agentEnvironments')
+        .withIndex('by_workspaceId', q => q.eq('workspaceId', enrollment.workspaceId))
+        .take(enrollment.maxEnvironments + 1)
+      if (environments.filter(environment => !environment.revokedAt && environment.status !== 'revoked').length >= enrollment.maxEnvironments) {
+        throw new Error('CONNECTED_AGENT_POLICY_LIMIT:environments')
+      }
+    }
     if (args.environment.status !== 'pending' || args.environment.now !== args.now || args.proofChallenge.environmentId !== args.environment.id || args.proofChallenge.createdAt !== args.now || args.proofChallenge.consumedAt) throw new Error('AGENT_ENROLLMENT_SCOPE_INVALID')
     const [environmentCollision, challengeIdCollision, challengeHashCollision] = await Promise.all([
       ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', args.environment.id)).unique(),
