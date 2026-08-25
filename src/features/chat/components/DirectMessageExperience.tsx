@@ -170,6 +170,36 @@ function requireArray<T>(value: T[] | undefined, label: string): T[] {
   return value
 }
 
+function ConvexPresenceSubscription({
+  accessToken,
+  actorUserId,
+  conversationId,
+  onPresence,
+  workspaceId,
+}: {
+  accessToken: string
+  actorUserId: string
+  conversationId: string
+  onPresence: (presence: ConversationPresence[]) => void
+  workspaceId: string
+}) {
+  const result = useQuery(
+    api.collaboration.directMessages.watchPresence,
+    {
+      accessToken,
+      actorUserId,
+      conversationId: conversationId as Id<'conversations'>,
+      workspaceId,
+    },
+  ) as { ok: boolean; presence: ConversationPresence[] } | undefined
+
+  useEffect(() => {
+    if (result?.ok && Array.isArray(result.presence)) onPresence(result.presence)
+  }, [onPresence, result])
+
+  return null
+}
+
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
@@ -205,6 +235,9 @@ export function DirectMessageExperience({
   const [presence, setPresence] = useState<ConversationPresence[]>(
     showcase ? SHOWCASE_PRESENCE : [],
   )
+  const applyConvexPresence = useCallback((next: ConversationPresence[]) => {
+    setPresence(next)
+  }, [])
   const [messages, setMessages] = useState<OptimisticMessage[]>(
     showcase ? SHOWCASE_MESSAGES : [],
   )
@@ -584,27 +617,6 @@ export function DirectMessageExperience({
         .catch(() => undefined)
     }
   }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, showcase])
-
-  // Convex presence subscription: when realtime is available, presence updates
-  // arrive via the subscription and the HTTP polling fallback is skipped.
-  const convexPresenceArgs = convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId
-    ? {
-        accessToken: convexAccessToken,
-        actorUserId: authUser.id,
-        conversationId: conversationId as Id<'conversations'>,
-        workspaceId: activeWorkspaceId,
-      }
-    : 'skip'
-  const convexPresence = useQuery(
-    api.collaboration.directMessages.watchPresence,
-    convexPresenceArgs,
-  ) as { ok: boolean; presence: typeof presence } | undefined
-
-  useEffect(() => {
-    if (convexPresence?.ok && Array.isArray(convexPresence.presence)) {
-      setPresence(convexPresence.presence as typeof presence)
-    }
-  }, [convexPresence])
 
   useEffect(() => {
     if (loading) return
@@ -1314,14 +1326,23 @@ export function DirectMessageExperience({
         onOpenInOverlay={openLinkPreview}
       />
       {convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
-        <ConvexRoomMessageSubscription
-          accessToken={convexAccessToken}
-          actorUserId={authUser.id}
-          conversationId={conversationId}
-          threadRootMessageId={threadRootId}
-          workspaceId={activeWorkspaceId}
-          onMessages={applyLiveRoomMessages}
-        />
+        <>
+          <ConvexRoomMessageSubscription
+            accessToken={convexAccessToken}
+            actorUserId={authUser.id}
+            conversationId={conversationId}
+            threadRootMessageId={threadRootId}
+            workspaceId={activeWorkspaceId}
+            onMessages={applyLiveRoomMessages}
+          />
+          <ConvexPresenceSubscription
+            accessToken={convexAccessToken}
+            actorUserId={authUser.id}
+            conversationId={conversationId}
+            onPresence={applyConvexPresence}
+            workspaceId={activeWorkspaceId}
+          />
+        </>
       ) : null}
       <AppScreenShell
         contentClassName="flex min-h-0"

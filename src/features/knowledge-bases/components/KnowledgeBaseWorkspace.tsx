@@ -58,6 +58,36 @@ type SourceTab = 'sources' | 'search'
 
 const ACTIVE_SOURCE_STATUSES = new Set(['pending', 'extracting', 'indexing', 'deleting'])
 
+type KnowledgeSourceStatusUpdate = {
+  sourceId: string
+  status: string
+  statusMessage?: string
+  updatedAt: number
+}
+
+function ConvexKnowledgeSourceStatusSubscription({
+  accessToken,
+  knowledgeBaseId,
+  onUpdate,
+  userId,
+}: {
+  accessToken: string
+  knowledgeBaseId: string
+  onUpdate: (updates: KnowledgeSourceStatusUpdate[]) => void
+  userId: string
+}) {
+  const updates = useQuery(
+    api.knowledge.bases.watchKnowledgeSourceStatus,
+    { accessToken, userId, knowledgeBaseId },
+  ) as KnowledgeSourceStatusUpdate[] | undefined
+
+  useEffect(() => {
+    if (updates) onUpdate(updates)
+  }, [onUpdate, updates])
+
+  return null
+}
+
 export function KnowledgeBaseWorkspace({
   canEdit,
   canShare,
@@ -131,26 +161,13 @@ export function KnowledgeBaseWorkspace({
     setSources(response.sources)
   }, [knowledgeBase.id])
 
-  // Convex subscription for knowledge source status: when realtime is
-  // available, source status updates arrive via the subscription and the
-  // HTTP polling fallback is skipped.
-  const convexSourceStatusArgs = useMemo(
-    () => convexLiveSyncEnabled && convexAccessToken && user?.id
-      ? { accessToken: convexAccessToken, userId: user.id, knowledgeBaseId: knowledgeBase.id }
-      : 'skip' as const,
-    [convexLiveSyncEnabled, convexAccessToken, user?.id, knowledgeBase.id],
-  )
-  const convexSourceStatus = useQuery(
-    api.knowledge.bases.watchKnowledgeSourceStatus,
-    convexSourceStatusArgs,
-  ) as Array<{ sourceId: string; status: string; statusMessage?: string; updatedAt: number }> | undefined
-
-  useEffect(() => {
-    if (!convexSourceStatus || convexSourceStatusArgs === 'skip') return
+  // Convex subscriptions live in a provider-gated child so PostgreSQL routes
+  // never execute useQuery without a ConvexProvider.
+  const applyConvexSourceStatus = useCallback((updates: KnowledgeSourceStatusUpdate[]) => {
     // Patch individual source statuses into the local state instead of
     // reloading the full source list from the BFF.
     setSources((current) => current.map((item) => {
-      const update = convexSourceStatus.find((s) => s.sourceId === item.source.id)
+      const update = updates.find((candidate) => candidate.sourceId === item.source.id)
       if (!update) return item
       if (item.source.status === update.status) return item
       return {
@@ -162,7 +179,7 @@ export function KnowledgeBaseWorkspace({
         },
       }
     }))
-  }, [convexSourceStatus, convexSourceStatusArgs])
+  }, [])
 
   // Only poll via HTTP when Convex subscription is unavailable.
   const usePollingForSources = hasActiveSources && !convexLiveSyncEnabled
@@ -372,6 +389,14 @@ export function KnowledgeBaseWorkspace({
 
   return (
     <>
+      {convexLiveSyncEnabled && convexAccessToken && user?.id ? (
+        <ConvexKnowledgeSourceStatusSubscription
+          accessToken={convexAccessToken}
+          knowledgeBaseId={knowledgeBase.id}
+          onUpdate={applyConvexSourceStatus}
+          userId={user.id}
+        />
+      ) : null}
       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileInput} />
       <AppScreenShell
         className="h-full"
