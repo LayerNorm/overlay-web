@@ -140,6 +140,7 @@ export function projectRemoteAgentEvents(input: {
     if (event.type === 'completed') {
       removeWaiting()
       parts = closePendingRequestParts(parts, 'run_completed', event.occurredAt)
+      parts = closeRunningRemoteToolParts(parts, 'completed', event.occurredAt)
       const summary = stringValue(event.payload.summary)
       if (!content.trim() && summary) {
         content = summary
@@ -155,6 +156,7 @@ export function projectRemoteAgentEvents(input: {
     if (event.type === 'failed') {
       removeWaiting()
       parts = closePendingRequestParts(parts, 'run_failed', event.occurredAt)
+      parts = closeRunningRemoteToolParts(parts, 'failed', event.occurredAt)
       const message = stringValue(event.payload.message) ?? 'The connected agent failed.'
       terminalError = {
         code: stringValue(event.payload.code) ?? 'remote_agent_failed',
@@ -176,6 +178,7 @@ export function projectRemoteAgentEvents(input: {
     if (event.type === 'cancelled') {
       removeWaiting()
       parts = closePendingRequestParts(parts, 'cancelled', event.occurredAt)
+      parts = closeRunningRemoteToolParts(parts, 'cancelled', event.occurredAt)
       if (!content.trim()) content = stringValue(event.payload.reason) ?? 'Cancelled'
       parts = replaceTextPart(parts, content)
       runStatus = 'cancelled'
@@ -205,6 +208,59 @@ function closePendingRequestParts(parts: Array<Record<string, unknown>>, decisio
       decision, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt,
     } } }
   })
+}
+
+function closeRunningRemoteToolParts(
+  parts: Array<Record<string, unknown>>,
+  outcome: 'completed' | 'failed' | 'cancelled',
+  resolvedAt: number,
+) {
+  return parts.map((part) => {
+    const data = objectValue(part.data)
+    if (part.type === REMOTE_AGENT_TERMINAL_PART_TYPE && data?.status === 'running') {
+      return {
+        ...part,
+        data: {
+          ...data,
+          status: outcome === 'completed' ? 'completed' : 'failed',
+          resolution: outcome,
+          resolvedAt,
+        },
+      }
+    }
+
+    const invocation = objectValue(part.toolInvocation)
+    if (
+      part.type !== 'tool-invocation'
+      || invocation?.toolName !== 'remote_action'
+      || isTerminalToolState(invocation.state)
+    ) return part
+
+    const input = objectValue(invocation.toolInput)
+    const title = stringValue(input?.title) ?? 'Remote action'
+    return {
+      ...part,
+      toolInvocation: {
+        ...invocation,
+        state: outcome === 'completed' ? 'output-available' : 'output-error',
+        toolOutput: {
+          success: outcome === 'completed',
+          status: outcome,
+          title,
+          resolvedAt,
+        },
+      },
+    }
+  })
+}
+
+function isTerminalToolState(value: unknown) {
+  return value === 'output-available'
+    || value === 'output-error'
+    || value === 'output-denied'
+    || value === 'result'
+    || value === 'complete'
+    || value === 'completed'
 }
 
 function replaceTextPart(parts: Array<Record<string, unknown>>, text: string) {

@@ -31,13 +31,16 @@ test('managed provisioning uses normal enrollment, hides provider details, and r
       sleep: async () => {},
     })
     const result = await service.provision({
-      actorUserId: 'user-1', workspaceId: 'workspace-1', serverUrl: 'https://getoverlay.io',
+      actorUserId: 'user-1', workspaceId: 'workspace-1', serverUrl: 'https://getoverlay.io', adapterId: 'codex',
     })
     assert.equal(result.setup.label, 'Overlay Cloud')
     assert.equal(result.setup.approvedRoot, '/workspace')
+    assert.equal(result.setup.adapterId, 'codex')
     assert.equal('publicKey' in result.environment, false)
     assert.equal('provider' in result, false)
     assert.equal(commands[0]?.args?.includes('overlay_cloud'), true)
+    assert.equal(commands[0]?.args?.includes('codex'), true)
+    assert.equal(commands[0]?.args?.includes('claude-code'), false)
     assert.equal(leases[0]?.provider, 'vercel')
     assert.equal(leases[0]?.providerReference, 'provider-reference')
     assert.equal(audits[0]?.action, 'agent_environment.managed_provisioned')

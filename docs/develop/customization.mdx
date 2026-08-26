@@ -81,9 +81,12 @@ Use `featureFlags` for coarse product areas and `policyGates` for enterprise pol
 Capability gates are evaluated per registry entry. Memory management in Settings requires the `memory` capability only; `vectorSearch` controls semantic retrieval and search tooling independently, so disabling vector search must not hide saved-memory management.
 
 The default `agent-environments` settings section is gated by the `agents` feature flag and the
-server-derived `connectedAgents` capability. Its web
-renderer creates the copyable host command, shows pending verification phrases, collects explicit
-project roots, and exposes environment revocation. The backend additionally requires
+server-derived `connectedAgents` capability. It is labeled `Environments`, uses a distinct server
+icon in settings navigation, and follows the standard elevated settings-card surface with compact
+subtle icon tiles. New local, VPS, customer-sandbox, and Overlay Cloud environments are created
+inside the Bring Your Own Agent branch of the agent editor. The Settings renderer is the fleet
+administration surface: it shows health and pending verification, collects or changes explicit
+project roots, and exposes revocation. The backend additionally requires
 `features.connectedAgentControlPlane`; the capability mirrors that server policy and cannot be
 enabled by a client assertion.
 

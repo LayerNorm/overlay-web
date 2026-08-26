@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isOverlayManagedAcpAdapterId } from '@overlay/sandbox-runtime'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getOverlayRuntimeConfig } from '@/server/config'
@@ -10,6 +11,11 @@ export const maxDuration = 300
 
 export async function POST(request: Request, context: AppApiRouteContext) {
   try {
+    const body = context.parsedJson as Partial<{ adapterId: string }>
+    const adapterId = body.adapterId?.trim() || 'codex'
+    if (!isOverlayManagedAcpAdapterId(adapterId)) {
+      return NextResponse.json({ error: 'Unsupported agent harness', code: 'adapter_invalid' }, { status: 400 })
+    }
     const config = await getOverlayRuntimeConfig()
     if (config.features.overlayCloudEnvironments !== true) {
       return NextResponse.json({ error: 'Overlay Cloud environments are disabled', code: 'capability_disabled' }, { status: 404 })
@@ -29,6 +35,7 @@ export async function POST(request: Request, context: AppApiRouteContext) {
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
       serverUrl: new URL(request.url).origin,
+      adapterId,
     })
     return NextResponse.json(provisioned, { status: 201, headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

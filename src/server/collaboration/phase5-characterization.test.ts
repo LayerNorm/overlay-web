@@ -75,5 +75,8 @@ test('Phase 5 ships the Buzz-inspired directory and explicit mention-first copy'
   assert.doesNotMatch(directory, /Agent teams/)
   assert.match(directory, /New agent/)
   assert.match(editor, /Create agent/)
+  assert.match(editor, /Bring your own agent/)
+  assert.match(editor, /Create connection command/)
+  assert.match(editor, /Create Overlay Cloud environment/)
   assert.match(editor, /Mention-first is enforced/)
 })

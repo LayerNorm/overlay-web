@@ -23,21 +23,21 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  createEnrollment(workspaceId: string, init?: RequestInit) {
+  createEnrollment(workspaceId: string, input?: { adapterId?: 'codex' | 'claude-code' }, init?: RequestInit) {
     return this.http.json<{ enrollmentSessionId: string; code: string; command: string; expiresAt: number }>(
       '/api/v1/agent-environments/enrollment-sessions',
-      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+      this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
 
-  createManaged(workspaceId: string, init?: RequestInit) {
+  createManaged(workspaceId: string, input?: { adapterId?: 'codex' | 'claude-code' }, init?: RequestInit) {
     return this.http.json<{
       environment: AgentEnvironmentResource
       lease: { id: string; status: string }
-      setup: { label: 'Overlay Cloud'; approvedRoot: string }
+      setup: { label: 'Overlay Cloud'; approvedRoot: string; adapterId: 'codex' | 'claude-code' }
     }>(
       '/api/v1/agent-environments/managed',
-      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+      this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
 

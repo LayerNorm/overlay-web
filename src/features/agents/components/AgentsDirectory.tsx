@@ -115,10 +115,17 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
         ? await overlayAppClient.agents.update(activeWorkspaceId, editing.id, input)
         : await overlayAppClient.agents.create(activeWorkspaceId, input)
       if (binding) {
-        await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
-          agentId: saved.agent.id,
-          ...binding,
-        })
+        try {
+          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+            agentId: saved.agent.id,
+            ...binding,
+          })
+        } catch (bindingError) {
+          // Agent identity may already be durable even if its remote binding
+          // fails. Retry as an edit so we never create a duplicate identity.
+          setEditing(saved.agent)
+          throw bindingError
+        }
       } else if (binding === null && editing) {
         await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
       }
@@ -201,6 +208,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {agents.map((agent) => {
               const isDefaultMaster = Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
+              const isByo = agent.modelId.startsWith('byo/')
               return (
                 <article key={agent.id} className="group relative flex min-h-52 flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-shadow hover:shadow-sm">
                   <button type="button" onClick={() => { setEditing(agent); setError(null); setDialogOpen(true) }} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 hover:bg-[var(--surface-subtle)] group-hover:opacity-100" aria-label={`Edit ${agent.name}`}><MoreHorizontal size={15} /></button>
@@ -213,7 +221,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                   <h2 className="mt-4 font-medium">{agent.name}</h2>
                   <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{agent.description ?? agent.instructions}</p>
                   <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-5">
-                    <div className="min-w-0 flex-1 text-[10px] text-[var(--muted-light)]"><span className="block truncate" title={agent.modelId}>{agent.modelId}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
+                    <div className="min-w-0 flex-1 text-[10px] text-[var(--muted-light)]"><span className="block truncate" title={agent.modelId}>{isByo ? `${agent.modelId.slice(4)} · connected` : agent.modelId}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
                     <div className="flex shrink-0 items-center gap-1">
                       {!showcase ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
                       <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
@@ -229,7 +237,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
         )}
       </AppScreenBody>
       </AppScreenShell>
-      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input, binding) => void save(input, binding)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
+      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} showcase={showcase} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input, binding) => void save(input, binding)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
       <ShareDialog
         workspaceId={activeWorkspaceId}
         isOpen={Boolean(sharingAgent)}
