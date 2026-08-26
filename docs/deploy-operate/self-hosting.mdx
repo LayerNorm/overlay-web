@@ -75,7 +75,7 @@ Provider-specific variables:
 | `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET` | Staging Stripe | Preferred for non-production. |
 | `STRIPE_PAID_UNIT_PRICE_ID`, `STRIPE_TOPUP_UNIT_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID` | Stripe billing UI | Use matching test or live mode IDs for the selected environment. |
 | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `S3_API` | `storage.provider="r2"` | `S3_API` is the R2 S3-compatible endpoint. |
-| `S3_BUCKET_NAME`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | `storage.provider="s3"` | Use `S3_ENDPOINT_URL` and `S3_FORCE_PATH_STYLE=true` for S3-compatible enterprise storage that needs path-style access. |
+| `S3_BUCKET_NAME`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | `storage.provider="s3"` | On AWS, omit access keys to use the task or instance role. For other S3-compatible storage, configure both keys together; use `S3_ENDPOINT_URL` and `S3_FORCE_PATH_STYLE=true` when path-style access is required. |
 | `OPENROUTER_API_KEY` | `llm.gatewayProvider="openrouter"` | Default SaaS-style model gateway. |
 | `AI_GATEWAY_API_KEY` | `llm.gatewayProvider="ai-gateway"` | Vercel AI Gateway compatible path. |
 | `OPENAI_API_KEY` | `llm.gatewayProvider="openai"` | Used by the active OpenAI provider adapter. |
@@ -220,7 +220,7 @@ Enterprise provider matrix:
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
 | Transactional email | `ses`, `smtp`, `none` | Recipient address and transactional account content | Selected email provider region | Supported. Defaults to `none`; SMTP requires TLS in production/on-prem. SES/SMTP delivery uses a durable outbox, stable message key, suppression checks, and audit records. |
-| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` supported; WorkOS vault-backed provider keys exist for selected flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
+| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` and WorkOS vault-backed provider keys are supported for hosted flows. In Postgres mode, BYOK provider keys use AWS Secrets Manager when `providers.secrets.provider="aws-secrets-manager"`; app-data stores only the opaque secret ARN. Vault remains declared but unsupported. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | All declared providers are supported. Use Redis with fail-closed behavior for multi-instance production/on-prem deployments; memory is development-only. |
 
 ### Postgres app-data setup

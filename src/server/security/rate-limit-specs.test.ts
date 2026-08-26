@@ -92,3 +92,16 @@ test('realtime conversation reads use dedicated buckets instead of starving room
     assert.ok(rules.some((rule) => rule.bucket === route.expectedBucket))
   }
 })
+
+test('provider connection tests have dedicated IP and user limits', () => {
+  const rules = getEndpointRateLimitSpecs({
+    ip: '203.0.113.5',
+    method: 'POST',
+    pathname: '/api/v1/providers/connections/test',
+    userId: 'user_1',
+  })
+  assert.deepEqual(rules.map(({ bucket, key, limit }) => ({ bucket, key, limit })), [
+    { bucket: 'providers/connections:test:ip', key: '203.0.113.5', limit: 40 },
+    { bucket: 'providers/connections:test:user', key: 'user_1', limit: 20 },
+  ])
+})

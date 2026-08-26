@@ -2,6 +2,7 @@ import 'server-only'
 
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   buildInsufficientCreditsPayload,
   canUsePaidBudgetFeatures,
@@ -60,9 +61,10 @@ export class ActEntitlementService {
 
     let runtimeEntitlements = entitlements
     const budget = getBudgetTotals(runtimeEntitlements)
+    const usesUserProviderKey = isByokModelId(args.effectiveModelId)
     const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(args.effectiveModelId)
 
-    if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
+    if (!usesUserProviderKey && isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
       const autoTopUp = await ensurePayerBudgetAvailable({
         userId: args.userId,
         entitlements: runtimeEntitlements,
@@ -75,7 +77,7 @@ export class ActEntitlementService {
 
     let paid = canUsePaidBudgetFeatures(runtimeEntitlements)
     if (!paid) {
-      if (!isFreeTierChatModelId(args.effectiveModelId)) {
+      if (!usesUserProviderKey && !isFreeTierChatModelId(args.effectiveModelId)) {
         if (isPaidPlan(runtimeEntitlements)) {
           serviceError(
             buildInsufficientCreditsPayload(
@@ -116,7 +118,7 @@ export class ActEntitlementService {
     runtimeEntitlements = refreshedEntitlements
     paid = canUsePaidBudgetFeatures(runtimeEntitlements)
 
-    if (!paid && !isFreeTierChatModelId(args.effectiveModelId)) {
+    if (!paid && !usesUserProviderKey && !isFreeTierChatModelId(args.effectiveModelId)) {
       if (isPaidPlan(runtimeEntitlements)) {
         serviceError(
           buildInsufficientCreditsPayload(

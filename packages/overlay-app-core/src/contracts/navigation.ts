@@ -16,6 +16,7 @@ export type SettingsSubview =
   | 'account'
   | 'customization'
   | 'memories'
+  | 'providers'
   | 'models'
   | 'contact'
 export type ProjectSubview = 'chat' | 'note' | 'file'
@@ -47,7 +48,7 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     id: 'settings',
     label: 'Settings',
     href: '/app/settings',
-    subviews: ['general', 'account', 'customization', 'models', 'contact'],
+    subviews: ['general', 'account', 'customization', 'providers', 'models', 'contact'],
   },
   { id: 'account', label: 'Account settings', href: '/app/settings?section=account' },
 ] as const

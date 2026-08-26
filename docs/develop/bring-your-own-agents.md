@@ -345,7 +345,7 @@ gaps are rejected with the next expected sequence.
 | macOS 14+ (Apple Silicon and x64) | Supported | npm executable; foreground first |
 | Linux x64/arm64 (current Ubuntu/Debian/RHEL-family) | Supported | npm executable and Docker; systemd follows host hardening |
 | Windows 11 / Server 2022 x64 | Supported | npm executable; Windows service packaging may follow |
-| Overlay Cloud Linux sandbox | Supported | Same host image and bridge protocol |
+| Overlay Cloud Linux sandbox | Deferred and unavailable in product UI | Same host image and bridge protocol after the managed-environment release gate |
 | Mobile OS, browser-only runtimes, end-of-life desktop OSs | Not supported | None |
 
 ## Rollout flags
@@ -358,6 +358,10 @@ The server-side runtime config has three independent, default-off flags:
 
 The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
 `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, and `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
+They are positive, server-side switches: missing, false, or malformed values resolve to disabled.
+This makes each switch an environment-controlled, fail-closed incident control. Overlay Cloud's
+switch remains false for the production workspace rollout, and the agent editor does not expose a
+managed-environment choice while that release is deferred.
 
 Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
 workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
@@ -374,6 +378,11 @@ Vercel Container Registry reference; Daytona may use the equivalent OCI image in
 registry. `VERCEL_OIDC_TOKEN` is preferred on Vercel. An operator running elsewhere may instead
 provide `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID`; Daytona uses its existing API
 URL and key configuration.
+
+The dormant managed API and provider adapters remain implemented so the future release can reuse
+the same host protocol. Restoring the UI additionally requires the image, conformance, credential
+brokering, egress, billing, cleanup, security-review, and server-authoritative readiness gates
+tracked in `INTERNAL_TODOs.md`.
 
 ## Public resources and protocol policy
 

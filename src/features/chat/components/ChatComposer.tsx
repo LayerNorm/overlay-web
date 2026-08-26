@@ -283,6 +283,7 @@ function ComposerControls(props: ComposerControlsProps) {
         <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
           <button
             type="button"
+            aria-label="Send message"
             onClick={() => void props.onSend()}
             disabled={props.disabledSend}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"

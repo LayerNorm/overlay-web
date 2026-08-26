@@ -2,6 +2,7 @@ import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModel } from '@/shared/ai/gateway/model-data'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
 import type { ReasoningLevel } from '@overlay/chat-core'
+import { parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
@@ -17,9 +18,10 @@ function normalizeAskIds(raw: string[]): string[] {
   const out: string[] = []
   for (const id of raw) {
     const m = getModel(id)
-    if (!m || seen.has(m.id)) continue
-    seen.add(m.id)
-    out.push(m.id)
+    const resolvedId = m?.id ?? (parseByokModelId(id) ? id : undefined)
+    if (!resolvedId || seen.has(resolvedId)) continue
+    seen.add(resolvedId)
+    out.push(resolvedId)
     if (out.length >= 4) break
   }
   return out
@@ -38,7 +40,9 @@ export function normalizeChatModelSelection({
   actModelId: string
 } {
   const fallback = getModel(fallbackModelId)?.id ?? DEFAULT_MODEL_ID
-  const resolvedAct = actModelId ? getModel(actModelId)?.id : undefined
+  const resolvedAct = actModelId
+    ? getModel(actModelId)?.id ?? (parseByokModelId(actModelId) ? actModelId : undefined)
+    : undefined
   let ask = normalizeAskIds([...(askModelIds ?? [])])
 
   if (resolvedAct && !ask.includes(resolvedAct)) {

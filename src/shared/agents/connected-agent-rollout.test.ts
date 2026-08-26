@@ -5,6 +5,13 @@ import {
   parseConnectedAgentRolloutStage,
   resolveConnectedAgentRollout,
 } from './connected-agent-rollout'
+import { DEFAULT_OVERLAY_RUNTIME_CONFIG } from '@/shared/config/defaultOverlayRuntimeConfig'
+
+test('connected-agent incident switches default off', () => {
+  assert.equal(DEFAULT_OVERLAY_RUNTIME_CONFIG.features.connectedAgentControlPlane, false)
+  assert.equal(DEFAULT_OVERLAY_RUNTIME_CONFIG.features.remoteAgentRuns, false)
+  assert.equal(DEFAULT_OVERLAY_RUNTIME_CONFIG.features.overlayCloudEnvironments, false)
+})
 
 test('connected-agent rollout fails closed for missing and invalid stages', () => {
   assert.equal(parseConnectedAgentRolloutStage(undefined), 'off')

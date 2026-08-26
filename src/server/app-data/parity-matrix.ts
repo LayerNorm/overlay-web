@@ -146,7 +146,13 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Integrations and extensions',
     targetPhase: 'P7',
     capabilities: [{ key: 'supportsIntegrations', expectedAtParity: true }],
-    routeRuleIds: ['integrations', 'extension-proxy', 'chat-extension-plan', 'slack-imports-convex-only'],
+    routeRuleIds: [
+      'integrations',
+      'provider-connections',
+      'extension-proxy',
+      'chat-extension-plan',
+      'slack-imports-convex-only',
+    ],
     exitGate: 'Connector state, OAuth lifecycle, proxy execution, scoping, and audits work without Convex.',
   },
   {

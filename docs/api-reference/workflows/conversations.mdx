@@ -10,7 +10,7 @@ Typical flow:
 1. Create or load a conversation with `/api/v1/conversations`.
 2. Add user-visible messages with `/api/v1/conversations/message`.
 3. Run an Act turn with `/api/v1/conversations/act`.
-4. Read `/api/v1/conversations/run` after reconnecting; AgentRun is authoritative for whether a turn is still active.
+4. On reconnect, read `/api/v1/conversations/run` and reload the authoritative conversation state; AgentRun decides whether a turn is still active.
 5. Stop an active turn with `/api/v1/conversations/stop`.
 6. Compare runner behavior with `/api/v1/conversations/run/metrics`; the report contains observations and sample counts, not a recommendation.
 

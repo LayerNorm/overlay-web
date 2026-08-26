@@ -97,6 +97,22 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'notebook-agent:user', limit: 30, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/conversations/act': CHAT_RATE_LIMITS,
+  'POST /api/v1/providers/connections/test': [
+    { bucket: 'providers/connections:test:ip', limit: 40, windowMs: TEN_MINUTES },
+    { bucket: 'providers/connections:test:user', limit: 20, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/providers/connections': [
+    { bucket: 'providers/connections:create:ip', limit: 40, windowMs: TEN_MINUTES },
+    { bucket: 'providers/connections:create:user', limit: 20, windowMs: TEN_MINUTES },
+  ],
+  'PATCH /api/v1/providers/connections': [
+    { bucket: 'providers/connections:update:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'providers/connections:update:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'DELETE /api/v1/providers/connections': [
+    { bucket: 'providers/connections:delete:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'providers/connections:delete:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/files/presign': [
     { bucket: 'files/files:presign:ip', limit: 60, windowMs: ONE_HOUR },
     { bucket: 'files/files:presign:user', limit: 30, windowMs: ONE_HOUR },

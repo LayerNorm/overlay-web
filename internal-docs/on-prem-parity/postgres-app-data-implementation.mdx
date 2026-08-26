@@ -282,10 +282,10 @@ Important constraints:
 - `useLiveConversationSync` is guarded so Postgres mode does not mount Convex subscriptions.
 - `/api/v1/conversations/events` uses a durable sequence cursor and long polling. Transactional `pg_notify` wakes a shared listener without repeated idle queries; correctness still comes from the event table, not the notification.
 - The active HTTP stream remains the lowest-latency path. Text deltas are flushed to Postgres in bounded batches and the server drains the stream in the background if the browser disconnects.
-- A refresh or second tab reloads the aggregate persisted message. If the optional stream relay is configured, exact UI stream frames can also be replayed.
+- A refresh or second tab reloads the aggregate persisted message from authoritative application state.
 - `/api/v1/generate-title` is allowed in Postgres mode as a supported chat-persistence route.
 - Chat title generation uses `chatUsagePolicy`, not direct Convex billing queries.
-- Memory, tools, webhooks, and extension planning remain disabled in Postgres mode. Durable text stream recovery is supported; exact relay-frame replay is optional.
+- Memory, tools, webhooks, and extension planning remain disabled in Postgres mode. Durable text stream recovery is supported without an external relay.
 
 Usage policy:
 

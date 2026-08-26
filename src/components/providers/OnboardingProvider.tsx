@@ -7,6 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useMemo,
   type ReactNode,
 } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
@@ -14,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 import type { TourStep } from '@/features/account/components/OnboardingTour'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 const OnboardingTour = dynamic(() =>
   import('@/features/account/components/OnboardingTour').then((mod) => ({ default: mod.OnboardingTour })),
@@ -113,6 +115,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  const { capabilities } = useOverlayCapabilities()
+  const tourSteps = useMemo(
+    () => capabilities.files
+      ? TOUR_STEPS
+      : TOUR_STEPS.filter((step) => step.target !== 'nav-knowledge'),
+    [capabilities.files],
+  )
   const [active, setActive] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
@@ -264,13 +273,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       )}
       {showTourChrome && !isMobile && (
         <OnboardingTour
-          steps={TOUR_STEPS}
+          steps={tourSteps}
           currentStep={currentStep}
           onNext={handleNext}
           onBack={handleBack}
           onSkip={closeTour}
           onDone={closeTour}
           isClosing={isClosing}
+          memoryEnabled={capabilities.memory}
+          integrationsEnabled={capabilities.integrations}
         />
       )}
     </OnboardingContext.Provider>

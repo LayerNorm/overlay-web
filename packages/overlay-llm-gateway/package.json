@@ -24,6 +24,7 @@
     "@ai-sdk/anthropic": "^4.0.22",
     "@ai-sdk/groq": "^4.0.14",
     "@ai-sdk/openai": "^4.0.21",
+    "@ai-sdk/openai-compatible": "^3.0.15",
     "@openrouter/ai-sdk-provider": "^3.0.0"
   },
   "devDependencies": {

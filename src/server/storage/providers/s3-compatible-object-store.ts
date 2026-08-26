@@ -16,8 +16,8 @@ export interface S3CompatibleObjectStoreConfig {
   bucketName: string
   region: string
   endpointUrl?: string
-  accessKeyId: string
-  secretAccessKey: string
+  accessKeyId?: string
+  secretAccessKey?: string
   forcePathStyle?: boolean
   presignTtlSeconds?: number
 }
@@ -42,14 +42,17 @@ export class S3CompatibleObjectStore implements ObjectStore {
       Math.max(1, config.presignTtlSeconds ?? 900),
       900,
     )
+    const credentials = config.accessKeyId && config.secretAccessKey
+      ? {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        }
+      : undefined
     this.client = new S3Client({
       region: config.region,
       ...(config.endpointUrl ? { endpoint: config.endpointUrl } : {}),
       forcePathStyle: config.forcePathStyle,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
+      ...(credentials ? { credentials } : {}),
     })
     this.providerConfigSummary = {
       provider: config.provider ?? 's3',

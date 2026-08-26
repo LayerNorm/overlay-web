@@ -19,6 +19,7 @@ async function main(): Promise<void> {
       (SELECT count(*)::int FROM conversations child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_conversations,
       (SELECT count(*)::int FROM conversation_messages child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_messages,
       (SELECT count(*)::int FROM projects child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_projects,
+      (SELECT count(*)::int FROM provider_connections child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_provider_connections,
       (SELECT count(*)::int FROM files child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_files,
       (SELECT count(*)::int FROM notes child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_notes,
       (SELECT count(*)::int FROM memories child LEFT JOIN users owner ON owner.id = child.user_id WHERE owner.id IS NULL) AS orphan_memories,

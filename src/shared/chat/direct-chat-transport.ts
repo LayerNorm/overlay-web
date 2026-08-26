@@ -155,7 +155,7 @@ function streamLogFields(body: ChatBody): Record<string, unknown> {
 function wrapTransportForTtftDebug<UI_MESSAGE extends UIMessage>(
   transport: ChatTransport<UI_MESSAGE>,
 ): ChatTransport<UI_MESSAGE> {
-  const wrapped: ChatTransport<UI_MESSAGE> = {
+  return {
     ...transport,
     sendMessages: async (options) => {
       markTtftClientMilestone('act_fetch_start', streamLogFields(options.body))
@@ -163,7 +163,6 @@ function wrapTransportForTtftDebug<UI_MESSAGE extends UIMessage>(
       return wrapUiMessageStreamForTtft(stream)
     },
   }
-  return wrapped
 }
 
 export function createDirectChatTransport<UI_MESSAGE extends UIMessage>(

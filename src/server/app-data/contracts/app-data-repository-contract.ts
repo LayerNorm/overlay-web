@@ -987,6 +987,9 @@ async function deleteAccount(
     appData: {
       repositories: {
         accountDeletion: backend.accountDeletionRepository,
+        providerConnections: {
+          listCredentialRefs: async () => [],
+        },
       },
     },
     auth: {

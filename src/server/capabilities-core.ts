@@ -57,6 +57,7 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/projects')) return 'projects'
   if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'
   if (startsWithRoute(normalizedPath, '/api/v1/mcps')) return 'mcpServers'
+  if (startsWithRoute(normalizedPath, '/api/v1/providers/connections')) return 'modelRouting'
   if (startsWithRoute(normalizedPath, '/api/v1/browser-task')) return 'browserUse'
   if (startsWithRoute(normalizedPath, '/api/v1/daytona/run')) return 'sandboxes'
   if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'memory'

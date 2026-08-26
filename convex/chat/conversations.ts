@@ -1356,7 +1356,6 @@ export const runEmptyConversationCleanup = internalMutation({
       await ctx.db.delete(conversation._id)
       deleted++
     }
-
     const nextState = page.isDone
       ? { key: stateKey, cursor: undefined, cutoff: 0, nextRunAt: now + 6 * 60 * 60 * 1000, updatedAt: now }
       : { key: stateKey, cursor: page.continueCursor, cutoff, nextRunAt: undefined, updatedAt: now }

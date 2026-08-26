@@ -68,6 +68,7 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
+import { useByokModels } from '@/components/providers/useByokModels'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
@@ -169,13 +170,25 @@ export default function ChatExperience({
     isAuthLoading: authLoading,
     isPublicShowcase,
   })
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: gatewayCatalogEnabled })
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const { activeWorkspaceId } = useWorkspace()
+  const { connections: byokConnections, isLoading: byokModelsLoading } = useByokModels({
+    enabled: gatewayCatalogEnabled && capabilities.modelRouting,
+  })
+  const modelCatalogVersion = useMemo(
+    () => `${gatewayCatalogRevision}:${byokConnections.map((connection) => [
+      connection._id,
+      connection.status,
+      connection.discoveredAt ?? 0,
+      connection.enabledModelIds.join(','),
+    ].join(':')).join('|')}`,
+    [byokConnections, gatewayCatalogRevision],
+  )
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
@@ -392,9 +405,12 @@ export default function ChatExperience({
     activeWorkspaceId,
     billingEnabled,
     catalogRevision: gatewayCatalogRevision,
+    modelCatalogVersion,
+    modelCatalogReady: !byokModelsLoading,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
     enabledModelIds: settings.enabledChatModelIds,
+    modelOrder: settings.modelOrder,
     pathname,
     router,
     searchParams,

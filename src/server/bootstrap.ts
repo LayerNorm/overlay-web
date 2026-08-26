@@ -34,6 +34,10 @@ import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
 import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
+import {
+  createByokCredentialStore,
+  type ByokCredentialStore,
+} from '@/server/ai/gateway/byok-credential-store'
 import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
   createGenerationUsagePolicy,
@@ -126,6 +130,7 @@ import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overla
 export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
+  byokCredentialStore: ByokCredentialStore
   administrativeService: AdministrativeService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
@@ -178,6 +183,7 @@ export function createOverlayServerContext(
   }
   const appData = createAppDataContext(runtimeConfig)
   const objectStore = appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig)
+  const byokCredentialStore = createByokCredentialStore(runtimeConfig)
   const chatUsagePolicy = createActUsagePolicy({
     appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
@@ -431,6 +437,7 @@ export function createOverlayServerContext(
     eventBus,
     appData,
     appDataCapabilities: appData.capabilities,
+    byokCredentialStore,
     administrativeService,
     auditService,
     chatUsagePolicy,
@@ -582,8 +589,8 @@ export function createObjectStoreForRuntime(config: OverlayRuntimeConfig | null)
         bucketName: config.storage.s3.bucketName ?? '',
         region: config.storage.s3.region ?? 'us-east-1',
         endpointUrl: config.storage.s3.endpointUrl,
-        accessKeyId: config.storage.s3.accessKeyId ?? '',
-        secretAccessKey: config.storage.s3.secretAccessKey ?? '',
+        accessKeyId: config.storage.s3.accessKeyId,
+        secretAccessKey: config.storage.s3.secretAccessKey,
         forcePathStyle: config.storage.s3.forcePathStyle,
         presignTtlSeconds: config.storage.s3.presignTtlSeconds,
       })
@@ -744,8 +751,9 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     const s3 = config.storage.s3
     if (!s3.bucketName) issues.push('storage.s3.bucketName is required when storage.provider is s3')
     if (!s3.region) issues.push('storage.s3.region is required when storage.provider is s3')
-    if (!s3.accessKeyId) issues.push('storage.s3.accessKeyId is required when storage.provider is s3')
-    if (!s3.secretAccessKey) issues.push('storage.s3.secretAccessKey is required when storage.provider is s3')
+    if (Boolean(s3.accessKeyId) !== Boolean(s3.secretAccessKey)) {
+      issues.push('storage.s3.accessKeyId and storage.s3.secretAccessKey must be configured together')
+    }
   }
   if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')

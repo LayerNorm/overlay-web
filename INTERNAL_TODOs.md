@@ -5,6 +5,38 @@ was deferred, why, and what the eventual implementation has to account for.
 
 ---
 
+## Overlay Cloud managed agent environments
+
+**Status:** deferred — connected user-owned environments ship first; the managed
+execution path remains implemented but unavailable in product UI.
+
+`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS` must remain false in staging and
+production until every release gate below has current evidence. The managed
+route also rejects requests while the flag is off, so hiding the UI is not the
+security boundary.
+
+Before enabling Overlay Cloud:
+
+- publish, scan, and pin the Agent Host image by immutable digest;
+- pass live Vercel Sandbox conformance with the production-like image;
+- finish provider and BYOK credential brokering without copying local auth
+  directories into a sandbox;
+- enforce and verify network/egress policy and secret redaction;
+- prove maximum-lease reservation, exact-once settlement, invoice
+  reconciliation, and spend alerts;
+- prove idle shutdown, hard timeout, cancellation, snapshot cleanup, and
+  orphan reconciliation;
+- complete a deep security review of provisioning, tenancy, artifacts, and
+  provider callbacks; and
+- expose the agent-editor option only from a server-authoritative readiness
+  capability backed by these gates, not from a client flag alone.
+
+The provider-neutral sandbox runtime, Vercel and Daytona adapters, managed API,
+and bridge protocol stay in the codebase for this future release. Do not create
+a second execution or transcript path when the UI is restored.
+
+---
+
 ## Agent as principal (deferred from agent Phase 2)
 
 **Status:** deferred — the delegate model shipped instead.

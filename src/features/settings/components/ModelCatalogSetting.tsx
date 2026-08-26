@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { RefreshCw, Search, Sparkles, ScanEye } from 'lucide-react'
+import { ChevronDown, ChevronUp, KeyRound, RefreshCw, Search, Sparkles, ScanEye } from 'lucide-react'
 import { SettingsToggle } from '@overlay/modules-react/settings'
 import {
   AVAILABLE_MODELS,
@@ -9,6 +9,9 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { useByokModels } from '@/components/providers/useByokModels'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 function formatPrice(value?: number) {
   if (value === undefined) return 'Unpriced'
@@ -18,14 +21,20 @@ function formatPrice(value?: number) {
 
 export function ModelCatalogSetting({
   enabledModelIds,
+  modelOrder,
   disabled,
   onChange,
 }: {
   enabledModelIds: readonly string[]
+  modelOrder: readonly string[]
   disabled?: boolean
-  onChange: (ids: string[]) => void
+  onChange: (patch: { enabledChatModelIds?: string[]; modelOrder?: string[] }) => void
 }) {
   const { models, isLoading, error, refresh, revision } = useGatewayModelCatalog()
+  const { appDataCapabilities } = useOverlayCapabilities()
+  const { connections: byokConnections, refresh: refreshByok } = useByokModels({
+    enabled: appDataCapabilities.provider === 'convex',
+  })
   const [query, setQuery] = useState('')
 
   const effectiveIds = enabledModelIds.length > 0
@@ -35,6 +44,7 @@ export function ModelCatalogSetting({
   const curatedIds = useMemo(() => new Set<string>(DEFAULT_CURATED_CHAT_MODEL_IDS), [])
   const displayModels = useMemo(() => {
     void revision
+    void byokConnections
     const gatewayIds = new Set(models.map((model) => model.id))
     const existingDefaults: GatewayCatalogModel[] = AVAILABLE_MODELS
       .filter((model) => curatedIds.has(model.id) && !gatewayIds.has(model.id))
@@ -53,8 +63,33 @@ export function ModelCatalogSetting({
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
       }))
-    return [...existingDefaults, ...models]
-  }, [curatedIds, models, revision])
+    const byokModels: GatewayCatalogModel[] = AVAILABLE_MODELS
+      .filter((model) => isByokModelId(model.id))
+      .map((model) => ({
+        id: model.id,
+        gatewayId: model.id,
+        name: model.name,
+        type: 'language',
+        provider: model.provider,
+        description: model.description,
+        tags: [
+          ...(model.supportsVision ? ['vision'] : []),
+          ...(model.supportsReasoning ? ['reasoning'] : []),
+        ],
+        pricing: {},
+      }))
+    const combined = [...existingDefaults, ...models, ...byokModels]
+    if (modelOrder.length === 0) return combined
+    const orderIndex = new Map(modelOrder.map((id, index) => [id, index]))
+    return [...combined].sort((a, b) => {
+      const aIndex = orderIndex.get(a.id)
+      const bIndex = orderIndex.get(b.id)
+      if (aIndex === undefined && bIndex === undefined) return 0
+      if (aIndex === undefined) return 1
+      if (bIndex === undefined) return -1
+      return aIndex - bIndex
+    })
+  }, [byokConnections, curatedIds, modelOrder, models, revision])
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return displayModels
@@ -71,7 +106,25 @@ export function ModelCatalogSetting({
     } else {
       next.add(modelId)
     }
-    onChange(Array.from(next))
+    onChange({ enabledChatModelIds: Array.from(next) })
+  }
+
+  function moveEnabledModel(modelId: string, direction: -1 | 1) {
+    const enabledInDisplayOrder = displayModels
+      .map((model) => model.id)
+      .filter((id) => enabled.has(id))
+    const index = enabledInDisplayOrder.indexOf(modelId)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= enabledInDisplayOrder.length) return
+    const [moved] = enabledInDisplayOrder.splice(index, 1)
+    enabledInDisplayOrder.splice(target, 0, moved)
+    const enabledSet = new Set(enabledInDisplayOrder)
+    onChange({
+      modelOrder: [
+        ...enabledInDisplayOrder,
+        ...modelOrder.filter((id) => !enabledSet.has(id)),
+      ],
+    })
   }
 
   return (
@@ -91,7 +144,7 @@ export function ModelCatalogSetting({
             type="button"
             aria-label="Refresh models"
             disabled={isLoading}
-            onClick={() => void refresh()}
+            onClick={() => { void refresh(); void refreshByok() }}
             className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
@@ -99,7 +152,10 @@ export function ModelCatalogSetting({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => onChange([...DEFAULT_CURATED_CHAT_MODEL_IDS])}
+            onClick={() => onChange({
+              enabledChatModelIds: [...DEFAULT_CURATED_CHAT_MODEL_IDS],
+              modelOrder: [],
+            })}
             className="hidden h-10 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] sm:block"
           >
             Reset defaults
@@ -112,6 +168,7 @@ export function ModelCatalogSetting({
         {!error ? (
           <div className="max-h-[34rem] divide-y divide-[var(--border)] overflow-y-auto">
             {filtered.map((model: GatewayCatalogModel) => {
+              const byok = isByokModelId(model.id)
               const hasUsagePricing =
                 model.inputPricePerMillion !== undefined &&
                 model.outputPricePerMillion !== undefined
@@ -119,7 +176,7 @@ export function ModelCatalogSetting({
               <div
                 key={model.id}
                 className={`flex items-center gap-4 px-4 py-3 transition-colors ${
-                  hasUsagePricing ? 'hover:bg-[var(--surface-muted)]' : 'opacity-55'
+                  hasUsagePricing || byok ? 'hover:bg-[var(--surface-muted)]' : 'opacity-55'
                 }`}
               >
                 <div className="min-w-0 flex-1">
@@ -135,11 +192,18 @@ export function ModelCatalogSetting({
                         <Sparkles size={11} strokeWidth={1.6} />
                       </span>
                     ) : null}
+                    {byok ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
+                        <KeyRound size={10} /> BYOK
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
                     <span className="capitalize">{model.provider}</span>
                     <span>·</span>
-                    {hasUsagePricing ? (
+                    {byok ? (
+                      <span>Billed directly by provider</span>
+                    ) : hasUsagePricing ? (
                       <>
                         <span>{formatPrice(model.inputPricePerMillion)} in</span>
                         <span>·</span>
@@ -151,11 +215,33 @@ export function ModelCatalogSetting({
                     {curatedIds.has(model.id) ? <><span>·</span><span>Default</span></> : null}
                   </div>
                 </div>
+                {enabled.has(model.id) ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label={`Move ${model.name} up`}
+                      disabled={disabled}
+                      onClick={() => moveEnabledModel(model.id, -1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${model.name} down`}
+                      disabled={disabled}
+                      onClick={() => moveEnabledModel(model.id, 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                ) : null}
                 <SettingsToggle
                   checked={enabled.has(model.id)}
                   disabled={
                     disabled ||
-                    !hasUsagePricing ||
+                    (!hasUsagePricing && !byok) ||
                     (enabled.has(model.id) && enabled.size === 1)
                   }
                   onChange={() => toggle(model.id)}

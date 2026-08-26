@@ -198,7 +198,11 @@ Important code:
 
 ## Storage
 
-Uploaded files and generated assets are stored through server-mediated flows. R2 and S3-compatible object access must remain private and owner-scoped; users should only receive short-lived, validated access.
+Uploaded files and generated assets are stored through server-mediated flows. Cloudflare R2 remains the managed object store, but it is not used for DNS, web hosting, request proxying, or chat streaming. R2 and S3-compatible object access must remain private and owner-scoped; users should only receive short-lived, validated access.
+
+## Chat Streaming
+
+Interactive chat streams directly from the Vercel-hosted `/api/v1/conversations/act` route to the browser. Persistent conversations tee a server-side reader so generation, usage accounting, and message persistence continue after a browser disconnect. Reconnects recover from the authoritative persisted conversation state; there is no external stream relay or stream-auth endpoint.
 
 ## Observability and Metrics
 
@@ -267,6 +271,14 @@ workspace JSON, or raw user data is sent to analytics.
 Development commonly uses a separate dev deployment from production. Follow
 [Worktree Staging QA](/develop/worktree-staging-qa) and
 [Convex Workflow](/develop/convex-workflow) for the deployment lane that matches
-the current revision. Never push Convex from a feature worktree, and never use
-the all-deployments command as a shortcut around the staging/production
-boundary.
+the current revision. Deploy Convex only from the matching release worktree:
+
+```bash
+# Dedicated staging worktree, for a staging release candidate
+npm run convex:push:dev
+
+# Clean canonical main worktree, after the main web deployment is live
+npm run convex:push:prod
+```
+
+Never run a Convex deploy from a feature worktree, never use `convex:push:all`, and do not pass `.env.local` to production Convex deploy commands; that can point deploys at the dev slug.

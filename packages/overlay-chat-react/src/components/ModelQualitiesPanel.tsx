@@ -1,4 +1,4 @@
-import { BrainCircuit, Check, DollarSign, ShieldCheck, X, Zap } from 'lucide-react'
+import { BrainCircuit, Check, DollarSign, Server, ShieldCheck, X, Zap } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import { ListboxSelect } from '@overlay/ui/primitives'
@@ -60,6 +60,11 @@ export function ModelQualitiesPanel({
         icon={BrainCircuit}
         label="Intelligence"
         value={Math.round(model.intelligence ?? 0)}
+      />
+      <MetricRow
+        icon={Server}
+        label="Provider"
+        value={<span className="block max-w-[6.75rem] truncate">{model.provider ?? 'Unknown'}</span>}
       />
       <MetricRow
         icon={DollarSign}

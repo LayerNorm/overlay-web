@@ -73,6 +73,7 @@ function settingsFromRow(row: UserSettingsRow): AppSettings {
     dismissedZdrWarningGlobally: row.dismissedZdrWarningGlobally ?? DEFAULT_APP_SETTINGS.dismissedZdrWarningGlobally,
     dismissedZdrWarningModelIds: row.dismissedZdrWarningModelIds ?? DEFAULT_APP_SETTINGS.dismissedZdrWarningModelIds,
     enabledChatModelIds: row.enabledChatModelIds ?? DEFAULT_APP_SETTINGS.enabledChatModelIds,
+    modelOrder: row.modelOrder ?? DEFAULT_APP_SETTINGS.modelOrder,
   }
 }
 
@@ -104,5 +105,6 @@ function settingsToColumns(patch: AppSettingsPatch): Partial<typeof userSettings
     columns.dismissedZdrWarningModelIds = patch.dismissedZdrWarningModelIds
   }
   if (patch.enabledChatModelIds !== undefined) columns.enabledChatModelIds = patch.enabledChatModelIds
+  if (patch.modelOrder !== undefined) columns.modelOrder = patch.modelOrder
   return columns
 }

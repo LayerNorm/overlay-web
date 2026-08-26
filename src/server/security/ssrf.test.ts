@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-expect-error Node's strip-types test runner loads the adjacent TS module directly.
-import { validatePublicNetworkUrl } from './ssrf.ts'
+import { isUnsafeNetworkAddress, validatePublicNetworkUrl } from './ssrf.ts'
 
 test('validatePublicNetworkUrl blocks localhost in production-style validation', async () => {
   const result = await validatePublicNetworkUrl('https://localhost:3333/mcp', {
@@ -31,4 +31,12 @@ test('validatePublicNetworkUrl allows localhost when allowLocalDev in developmen
   } finally {
     ;(process.env as Record<string, string | undefined>).NODE_ENV = originalNodeEnv
   }
+})
+
+test('network address guard rejects mapped private IPv4 and reserved IPv6 ranges', () => {
+  assert.equal(isUnsafeNetworkAddress('::ffff:127.0.0.1'), true)
+  assert.equal(isUnsafeNetworkAddress('::ffff:ac10:1'), true)
+  assert.equal(isUnsafeNetworkAddress('fc00::1'), true)
+  assert.equal(isUnsafeNetworkAddress('2001:db8::1'), true)
+  assert.equal(isUnsafeNetworkAddress('2606:4700:4700::1111'), false)
 })

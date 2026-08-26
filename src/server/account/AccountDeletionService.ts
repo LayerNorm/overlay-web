@@ -79,6 +79,15 @@ export class AccountDeletionService {
     if (!this.ctx.auth.deleteUser) {
       throw new Error('The selected auth provider does not support account deletion.')
     }
+    // Delete external provider credentials before removing the Postgres rows
+    // that contain their opaque references. This fails closed: if AWS refuses
+    // the deletion, the account remains intact and the operator can retry.
+    const credentialRefs = await this.ctx.appData.repositories.providerConnections.listCredentialRefs({
+      userId: args.userId,
+    })
+    for (const credentialRef of new Set(credentialRefs)) {
+      await this.ctx.byokCredentialStore.delete(credentialRef)
+    }
     await this.ctx.auth.deleteUser(args.userId, args.request)
 
     const result = await this.ctx.appData.repositories.accountDeletion.deleteUserAccount({

@@ -3,6 +3,7 @@ import { BrainCircuit, ImageIcon } from 'lucide-react'
 export interface ChatModelIndicatorModel {
   id?: string
   reasoningLevels?: readonly { value: string; label: string }[]
+  provider?: string
   cost?: number
   supportsVision?: boolean
   supportsReasoning?: boolean

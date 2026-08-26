@@ -78,6 +78,14 @@ test('resolveOverlayAppShellConfig exposes memory management without vector sear
   assert.equal(shell.tools.some((item) => item.id === 'knowledge-search'), false)
 })
 
+test('resolveOverlayAppShellConfig exposes files without requiring knowledge services', () => {
+  const shell = resolveOverlayAppShellConfig(undefined, {
+    capabilities: { files: true, knowledge: false },
+  })
+
+  assert.equal(shell.navigation.some((item) => item.id === 'files'), true)
+})
+
 test('redacted capability bootstrap payload exposes capabilities without secrets', () => {
   const shell = resolveOverlayAppShellConfig(undefined, {
     capabilities: {
@@ -110,7 +118,7 @@ test('redacted capability bootstrap payload exposes capabilities without secrets
       canUseExtensions: true,
     },
     navigation: ['chat', 'files', 'extensions', 'projects', 'knowledge'],
-    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'models', 'contact'],
+    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'contact'],
   })
   assert.equal(JSON.stringify(payload).includes('secret'), false)
 })

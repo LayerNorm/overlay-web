@@ -312,7 +312,7 @@ async function resolveBffSafety(
     defaultRateLimitEnabled: runtimeConfig.features.apiDefaultRateLimit !== false,
     mutationAuditEnabled: runtimeConfig.features.apiMutationAudit !== false,
     originResponse: runtimeConfig.features.apiMutationOriginGuard !== false
-      ? rejectCrossSiteBrowserMutation(request, auth)
+      ? rejectCrossSiteBrowserMutation(request, auth, runtimeConfig.app.baseUrl)
       : null,
   }
 }

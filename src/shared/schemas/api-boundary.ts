@@ -128,6 +128,27 @@ const ConversationRunQuery = z.object({
   conversationId: z.string().trim().min(1),
 })
 
+const ProviderConnectionMutationRequest = z.object({
+  connectionId: z.string().optional(),
+  providerId: z.string().optional(),
+  endpoint: z.string().url().optional(),
+  displayName: z.string().optional(),
+  apiKey: z.string().optional(),
+  enabledModelIds: z.array(z.string()).optional(),
+  status: z.enum(['active', 'error', 'untested']).optional(),
+}).passthrough()
+
+const ProviderConnectionDeleteQuery = z.object({
+  connectionId: z.string().min(1),
+})
+
+const ProviderConnectionTestRequest = z.object({
+  connectionId: z.string().optional(),
+  providerId: z.string().optional(),
+  endpoint: z.string().url().optional(),
+  apiKey: z.string().optional(),
+})
+
 export const webApiBoundaryDefinitions = [
   {
     method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },
@@ -518,6 +539,11 @@ export const webApiBoundaryDefinitions = [
     tag: 'MCP Servers',
   },
   { method: 'POST', path: '/api/v1/mcps/test', schema: { json: McpTestRequest }, summary: 'Test an MCP server', tag: 'MCP Servers' },
+  { method: 'GET', path: '/api/v1/providers/connections', schema: { query: EmptyQuery }, summary: 'List model provider connections', tag: 'Model Providers' },
+  { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
+  { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
+  { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
+  { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
   { method: 'POST', path: '/api/v1/memory', schema: { json: CreateMemoryRequest }, summary: 'Create a memory', tag: 'Memory' },
   { method: 'PATCH', path: '/api/v1/memory', schema: { json: UpdateMemoryRequest }, summary: 'Update a memory', tag: 'Memory' },

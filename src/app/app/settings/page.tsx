@@ -37,6 +37,8 @@ import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSetti
 import { isWorkspaceSettingsTab, WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
 import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
+import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
+import { ProviderConnectionsSetting } from '@/features/settings/components/ProviderConnectionsSetting'
 
 const MemoriesView = dynamic(
   () => import('@/features/knowledge/components/MemoriesView'),
@@ -55,6 +57,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'customization',
   'shortcuts',
   'memories',
+  'providers',
   'models',
   'webhooks',
   'agent-environments',
@@ -64,7 +67,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { capabilities } = useOverlayCapabilities()
+  const { capabilities, appDataCapabilities } = useOverlayCapabilities()
   const appShell = useMemo(
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
@@ -167,6 +170,7 @@ export default function SettingsPage() {
                 isFreeTier={billingSettings?.planKind === 'free'}
                 onlyAllowZdrModels={settings.onlyAllowZdrModels}
                 enabledModelIds={settings.enabledChatModelIds}
+                modelOrder={settings.modelOrder}
                 disabled={busy || (capabilities.billing && !billingSettings)}
                 onSelect={(actModelId, askModelIds) => {
                   void updateSettings({
@@ -227,7 +231,10 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'account' && (
-            <AccountPageContent embedded />
+            <>
+              <AccountPageContent embedded />
+              {appDataCapabilities.supportsApiKeys ? <ApiKeySettings /> : null}
+            </>
           )}
 
           {!isLoading && section === 'workspace' && (
@@ -284,10 +291,13 @@ export default function SettingsPage() {
           {!isLoading && section === 'models' && (
             <ModelCatalogSetting
               enabledModelIds={settings.enabledChatModelIds}
+              modelOrder={settings.modelOrder}
               disabled={busy}
-              onChange={(enabledChatModelIds) => void updateSettings({ enabledChatModelIds })}
+              onChange={(patch) => void updateSettings(patch)}
             />
           )}
+
+          {!isLoading && section === 'providers' && <ProviderConnectionsSetting />}
 
           {!isLoading && section === 'webhooks' && <WebhookSettings />}
 

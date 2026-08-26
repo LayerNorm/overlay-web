@@ -163,10 +163,10 @@ export default function AppSidebar({
     () => toolsInlineItems.filter((item) => {
       if (item.id === 'skills') return capabilities.skills && allows({ all: ['skills.use'] })
       if (item.id === 'mcps') return capabilities.mcpServers && allows({ all: ['mcp.use'] })
-      if (item.id === 'connectors') return allows({ all: ['integrations.use'] })
+      if (item.id === 'connectors') return capabilities.integrations && allows({ all: ['integrations.use'] })
       return true
     }),
-    [allows, capabilities.mcpServers, capabilities.skills],
+    [allows, capabilities.integrations, capabilities.mcpServers, capabilities.skills],
   )
   const navItems = useMemo(
     () => appShell.navigation

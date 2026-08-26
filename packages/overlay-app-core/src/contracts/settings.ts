@@ -70,6 +70,8 @@ export interface AppSettings {
   dismissedZdrWarningModelIds: string[]
   /** Chat model IDs shown in the user's model picker. Empty uses the curated default list. */
   enabledChatModelIds: string[]
+  /** Explicit model-picker order. Models not listed are appended in their normal order. */
+  modelOrder: string[]
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -93,6 +95,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   dismissedZdrWarningGlobally: false,
   dismissedZdrWarningModelIds: [],
   enabledChatModelIds: [],
+  modelOrder: [],
 }
 
 export interface ChatModel {

@@ -289,6 +289,12 @@ export const mcpOAuthStatus = pgEnum('overlay_mcp_oauth_status', [
   'needs_reauth',
 ])
 
+export const providerConnectionStatus = pgEnum('overlay_provider_connection_status', [
+  'active',
+  'error',
+  'untested',
+])
+
 export const mcpOAuthSurface = pgEnum('overlay_mcp_oauth_surface', [
   'web',
   'desktop',
@@ -462,11 +468,42 @@ export const userSettings = pgTable('user_settings', {
   dismissedZdrWarningGlobally: boolean('dismissed_zdr_warning_globally'),
   dismissedZdrWarningModelIds: jsonb('dismissed_zdr_warning_model_ids').$type<string[]>(),
   enabledChatModelIds: jsonb('enabled_chat_model_ids').$type<string[]>(),
+  modelOrder: jsonb('model_order').$type<string[]>(),
   chatSuggestions: jsonb('chat_suggestions').$type<string[]>(),
   chatSuggestionDay: text('chat_suggestion_day'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * BYOK connection metadata. The provider API key is intentionally absent: the
+ * opaque credentialRef points to the configured customer-owned secret store.
+ */
+export const providerConnections = pgTable('provider_connections', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  providerId: text('provider_id').notNull(),
+  endpoint: text('endpoint').notNull(),
+  displayName: text('display_name').notNull(),
+  credentialRef: text('credential_ref'),
+  enabledModelIds: jsonb('enabled_model_ids').$type<string[]>().default([]).notNull(),
+  discoveredModelsJson: text('discovered_models_json'),
+  discoveredAt: timestamp('discovered_at', { withTimezone: true }),
+  status: providerConnectionStatus('status').default('untested').notNull(),
+  lastError: text('last_error'),
+  lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+  isDefault: boolean('is_default').default(false).notNull(),
+  isDeletable: boolean('is_deletable').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('provider_connections_user_created_idx').on(table.userId, table.createdAt),
+  uniqueIndex('provider_connections_one_default_per_user_idx')
+    .on(table.userId)
+    .where(sql`${table.isDefault}`),
+])
 
 export const onboardingState = pgTable('onboarding_state', {
   userId: text('user_id')

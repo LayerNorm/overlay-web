@@ -40,6 +40,7 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   notes: 0,
   onboardingState: 0,
   projects: 0,
+  providerConnections: 0,
   r2UploadIntents: 0,
   skills: 0,
   userSettings: 0,
@@ -182,6 +183,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     notes: number
     onboarding_state: number
     projects: number
+    provider_connections: number
     r2_upload_intents: number
     skills: number
     user_settings: number
@@ -221,6 +223,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM notes WHERE user_id = ${userId}) AS notes,
       (SELECT count(*)::int FROM onboarding_state WHERE user_id = ${userId}) AS onboarding_state,
       (SELECT count(*)::int FROM projects WHERE user_id = ${userId}) AS projects,
+      (SELECT count(*)::int FROM provider_connections WHERE user_id = ${userId}) AS provider_connections,
       (SELECT count(*)::int FROM r2_upload_intents WHERE user_id = ${userId}) AS r2_upload_intents,
       (SELECT count(*)::int FROM skills WHERE user_id = ${userId}) AS skills,
       (SELECT count(*)::int FROM user_settings WHERE user_id = ${userId}) AS user_settings,
@@ -263,6 +266,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     notes: Number(row.notes ?? 0),
     onboardingState: Number(row.onboarding_state ?? 0),
     projects: Number(row.projects ?? 0),
+    providerConnections: Number(row.provider_connections ?? 0),
     r2UploadIntents: Number(row.r2_upload_intents ?? 0),
     skills: Number(row.skills ?? 0),
     userSettings: Number(row.user_settings ?? 0),

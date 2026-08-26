@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { BlockList, isIP } from 'node:net'
 import { isDevelopmentRuntime } from '@/server/env/server-env'
 
 type ValidationOptions = {
@@ -9,50 +9,51 @@ type ValidationOptions = {
   requireHttps?: boolean
 }
 
-const PRIVATE_IPV4_RANGES: Array<[number, number]> = [
-  [ip4ToNumber('0.0.0.0'), ip4ToNumber('0.255.255.255')],
-  [ip4ToNumber('10.0.0.0'), ip4ToNumber('10.255.255.255')],
-  [ip4ToNumber('127.0.0.0'), ip4ToNumber('127.255.255.255')],
-  [ip4ToNumber('169.254.0.0'), ip4ToNumber('169.254.255.255')],
-  [ip4ToNumber('172.16.0.0'), ip4ToNumber('172.31.255.255')],
-  [ip4ToNumber('192.168.0.0'), ip4ToNumber('192.168.255.255')],
-  [ip4ToNumber('100.64.0.0'), ip4ToNumber('100.127.255.255')],
-  [ip4ToNumber('224.0.0.0'), ip4ToNumber('255.255.255.255')],
-]
+const UNSAFE_NETWORKS = new BlockList()
 
-function ip4ToNumber(ip: string): number {
-  return ip.split('.').reduce((acc, part) => (acc << 8) + Number(part), 0) >>> 0
+for (const [network, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.0.2.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
+  ['224.0.0.0', 4],
+  ['240.0.0.0', 4],
+] as const) {
+  UNSAFE_NETWORKS.addSubnet(network, prefix, 'ipv4')
 }
 
-function isPrivateIpv4(address: string): boolean {
-  const value = ip4ToNumber(address)
-  return PRIVATE_IPV4_RANGES.some(([start, end]) => value >= start && value <= end)
+for (const [network, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['64:ff9b::', 96],
+  ['64:ff9b:1::', 48],
+  ['100::', 64],
+  ['2001:db8::', 32],
+  ['2002::', 16],
+  ['fc00::', 7],
+  ['fe80::', 10],
+  ['ff00::', 8],
+] as const) {
+  UNSAFE_NETWORKS.addSubnet(network, prefix, 'ipv6')
 }
 
-function isUnsafeIpv6(address: string): boolean {
-  const normalized = address.toLowerCase()
-  return (
-    normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    normalized.startsWith('fe80:') ||
-    normalized.startsWith('ff') ||
-    normalized.startsWith('::ffff:127.') ||
-    normalized.startsWith('::ffff:10.') ||
-    normalized.startsWith('::ffff:192.168.')
-  )
-}
-
-function isLocalHostname(hostname: string): boolean {
+export function isLocalNetworkHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, '')
   return host === 'localhost' || host.endsWith('.localhost') || host === 'metadata.google.internal'
 }
 
-function isUnsafeAddress(address: string): boolean {
+export function isUnsafeNetworkAddress(address: string): boolean {
   const family = isIP(address)
-  if (family === 4) return isPrivateIpv4(address)
-  if (family === 6) return isUnsafeIpv6(address)
+  if (family === 4) return UNSAFE_NETWORKS.check(address, 'ipv4')
+  if (family === 6) return UNSAFE_NETWORKS.check(address, 'ipv6')
   return true
 }
 
@@ -80,11 +81,14 @@ export async function validatePublicNetworkUrl(
     return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' }
   }
   if (isDevLocalAllowed) return { ok: true, url: parsed }
-  if (isLocalHostname(parsed.hostname)) return { ok: false, error: 'Local and metadata hostnames are not allowed' }
+  if (parsed.username || parsed.password) {
+    return { ok: false, error: 'URL credentials are not allowed' }
+  }
+  if (isLocalNetworkHostname(parsed.hostname)) return { ok: false, error: 'Local and metadata hostnames are not allowed' }
 
   const literalFamily = isIP(parsed.hostname)
   if (literalFamily !== 0) {
-    return isUnsafeAddress(parsed.hostname)
+    return isUnsafeNetworkAddress(parsed.hostname)
       ? { ok: false, error: 'Private, loopback, link-local, and metadata IPs are not allowed' }
       : { ok: false, error: 'IP literal URLs are not allowed' }
   }
@@ -96,7 +100,7 @@ export async function validatePublicNetworkUrl(
     return { ok: false, error: 'Could not resolve URL hostname' }
   }
   if (addresses.length === 0) return { ok: false, error: 'Could not resolve URL hostname' }
-  if (addresses.some((entry) => isUnsafeAddress(entry.address))) {
+  if (addresses.some((entry) => isUnsafeNetworkAddress(entry.address))) {
     return { ok: false, error: 'URL resolves to a private or local network address' }
   }
   return { ok: true, url: parsed }

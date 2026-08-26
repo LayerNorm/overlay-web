@@ -27,6 +27,7 @@ export default defineSchema({
     dismissedZdrWarningGlobally: v.optional(v.boolean()),
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
     enabledChatModelIds: v.optional(v.array(v.string())),
+    modelOrder: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
@@ -120,6 +121,29 @@ export default defineSchema({
   })
     .index('by_account_subject', ['billingAccountId', 'subjectKind', 'subjectId'])
     .index('by_account_updatedAt', ['billingAccountId', 'updatedAt']),
+
+  // Metadata for user-owned model-provider credentials. Secrets never enter
+  // Convex; only the opaque WorkOS Vault object id is persisted here.
+  userProviderConnections: defineTable({
+    userId: v.string(),
+    providerId: v.string(),
+    endpoint: v.string(),
+    displayName: v.string(),
+    vaultKeyName: v.string(),
+    vaultObjectId: v.optional(v.string()),
+    enabledModelIds: v.array(v.string()),
+    discoveredModelsJson: v.optional(v.string()),
+    discoveredAt: v.optional(v.number()),
+    status: v.union(v.literal('active'), v.literal('error'), v.literal('untested')),
+    lastError: v.optional(v.string()),
+    lastTestedAt: v.optional(v.number()),
+    isDefault: v.boolean(),
+    isDeletable: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_providerId', ['userId', 'providerId']),
 
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)

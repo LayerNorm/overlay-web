@@ -183,6 +183,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'settings',
   },
   {
+    id: 'provider-connections',
+    methods: '*',
+    prefixes: ['/api/v1/providers/connections'],
+    status: 'supported',
+    feature: 'provider-connections',
+  },
+  {
     id: 'onboarding',
     methods: ['GET', 'POST'],
     paths: [

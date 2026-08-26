@@ -9,6 +9,7 @@ test('enterprise feature routes map to deterministic capabilities', () => {
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/browser-task'), 'browserUse')
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/daytona/run'), 'sandboxes')
   assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/integrations'), 'integrations')
+  assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/providers/connections/test'), 'modelRouting')
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/memory/search'), 'memory')
   assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/knowledge/search'), 'vectorSearch')
   assert.equal(getRequiredCapabilityForRoute('POST', '/api/v1/agent-environments/enrollment-sessions'), 'connectedAgents')

@@ -143,7 +143,9 @@
     "packages/overlay-chat-react/src/lib/web-tool-sources.ts#collectSourceCandidatesFromUnknown": 1,
     "src/features/chat/components/NewDirectMessageDialog.tsx#NewDirectMessageDialog": 1,
     "src/features/workspaces/components/WorkspaceSettingsPanel.tsx#WorkspaceSettingsPanel": 1,
-    "src/server/tools/mcp-tools.ts#execute": 1
+    "src/server/tools/mcp-tools.ts#execute": 1,
+    "src/server/app-api/v1/providers/connections/route.ts#PATCH": 1,
+    "src/features/settings/components/ProviderDialog.tsx#ProviderDialog": 1
   },
   "routeHandlersOverBudget": [
     "src/server/app-api/v1/chat-suggestions/route.ts",
@@ -153,6 +155,7 @@
     "src/server/app-api/v1/generate-image/route.ts",
     "src/server/app-api/v1/generate-video/route.ts",
     "src/server/app-api/v1/notebook-agent/route.ts",
+    "src/server/app-api/v1/providers/connections/route.ts",
     "src/server/app-api/v1/settings/route.ts"
   ],
   "zeroFanInFiles": [

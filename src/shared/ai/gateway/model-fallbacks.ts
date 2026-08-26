@@ -7,6 +7,7 @@ import {
   FREE_TIER_AUTO_MODEL_ID,
   isFreeTierChatModelId,
 } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 
 type FallbackParams = {
   modelId: string
@@ -72,9 +73,9 @@ function paidFallbackCandidates(params: FallbackParams): string[] {
 }
 
 export function getChatModelFallbackCandidates(params: FallbackParams): string[] {
+  if (isByokModelId(params.modelId)) return []
   const candidates = params.paid && !isFreeTierChatModelId(params.modelId)
     ? paidFallbackCandidates(params)
     : freeFallbackCandidates(params)
   return candidates.slice(0, params.maxCandidates ?? 4)
 }
-

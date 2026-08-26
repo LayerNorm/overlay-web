@@ -35,7 +35,7 @@ ECS scheduler service (1 task; 2 during duplicate-scheduler qualification)
   -> deterministic due-job discovery and enqueueing
 
 Customer CI -> ECR immutable digest -> one-off migration -> all ECS roles
-Secrets Manager -> ECS task secret references
+Secrets Manager -> ECS task secret references and BYOK provider-key records
 CloudWatch, Container Insights, and SNS -> logs, metrics, alarms, and operators
 ```
 
@@ -68,7 +68,7 @@ access keys.
 | --- | --- |
 | Network | At least two Availability Zones; public ALB subnets; private ECS subnets; isolated RDS/Redis subnets; approved NAT, proxy, or VPC endpoints. |
 | Compute | ECS cluster; web service with at least two tasks; worker service with at least two tasks; scheduler service; one-off migration task. |
-| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer; separate app/auth databases and roles; `pgvector` when knowledge is enabled; automated backups and restore test. |
+| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer; separate app/auth databases and roles; install `pgvector` before app-data migrations; automated backups and restore test. |
 | Redis | TLS ElastiCache with fail-closed application behavior; Multi-AZ automatic failover for the target pilot. |
 | Objects | Private encrypted, versioned S3 bucket; block public access; lifecycle, logging, backup/recovery, and deletion policy. |
 | Ingress | HTTPS ALB listener, healthy target group, customer DNS, ACM certificate, and WAF/edge controls required by policy. |
@@ -77,10 +77,29 @@ access keys.
 
 ## Secrets Manager
 
-Create separate paths for staging and production. ECS injects secret values as
-environment variables; the application does not fetch Secrets Manager values
-directly. Keep non-secret selectors and hostnames in task-definition
+Create separate paths for staging and production. ECS injects application
+secrets as environment variables. For BYOK, the application makes narrowly
+scoped runtime calls to Secrets Manager using its ECS task role; each user API
+key is a separate opaque secret ARN stored in Postgres, never a plaintext
+database value. Keep non-secret selectors and hostnames in task-definition
 environment variables.
+
+Enable AWS-backed BYOK in the customer runtime configuration:
+
+```text
+OVERLAY_PROVIDER_DATABASE=postgres
+OVERLAY_PROVIDER_SECRETS=aws-secrets-manager
+AWS_REGION=<customer-region>
+OVERLAY_AWS_SECRETS_PREFIX=jpgs/overlay/byok
+OVERLAY_AWS_SECRETS_KMS_KEY_ID=<customer-kms-key-arn>
+```
+
+Grant the web ECS task role only `secretsmanager:CreateSecret`,
+`GetSecretValue`, `PutSecretValue`, and `DeleteSecret` for that prefix, plus
+`kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` on the customer KMS
+key. Do not grant list, broad read, cross-environment, or wildcard customer
+secret permissions. The worker and scheduler roles do not need BYOK secret
+access.
 
 At minimum, create entries for:
 
@@ -102,9 +121,10 @@ OVERLAY_REDIS_URL
 AI_GATEWAY_API_KEY
 ```
 
-Add provider credentials only for approved, enabled features. The current S3
-adapter requires bucket-scoped `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`;
-store them in Secrets Manager and rotate them. Do not place any secret in a
+Add provider credentials only for approved, enabled features. On ECS or EC2,
+prefer a bucket-scoped task or instance role and omit `S3_ACCESS_KEY_ID` and
+`S3_SECRET_ACCESS_KEY`. For non-AWS S3-compatible storage, configure both keys,
+store them in Secrets Manager, and rotate them. Do not place any secret in a
 `NEXT_PUBLIC_*` variable, source file, task-definition plaintext environment
 value, build log, document, ticket, email, or chat.
 

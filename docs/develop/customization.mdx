@@ -86,7 +86,11 @@ icon in settings navigation, and follows the standard elevated settings-card sur
 subtle icon tiles. New local, VPS, customer-sandbox, and Overlay Cloud environments are created
 inside the Bring Your Own Agent branch of the agent editor. The Settings renderer is the fleet
 administration surface: it shows health and pending verification, collects or changes explicit
-project roots, and exposes revocation. The backend additionally requires
+project roots, and exposes revocation. For the production workspace rollout,
+the agent editor offers existing environments or one outbound connection command
+for a user-owned computer, VPS, or sandbox. Overlay Cloud is deliberately absent
+until the managed-environment release gates in `INTERNAL_TODOs.md` pass. The
+backend additionally requires
 `features.connectedAgentControlPlane`; the capability mirrors that server policy and cannot be
 enabled by a client assertion.
 

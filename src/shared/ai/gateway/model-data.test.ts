@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   getEnabledChatModels,
   getGatewayCatalogRevision,
+  registerByokModels,
   registerGatewayCatalogModels,
 } from './model-data'
 
@@ -78,4 +79,31 @@ test('enabled ids missing from the static catalog still appear (provisional)', (
   const resolved = after.find((model) => model.id === UNKNOWN_ENABLED_ID)
   assert.equal(resolved?.name, 'Not Yet In Static Catalog')
   assert.equal(resolved?.supportsVision, true)
+})
+
+test('active BYOK models register without replacing hosted models and respect explicit order', () => {
+  registerByokModels([{
+    _id: 'connection_1',
+    providerId: 'openrouter',
+    endpoint: 'https://openrouter.ai/api/v1',
+    displayName: 'Personal OpenRouter',
+    enabledModelIds: ['vendor/model-a'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'vendor/model-a', name: 'Model A' }] }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+
+  const byokId = 'byok/connection_1/vendor/model-a'
+  const models = getEnabledChatModels(
+    ['openrouter/free', byokId, DYNAMIC_MODEL_ID],
+    true,
+    [byokId, 'openrouter/free'],
+  )
+  assert.deepEqual(models.map((model) => model.id), [byokId, 'openrouter/free', DYNAMIC_MODEL_ID])
+  assert.equal(models[0]?.provider, 'Personal OpenRouter')
+
+  registerByokModels([])
+  assert.equal(getEnabledChatModels(['openrouter/free'], true)[0]?.id, 'openrouter/free')
+  assert.equal(getEnabledChatModels([byokId], true).length, 0)
 })

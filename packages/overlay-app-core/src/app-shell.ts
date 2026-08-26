@@ -120,7 +120,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     icon: 'bot',
     featureFlagId: 'agents',
   },
-  { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
+  { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files'] },
   {
     id: 'extensions',
     href: '/app/tools',
@@ -163,6 +163,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'customization', label: 'Customization' },
   { id: 'shortcuts', label: 'Shortcuts' },
   { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory'] },
+  { id: 'providers', label: 'Providers', requiredCapabilities: ['modelRouting'] },
   { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
   { id: 'webhooks', label: 'Webhooks', requiredCapabilities: ['webhooks'] },
   { id: 'agent-environments', label: 'Environments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },

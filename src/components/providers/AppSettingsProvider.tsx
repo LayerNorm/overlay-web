@@ -127,6 +127,14 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   ) {
     return false
   }
+  if (
+    candidate.modelOrder !== undefined &&
+    (!Array.isArray(candidate.modelOrder) ||
+      candidate.modelOrder.length > MAX_ENABLED_MODEL_IDS ||
+      !candidate.modelOrder.every(isSafeModelId))
+  ) {
+    return false
+  }
   return (
     typeof candidate.theme === 'string' ||
     typeof candidate.lightThemePreset === 'string' ||
@@ -146,7 +154,8 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.onlyAllowZdrModels === 'boolean' ||
     typeof candidate.dismissedZdrWarningGlobally === 'boolean' ||
     Array.isArray(candidate.dismissedZdrWarningModelIds) ||
-    Array.isArray(candidate.enabledChatModelIds)
+    Array.isArray(candidate.enabledChatModelIds) ||
+    Array.isArray(candidate.modelOrder)
   )
 }
 
