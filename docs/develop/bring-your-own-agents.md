@@ -99,6 +99,9 @@ mentions have a two-minute claim window and visibly render `Waiting for <environ
 and Retry; expired leases cannot be claimed.
 
 Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
+The Agents directory derives its connected-harness label from the active binding rather than the
+agent's historical model ID, so agents created before the BYO editor still display their actual
+runtime.
 The agent editor starts with an explicit `Overlay agent` versus `Bring your own agent` choice.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
