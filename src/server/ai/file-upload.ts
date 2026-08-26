@@ -54,7 +54,7 @@ export async function tryUploadFileToProvider(args: {
       return { providerReference: result.providerReference }
     }
     return null
-  } catch {
+  } catch (_error) {
     // Upload failed — fall back to inline.
     return null
   }

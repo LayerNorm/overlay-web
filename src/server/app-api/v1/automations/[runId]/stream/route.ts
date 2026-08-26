@@ -34,7 +34,7 @@ export async function GET(_request: NextRequest, context?: AppApiRouteContext) {
       try {
         const returnValue = await run.returnValue
         result = returnValue as { conversationId?: string; runId?: string }
-      } catch {
+      } catch (_error) {
         // Return value may not be available if the run failed
       }
     }
