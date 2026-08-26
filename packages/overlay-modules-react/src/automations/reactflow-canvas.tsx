@@ -230,12 +230,6 @@ function NodeConfigPanel({
   const [text, setText] = useState(node.config.text ?? '')
   const [condition, setCondition] = useState(node.config.condition ?? '')
 
-  useEffect(() => {
-    setLabel(node.label)
-    setText(node.config.text ?? '')
-    setCondition(node.config.condition ?? '')
-  }, [node.id, node.label, node.config.text, node.config.condition])
-
   function commitLabel(value: string) {
     setLabel(value)
     onUpdate({ label: value })
@@ -766,6 +760,7 @@ function GraphCanvasInner({
       {/* Node config side panel (hidden in read-only mode) */}
       {selectedNode && !readOnly && (
         <NodeConfigPanel
+          key={selectedNode.id}
           node={selectedNode}
           onUpdate={handleUpdateSelectedNode}
           onClose={() => setSelectedNodeId(null)}

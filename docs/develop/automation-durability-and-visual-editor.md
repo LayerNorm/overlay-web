@@ -227,6 +227,8 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - `graph-ops.ts` is a pure logic module (no React/CSS imports) for testability — contains validation, node/edge manipulation, ReactFlow↔graph conversion, and `GraphHistory` class.
 - `reactflow-canvas.tsx` uses `applyNodeChanges`/`applyEdgeChanges` directly (instead of the default `onNodesChange`/`onEdgesChange`) to intercept deletions and position changes for graph commit.
 - Position changes are committed on drag-end (not on every drag frame) to avoid excessive history entries.
+- The node settings panel is keyed by node ID, so selecting another node remounts its draft fields
+  from that node instead of synchronizing local form state through an effect.
 - `deleteKeyCode={null}` on ReactFlow disables the built-in Delete handling; custom keyboard handler intercepts Delete/Backspace to avoid deleting nodes when typing in the config panel inputs.
 - `connectNodesInGraph` prevents self-loops, duplicate edges, and cycles at the graph level.
 - `applyAutomationUpdate` now persists the `graph` field (was previously only persisting `graphSource`).
@@ -348,6 +350,9 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Step name matching uses `.includes()` (substring) rather than exact equality because the Workflow SDK emits prefixed step names like `step//./workflows/automation-schedule//executeAutomationRun`.
 - The reducer is a pure function (`applyEvent`) so it can be used for both live streaming and replay (replaying events up to an index for the scrubber)
 - `EventSource` is used for SSE (browser-native, auto-reconnects); for replay, we fetch the SSE stream once and drain it
+- Live viewer state is scoped to a workflow-and-graph run key. A new run derives its initial
+  snapshot during render, while EventSource callbacks own subsequent connection and event state;
+  effect setup and cleanup never synchronously reset React state.
 - The canvas enters read-only mode when `nodeStatuses` is provided — toolbar, config panel, and editing are hidden
 - Edge animation uses ReactFlow's built-in `animated` prop (CSS dash animation) with color coding: blue for active, green for completed, red for failed
 

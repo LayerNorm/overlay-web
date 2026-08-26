@@ -37,12 +37,20 @@ export function useRunStatus({
   workflowRunId,
   graph,
   enabled = true,
-  fetchImpl = fetch,
 }: UseRunStatusOptions): UseRunStatusResult {
-  const [snapshot, setSnapshot] = useState<AutomationRunStatusSnapshot | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [events, setEvents] = useState<AutomationRunEvent[]>([])
+  const runKey = useMemo(() => {
+    if (!enabled || !workflowRunId || !graph) return null
+    const nodeIds = graph.nodes.map((node) => node.id).join(',')
+    const edgeIds = graph.edges.map((edge) => `${edge.from}>${edge.to}`).join(',')
+    return `${workflowRunId}:${nodeIds}:${edgeIds}`
+  }, [enabled, workflowRunId, graph])
+  const [state, setState] = useState<{
+    runKey: string | null
+    snapshot: AutomationRunStatusSnapshot | null
+    isConnected: boolean
+    error: string | null
+    events: AutomationRunEvent[]
+  }>({ runKey: null, snapshot: null, isConnected: false, error: null, events: [] })
   const eventSourceRef = useRef<EventSource | null>(null)
   const graphRef = useRef(graph)
   const snapshotRef = useRef<AutomationRunStatusSnapshot | null>(null)
@@ -51,40 +59,26 @@ export function useRunStatus({
     graphRef.current = graph
   }, [graph])
 
-  useEffect(() => {
-    snapshotRef.current = snapshot
-  }, [snapshot])
-
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
     }
-    setIsConnected(false)
+    setState((current) => ({ ...current, isConnected: false }))
   }, [])
 
   useEffect(() => {
-    if (!enabled || !workflowRunId || !graph) {
-      disconnect()
-      setSnapshot(null)
-      setEvents([])
-      setError(null)
-      return
-    }
+    if (!runKey || !workflowRunId || !graph) return
 
     const initial = initialRunStatus(graph, workflowRunId)
-    setSnapshot(initial)
     snapshotRef.current = initial
-    setEvents([])
-    setError(null)
 
     const url = `/api/v1/automations/${encodeURIComponent(workflowRunId)}/events`
     const eventSource = new EventSource(url)
     eventSourceRef.current = eventSource
 
     eventSource.onopen = () => {
-      setIsConnected(true)
-      setError(null)
+      setState({ runKey, snapshot: initial, isConnected: true, error: null, events: [] })
     }
 
     eventSource.onmessage = (message) => {
@@ -98,12 +92,19 @@ export function useRunStatus({
         if (data.type === 'connected') return
 
         if (data.type === 'error') {
-          setError(data.error)
+          setState((current) => ({
+            ...(current.runKey === runKey
+              ? current
+              : { runKey, snapshot: initial, isConnected: false, events: [] }),
+            error: data.error,
+          }))
           return
         }
 
         if (data.type === 'terminal') {
-          setIsConnected(false)
+          setState((current) => current.runKey === runKey
+            ? { ...current, isConnected: false }
+            : current)
           eventSource.close()
           eventSourceRef.current = null
           return
@@ -116,8 +117,13 @@ export function useRunStatus({
 
           const nextSnapshot = applyEvent(currentSnapshot, currentGraph, data.event)
           snapshotRef.current = nextSnapshot
-          setSnapshot(nextSnapshot)
-          setEvents((prev) => [...prev, data.event])
+          setState((current) => ({
+            runKey,
+            snapshot: nextSnapshot,
+            isConnected: current.runKey === runKey ? current.isConnected : true,
+            error: current.runKey === runKey ? current.error : null,
+            events: current.runKey === runKey ? [...current.events, data.event] : [data.event],
+          }))
         }
       } catch {
         // Ignore malformed SSE data
@@ -125,17 +131,30 @@ export function useRunStatus({
     }
 
     eventSource.onerror = () => {
-      setIsConnected(false)
+      setState((current) => current.runKey === runKey
+        ? { ...current, isConnected: false }
+        : current)
     }
 
     return () => {
       eventSource.close()
       eventSourceRef.current = null
-      setIsConnected(false)
     }
-  }, [workflowRunId, graph, enabled, disconnect])
+  }, [workflowRunId, graph, runKey])
 
-  return { snapshot, isConnected, error, events, disconnect }
+  if (!runKey || !workflowRunId || !graph) {
+    return { snapshot: null, isConnected: false, error: null, events: [], disconnect }
+  }
+  if (state.runKey !== runKey) {
+    return {
+      snapshot: initialRunStatus(graph, workflowRunId),
+      isConnected: false,
+      error: null,
+      events: [],
+      disconnect,
+    }
+  }
+  return { ...state, disconnect }
 }
 
 // ---------------------------------------------------------------------------
