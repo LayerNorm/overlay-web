@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import {
   CreditCard, FileText, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
-  Bot, Brain, Keyboard, Mail, Palette, UsersRound, Webhook,
+  Bot, Brain, Keyboard, Mail, Palette, Server, UsersRound, Webhook,
 } from 'lucide-react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import {
@@ -111,6 +111,7 @@ const SETTINGS_SECTION_ICONS: Record<string, typeof Settings> = {
   shortcuts: Keyboard,
   memories: Brain,
   models: Bot,
+  'agent-environments': Server,
   webhooks: Webhook,
   contact: Mail,
   workspace: UsersRound,

@@ -59,7 +59,7 @@ available for operational compatibility. Conformance tests cover start, stream, 
 duplicate delivery, out-of-order rejection, server outage, host restart, reconnect/resume, and
 an actual ACP subprocess exchange.
 
-Phase 3 browser management lives in Settings > Agent environments. Workspace owners and admins
+Phase 3 browser management lives in Settings > Environments. Workspace owners and admins
 can create a ten-minute, single-use enrollment code, approve a pending host with one or more
 absolute project roots, change its scope, list environments, and revoke them. Public host routes
 never accept browser-session authority. Initial issuance requires the one-time challenge plus an
@@ -234,7 +234,7 @@ browser QA, live provider conformance, invoice reconciliation, or production soa
 
 The PostgreSQL release deployment must enable the provider-neutral workspace, agent, room, and
 conversation routes as well as the connected-agent control plane. A signed-out 401/403 matrix is
-insufficient: authenticated QA must create its Personal workspace, load Agent Environments, and
+insufficient: authenticated QA must create its Personal workspace, load Environments, and
 exercise the same enrollment-to-mention flow without any Convex request.
 
 Artifact release evidence includes an accelerated bounded-batch soak: more than two cleanup pages

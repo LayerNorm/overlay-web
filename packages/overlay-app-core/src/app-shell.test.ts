@@ -4,6 +4,7 @@ import {
   DEFAULT_OVERLAY_FEATURE_MODULES,
   DEFAULT_OVERLAY_NAVIGATION,
   DEFAULT_OVERLAY_SETTINGS_PANELS,
+  DEFAULT_OVERLAY_SETTINGS_SECTIONS,
   DEFAULT_OVERLAY_SIDEBAR_ACTIONS,
   resolveOverlayAppShellConfig,
   resolveFeatureModuleForPath,
@@ -55,4 +56,6 @@ test('sidebar registries resolve feature modules and actions from routes', () =>
   assert.equal(resolveFeatureModuleForPath('/app/projects/child', shell.featureModules)?.id, 'projects')
   assert.equal(resolveSidebarActionForPath('/app/notes', shell.sidebarActions)?.actionKey, 'notes.create')
   assert.equal(resolveSidebarActionForPath('/app/settings', shell.sidebarActions), null)
+  assert.equal(DEFAULT_OVERLAY_SETTINGS_SECTIONS.find((item) => item.id === 'agent-environments')?.label, 'Environments')
+  assert.equal(DEFAULT_OVERLAY_SETTINGS_PANELS.find((item) => item.id === 'agent-environments')?.label, 'Environments')
 })

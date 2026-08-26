@@ -138,13 +138,13 @@ export function AgentEnvironmentSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-[var(--foreground)]">Connect an environment</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">Run Overlay agents on a computer, VPS, or sandbox through one outbound connection.</p>
           </div>
-          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createEnrollment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:opacity-85 disabled:opacity-50">
+          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createEnrollment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50">
             Create connection
           </button>
         </div>
@@ -158,16 +158,16 @@ export function AgentEnvironmentSettings() {
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 gap-3">
-            <div className="rounded-xl bg-[var(--surface-elevated)] p-2 text-[var(--muted)]"><Cloud size={17} /></div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]"><Cloud size={17} /></div>
             <div>
               <h2 className="text-sm font-semibold text-[var(--foreground)]">Overlay Cloud</h2>
               <p className="mt-1 text-sm text-[var(--muted)]">A managed environment for running connected agents without setting up your own machine.</p>
             </div>
           </div>
-          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createManagedEnvironment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:opacity-85 disabled:opacity-50">
+          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createManagedEnvironment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50">
             {busy === 'managed' ? 'Creating…' : 'Create environment'}
           </button>
         </div>
@@ -180,11 +180,11 @@ export function AgentEnvironmentSettings() {
           <h2 className="text-sm font-semibold text-[var(--foreground)]">Environments</h2>
           <button type="button" aria-label="Refresh environments" onClick={() => void refresh()} className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><RefreshCw size={15} /></button>
         </div>
-        {environments.length === 0 ? <p className="rounded-2xl border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted)]">No environments connected yet.</p> : null}
+        {environments.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted)]">No environments connected yet.</p> : null}
         {environments.map((environment) => (
-          <div key={environment.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+          <div key={environment.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
             <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-[var(--surface-elevated)] p-2 text-[var(--muted)]"><Laptop size={17} /></div>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]"><Laptop size={17} /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-medium text-[var(--foreground)]">{environment.name}</h3>
@@ -197,7 +197,7 @@ export function AgentEnvironmentSettings() {
                     <label className="block text-xs text-[var(--muted)]">Approved project roots, one per line
                       <textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className="mt-2 min-h-20 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--muted)]" />
                     </label>
-                    <button type="button" disabled={busy !== null} onClick={() => void approve(environment.id)} className="rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:opacity-85 disabled:opacity-50">Approve environment</button>
+                    <button type="button" disabled={busy !== null} onClick={() => void approve(environment.id)} className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50">Approve environment</button>
                   </div>
                 ) : null}
                 {environment.status !== 'pending' && environment.status !== 'revoked' && environment.filesystemGrant ? (
@@ -208,7 +208,7 @@ export function AgentEnvironmentSettings() {
                           <textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} className="mt-2 min-h-20 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--muted)]" />
                         </label>
                         <div className="flex gap-2">
-                          <button type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)} className="rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:opacity-85 disabled:opacity-50">Save roots</button>
+                          <button type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)} className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50">Save roots</button>
                           <button type="button" disabled={busy !== null} onClick={() => setEditingRoots(null)} className="rounded-full px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--foreground)]">Cancel</button>
                         </div>
                       </div>
@@ -221,7 +221,7 @@ export function AgentEnvironmentSettings() {
                         <button type="button" onClick={() => {
                           setRoots((current) => ({ ...current, [environment.id]: environment.filesystemGrant?.mode === 'selected_roots' ? environment.filesystemGrant.roots.join('\n') : '' }))
                           setEditingRoots(environment.id)
-                        }} className="shrink-0 rounded-full px-2.5 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]">Change roots</button>
+                        }} className="shrink-0 rounded-full px-2.5 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Change roots</button>
                       </div>
                     )}
                   </div>
