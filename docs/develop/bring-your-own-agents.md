@@ -51,17 +51,22 @@ Phase 2 is implemented in two Apache-licensed workspace packages:
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
   official ACP TypeScript SDK adapter.
 
-The host executable supports `connect <code> --server <origin>`. It creates or reuses an Ed25519
-device key, displays the same short phrase shown in Settings, waits for browser approval, stores
+The host executable supports `connect <code> --server <origin>`. The agent editor emits a single
+harness-specific command with `--adapter <id> --run`; the same command works on a local computer,
+VPS, or customer sandbox. It creates or reuses an Ed25519 device key, displays the same short
+phrase shown in Overlay, waits for browser approval, stores
 the resulting short-lived credential in a mode-0600 connection file, signs every control-plane
 request, and rotates credentials before expiry. A named environment-variable credential remains
 available for operational compatibility. Conformance tests cover start, stream, approval, cancel,
 duplicate delivery, out-of-order rejection, server outage, host restart, reconnect/resume, and
 an actual ACP subprocess exchange.
 
-Phase 3 browser management lives in Settings > Environments. Workspace owners and admins
-can create a ten-minute, single-use enrollment code, approve a pending host with one or more
-absolute project roots, change its scope, list environments, and revoke them. Public host routes
+Phase 3 enrollment begins in Agents > New agent > Bring your own agent. The user selects a harness
+and either reuses an approved environment, creates one outbound connection for a local computer,
+VPS, or customer sandbox, or provisions Overlay Cloud. Settings > Environments remains the fleet
+administration surface for pending approval recovery, health, scope changes, listing, and
+revocation. Workspace owners and admins can create a ten-minute, single-use enrollment code and
+approve a pending host with one or more absolute project roots. Public host routes
 never accept browser-session authority. Initial issuance requires the one-time challenge plus an
 Ed25519 signature; subsequent calls require an opaque 15-minute credential and a signature over
 the exact method, pathname and query, body hash, timestamp, request nonce, and token hash.
@@ -94,8 +99,13 @@ mentions have a two-minute claim window and visibly render `Waiting for <environ
 and Retry; expired leases cannot be claimed.
 
 Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
-The agent editor exposes approved environments, their advertised ACP adapters, and an explicitly
-granted working directory. The host ships data-only manifests for Codex
+The agent editor starts with an explicit `Overlay agent` versus `Bring your own agent` choice.
+Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
+BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
+records an explicitly granted default working directory. Creating an environment stays inside the
+same dialog and returns directly to the binding step after phrase and root approval. A failed
+binding retry edits the already-durable agent identity rather than creating a duplicate. The host
+ships data-only manifests for Codex
 (`@agentclientprotocol/codex-acp`) and Claude Code (`@agentclientprotocol/claude-agent-acp`); adding
 another ACP target extends the manifest and conformance fixtures, not conversation orchestration.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
@@ -141,13 +151,15 @@ the official `@daytona/sdk` adapter, and the legacy `/api/v1/daytona/run` execut
 path now performs command and file operations through the same runtime contract.
 
 `POST /api/v1/agent-environments/managed` is the provider-neutral provisioning resource. The
-ordinary Settings choice is labeled `Overlay Cloud`; provider selection is available only to
+ordinary agent-creation choice is labeled `Overlay Cloud`; provider selection is available only to
 operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Both providers boot
 the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
 `@overlay/agent-host` executable used on user-owned machines and invokes the same one-time
 enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
 Managed hosts enroll as `overlay_cloud` and default their explicit approval root to `/workspace`.
-No provider receives a privileged alternate host credential.
+Provisioning receives the selected managed ACP adapter and starts only that pinned harness manifest;
+the browser still performs the normal explicit root approval. No provider receives a privileged
+alternate host credential.
 
 Credential bindings contain an opaque broker reference, placeholder environment variable, and
 allowed domains. Vercel translates resolved header material into network-policy transforms;

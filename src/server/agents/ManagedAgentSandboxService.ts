@@ -3,6 +3,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import {
   managedAgentHostCommand,
+  type OverlayManagedAcpAdapterId,
   type SandboxInstance,
   type SandboxRuntime,
 } from '@overlay/sandbox-runtime'
@@ -31,6 +32,7 @@ export class ManagedAgentSandboxService {
     actorUserId: string
     workspaceId: string
     serverUrl: string
+    adapterId: OverlayManagedAcpAdapterId
   }) {
     const runtime = this.dependencies.runtime ?? managedSandboxRuntimeFromEnv()
     const limits = await this.dependencies.policyLimits?.({ userId: args.actorUserId, workspaceId: args.workspaceId })
@@ -65,6 +67,7 @@ export class ManagedAgentSandboxService {
         enrollmentCode: enrollment.code,
         serverUrl: args.serverUrl,
         name,
+        adapters: [args.adapterId],
       }))
 
       const environment = await this.waitForEnvironment(args.workspaceId, name)
@@ -94,13 +97,14 @@ export class ManagedAgentSandboxService {
           leaseId: lease.id,
           provider: runtime.provider,
           providerReference: sandbox.reference,
+          adapterId: args.adapterId,
         },
       })
       const { publicKey: _publicKey, ...publicEnvironment } = environment
       return {
         environment: publicEnvironment,
         lease: { id: lease.id, status: lease.status },
-        setup: { label: 'Overlay Cloud', approvedRoot: MANAGED_ROOT },
+        setup: { label: 'Overlay Cloud', approvedRoot: MANAGED_ROOT, adapterId: args.adapterId },
       }
     } catch (error) {
       if (sandbox) await sandbox.delete().catch((_error) => undefined)

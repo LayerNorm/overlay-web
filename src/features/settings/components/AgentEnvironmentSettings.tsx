@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Cloud, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -20,12 +20,10 @@ type Environment = {
 export function AgentEnvironmentSettings() {
   const { activeWorkspaceId } = useWorkspace()
   const [environments, setEnvironments] = useState<Environment[]>([])
-  const [command, setCommand] = useState('')
   const [roots, setRoots] = useState<Record<string, string>>({})
   const [editingRoots, setEditingRoots] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
 
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return
@@ -40,39 +38,10 @@ export function AgentEnvironmentSettings() {
 
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
-    if (!command || (environments.length > 0 && !environments.some((environment) => environment.status === 'pending' || environment.status === 'offline'))) return
+    if (!environments.some((environment) => environment.status === 'pending' || environment.status === 'offline')) return
     const timer = window.setInterval(() => void refresh(), 3_000)
     return () => window.clearInterval(timer)
-  }, [command, environments, refresh])
-
-  async function createEnrollment() {
-    setBusy('create')
-    setError(null)
-    try {
-      if (!activeWorkspaceId) throw new Error('Choose a workspace first')
-      const data = await overlayAppClient.agentEnvironments.createEnrollment(activeWorkspaceId)
-      setCommand(data.command)
-    } catch (value) {
-      setError(value instanceof Error ? value.message : 'Failed to create enrollment')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function createManagedEnvironment() {
-    setBusy('managed')
-    setError(null)
-    try {
-      if (!activeWorkspaceId) throw new Error('Choose a workspace first')
-      const data = await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId)
-      setRoots((current) => ({ ...current, [data.environment.id]: data.setup.approvedRoot }))
-      await refresh()
-    } catch (value) {
-      setError(value instanceof Error ? value.message : 'Overlay Cloud provisioning failed')
-    } finally {
-      setBusy(null)
-    }
-  }
+  }, [environments, refresh])
 
   async function approve(environmentId: string) {
     const environment = environments.find((candidate) => candidate.id === environmentId)
@@ -139,38 +108,8 @@ export function AgentEnvironmentSettings() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">Connect an environment</h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">Run Overlay agents on a computer, VPS, or sandbox through one outbound connection.</p>
-          </div>
-          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createEnrollment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50">
-            Create connection
-          </button>
-        </div>
-        {command ? (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-2">
-            <code className="min-w-0 flex-1 overflow-x-auto px-1 text-xs text-[var(--foreground)]">{command}</code>
-            <button type="button" aria-label="Copy connection command" onClick={() => void navigator.clipboard.writeText(command).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })} className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
-              {copied ? <Check size={15} /> : <Copy size={15} />}
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]"><Cloud size={17} /></div>
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--foreground)]">Overlay Cloud</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">A managed environment for running connected agents without setting up your own machine.</p>
-            </div>
-          </div>
-          <button type="button" disabled={!activeWorkspaceId || busy !== null} onClick={() => void createManagedEnvironment()} className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50">
-            {busy === 'managed' ? 'Creating…' : 'Create environment'}
-          </button>
-        </div>
+        <h2 className="text-sm font-semibold text-[var(--foreground)]">Environment access</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">Create or connect an environment while setting up a Bring Your Own Agent. Manage its access, health, and revocation here.</p>
       </div>
 
       {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
