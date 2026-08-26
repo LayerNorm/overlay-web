@@ -302,7 +302,7 @@ connections, subagents, sandboxes, schedules, and observability. It supports
 runtime-selected models, tools, skills, instructions, and remote agents through
 dynamic definitions.
 
-The current reviewed package is eve `0.44.3`. Its documentation labels the
+The current reviewed package is eve `0.44.4`. Its documentation labels the
 framework preview software whose API and behavior may change before general
 availability. Revalidate the installed version and bundled `node_modules/eve/docs`
 before any implementation.
@@ -325,7 +325,10 @@ eve also provides useful remote-agent primitives:
 - Optional forwarding of verified principal metadata without forwarding user
   credentials.
 
-These are useful adapters and prior art for any future eve adoption.
+These are useful adapters and prior art for any future eve adoption. The bounded
+`@overlay/agent-host` adapter now validates the public client/session transport,
+durable cursor, approval, cancellation, and restart-projection seams; it does
+not establish eve as Overlay's default runtime or control plane.
 
 ### Where eve fits
 
@@ -337,7 +340,7 @@ The strongest candidates are:
 3. eve-native hosted or remote agents connected through a harness adapter.
 
 The existing `WorkspaceAgentDefinition.harness` field is the right runtime
-selection seam. An eve experiment should use that seam and remain reversible.
+selection seam. Further eve experiments should use that seam and remain reversible.
 
 ### Where eve does not fit
 
@@ -368,9 +371,13 @@ Before using eve for production Work mode or automations, prove:
 - Dynamic Overlay agent definitions resolve correctly for verified tenants.
 - Overlay auth, principal forwarding, and session ownership fail closed.
 - The eve session stream maps losslessly and idempotently into Overlay run and
-  message events.
+  message events. Preserve `meta.id` or an equivalent stable source key across
+  the host bridge so a crash between event acknowledgement and cursor persistence
+  cannot duplicate a projection.
 - Approval, cancellation, reconnect, retry, and redeploy behavior match Overlay
   product expectations.
+- External authorization pauses are represented end to end; the bounded adapter
+  currently fails `authorization.required` closed rather than silently parking.
 - Usage reservation occurs before paid work and settlement occurs exactly once.
 - eve does not become the canonical owner of collaboration or billing state.
 - Self-hosted Workflow PostgreSQL world behavior is rehearsed.
