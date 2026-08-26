@@ -194,11 +194,15 @@ The bounded Eve adapter uses only the public `eve/client` session API and durabl
 is pinned to Eve 0.44.4 while Eve is preview. Overlay projects visible message checkpoints,
 actions, usage, terminal state, and pending input requests, never private reasoning. Approval and
 elicitation replies are checked against the outstanding Eve request, and the host persists the Eve
-session ID plus stream cursor after every event. A reconnect without that cursor fails closed and
-requires the deliberate `start fresh` path. The Eve service should run beside the host on loopback
-or a private network; Overlay does not require it to be publicly reachable. Hermes, OpenClaw, and
-other native adapters remain ineligible unless ACP is unavailable and the unchanged host
-conformance suite passes.
+session ID, stream cursor, visible text accumulator, and usage accumulator after every event. A
+reconnect without that cursor fails closed and requires the deliberate `start fresh` path. The Eve
+service should run beside the host on loopback or a private network; Overlay does not require it to
+be publicly reachable. Eve connection
+authorization (`authorization.required`) is not bridged by the current host contract, so the
+adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
+app-scoped Eve connection auth until a dedicated authorization capability is added.
+Hermes, OpenClaw, and other native adapters remain ineligible unless ACP is unavailable and the
+unchanged host conformance suite passes.
 
 Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
 rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces

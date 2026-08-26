@@ -72,8 +72,10 @@ npx @overlay/agent-host connect <enrollment-code> \
 
 Overlay remains authoritative for approvals, commands, billing attribution, audit, and transcript
 projection. The adapter ignores private reasoning events, validates replies against Eve's pending
-input requests, and persists Eve's session ID and stream cursor for exact reconnects. Eve is pinned
-because its APIs are still preview. A missing cursor fails closed and requires `start fresh`.
+input requests, and persists Eve's session ID, stream cursor, visible text, and usage accumulators
+for reconnects. Eve is pinned because its APIs are still preview. A missing cursor fails closed and
+requires `start fresh`. Eve connection OAuth pauses are not bridged; an `authorization.required`
+event fails the run closed instead of leaving it parked without an Overlay control.
 
 ## Background and container operation
 

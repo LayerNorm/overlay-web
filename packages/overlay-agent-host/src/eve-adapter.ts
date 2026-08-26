@@ -1,4 +1,4 @@
-import { Client, type ClientSession, type InputRequest, type InputResponse, type MessageResponse, type MessageStreamEvent } from 'eve/client'
+import { Client, isCurrentTurnBoundaryEvent, type ClientSession, type InputRequest, type InputResponse, type MessageResponse, type MessageStreamEvent } from 'eve/client'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter'
 
 type EveSessionLike = Pick<ClientSession, 'state' | 'send' | 'respond' | 'cancel' | 'stream'>
@@ -19,12 +19,32 @@ export type EveAgentAdapterOptions = {
 }
 
 type PendingRequest = Pick<InputRequest, 'kind' | 'options' | 'allowFreeform'>
+type EveUsage = {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  costUsd: number
+}
 type PersistedEveState = {
   sessionId: string
   streamIndex: number
   pendingRequests: Array<[string, PendingRequest]>
   requestBatches: Array<[string, readonly string[]]>
   pendingResponses: Array<[string, InputResponse]>
+  textByStep: Array<[number, string]>
+  usage: EveUsage
+}
+
+function createEveUsage(): EveUsage {
+  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 }
+}
+
+function defaultApprovalOptions() {
+  return [
+    { id: 'approve', label: 'Approve' },
+    { id: 'deny', label: 'Deny' },
+  ]
 }
 
 /**
@@ -41,7 +61,7 @@ export class EveAgentAdapter implements AgentAdapter {
       id: options.id ?? 'eve',
       displayName: options.displayName ?? 'Eve agent',
       protocol: 'eve' as const,
-      version: '0.44',
+      version: '0.44.4',
       supports: { prompt: true, approval: true, cancel: true, resume: true },
     }
     this.createClient = options.clientFactory ?? (() => new Client({
@@ -63,6 +83,8 @@ export class EveAgentAdapter implements AgentAdapter {
     const pending = new Map<string, PendingRequest>(persisted?.pendingRequests ?? [])
     const requestBatch = new Map<string, readonly string[]>(persisted?.requestBatches ?? [])
     const pendingResponses = new Map<string, InputResponse>(persisted?.pendingResponses ?? [])
+    const textByStep = new Map<number, string>(persisted?.textByStep ?? [])
+    const usage: EveUsage = persisted?.usage ?? createEveUsage()
 
     let session: EveSessionLike
     let initialResponse: EveResponseLike | undefined
@@ -72,11 +94,9 @@ export class EveAgentAdapter implements AgentAdapter {
       const created = await client.sessions.create({ message: input.prompt })
       session = created.session
       initialResponse = created.response
-      persistSessionState(input, session, pending, requestBatch, pendingResponses)
+      persistSessionState(input, session, pending, requestBatch, pendingResponses, textByStep, usage)
     }
 
-    const textByStep = new Map<number, string>()
-    const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 }
     let activeResponse: EveResponseLike | undefined
 
     const consume = async (response: AsyncIterable<MessageStreamEvent>) => {
@@ -84,19 +104,19 @@ export class EveAgentAdapter implements AgentAdapter {
       try {
         for await (const event of response) {
           await projectEveEvent(event, emit, pending, requestBatch, textByStep, usage)
-          persistSessionState(input, session, pending, requestBatch, pendingResponses)
+          persistSessionState(input, session, pending, requestBatch, pendingResponses, textByStep, usage)
           if (isTurnBoundary(event)) break
         }
       } finally {
         activeResponse = undefined
-        persistSessionState(input, session, pending, requestBatch, pendingResponses)
+        persistSessionState(input, session, pending, requestBatch, pendingResponses, textByStep, usage)
       }
     }
 
     const recordResponse = async (value: InputResponse) => {
       pendingResponses.set(value.requestId, value)
       const batch = requestBatch.get(value.requestId) ?? [value.requestId]
-      persistSessionState(input, session, pending, requestBatch, pendingResponses)
+      persistSessionState(input, session, pending, requestBatch, pendingResponses, textByStep, usage)
       if (!batch.every((requestId) => pendingResponses.has(requestId))) return
       const responses = batch.map((requestId) => pendingResponses.get(requestId)!)
       const response = await session.respond(responses)
@@ -105,7 +125,7 @@ export class EveAgentAdapter implements AgentAdapter {
         pendingResponses.delete(resolved.requestId)
         requestBatch.delete(resolved.requestId)
       }
-      persistSessionState(input, session, pending, requestBatch, pendingResponses)
+      persistSessionState(input, session, pending, requestBatch, pendingResponses, textByStep, usage)
       await consume(response)
     }
 
@@ -159,6 +179,8 @@ function parsePersistedState(value: Record<string, unknown> | undefined): Persis
     pendingRequests: parseEntries<PendingRequest>(value.pendingRequests),
     requestBatches: parseEntries<readonly string[]>(value.requestBatches),
     pendingResponses: parseEntries<InputResponse>(value.pendingResponses),
+    textByStep: parseTextEntries(value.textByStep),
+    usage: parseUsage(value.usage),
   }
 }
 
@@ -168,6 +190,8 @@ function persistSessionState(
   pending: Map<string, PendingRequest>,
   requestBatch: Map<string, readonly string[]>,
   pendingResponses: Map<string, InputResponse>,
+  textByStep: Map<number, string>,
+  usage: EveUsage,
 ): void {
   input.persistAdapterState?.({
     sessionId: session.state.sessionId,
@@ -175,6 +199,8 @@ function persistSessionState(
     pendingRequests: [...pending],
     requestBatches: [...requestBatch],
     pendingResponses: [...pendingResponses],
+    textByStep: [...textByStep],
+    usage: { ...usage },
   })
 }
 
@@ -184,6 +210,30 @@ function parseEntries<Value>(value: unknown): Array<[string, Value]> {
     throw new Error('persisted Eve pending-input state is invalid')
   }
   return value as Array<[string, Value]>
+}
+
+function parseTextEntries(value: unknown): Array<[number, string]> {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.some((entry) => !Array.isArray(entry) || entry.length !== 2
+    || !Number.isInteger(entry[0]) || Number(entry[0]) < 0 || typeof entry[1] !== 'string')) {
+    throw new Error('persisted Eve text state is invalid')
+  }
+  return value as Array<[number, string]>
+}
+
+function parseUsage(value: unknown): EveUsage {
+  if (value === undefined) return createEveUsage()
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('persisted Eve usage state is invalid')
+  const usage = createEveUsage()
+  for (const key of Object.keys(usage) as Array<keyof EveUsage>) {
+    const candidate = (value as Record<string, unknown>)[key]
+    if (candidate === undefined) continue
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate) || candidate < 0) {
+      throw new Error('persisted Eve usage state is invalid')
+    }
+    usage[key] = candidate
+  }
+  return usage
 }
 
 function requirePending(pending: Map<string, PendingRequest>, requestKey: string): PendingRequest {
@@ -198,7 +248,7 @@ async function projectEveEvent(
   pending: Map<string, PendingRequest>,
   requestBatch: Map<string, readonly string[]>,
   textByStep: Map<number, string>,
-  usage: Record<'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'costUsd', number>,
+  usage: EveUsage,
 ): Promise<void> {
   if (event.type === 'message.appended') {
     textByStep.set(event.data.stepIndex, event.data.messageSoFar)
@@ -222,7 +272,12 @@ async function projectEveEvent(
   } else if (event.type === 'input.requested') {
     const batch = event.data.requests.map((request) => request.requestId)
     for (const request of event.data.requests) {
-      pending.set(request.requestId, request)
+      const approvalOptions = request.kind === 'question' ? request.options : request.options?.length ? request.options : defaultApprovalOptions()
+      pending.set(request.requestId, {
+        kind: request.kind,
+        ...(approvalOptions ? { options: approvalOptions } : {}),
+        ...(request.allowFreeform !== undefined ? { allowFreeform: request.allowFreeform } : {}),
+      })
       requestBatch.set(request.requestId, batch)
       if (request.kind === 'question') {
         await emit({ type: 'elicitation_requested', payload: {
@@ -238,10 +293,7 @@ async function projectEveEvent(
           context: { kind: request.kind, options: request.options ?? [], allowFreeform: request.allowFreeform ?? false },
         } })
       } else {
-        const options = request.options?.length ? request.options : [
-          { id: 'approve', label: 'Approve' },
-          { id: 'deny', label: 'Deny' },
-        ]
+        const options = approvalOptions ?? defaultApprovalOptions()
         await emit({ type: 'approval_requested', payload: {
           requestKey: request.requestId,
           prompt: request.prompt,
@@ -259,6 +311,12 @@ async function projectEveEvent(
     for (const key of Object.keys(usage) as Array<keyof typeof usage>) usage[key] += event.data.usage[key] ?? 0
   } else if (event.type === 'turn.completed') {
     await emit({ type: 'completed', payload: { summary: 'Eve turn completed', usage: { ...usage } } })
+  } else if (event.type === 'authorization.required') {
+    await emit({ type: 'failed', payload: {
+      code: 'eve_authorization_unsupported',
+      message: `Eve requested external authorization for ${event.data.name.slice(0, 200)}, which the Overlay adapter does not bridge`,
+      retryable: false,
+    } })
   } else if (event.type === 'turn.cancelled') {
     await emit({ type: 'cancelled', payload: {} })
   } else if (event.type === 'turn.failed' || event.type === 'session.failed') {
@@ -288,5 +346,5 @@ function safeDetail(value: unknown): string | undefined {
 }
 
 function isTurnBoundary(event: MessageStreamEvent): boolean {
-  return event.type === 'turn.completed' || event.type === 'turn.failed' || event.type === 'turn.cancelled' || event.type === 'session.failed' || event.type === 'session.completed' || event.type === 'session.waiting'
+  return isCurrentTurnBoundaryEvent(event)
 }
