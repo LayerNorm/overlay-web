@@ -53,6 +53,72 @@ test('terminal event closes transcript once with normalized usage', () => {
   assert.equal(projection.terminal, true)
 })
 
+test('terminal run events resolve remote actions and attached terminals left running by a harness', () => {
+  const projection = projectRemoteAgentEvents({
+    content: 'Done',
+    parts: [
+      { type: 'text', text: 'Done' },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'shell-1', toolName: 'remote_action', state: 'input-available',
+        toolInput: { title: 'Read repository metadata' },
+      } },
+      { type: 'data-remote-agent-terminal', data: {
+        key: 'terminal-1', terminalId: 'terminal-1', title: 'Remote terminal',
+        summary: 'Terminal is attached to this action.', status: 'running',
+      } },
+    ],
+    events: [event(1, 'completed', { summary: 'Done', usage: {} })],
+    environmentName: 'MacBook',
+    queueExpiresAt: 5_000,
+    runId: 'run-1',
+  })
+
+  const action = projection.parts.find((part) => part.type === 'tool-invocation')
+    ?.toolInvocation as Record<string, unknown>
+  const terminal = projection.parts.find((part) => part.type === 'data-remote-agent-terminal')
+    ?.data as Record<string, unknown>
+  assert.equal(action.state, 'output-available')
+  assert.deepEqual(action.toolOutput, {
+    success: true, status: 'completed', title: 'Read repository metadata', resolvedAt: 1,
+  })
+  assert.equal(terminal.status, 'completed')
+  assert.equal(terminal.resolution, 'completed')
+  assert.equal(terminal.resolvedAt, 1)
+})
+
+for (const terminalEvent of ['failed', 'cancelled'] as const) {
+  test(`${terminalEvent} run resolves remote actions and attached terminals without implying success`, () => {
+    const projection = projectRemoteAgentEvents({
+      content: 'Partial result',
+      parts: [
+        { type: 'tool-invocation', toolInvocation: {
+          toolCallId: 'shell-1', toolName: 'remote_action', state: 'input-available',
+          toolInput: { title: 'Run command' },
+        } },
+        { type: 'data-remote-agent-terminal', data: {
+          key: 'terminal-1', terminalId: 'terminal-1', title: 'Remote terminal',
+          summary: 'Terminal is attached to this action.', status: 'running',
+        } },
+      ],
+      events: [event(1, terminalEvent, terminalEvent === 'failed'
+        ? { code: 'command_failed', message: 'Command failed', retryable: false }
+        : { reason: 'Cancelled by user' })],
+      environmentName: 'MacBook',
+      queueExpiresAt: 5_000,
+      runId: 'run-1',
+    })
+
+    const action = projection.parts.find((part) => part.type === 'tool-invocation')
+      ?.toolInvocation as Record<string, unknown>
+    const terminal = projection.parts.find((part) => part.type === 'data-remote-agent-terminal')
+      ?.data as Record<string, unknown>
+    assert.equal(action.state, 'output-error')
+    assert.equal((action.toolOutput as Record<string, unknown>).status, terminalEvent)
+    assert.equal(terminal.status, 'failed')
+    assert.equal(terminal.resolution, terminalEvent)
+  })
+}
+
 test('supervised events persist request, plan, diff, terminal, and artifact parts', () => {
   const projection = projectRemoteAgentEvents({
     content: '',

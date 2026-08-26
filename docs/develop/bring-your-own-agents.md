@@ -120,6 +120,11 @@ cleanup in its maintenance worker; Convex schedules an internal-secret BFF clean
 object-store credentials remain on the application host. Convex deployments therefore require
 `OVERLAY_BFF_URL` and the same `INTERNAL_API_SECRET` as the corresponding web deployment.
 
+The terminal run event is authoritative for visible tool lifecycle. Completion, failure, or
+cancellation closes any remote action or attached terminal that the harness left in a running
+state. The renderer applies the same rule to older persisted transcripts so finished work never
+keeps an in-progress shimmer after refresh.
+
 Remote leases are extended only by accepted contiguous events. Convex supervises expired or
 disappeared hosts every minute; the PostgreSQL background worker performs the same bounded sweep.
 Both project a recoverable state, cancel outstanding commands, close pending requests, and settle
