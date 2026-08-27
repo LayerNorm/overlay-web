@@ -49,12 +49,12 @@ test('Phase 6 routes resource reads and automation runs through resource authori
   assert.equal(knowledge.methods.GET?.resource?.optional, true)
 })
 
-test('Phase 6 sharing works on the Postgres provider without Convex', () => {
+test('Phase 6 sharing is gated on the Postgres provider until provider-neutral repositories land', () => {
   const rule = POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES
-    .find((candidate) => candidate.id === 'workspace-sharing')
+    .find((candidate) => candidate.prefixes?.includes('/api/v1/shares'))
   assert.ok(rule)
-  assert.equal(rule.status, 'supported')
-  assert.deepEqual([...rule.prefixes ?? []], ['/api/v1/shares'])
+  assert.equal(rule.status, 'unsupported')
+  assert.equal(rule.feature, 'workspace-collaboration')
 })
 
 test('Phase 6 persists grants scoped to a workspace and a bound resource', async () => {

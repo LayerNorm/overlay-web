@@ -49,6 +49,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     // Keep all three disabled until their respective release gates pass.
     connectedAgentControlPlane: false,
     remoteAgentRuns: false,
+    connectedAgentArtifacts: false,
     overlayCloudEnvironments: false,
   },
   providers: {

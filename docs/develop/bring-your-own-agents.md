@@ -145,7 +145,7 @@ or reconcile the original billing reservation exactly once. PostgreSQL migration
 request kinds and artifact metadata. The shared provider contract now covers artifact tenancy,
 validation state, retention cleanup, and idempotent tombstones.
 
-Phase 6 adds `@overlay/sandbox-runtime` as the only managed-sandbox boundary. Its contract covers
+The managed-sandbox boundary is `@overlay/sandbox-runtime`. Its contract covers
 lifecycle and reconnect, streamed and cancellable commands, files, process environment, ports,
 snapshots and persistence, network policy, broker-owned credential references, idle and hard
 timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Vercel Sandbox
@@ -354,14 +354,16 @@ gaps are rejected with the next expected sequence.
 
 ## Rollout flags
 
-The server-side runtime config has three independent, default-off flags:
+The server-side runtime config has four independent, default-off flags:
 
 1. `features.connectedAgentControlPlane` gates enrollment and environment management.
 2. `features.remoteAgentRuns` gates command dispatch and remote `AgentRun` execution.
-3. `features.overlayCloudEnvironments` gates managed-environment provisioning.
+3. `features.connectedAgentArtifacts` gates agent artifact upload, completion, and download.
+4. `features.overlayCloudEnvironments` gates managed-environment provisioning.
 
 The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
-`OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, and `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
+`OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`, and
+`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
 They are positive, server-side switches: missing, false, or malformed values resolve to disabled.
 This makes each switch an environment-controlled, fail-closed incident control. Overlay Cloud's
 switch remains false for the production workspace rollout, and the agent editor does not expose a
@@ -376,6 +378,11 @@ PostgreSQL have identical disabled behavior. Enabling a dependent feature does n
 enable its prerequisite: Overlay Cloud requires all three, and remote runs require the first
 two. These are server policy switches, not client assertions; bootstrap may expose only the
 resulting authorized capability.
+
+Connected-agent artifacts remain disabled in staging and production until uploads are quarantined,
+scanned in full by a production malware engine, validated by content magic, and served only as safe
+attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
+cleanup controls remain implemented but are not a substitute for that release gate.
 
 Managed provisioning additionally requires `OVERLAY_AGENT_HOST_IMAGE`. Vercel deployments use a
 Vercel Container Registry reference; Daytona may use the equivalent OCI image in its configured

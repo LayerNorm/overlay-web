@@ -52,6 +52,7 @@ test('Phase 4 ships create-channel, thread, reaction, pin, save, and workspace s
   assert.match(message, /Pin message/)
   assert.match(message, /Save message/)
   // Phase 7 moved the palette onto the permission-filtered workspace search
-  // endpoint; chat results still come from it.
-  assert.match(search, /overlayAppClient\.search\.workspace/)
+  // endpoint via searchMentions, which calls /api/v1/mention-search with the
+  // active workspace header for workspace-scoped, permission-filtered results.
+  assert.match(search, /searchMentions/)
 })

@@ -161,6 +161,18 @@ test('artifact intents are scoped and clean bytes become downloadable only after
   assert.match(download.url, /^https:\/\/downloads\.example\//)
 })
 
+test('artifact upload and download fail closed unless the artifact feature is explicitly enabled', async () => {
+  const bytes = new TextEncoder().encode('safe report')
+  const setup = artifactFixture(bytes, false)
+  await assertControlPlaneError(() => setup.service.createArtifactUpload(setup.auth, {
+    protocolVersion: 1, runId: setup.session.runId, name: 'report.txt', mediaType: 'text/plain',
+    size: bytes.byteLength, sha256: sha256(bytes),
+  }), 'agent_artifacts_disabled')
+  await assertControlPlaneError(() => setup.service.getArtifactDownload({
+    actorUserId: 'user-1', workspaceId: setup.auth.credential.workspaceId, artifactId: 'missing',
+  }), 'agent_artifacts_disabled')
+})
+
 test('artifact checksum and malware failures are rejected and deleted', async () => {
   for (const [bytes, declared, expectedCode] of [
     [new TextEncoder().encode('different bytes'), sha256('declared bytes'), 'artifact_checksum_mismatch'],
@@ -230,7 +242,7 @@ function sha256(value: string | Uint8Array) {
   return createHash('sha256').update(value).digest('hex')
 }
 
-function artifactFixture(bytes: Uint8Array) {
+function artifactFixture(bytes: Uint8Array, artifactsEnabled = true) {
   const environment = fixture().environment
   const credential: AgentEnvironmentCredential = {
     id: 'credential-artifact', workspaceId: environment.workspaceId, environmentId: environment.id,
@@ -286,7 +298,8 @@ function artifactFixture(bytes: Uint8Array) {
     async downloadBuffer() { return bytes },
   }
   const service = new ConnectedAgentControlPlaneService({ repository, objectStore,
-    audit: {} as AuditService, workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true })
+    audit: {} as AuditService, workspaces: {} as WorkspaceService, now: () => NOW,
+    isEnabled: () => true, artifactsEnabled: () => artifactsEnabled })
   return { service, auth, session, artifacts, deletedKeys, get constraints() { return constraints } }
 }
 

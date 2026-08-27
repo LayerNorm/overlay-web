@@ -12,7 +12,9 @@ export class HostedProviderAccessDisabledError extends Error {
 export function isHostedProviderAccessDisabled(
   env: HostedProviderEnvironment = process.env,
 ): boolean {
-  return env.OVERLAY_HOSTED_PROVIDER_KILL_SWITCH?.trim() === '1'
+  const explicitlyEnabled = env.OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED?.trim() === '1'
+  const emergencyStop = env.OVERLAY_HOSTED_PROVIDER_KILL_SWITCH?.trim() === '1'
+  return !explicitlyEnabled || emergencyStop
 }
 
 export function assertHostedProviderAccessEnabled(

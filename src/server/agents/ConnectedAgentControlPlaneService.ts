@@ -81,6 +81,7 @@ export class ConnectedAgentControlPlaneService {
     objectStore?: ObjectStore
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
+    artifactsEnabled?: () => boolean | Promise<boolean>
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
   }) {}
@@ -382,6 +383,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async createArtifactUpload(auth: HostAuthentication, input: ArtifactUploadRequest) {
+    await this.assertArtifactsEnabled()
     const objectStore = this.requireObjectStore()
     const now = this.now()
     const name = safeArtifactName(input.name)
@@ -421,6 +423,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async completeArtifactUpload(auth: HostAuthentication, uploadReference: string) {
+    await this.assertArtifactsEnabled()
     const objectStore = this.requireObjectStore()
     const now = this.now()
     const artifact = await this.dependencies.repository.getArtifact({
@@ -457,6 +460,7 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async getArtifactDownload(args: { actorUserId: string; workspaceId: string; artifactId: string }) {
+    await this.assertArtifactsEnabled()
     const artifact = await this.dependencies.repository.getArtifactForDownload(args)
     if (!artifact) throw controlPlaneError('Artifact was not found', 404, 'artifact_not_found')
     return { artifact, url: await this.requireObjectStore().getDownloadUrl(artifact.objectKey) }
@@ -800,6 +804,16 @@ export class ConnectedAgentControlPlaneService {
     const runtime = await getOverlayRuntimeConfig()
     if (runtime.features.connectedAgentControlPlane !== true) {
       throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
+    }
+  }
+
+  private async assertArtifactsEnabled() {
+    if (await this.dependencies.artifactsEnabled?.() !== true) {
+      throw controlPlaneError(
+        'Connected-agent artifacts are unavailable until production malware scanning is enabled',
+        503,
+        'agent_artifacts_disabled',
+      )
     }
   }
 

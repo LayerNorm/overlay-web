@@ -5,6 +5,13 @@ description: "Install and manage a private Overlay self-hosted runtime with over
 
 Overlay publishes a small bootstrap script at `/install.sh`. It installs a Docker-backed `overlayctl` manager and runs prebuilt GHCR images, so operators do not need to clone or build the repository.
 
+<Warning>
+  The installer is a short-lived privileged operation. It mounts the Docker socket, which is
+  equivalent to host-root access. Inspect the script and image reference before running it. The
+  installer image exposes no port and exits after writing the requested configuration or invoking
+  Docker Compose; never run it as a persistent service.
+</Warning>
+
 ```bash
 curl -fsSL https://getoverlay.io/install.sh | bash
 ```
@@ -16,6 +23,9 @@ curl -fsSLO https://getoverlay.io/install.sh
 less install.sh
 bash install.sh
 ```
+
+For controlled production installations, set `OVERLAY_INSTALLER_IMAGE` to a reviewed immutable
+GHCR digest from the release's provenance attestation rather than relying on a mutable tag.
 
 ## What It Creates
 

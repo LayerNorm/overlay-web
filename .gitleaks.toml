@@ -16,3 +16,38 @@ description = "Sentry sanitizer tests intentionally contain fake secrets to veri
 paths = [
   '''src/shared/security/sentry-sanitize\.test\.ts$''',
 ]
+
+[[allowlists]]
+description = "Build output directories are not source files"
+paths = [
+  '''\.next/.*''',
+  '''dist/.*''',
+  '''build/.*''',
+  '''coverage/.*''',
+]
+
+[[allowlists]]
+description = "Environment example files contain placeholder secrets for documentation"
+paths = [
+  '''\.env\.example$''',
+  '''deploy/ec2/\.env\.example$''',
+  '''\.env\.local\.example$''',
+]
+regexes = [
+  '''replace_me_with_64_hex_characters''',
+  '''YOUR_[A-Z_]+''',
+  '''placeholder''',
+]
+
+[[allowlists]]
+description = "Vendored Daytona API documentation contains placeholder curl examples"
+paths = [
+  '''docs/daytona/daytona-full\.md$''',
+]
+regexes = [
+  '''YOUR_API_KEY''',
+  '''YOUR_SECRET_TOKEN''',
+  '''YOUR_OPENVPN_CLIENT_PRIVATE_KEY''',
+  '''<YOUR_[A-Z_]+>''',
+  '''x-daytona-preview-token''',
+]

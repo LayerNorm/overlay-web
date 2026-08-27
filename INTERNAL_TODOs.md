@@ -5,6 +5,20 @@ was deferred, why, and what the eventual implementation has to account for.
 
 ---
 
+## Connected-agent artifact quarantine and malware scanning
+
+**Status:** deferred and fail-closed — `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`
+must remain false in staging and production.
+
+Before enabling agent artifacts, quarantine every upload, scan the complete object with a
+production malware engine, validate content magic independently of the declared MIME type, block
+active content or force safe attachment downloads, store an immutable scanner verdict, and prove
+cleanup and retention behavior for clean, rejected, and abandoned objects. The existing checksum,
+size, tenancy, and retention controls remain defense in depth and must not be described as malware
+scanning by themselves.
+
+---
+
 ## Overlay Cloud managed agent environments
 
 **Status:** deferred — connected user-owned environments ship first; the managed

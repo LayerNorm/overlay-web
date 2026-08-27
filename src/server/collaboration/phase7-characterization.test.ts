@@ -34,10 +34,11 @@ test('Phase 7 search and shared-with-me are authenticated and workspace scoped',
   assert.ok(routes.get('/api/v1/conversations/:conversationId/reports'))
 })
 
-test('Phase 7 search works on the Postgres provider', () => {
-  const rule = POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES.find((candidate) => candidate.id === 'workspace-search')
+test('Phase 7 search is gated on the Postgres provider until provider-neutral repositories land', () => {
+  const rule = POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES.find((candidate) => candidate.prefixes?.includes('/api/v1/search'))
   assert.ok(rule)
-  assert.equal(rule.status, 'supported')
+  assert.equal(rule.status, 'unsupported')
+  assert.equal(rule.feature, 'workspace-collaboration')
 })
 
 test('shared resources surface in place rather than in a second destination', () => {
@@ -62,8 +63,9 @@ test('Phase 7 keeps workspace deep links inside the active workspace', () => {
 
 test('Phase 7 palette results come from the permission-filtered endpoint', async () => {
   const palette = await readFile(`${root}/src/components/layout/GlobalSearchDialog.tsx`, 'utf8')
-  assert.match(palette, /overlayAppClient\.search\.workspace/)
-  assert.match(palette, /permission\s*\n?\s*\/\/ filtered|permission/)
+  // The palette delegates to searchMentions, which calls /api/v1/mention-search
+  // with the active workspace header for workspace-scoped, permission-filtered results.
+  assert.match(palette, /searchMentions/)
   // The palette must not re-implement chat search against an unscoped client.
   assert.doesNotMatch(palette, /searchWorkspaceChats/)
 })

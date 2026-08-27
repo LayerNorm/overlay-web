@@ -55,6 +55,8 @@ interface MentionPopupProps {
   /** Active category filter. null = top-level category picker. */
   selectedCategory: MentionType | null
   onSelectedCategoryChange: (category: MentionType | null) => void
+  /** Reports the active option id so the combobox can set aria-activedescendant. */
+  onActiveOptionChange?: (optionId: string | null) => void
 }
 
 type Row =
@@ -73,6 +75,7 @@ export function MentionPopup({
   availableTypes,
   selectedCategory,
   onSelectedCategoryChange,
+  onActiveOptionChange,
 }: MentionPopupProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -129,6 +132,10 @@ export function MentionPopup({
     const el = itemRefs.current[activeIndex]
     if (el) el.scrollIntoView({ block: 'nearest' })
   }, [activeIndex])
+
+  useEffect(() => {
+    onActiveOptionChange?.(rows[activeIndex] ? `mention-option-${activeIndex}` : null)
+  }, [activeIndex, rows, onActiveOptionChange])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -224,7 +231,7 @@ export function MentionPopup({
         </div>
       )}
 
-      <div className="overflow-y-auto">
+      <div className="overflow-y-auto" role="listbox" id="mention-listbox" aria-label="Mention suggestions">
         {loading && categories.length === 0 && selectedCategory !== null ? (
           <div className="flex items-center justify-center py-6">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent" />
@@ -248,6 +255,9 @@ export function MentionPopup({
                   <button
                     ref={(el) => { itemRefs.current[idx] = el }}
                     type="button"
+                    role="option"
+                    id={`mention-option-${idx}`}
+                    aria-selected={isActive}
                     onClick={onUploadFile}
                     onMouseEnter={() => setActiveIndex(idx)}
                     className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
@@ -272,6 +282,9 @@ export function MentionPopup({
                   key={`cat-${row.type}`}
                   ref={(el) => { itemRefs.current[idx] = el }}
                   type="button"
+                  role="option"
+                  id={`mention-option-${idx}`}
+                  aria-selected={isActive}
                   onClick={() => onSelectedCategoryChange(row.type)}
                   onMouseEnter={() => setActiveIndex(idx)}
                   className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
@@ -292,6 +305,9 @@ export function MentionPopup({
                   <button
                     ref={(el) => { itemRefs.current[idx] = el }}
                     type="button"
+                    role="option"
+                    id={`mention-option-${idx}`}
+                    aria-selected={isActive}
                     onClick={onUploadFile}
                     onMouseEnter={() => setActiveIndex(idx)}
                     className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
@@ -314,6 +330,9 @@ export function MentionPopup({
                 key={`${categoryType}-${item.id}`}
                 ref={(el) => { itemRefs.current[idx] = el }}
                 type="button"
+                role="option"
+                id={`mention-option-${idx}`}
+                aria-selected={isActive}
                 onClick={() => onSelect(item)}
                 onMouseEnter={() => setActiveIndex(idx)}
                 className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors ${

@@ -7,14 +7,18 @@ import {
   isHostedProviderAccessDisabled,
 } from './hosted-provider-kill-switch'
 
-test('hosted provider kill switch is off unless explicitly set to 1', () => {
-  assert.equal(isHostedProviderAccessDisabled({}), false)
-  assert.equal(isHostedProviderAccessDisabled({ OVERLAY_HOSTED_PROVIDER_KILL_SWITCH: '0' }), false)
-  assert.equal(isHostedProviderAccessDisabled({ OVERLAY_HOSTED_PROVIDER_KILL_SWITCH: 'true' }), false)
+test('hosted provider access fails closed unless explicitly enabled', () => {
+  assert.equal(isHostedProviderAccessDisabled({}), true)
+  assert.equal(isHostedProviderAccessDisabled({ OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED: '0' }), true)
+  assert.equal(isHostedProviderAccessDisabled({ OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED: 'true' }), true)
+  assert.equal(isHostedProviderAccessDisabled({ OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED: '1' }), false)
 })
 
-test('hosted provider kill switch fails closed when set to 1', () => {
-  const env = { OVERLAY_HOSTED_PROVIDER_KILL_SWITCH: '1' }
+test('hosted provider emergency kill switch overrides explicit access', () => {
+  const env = {
+    OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED: '1',
+    OVERLAY_HOSTED_PROVIDER_KILL_SWITCH: '1',
+  }
   assert.equal(isHostedProviderAccessDisabled(env), true)
   assert.throws(
     () => assertHostedProviderAccessEnabled(env),

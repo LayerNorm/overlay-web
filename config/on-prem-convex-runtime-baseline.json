@@ -23,7 +23,6 @@
     "src/app/api/checkout/route.ts",
     "src/app/api/checkout/verify/route.ts",
     "src/app/api/convex/[type]/route.ts",
-    "src/app/api/email/send/route.ts",
     "src/app/api/entitlements/route.ts",
     "src/app/api/latest-release/download/route.ts",
     "src/app/api/latest-release/route.ts",
@@ -50,6 +49,25 @@
     "src/app/api/v1/admin/knowledge-bases/route.ts",
     "src/app/api/v1/admin/principals/route.ts",
     "src/app/api/v1/admin/usage/route.ts",
+    "src/app/api/v1/agent-bindings/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/approve/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/artifacts/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/capabilities/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/commands/[commandId]/ack/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/commands/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/credentials/refresh/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/credentials/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/events/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/heartbeat/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/revoke/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/roots/route.ts",
+    "src/app/api/v1/agent-environments/artifacts/cleanup/route.ts",
+    "src/app/api/v1/agent-environments/enroll/route.ts",
+    "src/app/api/v1/agent-environments/enrollment-sessions/route.ts",
+    "src/app/api/v1/agent-environments/managed/route.ts",
+    "src/app/api/v1/agent-environments/operations/reconcile/route.ts",
+    "src/app/api/v1/agent-environments/route.ts",
     "src/app/api/v1/agents/[agentId]/route.ts",
     "src/app/api/v1/agents/route.ts",
     "src/app/api/v1/api-keys/route.ts",
@@ -77,7 +95,6 @@
     "src/app/api/v1/conversations/[conversationId]/threads/[threadRootMessageId]/follow/route.ts",
     "src/app/api/v1/conversations/act/extension-plan/route.ts",
     "src/app/api/v1/conversations/act/route.ts",
-    "src/app/api/v1/conversations/agent-reply/route.ts",
     "src/app/api/v1/conversations/channels/route.ts",
     "src/app/api/v1/conversations/direct-messages/route.ts",
     "src/app/api/v1/conversations/events/route.ts",
@@ -88,6 +105,9 @@
     "src/app/api/v1/conversations/run/approval/route.ts",
     "src/app/api/v1/conversations/run/metrics-event/route.ts",
     "src/app/api/v1/conversations/run/metrics/route.ts",
+    "src/app/api/v1/conversations/run/remote/artifacts/[artifactId]/route.ts",
+    "src/app/api/v1/conversations/run/remote/request/route.ts",
+    "src/app/api/v1/conversations/run/remote/route.ts",
     "src/app/api/v1/conversations/run/route.ts",
     "src/app/api/v1/conversations/saved-messages/route.ts",
     "src/app/api/v1/conversations/search/route.ts",
@@ -98,6 +118,8 @@
     "src/app/api/v1/extensions/[extensionId]/[...path]/route.ts",
     "src/app/api/v1/files/[fileId]/content/route.ts",
     "src/app/api/v1/files/ingest-document/route.ts",
+    "src/app/api/v1/files/ingest-jobs/process/route.ts",
+    "src/app/api/v1/files/ingest-jobs/route.ts",
     "src/app/api/v1/files/presign/route.ts",
     "src/app/api/v1/files/route.ts",
     "src/app/api/v1/files/search-text/route.ts",
@@ -107,6 +129,8 @@
     "src/app/api/v1/generate-tab-group-label/route.ts",
     "src/app/api/v1/generate-title/route.ts",
     "src/app/api/v1/generate-video/route.ts",
+    "src/app/api/v1/imports/slack/process/route.ts",
+    "src/app/api/v1/imports/slack/route.ts",
     "src/app/api/v1/integrations/route.ts",
     "src/app/api/v1/knowledge-bases/[knowledgeBaseId]/conversations/route.ts",
     "src/app/api/v1/knowledge-bases/[knowledgeBaseId]/diagnostics/route.ts",
@@ -119,11 +143,13 @@
     "src/app/api/v1/knowledge-bases/route.ts",
     "src/app/api/v1/knowledge-bases/share-directory/route.ts",
     "src/app/api/v1/knowledge/search/route.ts",
+    "src/app/api/v1/link-preview/route.ts",
     "src/app/api/v1/mcps/oauth/callback/route.ts",
     "src/app/api/v1/mcps/oauth/route.ts",
     "src/app/api/v1/mcps/route.ts",
     "src/app/api/v1/mcps/test/route.ts",
     "src/app/api/v1/memory/route.ts",
+    "src/app/api/v1/mention-search/route.ts",
     "src/app/api/v1/model-catalog/route.ts",
     "src/app/api/v1/notebook-agent/route.ts",
     "src/app/api/v1/notes/route.ts",
@@ -139,9 +165,9 @@
     "src/app/api/v1/projects/knowledge-transfer/route.ts",
     "src/app/api/v1/projects/route.ts",
     "src/app/api/v1/projects/share-directory/route.ts",
-    "src/app/api/v1/search/route.ts",
     "src/app/api/v1/providers/connections/route.ts",
     "src/app/api/v1/providers/connections/test/route.ts",
+    "src/app/api/v1/search/route.ts",
     "src/app/api/v1/settings/route.ts",
     "src/app/api/v1/shares/impact/route.ts",
     "src/app/api/v1/shares/route.ts",
@@ -178,9 +204,11 @@
     "src/components/providers/convex-react-client.ts",
     "src/features/chat/components/ChatExperience.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
+    "src/features/chat/components/chat/useAgentRunLifecycle.ts",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
-    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/knowledge-bases/components/KnowledgeBaseWorkspace.tsx"
   ],
   "convexCronJobs": [
     {
@@ -189,9 +217,24 @@
       "target": "internal.platform.idempotency.cleanupExpiredInternal"
     },
     {
+      "cadence": "{ minutes: 15 }",
+      "name": "connected agent artifact cleanup",
+      "target": "(internal as any).agents.artifactCleanup.runCleanupTick"
+    },
+    {
+      "cadence": "{ minutes: 5 }",
+      "name": "connected agent event rate window cleanup",
+      "target": "(internal as any).agents.connectedAgents.pruneEventRateWindowsInternal"
+    },
+    {
       "cadence": "{ minutes: 1 }",
-      "name": "automation_scheduler_legacy",
-      "target": "internal.automations.automationRunner.runMinuteTick"
+      "name": "connected agent run supervision",
+      "target": "(internal as any).agents.connectedAgents.sweepRemoteRunsInternal"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "connected agent settlement reconciliation",
+      "target": "(internal as any).agents.settlementReconciliation.runReconciliationTick"
     },
     {
       "cadence": "{ minutes: 1 }",
@@ -199,9 +242,19 @@
       "target": "internal.ai.sandbox.daytonaReconcile.runMinuteTick"
     },
     {
+      "cadence": "{ minutes: 1 }",
+      "name": "document ingestion job processor",
+      "target": "(internal as any).files.ingestion.runner.runMinuteTick"
+    },
+    {
       "cadence": "{ minutes: 30 }",
       "name": "empty conversation cleanup",
       "target": "internal.chat.conversations.runEmptyConversationCleanup"
+    },
+    {
+      "cadence": "{ hours: 6 }",
+      "name": "function metrics cleanup",
+      "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
     },
     {
       "cadence": "{ minutes: 1 }",
@@ -209,9 +262,19 @@
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
     },
     {
+      "cadence": "{ minutes: 5 }",
+      "name": "rate limit window pruning",
+      "target": "internal.platform.rateLimits.pruneExpiredWindowsInternal"
+    },
+    {
       "cadence": "{ hours: 1 }",
       "name": "service auth replay nonce cleanup",
       "target": "internal.auth.serviceAuth.cleanupExpiredReplayNoncesInternal"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "slack import job processor",
+      "target": "(internal as any).imports.slackRunner.runMinuteTick"
     },
     {
       "cadence": "{ minutes: 2 }",
@@ -227,9 +290,15 @@
       "cadence": "{ minutes: 5 }",
       "name": "usage reservation reconciliation",
       "target": "internal.platform.usage.reconcileExpiredBudgetReservationsInternal"
+    },
+    {
+      "cadence": "{ seconds: 10 }",
+      "name": "workflow step event projector",
+      "target": "(internal as any).automations.workflowEventProjectorRunner.runProjectionTick"
     }
   ],
   "convexRuntimeImportFiles": [
+    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -242,13 +311,16 @@
     "src/components/providers/convex-react-client.ts",
     "src/features/chat/components/ChatExperience.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
+    "src/features/chat/components/chat/useAgentRunLifecycle.ts",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/knowledge-bases/components/KnowledgeBaseWorkspace.tsx",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAdministrativeRepository.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
+    "src/server/agents/ConvexConnectedAgentRepository.ts",
     "src/server/agents/ConvexWorkspaceAgentRepository.ts",
     "src/server/agents/index.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
@@ -257,6 +329,12 @@
     "src/server/ai/provider-connections/index.ts",
     "src/server/ai/sandbox/ConvexDaytonaWorkspaceRepository.ts",
     "src/server/app-api/v1/bootstrap/route.ts",
+    "src/server/app-api/v1/files/ingest-jobs/process/route.ts",
+    "src/server/app-api/v1/files/ingest-jobs/route.ts",
+    "src/server/app-api/v1/imports/slack/route.ts",
+    "src/server/app-api/v1/knowledge-bases/personal/route.ts",
+    "src/server/app-api/v1/knowledge-bases/route.ts",
+    "src/server/app-api/v1/mention-search/route.ts",
     "src/server/app-api/v1/onboarding/complete/route.ts",
     "src/server/app-api/v1/onboarding/reset/route.ts",
     "src/server/app-api/v1/onboarding/status/route.ts",
@@ -292,6 +370,7 @@
     "src/server/governance/index.ts",
     "src/server/idempotency/ConvexIdempotencyRepository.ts",
     "src/server/idempotency/index.ts",
+    "src/server/imports/slack/backfillWorker.ts",
     "src/server/integrations/ConvexWorkspaceConnectorRepository.ts",
     "src/server/integrations/index.ts",
     "src/server/jobs/ConvexOutboxRepository.ts",
@@ -330,6 +409,8 @@
     "convex/chat/conversations.ts",
     "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
+    "convex/files/ingestion/runner.ts",
+    "convex/imports/slackRunner.ts",
     "convex/knowledge/bases.ts",
     "convex/knowledge/memories.ts",
     "convex/outputs/outputs.ts",

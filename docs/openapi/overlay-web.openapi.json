@@ -20,6 +20,9 @@
       "name": "Administration"
     },
     {
+      "name": "Agent environments"
+    },
+    {
       "name": "Automations"
     },
     {
@@ -570,6 +573,2631 @@
                   "amountCents"
                 ],
                 "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments": {
+      "get": {
+        "operationId": "getAgentEnvironments",
+        "summary": "List connected agent environments in the active workspace",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/approve": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdApprove",
+        "summary": "Approve a pending environment with explicit filesystem roots",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filesystemGrant": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "selected_roots"
+                            ]
+                          },
+                          "roots": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "maxItems": 100
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "roots"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "all_user_files"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "filesystemGrant"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/capabilities": {
+      "put": {
+        "operationId": "putAgentEnvironmentsEnvironmentIdCapabilities",
+        "summary": "Refresh authenticated host capabilities",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "protocolVersion": {
+                    "type": "number",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "hostVersion": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "platform": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "adapters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "displayName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "protocol": {
+                          "type": "string",
+                          "enum": [
+                            "fake",
+                            "acp",
+                            "eve",
+                            "native"
+                          ]
+                        },
+                        "version": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "supports": {
+                          "type": "object",
+                          "properties": {
+                            "prompt": {
+                              "type": "boolean"
+                            },
+                            "approval": {
+                              "type": "boolean"
+                            },
+                            "cancel": {
+                              "type": "boolean"
+                            },
+                            "resume": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "prompt",
+                            "approval",
+                            "cancel",
+                            "resume"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "displayName",
+                        "protocol",
+                        "supports"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100
+                  },
+                  "filesystem": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "selected_roots"
+                            ]
+                          },
+                          "roots": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "maxItems": 100
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "roots"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "all_user_files"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "maxConcurrentRuns": {
+                    "type": "integer",
+                    "exclusiveMinimum": true,
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "protocolVersion",
+                  "hostVersion",
+                  "platform",
+                  "adapters",
+                  "filesystem",
+                  "maxConcurrentRuns"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/commands": {
+      "get": {
+        "operationId": "getAgentEnvironmentsEnvironmentIdCommands",
+        "summary": "Poll durable commands for an authenticated environment",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "waitMs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30000
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/commands/{commandId}/ack": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdCommandsCommandIdAck",
+        "summary": "Acknowledge or reject a claimed environment command",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "commandId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "protocolVersion": {
+                    "type": "number",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "environmentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "error": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "message": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "protocolVersion",
+                  "commandId",
+                  "environmentId",
+                  "accepted"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/credentials": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdCredentials",
+        "summary": "Issue an initial short-lived environment credential after device proof",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "protocolVersion": {
+                    "type": "number",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "proofChallenge": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 512
+                  },
+                  "signature": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 16384
+                  }
+                },
+                "required": [
+                  "protocolVersion",
+                  "proofChallenge",
+                  "signature"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/credentials/refresh": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdCredentialsRefresh",
+        "summary": "Rotate a signed environment credential",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/events": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdEvents",
+        "summary": "Upload a validated contiguous batch of remote agent events",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "protocolVersion": {
+                    "type": "number",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "environmentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "session_started"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "remoteSessionId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "adapterId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "remoteSessionId",
+                                "adapterId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "text_checkpoint"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "text": {
+                                  "type": "string"
+                                },
+                                "final": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "action"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "actionId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "maxLength": 2000
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "started",
+                                    "updated",
+                                    "completed",
+                                    "failed"
+                                  ]
+                                },
+                                "detail": {
+                                  "type": "string",
+                                  "maxLength": 20000
+                                }
+                              },
+                              "required": [
+                                "actionId",
+                                "title",
+                                "status"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "approval_requested"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "requestKey": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "prompt": {
+                                  "type": "string",
+                                  "maxLength": 20000
+                                },
+                                "options": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "maxLength": 500
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "label"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 20
+                                },
+                                "context": {
+                                  "type": "object",
+                                  "additionalProperties": {},
+                                  "default": {}
+                                }
+                              },
+                              "required": [
+                                "requestKey",
+                                "prompt",
+                                "options"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "elicitation_requested"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "requestKey": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "prompt": {
+                                  "type": "string",
+                                  "maxLength": 20000
+                                },
+                                "requestedSchema": {
+                                  "type": "object",
+                                  "additionalProperties": {}
+                                },
+                                "context": {
+                                  "type": "object",
+                                  "additionalProperties": {},
+                                  "default": {}
+                                }
+                              },
+                              "required": [
+                                "requestKey",
+                                "prompt",
+                                "requestedSchema"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "plan"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "entries": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "title": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "pending",
+                                          "in_progress",
+                                          "completed",
+                                          "failed"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "title",
+                                      "status"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "maxItems": 100
+                                }
+                              },
+                              "required": [
+                                "entries"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "diff"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "diffId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "maxLength": 2000
+                                },
+                                "patch": {
+                                  "type": "string",
+                                  "maxLength": 200000
+                                },
+                                "language": {
+                                  "type": "string",
+                                  "maxLength": 100
+                                }
+                              },
+                              "required": [
+                                "diffId",
+                                "title",
+                                "patch"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "terminal"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "terminalId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "maxLength": 2000
+                                },
+                                "summary": {
+                                  "type": "string",
+                                  "maxLength": 20000
+                                },
+                                "exitCode": {
+                                  "type": "integer"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "running",
+                                    "completed",
+                                    "failed"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "terminalId",
+                                "title",
+                                "summary",
+                                "status"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "artifact"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 500
+                                },
+                                "mediaType": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "sha256": {
+                                  "type": "string",
+                                  "pattern": "^[a-f0-9]{64}$"
+                                },
+                                "uploadReference": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "mediaType",
+                                "size",
+                                "sha256",
+                                "uploadReference"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "completed"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "summary": {
+                                  "type": "string",
+                                  "maxLength": 20000
+                                },
+                                "usage": {
+                                  "type": "object",
+                                  "additionalProperties": {},
+                                  "default": {}
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "failed"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "code": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "message": {
+                                  "type": "string",
+                                  "maxLength": 20000
+                                },
+                                "retryable": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "code",
+                                "message",
+                                "retryable"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "cancelled"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "reason": {
+                                  "type": "string",
+                                  "maxLength": 2000
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "protocolVersion",
+                  "environmentId",
+                  "runId",
+                  "events"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/heartbeat": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdHeartbeat",
+        "summary": "Record an authenticated environment heartbeat",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/revoke": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdRevoke",
+        "summary": "Revoke an environment and its credentials",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/{environmentId}/roots": {
+      "patch": {
+        "operationId": "patchAgentEnvironmentsEnvironmentIdRoots",
+        "summary": "Change an environment filesystem grant",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filesystemGrant": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "selected_roots"
+                            ]
+                          },
+                          "roots": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "minItems": 1,
+                            "maxItems": 100
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "roots"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "all_user_files"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "filesystemGrant"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/enroll": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnroll",
+        "summary": "Redeem an enrollment code and register a device public key",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 512
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "publicKey": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 8192
+                  },
+                  "hostVersion": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "platform": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "capabilities": {
+                    "type": "object",
+                    "properties": {
+                      "protocolVersion": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "hostVersion": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "platform": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "adapters": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "displayName": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "protocol": {
+                              "type": "string",
+                              "enum": [
+                                "fake",
+                                "acp",
+                                "eve",
+                                "native"
+                              ]
+                            },
+                            "version": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "supports": {
+                              "type": "object",
+                              "properties": {
+                                "prompt": {
+                                  "type": "boolean"
+                                },
+                                "approval": {
+                                  "type": "boolean"
+                                },
+                                "cancel": {
+                                  "type": "boolean"
+                                },
+                                "resume": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "prompt",
+                                "approval",
+                                "cancel",
+                                "resume"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "displayName",
+                            "protocol",
+                            "supports"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 100
+                      },
+                      "filesystem": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "selected_roots"
+                                ]
+                              },
+                              "roots": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "minItems": 1,
+                                "maxItems": 100
+                              }
+                            },
+                            "required": [
+                              "mode",
+                              "roots"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "all_user_files"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "mode"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "maxConcurrentRuns": {
+                        "type": "integer",
+                        "exclusiveMinimum": true,
+                        "minimum": 0,
+                        "maximum": 1000
+                      }
+                    },
+                    "required": [
+                      "protocolVersion",
+                      "hostVersion",
+                      "platform",
+                      "adapters",
+                      "filesystem",
+                      "maxConcurrentRuns"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "vps",
+                      "overlay_cloud",
+                      "external"
+                    ],
+                    "default": "local"
+                  }
+                },
+                "required": [
+                  "code",
+                  "name",
+                  "publicKey",
+                  "hostVersion",
+                  "platform",
+                  "capabilities"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/enrollment-sessions": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnrollmentSessions",
+        "summary": "Create a short-lived single-use environment enrollment code",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-environments/managed": {
+      "post": {
+        "operationId": "postAgentEnvironmentsManaged",
+        "summary": "Provision an Overlay Cloud agent environment",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
               }
             }
           }
@@ -2865,7 +5493,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Empirical per-runner observations with explicit sample counts and no recommendation."
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid request.",
@@ -2904,7 +5539,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
+              "type": "number",
               "minimum": 0
             }
           },
@@ -2913,8 +5548,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "minimum": 1
+              "type": "number",
+              "exclusiveMinimum": true,
+              "minimum": 0
             }
           },
           {
@@ -2947,7 +5583,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Lifecycle observation recorded."
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid request.",
@@ -5076,6 +7719,76 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/link-preview": {
+      "get": {
+        "operationId": "getLinkPreview",
+        "summary": "Check whether a URL can be framed in the link preview panel",
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
       }
     },
     "/api/v1/mcps": {
@@ -8338,6 +11051,14 @@
                   },
                   "autoContinue": {
                     "type": "boolean"
+                  },
+                  "linkOpenPreference": {
+                    "type": "string",
+                    "enum": [
+                      "ask",
+                      "overlay",
+                      "new-tab"
+                    ]
                   },
                   "defaultChatMode": {
                     "type": "string",

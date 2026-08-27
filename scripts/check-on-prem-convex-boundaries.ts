@@ -43,7 +43,13 @@ function isConvexSpecifier(specifier: string): boolean {
 }
 
 async function collectFiles(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true })
+  let entries
+  try {
+    entries = await readdir(directory, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
   const nested = await Promise.all(entries.map(async (entry) => {
     const absolute = path.join(directory, entry.name)
     if (entry.isDirectory()) return collectFiles(absolute)

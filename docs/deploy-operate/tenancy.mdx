@@ -36,6 +36,10 @@ Do not add `tenantId` just to represent students, teachers, parents, departments
 
 The current config schema rejects `capabilities.multiTenant=true`. Admin/system surfaces should report `single-customer deployment`; no tenant switcher or tenant-admin UI should appear.
 
+## Workspaces Are The In-Deployment Boundary
+
+Within a single-customer deployment, workspaces are the in-deployment boundary for collaboration. A workspace scopes conversations, files, knowledge bases, agents, automations, shares, governance, and billing to a group of members. Cross-workspace access is never implied by deployment membership; every resource read and mutation checks workspace participation. This boundary is what makes a future shared multi-tenant deployment possible: adding `tenantId` is an outer scope on top of workspace-scoped data, not a replacement for it.
+
 ## Current Security Model
 
 Single-customer deployment:
@@ -109,6 +113,12 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `workspacePrincipals` | `userId` | Deployment boundary | Add `tenantId`; principal identity and directory queries must enforce tenant context. |
 | `workspaceConnectors` | `userId` | Deployment boundary; Convex-only until Postgres connector parity | Add `tenantId`; connector mappings, provider keys, and account ownership must be tenant-scoped. |
 | `workspaceUserPreferences` | `userId` | Deployment boundary | Add `tenantId`; per-user workspace preferences must be tenant-scoped. |
+| `billingAccounts` | `userId`; optional `workspaceId` | Personal accounts remain user-owned; workspace accounts are bound to the exact workspace | Require a deployment tenant identifier in addition to the current account subject, and keep every Stripe identifier unique within that tenant. |
+| `conversationAgentRuns` | `userId` and `workspaceId` | Every collaborative run is authorized through its conversation and workspace; personal runs remain user-owned | Require tenant-scoped run, conversation, initiator, agent, reservation, and idempotency indexes. |
+| `documentIngestionJobs` | `userId`; optional workspace-owned file | The job inherits authorization from the source file/project and records its initiating user | Add explicit tenant/workspace ownership and tenant-scoped claim indexes before shared deployment. |
+| `slackImportJobs` | `userId` and `workspaceId` | Imports are bound to the selected workspace and initiating user; mappings cannot be rebound across workspaces | Add tenant context to job claims, connector credentials, mappings, and imported resources. |
+| `userProviderConnections` | `userId`; optional `workspaceId` | Personal provider credentials are user-owned; workspace connections are authorized through workspace membership and policy | Add tenant context to encrypted credential ownership, lookup, rotation, revocation, and audit indexes. |
+| `workflowStepEvents` | `userId`; workspace inherited from the automation run | Events are readable only through their owning automation/workflow run and initiating user | Store tenant/workspace ownership directly and tenant-scope projection cursors and subscription indexes. |
 
 The following tables are not user-owned tenant data today. They still need review before shared multi-tenant deployments, but the static check only requires explicit documentation for `userId`-owned tables:
 

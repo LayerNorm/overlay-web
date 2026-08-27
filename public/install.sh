@@ -116,6 +116,8 @@ main() {
   log "Home: ${OVERLAY_HOME}"
   log "Version: ${OVERLAY_VERSION}"
   log "HTTP port: ${OVERLAY_HTTP_PORT}"
+  log "Security boundary: the short-lived installer receives Docker-socket access,"
+  log "which is equivalent to host-root access. Inspect this script before continuing."
   log ""
   log "Inspectable install flow:"
   log "  curl -fsSLO https://getoverlay.io/install.sh && less install.sh && bash install.sh"

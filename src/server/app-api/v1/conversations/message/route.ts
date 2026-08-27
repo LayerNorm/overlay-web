@@ -135,6 +135,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const modelId = body.modelId ?? body.model
     const server = getOverlayServerContext()
     const workspaceId = context.workspace.workspace.id
+    await server.workspaceGovernanceService.assertWithinLimits({
+      action: 'message.send',
+      scope: { workspaceId, principalId: context.workspace.principal.id, conversationId: body.conversationId },
+    })
     const conversation = await server.appData.repositories.conversations.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,

@@ -241,7 +241,7 @@
     "@composio/vercel": "^0.6.7",
     "@convex-dev/stripe": "^0.1.3",
     "@daytona/sdk": "0.200.1",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@opencoredev/email-sdk": "1.0.0",
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@opentelemetry/api": "^1.9.0",
@@ -295,7 +295,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/otel": "^2.1.3",
     "@vercel/speed-insights": "^1.3.1",
-    "@workflow/world-postgres": "^4.3.3",
+    "@workflow/world-postgres": "4.3.5",
     "@workos-inc/authkit-nextjs": "^2.14.0",
     "@workos-inc/node": "^8.7.0",
     "@xmldom/xmldom": "^0.9.9",
@@ -306,7 +306,7 @@
     "convex": "^1.41.0",
     "dagre": "^0.8.5",
     "docx": "^9.6.1",
-    "dompurify": "^3.4.2",
+    "dompurify": "3.4.14",
     "drizzle-orm": "^0.45.2",
     "eventsource": "^4.1.0",
     "framer-motion": "^12.26.2",
@@ -340,7 +340,7 @@
     "server-only": "^0.0.1",
     "stripe": "^20.3.1",
     "undici": "7.29.0",
-    "workflow": "^4.8.0",
+    "workflow": "4.8.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -378,8 +378,21 @@
     "@daytona/sdk@0.200.1": {
       "@opentelemetry/sdk-node": "0.221.0"
     },
-    "@modelcontextprotocol/sdk@1.29.0": {
+    "@modelcontextprotocol/sdk@1.30.0": {
       "@hono/node-server": "2.0.11"
+    },
+    "fast-uri": "3.1.6",
+    "hono": "4.12.34",
+    "ip-address": "10.3.1",
+    "js-yaml": "4.3.1",
+    "nanoid@<4": "3.3.18",
+    "nanoid@>=4 <6": "5.1.16",
+    "socket.io-parser": "4.2.7",
+    "@workflow/world-local": {
+      "undici": "7.29.0"
+    },
+    "@workflow/world-vercel": {
+      "undici": "7.29.0"
     },
     "glob@13.0.6": {
       "brace-expansion": "5.0.9"

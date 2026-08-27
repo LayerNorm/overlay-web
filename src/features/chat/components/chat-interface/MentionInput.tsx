@@ -586,6 +586,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null)
     const [categories, setCategories] = useState<MentionCategory[]>([])
     const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(null)
+    const [activeOptionId, setActiveOptionId] = useState<string | null>(null)
     const triggerOffsetRef = useRef<number>(0)
     const isComposingRef = useRef(false)
     const suppressInputRef = useRef(false)
@@ -1193,9 +1194,12 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
           }}
           data-placeholder={placeholder}
           className={`relative w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 focus:ring-0 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--border)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--muted)] [&_code]:rounded [&_code]:bg-[var(--surface-subtle)] [&_code]:px-1 [&_code]:font-mono [&_h1]:my-1 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:my-1 [&_h2]:text-lg [&_h2]:font-semibold [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:my-0 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-[var(--surface-subtle)] [&_pre]:px-3 [&_pre]:py-2 [&_pre]:font-mono [&_strong]:font-semibold [&_ul]:ml-5 [&_ul]:list-disc ${className || ''}`}
-          role="textbox"
+          role="combobox"
           aria-multiline="true"
           aria-placeholder={placeholder}
+          aria-expanded={showPopup}
+          aria-activedescendant={activeOptionId ?? undefined}
+          aria-controls={showPopup ? 'mention-listbox' : undefined}
         />
         {showPopup && (
           <MentionPopup
@@ -1212,6 +1216,7 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
             availableTypes={availableTypes}
             selectedCategory={selectedCategory}
             onSelectedCategoryChange={setSelectedCategory}
+            onActiveOptionChange={setActiveOptionId}
           />
         )}
       </div>

@@ -1592,7 +1592,7 @@ export function DirectMessageExperience({
                     })
                   )}
                   {agentResponding && generatingMessages.length === 0 ? (
-                    <div className="flex items-center gap-2 px-1" aria-label={`${agentResponding} response pending`}>
+                    <div className="flex items-center gap-2 px-1" aria-live="polite" aria-label={`${agentResponding} response pending`}>
                       <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
                       <span className="flex items-center gap-1">
                         {[0, 1, 2].map((dot) => (
