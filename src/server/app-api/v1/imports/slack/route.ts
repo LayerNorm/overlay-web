@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ComposioSlackClient } from '@/server/imports/slack/composioClient'
 import { SlackBackfillWorker } from '@/server/imports/slack/backfillWorker'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -344,8 +344,7 @@ export async function POST(
 export async function POST_process(request: NextRequest) {
   try {
     const internalSecret = request.headers.get('x-internal-api-secret')?.trim()
-    const expectedSecret = getInternalApiSecret()
-    if (!internalSecret || internalSecret !== expectedSecret) {
+    if (!matchesInternalApiSecret(internalSecret, getInternalApiSecret())) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

@@ -202,7 +202,10 @@ export const processJob = internalAction({
     })
 
     try {
-      const baseUrl = process.env.OVERLAY_BFF_URL ?? 'http://localhost:3000'
+      const baseUrl = process.env.OVERLAY_BFF_URL?.replace(/\/$/, '')
+      if (!baseUrl) {
+        throw new Error('OVERLAY_BFF_URL is not configured')
+      }
       const response = await fetch(`${baseUrl}/api/v1/imports/slack/process`, {
         method: 'POST',
         headers: {

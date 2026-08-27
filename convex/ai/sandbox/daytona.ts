@@ -314,8 +314,7 @@ export const markWorkspaceState = mutation({
 export const recordUsageLedger = mutation({
   args: {
     userId: v.string(),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
+    serverSecret: v.string(),
     sandboxId: v.string(),
     tier: v.union(v.literal('pro'), v.literal('max')),
     resourceProfile: v.union(v.literal('pro'), v.literal('max')),
@@ -337,11 +336,7 @@ export const recordUsageLedger = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await authorizeUserAccess({
-      userId: args.userId,
-      accessToken: args.accessToken,
-      serverSecret: args.serverSecret,
-    })
+    requireServerSecret(args.serverSecret)
     const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
 
     return await ctx.db.insert('daytonaUsageLedger', {

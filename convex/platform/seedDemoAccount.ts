@@ -1,18 +1,22 @@
 import { v } from "convex/values";
 import { mutation } from "../_generated/server";
+import { requireServerSecret } from "../lib/auth";
 
 /**
  * Seeds a demo account with sample data for App Store review.
  * Run via Convex dashboard or CLI after creating a real user account.
+ * Requires INTERNAL_API_SECRET so this cannot be invoked from the public Convex API.
  *
  * Usage:
- *   npx convex run seedDemoAccount '{"userId": "auth_user_xxx"}'
+ *   npx convex run seedDemoAccount '{"serverSecret":"<INTERNAL_API_SECRET>","userId":"auth_user_xxx"}'
  */
 export default mutation({
   args: {
+    serverSecret: v.string(),
     userId: v.string(),
   },
   handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret);
     const { userId } = args;
 
     // Verify the user exists in subscriptions

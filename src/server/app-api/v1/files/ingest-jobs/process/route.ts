@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { fileService } from '@/server/files/http'
 import { downloadBuffer } from '@/server/storage/r2'
 
@@ -13,8 +13,8 @@ import { downloadBuffer } from '@/server/storage/r2'
  */
 export async function POST(request: NextRequest) {
   // Authorize via internal API secret
-  const secret = request.headers.get('x-internal-api-secret')
-  if (!secret || secret !== getInternalApiSecret()) {
+  const secret = request.headers.get('x-internal-api-secret')?.trim()
+  if (!matchesInternalApiSecret(secret, getInternalApiSecret())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
