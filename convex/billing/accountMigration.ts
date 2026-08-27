@@ -340,16 +340,22 @@ async function syncCanonicalBalance(
 }
 
 async function activeReservationSummary(ctx: QueryCtx | MutationCtx, billingAccountId: string) {
-  const rows = await ctx.db.query('budgetReservations')
-    .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId))
-    .take(1_001)
+  const [reserved, reconcileRequired] = await Promise.all([
+    ctx.db.query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) => q
+        .eq('billingAccountId', billingAccountId)
+        .eq('status', 'reserved'))
+      .take(1_001),
+    ctx.db.query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) => q
+        .eq('billingAccountId', billingAccountId)
+        .eq('status', 'reconcile_required'))
+      .take(1_001),
+  ])
+  const rows = [...reserved, ...reconcileRequired]
   return {
-    reservedCents: rows.reduce((sum, row) => (
-      row.status === 'reserved' || row.status === 'reconcile_required'
-        ? sum + row.reservedCents
-        : sum
-    ), 0),
-    truncated: rows.length > 1_000,
+    reservedCents: rows.reduce((sum, row) => sum + row.reservedCents, 0),
+    truncated: reserved.length > 1_000 || reconcileRequired.length > 1_000,
   }
 }
 
