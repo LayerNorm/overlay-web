@@ -60,6 +60,7 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/providers/connections')) return 'modelRouting'
   if (startsWithRoute(normalizedPath, '/api/v1/browser-task')) return 'browserUse'
   if (startsWithRoute(normalizedPath, '/api/v1/daytona/run')) return 'sandboxes'
+  if (startsWithRoute(normalizedPath, '/api/v1/sandbox/run')) return 'sandboxes'
   if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'memory'
   if (startsWithRoute(normalizedPath, '/api/v1/files')) return 'files'
   if (normalizedPath === '/api/v1/knowledge/search') return 'vectorSearch'
