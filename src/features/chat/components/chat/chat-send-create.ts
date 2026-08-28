@@ -14,7 +14,7 @@ import type {
 } from '../chat-interface/types'
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { EnsureConversationRuntime } from './chat-send-body-builders'
-import type { PendingFirstSendState } from './chat-send-pending-first'
+import { startPendingFirstSendRename, type PendingFirstSendState } from './chat-send-pending-first'
 
 export type CreateNewChatOptions = {
   title?: string
@@ -54,6 +54,7 @@ export async function createNewChatForSend({
   setIsTemporaryChat,
   setRuntimeHydrationVersion,
   syncStandaloneChatUrl,
+  startFirstMessageRename,
   tryActivatePendingFirstSend,
 }: {
   activeChatIdRef: MutableRefObject<string | null>
@@ -80,6 +81,7 @@ export async function createNewChatForSend({
   setIsTemporaryChat: (isTemporaryChat: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   syncStandaloneChatUrl: (chatId: string | null) => void
+  startFirstMessageRename: (chatId: string, seedText: string) => void
   tryActivatePendingFirstSend: () => void
 }): Promise<string | null> {
   invalidateLoadChatRequest()
@@ -126,6 +128,7 @@ export async function createNewChatForSend({
     const pending = pendingFirstSendRef.current
     if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {
       pending.realChatId = data.id
+      startPendingFirstSendRename(pending, startFirstMessageRename)
       if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
         pendingScrollChatIdRef.current = data.id
       }

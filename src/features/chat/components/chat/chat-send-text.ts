@@ -175,6 +175,7 @@ export function sendTextTurn({
       streamDone: false,
       realChatId: null,
       wasFirst: isFirstMessage,
+      renameStarted: false,
       renameSeed: snapshot.text || payload.indexedFileNames[0] || 'Documents',
       activeChatTitleSnapshot: snapshot.activeChatTitleSnapshot,
     }

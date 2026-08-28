@@ -12,7 +12,6 @@ import {
   CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatArchived,
-  dispatchChatCreated,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatArchivedDetail,
@@ -685,16 +684,7 @@ export function ChatInlinePanel({
         workspaceId={workspaceId}
         onOpenChange={setNewDirectMessageOpen}
         onCreated={({ id, title }) => {
-          dispatchChatCreated({
-            chat: {
-              _id: id,
-              title,
-              lastModified: Date.now(),
-              conversationType: 'dm',
-            },
-          })
-          rememberLastChatForView(workspaceId, 'dms', id)
-          router.push(`${baseHref}?${new URLSearchParams({ view: 'dms', id }).toString()}`)
+          router.push(`${baseHref}?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`)
           onNavigate?.()
         }}
       />
@@ -706,9 +696,7 @@ export function ChatInlinePanel({
         showcase={isPublicShowcase}
         onOpenChange={setNewChannelOpen}
         onCreated={({ id, title }) => {
-          dispatchChatCreated({ chat: { _id: id, title, lastModified: Date.now(), conversationType: 'channel' } })
-          rememberLastChatForView(workspaceId, 'channels', id)
-          router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id }).toString()}`)
+          router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id, draft: '1', title }).toString()}`)
           onNavigate?.()
         }}
       />

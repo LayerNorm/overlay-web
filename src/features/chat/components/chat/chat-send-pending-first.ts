@@ -18,8 +18,18 @@ export type PendingFirstSendState = {
   streamDone: boolean
   realChatId: string | null
   wasFirst: boolean
+  renameStarted: boolean
   renameSeed: string
   activeChatTitleSnapshot: string | null
+}
+
+export function startPendingFirstSendRename(
+  pending: PendingFirstSendState | null,
+  startFirstMessageRename: (chatId: string, seedText: string) => void,
+) {
+  if (!pending?.realChatId || !pending.wasFirst || pending.renameStarted) return
+  pending.renameStarted = true
+  startFirstMessageRename(pending.realChatId, pending.renameSeed)
 }
 
 export function isStreamChatActive({
@@ -86,9 +96,7 @@ export function activatePendingFirstSend({
     [...preview.actChat.messages],
   )
   markChatModified(realId, pending.activeChatTitleSnapshot)
-  if (pending.wasFirst) {
-    startFirstMessageRename(realId, pending.renameSeed)
-  }
+  startPendingFirstSendRename(pending, startFirstMessageRename)
   activeChatIdRef.current = realId
   setActiveViewer(realId)
   setActiveChatId(realId)

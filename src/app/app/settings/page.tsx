@@ -292,6 +292,8 @@ export default function SettingsPage() {
             <ModelCatalogSetting
               enabledModelIds={settings.enabledChatModelIds}
               modelOrder={settings.modelOrder}
+              defaultImageModelId={settings.defaultImageModelId}
+              defaultVideoModelId={settings.defaultVideoModelId}
               disabled={busy}
               onChange={(patch) => void updateSettings(patch)}
             />

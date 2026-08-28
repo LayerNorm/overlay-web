@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { lazy, Suspense, useMemo } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
-import type { AssistantVisualBlock, ChatExchangeStatus, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
+import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSegments,
@@ -66,6 +66,8 @@ export interface ChatExchangeProps {
   responseModelId: string
   /** Ordered tools, text, and file parts as they appear in the assistant message */
   assistantVisualBlocks: AssistantVisualBlock[]
+  /** Provider-native source parts normalized by the transcript adapter. */
+  responseSources?: readonly ChatTranscriptSourceView[]
   isStreaming: boolean
   isTextStreaming: boolean
   errorMessage: string | null
@@ -110,7 +112,7 @@ export interface ChatExchangeProps {
 }
 
 export function ChatExchange({
-  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
@@ -132,6 +134,15 @@ export function ChatExchange({
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
     const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
+    const providerSources = useMemo<WebSourceItem[]>(() => (responseSources ?? []).flatMap((source) => (
+      source.sourceKind === 'url' && source.url
+        ? [{
+            url: source.url,
+            title: source.title || source.url,
+            origin: 'web-search' as const,
+          }]
+        : []
+    )), [responseSources])
     /**
      * Cited files and memories. Live replies carry the citation map in message
      * metadata; older persisted replies only have the linkified `**Sources:**`
@@ -152,9 +163,14 @@ export function ChatExchange({
      * tool call supplied sources its external links are recovered from there.
      */
     const allSources = useMemo(() => {
-      if (webSources.length > 0) return [...webSources, ...knowledgeSources]
-      return [...externalSourcesFromMarkdown(assistantPlainText), ...knowledgeSources]
-    }, [assistantPlainText, knowledgeSources, webSources])
+      const externalSources = [...providerSources, ...webSources]
+      const candidates = externalSources.length > 0
+        ? [...externalSources, ...knowledgeSources]
+        : [...externalSourcesFromMarkdown(assistantPlainText), ...knowledgeSources]
+      return candidates.filter((source, index) => candidates.findIndex((candidate) => (
+        candidate.url === source.url && candidate.internalHref === source.internalHref
+      )) === index)
+    }, [assistantPlainText, knowledgeSources, providerSources, webSources])
     const normalizedStatus: ChatExchangeStatus = status ?? (
       responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
     )

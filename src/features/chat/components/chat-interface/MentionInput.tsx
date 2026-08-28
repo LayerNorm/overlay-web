@@ -12,6 +12,7 @@ import {
 import { MentionPopup } from '@/components/mentions/MentionPopup'
 import { useMentionData } from './useMentionData'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import { joinComposerMarkdownSegments } from './composer-markdown'
 
 export type MentionInputFormatCommand =
   | 'heading1'
@@ -164,7 +165,15 @@ function inlineNodeToMarkdown(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
   const element = node as HTMLElement
-  if (element.getAttribute(MENTION_ATTR)) return element.textContent ?? ''
+  if (element.getAttribute(MENTION_ATTR)) {
+    try {
+      const item = JSON.parse(element.dataset.mentionData ?? '{}') as Partial<MentionItem>
+      if (typeof item.name === 'string' && item.name.trim()) return `@${item.name}`
+    } catch {
+      // Fall through to the visible label for malformed legacy chips.
+    }
+    return element.textContent ?? ''
+  }
   if (element.tagName === 'BR') return '\n'
   const content = Array.from(element.childNodes).map(inlineNodeToMarkdown).join('')
   if (element.tagName === 'STRONG' || element.tagName === 'B') return `**${content}**`
@@ -192,13 +201,26 @@ function blockNodeToMarkdown(node: Node): string {
 }
 
 function extractMarkdownFromElement(el: HTMLDivElement): string {
-  return Array.from(el.childNodes)
-    .map(blockNodeToMarkdown)
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\u00A0/g, ' ')
-    .replace(/\u200B/g, '') // strip zero-width spaces used for caret placement
-    .trimEnd()
+  const blockTags = new Set(['DIV', 'P', 'H1', 'H2', 'H3', 'PRE', 'BLOCKQUOTE', 'UL', 'OL'])
+  return joinComposerMarkdownSegments(Array.from(el.childNodes).map((node) => {
+    const isBlock = node.nodeType === Node.ELEMENT_NODE
+      && blockTags.has((node as HTMLElement).tagName)
+    return {
+      markdown: isBlock ? blockNodeToMarkdown(node) : inlineNodeToMarkdown(node),
+      block: isBlock,
+    }
+  }))
+}
+
+const MENTION_SYMBOLS: Record<MentionType, string> = {
+  person: '@',
+  file: 'F',
+  knowledge: 'K',
+  connector: 'E',
+  automation: 'A',
+  skill: 'S',
+  mcp: 'M',
+  chat: '#',
 }
 
 function dispatchEditorInput(el: HTMLDivElement) {
@@ -459,7 +481,13 @@ function createMentionChip(item: MentionItem): HTMLSpanElement {
   chip.setAttribute(MENTION_ID_ATTR, item.id)
   chip.className =
     'inline-flex items-center gap-1 mx-0.5 px-1.5 py-0.5 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium text-[var(--foreground)] select-none align-baseline'
-  chip.textContent = `@${item.name}`
+  const symbol = document.createElement('span')
+  symbol.setAttribute('aria-hidden', 'true')
+  symbol.className = 'inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-[var(--surface-elevated)] text-[9px] text-[var(--muted)]'
+  symbol.textContent = MENTION_SYMBOLS[item.type]
+  const label = document.createElement('span')
+  label.textContent = `@${item.name}`
+  chip.append(symbol, label)
   // Store full item data
   chip.dataset.mentionData = JSON.stringify(item)
   return chip

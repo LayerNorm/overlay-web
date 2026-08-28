@@ -104,6 +104,42 @@ test('normalizes ordered reasoning, tool, text, file, generated UI, and source p
   }])
 })
 
+test('normalizes AI SDK source parts and settles stale tools after a completed response', () => {
+  const normalized = normalizeTranscriptAssistantParts([
+    {
+      type: 'tool-web_search',
+      toolCallId: 'search-1',
+      state: 'input-available',
+      input: { query: 'release notes' },
+      output: { sources: [{ url: 'https://example.test/release' }] },
+    },
+    {
+      type: 'source-url',
+      sourceId: 'source-1',
+      url: 'https://example.test/release',
+      title: 'Release notes',
+    },
+    {
+      type: 'source-document',
+      sourceId: 'document-1',
+      mediaType: 'application/pdf',
+      title: 'Launch brief',
+      filename: 'launch.pdf',
+    },
+  ], { terminalState: 'completed' })
+
+  const tool = normalized.blocks.find((block) => block.kind === 'tool')
+  assert.equal(tool?.kind === 'tool' ? tool.state : null, 'output-available')
+  assert.deepEqual(normalized.sources.map((source) => ({
+    kind: source.sourceKind,
+    id: source.sourceId,
+    url: source.url,
+  })), [
+    { kind: 'url', id: 'source-1', url: 'https://example.test/release' },
+    { kind: 'document', id: 'document-1', url: undefined },
+  ])
+})
+
 test('restores image and video output groups without sharing mutable result objects', () => {
   const group = {
     type: 'video' as const,

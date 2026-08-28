@@ -53,8 +53,8 @@ export async function resolveAuthorizedModelIds(args: {
   // Populate AVAILABLE_MODELS from the full AI Gateway catalog before reading it.
   // Fail soft to curated fallbacks if the catalog is unreachable.
   try {
-    const { getGatewayLanguageCatalog } = await import('@/server/ai/gateway/gateway-catalog')
-    await getGatewayLanguageCatalog(args.forceCatalogRefresh ?? false)
+    const { getGatewayCatalog } = await import('@/server/ai/gateway/gateway-catalog')
+    await getGatewayCatalog(args.forceCatalogRefresh ?? false)
   } catch (error) {
     logger.warn('[model-policy] Gateway catalog unavailable; authorizing curated fallback models only', {
       error: error instanceof Error ? error.message : String(error),

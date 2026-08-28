@@ -7,6 +7,8 @@ import { cn } from '../../utils/cn'
 export type SegmentedControlOption<T extends string> = {
   value: T
   label: ReactNode
+  /** Short explanation exposed on hover and to assistive technology. */
+  description?: string
   icon?: ComponentType<{ size?: number; className?: string; strokeWidth?: number }>
   disabled?: boolean
 }
@@ -54,6 +56,8 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            aria-label={option.description ? `${String(option.label)}: ${option.description}` : undefined}
+            title={option.description}
             disabled={optionDisabled}
             onClick={() => {
               if (!optionDisabled) onChange(option.value)

@@ -1,5 +1,6 @@
 import 'katex/dist/katex.min.css'
 import { type ReactNode, memo, useMemo } from 'react'
+import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { SourceCitationMap } from '../lib/source-citations'
 import { knowledgeChipLabel, knowledgeSourcesFromCitations } from '../lib/knowledge-sources'
@@ -125,7 +126,17 @@ function MarkdownMessageImpl({
           const linkText = extractLinkText(props.children as ReactNode).trim()
 
           if (isMentionHref(href)) {
-            return <span className={mentionChipClass}>{props.children}</span>
+            const encodedId = typeof href === 'string' ? href.slice('#overlay-mention-'.length) : ''
+            const mention = mentions?.find((item) => encodeURIComponent(item.id) === encodedId)
+            const Icon = mention?.type === 'file' ? FileText
+              : mention?.type === 'knowledge' ? BookOpen
+                : mention?.type === 'connector' ? Plug
+                  : mention?.type === 'automation' ? Bot
+                    : mention?.type === 'skill' ? Sparkles
+                      : mention?.type === 'mcp' ? Server
+                        : mention?.type === 'chat' ? Hash
+                          : AtSign
+            return <span className={`${mentionChipClass} gap-1`}><Icon size={11} strokeWidth={1.75} aria-hidden="true" />{props.children}</span>
           }
 
           // Knowledge citation chip: `#overlay-knowcite-N` (a cited file or memory).
@@ -215,7 +226,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, sourceCitations, webSources, appBaseUrl, onOpenAttachmentPreview],
+    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, onOpenAttachmentPreview],
   )
   const activeRemarkPlugins = useMemo(
     () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
