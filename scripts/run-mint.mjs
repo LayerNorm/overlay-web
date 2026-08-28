@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const mintCli = path.join(root, 'node_modules/@mintlify/cli/bin/start.js')
+const jsYamlCompat = path.join(root, 'scripts/mint-js-yaml-compat.mjs')
 const args = process.argv.slice(2)
 
 const candidateNodes = [
@@ -23,7 +24,7 @@ if (!node) {
   process.exit(1)
 }
 
-const result = spawnSync(node, ['--no-deprecation', mintCli, ...args], {
+const result = spawnSync(node, ['--no-deprecation', '--import', jsYamlCompat, mintCli, ...args], {
   cwd: process.cwd(),
   env: { ...process.env, MINTLIFY_PACKAGE_NAME: 'mint' },
   stdio: 'inherit',
