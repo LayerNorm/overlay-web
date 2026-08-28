@@ -13,10 +13,9 @@ import {
   resolveWorkspaceBillingRollout,
   workspaceBillingRolloutConfigFromEnv,
 } from "../../src/shared/billing/workspace-billing-rollout";
+import { normalizeOpenAiCompatibleBaseUrl } from "../../src/shared/ai/gateway/openai-compatible-base-url";
 
-const GATEWAY_CHAT_URL =
-  process.env.AI_GATEWAY_URL?.trim() ||
-  "https://ai-gateway.vercel.sh/v1/chat/completions";
+const GATEWAY_BASE_URL = normalizeOpenAiCompatibleBaseUrl(process.env.AI_GATEWAY_URL);
 const API_KEY = process.env.AI_GATEWAY_API_KEY;
 
 const MIN_CONFIDENCE = 0.4;
@@ -92,7 +91,7 @@ function getExtractorModel(modelId: string) {
   const openai = createOpenAICompatible({
     name: "gateway",
     apiKey: API_KEY || "",
-    baseURL: GATEWAY_CHAT_URL,
+    baseURL: GATEWAY_BASE_URL,
   });
 
   return openai(modelId);

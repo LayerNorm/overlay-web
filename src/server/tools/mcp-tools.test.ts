@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { rankMcpCatalogEntries, stripReservedSchemaKeys } from './mcp-tools'
+import {
+  buildMcpToolsContext,
+  rankMcpCatalogEntries,
+  stripReservedSchemaKeys,
+} from './mcp-tools'
 
 const entries = [
   {
@@ -73,4 +77,20 @@ test('stripReservedSchemaKeys leaves primitives and plain schemas untouched', ()
   assert.equal(stripReservedSchemaKeys(undefined), undefined)
   assert.equal(stripReservedSchemaKeys('text'), 'text')
   assert.deepEqual(stripReservedSchemaKeys({ type: 'object' }), { type: 'object' })
+})
+
+test('buildMcpToolsContext keys request context by executable tool name', () => {
+  assert.deepEqual(buildMcpToolsContext({
+    userId: 'user_1',
+    conversationId: 'conversation_1',
+    turnId: 'turn_1',
+    modelId: 'model_1',
+  }), {
+    call_mcp_tool: {
+      userId: 'user_1',
+      conversationId: 'conversation_1',
+      turnId: 'turn_1',
+      modelId: 'model_1',
+    },
+  })
 })

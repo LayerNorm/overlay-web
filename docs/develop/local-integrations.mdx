@@ -40,6 +40,15 @@ Verify configuration through `GET /api/v1/integrations?action=health`. Catalog r
 
 Connector visibility is workspace-scoped through `workspaceConnectors`. On the first Personal-workspace read after upgrading, active Composio accounts with no mapping in any workspace are assigned to Personal. Existing workspace mappings are never moved or duplicated.
 
+## MCP tools
+
+AI SDK `toolsContext` is keyed by executable tool name. `call_mcp_tool` receives
+its user, conversation, turn, and model attribution under the
+`call_mcp_tool` key; a flat context object fails validation before the MCP
+network call and leaves the transcript looking stuck. MCP calls have a
+30-second default timeout and record a terminal execution row for success or
+failure.
+
 ## Slack import via Composio
 
 Slack import uses Composio's `SLACKBOT` toolkit with **direct tool execution** — not the LLM session-based flow used by agent tools. This is a deterministic, paginated backfill that runs as a server-side background job.

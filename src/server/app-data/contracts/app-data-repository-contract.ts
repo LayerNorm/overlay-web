@@ -502,7 +502,9 @@ export async function runAppDataRepositoryContractSuite(
         token: publicShare!.token!,
       })
       assert.equal(shared?._id, conversationId)
-      assert.equal(shared?.messages.length, 2)
+      // Sharing exposes the conversation history accumulated before the link
+      // is read; later AgentRun messages are valid public history as well.
+      assert.ok((shared?.messages.length ?? 0) >= 2)
       const privateShare = await backend.conversations.setShare({
         conversationId,
         userId,

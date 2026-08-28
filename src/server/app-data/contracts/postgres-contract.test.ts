@@ -144,7 +144,10 @@ test('Postgres app-data repository contracts', {
       const embeddings: EmbeddingProvider = {
         identity: {
           dimensions: KNOWLEDGE_EMBEDDING_DIMENSIONS,
-          modelId: 'contract-embedding',
+          // Use a real catalog identity so the production usage meter can
+          // price this deterministic fake provider without a network call to
+          // an unpriced test-only model.
+          modelId: 'text-embedding-3-small',
           modelVersion: 'contract-v1',
           provider: 'openai',
         },
@@ -341,7 +344,10 @@ function testSearchBilling(label: string) {
           }],
         })
         const result = await service.run({ missingGraceMs: 60_000, now, orphanGraceMs: 60_000 })
-        assert.equal(result.missingObjects, 1)
+        // The remote Neon lane is intentionally reusable and may contain
+        // unrelated files. The injected object store exposes only this test's
+        // orphan, so assert the missing behavior without assuming an empty DB.
+        assert.ok(result.missingObjects >= 1)
         assert.equal(result.orphanObjects, 1)
         assert.equal(result.orphanCleanupJobs, 1)
         const [missing] = await db.select().from(files).where(eq(files.id, fileId)).limit(1)
