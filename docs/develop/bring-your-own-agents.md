@@ -403,7 +403,7 @@ URL and key configuration.
 The dormant managed API and provider adapters remain implemented so the future release can reuse
 the same host protocol. Restoring the UI additionally requires the image, conformance, credential
 brokering, egress, billing, cleanup, security-review, and server-authoritative readiness gates
-tracked in `INTERNAL_TODOs.md`.
+tracked in this document's managed-environment release-gate section.
 
 ## Public resources and protocol policy
 

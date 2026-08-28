@@ -64,7 +64,7 @@ export type WorkspaceAgentTurnInput = {
  * That trade buys token-level streaming, which a `WorkflowAgent` cannot give a
  * transcript row — it streams into the workflow's own output stream, which
  * only the single holder of the run id can read. Rooms need every participant
- * to see the reply, so the row wins. See INTERNAL_TODOs.md, "Durable agent
+ * to see the reply, so the row wins. See docs/develop/bring-your-own-agents.md, "Durable agent
  * runs", for the follow-up that revisits this.
  */
 export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput) {

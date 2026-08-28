@@ -11,6 +11,8 @@ Describe the outcome and the affected surfaces.
 
 ## Verification
 
+- [ ] I own this contribution or have written authority to submit it, and I identified all third-party material
+- [ ] The counsel-approved CLA workflow confirms acceptance (required before outside contributions merge; this checkbox is not itself a signature)
 - [ ] Relevant focused tests pass
 - [ ] Typecheck passes when contracts changed
 - [ ] Living documentation was updated when required

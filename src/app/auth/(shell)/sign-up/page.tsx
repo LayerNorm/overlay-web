@@ -19,6 +19,10 @@ import {
 } from '@/features/landing/lib/landingPageStyles'
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from '@overlay/app-core'
 import { SsoProviderIcon, useAuthUiOptions } from '../../_components/useAuthUiOptions'
+import {
+  currentLegalAcceptancePayload,
+  LEGAL_DOCUMENTS,
+} from '@/shared/legal/legal-documents'
 
 function SignUpContent() {
   const card = marketingAuthCard()
@@ -45,6 +49,7 @@ function SignUpContent() {
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
   const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null)
+  const [acceptedLegalTerms, setAcceptedLegalTerms] = useState(false)
   const authUiOptions = useAuthUiOptions()
 
   // Get redirect URL from params (for desktop app auth)
@@ -83,6 +88,12 @@ function SignUpContent() {
     setLoading(true)
     setError(null)
 
+    if (!acceptedLegalTerms) {
+      setError('Please accept the Terms of Service and Privacy Policy to create an account.')
+      setLoading(false)
+      return
+    }
+
     // Validate passwords match
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -101,7 +112,13 @@ function SignUpContent() {
       const response = await fetch('/api/auth/sign-up', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, firstName, lastName }),
+        body: JSON.stringify({
+          email,
+          password,
+          firstName,
+          lastName,
+          ...currentLegalAcceptancePayload(),
+        }),
       })
 
       const data = await response.json()
@@ -183,13 +200,18 @@ function SignUpContent() {
 
   const handleSSO = (provider: string) => {
     if (!ssoEnabled) return
+    if (!acceptedLegalTerms) {
+      setError('Please accept the Terms of Service and Privacy Policy to continue with SSO.')
+      return
+    }
     setSsoLoading(provider)
     const codeChallenge = resolveCodeChallengeForSso(searchParams)
     const pkceParam = codeChallenge
       ? `&codeChallenge=${encodeURIComponent(codeChallenge)}`
       : ''
-    const ssoUrl = `/api/auth/sso/${provider}?redirect=${encodeURIComponent(redirectUrl)}${pkceParam}`
-    window.location.href = ssoUrl
+    const acceptance = currentLegalAcceptancePayload()
+    const ssoUrl = `/api/auth/sso/${provider}?redirect=${encodeURIComponent(redirectUrl)}${pkceParam}&intent=signup&acceptedLegalTerms=true&termsVersion=${encodeURIComponent(acceptance.termsVersion)}&privacyVersion=${encodeURIComponent(acceptance.privacyVersion)}`
+    window.location.assign(new URL(ssoUrl, window.location.origin).toString())
   }
   const ssoProviders = authUiOptions?.ssoProviders ?? []
   const showSso = Boolean(ssoEnabled && authUiOptions?.supportsSso && ssoProviders.length > 0)
@@ -330,6 +352,26 @@ function SignUpContent() {
               </div>
             )}
 
+            <label className={`mb-6 flex items-start gap-3 text-xs leading-5 ${muted}`}>
+              <input
+                type="checkbox"
+                checked={acceptedLegalTerms}
+                onChange={(event) => setAcceptedLegalTerms(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+              />
+              <span>
+                I agree to the{' '}
+                <Link href={LEGAL_DOCUMENTS.terms.href} className="underline hover:text-[var(--foreground)]">
+                  Terms of Service (version {LEGAL_DOCUMENTS.terms.version})
+                </Link>{' '}
+                and acknowledge the{' '}
+                <Link href={LEGAL_DOCUMENTS.privacy.href} className="underline hover:text-[var(--foreground)]">
+                  Privacy Policy (version {LEGAL_DOCUMENTS.privacy.version})
+                </Link>
+                .
+              </span>
+            </label>
+
             {/* SSO Buttons */}
             {showSso ? (
             <div className="space-y-3 mb-6">
@@ -338,7 +380,7 @@ function SignUpContent() {
                   key={provider.id}
                   type="button"
                   onClick={() => handleSSO(provider.id)}
-                  disabled={ssoLoading !== null}
+                  disabled={ssoLoading !== null || !acceptedLegalTerms}
                   className={sso}
                 >
                   <SsoProviderIcon icon={provider.icon} />
@@ -441,24 +483,10 @@ function SignUpContent() {
                 />
               </div>
 
-              <button type="submit" disabled={loading} className={submit}>
+              <button type="submit" disabled={loading || !acceptedLegalTerms} className={submit}>
                 {loading ? 'Creating account...' : 'Create account'}
               </button>
             </form>
-            ) : null}
-
-            {/* Terms */}
-            {showPasswordSignUp ? (
-            <p className={`mt-4 text-center text-xs ${muted}`}>
-              By creating an account, you agree to our{' '}
-              <Link href="/terms" className="underline hover:text-[var(--foreground)]">
-                Terms of Service
-              </Link>{' '}
-              and{' '}
-              <Link href="/privacy" className="underline hover:text-[var(--foreground)]">
-                Privacy Policy
-              </Link>
-            </p>
             ) : null}
 
             <p className={`mt-6 text-center text-sm ${muted}`}>

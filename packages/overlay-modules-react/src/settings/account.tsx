@@ -26,6 +26,7 @@ export interface AccountPageFrameProps {
   dark?: boolean
   termsHref?: string
   privacyHref?: string
+  sourceHref?: string
 }
 
 export function AccountPageFrame({
@@ -37,6 +38,7 @@ export function AccountPageFrame({
   dark,
   termsHref = '/terms',
   privacyHref = '/privacy',
+  sourceHref = 'https://github.com/LayerNorm/overlay-web',
 }: AccountPageFrameProps) {
   return (
     <div className="flex min-h-screen w-full flex-col gradient-bg">
@@ -54,6 +56,9 @@ export function AccountPageFrame({
             </a>
             <a href={privacyHref} className={dark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}>
               privacy
+            </a>
+            <a href={sourceHref} target="_blank" rel="noopener noreferrer" className={dark ? 'transition-colors hover:text-zinc-100' : 'transition-colors hover:text-zinc-900'}>
+              source code
             </a>
           </div>
         </div>

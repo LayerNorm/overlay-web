@@ -2,6 +2,11 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp, rateLimitByIp } from '@/server/security/rate-limit'
+import {
+  LegalAcceptanceError,
+  recordLegalAcceptance,
+  requireCurrentLegalAcceptance,
+} from '@/server/legal/legal-acceptance'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +15,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { email, password, firstName, lastName } = body
+    const legalAcceptance = requireCurrentLegalAcceptance(body)
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
 
     if (!email || !password) {
@@ -42,6 +48,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!result.user?.id) {
+      throw new Error('Authentication provider did not return the created user ID')
+    }
+
+    await recordLegalAcceptance({
+      acceptance: legalAcceptance,
+      context: 'password_signup',
+      request,
+      userId: result.user.id,
+    })
+
     return NextResponse.json({
       success: true,
       user: result.user,
@@ -50,6 +67,9 @@ export async function POST(request: NextRequest) {
       message: 'Account created! Please check your email to verify your account.',
     })
   } catch (error) {
+    if (error instanceof LegalAcceptanceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     logger.error('[Auth] Sign-up error:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },

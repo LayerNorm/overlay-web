@@ -29,30 +29,30 @@ type LicenseAllowlist = {
 }
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const agplLicense = 'AGPL-3.0-or-later'
-const apacheLicense = 'Apache-2.0'
+const agplLicense = 'AGPL-3.0-only'
 
-const agplPackageJsonPaths = [
-  'package.json',
-  'overlay-desktop/package.json',
-  'overlay-mobile/package.json',
-  'overlay-chrome/package.json',
-]
+const rootPackageJsonPath = 'package.json'
 
 const requiredDocs = [
+  'LICENSE',
   'LICENSE.md',
+  'COPYRIGHT.md',
   'NOTICE.md',
   'TRADEMARKS.md',
+  'COMMERCIAL_LICENSE.md',
+  'CLA.md',
+  'PRIVATE_COMPONENTS.md',
   'docs/legal/licensing.mdx',
   'docs/legal/self-hosting-obligations.mdx',
 ]
 
 const requiredDocSnippets = [
-  'AGPL-3.0-or-later',
-  'Apache-2.0',
+  'AGPL-3.0-only',
   'commercial license',
   'trademark',
   'self-host',
+  'third-party',
+  'submodule',
 ]
 
 const allowedLicenseIds = new Set([
@@ -77,13 +77,9 @@ const allowedLicenseIds = new Set([
 async function main() {
   const failures: string[] = []
 
+  const agplPackageJsonPaths = [rootPackageJsonPath, ...await listFirstPartyPackageJsonPaths()]
   for (const packagePath of agplPackageJsonPaths) {
     await checkPackageLicense(packagePath, agplLicense, failures)
-  }
-
-  const apachePackagePaths = await listApachePackageJsonPaths()
-  for (const packagePath of apachePackagePaths) {
-    await checkPackageLicense(packagePath, apacheLicense, failures)
   }
 
   await checkRequiredDocs(failures)
@@ -96,12 +92,12 @@ async function main() {
   }
 
   console.log(
-    `OK license:check: ${agplPackageJsonPaths.length} AGPL product manifests, ` +
-      `${apachePackagePaths.length} Apache package manifests, required docs, and runtime dependency licenses verified.`,
+    `OK license:check: ${agplPackageJsonPaths.length} AGPL first-party manifests, ` +
+      'required docs, and runtime dependency licenses verified.',
   )
 }
 
-async function listApachePackageJsonPaths(): Promise<string[]> {
+async function listFirstPartyPackageJsonPaths(): Promise<string[]> {
   const packageDirs = await readdir(path.join(root, 'packages'), { withFileTypes: true })
   const packageJsonPaths: string[] = []
 
@@ -111,7 +107,6 @@ async function listApachePackageJsonPaths(): Promise<string[]> {
     if (await fileExists(packageJsonPath)) packageJsonPaths.push(packageJsonPath)
   }
 
-  packageJsonPaths.push('overlay-chrome/packages/overlay-extension-contracts/package.json')
   return packageJsonPaths.sort()
 }
 
@@ -132,7 +127,7 @@ async function checkRequiredDocs(failures: string[]) {
       await access(absolutePath)
       docs.push(await readFile(absolutePath, 'utf8'))
     } catch {
-      failures.push(`${docPath} is required for the split-license policy`)
+      failures.push(`${docPath} is required for the AGPL and commercial licensing policy`)
     }
   }
 

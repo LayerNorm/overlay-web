@@ -6,7 +6,7 @@
   },
   "packageManager": "npm@11.11.0",
   "private": true,
-  "license": "AGPL-3.0-or-later",
+  "license": "AGPL-3.0-only",
   "workspaces": [
     "packages/*"
   ],

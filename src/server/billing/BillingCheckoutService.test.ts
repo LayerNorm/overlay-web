@@ -11,6 +11,7 @@ import type {
   UsageArgs,
 } from '@overlay/app-core'
 import type { EventBus } from '@overlay/app-core'
+import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 
 class CapturingEventBus implements EventBus {
   readonly events: Array<{ payload: unknown; topic: string }> = []
@@ -138,7 +139,7 @@ test('BillingCheckoutService.createSubscriptionCheckout preserves unsupported to
   await assert.rejects(
     () => service.createSubscriptionCheckout({
       user: { id: 'user_1', email: 'user@example.com' },
-      body: { topUpAmountCents: 123 },
+      body: { topUpAmountCents: 123, ...currentLegalAcceptancePayload() },
     }),
     (error) =>
       error instanceof BillingServiceError &&
@@ -162,6 +163,7 @@ test('BillingCheckoutService.createSubscriptionCheckout routes through billing p
       planAmountCents: 2000,
       topUpAmountCents: 1000,
       autoTopUpEnabled: true,
+      ...currentLegalAcceptancePayload(),
     },
   })
 
@@ -195,7 +197,7 @@ test('BillingCheckoutService.createTopUpCheckout requires paid plan', async () =
   await assert.rejects(
     () => service.createTopUpCheckout({
       userId: 'user_1',
-      body: { amountCents: 1000 },
+      body: { amountCents: 1000, ...currentLegalAcceptancePayload() },
     }),
     (error) =>
       error instanceof BillingServiceError &&

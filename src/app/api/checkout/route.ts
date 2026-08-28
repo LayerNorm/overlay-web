@@ -5,6 +5,10 @@ import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
 import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
+import {
+  recordLegalAcceptance,
+  requireCurrentLegalAcceptance,
+} from '@/server/legal/legal-acceptance'
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +32,13 @@ export async function POST(request: NextRequest) {
     if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()
+    const legalAcceptance = requireCurrentLegalAcceptance(body)
+    await recordLegalAcceptance({
+      acceptance: legalAcceptance,
+      context: 'subscription_checkout',
+      request,
+      userId: user.id,
+    })
     const result = await billingCheckoutService.createSubscriptionCheckout({
       user,
       body,
@@ -35,14 +46,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     unstable_rethrow(error)
-    if (error instanceof Error && error.name === 'BillingServiceError') {
-      return billingErrorResponse(error, 'Failed to create checkout session')
-    }
     logger.error('Checkout error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { error: `Failed to create checkout session: ${errorMessage}` },
-      { status: 500 }
-    )
+    return billingErrorResponse(error, 'Failed to create checkout session')
   }
 }

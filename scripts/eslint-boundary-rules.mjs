@@ -152,7 +152,7 @@ export function createArchitectureBoundaryConfigs() {
     },
   })
 
-  // Existing migration debt is documented in internal-docs/migration-notes.md.
+  // Existing migration debt is encoded in the boundary allowlist below.
   // Keep these visible as warnings so production builds do not fail before the
   // remaining feature composition work burns the debt down. New files still fail.
   configs.push({

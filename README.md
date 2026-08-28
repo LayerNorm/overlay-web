@@ -4,13 +4,19 @@
 
 <h1 align="left">Overlay</h1>
 
-An AI workspace that thinks, remembers, creates, and acts — all in one place. Chat with top models, build persistent knowledge, generate media, and run automations without switching tabs.
+Overlay is an open-source workspace where humans and AI agents share context and get work done together. Keep knowledge in one place, delegate repeatable work to agents, review what they produce, and take action through connected tools.
 
 <div align="center">
 
 </div>
 
 🔗 **[Try Overlay](https://getoverlay.io)**
+
+## Why Overlay
+
+Most AI products stop at a single answer. Overlay is built around the next step: a person and one or more agents working in the same context. A human can set direction, provide files and memory, ask an agent to research or execute a task, inspect the result, and decide what happens next.
+
+The workspace is the shared layer between people and agents. Conversations, notes, files, projects, connected apps, and automations can be combined without moving work between separate tools. Overlay is designed to stay provider-neutral as models and agent runtimes change.
 
 ## Documentation
 
@@ -46,15 +52,15 @@ Run `npm run docs:check` before publishing docs changes.
 ## How It Works
 
 1. **Bring your context** — Upload files, save memories, create notes, and organize work into projects.
-2. **Ask or Act** — Ask questions with full knowledge access, or switch to Act mode for tool use and automation.
-3. **Create & execute** — Generate images and videos, run browser tasks, connect apps, and schedule automations.
+2. **Chat or Work** — Use Chat for conversation and synthesis; use Work when an agent needs to use tools, browse, or carry out a task.
+3. **Review and continue** — Inspect sources, files, tool activity, and generated outputs, then keep working in the same shared context.
 
 ## Features
 
 ### Core Capabilities
 
-- **Multi-Model Chat** — Access top models from OpenAI, Anthropic, Google, xAI, Groq, and OpenRouter in one workspace
-- **Ask & Act Modes** — Switch between answer synthesis (Ask) and tool execution (Act) depending on what you need
+- **Provider-neutral Chat** — Use the model providers enabled for your deployment from one workspace
+- **Chat and Work modes** — Keep conversation and agent-led tool execution in the same thread
 - **Persistent Memory** — Save preferences, facts, and standing instructions that compound over time
 - **Knowledge Base** — Upload files, create folders, and search across your personal knowledge with semantic retrieval
 - **Project Organization** — Group chats, notes, files, and context by project for focused work
@@ -106,38 +112,11 @@ Run `npm run docs:check` before publishing docs changes.
 - LinkedIn, X (Twitter), Outlook
 - And 100+ more apps
 
-## Models Supported
+## Providers and model catalog
 
-### Chat Models
+The model catalog is intentionally not duplicated in this README. Provider names, model IDs, capabilities, availability, and pricing change independently of the application. Use the in-product model selector and the gateway metadata as the source of truth for the deployment you are running.
 
-| Provider | Models |
-|----------|--------|
-| **OpenAI** | GPT-5.4, GPT-5.4 Mini, GPT-4.1 |
-| **Anthropic** | Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5 |
-| **Google** | Gemini 3.1 Pro, Gemini 3 Flash, Gemma 4 26B |
-| **xAI** | Grok 4.20 |
-| **DeepSeek** | DeepSeek V4 Pro, V4 Flash |
-| **Moonshot** | Kimi K2.6, Kimi K2 Thinking (free) |
-| **MiniMax** | MiniMax M2.7 |
-| **Qwen** | Qwen 3.6 Plus |
-| **GLM** | GLM 5.1 |
-| **Groq** | GPT OSS 120B |
-| **NVIDIA** | DeepSeek V3.2 (free), Kimi K2 Thinking (free) |
-| **OpenRouter** | Free Router (auto-selects free models) |
-
-### Image Models
-
-- GPT Image 1.5, Grok Image Pro, Grok Image
-- FLUX 2 Max, FLUX Schnell
-- Seedream 5.0 Lite, Seedream 4.5
-
-### Video Models
-
-- Veo 3.1, Veo 3.1 Fast
-- Seedance v1.5 Pro
-- Grok Video
-- Wan v2.6 (T2V, I2V, R2V)
-- Kling v2.6 (T2V, I2V, Motion Control)
+Overlay keeps provider adapters behind a common gateway so the collaboration model remains stable while the available providers evolve.
 
 ## Built With
 
@@ -220,23 +199,25 @@ Convex deployments are environment-specific. Use `npm run convex:push:dev` only 
 - Sensitive logs redacted in chat and billing flows
 - See `SECURITY.md` for full security guidance
 
+## Project status
+
+Overlay is under active development. The hosted product and the open-source repository may change as the collaboration model, provider integrations, and self-hosting support mature. Treat deployment, billing, and provider configuration as environment-specific and verify them before running a production instance.
+
 ## Contributing
 
 - Do not commit real secrets or customer data
 - Keep public docs on placeholders
 - Treat `NEXT_PUBLIC_*` values as public
 - Prefer backend logic in `convex/` with web handlers in `src/app/api/`
+- Open issues and pull requests are welcome. LayerNorm requires the contributor terms in [`CLA.md`](CLA.md) before accepting an outside contribution.
 
 ## License
 
-Overlay uses a split license model:
-
-- Core product surfaces are licensed under `AGPL-3.0-or-later`.
-- Reusable SDKs, contracts, protocol packages, and shared UI packages are licensed under `Apache-2.0`.
+All first-party material stored directly in this repository is licensed under `AGPL-3.0-only`. Paid commercial licenses are available separately from LayerNorm Inc. Third-party material and separate submodules retain their own licenses.
 - Overlay branding is governed by the trademark policy.
 
 See [`LICENSE.md`](LICENSE.md), [`docs/legal/licensing.mdx`](docs/legal/licensing.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).
 
 ---
 
-*Overlay — One workspace, many models, real memory, live action.*
+*Overlay — A shared workspace for humans and agents.*

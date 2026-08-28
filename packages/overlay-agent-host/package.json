@@ -2,7 +2,7 @@
   "name": "@overlay/agent-host",
   "version": "0.0.1",
   "description": "Outbound-only host for connecting user-owned and managed agents to Overlay.",
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
     "overlay-agent-host": "./src/cli.mjs"
