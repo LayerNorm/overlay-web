@@ -164,6 +164,11 @@ The app bootstrap and subscription read use that same resolver. Active members o
 
 All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Postgres and Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution are bounded to 12 tool steps per agent turn and 50,000 response characters; file ingestion is bounded to 20 requests per user per hour plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
 
+Chat reservations price the full 12-step model-call envelope, including the
+per-step 8,192 output-token ceiling. A tool loop must not reserve only its first
+model call: later completed steps would otherwise exceed the reservation and be
+quarantined even when provider usage is valid.
+
 Vercel Sandbox is the default managed sandbox provider. Its reservation is based on worst-case
 active vCPU time, provisioned-memory wall time, outbound transfer, and sandbox creation, with an
 operator-configured safety buffer and pre-provider per-run cost ceiling. Settlement uses provider

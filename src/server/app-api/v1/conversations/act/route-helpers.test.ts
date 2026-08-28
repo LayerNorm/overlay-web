@@ -5,8 +5,10 @@ import {
   AUTOMATION_ACT_ABORT_TIMEOUT_MS,
   DEFAULT_ACT_ABORT_TIMEOUT_MS,
   MAX_ACT_ABORT_TIMEOUT_MS,
+  MAX_ACT_OUTPUT_TOKENS_PER_STEP,
   MIN_ACT_ABORT_TIMEOUT_MS,
   drainReadableStream,
+  estimateToolLoopReservationTokens,
   messagesRequireVision,
   prefixFallbackNoticeAfterStart,
   resolveActAbortTimeoutMs,
@@ -40,6 +42,17 @@ test('resolveActAbortTimeoutMs preserves timeout defaults and clamps', () => {
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 1 }), MIN_ACT_ABORT_TIMEOUT_MS)
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 999_999 }), MAX_ACT_ABORT_TIMEOUT_MS)
   assert.equal(resolveActAbortTimeoutMs({ requestedTimeoutMs: 45_500.9 }), 45_500)
+})
+
+test('tool-loop reservations cover every permitted model step', () => {
+  assert.deepEqual(estimateToolLoopReservationTokens({
+    estimatedInputTokens: 10_001,
+    maxOutputTokensPerStep: MAX_ACT_OUTPUT_TOKENS_PER_STEP,
+    maxSteps: 12,
+  }), {
+    estimatedInputTokens: 120_012,
+    maxOutputTokens: 98_304,
+  })
 })
 
 test('resolveActMultiModelState clamps slots and marks follow-up slots', () => {

@@ -105,7 +105,7 @@ jobs:
 
       - name: Check dependency changes
         if: steps.dependency-graph.outputs.enabled == 'true'
-        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # actions/dependency-review-action v4
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # actions/dependency-review-action v5.0.0
 
       - name: Skip dependency review when dependency graph is disabled
         if: steps.dependency-graph.outputs.enabled != 'true'

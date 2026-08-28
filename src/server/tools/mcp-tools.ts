@@ -97,6 +97,22 @@ export interface McpServerConfig {
   oauthTokenVersion?: number
 }
 
+export function buildMcpToolsContext(args: {
+  userId: string
+  conversationId?: string
+  turnId?: string
+  modelId?: string
+}): Record<string, unknown> {
+  return {
+    call_mcp_tool: {
+      userId: args.userId,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+      ...(args.turnId ? { turnId: args.turnId } : {}),
+      ...(args.modelId ? { modelId: args.modelId } : {}),
+    },
+  }
+}
+
 function getMcpRepository(): McpServerRepository {
   return getOverlayServerContext().appData.repositories.mcpServers
 }
@@ -599,12 +615,10 @@ export async function createMcpLazyMetaTools(args: {
   // v7: toolsContext provides request-scoped runtime metadata to tools
   // that declare a `contextSchema`. This replaces closure capture for
   // values that vary per request (userId, conversationId, turnId, modelId).
-  const toolsContext = {
-    userId: args.userId,
-    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
-    ...(args.turnId ? { turnId: args.turnId } : {}),
-    ...(args.modelId ? { modelId: args.modelId } : {}),
-  }
+  // AI SDK toolsContext is keyed by tool name. Passing this as a flat object
+  // fails contextSchema validation before execute() and leaves a pending tool
+  // call in the transcript without an MCP execution record.
+  const toolsContext = buildMcpToolsContext(args)
 
   return {
     tools: {

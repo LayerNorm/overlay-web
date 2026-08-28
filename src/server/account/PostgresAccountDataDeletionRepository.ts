@@ -72,6 +72,7 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       })
 
       await deleteUserOwnedDurableJobs(tx, args.userId)
+      await deleteWorkspaceAccountState(tx, args.userId)
 
       await tx.execute(sql`
         DELETE FROM users
@@ -94,6 +95,109 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       }
     })
   }
+}
+
+/**
+ * Remove a user's private workspace and anonymize their identity in any
+ * organization that remains. Personal workspaces intentionally retain a
+ * RESTRICT owner foreign key, so deleting the user first would leave account
+ * deletion permanently blocked. Organization history keeps the principal as
+ * an archived, userless actor while memberships and live presence are removed.
+ */
+async function deleteWorkspaceAccountState(tx: Transaction, userId: string): Promise<void> {
+  const finalOwner = await tx.execute<{ name: string }>(sql`
+    SELECT workspace.name
+    FROM workspaces workspace
+    JOIN workspace_memberships membership
+      ON membership.workspace_id = workspace.id
+     AND membership.role = 'owner'
+     AND membership.status = 'active'
+    JOIN workspace_principals principal
+      ON principal.workspace_id = membership.workspace_id
+     AND principal.id = membership.principal_id
+     AND principal.user_id = ${userId}
+    WHERE workspace.kind = 'organization'
+      AND workspace.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM workspace_memberships other_membership
+        JOIN workspace_principals other_principal
+          ON other_principal.workspace_id = other_membership.workspace_id
+         AND other_principal.id = other_membership.principal_id
+        WHERE other_membership.workspace_id = workspace.id
+          AND other_membership.role = 'owner'
+          AND other_membership.status = 'active'
+          AND other_principal.user_id IS DISTINCT FROM ${userId}
+      )
+    ORDER BY workspace.id
+    LIMIT 1
+  `)
+  if (finalOwner.rows[0]) {
+    throw new Error(`Transfer ownership of ${finalOwner.rows[0].name} before deleting this account.`)
+  }
+
+  // Cascades remove all user-owned resources, workspace scopes, and the
+  // personal principal without touching organization history.
+  await tx.execute(sql`
+    DELETE FROM workspaces
+    WHERE kind = 'personal' AND personal_owner_user_id = ${userId}
+  `)
+
+  const organizationPrincipals = await tx.execute<{ id: string }>(sql`
+    SELECT principal.id
+    FROM workspace_principals principal
+    JOIN workspaces workspace ON workspace.id = principal.workspace_id
+    WHERE principal.user_id = ${userId}
+      AND workspace.kind = 'organization'
+  `)
+  if (organizationPrincipals.rows.length === 0) return
+
+  const principalIds = sql.join(
+    organizationPrincipals.rows.map(({ id }) => sql`${id}`),
+    sql`, `,
+  )
+  const now = new Date()
+
+  // Preserve the message record for audit/history, but make the departed
+  // principal inactive and remove ephemeral collaboration state.
+  await tx.execute(sql`
+    UPDATE conversation_participants
+    SET status = 'removed',
+        removed_at = COALESCE(removed_at, ${now}),
+        updated_at = ${now}
+    WHERE principal_id IN (${principalIds})
+      AND status = 'active'
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_presence
+    WHERE principal_id IN (${principalIds})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_notifications
+    WHERE recipient_principal_id IN (${principalIds})
+       OR actor_principal_id IN (${principalIds})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_identity_mappings
+    WHERE principal_id IN (${principalIds})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_team_members
+    WHERE principal_id IN (${principalIds})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_memberships
+    WHERE principal_id IN (${principalIds})
+  `)
+  await tx.execute(sql`
+    UPDATE workspace_principals
+    SET user_id = NULL,
+        email = NULL,
+        display_name = 'Deleted member',
+        archived_at = COALESCE(archived_at, ${now}),
+        updated_at = ${now}
+    WHERE id IN (${principalIds})
+  `)
 }
 
 async function deleteUserOwnedDurableJobs(tx: Transaction, userId: string): Promise<void> {
