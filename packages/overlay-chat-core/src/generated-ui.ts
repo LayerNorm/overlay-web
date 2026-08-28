@@ -1,3 +1,5 @@
+import { safeHttpUrl } from './sources'
+
 export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
 
@@ -71,6 +73,15 @@ function streamingString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+/**
+ * Generated UI is model-authored, so a URL here is attacker-influenceable via
+ * prompt injection. Anything that is not http(s) is dropped: these values reach
+ * window.open / location.href, where a javascript: URL would run in our origin.
+ */
+function optionalHttpUrl(value: unknown): string | undefined {
+  return safeHttpUrl(typeof value === 'string' ? value : null) ?? undefined
+}
+
 function optionalStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
   const out = value.map(nonEmptyString).filter((item): item is string => Boolean(item))
@@ -141,7 +152,7 @@ export function normalizeGeneratedUiData(value: unknown): GeneratedUiData | null
       serviceName,
       ...(optionalString(record.slug) ? { slug: optionalString(record.slug) } : {}),
       ...(optionalString(record.description) ? { description: optionalString(record.description) } : {}),
-      ...(optionalString(record.connectUrl) ? { connectUrl: optionalString(record.connectUrl) } : {}),
+      ...(optionalHttpUrl(record.connectUrl) ? { connectUrl: optionalHttpUrl(record.connectUrl) } : {}),
       ...(typeof record.connected === 'boolean' ? { connected: record.connected } : {}),
     }
   }

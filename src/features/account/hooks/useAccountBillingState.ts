@@ -10,6 +10,7 @@ import {
 } from '@overlay/app-core'
 import { normalizeTopUpDraft } from '@overlay/app-core/settings-account'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type AccountMessage = { type: 'success' | 'error'; text: string }
 
@@ -252,7 +253,12 @@ export function useAccountBillingState({
         sessionId,
       })
       if (data.url) {
-        window.location.href = data.url
+        const checkoutUrl = safeHttpUrl(data.url)
+      if (!checkoutUrl) {
+        setMessage({ type: 'error', text: 'Failed to start top-up checkout.' })
+        return
+      }
+      window.location.href = checkoutUrl
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to open billing portal' })
       }

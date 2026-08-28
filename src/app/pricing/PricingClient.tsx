@@ -28,6 +28,7 @@ import {
   minimalSerif,
 } from '@/features/marketing/lib/minimalLayout'
 import { formatBytes } from '@/shared/storage/storage-limits'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 const TIER_STARTER_CENTS = 800
 const TIER_PRO_CENTS = 2_400
@@ -240,8 +241,9 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
         return
       }
 
-      if (data.url) {
-        window.location.href = data.url
+      const checkoutUrl = safeHttpUrl(data.url)
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl
         return
       }
 

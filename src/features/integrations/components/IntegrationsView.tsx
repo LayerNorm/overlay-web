@@ -25,6 +25,7 @@ import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/int
 import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 const LIST_PAGE_SIZE = 8
@@ -229,9 +230,10 @@ export default function IntegrationsView({
         if (!res.ok) {
           oauthTab?.close()
           setConnectError(data.error || 'Failed to connect')
-        } else if (data.redirectUrl) {
-          if (oauthTab) oauthTab.location.href = data.redirectUrl
-          else window.open(data.redirectUrl, '_blank')
+        } else if (safeHttpUrl(data.redirectUrl)) {
+          const redirectUrl = safeHttpUrl(data.redirectUrl)!
+          if (oauthTab) oauthTab.location.href = redirectUrl
+          else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
           posthog.capture('integration_connect_initiated', { integration: integration.providerKey, integration_name: integration.name })
         } else {
           oauthTab?.close()
@@ -255,9 +257,10 @@ export default function IntegrationsView({
         oauthTab?.close()
         throw new Error(data.error || 'Failed to initiate connection')
       }
-      if (data.redirectUrl) {
-        if (oauthTab) oauthTab.location.href = data.redirectUrl
-        else window.open(data.redirectUrl, '_blank')
+      const redirectUrl = safeHttpUrl(data.redirectUrl)
+      if (redirectUrl) {
+        if (oauthTab) oauthTab.location.href = redirectUrl
+        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
         posthog.capture('integration_connect_initiated', { integration: slug })
       } else if (data.connectionId) {
         oauthTab?.close()

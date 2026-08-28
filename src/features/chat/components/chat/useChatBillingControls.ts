@@ -13,6 +13,7 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { Entitlements } from '../chat-interface/types'
 
@@ -239,7 +240,12 @@ export function useChatBillingControls({
         setComposerNotice(data.error || 'Failed to start top-up checkout.')
         return
       }
-      window.location.href = data.url
+      const checkoutUrl = safeHttpUrl(data.url)
+      if (!checkoutUrl) {
+        setComposerNotice('Failed to start top-up checkout.')
+        return
+      }
+      window.location.href = checkoutUrl
     } catch {
       setComposerNotice('Failed to start top-up checkout.')
     } finally {

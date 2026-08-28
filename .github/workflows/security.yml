@@ -22,6 +22,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -45,6 +46,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
+        with:
+          persist-credentials: false
 
       - name: Fail on public secret-like env vars
         shell: bash
@@ -84,6 +87,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
+        with:
+          persist-credentials: false
 
       - name: Detect dependency graph availability
         id: dependency-graph
@@ -112,6 +117,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
+        with:
+          persist-credentials: false
 
       - name: Check out desktop transcript contract
         run: git submodule update --init --depth 1 overlay-desktop

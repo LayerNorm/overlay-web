@@ -3,6 +3,7 @@
 import type { ComponentProps } from 'react'
 import KnowledgeView from '@/features/knowledge/components/KnowledgeView'
 import { FileViewer, OutputViewer, type FileViewerAsset } from '@overlay/modules-react/knowledge'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type KnowledgeViewProps = ComponentProps<typeof KnowledgeView>
 
@@ -16,7 +17,8 @@ function downloadInBrowser({ name, url }: FileViewerAsset): void {
 }
 
 function openInBrowser({ url }: FileViewerAsset): void {
-  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+  const safe = safeHttpUrl(url)
+  if (safe) window.open(safe, '_blank', 'noopener,noreferrer')
 }
 
 const browserViewerOperations = {

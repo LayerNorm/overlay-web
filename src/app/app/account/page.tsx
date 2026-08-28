@@ -40,6 +40,9 @@ import {
 const APP_PROTOCOL = 'overlay'
 
 function triggerDeepLink(url: string) {
+  // Server-supplied value assigned to location: only the app's own scheme is
+  // allowed, so a javascript: URL can never reach the navigation.
+  if (typeof url !== 'string' || !url.startsWith(`${APP_PROTOCOL}://`)) return
   console.log('[Account] Triggering deep link:', url)
   window.location.href = url
 }
