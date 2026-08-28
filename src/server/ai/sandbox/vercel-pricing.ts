@@ -92,12 +92,16 @@ export function sandboxReservationBufferPercent() {
 }
 
 function positiveEnv(name: string, fallback: number) {
-  const value = Number(process.env[name])
+  const configured = process.env[name]?.trim()
+  if (!configured) return fallback
+  const value = Number(configured)
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
 function nonNegativeEnv(name: string, fallback: number) {
-  const value = Number(process.env[name])
+  const configured = process.env[name]?.trim()
+  if (!configured) return fallback
+  const value = Number(configured)
   return Number.isFinite(value) && value >= 0 ? value : fallback
 }
 

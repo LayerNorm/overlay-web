@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   calculateVercelSandboxCostUsd,
+  DEFAULT_VERCEL_SANDBOX_PRICING,
   estimateVercelSandboxReservationUsd,
+  sandboxReservationBufferPercent,
+  vercelSandboxPricingFromEnv,
 } from './vercel-pricing'
 
 const pricing = {
@@ -38,4 +41,22 @@ test('Vercel reservation assumes all vCPUs are active and applies a safety buffe
   })
   const unbuffered = (2 * 0.128) + (4 * 0.0212) + 0.15 + 0.0000006
   assert.equal(reservation, unbuffered * 1.25)
+})
+
+test('blank pricing values cannot disable cost accounting or the reservation buffer', () => {
+  const creationName = 'OVERLAY_VERCEL_SANDBOX_CREATION_USD'
+  const bufferName = 'OVERLAY_VERCEL_SANDBOX_RESERVATION_BUFFER_PERCENT'
+  const previousCreation = process.env[creationName]
+  const previousBuffer = process.env[bufferName]
+  try {
+    process.env[creationName] = '  '
+    process.env[bufferName] = ''
+    assert.equal(vercelSandboxPricingFromEnv().creationUsd, DEFAULT_VERCEL_SANDBOX_PRICING.creationUsd)
+    assert.equal(sandboxReservationBufferPercent(), 25)
+  } finally {
+    if (previousCreation === undefined) delete process.env[creationName]
+    else process.env[creationName] = previousCreation
+    if (previousBuffer === undefined) delete process.env[bufferName]
+    else process.env[bufferName] = previousBuffer
+  }
 })

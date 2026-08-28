@@ -168,7 +168,13 @@ Vercel Sandbox is the default managed sandbox provider. Its reservation is based
 active vCPU time, provisioned-memory wall time, outbound transfer, and sandbox creation, with an
 operator-configured safety buffer and pre-provider per-run cost ceiling. Settlement uses provider
 SDK counters after the session stops; incomplete counters fail into reconciliation instead of an
-estimated charge. The default `iad1` region and its configured unit rates must move together.
+estimated charge. The standalone sandbox route denies outbound network access unless the operator
+configures an explicit domain allowlist, rejects private and link-local destinations, terminates
+the command when its non-loopback transmit-byte ceiling is exceeded, and rejects oversized
+artifacts before provider transfer. Its reservation includes both the command ceiling and the
+maximum bounded artifact transfer. The default `iad1` region and its configured unit rates must
+move together. Blank pricing or buffer variables fall back to conservative defaults rather than
+silently becoming zero.
 
 Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. Both the Next/Postgres webhook and hosted Convex webhook preserve the personal metadata path, deduplicate event IDs, and reject stale subscription state with `providerEventCreatedAt`.
 

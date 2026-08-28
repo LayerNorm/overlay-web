@@ -27,6 +27,8 @@ import {
   estimateVercelSandboxReservationUsd,
   sandboxProviderCostLimitUsd,
 } from '@/server/ai/sandbox/vercel-pricing'
+import { buildSandboxEgressGuardedCommand } from '@/server/ai/sandbox/egress-guard'
+import { sandboxRunMaxEgressBytes, sandboxRunNetworkPolicy } from '@/server/ai/sandbox/run-policy'
 import {
   buildDaytonaRunResult,
   collectDaytonaArtifacts,
@@ -34,7 +36,7 @@ import {
   stageDaytonaInputFiles,
   stageInlineCodeFile,
 } from '../../daytona/run/sandbox-runner'
-import { parseDaytonaRunRequest } from '../../daytona/run/request'
+import { MAX_ARTIFACT_BYTES, parseDaytonaRunRequest } from '../../daytona/run/request'
 
 export const SANDBOX_MAX_DURATION_SECONDS = 300
 
@@ -46,9 +48,9 @@ const SANDBOX_RUN_DIR = '/sandbox/overlay/run'
 const SANDBOX_OUTPUT_DIR = '/sandbox/overlay/outputs'
 const SANDBOX_STDOUT_PATH = '/sandbox/overlay/.stdout'
 const SANDBOX_STDERR_PATH = '/sandbox/overlay/.stderr'
+const SANDBOX_EGRESS_LIMIT_MARKER_PATH = '/sandbox/overlay/.egress-limit-exceeded'
 
 const SANDBOX_RESOURCES = { memoryGb: 4, vcpus: 2 }
-const DEFAULT_SANDBOX_MAX_EGRESS_BYTES = 10_000_000_000
 
 async function readOverlayFileBuffer(file: OverlayFileRecord): Promise<Buffer> {
   if (file.r2Key) {
@@ -75,7 +77,7 @@ async function waitForSandboxFile(
     try {
       const entries = await sandbox.listFiles(pathPosix.dirname(remotePath))
       const details = entries.find((entry) => entry.path === remotePath)
-      if (details && details.kind !== 'directory') return { isDir: false }
+      if (details && details.kind !== 'directory') return { isDir: false, sizeBytes: details.size }
     } catch (_error) {
       // retry
     }
@@ -137,10 +139,15 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
 
   const { generationUsagePolicy } = getOverlayServerContext()
   let meteringEndedAt: number | null = null
+  const networkPolicy = sandboxRunNetworkPolicy()
+  const maxCommandEgressBytes = networkPolicy.mode === 'deny_all' ? 0 : sandboxRunMaxEgressBytes()
+  const maxArtifactEgressBytes = expectedOutputs.length * MAX_ARTIFACT_BYTES
 
   const estimatedProviderCostUsd = estimateVercelSandboxReservationUsd({
     includeCreation: true,
-    maxEgressBytes: sandboxMaxEgressBytes(),
+    // Artifact downloads happen after the user command, so reserve their
+    // independent bounded transfer in addition to the command egress guard.
+    maxEgressBytes: maxCommandEgressBytes + maxArtifactEgressBytes,
     maxRunTimeMs: SANDBOX_MAX_DURATION_SECONDS * 1_000,
     memoryGb: SANDBOX_RESOURCES.memoryGb,
     vcpus: SANDBOX_RESOURCES.vcpus,
@@ -190,7 +197,7 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
       persistent: false,
       hardTimeoutMs: SANDBOX_MAX_DURATION_SECONDS * 1_000,
       idleTimeoutMs: 0,
-      networkPolicy: { mode: 'allow_all' },
+      networkPolicy,
       resources: { vcpus: SANDBOX_RESOURCES.vcpus, memoryGiB: SANDBOX_RESOURCES.memoryGb },
       metadata: {
         'overlay.userId': userId,
@@ -248,6 +255,8 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
           stdoutPath: paths.stdoutPath,
           stderrPath: paths.stderrPath,
           timeoutMs: SANDBOX_MAX_DURATION_SECONDS * 1_000,
+          maxEgressBytes: maxCommandEgressBytes,
+          egressLimitMarkerPath: SANDBOX_EGRESS_LIMIT_MARKER_PATH,
         })
       } finally {
         meteringEndedAt = Date.now()
@@ -263,6 +272,7 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
       downloadFile: downloadSandboxFile,
       expectedOutputs,
       findSandboxFile: waitForSandboxFile,
+      requireKnownSizeBeforeDownload: true,
       paths,
       runtime: sandboxRuntime,
       sandbox,
@@ -486,7 +496,9 @@ async function prepareSandboxWorkspace(
 async function executeSandboxCommand(sandbox: SandboxInstance, input: {
   command: string
   cwd: string
+  egressLimitMarkerPath: string
   environment: Record<string, string>
+  maxEgressBytes: number
   stdoutPath: string
   stderrPath: string
   timeoutMs: number
@@ -497,13 +509,13 @@ async function executeSandboxCommand(sandbox: SandboxInstance, input: {
     contents: Buffer.from(`#!/usr/bin/env bash\nset -o pipefail\n${input.command.trimEnd()}\n`),
     mode: 0o700,
   }])
-  const wrapped = [
-    `mkdir -p ${shellQuote(pathPosix.dirname(input.stdoutPath))}`,
-    `bash ${shellQuote(commandPath)} > ${shellQuote(input.stdoutPath)} 2> ${shellQuote(input.stderrPath)}`,
-    'EXIT_CODE=$?',
-    `if [ -f ${shellQuote(input.stdoutPath)} ]; then cat ${shellQuote(input.stdoutPath)}; fi`,
-    'exit $EXIT_CODE',
-  ].join('; ')
+  const wrapped = buildSandboxEgressGuardedCommand({
+    commandPath,
+    markerPath: input.egressLimitMarkerPath,
+    maxEgressBytes: input.maxEgressBytes,
+    stderrPath: input.stderrPath,
+    stdoutPath: input.stdoutPath,
+  })
   const handle = await sandbox.runCommand({
     command: '/bin/sh',
     args: ['-lc', wrapped],
@@ -518,17 +530,6 @@ async function executeSandboxCommand(sandbox: SandboxInstance, input: {
     stdout: result.stdout,
     stderr: stderr ? Buffer.from(stderr).toString('utf8') : result.stderr,
   }
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`
-}
-
-function sandboxMaxEgressBytes() {
-  const configured = Number(process.env.OVERLAY_SANDBOX_RUN_MAX_EGRESS_BYTES)
-  return Number.isFinite(configured) && configured >= 0
-    ? configured
-    : DEFAULT_SANDBOX_MAX_EGRESS_BYTES
 }
 
 function hasCompleteVercelUsage(usage: SandboxUsage | null): usage is Required<Pick<SandboxUsage, 'wallTimeMs' | 'activeCpuTimeMs' | 'egressBytes'>> & SandboxUsage {
