@@ -347,7 +347,7 @@
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/compat": "^2.1.0",
     "@next/bundle-analyzer": "16.3.0",
-    "@remotion/cli": "^4.0.441",
+    "@remotion/cli": "^4.0.518",
     "@remotion/player": "^4.0.441",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^22.20.1",
