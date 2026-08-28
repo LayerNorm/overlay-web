@@ -228,6 +228,7 @@ function resolveToolState(
 ) {
   const current = state ?? 'output-available'
   if (TOOL_UI_DONE_STATES.has(current) || current === 'output-error' || current === 'output-denied') return current
+  if (current === 'input-error') return 'output-error'
   if (terminalState) return terminalState === 'completed' ? 'output-available' : 'output-error'
   if (toolName === 'remote_action' && outcome) {
     return outcome === 'completed' ? 'output-available' : 'output-error'

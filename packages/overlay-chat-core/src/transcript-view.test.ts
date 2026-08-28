@@ -140,6 +140,18 @@ test('normalizes AI SDK source parts and settles stale tools after a completed r
   ])
 })
 
+test('preserves tool input failures after a completed response', () => {
+  const normalized = normalizeTranscriptAssistantParts([{
+    type: 'tool-web_search',
+    toolCallId: 'search-failed',
+    state: 'input-error',
+    input: { query: 'release notes' },
+  }], { terminalState: 'completed' })
+
+  const tool = normalized.blocks.find((block) => block.kind === 'tool')
+  assert.equal(tool?.kind === 'tool' ? tool.state : null, 'output-error')
+})
+
 test('restores image and video output groups without sharing mutable result objects', () => {
   const group = {
     type: 'video' as const,
