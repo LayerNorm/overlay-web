@@ -27,8 +27,8 @@ import {
   estimateVercelSandboxReservationUsd,
   sandboxProviderCostLimitUsd,
 } from '@/server/ai/sandbox/vercel-pricing'
-import { buildSandboxEgressGuardedCommand } from '@/server/ai/sandbox/egress-guard'
-import { sandboxRunMaxEgressBytes, sandboxRunNetworkPolicy } from '@/server/ai/sandbox/run-policy'
+import { buildSandboxProcessGuardedCommand } from '@/server/ai/sandbox/process-guard'
+import { sandboxRunNetworkPolicy } from '@/server/ai/sandbox/run-policy'
 import {
   buildDaytonaRunResult,
   collectDaytonaArtifacts,
@@ -48,7 +48,6 @@ const SANDBOX_RUN_DIR = '/sandbox/overlay/run'
 const SANDBOX_OUTPUT_DIR = '/sandbox/overlay/outputs'
 const SANDBOX_STDOUT_PATH = '/sandbox/overlay/.stdout'
 const SANDBOX_STDERR_PATH = '/sandbox/overlay/.stderr'
-const SANDBOX_EGRESS_LIMIT_MARKER_PATH = '/sandbox/overlay/.egress-limit-exceeded'
 
 const SANDBOX_RESOURCES = { memoryGb: 4, vcpus: 2 }
 
@@ -140,14 +139,13 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
   const { generationUsagePolicy } = getOverlayServerContext()
   let meteringEndedAt: number | null = null
   const networkPolicy = sandboxRunNetworkPolicy()
-  const maxCommandEgressBytes = networkPolicy.mode === 'deny_all' ? 0 : sandboxRunMaxEgressBytes()
   const maxArtifactEgressBytes = expectedOutputs.length * MAX_ARTIFACT_BYTES
 
   const estimatedProviderCostUsd = estimateVercelSandboxReservationUsd({
     includeCreation: true,
-    // Artifact downloads happen after the user command, so reserve their
-    // independent bounded transfer in addition to the command egress guard.
-    maxEgressBytes: maxCommandEgressBytes + maxArtifactEgressBytes,
+    // The command cannot use the network. Reserve the maximum independently
+    // bounded artifact transfer that happens after it exits.
+    maxEgressBytes: maxArtifactEgressBytes,
     maxRunTimeMs: SANDBOX_MAX_DURATION_SECONDS * 1_000,
     memoryGb: SANDBOX_RESOURCES.memoryGb,
     vcpus: SANDBOX_RESOURCES.vcpus,
@@ -255,8 +253,6 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
           stdoutPath: paths.stdoutPath,
           stderrPath: paths.stderrPath,
           timeoutMs: SANDBOX_MAX_DURATION_SECONDS * 1_000,
-          maxEgressBytes: maxCommandEgressBytes,
-          egressLimitMarkerPath: SANDBOX_EGRESS_LIMIT_MARKER_PATH,
         })
       } finally {
         meteringEndedAt = Date.now()
@@ -496,9 +492,7 @@ async function prepareSandboxWorkspace(
 async function executeSandboxCommand(sandbox: SandboxInstance, input: {
   command: string
   cwd: string
-  egressLimitMarkerPath: string
   environment: Record<string, string>
-  maxEgressBytes: number
   stdoutPath: string
   stderrPath: string
   timeoutMs: number
@@ -509,10 +503,8 @@ async function executeSandboxCommand(sandbox: SandboxInstance, input: {
     contents: Buffer.from(`#!/usr/bin/env bash\nset -o pipefail\n${input.command.trimEnd()}\n`),
     mode: 0o700,
   }])
-  const wrapped = buildSandboxEgressGuardedCommand({
+  const wrapped = buildSandboxProcessGuardedCommand({
     commandPath,
-    markerPath: input.egressLimitMarkerPath,
-    maxEgressBytes: input.maxEgressBytes,
     stderrPath: input.stderrPath,
     stdoutPath: input.stdoutPath,
   })
