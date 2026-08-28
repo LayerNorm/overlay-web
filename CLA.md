@@ -40,7 +40,7 @@ If You accept for a legal entity, You represent that You are authorized to bind 
 
 ## 7. Acceptance and records
 
-LayerNorm may require acceptance through a CLA service, a signed document, or another verifiable electronic process. A pull-request checkbox alone is not sufficient until LayerNorm has configured an acceptance system that records the accepting person or entity, Agreement version, timestamp, repository, and Contribution identifier.
+LayerNorm records acceptance through the `CLA Signatures` GitHub Action. A contributor signs by posting the exact comment `I have read the CLA Document and I hereby sign the CLA` on the pull request. The action stores the GitHub identity, CLA version, timestamp, repository, and pull request number on the `cla-signatures` branch. A pull-request checkbox alone is not a signature. The repository owner and GitHub automation accounts are allowlisted.
 
 ## 8. Governing terms
 
