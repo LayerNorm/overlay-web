@@ -35,6 +35,7 @@ test('balance parity names every divergent field', () => {
 test('Stripe verification requires six exact account-linked matches', () => {
   const local: BillingSubscriptionVerificationRow[] = []
   const stripe: StripeSubscriptionVerificationRow[] = []
+  local.push({ planAmountCents: 0, status: 'active', userId: 'free_user' })
   for (let index = 0; index < 6; index += 1) {
     local.push({
       billingAccountId: `ba_${index}`,

@@ -87,7 +87,11 @@ export function verifyStripeSubscriptionsExactly(args: {
   stripe: StripeSubscriptionVerificationRow[]
 }): StripeSubscriptionVerificationReport {
   const activeStatuses = new Set(['active', 'past_due', 'trialing'])
-  const local = args.local.filter((row) => activeStatuses.has(row.status))
+  const activeLocal = args.local.filter((row) => activeStatuses.has(row.status))
+  // Free-tier rows are intentionally active but have no Stripe subscription.
+  // Only paid-shaped rows participate in provider parity; a paid row without
+  // a provider subscription remains in the set so it is reported as a gap.
+  const local = activeLocal.filter((row) => Boolean(row.providerSubscriptionId) || row.planAmountCents > 0)
   const stripe = args.stripe.filter((row) => activeStatuses.has(row.status))
   const issues: string[] = []
   if (local.length !== args.expectedActiveSubscriptions) {
