@@ -30,6 +30,12 @@ The web app owns backend route contracts for every surface. Desktop, mobile, Chr
 
 Surfaces should use bootstrap first, then render their native shell from those registries.
 
+`GET /api/v1/model-catalog` returns the authorized live AI Gateway catalog for
+language, image, and video models. Clients register only media entries whose
+Gateway pricing shape is supported by Overlay's reservation calculator; unpriced
+media models stay unavailable instead of creating unreconcilable usage. The
+settings model catalog uses this route for chat enablement and image/video defaults.
+
 ## Agent environments
 
 `/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
@@ -97,6 +103,12 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Both Convex and Postgres append the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` is reserved for the Postgres provider and must not be mounted as a Convex fallback.
+- Personal chat creation is deferred until the first send. Newly created DMs and
+  channels are client-side drafts until their first message succeeds: they are not
+  inserted into the sidebar list, and navigating away removes the current member
+  from the empty room (falling back to a self-archive when the room must retain a
+  human participant). A successful or remotely observed first message commits the
+  draft and emits the ordinary conversation-created event.
 
 ## Personal Chat AgentRun contracts
 
@@ -118,6 +130,10 @@ credentials are never public contract fields.
   through `createModelCallToUIChunkTransform` so the client receives token,
   tool, and approval updates in real time. Work mode closes the stream when the
   workflow finalizes or fails.
+- Both Chat and Work streams preserve provider-native `source-url` and
+  `source-document` UI parts. The transcript adapter owns compatibility with the
+  legacy `source` shape and projects incomplete tool/reasoning part states to a
+  terminal state once their response is completed, cancelled, interrupted, or failed.
 - `GET /api/v1/conversations/run?conversationId=<id>` returns an active
   `AgentRun` when any model slot is non-terminal, otherwise the most recent
   terminal run. Clients use this response—not `conversationMessages.status`—to

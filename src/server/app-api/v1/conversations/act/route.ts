@@ -1059,6 +1059,7 @@ export async function POST(
     const _uiStream = toUIMessageStream({
       stream: result.stream,
       originalMessages: uiMessages,
+      sendSources: true,
       onError: (error: unknown) => {
         logger.error('[conversations/act] stream error', {
           requestId,

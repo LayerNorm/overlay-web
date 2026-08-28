@@ -205,7 +205,45 @@ export function deriveChatExchangeStatus(input: {
   return 'idle'
 }
 
-export function normalizeTranscriptAssistantParts(parts: readonly unknown[] | undefined): {
+type RawTranscriptSourcePart = {
+  type?: unknown
+  id?: unknown
+  sourceKind?: unknown
+  sourceId?: unknown
+  url?: unknown
+  title?: unknown
+  mediaType?: unknown
+  filename?: unknown
+}
+
+function normalizedTranscriptSource(
+  part: unknown,
+  originIndex: number,
+): ChatTranscriptSourceView | null {
+  const source = part as RawTranscriptSourcePart
+  let sourceKind: ChatTranscriptSourceView['sourceKind'] | null = null
+  if (source.type === 'source-url') sourceKind = 'url'
+  else if (source.type === 'source-document') sourceKind = 'document'
+  else if (source.type === 'source' && source.sourceKind === 'url') sourceKind = 'url'
+  else if (source.type === 'source' && source.sourceKind === 'document') sourceKind = 'document'
+  if (!sourceKind || typeof source.sourceId !== 'string' || !source.sourceId.trim()) return null
+
+  return {
+    id: typeof source.id === 'string' && source.id.trim() ? source.id : `source-${originIndex}`,
+    sourceKind,
+    sourceId: source.sourceId,
+    ...(typeof source.url === 'string' && source.url ? { url: source.url } : {}),
+    ...(typeof source.title === 'string' && source.title ? { title: source.title } : {}),
+    ...(typeof source.mediaType === 'string' && source.mediaType ? { mediaType: source.mediaType } : {}),
+    ...(typeof source.filename === 'string' && source.filename ? { filename: source.filename } : {}),
+    originIndex,
+  }
+}
+
+export function normalizeTranscriptAssistantParts(
+  parts: readonly unknown[] | undefined,
+  options: { terminalState?: 'completed' | 'error' | 'cancelled' | 'interrupted' } = {},
+): {
   blocks: AssistantVisualBlock[]
   sources: ChatTranscriptSourceView[]
 } {
@@ -215,41 +253,17 @@ export function normalizeTranscriptAssistantParts(parts: readonly unknown[] | un
 
   const flushVisualChunk = () => {
     if (visualChunk.length === 0) return
-    blocks.push(...buildAssistantVisualSequence(visualChunk))
+    blocks.push(...buildAssistantVisualSequence(visualChunk, options))
     visualChunk = []
   }
 
   for (const [originIndex, part] of (parts ?? []).entries()) {
-    const source = part as {
-      type?: unknown
-      id?: unknown
-      sourceKind?: unknown
-      sourceId?: unknown
-      url?: unknown
-      title?: unknown
-      mediaType?: unknown
-      filename?: unknown
-    }
-    if (source.type !== 'source') {
-      visualChunk.push(part)
-      continue
-    }
-    const sourceKind = source.sourceKind === 'url' ? 'url' : source.sourceKind === 'document' ? 'document' : null
-    if (!sourceKind || typeof source.sourceId !== 'string' || !source.sourceId.trim()) {
+    const normalizedSource = normalizedTranscriptSource(part, originIndex)
+    if (!normalizedSource) {
       visualChunk.push(part)
       continue
     }
     flushVisualChunk()
-    const normalizedSource: ChatTranscriptSourceView = {
-      id: typeof source.id === 'string' && source.id.trim() ? source.id : `source-${originIndex}`,
-      sourceKind,
-      sourceId: source.sourceId,
-      ...(typeof source.url === 'string' && source.url ? { url: source.url } : {}),
-      ...(typeof source.title === 'string' && source.title ? { title: source.title } : {}),
-      ...(typeof source.mediaType === 'string' && source.mediaType ? { mediaType: source.mediaType } : {}),
-      ...(typeof source.filename === 'string' && source.filename ? { filename: source.filename } : {}),
-      originIndex,
-    }
     sources.push(normalizedSource)
     blocks.push({
       kind: 'source',

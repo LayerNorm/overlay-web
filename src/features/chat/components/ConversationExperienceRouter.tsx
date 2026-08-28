@@ -39,6 +39,8 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   const searchParams = useSearchParams()
   const searchConversationId = searchParams?.get('id') ?? null
   const searchView = searchParams?.get('view') ?? null
+  const draft = searchParams?.get('draft') === '1'
+  const draftTitle = searchParams?.get('title') ?? undefined
   // Bumped only from browser soft-nav / popstate so we re-read window.location.
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
 
@@ -75,6 +77,8 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       <DirectMessageExperience
         key={`dm:${conversationId}`}
         conversationId={conversationId}
+        draft={draft}
+        draftTitle={draftTitle}
         showcase={Boolean(props.publicShowcaseSnapshots)}
       />
     )
@@ -85,6 +89,8 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
         key={`channel:${conversationId}`}
         conversationId={conversationId}
         conversationType="channel"
+        draft={draft}
+        draftTitle={draftTitle}
         showcase={Boolean(props.publicShowcaseSnapshots)}
       />
     )

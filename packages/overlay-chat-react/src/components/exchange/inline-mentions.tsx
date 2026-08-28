@@ -1,4 +1,26 @@
-import { type ReactNode } from 'react'
+import { type ComponentType, type ReactNode } from 'react'
+import {
+  AtSign,
+  BookOpen,
+  Bot,
+  FileText,
+  Hash,
+  Plug,
+  Server,
+  Sparkles,
+  type LucideProps,
+} from 'lucide-react'
+
+const MENTION_ICONS: Record<string, ComponentType<LucideProps>> = {
+  person: AtSign,
+  file: FileText,
+  knowledge: BookOpen,
+  connector: Plug,
+  automation: Bot,
+  skill: Sparkles,
+  mcp: Server,
+  chat: Hash,
+}
 
 export function renderInlineMentions(
   text: string,
@@ -20,6 +42,11 @@ export function renderInlineMentions(
         key={match.index}
         className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] px-1.5 py-0.5 text-xs font-medium text-[var(--foreground)] align-middle mx-0.5"
       >
+        {(() => {
+          const mention = sorted.find((item) => item.name === match?.[1])
+          const Icon = MENTION_ICONS[mention?.type ?? 'person'] ?? AtSign
+          return <Icon size={11} strokeWidth={1.75} aria-hidden="true" />
+        })()}
         {match[0]}
       </span>
     )

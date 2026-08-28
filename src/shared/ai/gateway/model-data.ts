@@ -7,6 +7,9 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import {
   gatewayCatalogModelToChatModel,
+  gatewayCatalogModelHasSupportedPricing,
+  gatewayCatalogModelToImageModel,
+  gatewayCatalogModelToVideoModel,
   type GatewayCatalogModel,
 } from '@/shared/ai/gateway/gateway-catalog'
 import {
@@ -164,6 +167,14 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
     registered.push(chatModel)
   }
   rebuildAvailableModels(registered, registeredIds)
+  const liveImageModels = models
+    .filter((model) => model.type === 'image' && gatewayCatalogModelHasSupportedPricing(model))
+    .map(gatewayCatalogModelToImageModel)
+  const liveVideoModels = models
+    .filter((model) => model.type === 'video' && gatewayCatalogModelHasSupportedPricing(model))
+    .map(gatewayCatalogModelToVideoModel)
+  if (liveImageModels.length > 0) IMAGE_MODELS.splice(0, IMAGE_MODELS.length, ...liveImageModels)
+  if (liveVideoModels.length > 0) VIDEO_MODELS.splice(0, VIDEO_MODELS.length, ...liveVideoModels)
   gatewayCatalogRegistered = true
 }
 
@@ -414,10 +425,8 @@ export function getEnabledChatModels(
 
 export const IMAGE_MODELS: ImageModel[] = [
   { id: 'openai/gpt-image-1.5', name: 'GPT Image 1.5', provider: 'openai', description: 'High quality, detailed', defaultAspectRatio: '1:1' },
-  { id: 'xai/grok-imagine-image-pro', name: 'Grok Image Pro', provider: 'xai', description: 'Photorealistic', defaultAspectRatio: '1:1' },
-  { id: 'xai/grok-imagine-image', name: 'Grok Image', provider: 'xai', description: 'Fast & creative', defaultAspectRatio: '1:1' },
-  { id: 'bfl/flux-2-max', name: 'FLUX 2 Max', provider: 'bfl', description: 'Premium quality', defaultAspectRatio: '1:1' },
-  { id: 'prodia/flux-fast-schnell', name: 'FLUX Schnell', provider: 'prodia', description: 'Ultra-fast, low cost', defaultAspectRatio: '1:1' },
+  { id: 'spacexai/grok-imagine-image-2.0', name: 'Grok Imagine Image 2.0', provider: 'spacexai', description: 'Photorealistic', defaultAspectRatio: '1:1' },
+  { id: 'spacexai/grok-imagine-image', name: 'Grok Imagine Image', provider: 'spacexai', description: 'Fast & creative', defaultAspectRatio: '1:1' },
   { id: 'bytedance/seedream-5.0-lite', name: 'Seedream 5.0 Lite', provider: 'bytedance', description: 'Fast generation', defaultAspectRatio: '1:1' },
   { id: 'bytedance/seedream-4.5', name: 'Seedream 4.5', provider: 'bytedance', description: 'Balanced quality', defaultAspectRatio: '1:1' },
 ]
@@ -433,7 +442,7 @@ export const VIDEO_MODELS: VideoModel[] = [
   { id: 'google/veo-3.1-generate-001', name: 'Veo 3.1', provider: 'google', description: 'Highest quality', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video'] },
   { id: 'google/veo-3.1-fast-generate-001', name: 'Veo 3.1 Fast', provider: 'google', description: 'Fast generation', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video'] },
   { id: 'bytedance/seedance-v1.5-pro', name: 'Seedance v1.5 Pro', provider: 'bytedance', description: 'Cinematic quality', billingUnit: 'per_second', defaultDuration: 10, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video'] },
-  { id: 'xai/grok-imagine-video', name: 'Grok Video', provider: 'xai', description: 'Creative & fast', billingUnit: 'per_video', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video', 'video-editing'] },
+  { id: 'spacexai/grok-imagine-video', name: 'Grok Video', provider: 'spacexai', description: 'Creative & fast', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video', 'image-to-video', 'video-editing'] },
   // Text-to-video only
   { id: 'alibaba/wan-v2.6-t2v', name: 'Wan v2.6', provider: 'alibaba', description: 'Versatile', billingUnit: 'per_second', defaultDuration: 8, defaultAspectRatio: '16:9', subModes: ['text-to-video'] },
   { id: 'klingai/kling-v2.6-t2v', name: 'Kling v2.6', provider: 'klingai', description: 'Cinematic motion', billingUnit: 'per_video', defaultDuration: 5, defaultAspectRatio: '16:9', subModes: ['text-to-video'] },

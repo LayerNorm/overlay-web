@@ -4,6 +4,8 @@ import test from 'node:test'
 import {
   getEnabledChatModels,
   getGatewayCatalogRevision,
+  IMAGE_MODELS,
+  VIDEO_MODELS,
   registerByokModels,
   registerGatewayCatalogModels,
 } from './model-data'
@@ -25,6 +27,16 @@ test('new gateway models appear before the free section for paid users', () => {
     },
     inputPricePerMillion: 0.3,
     outputPricePerMillion: 1.2,
+  }, {
+    id: UNKNOWN_ENABLED_ID,
+    gatewayId: UNKNOWN_ENABLED_ID,
+    name: 'Not Yet In Static Catalog',
+    type: 'language',
+    provider: 'vendor',
+    tags: ['vision', 'reasoning'],
+    pricing: { input: '0', output: '0' },
+    inputPricePerMillion: 0,
+    outputPricePerMillion: 0,
   }])
 
   const models = getEnabledChatModels([
@@ -36,6 +48,42 @@ test('new gateway models appear before the free section for paid users', () => {
     DYNAMIC_MODEL_ID,
     'openrouter/free',
   ])
+})
+
+test('registers only priced live image and video models', () => {
+  registerGatewayCatalogModels([
+    {
+      id: 'vendor/priced-image',
+      gatewayId: 'vendor/priced-image',
+      name: 'Priced Image',
+      type: 'image',
+      provider: 'vendor',
+      tags: ['image-generation'],
+      pricing: { image: '0.04' },
+    },
+    {
+      id: 'vendor/unpriced-image',
+      gatewayId: 'vendor/unpriced-image',
+      name: 'Unpriced Image',
+      type: 'image',
+      provider: 'vendor',
+      tags: ['image-generation'],
+      pricing: {},
+    },
+    {
+      id: 'vendor/priced-video-i2v',
+      gatewayId: 'vendor/priced-video-i2v',
+      name: 'Priced Video I2V',
+      type: 'video',
+      provider: 'vendor',
+      tags: ['video-input'],
+      pricing: { video_duration_pricing: [{ cost_per_second: '0.08' }] },
+    },
+  ])
+
+  assert.deepEqual(IMAGE_MODELS.map((model) => model.id), ['vendor/priced-image'])
+  assert.deepEqual(VIDEO_MODELS.map((model) => model.id), ['vendor/priced-video-i2v'])
+  assert.deepEqual(VIDEO_MODELS[0]?.subModes, ['image-to-video'])
 })
 
 test('free models remain first for free-tier users', () => {
@@ -50,7 +98,7 @@ test('free models remain first for free-tier users', () => {
   ])
 })
 
-test('enabled ids missing from the static catalog still appear (provisional)', () => {
+test('enabled ids registered from the gateway remain visible outside the static catalog', () => {
   const before = getGatewayCatalogRevision()
   const models = getEnabledChatModels(
     ['moonshotai/kimi-k2.6', UNKNOWN_ENABLED_ID, 'openrouter/free'],
@@ -59,7 +107,7 @@ test('enabled ids missing from the static catalog still appear (provisional)', (
   assert.ok(models.some((model) => model.id === UNKNOWN_ENABLED_ID))
   assert.ok(models.some((model) => model.id === 'moonshotai/kimi-k2.6'))
   assert.equal(models.length, 3)
-  // Registering the catalog should bump revision so React can refresh metadata.
+  // Re-registering the catalog should bump revision so React can refresh metadata.
   registerGatewayCatalogModels([{
     id: UNKNOWN_ENABLED_ID,
     gatewayId: UNKNOWN_ENABLED_ID,

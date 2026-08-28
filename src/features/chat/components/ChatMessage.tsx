@@ -19,7 +19,6 @@ import type {
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import {
   assistantBlocksToPlainText,
-  buildAssistantVisualSequence,
   errorLabel,
   getMessageImageAttachments,
   getMessageText,
@@ -31,6 +30,7 @@ import {
   persistedGenerationErrorMessage,
   resolveActAssistant,
   splitUserDisplayText,
+  normalizeTranscriptAssistantParts,
 } from '@overlay/chat-core'
 import { assistantSnapshotKey } from './chat/chat-runtime-helpers'
 import type { DraftModalState } from './chat-interface/types'
@@ -207,16 +207,34 @@ function TextChatMessage(props: TextChatMessageProps) {
   const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
     ? (responseMsg as { id: string }).id
     : null
-  const assistantVisualBlocks = (() => {
+  const normalizedAssistant = (() => {
     if (persistedStatus === 'error' && looksLikeStoredGenerationError(responseText)) {
-      return []
+      return { blocks: [], sources: [] }
     }
-    const blocks = buildAssistantVisualSequence(responseParts)
+    const terminalState = persistedStatus === 'completed'
+      ? 'completed'
+      : persistedStatus === 'error'
+        ? 'error'
+        : props.status === 'completed'
+          ? 'completed'
+          : props.status === 'error'
+        ? 'error'
+        : props.status === 'cancelled'
+          ? 'cancelled'
+          : props.status === 'interrupted'
+            ? 'interrupted'
+            : undefined
+    const normalized = normalizeTranscriptAssistantParts(responseParts, terminalState ? { terminalState } : undefined)
+    const blocks = normalized.blocks
     if (blocks.length === 0 && responseText.trim()) {
-      return [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }]
+      return {
+        blocks: [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }],
+        sources: normalized.sources,
+      }
     }
-    return blocks
+    return normalized
   })()
+  const assistantVisualBlocks = normalizedAssistant.blocks
   const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
   const hasAssistantActivity = assistantVisualBlocks.length > 0
   const isStreaming = activeHttpLoading && hasAssistantActivity
@@ -246,6 +264,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       exchIdx={exchangeIndex}
       responseModelId={selectedModelId}
       assistantVisualBlocks={assistantVisualBlocks}
+      responseSources={normalizedAssistant.sources}
       isStreaming={isStreaming}
       isTextStreaming={isTextStreaming}
       errorMessage={errLabelForTurn}

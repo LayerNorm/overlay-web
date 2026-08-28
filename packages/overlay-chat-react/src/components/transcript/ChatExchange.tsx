@@ -1,21 +1,15 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { lazy, Suspense, useMemo } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
-import type { AssistantVisualBlock, ChatExchangeStatus, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
+import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSegments,
-  collectWebSourcesFromBlocks,
   computeToolChainFlags,
   getDraftFromToolBlock,
   isOverlayGatedToolOutput,
   isUsageExhaustedError,
 } from '@overlay/chat-core'
-import {
-  externalSourcesFromMarkdown,
-  knowledgeCitationsFromMarkdown,
-  knowledgeSourcesFromCitations,
-} from '../../lib/knowledge-sources'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { MarkdownMessage } from '../MarkdownMessage'
@@ -41,6 +35,7 @@ import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
 import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
+import { useChatExchangeSources } from './chat-exchange-sources'
 
 const GeneratedUiCard = lazy(() =>
   import('../GeneratedUiCard').then((mod) => ({ default: mod.GeneratedUiCard })),
@@ -66,6 +61,8 @@ export interface ChatExchangeProps {
   responseModelId: string
   /** Ordered tools, text, and file parts as they appear in the assistant message */
   assistantVisualBlocks: AssistantVisualBlock[]
+  /** Provider-native source parts normalized by the transcript adapter. */
+  responseSources?: readonly ChatTranscriptSourceView[]
   isStreaming: boolean
   isTextStreaming: boolean
   errorMessage: string | null
@@ -110,7 +107,7 @@ export interface ChatExchangeProps {
 }
 
 export function ChatExchange({
-  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
@@ -131,30 +128,12 @@ export function ChatExchange({
       [assistantVisualBlocks],
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
-    const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
-    /**
-     * Cited files and memories. Live replies carry the citation map in message
-     * metadata; older persisted replies only have the linkified `**Sources:**`
-     * line in the markdown, so fall back to reading it back out of the text.
-     */
-    const effectiveSourceCitations = useMemo(() => {
-      if (sourceCitations && Object.keys(sourceCitations).length > 0) return sourceCitations
-      const recovered = knowledgeCitationsFromMarkdown(assistantPlainText)
-      return Object.keys(recovered).length > 0 ? recovered : undefined
-    }, [assistantPlainText, sourceCitations])
-    const knowledgeSources = useMemo(
-      () => knowledgeSourcesFromCitations(effectiveSourceCitations),
-      [effectiveSourceCitations],
-    )
-    /**
-     * Web and knowledge sources share one Sources button and one panel. The
-     * trailing `Sources:` block is stripped from the rendered reply, so when no
-     * tool call supplied sources its external links are recovered from there.
-     */
-    const allSources = useMemo(() => {
-      if (webSources.length > 0) return [...webSources, ...knowledgeSources]
-      return [...externalSourcesFromMarkdown(assistantPlainText), ...knowledgeSources]
-    }, [assistantPlainText, knowledgeSources, webSources])
+    const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
+      assistantPlainText,
+      assistantVisualBlocks,
+      responseSources,
+      sourceCitations,
+    })
     const normalizedStatus: ChatExchangeStatus = status ?? (
       responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
     )
