@@ -163,20 +163,83 @@ export function isGeneratedUiData(value: unknown): value is GeneratedUiData {
   return normalizeGeneratedUiData(value) !== null
 }
 
+function isAsciiLetter(value: string | undefined): boolean {
+  if (!value) return false
+  const code = value.charCodeAt(0)
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+}
+
+function hasAtLeastTwoHtmlLikeTags(text: string): boolean {
+  let tags = 0
+  let cursor = 0
+  while (cursor < text.length) {
+    const open = text.indexOf('<', cursor)
+    if (open < 0) return false
+    const nameStart = text[open + 1] === '/' ? open + 2 : open + 1
+    if (isAsciiLetter(text[nameStart])) {
+      const close = text.indexOf('>', nameStart + 1)
+      if (close < 0) return false
+      tags += 1
+      if (tags >= 2) return true
+      cursor = close + 1
+    } else {
+      cursor = open + 1
+    }
+  }
+  return false
+}
+
+function hasImportOrExportStatement(text: string): boolean {
+  return text.split('\n').some((line) => {
+    const trimmed = line.trimStart()
+    return (trimmed.startsWith('import') && /\s/.test(trimmed[6] ?? ''))
+      || (trimmed.startsWith('export') && /\s/.test(trimmed[6] ?? ''))
+  })
+}
+
+function isCssPropertyName(value: string): boolean {
+  if (!value) return false
+  for (const char of value) {
+    const code = char.charCodeAt(0)
+    const isAlphaNumeric = (code >= 48 && code <= 57)
+      || (code >= 65 && code <= 90)
+      || (code >= 97 && code <= 122)
+    if (!isAlphaNumeric && char !== '_' && char !== '-') return false
+  }
+  return true
+}
+
+function looksLikeCssRule(text: string): boolean {
+  const open = text.indexOf('{')
+  if (open <= 0) return false
+  const selector = text.slice(0, open).trim()
+  if (!selector || selector.includes('@') || selector.includes('\n') || selector.includes('}')) return false
+  const close = text.indexOf('}', open + 1)
+  if (close < 0) return false
+  const body = text.slice(open + 1, close)
+  const colon = body.indexOf(':')
+  if (colon <= 0) return false
+  const semicolon = body.indexOf(';', colon + 1)
+  if (semicolon < 0) return false
+  const property = body.slice(0, colon).trim()
+  const propertyValue = body.slice(colon + 1, semicolon).trim()
+  return isCssPropertyName(property) && !!propertyValue && !propertyValue.includes('{') && !propertyValue.includes('}')
+}
+
 export function looksLikeCodeContent(value: string): boolean {
   const text = value.trim()
   if (!text) return false
   if (/```|~~~/.test(text)) return true
   if (/<!doctype\s+html|<(?:html|head|body|style|script)\b/i.test(text)) return true
-  if ((text.match(/<\/?[a-z][^>]*>/gi)?.length ?? 0) >= 2) return true
-  if (/^\s*(?:import|export)\s+.+$/m.test(text)) return true
+  if (hasAtLeastTwoHtmlLikeTags(text)) return true
+  if (hasImportOrExportStatement(text)) return true
   if (/^\s*(?:const|let|var)\s+[$A-Z_a-z][$\w]*\s*=/m.test(text)) return true
   if (/^\s*(?:async\s+)?function\s+[$A-Z_a-z][$\w]*\s*\(/m.test(text)) return true
   if (/^\s*(?:def|class)\s+[A-Z_a-z]\w*\s*[:(]/m.test(text)) return true
   if (/^\s*(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\b[\s\S]*\b(?:FROM|INTO|TABLE|SET)\b/im.test(text)) return true
   if (/^\s*#!\/(?:usr\/bin\/env\s+)?(?:ba|z|fi)?sh\b/m.test(text)) return true
   if (/^\s*(?:npm|pnpm|yarn|bun|git|docker|kubectl|curl|node|python(?:3)?)\s+\S+/m.test(text)) return true
-  if (/^\s*[^@\n{}]+\{[\s\S]*?[\w-]+\s*:\s*[^;{}]+;/m.test(text)) return true
+  if (looksLikeCssRule(text)) return true
 
   if (/^[{[]/.test(text)) {
     try {

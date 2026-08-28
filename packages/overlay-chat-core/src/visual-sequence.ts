@@ -193,9 +193,10 @@ export function buildAssistantVisualSequence(
       tBlk?.kind === 'text' &&
       /^'[a-zA-Z]/.test(tBlk.text)
     ) {
-      const lastWordMatch = rBlk.text.match(/(\S+)$/)
-      if (lastWordMatch) {
-        const word = lastWordMatch[1]!
+      let wordStart = rBlk.text.length
+      while (wordStart > 0 && !/\s/.test(rBlk.text[wordStart - 1]!)) wordStart -= 1
+      if (wordStart < rBlk.text.length) {
+        const word = rBlk.text.slice(wordStart)
         rBlk.text = rBlk.text.slice(0, rBlk.text.length - word.length).trim()
         tBlk.text = word + tBlk.text
       }
