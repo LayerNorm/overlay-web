@@ -95,7 +95,7 @@ Run `npm run docs:check` before publishing docs changes.
 
 #### Automation & Execution
 - **Browser sessions** — AI-controlled browser for interactive web tasks
-- **Daytona sandbox** — Run code and CLI tasks in persistent sandboxes
+- **Vercel Sandbox** — Run code and CLI tasks in isolated, usage-metered sandboxes
 - **Scheduled automations** — Interval, daily, weekly, or monthly recurring workflows
 - **Skills** — Reusable instruction templates for common tasks
 - **MCP servers** — Connect external tool servers via Model Context Protocol
@@ -149,7 +149,8 @@ Run `npm run docs:check` before publishing docs changes.
 - [Stripe](https://stripe.com/) — Billing and subscriptions
 - [Composio](https://composio.dev/) — External app integrations
 - [TipTap](https://tiptap.dev/) — Rich text editing
-- [Daytona](https://daytona.io/) — Code execution sandboxes
+- [Vercel Sandbox](https://vercel.com/docs/sandbox) — Default managed code execution sandbox
+- [Daytona](https://daytona.io/) — Optional alternative sandbox provider
 - [Browser Use](https://browser-use.com/) — Browser automation
 - [OpenRouter](https://openrouter.ai/) — Unified model API
 - [Shadcn/UI](https://ui.shadcn.com/) — UI components
@@ -176,7 +177,7 @@ Run `npm run docs:check` before publishing docs changes.
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - npm
 - Convex account (dev + prod deployments)
 - WorkOS credentials (for auth)
@@ -200,11 +201,7 @@ For complete environment setup, see [`docs/start/quickstart.mdx`](docs/start/qui
 
 ### Convex Workflow
 
-Push backend changes to both environments:
-
-```bash
-npm run convex:push:all    # Push to both prod and dev
-```
+Convex deployments are environment-specific. Use `npm run convex:push:dev` only from the dedicated staging worktree. Use `npm run convex:push:prod` only from a clean canonical `main` worktree after its matching web deployment is live. Feature worktrees must not deploy Convex.
 
 ## Available Commands
 
@@ -214,7 +211,6 @@ npm run convex:push:all    # Push to both prod and dev
 | `npm run build` | Create a production build |
 | `npm run convex:push:prod` | Push Convex changes to production |
 | `npm run convex:push:dev` | Push Convex changes to dev |
-| `npm run convex:push:all` | Push Convex changes to both |
 
 ## Security
 

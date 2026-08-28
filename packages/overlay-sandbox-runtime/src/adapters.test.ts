@@ -31,7 +31,7 @@ test('Vercel adapter maps the Overlay policy to the official SDK without leaking
     networkPolicy: { allow: ['getoverlay.io'], subnets: { allow: undefined, deny: ['10.0.0.0/8'] } },
     env: { OVERLAY_TEST: '1' },
     tags: { workspace: 'workspace-1' },
-    keepLastSnapshots: { count: 3, deleteEvicted: true },
+    keepLastSnapshots: { count: 1, deleteEvicted: true },
     image: 'registry.example/overlay-host:phase-6',
   })
 })

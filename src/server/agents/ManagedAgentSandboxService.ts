@@ -141,6 +141,7 @@ export function managedSandboxRuntimeFromEnv(providerOverride?: string): Sandbox
     const projectId = process.env.VERCEL_PROJECT_ID?.trim()
     return new VercelSandboxRuntime({
       ...(token && teamId && projectId ? { credentials: { token, teamId, projectId } } : {}),
+      region: process.env.OVERLAY_VERCEL_SANDBOX_REGION?.trim() || 'iad1',
     })
   }
   if (provider === 'daytona') {
