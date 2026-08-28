@@ -3,10 +3,10 @@
 	url = https://github.com/LayerNorm/overlay-desktop.git
 [submodule "overlay-mobile"]
 	path = overlay-mobile
-	url = ./overlay-mobile
+	url = https://github.com/LayerNorm/overlay-mobile.git
 [submodule "overlay-chrome"]
 	path = overlay-chrome
-	url = ./overlay-chrome
+	url = https://github.com/LayerNorm/overlay-chrome.git
 [submodule "overlay-marketing"]
 	path = overlay-marketing
 	url = https://github.com/LayerNorm/overlay-marketing.git

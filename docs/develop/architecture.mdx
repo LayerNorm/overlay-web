@@ -164,6 +164,17 @@ The app bootstrap and subscription read use that same resolver. Active members o
 
 All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Postgres and Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution are bounded to 12 tool steps per agent turn and 50,000 response characters; file ingestion is bounded to 20 requests per user per hour plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
 
+Vercel Sandbox is the default managed sandbox provider. Its reservation is based on worst-case
+active vCPU time, provisioned-memory wall time, outbound transfer, and sandbox creation, with an
+operator-configured safety buffer and pre-provider per-run cost ceiling. Settlement uses provider
+SDK counters after the session stops; incomplete counters fail into reconciliation instead of an
+estimated charge. The standalone sandbox route always denies outbound network access because a
+user-space polling guard cannot make a byte-exact provider-cost promise. It rejects oversized
+artifacts before provider transfer, and its reservation includes the maximum bounded artifact
+transfer. Networked agent sandboxes use separate metered flows. The default `iad1` region and its
+configured unit rates must move together. Blank pricing or buffer variables fall back to
+conservative defaults rather than silently becoming zero.
+
 Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. Both the Next/Postgres webhook and hosted Convex webhook preserve the personal metadata path, deduplicate event IDs, and reject stale subscription state with `providerEventCreatedAt`.
 
 Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron and Postgres worker expose queue depth and oldest age but never guess an ambiguous charge.

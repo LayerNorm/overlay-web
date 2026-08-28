@@ -53,6 +53,10 @@ references, credentials, image details, and billing remain server/operator conce
 provisioning deliberately redeems the normal one-time enrollment inside the sandbox and waits for
 the same browser approval; it is not a second host authentication path.
 
+`POST /api/v1/sandbox/run` is the provider-neutral generated-output execution route and is
+supported by both application-data providers. Its thin route wrapper delegates provider work,
+metering, and artifact persistence to the server boundary; provider SDKs never enter `src/app`.
+
 `GET`, `PUT`, and `DELETE /api/v1/agent-bindings` list, upsert, and disable the workspace-owned mapping from an Overlay
 agent to one approved environment, advertised ACP adapter, and granted working directory. A bound
 agent follows the ordinary `POST /api/v1/conversations/message` mention path; no second remote-chat

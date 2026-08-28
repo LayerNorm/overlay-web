@@ -7,6 +7,7 @@ import {
   stageDaytonaInputFiles,
   stageInlineCodeFile,
 } from './sandbox-runner'
+import { MAX_ARTIFACT_BYTES } from './request'
 
 const sandbox = { id: 'sandbox_1' } as unknown as Sandbox
 
@@ -165,6 +166,61 @@ test('collectDaytonaArtifacts preserves artifact DTO mapping and missing output 
   } finally {
     Date.now = originalDateNow
   }
+})
+
+test('collectDaytonaArtifacts rejects oversized files before provider transfer', async () => {
+  let downloaded = false
+  await assert.rejects(
+    collectDaytonaArtifacts({
+      checkGlobalBudget: async () => undefined,
+      command: 'python main.py',
+      createOutput: async () => null,
+      deleteObject: async () => undefined,
+      downloadFile: async () => {
+        downloaded = true
+        return Buffer.alloc(0)
+      },
+      expectedOutputs: ['out/too-large.bin'],
+      findSandboxFile: async () => ({ isDir: false, sizeBytes: MAX_ARTIFACT_BYTES + 1 }),
+      paths: { rootDir: '/workspace' },
+      runtime: 'python',
+      sandbox,
+      serverSecret: 'secret',
+      task: 'make report',
+      uploadObject: async () => undefined,
+      userId: 'user_1',
+    }),
+    /exceeds the .* byte limit/,
+  )
+  assert.equal(downloaded, false)
+})
+
+test('collectDaytonaArtifacts can require provider size metadata before transfer', async () => {
+  let downloaded = false
+  await assert.rejects(
+    collectDaytonaArtifacts({
+      checkGlobalBudget: async () => undefined,
+      command: 'python main.py',
+      createOutput: async () => null,
+      deleteObject: async () => undefined,
+      downloadFile: async () => {
+        downloaded = true
+        return Buffer.alloc(0)
+      },
+      expectedOutputs: ['out/unknown.bin'],
+      findSandboxFile: async () => ({ isDir: false }),
+      paths: { rootDir: '/workspace' },
+      requireKnownSizeBeforeDownload: true,
+      runtime: 'python',
+      sandbox,
+      serverSecret: 'secret',
+      task: 'make report',
+      uploadObject: async () => undefined,
+      userId: 'user_1',
+    }),
+    /did not report a safe size before transfer/,
+  )
+  assert.equal(downloaded, false)
 })
 
 test('collectDaytonaArtifacts deletes uploaded object when output creation fails', async () => {

@@ -410,6 +410,13 @@ export const webApiBoundaryDefinitions = [
     summary: 'Run code in a Daytona sandbox',
     tag: 'Tools',
   },
+  {
+    method: 'POST',
+    path: '/api/v1/sandbox/run',
+    schema: { json: DaytonaRunRequest },
+    summary: 'Run code in the configured managed sandbox provider',
+    tag: 'Tools',
+  },
   { method: 'GET', path: '/api/v1/files', schema: { query: FileListQuery }, summary: 'List or read files', tag: 'Files' },
   { method: 'POST', path: '/api/v1/files', schema: { json: CreateFileRequest }, summary: 'Create a file', tag: 'Files' },
   { method: 'PATCH', path: '/api/v1/files', schema: { json: UpdateFileRequest }, summary: 'Update a file', tag: 'Files' },

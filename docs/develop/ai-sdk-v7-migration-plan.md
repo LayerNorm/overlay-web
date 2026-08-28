@@ -277,7 +277,7 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 - [x] **4.5** **Telemetry:** Register `@ai-sdk/otel` in `instrumentation.ts` if we want AI SDK traces.
   - **Implemented:** Installed `@ai-sdk/otel` + `@vercel/otel`. `registerTelemetry(new OpenTelemetry())` called in `instrumentation.ts` when `OVERLAY_FEATURE_TELEMETRY` is not disabled (defaults to enabled). `telemetry: { functionId: 'act:<modelId>' }` added to `ToolLoopAgent` in act route. Type assertion used for `OpenTelemetry` → `Telemetry` interface compat.
 - [x] **4.6** **Provider file uploads:** Use `uploadFile` for large PDFs/images in the act agent to avoid re-sending bytes.
-  - **Implemented:** `uploadFile` and `ProviderReference` re-exported from `sdk.ts`. Created `src/server/ai/file-upload.ts` with `tryUploadFileToProvider` and `uploadFilePartsForModel` helpers. Supports OpenAI, Anthropic, Google, xAI providers (requires direct API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.). Falls back to inline for small files (<100KB data: URLs), non-image media types, or when no direct API key is configured. Called in act route before `ToolLoopAgent` creation.
+  - **Implemented:** `uploadFile` and `ProviderReference` re-exported from `sdk.ts`. Created `src/server/ai/file-upload.ts` with `tryUploadFileToProvider` and `uploadFilePartsForModel` helpers. Supports OpenAI, Anthropic, Google, xAI providers (requires direct API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.). Falls back to inline for small files (under 100 KB data URLs), non-image media types, or when no direct API key is configured. Called in act route before `ToolLoopAgent` creation.
 
 ### Phase 5: Staging QA + production rollout
 

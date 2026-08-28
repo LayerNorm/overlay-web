@@ -57,7 +57,7 @@ platform.rateLimits.takeManyByServer: 7 calls, all 0ms, 0 errors
 ```
 
 The rate limit function is called on every authenticated BFF request
-and completes in <1ms. This is the only Convex function instrumented
+and completes in under 1 ms. This is the only Convex function instrumented
 with `withMetrics` so far.
 
 ## 4. Client-side metrics

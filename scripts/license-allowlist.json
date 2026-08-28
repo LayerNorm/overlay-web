@@ -26,7 +26,17 @@
       "reason": "Sentry release/source-map tooling. Confirm it is not shipped as product runtime code in enterprise artifacts."
     },
     {
+      "package": "@vercel/cli-auth",
+      "licenses": ["MISSING"],
+      "reason": "package-lock and package metadata omit the field; the bundled LICENSE is Apache-2.0."
+    },
+    {
       "package": "busboy",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "execa",
       "licenses": ["MISSING"],
       "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
     },
@@ -34,6 +44,31 @@
       "package": "format",
       "licenses": ["MISSING"],
       "reason": "package-lock omits the field; package metadata declares MIT."
+    },
+    {
+      "package": "get-stream",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "human-signals",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare Apache-2.0."
+    },
+    {
+      "package": "is-stream",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "mimic-fn",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "npm-run-path",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
     },
     {
       "package": "once",
@@ -51,9 +86,34 @@
       "reason": "package-lock omits the field; package metadata and bundled license declare ISC."
     },
     {
-      "package": "posthog-js",
-      "licenses": ["SEE LICENSE IN LICENSE"],
-      "reason": "Bundled license text declares Apache-2.0."
+      "package": "onetime",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "postal-mime",
+      "licenses": ["MIT-0"],
+      "reason": "MIT-0 is a permissive SPDX license and the bundled license text matches it."
+    },
+    {
+      "package": "signal-exit",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare ISC."
+    },
+    {
+      "package": "strip-final-newline",
+      "licenses": ["MISSING"],
+      "reason": "package-lock omits the field; package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "xml-escape",
+      "licenses": ["MIT License"],
+      "reason": "Non-SPDX package metadata label; the bundled LICENSE is MIT."
+    },
+    {
+      "package": "xmlhttprequest-ssl",
+      "licenses": ["MISSING"],
+      "reason": "package-lock and package metadata omit the field; the bundled LICENSE is MIT."
     }
   ]
 }

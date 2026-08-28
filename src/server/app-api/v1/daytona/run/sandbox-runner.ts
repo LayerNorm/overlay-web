@@ -93,7 +93,8 @@ export async function collectDaytonaArtifacts(params: {
   deleteObject(key: string): Promise<void>
   downloadFile(sandbox: SandboxInstance, remotePath: string): Promise<Buffer>
   expectedOutputs: string[]
-  findSandboxFile(sandbox: SandboxInstance, remotePath: string): Promise<{ isDir?: boolean } | null>
+  findSandboxFile(sandbox: SandboxInstance, remotePath: string): Promise<{ isDir?: boolean; sizeBytes?: number } | null>
+  requireKnownSizeBeforeDownload?: boolean
   paths: Pick<SandboxRunPaths, 'rootDir'>
   runtime: 'node' | 'python'
   sandbox: SandboxInstance
@@ -113,6 +114,12 @@ export async function collectDaytonaArtifacts(params: {
       missingExpectedOutputs.push(rawExpected)
       continue
     }
+    if (params.requireKnownSizeBeforeDownload && !isKnownArtifactSize(details.sizeBytes)) {
+      throw new Error(`Sandbox artifact "${rawExpected}" did not report a safe size before transfer.`)
+    }
+    if (typeof details.sizeBytes === 'number' && details.sizeBytes > MAX_ARTIFACT_BYTES) {
+      throw new Error(`Sandbox artifact "${rawExpected}" exceeds the ${MAX_ARTIFACT_BYTES} byte limit.`)
+    }
     artifacts.push(await importDaytonaArtifact({
       ...params,
       artifactIndex: artifacts.length,
@@ -122,6 +129,10 @@ export async function collectDaytonaArtifacts(params: {
   }
 
   return { artifacts, missingExpectedOutputs }
+}
+
+function isKnownArtifactSize(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
 export function buildDaytonaRunResult(params: {
