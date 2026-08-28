@@ -2,12 +2,26 @@ import { NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { billingErrorResponse, workspaceBillingService } from '@/server/billing/http'
 import { requiredWorkspaceParam } from '@/server/app-api/v1/workspaces/inputs'
+import {
+  recordLegalAcceptance,
+  requireCurrentLegalAcceptance,
+} from '@/server/legal/legal-acceptance'
 
-export async function POST(_request: Request, context: AppApiRouteContext) {
+export async function POST(request: Request, context: AppApiRouteContext) {
   try {
+    const workspaceId = requiredWorkspaceParam(await context.params, 'workspaceId')
+    const legalAcceptance = requireCurrentLegalAcceptance(context.parsedJson)
+    const legalMetadata = await recordLegalAcceptance({
+      acceptance: legalAcceptance,
+      context: 'workspace_subscription_checkout',
+      request,
+      userId: context.auth.userId,
+      workspaceId,
+    })
     return NextResponse.json(await workspaceBillingService.createSubscriptionCheckout({
       actorUserId: context.auth.userId,
-      workspaceId: requiredWorkspaceParam(await context.params, 'workspaceId'),
+      workspaceId,
+      legalMetadata,
       planAmountCents: Number(context.parsedJson.planAmountCents),
       topUpAmountCents: Number(context.parsedJson.topUpAmountCents),
       autoTopUpEnabled: Boolean(context.parsedJson.autoTopUpEnabled),

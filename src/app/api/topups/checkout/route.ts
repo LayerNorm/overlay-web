@@ -6,6 +6,10 @@ import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
 import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
+import {
+  recordLegalAcceptance,
+  requireCurrentLegalAcceptance,
+} from '@/server/legal/legal-acceptance'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +31,14 @@ export async function POST(request: NextRequest) {
     ])
     if (rateLimitResponse) return rateLimitResponse
 
+    const legalAcceptance = requireCurrentLegalAcceptance(body)
+    await recordLegalAcceptance({
+      acceptance: legalAcceptance,
+      context: 'topup_checkout',
+      request,
+      userId,
+    })
+
     const result = await billingCheckoutService.createTopUpCheckout({
       userId,
       userEmail,
@@ -35,10 +47,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     unstable_rethrow(error)
-    if (error instanceof Error && error.name === 'BillingServiceError') {
-      return billingErrorResponse(error, 'Failed to create top-up checkout')
-    }
     logger.error('[TopUp Checkout] Error:', error)
-    return NextResponse.json({ error: 'Failed to create top-up checkout' }, { status: 500 })
+    return billingErrorResponse(error, 'Failed to create top-up checkout')
   }
 }

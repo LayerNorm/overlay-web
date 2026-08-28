@@ -12,6 +12,7 @@ import {
   type PublicSsoProvider,
 } from '@/server/auth/web-auth-flow'
 import type { AuthSession, AuthUser } from '@/shared/auth/session-types'
+import type { NextResponse } from 'next/server'
 
 export {
   consumeAuthorizationState,
@@ -34,7 +35,7 @@ export async function getAuthorizationRedirectResponse(
     forceSignIn?: boolean
     codeChallenge?: string | null
   } = {},
-): Promise<Response> {
+): Promise<NextResponse> {
   return getWebAuthFlowProvider().startSso(request, { provider, ...options })
 }
 

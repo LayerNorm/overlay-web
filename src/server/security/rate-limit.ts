@@ -13,7 +13,7 @@ export function markRateLimitsSatisfied(request: NextRequest): void {
   requestsWithSatisfiedRateLimits.add(request)
 }
 
-export function getClientIp(request: NextRequest): string {
+export function getClientIp(request: Pick<Request, 'headers'>): string {
   const trustProxyHeaders =
     process.env.TRUST_PROXY_HEADERS === 'true' ||
     Boolean(process.env.VERCEL || process.env.CF_PAGES || process.env.CLOUDFLARE_ACCOUNT_ID)

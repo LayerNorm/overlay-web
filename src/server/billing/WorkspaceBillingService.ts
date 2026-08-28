@@ -102,6 +102,7 @@ export class WorkspaceBillingService {
     planAmountCents: number
     topUpAmountCents: number
     workspaceId: string
+    legalMetadata?: Record<string, string>
   }): Promise<{ url: string | null }> {
     const { account, workspaceId } = await this.requireEligibleAccountManager(args)
     if (!Number.isSafeInteger(args.planAmountCents)
@@ -118,6 +119,7 @@ export class WorkspaceBillingService {
       planAmountCents: args.planAmountCents,
       topUpAmountCents: args.topUpAmountCents,
       autoTopUpEnabled: Boolean(args.autoTopUpEnabled),
+      metadata: args.legalMetadata,
       successUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_billing_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_billing_canceled=true`,
     })
@@ -129,6 +131,7 @@ export class WorkspaceBillingService {
     actorUserId: string
     amountCents: number
     workspaceId: string
+    legalMetadata?: Record<string, string>
   }): Promise<{ url: string | null }> {
     const { account, workspaceId } = await this.requireEligibleAccountManager(args)
     if (!isValidTopUpAmount(args.amountCents)) this.fail('Unsupported top-up amount.', 400)
@@ -139,6 +142,7 @@ export class WorkspaceBillingService {
       email: args.actorEmail,
       kind: 'budget_topup',
       topUpAmountCents: clampTopUpAmountCents(args.amountCents),
+      metadata: args.legalMetadata,
       successUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_topup_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_topup_canceled=true`,
     })

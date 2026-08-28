@@ -7,6 +7,11 @@ import {
   normalizeCodeChallenge,
 } from '@/server/auth/actions'
 import { requireOverlayCapability } from '@/server/capabilities'
+import { isCurrentLegalAcceptance } from '@/shared/legal/legal-documents'
+import {
+  encodePendingLegalAcceptance,
+  PENDING_LEGAL_ACCEPTANCE_COOKIE,
+} from '@/server/legal/pending-legal-acceptance'
 
 export async function GET(
   request: NextRequest,
@@ -21,6 +26,21 @@ export async function GET(
   const normalizedRedirectUri = normalizeAuthRedirect(redirectUri)
   const codeChallenge = normalizeCodeChallenge(searchParams.get('codeChallenge'))
   const forceSignIn = searchParams.get('force') === 'true'
+  const isSignUp = searchParams.get('intent') === 'signup'
+  const legalAcceptanceCandidate = {
+    acceptedLegalTerms: searchParams.get('acceptedLegalTerms') === 'true',
+    termsVersion: searchParams.get('termsVersion'),
+    privacyVersion: searchParams.get('privacyVersion'),
+  }
+  if (isSignUp && !isCurrentLegalAcceptance(legalAcceptanceCandidate)) {
+    return NextResponse.json(
+      { error: 'You must accept the current Terms of Service and Privacy Policy to continue.' },
+      { status: 400 },
+    )
+  }
+  const legalAcceptance = isCurrentLegalAcceptance(legalAcceptanceCandidate)
+    ? legalAcceptanceCandidate
+    : null
   
   // Also force sign-in when redirecting to desktop app (overlay:// protocol)
   const isDesktopAuth = redirectUri?.startsWith('overlay://')
@@ -60,6 +80,15 @@ export async function GET(
     )
 
     logger.info('[Auth] Generated auth URL, redirecting...')
+    if (legalAcceptance) {
+      response.cookies.set(PENDING_LEGAL_ACCEPTANCE_COOKIE, encodePendingLegalAcceptance(legalAcceptance), {
+        httpOnly: true,
+        maxAge: 10 * 60,
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      })
+    }
     return response
   } catch (error) {
     logger.error('[Auth] SSO error details:', {

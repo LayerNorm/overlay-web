@@ -40,4 +40,8 @@ npm run security:audit
 
 ## Licensing
 
-Core product code is `AGPL-3.0-or-later`; designated reusable packages are `Apache-2.0`. Run `npm run license:check` when dependencies or package boundaries change. See `LICENSE.md` for the authoritative split-license policy.
+All first-party material stored directly in this repository is `AGPL-3.0-only`. Run `npm run license:check` when dependencies or package boundaries change. See `LICENSE`, `LICENSE.md`, and `NOTICE.md`.
+
+LayerNorm uses a Contributor License Agreement because accepted contributions may also be distributed under paid commercial licenses. The draft is in `CLA.md`. **Outside contributions must not be merged until counsel approves the CLA and an acceptance system records the contributor identity, entity authority, CLA version, timestamp, repository, and pull request.** A pull-request checkbox alone is not acceptance.
+
+Contributors retain copyright and attribution while granting the copyright and patent rights described in the CLA. Do not submit code owned by an employer or client without written authorization, and identify all third-party material.

@@ -14,6 +14,7 @@ import {
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { Entitlements } from '../chat-interface/types'
 
@@ -233,6 +234,7 @@ export function useChatBillingControls({
           amountCents: topUpAmountDraftCents,
           autoTopUpEnabled: autoTopUpEnabledDraft,
           returnPath: buildTopUpReturnPath(),
+          ...currentLegalAcceptancePayload(),
         }),
       })
       const data = await response.json().catch(() => ({}))

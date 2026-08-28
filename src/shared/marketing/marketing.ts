@@ -1,5 +1,5 @@
 export const MARKETING_GITHUB_URL =
-  "https://github.com/DevelopedByDev/overlay-web";
+  "https://github.com/LayerNorm/overlay-web";
 export const MARKETING_SALES_URL =
   "https://calendar.app.google/9vucWaH2jSE92mzn8";
 /** Canonical documentation surface served from the primary Overlay domain. */

@@ -391,7 +391,14 @@ test('settings and account methods preserve billing/auth route contracts', async
     grantOffSessionConsent: true,
   })
   await client.topUps.historyResponse()
-  await client.topUps.checkoutResponse({ amountCents: 1200, autoTopUpEnabled: true, returnPath: '/account' })
+  await client.topUps.checkoutResponse({
+    acceptedLegalTerms: true,
+    amountCents: 1200,
+    autoTopUpEnabled: true,
+    privacyVersion: '2026-08-28',
+    returnPath: '/account',
+    termsVersion: '2026-08-28',
+  })
   await client.topUps.verifyResponse({ sessionId: 'cs_topup' })
 
   assert.equal(String(calls[0]!.input), 'https://example.test/api/entitlements')
@@ -428,9 +435,12 @@ test('settings and account methods preserve billing/auth route contracts', async
   assert.equal(String(calls[6]!.input), 'https://example.test/api/topups/checkout')
   assert.equal(calls[6]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[6]!), {
+    acceptedLegalTerms: true,
     amountCents: 1200,
     autoTopUpEnabled: true,
+    privacyVersion: '2026-08-28',
     returnPath: '/account',
+    termsVersion: '2026-08-28',
   })
 
   assert.equal(String(calls[7]!.input), 'https://example.test/api/topups/verify')

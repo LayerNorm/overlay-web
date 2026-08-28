@@ -43,7 +43,7 @@ type EmailVerificationTicket = ReturnType<typeof workosAuth.readEmailVerificatio
 
 interface WebAuthFlowProvider {
   getOptions(): AuthUiOptions
-  startSso(request: Request, options: StartSsoOptions): Promise<Response>
+  startSso(request: Request, options: StartSsoOptions): Promise<NextResponse>
   getNativeAuthorizationUrl(provider: NativeAuthProvider, options: NativeAuthorizationOptions): Promise<string>
   authenticateNativeWithCode(code: string, codeVerifier: string): Promise<AuthSession>
   signInWithPassword(email: string, password: string): Promise<PasswordAuthResult>
@@ -80,7 +80,7 @@ class WorkOsWebAuthFlowProvider implements WebAuthFlowProvider {
   async startSso(
     _request: Request,
     options: StartSsoOptions,
-  ): Promise<Response> {
+  ): Promise<NextResponse> {
     const provider = WORKOS_SSO_PROVIDERS.find((entry) => entry.id === options.provider)
     if (!provider) {
       throw new Error('Unsupported SSO provider for WorkOS auth.')
@@ -148,7 +148,7 @@ class BetterAuthWebAuthFlowProvider implements WebAuthFlowProvider {
   async startSso(
     request: Request,
     options: StartSsoOptions,
-  ): Promise<Response> {
+  ): Promise<NextResponse> {
     void options.forceSignIn
     const config = getOverlayRuntimeConfigSync()
     const betterAuthConfig = resolveBetterAuthRuntimeConfig(config)

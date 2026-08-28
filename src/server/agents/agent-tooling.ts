@@ -103,7 +103,7 @@ function applyAgentCapabilityFilter(args: {
  *
  * Tools authenticate as the triggering human (`actorUserId`) — the delegate
  * model. The agent's identity rides along on the tool options for attribution
- * and for memory ownership, not for authorization. See INTERNAL_TODOs.md,
+ * and for memory ownership, not for authorization. See docs/develop/bring-your-own-agents.md,
  * "Agent as principal", for the model that replaces this.
  */
 export async function buildWorkspaceAgentTooling(args: {

@@ -229,10 +229,7 @@ Convex deployments are environment-specific. Use `npm run convex:push:dev` only 
 
 ## License
 
-Overlay uses a split license model:
-
-- Core product surfaces are licensed under `AGPL-3.0-or-later`.
-- Reusable SDKs, contracts, protocol packages, and shared UI packages are licensed under `Apache-2.0`.
+All first-party material stored directly in this repository is licensed under `AGPL-3.0-only`. Paid commercial licenses are available separately from LayerNorm Inc. Third-party material and separate submodules retain their own licenses.
 - Overlay branding is governed by the trademark policy.
 
 See [`LICENSE.md`](LICENSE.md), [`docs/legal/licensing.mdx`](docs/legal/licensing.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).

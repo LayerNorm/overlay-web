@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
 import { Button, EmptyState, Select } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
+import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '../types'
 
 const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000] as const
@@ -29,6 +30,7 @@ export function WorkspaceBillingSection({
   const [planAmountCents, setPlanAmountCents] = useState(800)
   const [topUpAmountCents, setTopUpAmountCents] = useState(800)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
 
   useEffect(() => {
     if (workspace.kind !== 'organization') return
@@ -167,14 +169,16 @@ export function WorkspaceBillingSection({
             <div className="grid gap-3 lg:grid-cols-2">
               <BillingActionCard title="Monthly workspace credits" description="Choose a recurring allowance from $8 to $200. Existing personal subscriptions are untouched.">
                 <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100}/month`}</option>)}</Select>
-                <Button size="sm" disabled={busy !== null} onClick={() => void run('checkout', () => client.createBillingCheckout(workspace.id, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
+                <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspace.id, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
               </BillingActionCard>
               <BillingActionCard title="One-time top-up" description="Add credits directly to this workspace. Personal-wallet transfers are not supported.">
                 <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100} in credits`}</option>)}</Select>
-                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('topup', () => client.createBillingTopUp(workspace.id, { amountCents: topUpAmountCents }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
+                <Button size="sm" variant="ghost" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('topup', () => client.createBillingTopUp(workspace.id, { amountCents: topUpAmountCents, ...currentLegalAcceptancePayload() }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
               </BillingActionCard>
             </div>
           ) : null}
+
+          {summary.canManage && summary.rollout.checkoutEnabled ? <label className="flex items-start gap-3 text-xs leading-5 text-[var(--muted)]"><input type="checkbox" checked={acceptedCheckoutTerms} onChange={(event) => setAcceptedCheckoutTerms(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--border)]" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></label> : null}
 
           {summary.canManage ? (
             <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspace.id))}>Manage billing</Button></div>

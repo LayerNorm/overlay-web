@@ -1,52 +1,23 @@
-import { LegalPageTemplate } from "@/features/marketing/components/LegalPageTemplate";
+import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
+import { LEGAL_DOCUMENTS, LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
 
-export const instant = false;
+const sections = [
+  { title: 'Scope and roles', body: [`This Privacy Policy (version ${LEGAL_DOCUMENTS.privacy.version}) explains how LayerNorm Inc. handles personal information through Overlay websites, applications, hosted services, APIs, support, and commercial activities.`, 'LayerNorm generally acts as a controller for account, billing, security, marketing, and service-administration data. For content an organization submits to Overlay, LayerNorm may act as its processor or service provider under the Data Processing Addendum. Self-hosted operators are responsible for their deployments.'] },
+  { title: 'Information we collect', body: ['Account and profile data includes name, email, organization, authentication identifiers, workspace membership, settings, and communications.', 'Content and integration data includes prompts, messages, files, notes, generated output, tool calls, connector data, and metadata you choose to process. Billing data includes plan, transaction, tax, invoice, usage, and payment-status information; payment card details are handled by payment processors.', 'Technical data includes IP address, device and browser information, cookies, logs, diagnostics, security events, approximate location, referring pages, and product interaction analytics. We also receive information from identity providers, model providers, connectors, customers, public sources, and business partners.'] },
+  { title: 'How we use information', body: 'We use information to provide and personalize Overlay; authenticate users; process instructions, files, model calls, payments, and integrations; administer workspaces; measure usage; provide support; prevent fraud and abuse; secure and debug the service; communicate transactional and product information; comply with law; enforce agreements; and improve features. We do not sell personal information for money. Counsel must confirm whether any advertising or analytics activity is a “sale,” “sharing,” or targeted advertising under applicable law.' },
+  { title: 'Legal bases', body: 'Where required, processing relies on performance of a contract, legitimate interests such as security and product improvement, compliance with legal obligations, protection of vital interests, or consent. You may withdraw consent prospectively where consent is the basis. LayerNorm or the relevant customer can explain the basis for a specific processing activity.' },
+  { title: 'AI providers and automated processing', body: 'Prompts, content, context, and metadata may be sent to the model or tool providers selected by you or configured for your deployment. Provider retention and training settings vary. Overlay may use automated systems to classify content, route tools, detect abuse, and generate output, but LayerNorm does not intend to make legal or similarly significant decisions about individuals solely through automated processing.' },
+  { title: 'How we disclose information', body: 'We disclose information to infrastructure, authentication, payment, analytics, communications, customer-support, model, sandbox, storage, and security providers; to workspace administrators and users you share with; to professional advisers and transaction counterparties; and to authorities or other parties when reasonably necessary for law, safety, fraud prevention, or rights enforcement. Subprocessors are listed on the Subprocessors page.' },
+  { title: 'Cookies and analytics', body: 'Overlay uses necessary cookies for authentication, security, preferences, and service operation. It may use analytics technologies such as PostHog and Vercel Analytics where configured. The Cookie and Analytics Notice describes purposes and controls. Where law requires opt-in consent for non-essential technologies, LayerNorm must deploy an appropriate consent mechanism before enabling them.' },
+  { title: 'Retention', body: 'We retain account and service data while needed to provide Overlay, meet contractual and legal obligations, resolve disputes, protect security, and maintain business records. Retention varies by category, workspace settings, backups, provider behavior, and legal holds. Deleted content may remain temporarily in backups and security logs. Counsel and engineering must approve a category-by-category retention schedule before this policy is finalized.' },
+  { title: 'Security', body: 'LayerNorm uses administrative, technical, and organizational safeguards designed to protect information, including access controls, encryption where appropriate, monitoring, dependency and secret scanning, and incident-response processes. No method is completely secure. Notify LayerNorm immediately if you suspect compromise.' },
+  { title: 'International transfers', body: 'LayerNorm and its providers may process information in the United States and other countries. Where required, LayerNorm will use approved safeguards such as Standard Contractual Clauses and supplementary measures. The DPA will identify the applicable transfer mechanism.' },
+  { title: 'Your rights and choices', body: 'Depending on location, you may request access, correction, deletion, portability, restriction, objection, withdrawal of consent, or appeal of a privacy decision. You may manage account settings, integrations, analytics preferences, and marketing communications. LayerNorm will verify requests and may retain information where legally permitted. Organization-managed users may need to contact their administrator.' },
+  { title: 'Children', body: 'Overlay is not directed to children under 13 and is not offered to anyone unable to enter the Terms. LayerNorm does not knowingly collect personal information from children in violation of law. Educational or minor-user deployments require a separate written agreement and counsel-approved consent and privacy controls.' },
+  { title: 'U.S. state disclosures', body: 'Residents of certain U.S. states may have rights to know, delete, correct, opt out of sale/sharing or targeted advertising, limit use of sensitive information, and avoid discriminatory treatment. LayerNorm does not use sensitive personal information to infer characteristics. Counsel must confirm thresholds, metrics, and required state-specific disclosures before launch.' },
+  { title: 'Changes and contact', body: 'Material changes will be announced through the service, email, or another reasonable channel and will show a new version and effective date. Privacy questions and requests may be sent to divyansh@layernorm.co. LayerNorm must publish a complete legal mailing address and any required representative or data-protection contact after counsel confirms them.' },
+]
 
-const PRIVACY = [
-  {
-    title: "What we collect",
-    body: "We collect account information, authentication data, billing records, product events, diagnostics, and the content you choose to store or process through Overlay.",
-  },
-  {
-    title: "How we use it",
-    body: "We use data to run the product, authenticate you, process billing, sync your workspace, improve reliability, prevent abuse, and respond to support requests.",
-  },
-  {
-    title: "AI providers",
-    body: "When you use model-powered features, relevant prompts, files, and context may be sent to model providers so they can return a result. We route only what is needed for the request.",
-  },
-  {
-    title: "Payments",
-    body: "Payments are handled by Stripe. We do not store full card numbers. We keep billing status and transaction records needed to manage your account.",
-  },
-  {
-    title: "We do not sell your data",
-    body: "We do not sell personal information. We share data only with service providers, when you connect integrations, when required by law, or to protect Overlay and its users.",
-  },
-  {
-    title: "Security",
-    body: "We use reasonable safeguards for data in transit and at rest. No system is perfect, so keep your account credentials secure and tell us if something looks wrong.",
-  },
-  {
-    title: "Your choices",
-    body: "You can manage your account, disconnect integrations, request deletion, or contact us about access and correction requests.",
-  },
-  {
-    title: "Retention",
-    body: "We keep data while your account is active and as needed for product, security, billing, support, and legal reasons. Deletion requests are handled as quickly as practical.",
-  },
-];
-
-export default function PrivacyPolicy() {
-  return (
-    <LegalPageTemplate
-      label="Privacy"
-      embedded
-      title="Privacy policy."
-      updated="April 24, 2026"
-      intro="Overlay is a workspace for real work, so privacy needs to be understandable. This page explains what we collect and why."
-      sections={PRIVACY}
-      crossLink={{ href: "/terms", label: "terms of service" }}
-    />
-  );
+export default function PrivacyPage() {
+  return <LegalPageTemplate label="Legal" title="Privacy Policy" updated={`${LEGAL_EFFECTIVE_DATE} · Version ${LEGAL_DOCUMENTS.privacy.version}`} intro="This policy describes what personal information Overlay handles, why it is used, whom it is shared with, and the choices available to users." sections={sections} crossLink={{ href: '/terms', label: 'Terms of Service' }} />
 }
