@@ -5,17 +5,11 @@ import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSegments,
-  collectWebSourcesFromBlocks,
   computeToolChainFlags,
   getDraftFromToolBlock,
   isOverlayGatedToolOutput,
   isUsageExhaustedError,
 } from '@overlay/chat-core'
-import {
-  externalSourcesFromMarkdown,
-  knowledgeCitationsFromMarkdown,
-  knowledgeSourcesFromCitations,
-} from '../../lib/knowledge-sources'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { MarkdownMessage } from '../MarkdownMessage'
@@ -41,6 +35,7 @@ import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
 import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
+import { useChatExchangeSources } from './chat-exchange-sources'
 
 const GeneratedUiCard = lazy(() =>
   import('../GeneratedUiCard').then((mod) => ({ default: mod.GeneratedUiCard })),
@@ -133,44 +128,12 @@ export function ChatExchange({
       [assistantVisualBlocks],
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
-    const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
-    const providerSources = useMemo<WebSourceItem[]>(() => (responseSources ?? []).flatMap((source) => (
-      source.sourceKind === 'url' && source.url
-        ? [{
-            url: source.url,
-            title: source.title || source.url,
-            origin: 'web-search' as const,
-          }]
-        : []
-    )), [responseSources])
-    /**
-     * Cited files and memories. Live replies carry the citation map in message
-     * metadata; older persisted replies only have the linkified `**Sources:**`
-     * line in the markdown, so fall back to reading it back out of the text.
-     */
-    const effectiveSourceCitations = useMemo(() => {
-      if (sourceCitations && Object.keys(sourceCitations).length > 0) return sourceCitations
-      const recovered = knowledgeCitationsFromMarkdown(assistantPlainText)
-      return Object.keys(recovered).length > 0 ? recovered : undefined
-    }, [assistantPlainText, sourceCitations])
-    const knowledgeSources = useMemo(
-      () => knowledgeSourcesFromCitations(effectiveSourceCitations),
-      [effectiveSourceCitations],
-    )
-    /**
-     * Web and knowledge sources share one Sources button and one panel. The
-     * trailing `Sources:` block is stripped from the rendered reply, so when no
-     * tool call supplied sources its external links are recovered from there.
-     */
-    const allSources = useMemo(() => {
-      const externalSources = [...providerSources, ...webSources]
-      const candidates = externalSources.length > 0
-        ? [...externalSources, ...knowledgeSources]
-        : [...externalSourcesFromMarkdown(assistantPlainText), ...knowledgeSources]
-      return candidates.filter((source, index) => candidates.findIndex((candidate) => (
-        candidate.url === source.url && candidate.internalHref === source.internalHref
-      )) === index)
-    }, [assistantPlainText, knowledgeSources, providerSources, webSources])
+    const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
+      assistantPlainText,
+      assistantVisualBlocks,
+      responseSources,
+      sourceCitations,
+    })
     const normalizedStatus: ChatExchangeStatus = status ?? (
       responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
     )

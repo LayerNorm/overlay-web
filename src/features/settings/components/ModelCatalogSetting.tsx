@@ -39,6 +39,147 @@ function formatMediaPrice(model: GatewayCatalogModel): string {
   return 'Pricing unavailable'
 }
 
+type ModelSettingsPatch = {
+  enabledChatModelIds?: string[]
+  modelOrder?: string[]
+  defaultImageModelId?: string
+  defaultVideoModelId?: string
+}
+
+function ModelCatalogControls({
+  model,
+  language,
+  byok,
+  hasUsagePricing,
+  mediaDefault,
+  enabled,
+  disabled,
+  onToggle,
+  onMove,
+  onChange,
+}: {
+  model: GatewayCatalogModel
+  language: boolean
+  byok: boolean
+  hasUsagePricing: boolean
+  mediaDefault: boolean
+  enabled: ReadonlySet<string>
+  disabled?: boolean
+  onToggle: (modelId: string) => void
+  onMove: (modelId: string, direction: -1 | 1) => void
+  onChange: (patch: ModelSettingsPatch) => void
+}) {
+  if (!language) {
+    return (
+      <button
+        type="button"
+        disabled={disabled || !hasUsagePricing}
+        onClick={() => onChange(model.type === 'image' ? { defaultImageModelId: model.id } : { defaultVideoModelId: model.id })}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${mediaDefault ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]' : 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+      >
+        {mediaDefault ? <Check size={12} /> : null}
+        {mediaDefault ? 'Default' : 'Set default'}
+      </button>
+    )
+  }
+
+  const isEnabled = enabled.has(model.id)
+  return (
+    <>
+      {isEnabled ? (
+        <div className="flex items-center gap-1">
+          <button type="button" aria-label={`Move ${model.name} up`} disabled={disabled} onClick={() => onMove(model.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40">
+            <ChevronUp size={14} />
+          </button>
+          <button type="button" aria-label={`Move ${model.name} down`} disabled={disabled} onClick={() => onMove(model.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40">
+            <ChevronDown size={14} />
+          </button>
+        </div>
+      ) : null}
+      <SettingsToggle
+        checked={isEnabled}
+        disabled={disabled || (!hasUsagePricing && !byok) || (isEnabled && enabled.size === 1)}
+        onChange={() => onToggle(model.id)}
+      />
+    </>
+  )
+}
+
+function ModelCatalogRow({
+  model,
+  curated,
+  enabled,
+  defaultImageModelId,
+  defaultVideoModelId,
+  disabled,
+  onToggle,
+  onMove,
+  onChange,
+}: {
+  model: GatewayCatalogModel
+  curated: boolean
+  enabled: ReadonlySet<string>
+  defaultImageModelId?: string
+  defaultVideoModelId?: string
+  disabled?: boolean
+  onToggle: (modelId: string) => void
+  onMove: (modelId: string, direction: -1 | 1) => void
+  onChange: (patch: ModelSettingsPatch) => void
+}) {
+  const byok = isByokModelId(model.id)
+  const language = model.type === 'language'
+  const hasUsagePricing = language
+    ? model.inputPricePerMillion !== undefined && model.outputPricePerMillion !== undefined
+    : gatewayCatalogModelHasSupportedPricing(model)
+  const mediaDefault = model.type === 'image'
+    ? defaultImageModelId === model.id
+    : model.type === 'video' && defaultVideoModelId === model.id
+
+  return (
+    <div className={`flex items-center gap-4 px-4 py-3 transition-colors ${hasUsagePricing || byok ? 'hover:bg-[var(--surface-muted)]' : 'opacity-55'}`}>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-[var(--foreground)]">{model.name}</span>
+          {language && model.tags.includes('vision') ? (
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+              <ScanEye size={11} strokeWidth={1.6} />
+            </span>
+          ) : null}
+          {language && model.tags.includes('reasoning') ? (
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+              <Sparkles size={11} strokeWidth={1.6} />
+            </span>
+          ) : null}
+          {!language ? <span>{formatMediaPrice(model)}</span> : byok ? (
+            <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
+              <KeyRound size={10} /> BYOK
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
+          <span className="capitalize">{model.provider}</span><span>·</span>
+          {byok ? <span>Billed directly by provider</span> : hasUsagePricing && language ? (
+            <><span>{formatPrice(model.inputPricePerMillion)} in</span><span>·</span><span>{formatPrice(model.outputPricePerMillion)} out</span></>
+          ) : !hasUsagePricing ? <span>Pricing unavailable</span> : null}
+          {curated ? <><span>·</span><span>Default</span></> : null}
+        </div>
+      </div>
+      <ModelCatalogControls
+        model={model}
+        language={language}
+        byok={byok}
+        hasUsagePricing={hasUsagePricing}
+        mediaDefault={mediaDefault}
+        enabled={enabled}
+        disabled={disabled}
+        onToggle={onToggle}
+        onMove={onMove}
+        onChange={onChange}
+      />
+    </div>
+  )
+}
+
 export function ModelCatalogSetting({
   enabledModelIds,
   modelOrder,
@@ -52,12 +193,7 @@ export function ModelCatalogSetting({
   defaultImageModelId?: string
   defaultVideoModelId?: string
   disabled?: boolean
-  onChange: (patch: {
-    enabledChatModelIds?: string[]
-    modelOrder?: string[]
-    defaultImageModelId?: string
-    defaultVideoModelId?: string
-  }) => void
+  onChange: (patch: ModelSettingsPatch) => void
 }) {
   const { models, isLoading, error, refresh, revision } = useGatewayModelCatalog()
   const { appDataCapabilities } = useOverlayCapabilities()
@@ -224,114 +360,20 @@ export function ModelCatalogSetting({
         {error ? <div className="px-4 py-6 text-sm text-red-500">{error}</div> : null}
         {!error ? (
           <div className="max-h-[34rem] divide-y divide-[var(--border)] overflow-y-auto">
-            {filtered.map((model: GatewayCatalogModel) => {
-              const byok = isByokModelId(model.id)
-              const hasUsagePricing =
-                model.type === 'language'
-                  ? model.inputPricePerMillion !== undefined && model.outputPricePerMillion !== undefined
-                  : gatewayCatalogModelHasSupportedPricing(model)
-              const mediaDefault = model.type === 'image'
-                ? defaultImageModelId === model.id
-                : model.type === 'video'
-                  ? defaultVideoModelId === model.id
-                  : false
-              return (
-              <div
+            {filtered.map((model) => (
+              <ModelCatalogRow
                 key={model.id}
-                className={`flex items-center gap-4 px-4 py-3 transition-colors ${
-                  hasUsagePricing || byok ? 'hover:bg-[var(--surface-muted)]' : 'opacity-55'
-                }`}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-medium text-[var(--foreground)]">{model.name}</span>
-                    {model.type === 'language' && model.tags.includes('vision') ? (
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
-                        <ScanEye size={11} strokeWidth={1.6} />
-                      </span>
-                    ) : null}
-                    {model.type === 'language' && model.tags.includes('reasoning') ? (
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
-                        <Sparkles size={11} strokeWidth={1.6} />
-                      </span>
-                    ) : null}
-                    {model.type !== 'language' ? (
-                      <span>{formatMediaPrice(model)}</span>
-                    ) : byok ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
-                        <KeyRound size={10} /> BYOK
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
-                    <span className="capitalize">{model.provider}</span>
-                    <span>·</span>
-                    {byok ? (
-                      <span>Billed directly by provider</span>
-                    ) : hasUsagePricing ? (
-                      <>
-                        <span>{formatPrice(model.inputPricePerMillion)} in</span>
-                        <span>·</span>
-                        <span>{formatPrice(model.outputPricePerMillion)} out</span>
-                      </>
-                    ) : (
-                      <span>Pricing unavailable</span>
-                    )}
-                    {curatedIds.has(model.id) ? <><span>·</span><span>Default</span></> : null}
-                  </div>
-                </div>
-                {model.type === 'language' && enabled.has(model.id) ? (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      aria-label={`Move ${model.name} up`}
-                      disabled={disabled}
-                      onClick={() => moveEnabledModel(model.id, -1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
-                    >
-                      <ChevronUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Move ${model.name} down`}
-                      disabled={disabled}
-                      onClick={() => moveEnabledModel(model.id, 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
-                    >
-                      <ChevronDown size={14} />
-                    </button>
-                  </div>
-                ) : null}
-                {model.type === 'language' ? (
-                  <SettingsToggle
-                    checked={enabled.has(model.id)}
-                    disabled={
-                      disabled ||
-                      (!hasUsagePricing && !byok) ||
-                      (enabled.has(model.id) && enabled.size === 1)
-                    }
-                    onChange={() => toggle(model.id)}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    disabled={disabled || !hasUsagePricing}
-                    onClick={() => onChange(model.type === 'image'
-                      ? { defaultImageModelId: model.id }
-                      : { defaultVideoModelId: model.id })}
-                    className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                      mediaDefault
-                        ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]'
-                        : 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)] hover:text-[var(--foreground)]'
-                    }`}
-                  >
-                    {mediaDefault ? <Check size={12} /> : null}
-                    {mediaDefault ? 'Default' : 'Set default'}
-                  </button>
-                )}
-              </div>
-              )
-            })}
+                model={model}
+                curated={curatedIds.has(model.id)}
+                enabled={enabled}
+                defaultImageModelId={defaultImageModelId}
+                defaultVideoModelId={defaultVideoModelId}
+                disabled={disabled}
+                onToggle={toggle}
+                onMove={moveEnabledModel}
+                onChange={onChange}
+              />
+            ))}
             {!isLoading && filtered.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-[var(--muted)]">No models match your search.</div>
             ) : null}
