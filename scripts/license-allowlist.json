@@ -6,21 +6,6 @@
       "reason": "Transactional email adapter SDK. Its AGPL license is compatible with Overlay's AGPL product distribution; commercial distributions must continue to follow Overlay's existing licensing review."
     },
     {
-      "package": "@img/sharp-libvips-*",
-      "licenses": ["LGPL-3.0-or-later"],
-      "reason": "Native libvips binaries used by sharp/Next image processing. Review LGPL obligations before bundling enterprise images."
-    },
-    {
-      "package": "@img/sharp-wasm32",
-      "licenses": ["Apache-2.0 AND LGPL-3.0-or-later AND MIT"],
-      "reason": "Sharp WASM optional package. Review LGPL obligations before bundling enterprise images."
-    },
-    {
-      "package": "@img/sharp-win32-*",
-      "licenses": ["Apache-2.0 AND LGPL-3.0-or-later"],
-      "reason": "Sharp Windows optional package. Review LGPL obligations before bundling enterprise images."
-    },
-    {
       "package": "@sentry/cli*",
       "licenses": ["FSL-1.1-MIT"],
       "reason": "Sentry release/source-map tooling. Confirm it is not shipped as product runtime code in enterprise artifacts."
