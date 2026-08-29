@@ -215,6 +215,85 @@ function extractMarkdownFromElement(el: HTMLDivElement): string {
   }))
 }
 
+const RICH_PASTE_ALLOWED_TAGS = new Set([
+  'A',
+  'B',
+  'BLOCKQUOTE',
+  'BR',
+  'CODE',
+  'DEL',
+  'DIV',
+  'EM',
+  'H1',
+  'H2',
+  'H3',
+  'I',
+  'LI',
+  'OL',
+  'P',
+  'PRE',
+  'S',
+  'STRIKE',
+  'STRONG',
+  'UL',
+])
+
+const RICH_PASTE_IGNORED_TAGS = new Set([
+  'IFRAME',
+  'NOSCRIPT',
+  'OBJECT',
+  'SCRIPT',
+  'STYLE',
+  'TEMPLATE',
+])
+
+function buildSafeRichPasteFragment(html: string): DocumentFragment | null {
+  const source = document.createElement('template')
+  source.innerHTML = html
+  const fragment = document.createDocumentFragment()
+  let preservedLinkCount = 0
+
+  const appendSafeNode = (node: Node, parent: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parent.appendChild(document.createTextNode(node.textContent ?? ''))
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const element = node as HTMLElement
+    if (RICH_PASTE_IGNORED_TAGS.has(element.tagName)) return
+
+    if (element.tagName === 'A') {
+      const safeHref = composerAnchorToMarkdown('', element.getAttribute('href') ?? '')
+      if (!safeHref) {
+        for (const child of Array.from(element.childNodes)) appendSafeNode(child, parent)
+        return
+      }
+
+      const link = document.createElement('a')
+      link.href = safeHref
+      link.className = 'text-[#2563eb] underline underline-offset-2'
+      for (const child of Array.from(element.childNodes)) appendSafeNode(child, link)
+      if (!link.textContent?.trim()) link.textContent = safeHref
+      parent.appendChild(link)
+      preservedLinkCount += 1
+      return
+    }
+
+    if (!RICH_PASTE_ALLOWED_TAGS.has(element.tagName)) {
+      for (const child of Array.from(element.childNodes)) appendSafeNode(child, parent)
+      return
+    }
+
+    const safeElement = document.createElement(element.tagName.toLowerCase())
+    for (const child of Array.from(element.childNodes)) appendSafeNode(child, safeElement)
+    parent.appendChild(safeElement)
+  }
+
+  for (const child of Array.from(source.content.childNodes)) appendSafeNode(child, fragment)
+  return preservedLinkCount > 0 ? fragment : null
+}
+
 const MENTION_ICON_PATHS: Record<MentionType, string[]> = {
   person: ['M20 21a8 8 0 0 0-16 0', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
   file: ['M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z', 'M14 2v6h6', 'M8 13h8', 'M8 17h8'],
@@ -1162,26 +1241,15 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
         // serializes portable Markdown instead of permanently storing the host.
         const richHtml = e.clipboardData.getData('text/html')
         if (richHtml) {
-          const template = document.createElement('template')
-          template.innerHTML = richHtml
-          const anchors = template.content.querySelectorAll('a[href]')
-          const anchor = anchors.length === 1 ? anchors[0] : null
-          const anchorLabel = anchor?.textContent?.trim() ?? ''
-          const richText = template.content.textContent?.trim() ?? ''
-          const safeHref = anchor
-            ? composerAnchorToMarkdown('', anchor.getAttribute('href') ?? '')
-            : ''
-          if (anchor && safeHref && anchorLabel && richText === anchorLabel) {
-            const link = document.createElement('a')
-            link.href = safeHref
-            link.textContent = anchorLabel
-            link.className = 'text-[#2563eb] underline underline-offset-2'
+          const fragment = buildSafeRichPasteFragment(richHtml)
+          if (fragment) {
             const sel = window.getSelection()
             if (sel && sel.rangeCount > 0) {
               const range = sel.getRangeAt(0)
               range.deleteContents()
-              range.insertNode(link)
-              range.setStartAfter(link)
+              const lastNode = fragment.lastChild
+              range.insertNode(fragment)
+              if (lastNode) range.setStartAfter(lastNode)
               range.collapse(true)
               sel.removeAllRanges()
               sel.addRange(range)

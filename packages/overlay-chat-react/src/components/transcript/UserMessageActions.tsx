@@ -10,7 +10,7 @@ export function UserMessageActions({
   if (!markdown.trim()) return null
 
   return (
-    <div className="flex items-center justify-end pr-1 opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100">
+    <div className="chat-exchange-actions--hover flex items-center justify-end pr-1 opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100">
       <FlashCopyIconButton
         copyText={markdown}
         disabled={disabled}
