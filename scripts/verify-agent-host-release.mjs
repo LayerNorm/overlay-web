@@ -23,5 +23,8 @@ assert.match(
 )
 assert.match(adapterManifests, /CODEX_ACP_PACKAGE_VERSION = '1\.7\.0'/)
 assert.match(adapterManifests, /CLAUDE_AGENT_ACP_PACKAGE_VERSION = '0\.70\.0'/)
+assert.match(adapterManifests, /HERMES_AGENT_MINIMUM_VERSION = '0\.20\.6'/)
+assert.match(adapterManifests, /command: 'hermes'/)
+assert.match(adapterManifests, /args: \['acp'\]/)
 
 console.log(`Agent Host release ${hostPackage.version} is internally pinned and consistent.`)

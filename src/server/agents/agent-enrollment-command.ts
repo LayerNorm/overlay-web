@@ -1,6 +1,6 @@
 import type { BuiltInUserOwnedAcpAdapterId } from '@overlay/workspace-contracts'
 
-export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.1.0'
+export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.2.0'
 export const OVERLAY_AGENT_HOST_PACKAGE_SPEC = `@overlay/agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION}`
 
 export function buildAgentHostEnrollmentCommand(input: {

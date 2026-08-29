@@ -17,6 +17,11 @@ export const BUILT_IN_BYO_HARNESSES = [
     label: 'Claude Code',
     description: 'Run Anthropic Claude Code through the Agent Client Protocol.',
   },
+  {
+    id: 'hermes',
+    label: 'Hermes',
+    description: 'Run Hermes 0.20.6 or newer through its official Agent Client Protocol server.',
+  },
 ] as const satisfies ReadonlyArray<{
   id: BuiltInUserOwnedAcpAdapterId
   label: string

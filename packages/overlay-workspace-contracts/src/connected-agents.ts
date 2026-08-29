@@ -35,7 +35,7 @@ export type AgentProtocolAdapter = (typeof AGENT_PROTOCOL_ADAPTERS)[number]
  * Keep this separate from the managed-sandbox allowlist: being built in must never imply
  * that Overlay Cloud is released for the same harness.
  */
-export const BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS = ['codex', 'claude-code'] as const
+export const BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS = ['codex', 'claude-code', 'hermes'] as const
 export type BuiltInUserOwnedAcpAdapterId = (typeof BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS)[number]
 
 export function isBuiltInUserOwnedAcpAdapterId(value: unknown): value is BuiltInUserOwnedAcpAdapterId {

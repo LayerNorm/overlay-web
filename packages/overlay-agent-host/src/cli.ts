@@ -15,6 +15,7 @@ import { loadOrCreateDeviceKeyPair } from './device-key.js'
 import { loadStoredConnection, saveStoredConnection } from './connection.js'
 import { resolveAcpAdapterManifest } from './adapter-manifests.js'
 import { EveAgentAdapter } from './eve-adapter.js'
+import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 
 const [command, ...args] = process.argv.slice(2)
 const configPath = option(args, '--config')
@@ -35,6 +36,7 @@ if (command === 'connect') {
     if (!manifest) throw new Error(`unknown ACP adapter manifest: ${id}`)
     return { ...manifest, args: [...manifest.args] }
   })
+  if (adapterIds.includes('hermes')) await verifyHermesAcpReadiness()
   const connection = await connectAgentHost({
     code,
     serverUrl,
@@ -140,6 +142,6 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
   process.exit(2)
 }
