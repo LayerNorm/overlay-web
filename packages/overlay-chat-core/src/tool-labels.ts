@@ -117,37 +117,53 @@ function describeComposioIntegrationTool(toolName: string, input?: Record<string
 
 export type ToolLabelPhase = 'running' | 'complete' | 'error' | 'denied'
 
+const MCP_CALL_LABEL_BY_PHASE: Record<ToolLabelPhase, string> = {
+  running: 'Calling MCP tool',
+  complete: 'Called MCP tool',
+  error: 'MCP tool failed',
+  denied: 'MCP tool denied',
+}
+
+const MCP_SEARCH_LABEL_BY_PHASE: Record<ToolLabelPhase, string> = {
+  running: 'Searching MCP integrations',
+  complete: 'Searched MCP integrations',
+  error: 'MCP search failed',
+  denied: 'MCP search denied',
+}
+
+function clippedInputValue(
+  input: Record<string, unknown> | undefined,
+  key: string,
+  maxLength: number,
+): string | null {
+  const value = pickFirstStringFromInput(input, [key])
+  if (!value) return null
+  return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value
+}
+
+function describeMcpToolCall(input: Record<string, unknown> | undefined, phase: ToolLabelPhase): string {
+  const prefix = MCP_CALL_LABEL_BY_PHASE[phase]
+  const toolName = clippedInputValue(input, 'toolName', 48)
+  return toolName ? `${prefix} · ${toolName}` : prefix
+}
+
+function describeMcpToolSearch(input: Record<string, unknown> | undefined, phase: ToolLabelPhase): string {
+  const prefix = MCP_SEARCH_LABEL_BY_PHASE[phase]
+  const query = clippedInputValue(input, 'query', 56)
+  return query ? `${prefix} for “${query}”` : prefix
+}
+
 export function getDescriptiveToolLabel(
   toolName: string,
   toolInput?: Record<string, unknown>,
   phase: ToolLabelPhase = 'running',
 ): string {
   if (toolName === 'call_mcp_tool') {
-    const toolNameArg = pickFirstStringFromInput(toolInput, ['toolName'])
-    const clipped = toolNameArg
-      ? toolNameArg.length > 48 ? `${toolNameArg.slice(0, 48)}…` : toolNameArg
-      : null
-    const prefix = phase === 'complete'
-      ? 'Called MCP tool'
-      : phase === 'error'
-        ? 'MCP tool failed'
-        : phase === 'denied'
-          ? 'MCP tool denied'
-          : 'Calling MCP tool'
-    return clipped ? `${prefix} · ${clipped}` : prefix
+    return describeMcpToolCall(toolInput, phase)
   }
 
   if (toolName === 'search_mcp_tools') {
-    const q = pickFirstStringFromInput(toolInput, ['query'])
-    const clipped = q ? q.length > 56 ? `${q.slice(0, 56)}…` : q : null
-    const prefix = phase === 'complete'
-      ? 'Searched MCP integrations'
-      : phase === 'error'
-        ? 'MCP search failed'
-        : phase === 'denied'
-          ? 'MCP search denied'
-          : 'Searching MCP integrations'
-    return clipped ? `${prefix} for “${clipped}”` : prefix
+    return describeMcpToolSearch(toolInput, phase)
   }
 
   const map: Record<string, string> = {
