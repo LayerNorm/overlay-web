@@ -51,6 +51,6 @@ test('Hermes ACP streams and resumes a complete turn through the production adap
     assert.equal(resumedCheckpoint?.payload.text, 'OVERLAY_HERMES_OKOVERLAY_HERMES_RESUMED')
   } finally {
     await session?.stop()
-    await rm(workingDirectory, { recursive: true, force: true })
+    await rm(workingDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 })

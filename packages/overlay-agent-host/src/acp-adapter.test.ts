@@ -39,7 +39,7 @@ test('official ACP SDK adapter streams supervised updates and bridges approval a
     assert.ok(events.some((event) => event.type === 'completed'))
   } finally {
     await session?.stop()
-    await rm(directory, { recursive: true, force: true })
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 })
 
