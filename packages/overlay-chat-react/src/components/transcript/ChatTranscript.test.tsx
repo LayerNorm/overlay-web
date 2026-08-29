@@ -6,6 +6,7 @@ import type { ChatTranscriptView } from '@overlay/chat-core'
 import { ChatTranscript } from './ChatTranscript'
 import { ExchangeActions } from './ExchangeActions'
 import { MediaExchange } from './MediaExchange'
+import { UserMessageActions } from './UserMessageActions'
 
 test('ChatTranscript renders normalized exchanges in contract order without wrapper markup', () => {
   const view: ChatTranscriptView = {
@@ -65,6 +66,13 @@ test('ChatTranscript renders normalized exchanges in contract order without wrap
   )
 
   assert.equal(markup, '<span data-turn="turn-1">One</span><span data-turn="turn-2">Two</span>')
+})
+
+test('sent-message copy actions use the shared touch visibility class', () => {
+  const markup = renderToStaticMarkup(<UserMessageActions markdown="Hello **world**" />)
+
+  assert.match(markup, /chat-exchange-actions--hover/)
+  assert.match(markup, /aria-label="Copy sent message as Markdown"/)
 })
 
 test('ChatTranscript inserts day dividers when consecutive exchanges fall on different days', () => {
@@ -234,4 +242,12 @@ test('exchange actions keep branch and sources immediately after reply', () => {
   assert.ok(replyIndex >= 0)
   assert.ok(replyIndex < branchIndex)
   assert.ok(branchIndex < sourcesIndex)
+})
+
+test('sent-message actions copy the original Markdown payload', () => {
+  const markdown = '[x.com](<https://x.com/todaywasawesome/status/1961234567890123456>)'
+  const markup = renderToStaticMarkup(<UserMessageActions markdown={markdown} />)
+
+  assert.match(markup, /aria-label="Copy sent message as Markdown"/)
+  assert.doesNotMatch(markup, /disabled=""/)
 })

@@ -34,6 +34,7 @@ import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
 import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
+import { UserMessageActions } from './UserMessageActions'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 import { useChatExchangeSources } from './chat-exchange-sources'
 
@@ -223,9 +224,12 @@ export function ChatExchange({
               </div>
             )}
             {showTextBubble && (
-              <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-                <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
-              </UserMessageBubble>
+              <>
+                <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+                  <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
+                </UserMessageBubble>
+                <UserMessageActions markdown={userBodyText} disabled={isExiting} />
+              </>
             )}
           </div>
         </div>

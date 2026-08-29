@@ -12,7 +12,7 @@ import {
 import { MentionPopup } from '@/components/mentions/MentionPopup'
 import { useMentionData } from './useMentionData'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
-import { joinComposerMarkdownSegments } from './composer-markdown'
+import { composerAnchorToMarkdown, joinComposerMarkdownSegments } from './composer-markdown'
 
 export type MentionInputFormatCommand =
   | 'heading1'
@@ -176,6 +176,9 @@ function inlineNodeToMarkdown(node: Node): string {
   }
   if (element.tagName === 'BR') return '\n'
   const content = Array.from(element.childNodes).map(inlineNodeToMarkdown).join('')
+  if (element.tagName === 'A') {
+    return composerAnchorToMarkdown(content, element.getAttribute('href') ?? '')
+  }
   if (element.tagName === 'STRONG' || element.tagName === 'B') return `**${content}**`
   if (element.tagName === 'EM' || element.tagName === 'I') return `*${content}*`
   if (element.tagName === 'S' || element.tagName === 'DEL' || element.tagName === 'STRIKE') return `~~${content}~~`
@@ -210,6 +213,85 @@ function extractMarkdownFromElement(el: HTMLDivElement): string {
       block: isBlock,
     }
   }))
+}
+
+const RICH_PASTE_ALLOWED_TAGS = new Set([
+  'A',
+  'B',
+  'BLOCKQUOTE',
+  'BR',
+  'CODE',
+  'DEL',
+  'DIV',
+  'EM',
+  'H1',
+  'H2',
+  'H3',
+  'I',
+  'LI',
+  'OL',
+  'P',
+  'PRE',
+  'S',
+  'STRIKE',
+  'STRONG',
+  'UL',
+])
+
+const RICH_PASTE_IGNORED_TAGS = new Set([
+  'IFRAME',
+  'NOSCRIPT',
+  'OBJECT',
+  'SCRIPT',
+  'STYLE',
+  'TEMPLATE',
+])
+
+function buildSafeRichPasteFragment(html: string): DocumentFragment | null {
+  const source = document.createElement('template')
+  source.innerHTML = html
+  const fragment = document.createDocumentFragment()
+  let preservedLinkCount = 0
+
+  const appendSafeNode = (node: Node, parent: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parent.appendChild(document.createTextNode(node.textContent ?? ''))
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const element = node as HTMLElement
+    if (RICH_PASTE_IGNORED_TAGS.has(element.tagName)) return
+
+    if (element.tagName === 'A') {
+      const safeHref = composerAnchorToMarkdown('', element.getAttribute('href') ?? '')
+      if (!safeHref) {
+        for (const child of Array.from(element.childNodes)) appendSafeNode(child, parent)
+        return
+      }
+
+      const link = document.createElement('a')
+      link.href = safeHref
+      link.className = 'text-[#2563eb] underline underline-offset-2'
+      for (const child of Array.from(element.childNodes)) appendSafeNode(child, link)
+      if (!link.textContent?.trim()) link.textContent = safeHref
+      parent.appendChild(link)
+      preservedLinkCount += 1
+      return
+    }
+
+    if (!RICH_PASTE_ALLOWED_TAGS.has(element.tagName)) {
+      for (const child of Array.from(element.childNodes)) appendSafeNode(child, parent)
+      return
+    }
+
+    const safeElement = document.createElement(element.tagName.toLowerCase())
+    for (const child of Array.from(element.childNodes)) appendSafeNode(child, safeElement)
+    parent.appendChild(safeElement)
+  }
+
+  for (const child of Array.from(source.content.childNodes)) appendSafeNode(child, fragment)
+  return preservedLinkCount > 0 ? fragment : null
 }
 
 const MENTION_ICON_PATHS: Record<MentionType, string[]> = {
@@ -623,6 +705,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const [mentionQuery, setMentionQuery] = useState('')
     const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null)
     const [categories, setCategories] = useState<MentionCategory[]>([])
+    const [mentionSearching, setMentionSearching] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(null)
     const [activeOptionId, setActiveOptionId] = useState<string | null>(null)
     const triggerOffsetRef = useRef<number>(0)
@@ -631,6 +714,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const lastValueRef = useRef(value)
     /** Guards against recursive handleInput calls from dispatchEditorInput in live markdown formatting. */
     const formattingAppliedRef = useRef(false)
+    const searchRequestRef = useRef(0)
     /** True when the @ that opened the current popup was inserted by the @ button rather
      * than typed by the user; on close-without-select we strip that orphan @. */
     const buttonInsertedAtRef = useRef(false)
@@ -640,6 +724,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       availableTypes: defaultAvailableTypes,
       search: searchDefaultCategories,
       loading,
+      fetchAllData,
     } = useMentionData()
     const availableTypes = useMemo(() => Array.from(new Set([
       ...defaultAvailableTypes,
@@ -658,6 +743,19 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       for (const category of extraCategories) byType.set(category.type, category)
       return Array.from(byType.values())
     }, [mentionCategories, searchDefaultCategories])
+
+    const runMentionSearch = useCallback((query: string) => {
+      const requestId = ++searchRequestRef.current
+      setCategories([])
+      setMentionSearching(true)
+      void search(query)
+        .then((nextCategories) => {
+          if (searchRequestRef.current === requestId) setCategories(nextCategories)
+        })
+        .finally(() => {
+          if (searchRequestRef.current === requestId) setMentionSearching(false)
+        })
+    }, [search])
 
     // Sync explicit external value commands into the editor (clear on send,
     // populate restored draft after hydration). Normal typing stays local to
@@ -803,13 +901,13 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           if (coords) {
             setPopupPosition(coords)
             setShowPopup(true)
-            void search(mentionState.query).then(setCategories)
+            runMentionSearch(mentionState.query)
           }
         } else {
           setShowPopup(false)
         }
       }
-    }, [onChange, onMentionsChange, search])
+    }, [onChange, onMentionsChange, runMentionSearch])
 
     const syncEditorEmptyState = useCallback(() => {
       const el = editorRef.current
@@ -1137,6 +1235,31 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
           return
         }
 
+        // Rich clipboards often expose a shortened label (for example `x.com`)
+        // in text/plain while keeping the exact tweet/article URL only in the
+        // anchor href. Preserve that destination in the editor DOM so extraction
+        // serializes portable Markdown instead of permanently storing the host.
+        const richHtml = e.clipboardData.getData('text/html')
+        if (richHtml) {
+          const fragment = buildSafeRichPasteFragment(richHtml)
+          if (fragment) {
+            const sel = window.getSelection()
+            if (sel && sel.rangeCount > 0) {
+              const range = sel.getRangeAt(0)
+              range.deleteContents()
+              const lastNode = fragment.lastChild
+              range.insertNode(fragment)
+              if (lastNode) range.setStartAfter(lastNode)
+              range.collapse(true)
+              sel.removeAllRanges()
+              sel.addRange(range)
+              resizeEditorElement(el)
+              dispatchEditorInput(el)
+              return
+            }
+          }
+        }
+
         // If the pasted text contains markdown syntax, parse and insert as
         // formatted HTML so the composer renders it visually.
         const hasMarkdown = /(^|\n)(#{1,3}\s|>\s|[-*]\s|\d+\.\s|```)|\*\*[^*]+\*\*|`[^`]+`|~~[^~]+~~|(^|[\s(])\*[^*\n]+\*(?=$|[\s).,!?:;])/m.test(text)
@@ -1178,7 +1301,9 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
     )
 
     const closePopup = useCallback(() => {
+      searchRequestRef.current += 1
       setShowPopup(false)
+      setMentionSearching(false)
       setMentionQuery('')
       setSelectedCategory(null)
       // If the @ was inserted by the button and no item was selected, strip the
@@ -1222,7 +1347,10 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
           contentEditable={!disabled}
           suppressContentEditableWarning
           onInput={handleInput}
-          onFocus={syncEditorEmptyState}
+          onFocus={() => {
+            syncEditorEmptyState()
+            void fetchAllData()
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onCompositionStart={() => { isComposingRef.current = true }}
@@ -1242,7 +1370,7 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
         {showPopup && (
           <MentionPopup
             categories={categories}
-            loading={loading}
+            loading={mentionSearching || loading}
             position={popupPosition}
             onSelect={handleSelect}
             onUploadFile={() => {

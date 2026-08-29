@@ -34,3 +34,33 @@ test('the mention menu calls the people and agent directory Members', () => {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
   }
 })
+
+test('a top-level mention query shows loading instead of a false empty result', () => {
+  const originalWindow = globalThis.window
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { innerWidth: 1280, innerHeight: 800 },
+  })
+
+  try {
+    const html = renderToStaticMarkup(
+      <MentionPopup
+        categories={[]}
+        loading
+        position={{ x: 24, y: 24 }}
+        onSelect={() => undefined}
+        onUploadFile={() => undefined}
+        onClose={() => undefined}
+        query="fire"
+        availableTypes={['mcp']}
+        selectedCategory={null}
+        onSelectedCategoryChange={() => undefined}
+      />,
+    )
+    assert.match(html, /role="status"/)
+    assert.match(html, /Loading mentions/)
+    assert.doesNotMatch(html, /No results/)
+  } finally {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+  }
+})
