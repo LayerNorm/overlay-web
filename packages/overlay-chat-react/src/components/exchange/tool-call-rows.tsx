@@ -22,9 +22,19 @@ export function ToolCallRowWithReasoning({
   connectBottom?: boolean
 }) {
   const toolDone = TOOL_UI_DONE_STATES.has(block.state)
-  const err = block.state === 'output-error' || block.state === 'output-denied'
+  const err = block.state === 'input-error' || block.state === 'output-error' || block.state === 'output-denied'
   const running = !toolDone && !err
-  const label = getDescriptiveToolLabel(block.name, block.toolInput)
+  const label = getDescriptiveToolLabel(
+    block.name,
+    block.toolInput,
+    block.state === 'output-denied'
+      ? 'denied'
+      : block.state === 'output-error' || block.state === 'input-error'
+        ? 'error'
+        : toolDone
+          ? 'complete'
+          : 'running',
+  )
 
   const pad = variant === 'nested' ? 'py-0.5' : 'py-1'
 
@@ -105,7 +115,9 @@ export function ToolCallsCollapsedGroup({
   const anyRunning =
     tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state)) ||
     items.some((it) => it.kind === 'reasoning' && it.state !== 'done')
-  const anyErr = tools.some((t) => t.state === 'output-error' || t.state === 'output-denied')
+  const anyErr = tools.some(
+    (t) => t.state === 'input-error' || t.state === 'output-error' || t.state === 'output-denied',
+  )
   const summary =
     anyErr
       ? `${n} tools called`

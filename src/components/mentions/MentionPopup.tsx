@@ -232,9 +232,10 @@ export function MentionPopup({
       )}
 
       <div className="overflow-y-auto" role="listbox" id="mention-listbox" aria-label="Mention suggestions">
-        {loading && categories.length === 0 && selectedCategory !== null ? (
-          <div className="flex items-center justify-center py-6">
+        {loading && isEmptyResults ? (
+          <div className="flex items-center justify-center gap-2 py-6 text-xs text-[var(--muted-light)]" role="status" aria-live="polite">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent" />
+            <span>Loading mentions...</span>
           </div>
         ) : isEmptyResults && (query.trim() !== '' || selectedCategory !== null) ? (
           <>

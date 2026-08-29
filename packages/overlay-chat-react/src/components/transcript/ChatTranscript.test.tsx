@@ -6,6 +6,7 @@ import type { ChatTranscriptView } from '@overlay/chat-core'
 import { ChatTranscript } from './ChatTranscript'
 import { ExchangeActions } from './ExchangeActions'
 import { MediaExchange } from './MediaExchange'
+import { UserMessageActions } from './UserMessageActions'
 
 test('ChatTranscript renders normalized exchanges in contract order without wrapper markup', () => {
   const view: ChatTranscriptView = {
@@ -234,4 +235,12 @@ test('exchange actions keep branch and sources immediately after reply', () => {
   assert.ok(replyIndex >= 0)
   assert.ok(replyIndex < branchIndex)
   assert.ok(branchIndex < sourcesIndex)
+})
+
+test('sent-message actions copy the original Markdown payload', () => {
+  const markdown = '[x.com](<https://x.com/todaywasawesome/status/1961234567890123456>)'
+  const markup = renderToStaticMarkup(<UserMessageActions markdown={markdown} />)
+
+  assert.match(markup, /aria-label="Copy sent message as Markdown"/)
+  assert.doesNotMatch(markup, /disabled=""/)
 })

@@ -115,7 +115,41 @@ function describeComposioIntegrationTool(toolName: string, input?: Record<string
   return titleCaseUnderscore(toolName.replace(/^composio_/i, ''))
 }
 
-export function getDescriptiveToolLabel(toolName: string, toolInput?: Record<string, unknown>): string {
+export type ToolLabelPhase = 'running' | 'complete' | 'error' | 'denied'
+
+export function getDescriptiveToolLabel(
+  toolName: string,
+  toolInput?: Record<string, unknown>,
+  phase: ToolLabelPhase = 'running',
+): string {
+  if (toolName === 'call_mcp_tool') {
+    const toolNameArg = pickFirstStringFromInput(toolInput, ['toolName'])
+    const clipped = toolNameArg
+      ? toolNameArg.length > 48 ? `${toolNameArg.slice(0, 48)}…` : toolNameArg
+      : null
+    const prefix = phase === 'complete'
+      ? 'Called MCP tool'
+      : phase === 'error'
+        ? 'MCP tool failed'
+        : phase === 'denied'
+          ? 'MCP tool denied'
+          : 'Calling MCP tool'
+    return clipped ? `${prefix} · ${clipped}` : prefix
+  }
+
+  if (toolName === 'search_mcp_tools') {
+    const q = pickFirstStringFromInput(toolInput, ['query'])
+    const clipped = q ? q.length > 56 ? `${q.slice(0, 56)}…` : q : null
+    const prefix = phase === 'complete'
+      ? 'Searched MCP integrations'
+      : phase === 'error'
+        ? 'MCP search failed'
+        : phase === 'denied'
+          ? 'MCP search denied'
+          : 'Searching MCP integrations'
+    return clipped ? `${prefix} for “${clipped}”` : prefix
+  }
+
   const map: Record<string, string> = {
     browser_run_task: 'Browsing the web',
     interactive_browser_session: 'Browsing the web',
@@ -134,8 +168,6 @@ export function getDescriptiveToolLabel(toolName: string, toolInput?: Record<str
     generate_image: 'Generating an image',
     generate_video: 'Generating a video',
     run_daytona_sandbox: 'Running your workspace',
-    search_mcp_tools: 'Searching MCP integrations',
-    call_mcp_tool: 'Calling MCP tool',
   }
   if (map[toolName]) return map[toolName]!
 
@@ -160,22 +192,6 @@ export function getDescriptiveToolLabel(toolName: string, toolInput?: Record<str
     if (o) {
       const clipped = o.length > 72 ? `${o.slice(0, 72)}…` : o
       return `Researching: “${clipped}”`
-    }
-  }
-
-  if (toolName === 'call_mcp_tool' && toolInput) {
-    const toolNameArg = pickFirstStringFromInput(toolInput, ['toolName'])
-    if (toolNameArg) {
-      const clipped = toolNameArg.length > 48 ? `${toolNameArg.slice(0, 48)}…` : toolNameArg
-      return `MCP: ${clipped}`
-    }
-  }
-
-  if (toolName === 'search_mcp_tools' && toolInput) {
-    const q = pickFirstStringFromInput(toolInput, ['query'])
-    if (q) {
-      const clipped = q.length > 56 ? `${q.slice(0, 56)}…` : q
-      return `Searching MCP for “${clipped}”`
     }
   }
 
