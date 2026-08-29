@@ -7,6 +7,8 @@ on:
     types: [created]
 
 permissions:
+  actions: write
+  checks: write
   contents: write
   pull-requests: write
   issues: write
@@ -26,6 +28,7 @@ jobs:
             const SIGNATURES_BRANCH = 'cla-signatures';
             const SIGNATURES_PATH = 'signatures.json';
             const MARKER = '<!-- overlay-cla -->';
+            const CHECK_NAME = 'CLA Signatures';
             const ALLOWLIST = new Set([
               'developedbydev',
               'dependabot[bot]',
@@ -43,6 +46,14 @@ jobs:
 
             function isAllowlisted(login) {
               return ALLOWLIST.has(String(login || '').toLowerCase());
+            }
+
+            function signedLoginsForCurrentVersion(signatures) {
+              return new Set(
+                signatures
+                  .filter((entry) => entry.claVersion === CLA_VERSION)
+                  .map((entry) => String(entry.githubUser || '').toLowerCase()),
+              );
             }
 
             async function loadRegistry() {
@@ -140,6 +151,52 @@ jobs:
               }
             }
 
+            async function publishPullRequestResult(headSha, success, summary) {
+              await github.rest.checks.create({
+                owner,
+                repo,
+                name: CHECK_NAME,
+                head_sha: headSha,
+                status: 'completed',
+                conclusion: success ? 'success' : 'failure',
+                output: {
+                  title: success
+                    ? 'CLA signatures complete'
+                    : 'CLA signatures missing',
+                  summary,
+                },
+              });
+
+              if (context.eventName !== 'issue_comment' || !success) {
+                return;
+              }
+
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRunsForRepo,
+                { owner, repo, head_sha: headSha, per_page: 30 },
+              );
+              const prior = runs.find(
+                (run) =>
+                  run.name === CHECK_NAME &&
+                  run.event === 'pull_request' &&
+                  run.conclusion === 'failure',
+              );
+              if (!prior) {
+                return;
+              }
+              try {
+                await github.rest.actions.reRunWorkflow({
+                  owner,
+                  repo,
+                  run_id: prior.id,
+                });
+              } catch (error) {
+                core.warning(
+                  `Could not re-run the pull-request CLA workflow: ${error.message}`,
+                );
+              }
+            }
+
             const commentBody = String(context.payload.comment?.body || '').trim();
             const wantsSignature =
               context.eventName === 'issue_comment' && commentBody === SIGN_PHRASE;
@@ -149,12 +206,15 @@ jobs:
               return;
             }
 
+            const pull = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullNumber,
+            });
+            const headSha = pull.data.head.sha;
+
             const { sha, registry } = await loadRegistry();
-            const signedLogins = new Set(
-              registry.signatures.map((entry) =>
-                String(entry.githubUser || '').toLowerCase(),
-              ),
-            );
+            const signedLogins = signedLoginsForCurrentVersion(registry.signatures);
 
             if (wantsSignature) {
               const signer = context.payload.comment.user;
@@ -163,6 +223,7 @@ jobs:
                 return;
               }
               if (!isAllowlisted(signer.login) && !signedLogins.has(signer.login.toLowerCase())) {
+                registry.claVersion = CLA_VERSION;
                 registry.signatures.push({
                   githubUser: signer.login,
                   githubUserId: signer.id,
@@ -196,7 +257,7 @@ jobs:
               }
               authors.add(login);
             }
-            const prUser = context.payload.pull_request?.user?.login;
+            const prUser = pull.data.user?.login;
             if (prUser) {
               authors.add(prUser);
             }
@@ -204,9 +265,12 @@ jobs:
             const missing = [...authors].filter(
               (login) => !isAllowlisted(login) && !signedLogins.has(login.toLowerCase()),
             );
+            const complete = unidentified.length === 0 && missing.length === 0;
 
-            if (unidentified.length === 0 && missing.length === 0) {
-              core.info('All pull request authors are allowlisted or have signed the CLA.');
+            if (complete) {
+              const summary = 'All pull request authors are allowlisted or have signed the current CLA version.';
+              await publishPullRequestResult(headSha, true, summary);
+              core.info(summary);
               return;
             }
 
@@ -225,7 +289,7 @@ jobs:
                 ? `Commits without a GitHub user: ${unidentified.join(', ')}.`
                 : '',
               '',
-              'A checklist box is not a signature. The workflow records your GitHub identity, CLA version, timestamp, repository, and pull request number.',
+              'A checklist box is not a signature. The workflow records your GitHub identity, current CLA version, timestamp, repository, and pull request number.',
             ]
               .filter((line) => line !== '')
               .join('\n');
@@ -254,6 +318,7 @@ jobs:
               });
             }
 
+            await publishPullRequestResult(headSha, false, body);
             core.setFailed(
               unidentified.length
                 ? 'CLA signatures are missing, or some commits have no GitHub user.'
