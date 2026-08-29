@@ -1,6 +1,7 @@
 export * from './acp-adapter.js'
 export * from './adapter.js'
 export * from './adapter-manifests.js'
+export * from './hermes-readiness.js'
 export * from './config.js'
 export * from './connection.js'
 export * from './device-key.js'

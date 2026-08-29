@@ -7,7 +7,7 @@ signature payloads, protocol limits, and TypeScript types; it does not start an 
 Install the matching protocol and host versions together:
 
 ```sh
-npm install @overlay/agent-bridge-protocol@0.1.0 @overlay/agent-host@0.1.0
+npm install @overlay/agent-bridge-protocol@0.2.0 @overlay/agent-host@0.2.0
 ```
 
 Protocol version 1 fails closed on unknown versions, invalid event sequences, oversized payloads,

@@ -15,6 +15,7 @@ import { loadOrCreateDeviceKeyPair } from './device-key.js'
 import { loadStoredConnection, saveStoredConnection } from './connection.js'
 import { resolveAcpAdapterManifest } from './adapter-manifests.js'
 import { EveAgentAdapter } from './eve-adapter.js'
+import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 
 const [command, ...args] = process.argv.slice(2)
 const configPath = option(args, '--config')
@@ -35,6 +36,7 @@ if (command === 'connect') {
     if (!manifest) throw new Error(`unknown ACP adapter manifest: ${id}`)
     return { ...manifest, args: [...manifest.args] }
   })
+  if (adapterIds.includes('hermes')) await verifyHermesAcpReadiness()
   const connection = await connectAgentHost({
     code,
     serverUrl,
@@ -124,8 +126,17 @@ function buildAdapters(configs: AgentHostConfigAdapter[]): AgentAdapter[] {
     return new AcpAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, command: adapter.command,
       ...(adapter.args ? { args: adapter.args } : {}), ...(adapter.env ? { env: adapter.env } : {}),
+      ...(isHermesManifestAdapter(adapter) ? { verify: verifyHermesAcpReadiness } : {}),
     })
   })
+}
+
+function isHermesManifestAdapter(adapter: AgentHostConfigAdapter): boolean {
+  return adapter.protocol === 'acp'
+    && adapter.id === 'hermes'
+    && adapter.command === 'hermes'
+    && adapter.args?.length === 1
+    && adapter.args[0] === 'acp'
 }
 
 type AgentHostConfigAdapter = Awaited<ReturnType<typeof loadAgentHostConfig>>['adapters'][number]
@@ -140,6 +151,6 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
   process.exit(2)
 }

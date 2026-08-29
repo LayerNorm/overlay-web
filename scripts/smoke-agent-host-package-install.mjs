@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const smokeDirectory = mkdtempSync(join(tmpdir(), 'overlay-agent-host-release-'))
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const hostPackage = JSON.parse(readFileSync(join(repositoryRoot, 'packages/overlay-agent-host/package.json'), 'utf8'))
+const protocolPackage = JSON.parse(readFileSync(join(repositoryRoot, 'packages/overlay-agent-bridge-protocol/package.json'), 'utf8'))
 
 try {
   execFileSync(npmCommand, [
@@ -20,8 +22,8 @@ try {
   execFileSync(npmCommand, [
     'install', '--ignore-scripts', '--no-audit', '--no-fund',
     '--min-release-age=0',
-    './overlay-agent-bridge-protocol-0.1.0.tgz',
-    './overlay-agent-host-0.1.0.tgz',
+    `./overlay-agent-bridge-protocol-${protocolPackage.version}.tgz`,
+    `./overlay-agent-host-${hostPackage.version}.tgz`,
   ], { cwd: smokeDirectory, stdio: 'pipe' })
 
   execFileSync(process.execPath, [

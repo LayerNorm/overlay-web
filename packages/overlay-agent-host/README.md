@@ -7,7 +7,7 @@ unacknowledged events in SQLite, so restarting the host does not duplicate accep
 Node.js 24 or newer is required. Run it in the foreground with the one-copy command from Overlay:
 
 ```sh
-npx --yes @overlay/agent-host@0.1.0 connect <enrollment-code> \
+npx --yes @overlay/agent-host@0.2.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --run
@@ -32,14 +32,18 @@ Keep credentials out of the JSON file:
   },
   "adapters": [
     { "manifest": "codex" },
-    { "manifest": "claude-code" }
+    { "manifest": "claude-code" },
+    { "manifest": "hermes" }
   ]
 }
 ```
 
 The built-in manifests resolve to the exact, release-tested
 `@agentclientprotocol/codex-acp@1.7.0` and
-`@agentclientprotocol/claude-agent-acp@0.70.0` packages. A custom
+`@agentclientprotocol/claude-agent-acp@0.70.0` packages. Hermes uses its official
+`hermes acp` stdio server and requires Hermes Agent 0.20.6 or newer. Install Hermes from the
+official Nous Research distribution, then verify it before enrollment with
+`hermes acp --check`. A custom
 ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
 shape.
 
@@ -62,7 +66,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes @overlay/agent-host@0.1.0 connect <enrollment-code> \
+npx --yes @overlay/agent-host@0.2.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --adapter eve \
@@ -110,6 +114,6 @@ directory and ACP workspace roots; they are not an operating-system sandbox. For
 isolation, run the host and harness under a restricted OS account, container, VM, or managed
 sandbox.
 
-Native adapters such as Hermes or OpenClaw are added only when the harness cannot expose ACP and
-only after the unchanged Agent Host conformance suite passes. MCP remains a tool/resource protocol;
-it is not used as the execution lifecycle transport.
+Native adapters such as OpenClaw are added only when the harness cannot expose ACP and only after
+the unchanged Agent Host conformance suite passes. Hermes uses its official ACP server. MCP remains
+a tool/resource protocol; it is not used as the execution lifecycle transport.

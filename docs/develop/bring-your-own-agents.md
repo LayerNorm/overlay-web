@@ -112,8 +112,12 @@ records an explicitly granted default working directory. Creating an environment
 same dialog and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
 ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
-(`@agentclientprotocol/claude-agent-acp@0.70.0`); adding another ACP target extends the manifest and
-conformance fixtures, not conversation orchestration. The built-in user-owned adapter IDs live in
+(`@agentclientprotocol/claude-agent-acp@0.70.0`). Hermes 0.20.6 or newer is a third built-in target
+through the official `hermes acp` stdio server. It uses the unchanged ACP lifecycle for session
+creation/loading, streamed message and tool updates, permissions, cancellation, and authentication;
+the host does not translate Hermes through a private protocol. Adding another ACP target extends the
+manifest and conformance fixtures, not conversation orchestration. The built-in user-owned adapter
+IDs live in
 `@overlay/workspace-contracts`; they are deliberately separate from the managed-sandbox adapter
 allowlist so enabling a local or VPS adapter never makes Overlay Cloud eligible.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
@@ -191,8 +195,9 @@ a remote or headless flow. Overlay never copies, mounts, uploads, or imports a u
 Claude, or equivalent authentication directory into a managed sandbox.
 
 Phase 7 makes `@overlay/agent-host` and `@overlay/agent-bridge-protocol` publishable packages and
-requires Node.js 24. The first production package line is `0.1.0`; the application copies an exact
-`npx --yes @overlay/agent-host@0.1.0 ...` command rather than following npm `latest`. The host and
+requires Node.js 24. The first production package line is `0.1.0`; Hermes support is released in
+the lockstep `0.2.0` package line. The application copies an exact
+`npx --yes @overlay/agent-host@0.2.0 ...` command rather than following npm `latest`. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
 the compatibility, package-content, and clean Node.js installation gates. Published package entry
@@ -214,8 +219,8 @@ be publicly reachable. Eve connection
 authorization (`authorization.required`) is not bridged by the current host contract, so the
 adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
 app-scoped Eve connection auth until a dedicated authorization capability is added.
-Hermes, OpenClaw, and other native adapters remain ineligible unless ACP is unavailable and the
-unchanged host conformance suite passes.
+Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
+is unavailable and the unchanged host conformance suite passes.
 
 Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
 rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
