@@ -194,7 +194,9 @@ Phase 7 makes `@overlay/agent-host` and `@overlay/agent-bridge-protocol` publish
 requires Node.js 24. The first production package line is `0.1.0`; the application copies an exact
 `npx --yes @overlay/agent-host@0.1.0 ...` command rather than following npm `latest`. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
-release workflow publishes both with provenance after the compatibility and package-content gates.
+release workflow publishes compiled ESM plus declarations for both packages with provenance after
+the compatibility, package-content, and clean Node.js installation gates. Published package entry
+points never require TypeScript stripping or a consumer-supplied loader.
 The same executable runs as a foreground CLI, a restartable systemd service,
 or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd

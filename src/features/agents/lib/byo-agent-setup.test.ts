@@ -7,6 +7,7 @@ import {
   defaultWorkingDirectory,
   environmentSupportsHarness,
   generatedByoInstructions,
+  workspaceAgentUsesByo,
   workspaceHarnessForByo,
 } from './byo-agent-setup'
 
@@ -37,4 +38,10 @@ test('BYO defaults preserve explicit filesystem and workspace harness boundaries
   assert.equal(workspaceHarnessForByo('claude-code'), 'claude-code')
   assert.equal(workspaceHarnessForByo('codex'), 'overlay')
   assert.match(generatedByoInstructions('Codex'), /connected environment/)
+})
+
+test('existing BYO identity is recognized without a binding request', () => {
+  assert.equal(workspaceAgentUsesByo({ harness: 'overlay', modelId: 'byo/codex' }), true)
+  assert.equal(workspaceAgentUsesByo({ harness: 'claude-code', modelId: 'byo/claude-code' }), true)
+  assert.equal(workspaceAgentUsesByo({ harness: 'overlay', modelId: 'openrouter/free' }), false)
 })

@@ -2,6 +2,7 @@ import type { AgentEnvironmentResource } from '@overlay/api-client'
 import {
   BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS,
   type BuiltInUserOwnedAcpAdapterId,
+  type WorkspaceAgentDirectoryItem,
   type WorkspaceAgentHarness,
 } from '@overlay/workspace-contracts'
 
@@ -73,6 +74,12 @@ export function builtInHarnessCatalogIsComplete() {
     && BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS.every((id) => (
       BUILT_IN_BYO_HARNESSES.some((harness) => harness.id === id)
     ))
+}
+
+export function workspaceAgentUsesByo(
+  agent: Pick<WorkspaceAgentDirectoryItem, 'harness' | 'modelId'> | null | undefined,
+) {
+  return Boolean(agent && (agent.harness !== 'overlay' || agent.modelId.startsWith('byo/')))
 }
 
 export function environmentSupportsHarness(environment: AgentEnvironmentResource, harnessId: string) {

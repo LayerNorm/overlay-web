@@ -29,6 +29,7 @@ import {
   defaultWorkingDirectory,
   environmentSupportsHarness,
   generatedByoInstructions,
+  workspaceAgentUsesByo,
   workspaceHarnessForByo,
   type BuiltInByoHarnessId,
 } from '../lib/byo-agent-setup'
@@ -76,7 +77,9 @@ export function AgentEditorDialog({
     ? enabledAgentToolGroupIds(agent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
   const [advanced, setAdvanced] = useState(false)
-  const [agentType, setAgentType] = useState<AgentType>('overlay')
+  const [agentType, setAgentType] = useState<AgentType>(() => (
+    workspaceAgentUsesByo(agent) ? 'byo' : 'overlay'
+  ))
   const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
   const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
@@ -128,10 +131,6 @@ export function AgentEditorDialog({
   }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, open, showcase])
 
   useEffect(() => {
-    if (!connectedAgentsEnabled && agentType === 'byo') setAgentType('overlay')
-  }, [agentType, connectedAgentsEnabled])
-
-  useEffect(() => {
     if (!command || setupEnvironmentId) return
     const timer = window.setInterval(() => {
       void refreshEnvironments().catch((value) => {
@@ -172,7 +171,7 @@ export function AgentEditorDialog({
   const bindingValid = Boolean(environmentId && adapterId && workingDirectory.trim())
   const valid = Boolean(name.trim() && (agentType === 'overlay'
     ? instructions.trim() && modelId.trim()
-    : bindingValid))
+    : connectedAgentsEnabled && bindingValid))
 
   const toggleToolGroup = (groupId: string) => {
     setEnabledToolGroups((current) => {
@@ -324,8 +323,12 @@ export function AgentEditorDialog({
 
           {agentType === 'overlay' ? (
             <OverlayAgentFields instructions={instructions} onInstructionsChange={setInstructions} modelId={modelId} onModelChange={setModelId} modelOptions={modelOptions} enabledToolGroups={enabledToolGroups} onToggleToolGroup={toggleToolGroup} advanced={advanced} onAdvancedChange={setAdvanced} />
-          ) : (
+          ) : connectedAgentsEnabled ? (
             <ByoAgentFields adapterId={adapterId} harnessOptions={harnessOptions} onHarnessChange={chooseHarness} choice={environmentChoice} onChoiceChange={setEnvironmentChoice} compatibleEnvironments={compatibleEnvironments} environmentsLoading={environmentsLoading} environmentId={environmentId} onEnvironmentChange={chooseEnvironment} workingDirectory={workingDirectory} onWorkingDirectoryChange={setWorkingDirectory} selectedHarnessConnectable={Boolean(selectedHarness?.connectable)} environmentBusy={environmentBusy} environmentError={environmentError} command={command} copied={copied} onCopyCommand={copyCommand} onBeginConnection={beginConnection} setupEnvironment={setupEnvironment} setupRoots={setupRoots} onSetupRootsChange={setSetupRoots} onApproveSetup={approveSetupEnvironment} />
+          ) : (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
+              This connected agent is unchanged. Connected-agent editing is not available for this workspace right now.
+            </div>
           )}
           {error ? <p className="text-xs text-red-500">{error}</p> : null}
         </div>

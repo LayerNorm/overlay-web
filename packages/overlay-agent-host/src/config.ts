@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { filesystemGrantSchema } from '@overlay/agent-bridge-protocol'
-import { loadStoredConnection } from './connection'
-import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-manifests'
+import { loadStoredConnection } from './connection.js'
+import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-manifests.js'
 
 export const agentHostConfigSchema = z.object({
   environmentId: z.string().min(1),
