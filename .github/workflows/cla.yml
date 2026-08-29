@@ -302,7 +302,11 @@ jobs:
             }
 
             const missing = [...authors].filter(
-              (login) => !isAllowlisted(login) && !signedLogins.has(login.toLowerCase()),
+              (login) =>
+                !isAllowlisted(login) &&
+                !signedLoginsForCurrentVersion(registry.signatures).has(
+                  login.toLowerCase(),
+                ),
             );
             const complete = unidentified.length === 0 && missing.length === 0;
 
