@@ -57,7 +57,7 @@ async function waitForSandboxFile(
     try {
       const entries = await sandbox.listFiles(pathPosix.dirname(remotePath))
       const details = entries.find((entry) => entry.path === remotePath)
-      if (details && details.kind !== 'directory') return { isDir: false }
+      if (details && details.kind !== 'directory') return { isDir: false, sizeBytes: details.size }
     } catch (_error) {
       // retry
     }

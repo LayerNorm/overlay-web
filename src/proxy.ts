@@ -130,13 +130,41 @@ function getCspHeaderName(): 'Content-Security-Policy' | 'Content-Security-Polic
   return IS_DEVELOPMENT ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy'
 }
 
-function buildCspPolicy(): string {
+// Routes that always render per-request. Only these can carry a nonce: a
+// statically prerendered page is served from cache, so its baked-in nonce would
+// never match the per-request header and every Next script would be blocked.
+const NONCE_ELIGIBLE_PREFIXES = ['/app/', '/auth/', '/share/']
+const NONCE_ELIGIBLE_EXACT = ['/app', '/auth', '/share']
+
+// Marketing pages are prerendered even though they live under /app.
+const NONCE_INELIGIBLE_PREFIXES = ['/app/home', '/app/pricing', '/app/manifesto']
+
+export function isNonceEligiblePath(pathname: string): boolean {
+  if (process.env.SECURITY_CSP_NONCE?.trim().toLowerCase() !== 'true') return false
+  if (NONCE_INELIGIBLE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return false
+  }
+  if (NONCE_ELIGIBLE_EXACT.includes(pathname)) return true
+  return NONCE_ELIGIBLE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
+function createCspNonce(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+export function buildCspPolicy(nonce?: string): string {
   const scriptSrc = uniqueSources([
     "'self'",
-    // Keep Next.js framework/runtime scripts working on statically prerendered pages.
-    // A nonce-based strict CSP only works when Next can inject the nonce during SSR;
-    // our marketing pages are static, so strict-dynamic blocks hydration in production.
-    "'unsafe-inline'",
+    // With a nonce the browser ignores 'unsafe-inline', so only Next's own
+    // nonced scripts run. Host allowlists are kept (no 'strict-dynamic') so the
+    // analytics loaders keep working.
+    // Statically prerendered pages cannot carry a per-request nonce, so they
+    // stay on 'unsafe-inline' — see isNonceEligiblePath.
+    nonce ? `'nonce-${nonce}'` : "'unsafe-inline'",
     IS_DEVELOPMENT ? "'unsafe-eval'" : null,
     'https://va.vercel-scripts.com',
     'https://us-assets.i.posthog.com',
@@ -221,9 +249,12 @@ export async function proxy(request: NextRequest) {
   }
 
   const cspHeaderName = getCspHeaderName()
-  const cspPolicy = buildCspPolicy()
+  const cspNonce = isNonceEligiblePath(pathname) ? createCspNonce() : undefined
+  const cspPolicy = buildCspPolicy(cspNonce)
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set(cspHeaderName, cspPolicy)
+  // Next reads this to stamp the nonce onto the scripts it renders.
+  if (cspNonce) requestHeaders.set('x-nonce', cspNonce)
 
   const nextResponse = () =>
     applyBrowserSecurityHeaders(

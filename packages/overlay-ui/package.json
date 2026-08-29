@@ -2,7 +2,7 @@
   "name": "@overlay/ui",
   "version": "0.0.1",
   "private": true,
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": [
     "./src/styles.css"

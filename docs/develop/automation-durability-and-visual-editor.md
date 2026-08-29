@@ -29,7 +29,7 @@ Two workstreams converge on one shared prerequisite:
 
 ## Vercel Workflows Pricing
 
-Verified 2026-01 from <https://vercel.com/docs/workflows/pricing>:
+Verified 2026-01 from [Vercel Workflow pricing](https://vercel.com/docs/workflows/pricing):
 
 | Resource | Hobby Included | On-demand |
 | --- | --- | --- |

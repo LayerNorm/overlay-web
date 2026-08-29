@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 /** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
 export const ONBOARDING_IMPORT_MEMORY_PROMPT =
@@ -432,9 +433,10 @@ export function OnboardingTour({
         oauthTab?.close()
         throw new Error(data.error || 'Failed to initiate connection')
       }
-      if (data.redirectUrl) {
-        if (oauthTab) oauthTab.location.href = data.redirectUrl
-        else window.open(data.redirectUrl, '_blank')
+      const redirectUrl = safeHttpUrl(data.redirectUrl)
+      if (redirectUrl) {
+        if (oauthTab) oauthTab.location.href = redirectUrl
+        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
         notifyIntegrationsChanged()
       } else if (data.connectionId) {
         oauthTab?.close()

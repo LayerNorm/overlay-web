@@ -25,3 +25,11 @@ Without written permission, you may not:
 Modified distributions should use their own product name, logo, domains, and visual identity. They may include a factual notice such as "Based on Overlay" if the notice is not the primary product branding and does not imply endorsement.
 
 For commercial trademark permission, contact divyansh@layernorm.co.
+
+## Branding bundled with the source
+
+Logos, icons, screenshots, product trade dress, and other brand assets may be visible in the source tree so the unmodified project can be built and evaluated. Their presence does not place them under the AGPL or grant a right to use them for a modified distribution, hosted fork, marketing campaign, domain, social account, package, or app-store listing.
+
+## Reporting confusion or misuse
+
+Questions, permission requests, and reports of confusing use should be sent to `divyansh@layernorm.co`. LayerNorm may publish separate brand guidelines; if those guidelines conflict with a written trademark license, the signed license controls.

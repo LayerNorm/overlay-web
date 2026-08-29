@@ -45,7 +45,7 @@ import { ShareDialog } from '@/components/share/ShareDialog'
 import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
-import { dispatchChatArchived } from '@/shared/chat/chat-title'
+import { dispatchChatArchived, dispatchChatCreated } from '@/shared/chat/chat-title'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -204,10 +204,14 @@ export function DirectMessageExperience({
   conversationId,
   showcase = false,
   conversationType = 'dm',
+  draft = false,
+  draftTitle,
 }: {
   conversationId: string
   showcase?: boolean
   conversationType?: 'dm' | 'channel'
+  draft?: boolean
+  draftTitle?: string
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
@@ -310,6 +314,7 @@ export function DirectMessageExperience({
   activeConversationRef.current = conversationId
   const lastTypingSentAt = useRef(0)
   const pendingCollaborationMessageSentRef = useRef(false)
+  const draftCommittedRef = useRef(!draft)
 
   // ── composer state (identical wiring to the personal chat composer) ─────────
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
@@ -682,8 +687,8 @@ export function DirectMessageExperience({
 
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
   const title = conversationType === 'channel'
-    ? channel?.name ?? 'Channel'
-    : conversationTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
+    ? channel?.name ?? draftTitle ?? 'Channel'
+    : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
   const HeaderIcon = conversationType === 'channel'
     ? Hash
     : otherParticipants.length === 1 && otherParticipants[0]?.principalType === 'agent'
@@ -695,6 +700,45 @@ export function DirectMessageExperience({
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
   const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
+
+  const commitDraftConversation = useCallback(() => {
+    if (!draft || draftCommittedRef.current) return
+    draftCommittedRef.current = true
+    dispatchChatCreated({
+      chat: {
+        _id: conversationId,
+        title,
+        lastModified: Date.now(),
+        conversationType,
+      },
+    })
+    const url = new URL(window.location.href)
+    url.searchParams.delete('draft')
+    url.searchParams.delete('title')
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [conversationId, conversationType, draft, title])
+
+  useEffect(() => () => {
+    if (!draft || draftCommittedRef.current || showcase || messagesRef.current.length > 0) return
+    void (async () => {
+      const removed = await overlayAppClient.conversations.deleteResponse({
+        conversationId,
+        scope: 'self',
+      })
+      if (!removed.ok) {
+        await overlayAppClient.conversations.updateParticipantState(conversationId, {
+          archived: true,
+          archiveScope: 'self',
+        }).catch(() => undefined)
+      }
+    })()
+  }, [conversationId, draft, showcase])
+
+  useEffect(() => {
+    if (draft && messages.some((message) => !message.id.startsWith('optimistic_'))) {
+      commitDraftConversation()
+    }
+  }, [commitDraftConversation, draft, messages])
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
   const threadRoot = messages.find((message) => message.id === threadRootId)
   const threadReplies = messages.filter((message) => (
@@ -921,6 +965,7 @@ export function DirectMessageExperience({
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
       if (!convexRoomSubscriptionEnabled) await loadMessages()
+      commitDraftConversation()
       void saved
     } catch {
       setMessages((current) => current.map((message) => (
@@ -1716,9 +1761,9 @@ export function DirectMessageExperience({
           addToConversationType={conversationType}
           excludedPrincipalIds={participants.map((participant) => participant.principalId)}
           onOpenChange={setAddPeopleOpen}
-          onCreated={({ id }) => {
+          onCreated={({ id, title: createdTitle }) => {
             const view = conversationType === 'channel' ? 'channels' : 'dms'
-            router.push(`/app/chat?view=${view}&id=${encodeURIComponent(id)}`)
+            router.push(`/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`)
           }}
           onParticipantsAdded={() => {
             setAddPeopleOpen(false)

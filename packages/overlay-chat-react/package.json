@@ -2,7 +2,7 @@
   "name": "@overlay/chat-react",
   "version": "0.0.1",
   "private": true,
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "sideEffects": [
     "./src/styles/chat-surface.css",
     "./src/styles/overlay-theme.css"

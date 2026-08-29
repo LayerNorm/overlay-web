@@ -244,6 +244,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
       '/api/v1/daytona',
       '/api/v1/generate-image',
       '/api/v1/generate-video',
+      '/api/v1/sandbox',
     ],
     status: 'supported',
     feature: 'generated-outputs',

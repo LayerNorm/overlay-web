@@ -5,6 +5,11 @@ import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
 import { formatOverlayConfigError, isOverlayConfigError } from '@/server/config'
 import { rateLimitByIp } from '@/server/security/rate-limit'
+import { recordLegalAcceptance } from '@/server/legal/legal-acceptance'
+import {
+  decodePendingLegalAcceptance,
+  PENDING_LEGAL_ACCEPTANCE_COOKIE,
+} from '@/server/legal/pending-legal-acceptance'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -24,10 +29,31 @@ export async function GET(request: NextRequest) {
       )
     }
     logAuthDebug('/api/auth/session authenticated', summarizeSessionForLog(session))
-    return NextResponse.json({
+    const pendingLegalAcceptance = decodePendingLegalAcceptance(
+      request.cookies.get(PENDING_LEGAL_ACCEPTANCE_COOKIE)?.value,
+    )
+    if (pendingLegalAcceptance) {
+      await recordLegalAcceptance({
+        acceptance: pendingLegalAcceptance,
+        context: 'sso_signup',
+        request,
+        userId: session.user.id,
+      })
+    }
+    const response = NextResponse.json({
       authenticated: true,
       user: session.user,
     }, { headers: NO_STORE_HEADERS })
+    if (pendingLegalAcceptance) {
+      response.cookies.set(PENDING_LEGAL_ACCEPTANCE_COOKIE, '', {
+        httpOnly: true,
+        maxAge: 0,
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      })
+    }
+    return response
   } catch (error) {
     unstable_rethrow(error)
     if (isOverlayConfigError(error)) {

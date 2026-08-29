@@ -155,7 +155,9 @@ path now performs command and file operations through the same runtime contract.
 
 `POST /api/v1/agent-environments/managed` is the provider-neutral provisioning resource. The
 ordinary agent-creation choice is labeled `Overlay Cloud`; provider selection is available only to
-operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Both providers boot
+operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Vercel creation is
+pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates match a
+known region. Both providers boot
 the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
 `@overlay/agent-host` executable used on user-owned machines and invokes the same one-time
 enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
@@ -214,14 +216,22 @@ egress, and managed runtime; the existing billing ledger remains the monthly-spe
 Host-side BYOK model tokens remain observable but never become Overlay model usage. A local or VPS
 environment has no sandbox reservation. Overlay Cloud creates a distinct pre-dispatch `sandbox`
 reservation under `agent:<agentId>` in addition to any explicitly Overlay-funded model reservation.
-Actual Vercel usage settles active CPU, provisioned memory, and outbound transfer; Daytona settles
+Actual Vercel usage settles the SDK's cumulative vCPU-milliseconds, provisioned-memory wall time,
+decimal-GB outbound transfer, and per-creation charge where a run creates its own sandbox; Daytona settles
 its resource-time dimensions. The reservation ledger is the exact-once boundary, and an unavailable
 provider or failed usage read moves the reservation to reconciliation instead of guessing at a
-charge. A durable settlement marker is created atomically with each managed run and is cleared only
+charge. Reservations assume every allocated vCPU is active for the full allowed runtime, include
+the plan egress ceiling, and add `OVERLAY_VERCEL_SANDBOX_RESERVATION_BUFFER_PERCENT` (25% by
+default). `OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN` rejects an estimated run above USD 15 by
+default before provider work starts. The four `OVERLAY_VERCEL_SANDBOX_*_USD_*` rate variables must
+be updated when the selected region or provider contract changes. Persistent Vercel sandboxes retain
+one latest snapshot and delete the evicted snapshot to bound storage growth. A durable settlement marker is created atomically with each managed run and is cleared only
 after the idempotent usage ledger and lease usage record both succeed. PostgreSQL maintenance retries
 pending markers directly; the Convex scheduler calls the internal BFF reconciliation route so
-provider credentials never move into Convex. `OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD` controls the per-run provider-spend warning
-threshold and defaults to USD 10.
+provider credentials never move into Convex. `OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD` controls the
+per-run provider-spend warning threshold and defaults to USD 10. Vercel account-level spend alerts
+and limits remain mandatory because provider storage and aggregate monthly overages are not visible
+in a single run's SDK counters.
 
 Every dispatch and accepted cursor checkpoint writes a redacted audit record correlated by
 workspace, agent, environment, run, command, remote session, provider reference, reservation, and
@@ -393,7 +403,7 @@ URL and key configuration.
 The dormant managed API and provider adapters remain implemented so the future release can reuse
 the same host protocol. Restoring the UI additionally requires the image, conformance, credential
 brokering, egress, billing, cleanup, security-review, and server-authoritative readiness gates
-tracked in `INTERNAL_TODOs.md`.
+tracked in this document's managed-environment release-gate section.
 
 ## Public resources and protocol policy
 

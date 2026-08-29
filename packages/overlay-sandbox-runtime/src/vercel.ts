@@ -1,5 +1,5 @@
 import { posix as path } from 'node:path'
-import { Sandbox, Snapshot, type NetworkPolicy } from '@vercel/sandbox'
+import { Sandbox, Snapshot, type NetworkPolicy, type SandboxRegion } from '@vercel/sandbox'
 import { AsyncQueue } from './async-queue'
 import type {
   SandboxCapabilities,
@@ -45,6 +45,7 @@ export type VercelSandboxSdk = {
 export type VercelSandboxRuntimeOptions = {
   credentials?: VercelCredentials
   credentialBroker?: SandboxCredentialBroker
+  region?: SandboxRegion
   /** Test/operator injection point; normal callers use the official SDK statics. */
   sdk?: VercelSandboxSdk
 }
@@ -67,6 +68,7 @@ export class VercelSandboxRuntime implements SandboxRuntime {
     const shared = {
       ...this.options.credentials,
       name: request.name,
+      ...(this.options.region ? { region: this.options.region } : {}),
       persistent: request.persistent,
       timeout: request.hardTimeoutMs,
       ports: request.ports,
@@ -77,7 +79,9 @@ export class VercelSandboxRuntime implements SandboxRuntime {
         ...(await this.credentialPlaceholders(request)),
       },
       tags: trimTags(request.metadata),
-      keepLastSnapshots: request.persistent ? { count: 3, deleteEvicted: true } : undefined,
+      // One retained snapshot is sufficient for persistence and puts a hard
+      // upper bound on provider snapshot-storage growth per managed sandbox.
+      keepLastSnapshots: request.persistent ? { count: 1, deleteEvicted: true } : undefined,
     }
     const sandbox = request.snapshotId
       ? await this.sdk.create({ ...shared, source: { type: 'snapshot', snapshotId: request.snapshotId } })

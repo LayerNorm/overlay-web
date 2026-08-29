@@ -13,6 +13,10 @@ import { sameOriginPathUrl } from '@/shared/security/safe-url'
 import type { BillingProvider } from '@overlay/app-core'
 import { BillingServiceError } from './BillingCustomerService'
 import type { BillingRepository } from './BillingRepository'
+import {
+  legalAcceptanceMetadata,
+  requireCurrentLegalAcceptance,
+} from '@/server/legal/legal-acceptance'
 
 type BillingCheckoutServiceDeps = {
   baseUrl?: () => string
@@ -58,6 +62,7 @@ export class BillingCheckoutService {
     user: { id: string; email: string }
   }): Promise<{ url: string | null }> {
     const body = objectBody(args.body)
+    const legalMetadata = legalAcceptanceMetadata(requireCurrentLegalAcceptance(body))
     const planAmountCents = clampPaidPlanAmountCents(Number(body.planAmountCents))
     const requestedTopUpAmountCents = Number(body.topUpAmountCents)
     const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
@@ -76,7 +81,10 @@ export class BillingCheckoutService {
         planAmountCents,
         topUpAmountCents,
         autoTopUpEnabled,
-        ...(offSessionConsentAt ? { metadata: { offSessionConsentAt } } : {}),
+        metadata: {
+          ...legalMetadata,
+          ...(offSessionConsentAt ? { offSessionConsentAt } : {}),
+        },
       }),
       {
         'Stripe paid plan price ID is not configured': () => {
@@ -215,6 +223,7 @@ export class BillingCheckoutService {
     userId: string
   }): Promise<{ url: string | null }> {
     const body = objectBody(args.body)
+    const legalMetadata = legalAcceptanceMetadata(requireCurrentLegalAcceptance(body))
     const entitlements = await this.deps.repository.getEntitlementsByServer({
       userId: args.userId,
     })
@@ -237,6 +246,7 @@ export class BillingCheckoutService {
         kind: 'budget_topup',
         topUpAmountCents: amountCents,
         autoTopUpEnabled,
+        metadata: legalMetadata,
         successUrl: resolveReturnUrl(baseUrl, body.returnPath, 'success'),
         cancelUrl: resolveReturnUrl(baseUrl, body.returnPath, 'canceled'),
       }),

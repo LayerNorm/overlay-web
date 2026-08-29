@@ -464,7 +464,9 @@ export const OverlayRuntimeConfigSchema = z
       models: config.providers.models?.provider ?? config.llm.gatewayProvider,
       integrations: config.providers.integrations?.provider ?? (effectiveCapabilities.integrations ? 'composio' : 'none'),
       browser: config.providers.browser?.provider ?? (effectiveCapabilities.browserUse ? 'browser-use' : 'none'),
-      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'daytona' : 'none'),
+      // Vercel Sandbox is the hosted default; Daytona remains an explicit opt-in
+      // for deployments that have configured its provider and credentials.
+      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'vercel' : 'none'),
       webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'ai-gateway' : 'none'),
       analytics: config.providers.analytics?.provider ?? (effectiveCapabilities.analytics ? 'posthog' : 'none'),
       errorReporting: config.providers.errorReporting?.provider ?? (effectiveCapabilities.errorReporting ? 'sentry' : 'none'),
@@ -625,8 +627,8 @@ export const OverlayRuntimeConfigSchema = z
       'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'sandbox', 'provider'], selectedProviders.sandbox, {
-      e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=daytona or none.',
-      'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=daytona or none.',
+      e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
+      'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'webSearch', 'provider'], selectedProviders.webSearch, {
       perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',

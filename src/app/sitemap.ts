@@ -3,7 +3,7 @@ import type { MetadataRoute } from 'next'
 const SITE_URL = 'https://getoverlay.io'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [
+  const marketingRoutes: MetadataRoute.Sitemap = [
     {
       url: `${SITE_URL}/home`,
       changeFrequency: 'weekly',
@@ -25,4 +25,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
   ]
+
+  const legalRoutes = [
+    'terms',
+    'privacy',
+    'acceptable-use',
+    'cookies',
+    'commercial-license',
+    'dpa',
+    'subprocessors',
+    'refunds',
+    'dmca',
+  ].map((path) => ({
+    url: `${SITE_URL}/${path}`,
+    changeFrequency: 'yearly' as const,
+    priority: 0.3,
+  }))
+
+  return [...marketingRoutes, ...legalRoutes]
 }

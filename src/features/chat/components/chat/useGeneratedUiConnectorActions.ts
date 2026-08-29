@@ -5,6 +5,7 @@ import type { ConnectedIntegrationsResponse } from '@overlay/app-core'
 import type { GeneratedEmailDraftData } from '@overlay/chat-core/generated-ui'
 import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 import {
   INTEGRATIONS_BC_CHANNEL,
   notifyIntegrationsChanged,
@@ -89,9 +90,10 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
         oauthTab?.close()
         return
       }
-      if (data.redirectUrl) {
-        if (oauthTab) oauthTab.location.href = data.redirectUrl
-        else window.open(data.redirectUrl, '_blank', 'noopener,noreferrer')
+      const redirectUrl = safeHttpUrl(data.redirectUrl)
+      if (redirectUrl) {
+        if (oauthTab) oauthTab.location.href = redirectUrl
+        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
         return
       }
       if (data.connectionId) {
@@ -107,7 +109,11 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
   }, [])
 
   const openExternalUrl = useCallback((url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer')
+    // Model-authored URL: normalizeGeneratedUiData already drops non-http(s),
+    // this is the second gate so the sink is never reachable with javascript:.
+    const safe = safeHttpUrl(url)
+    if (!safe) return
+    window.open(safe, '_blank', 'noopener,noreferrer')
   }, [])
 
   const openEmailDraft = useCallback((data: GeneratedEmailDraftData) => {

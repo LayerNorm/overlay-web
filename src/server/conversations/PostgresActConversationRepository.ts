@@ -167,7 +167,9 @@ export class PostgresActConversationRepository implements ActConversationReposit
             .insert(conversations)
             .values(values)
             .onConflictDoUpdate({
-              target: [conversations.userId, conversations.clientId],
+              // Workspace identity is the migration-backed uniqueness scope;
+              // a user may legitimately reuse a client id in another workspace.
+              target: [conversations.workspaceId, conversations.clientId],
               set: {
                 actModelId: values.actModelId,
                 askModelIds: values.askModelIds,

@@ -201,12 +201,18 @@ export type WorkspaceBillingSummaryResponse = {
 }
 
 export type WorkspaceBillingCheckoutInput = {
+  acceptedLegalTerms: true
+  privacyVersion: string
+  termsVersion: string
   planAmountCents: number
   topUpAmountCents: number
   autoTopUpEnabled?: boolean
 }
 
 export type WorkspaceBillingTopUpInput = {
+  acceptedLegalTerms: true
+  privacyVersion: string
+  termsVersion: string
   amountCents: number
 }
 

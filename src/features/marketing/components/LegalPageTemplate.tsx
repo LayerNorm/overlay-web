@@ -7,7 +7,7 @@ import { StaticMarketingShell } from "@/features/marketing/components/StaticMark
 
 export type LegalSection = {
   title: string;
-  body: string;
+  body: string | string[];
 };
 
 function slugFor(title: string) {
@@ -52,12 +52,19 @@ function LegalPageInner({
             <h1 className="mt-4 text-4xl tracking-tight md:text-6xl">{title}</h1>
             <p className="mt-4 text-sm text-[var(--muted-light)]">Last updated: {updated}</p>
             <p className="mt-8 max-w-2xl text-lg leading-8 text-[var(--muted)]">{intro}</p>
+            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-[var(--muted)]">
+              Counsel-review draft. LayerNorm is preparing these terms for launch; a qualified lawyer must approve the final version before LayerNorm relies on it as a mature commercial agreement.
+            </div>
 
             <div className="mt-12 divide-y divide-[var(--border)] border-y border-[var(--border)]">
               {sections.map((section) => (
                 <section id={slugFor(section.title)} key={section.title} className="py-8">
                   <h2 className="text-2xl tracking-tight">{section.title}</h2>
-                  <p className="mt-4 text-base leading-8 text-[var(--muted)]">{section.body}</p>
+                  <div className="mt-4 space-y-4 text-base leading-8 text-[var(--muted)]">
+                    {(Array.isArray(section.body) ? section.body : [section.body]).map((paragraph) => (
+                      <p key={paragraph}>{paragraph}</p>
+                    ))}
+                  </div>
                 </section>
               ))}
             </div>

@@ -64,7 +64,10 @@ plans/*
 
 # private security notes and launch-blocker findings
 /docs/security/
-/internal-docs/security/
+/internal-docs/
+/.devin-shots/
+/INTERNAL_TODOs.md
+/DESIGN.md
 
 src/remotion/*
 renders/*
@@ -102,6 +105,7 @@ SECURITY_AUDIT_REPORT_FULL.md
 SECURITY_AUDIT_REPORT_ROUND2.md
 optimizations.md
 .pi/
+/OPEN_SOURCE_LEGAL_READINESS_PRIVATE.md
 
 # Local smoke test scripts (not shipped)
 scripts/composio-slack-smoke/

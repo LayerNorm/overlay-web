@@ -108,9 +108,12 @@ export interface CheckoutVerifyResponse {
 }
 
 export interface TopUpCheckoutRequest {
+  acceptedLegalTerms: true
   amountCents: number
   autoTopUpEnabled: boolean
+  privacyVersion: string
   returnPath?: string
+  termsVersion: string
 }
 
 export interface TopUpCheckoutResponse {

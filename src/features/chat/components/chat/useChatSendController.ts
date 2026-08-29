@@ -268,6 +268,7 @@ export function useChatSendController({
       setIsTemporaryChat,
       setRuntimeHydrationVersion,
       syncStandaloneChatUrl,
+      startFirstMessageRename,
       tryActivatePendingFirstSend,
     })
   }, [
@@ -293,6 +294,7 @@ export function useChatSendController({
     setIsTemporaryChat,
     setRuntimeHydrationVersion,
     syncStandaloneChatUrl,
+    startFirstMessageRename,
     tryActivatePendingFirstSend,
   ])
 

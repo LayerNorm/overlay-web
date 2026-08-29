@@ -13,7 +13,12 @@ import type { AssistantVisualBlock } from './types'
 import { getToolName, isReasoningUIPart, isToolUIPart } from './ui-parts'
 
 /** Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript). */
-export function buildAssistantVisualSequence(parts: unknown[] | undefined): AssistantVisualBlock[] {
+export type TerminalAssistantState = 'completed' | 'error' | 'cancelled' | 'interrupted'
+
+export function buildAssistantVisualSequence(
+  parts: unknown[] | undefined,
+  options: { terminalState?: TerminalAssistantState } = {},
+): AssistantVisualBlock[] {
   if (!parts?.length) return []
   const remoteRunOutcome = getRemoteRunOutcome(parts)
   const out: AssistantVisualBlock[] = []
@@ -72,7 +77,7 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
         kind: 'tool',
         key: (inv.toolCallId && inv.toolCallId.trim()) || `legacy-inv-${out.length}`,
         name: inv.toolName as string,
-        state: resolveRemoteToolState(inv.toolName, inv.state, remoteRunOutcome),
+        state: resolveToolState(inv.toolName, inv.state, remoteRunOutcome, options.terminalState),
         toolInput: inv.toolInput,
         toolOutput: inv.toolOutput,
       })
@@ -116,7 +121,7 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
         kind: 'tool',
         key: (part.toolCallId && part.toolCallId.trim()) || `sdk-tool-${out.length}`,
         name: toolName,
-        state: resolveRemoteToolState(toolName, part.state, remoteRunOutcome),
+        state: resolveToolState(toolName, part.state, remoteRunOutcome, options.terminalState),
         toolInput: part.input,
         toolOutput: part.output,
       })
@@ -134,7 +139,7 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
           kind: 'reasoning',
           key: `reasoning-${out.length}`,
           text: merged,
-          state: part.state,
+          state: options.terminalState ? 'done' : part.state,
         })
       }
       continue
@@ -188,9 +193,10 @@ export function buildAssistantVisualSequence(parts: unknown[] | undefined): Assi
       tBlk?.kind === 'text' &&
       /^'[a-zA-Z]/.test(tBlk.text)
     ) {
-      const lastWordMatch = rBlk.text.match(/(\S+)$/)
-      if (lastWordMatch) {
-        const word = lastWordMatch[1]!
+      let wordStart = rBlk.text.length
+      while (wordStart > 0 && !/\s/.test(rBlk.text[wordStart - 1]!)) wordStart -= 1
+      if (wordStart < rBlk.text.length) {
+        const word = rBlk.text.slice(wordStart)
         rBlk.text = rBlk.text.slice(0, rBlk.text.length - word.length).trim()
         tBlk.text = word + tBlk.text
       }
@@ -214,13 +220,18 @@ function getRemoteRunOutcome(parts: unknown[]): RemoteRunOutcome | null {
   return null
 }
 
-function resolveRemoteToolState(
+function resolveToolState(
   toolName: string | undefined,
   state: string | undefined,
   outcome: RemoteRunOutcome | null,
+  terminalState?: TerminalAssistantState,
 ) {
   const current = state ?? 'output-available'
-  if (toolName !== 'remote_action' || !outcome || TOOL_UI_DONE_STATES.has(current)
-    || current === 'output-error' || current === 'output-denied') return current
-  return outcome === 'completed' ? 'output-available' : 'output-error'
+  if (TOOL_UI_DONE_STATES.has(current) || current === 'output-error' || current === 'output-denied') return current
+  if (current === 'input-error') return 'output-error'
+  if (terminalState) return terminalState === 'completed' ? 'output-available' : 'output-error'
+  if (toolName === 'remote_action' && outcome) {
+    return outcome === 'completed' ? 'output-available' : 'output-error'
+  }
+  return current
 }

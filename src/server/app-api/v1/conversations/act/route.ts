@@ -67,7 +67,9 @@ import { registerToolLoopRun } from '@/server/conversations/tool-loop-run-regist
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
   MAX_ACT_MODEL_ATTEMPTS,
+  MAX_ACT_OUTPUT_TOKENS_PER_STEP,
   drainReadableStream,
+  estimateToolLoopReservationTokens,
   messagesRequireVision,
   observeFirstTextToken,
   prefixFallbackNoticeAfterStart,
@@ -862,14 +864,16 @@ export async function POST(
     const agent = new ToolLoopAgent({
       model: params.languageModel,
       tools,
+      ...(actTooling.toolsContext
+        ? { toolsContext: actTooling.toolsContext as never }
+        : {}),
       ...(attemptModelSupportsZdr
         ? { providerOptions: { gateway: { zeroDataRetention: true } } }
         : {}),
       stopWhen: isStepCount(MAX_TOOL_STEPS_ACT),
-      // Defense-in-depth: cap output tokens per step to match the budget
-      // reservation's maxOutputTokens estimate. Prevents a single step from
-      // consuming far more tokens than the reservation accounted for.
-      maxOutputTokens: 8_192,
+      // Defense-in-depth: bound every model call. The reservation below covers
+      // this ceiling across the full tool loop.
+      maxOutputTokens: MAX_ACT_OUTPUT_TOKENS_PER_STEP,
       instructions: actInstructions,
       // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
       // summary as a system message. This is not user input — safe to pass through.
@@ -1055,6 +1059,7 @@ export async function POST(
     const _uiStream = toUIMessageStream({
       stream: result.stream,
       originalMessages: uiMessages,
+      sendSources: true,
       onError: (error: unknown) => {
         logger.error('[conversations/act] stream error', {
           requestId,
@@ -1212,8 +1217,12 @@ export async function POST(
     })
     }
 
-    const estimatedInputTokens = Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000
-    const maxOutputTokens = 8_192
+    const initialEstimatedInputTokens = Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000
+    const reservedTokens = estimateToolLoopReservationTokens({
+      estimatedInputTokens: initialEstimatedInputTokens,
+      maxOutputTokensPerStep: MAX_ACT_OUTPUT_TOKENS_PER_STEP,
+      maxSteps: MAX_TOOL_STEPS_ACT,
+    })
     const reserveBudgetForAttempt = async (attemptModelId: string) => {
       streamedRoutedModelId = undefined
       const reservation = await actUsageBudgetService.reserveForAttempt({
@@ -1222,8 +1231,8 @@ export async function POST(
         idempotencyKey: context.requestIdempotencyKey,
         modelId: attemptModelId,
         paid,
-        estimatedInputTokens,
-        maxOutputTokens,
+        estimatedInputTokens: reservedTokens.estimatedInputTokens,
+        maxOutputTokens: reservedTokens.maxOutputTokens,
         operationId: 'conversation.act',
         programmaticSubjectId: billingProgrammaticSubjectId,
         requestFingerprint: context.requestFingerprint,

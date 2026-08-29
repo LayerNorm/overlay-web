@@ -18,13 +18,15 @@ const linkClass =
   "text-[var(--muted)] hover:text-[var(--foreground)] transition-colors";
 
 const FOOTER_LINKS: Array<{ label: string; href: string; external?: boolean }> = [
-  { label: "GitHub", href: MARKETING_GITHUB_URL, external: true },
+  { label: "Source code", href: MARKETING_GITHUB_URL, external: true },
   { label: "Docs", href: MARKETING_DOCS_URL, external: true },
   { label: "Pricing", href: "/pricing" },
   { label: "Manifesto", href: "/manifesto" },
   { label: "Contact", href: MARKETING_SALES_URL, external: true },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
+  { label: "Acceptable use", href: "/acceptable-use" },
+  { label: "Cookies", href: "/cookies" },
 ];
 
 export function MarketingFooter() {

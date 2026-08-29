@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
 import { usePresence } from '@overlay/ui'
+import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type Resource = {
   id?: string
@@ -97,7 +98,9 @@ export function ShareDialog({
   }
 
   const openSocial = (href: string) => {
-    window.open(href, '_blank', 'noopener,noreferrer')
+    const safe = safeHttpUrl(href)
+    if (!safe) return
+    window.open(safe, '_blank', 'noopener,noreferrer')
   }
 
   return (

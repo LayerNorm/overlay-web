@@ -1,0 +1,7 @@
+# Historical, manually reviewed fake-secret fixtures from the Sentry sanitizer test.
+4b7d5f0bdeebff8d120a44bd49421963f82f05b9:src/lib/sentry-sanitize.test.ts:jwt:20
+4b7d5f0bdeebff8d120a44bd49421963f82f05b9:src/lib/sentry-sanitize.test.ts:stripe-access-token:53
+4b7d5f0bdeebff8d120a44bd49421963f82f05b9:src/lib/sentry-sanitize.test.ts:generic-api-key:48
+
+# Historical vendored Hetzner API documentation placeholder, not an account token.
+cc4c0ccb6d98e37e45ac0cc9957a6c478bff682c:hetzner-cloud.md:curl-auth-header:240

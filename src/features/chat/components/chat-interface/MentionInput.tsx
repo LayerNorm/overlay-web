@@ -12,6 +12,7 @@ import {
 import { MentionPopup } from '@/components/mentions/MentionPopup'
 import { useMentionData } from './useMentionData'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import { composerAnchorToMarkdown, joinComposerMarkdownSegments } from './composer-markdown'
 
 export type MentionInputFormatCommand =
   | 'heading1'
@@ -164,9 +165,20 @@ function inlineNodeToMarkdown(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
   const element = node as HTMLElement
-  if (element.getAttribute(MENTION_ATTR)) return element.textContent ?? ''
+  if (element.getAttribute(MENTION_ATTR)) {
+    try {
+      const item = JSON.parse(element.dataset.mentionData ?? '{}') as Partial<MentionItem>
+      if (typeof item.name === 'string' && item.name.trim()) return `@${item.name}`
+    } catch {
+      // Fall through to the visible label for malformed legacy chips.
+    }
+    return element.textContent ?? ''
+  }
   if (element.tagName === 'BR') return '\n'
   const content = Array.from(element.childNodes).map(inlineNodeToMarkdown).join('')
+  if (element.tagName === 'A') {
+    return composerAnchorToMarkdown(content, element.getAttribute('href') ?? '')
+  }
   if (element.tagName === 'STRONG' || element.tagName === 'B') return `**${content}**`
   if (element.tagName === 'EM' || element.tagName === 'I') return `*${content}*`
   if (element.tagName === 'S' || element.tagName === 'DEL' || element.tagName === 'STRIKE') return `~~${content}~~`
@@ -192,13 +204,26 @@ function blockNodeToMarkdown(node: Node): string {
 }
 
 function extractMarkdownFromElement(el: HTMLDivElement): string {
-  return Array.from(el.childNodes)
-    .map(blockNodeToMarkdown)
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\u00A0/g, ' ')
-    .replace(/\u200B/g, '') // strip zero-width spaces used for caret placement
-    .trimEnd()
+  const blockTags = new Set(['DIV', 'P', 'H1', 'H2', 'H3', 'PRE', 'BLOCKQUOTE', 'UL', 'OL'])
+  return joinComposerMarkdownSegments(Array.from(el.childNodes).map((node) => {
+    const isBlock = node.nodeType === Node.ELEMENT_NODE
+      && blockTags.has((node as HTMLElement).tagName)
+    return {
+      markdown: isBlock ? blockNodeToMarkdown(node) : inlineNodeToMarkdown(node),
+      block: isBlock,
+    }
+  }))
+}
+
+const MENTION_ICON_PATHS: Record<MentionType, string[]> = {
+  person: ['M20 21a8 8 0 0 0-16 0', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
+  file: ['M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z', 'M14 2v6h6', 'M8 13h8', 'M8 17h8'],
+  knowledge: ['M2 6s3-2 6-2 4 2 4 2v14s-4-2-4-2-6 2-6 2z', 'M22 6s-3-2-6-2-4 2-4 2v14s4-2 4-2 6 2 6 2z'],
+  connector: ['M12 22v-5', 'M9 8V2', 'M15 8V2', 'M18 8v5a6 6 0 0 1-12 0V8z'],
+  automation: ['M3 3v5h5', 'M3.05 13A9 9 0 1 0 5.3 6.3L3 8', 'M12 7v5l4 2'],
+  skill: ['M12 3l1.9 3.9L18 8.8l-3 2.9.7 4.1-3.7-2-3.7 2 .7-4.1-3-2.9 4.1-.6z'],
+  mcp: ['M4 7V4h16v3', 'M5 20h14', 'M6 7h12v10H6z', 'M9 11h6', 'M9 14h3'],
+  chat: ['M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z'],
 }
 
 function dispatchEditorInput(el: HTMLDivElement) {
@@ -459,7 +484,23 @@ function createMentionChip(item: MentionItem): HTMLSpanElement {
   chip.setAttribute(MENTION_ID_ATTR, item.id)
   chip.className =
     'inline-flex items-center gap-1 mx-0.5 px-1.5 py-0.5 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium text-[var(--foreground)] select-none align-baseline'
-  chip.textContent = `@${item.name}`
+  const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  symbol.setAttribute('aria-hidden', 'true')
+  symbol.setAttribute('viewBox', '0 0 24 24')
+  symbol.setAttribute('fill', 'none')
+  symbol.setAttribute('stroke', 'currentColor')
+  symbol.setAttribute('stroke-width', '1.75')
+  symbol.setAttribute('stroke-linecap', 'round')
+  symbol.setAttribute('stroke-linejoin', 'round')
+  symbol.setAttribute('class', 'h-3.5 w-3.5 shrink-0 text-[var(--muted)]')
+  for (const pathData of MENTION_ICON_PATHS[item.type]) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', pathData)
+    symbol.append(path)
+  }
+  const label = document.createElement('span')
+  label.textContent = `@${item.name}`
+  chip.append(symbol, label)
   // Store full item data
   chip.dataset.mentionData = JSON.stringify(item)
   return chip
@@ -585,6 +626,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const [mentionQuery, setMentionQuery] = useState('')
     const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null)
     const [categories, setCategories] = useState<MentionCategory[]>([])
+    const [mentionSearching, setMentionSearching] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(null)
     const [activeOptionId, setActiveOptionId] = useState<string | null>(null)
     const triggerOffsetRef = useRef<number>(0)
@@ -593,6 +635,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const lastValueRef = useRef(value)
     /** Guards against recursive handleInput calls from dispatchEditorInput in live markdown formatting. */
     const formattingAppliedRef = useRef(false)
+    const searchRequestRef = useRef(0)
     /** True when the @ that opened the current popup was inserted by the @ button rather
      * than typed by the user; on close-without-select we strip that orphan @. */
     const buttonInsertedAtRef = useRef(false)
@@ -602,6 +645,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       availableTypes: defaultAvailableTypes,
       search: searchDefaultCategories,
       loading,
+      fetchAllData,
     } = useMentionData()
     const availableTypes = useMemo(() => Array.from(new Set([
       ...defaultAvailableTypes,
@@ -620,6 +664,19 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       for (const category of extraCategories) byType.set(category.type, category)
       return Array.from(byType.values())
     }, [mentionCategories, searchDefaultCategories])
+
+    const runMentionSearch = useCallback((query: string) => {
+      const requestId = ++searchRequestRef.current
+      setCategories([])
+      setMentionSearching(true)
+      void search(query)
+        .then((nextCategories) => {
+          if (searchRequestRef.current === requestId) setCategories(nextCategories)
+        })
+        .finally(() => {
+          if (searchRequestRef.current === requestId) setMentionSearching(false)
+        })
+    }, [search])
 
     // Sync explicit external value commands into the editor (clear on send,
     // populate restored draft after hydration). Normal typing stays local to
@@ -765,13 +822,13 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           if (coords) {
             setPopupPosition(coords)
             setShowPopup(true)
-            void search(mentionState.query).then(setCategories)
+            runMentionSearch(mentionState.query)
           }
         } else {
           setShowPopup(false)
         }
       }
-    }, [onChange, onMentionsChange, search])
+    }, [onChange, onMentionsChange, runMentionSearch])
 
     const syncEditorEmptyState = useCallback(() => {
       const el = editorRef.current
@@ -1099,6 +1156,42 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
           return
         }
 
+        // Rich clipboards often expose a shortened label (for example `x.com`)
+        // in text/plain while keeping the exact tweet/article URL only in the
+        // anchor href. Preserve that destination in the editor DOM so extraction
+        // serializes portable Markdown instead of permanently storing the host.
+        const richHtml = e.clipboardData.getData('text/html')
+        if (richHtml) {
+          const template = document.createElement('template')
+          template.innerHTML = richHtml
+          const anchors = template.content.querySelectorAll('a[href]')
+          const anchor = anchors.length === 1 ? anchors[0] : null
+          const anchorLabel = anchor?.textContent?.trim() ?? ''
+          const richText = template.content.textContent?.trim() ?? ''
+          const safeHref = anchor
+            ? composerAnchorToMarkdown('', anchor.getAttribute('href') ?? '')
+            : ''
+          if (anchor && safeHref && anchorLabel && richText === anchorLabel) {
+            const link = document.createElement('a')
+            link.href = safeHref
+            link.textContent = anchorLabel
+            link.className = 'text-[#2563eb] underline underline-offset-2'
+            const sel = window.getSelection()
+            if (sel && sel.rangeCount > 0) {
+              const range = sel.getRangeAt(0)
+              range.deleteContents()
+              range.insertNode(link)
+              range.setStartAfter(link)
+              range.collapse(true)
+              sel.removeAllRanges()
+              sel.addRange(range)
+              resizeEditorElement(el)
+              dispatchEditorInput(el)
+              return
+            }
+          }
+        }
+
         // If the pasted text contains markdown syntax, parse and insert as
         // formatted HTML so the composer renders it visually.
         const hasMarkdown = /(^|\n)(#{1,3}\s|>\s|[-*]\s|\d+\.\s|```)|\*\*[^*]+\*\*|`[^`]+`|~~[^~]+~~|(^|[\s(])\*[^*\n]+\*(?=$|[\s).,!?:;])/m.test(text)
@@ -1140,7 +1233,9 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
     )
 
     const closePopup = useCallback(() => {
+      searchRequestRef.current += 1
       setShowPopup(false)
+      setMentionSearching(false)
       setMentionQuery('')
       setSelectedCategory(null)
       // If the @ was inserted by the button and no item was selected, strip the
@@ -1184,7 +1279,10 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
           contentEditable={!disabled}
           suppressContentEditableWarning
           onInput={handleInput}
-          onFocus={syncEditorEmptyState}
+          onFocus={() => {
+            syncEditorEmptyState()
+            void fetchAllData()
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onCompositionStart={() => { isComposingRef.current = true }}
@@ -1204,7 +1302,7 @@ function exitBlockToParagraph(block: HTMLElement, sel: Selection, el: HTMLDivEle
         {showPopup && (
           <MentionPopup
             categories={categories}
-            loading={loading}
+            loading={mentionSearching || loading}
             position={popupPosition}
             onSelect={handleSelect}
             onUploadFile={() => {

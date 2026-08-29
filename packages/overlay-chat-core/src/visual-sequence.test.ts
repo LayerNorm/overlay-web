@@ -33,3 +33,15 @@ test('active remote run status keeps running remote visuals in progress', () => 
   const tools = blocks.filter((block) => block.kind === 'tool')
   assert.deepEqual(tools.map((tool) => tool.state), ['input-available', 'input-available'])
 })
+
+test('repairs a word split across reasoning and text without a trailing-word regex', () => {
+  const blocks = buildAssistantVisualSequence([
+    { type: 'reasoning', text: 'This can', state: 'done' },
+    { type: 'text', text: "'t remain split." },
+  ])
+
+  assert.deepEqual(blocks, [
+    { kind: 'reasoning', key: 'reasoning-0', text: 'This', state: 'done' },
+    { kind: 'text', text: "can't remain split." },
+  ])
+})

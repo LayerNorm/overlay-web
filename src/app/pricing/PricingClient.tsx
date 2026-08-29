@@ -28,6 +28,8 @@ import {
   minimalSerif,
 } from '@/features/marketing/lib/minimalLayout'
 import { formatBytes } from '@/shared/storage/storage-limits'
+import { safeHttpUrl } from '@/shared/security/safe-url'
+import { currentLegalAcceptancePayload, LEGAL_DOCUMENTS } from '@/shared/legal/legal-documents'
 
 const TIER_STARTER_CENTS = 800
 const TIER_PRO_CENTS = 2_400
@@ -82,6 +84,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const [loading, setLoading] = useState<'checkout' | 'portal' | 'topup-settings' | null>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
 
   useEffect(() => {
     if (!billingEnabled) return
@@ -216,6 +219,11 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
       return
     }
 
+    if (!acceptedCheckoutTerms) {
+      setError('Please accept the current Terms, Privacy Policy, and billing terms before subscribing.')
+      return
+    }
+
     setLoading('checkout')
     setError(null)
 
@@ -227,6 +235,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
           planAmountCents,
           topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
           autoTopUpEnabled,
+          ...currentLegalAcceptancePayload(),
         }),
       })
 
@@ -240,8 +249,9 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
         return
       }
 
-      if (data.url) {
-        window.location.href = data.url
+      const checkoutUrl = safeHttpUrl(data.url)
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl
         return
       }
 
@@ -347,7 +357,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
       <button
         type="button"
         onClick={() => void startCheckout(cardAmountCents, cardTier)}
-        disabled={loading === 'checkout' || subscriptionLoading}
+        disabled={loading === 'checkout' || subscriptionLoading || !acceptedCheckoutTerms}
         className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${theme.primaryButton}`}
       >
         {loading === 'checkout' ? 'Starting checkout…' : `Subscribe ${formatDollarAmount(cardAmountCents)}/mo`}
@@ -431,6 +441,18 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
           </div>
 
           {/* Tier cards */}
+          <label className={`flex items-start gap-3 rounded-xl border border-[var(--border)] p-4 text-sm leading-6 ${theme.body}`}>
+            <input
+              type="checkbox"
+              checked={acceptedCheckoutTerms}
+              onChange={(event) => setAcceptedCheckoutTerms(event.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--input-border)]"
+            />
+            <span>
+              I agree to the <Link className="underline" href={LEGAL_DOCUMENTS.terms.href}>Terms of Service (version {LEGAL_DOCUMENTS.terms.version})</Link>, acknowledge the <Link className="underline" href={LEGAL_DOCUMENTS.privacy.href}>Privacy Policy (version {LEGAL_DOCUMENTS.privacy.version})</Link>, and agree to the <Link className="underline" href="/refunds">recurring billing, cancellation, and refund terms</Link>.
+            </span>
+          </label>
+
           <Reveal>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               {/* Free */}

@@ -24,7 +24,7 @@ import {
   VIDEO_MODELS,
   registerGatewayCatalogModels,
 } from '@/shared/ai/gateway/model-data'
-import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
+import { getGatewayCatalog } from '@/server/ai/gateway/gateway-catalog'
 import {
   formatOverlayConfigError,
   getOverlayRuntimeConfig,
@@ -102,8 +102,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           },
           { throwOnError: true },
         ).catch((_error) => DEFAULT_APP_SETTINGS),
-      getGatewayLanguageCatalog().catch((error) => {
-        logger.warn('[app/bootstrap] gateway language catalog unavailable; using curated fallback', error)
+      getGatewayCatalog().catch((error) => {
+        logger.warn('[app/bootstrap] gateway model catalog unavailable; using curated fallback', error)
         return null
       }),
     ])

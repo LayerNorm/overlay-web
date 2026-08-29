@@ -7,6 +7,7 @@ import {
   activatePendingFirstSend,
   completeSessionForPendingFirstSend,
   isStreamChatActive,
+  startPendingFirstSendRename,
   type PendingFirstSendState,
 } from './chat-send-pending-first'
 import { PENDING_FIRST_CHAT_ID, TEMPORARY_CHAT_ID } from './chat-send-body-builders'
@@ -47,6 +48,7 @@ test('checks active stream ids for temporary, pending-first, and persisted chats
       streamDone: false,
       realChatId: null,
       wasFirst: true,
+      renameStarted: false,
       renameSeed: 'hello',
       activeChatTitleSnapshot: null,
     },
@@ -88,6 +90,7 @@ test('activates pending first send once real chat and stream completion are both
       streamDone: true,
       realChatId: 'chat-real',
       wasFirst: true,
+      renameStarted: false,
       renameSeed: 'hello world',
       activeChatTitleSnapshot: 'Preview',
     },
@@ -151,6 +154,7 @@ test('completeSessionForPendingFirstSend defers chat creation until real id exis
       streamDone: false,
       realChatId: null,
       wasFirst: true,
+      renameStarted: false,
       renameSeed: 'hello',
       activeChatTitleSnapshot: null,
     },
@@ -170,4 +174,24 @@ test('completeSessionForPendingFirstSend defers chat creation until real id exis
   assert.equal(deferredClientId, 'client-1')
   assert.deepEqual(completed, [PENDING_FIRST_CHAT_ID, true])
   assert.equal(activated, 1)
+})
+
+test('starts the first-message rename as soon as the persisted id arrives and only once', () => {
+  const pending: PendingFirstSendState = {
+    conversationClientId: 'client-1',
+    previewRuntime: runtimeFor(),
+    streamDone: false,
+    realChatId: 'chat-real',
+    wasFirst: true,
+    renameStarted: false,
+    renameSeed: 'sidebar title now',
+    activeChatTitleSnapshot: null,
+  }
+  const renamed: Array<[string, string]> = []
+
+  startPendingFirstSendRename(pending, (chatId, seed) => renamed.push([chatId, seed]))
+  startPendingFirstSendRename(pending, (chatId, seed) => renamed.push([chatId, seed]))
+
+  assert.deepEqual(renamed, [['chat-real', 'sidebar title now']])
+  assert.equal(pending.renameStarted, true)
 })

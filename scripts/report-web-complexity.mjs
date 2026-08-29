@@ -7,9 +7,9 @@ import * as ts from 'typescript'
 
 const __filename = fileURLToPath(import.meta.url)
 const ROOT = path.resolve(path.dirname(__filename), '..')
-const REPORT_PATH = path.join(ROOT, 'internal-docs/reports/web-app-complexity-report.html')
-const BASELINE_PATH = path.join(ROOT, 'internal-docs/reports/web-app-complexity-baseline.json')
-const BUDGET_CONFIG_PATH = path.join(ROOT, 'internal-docs/reports/web-complexity-budgets.json')
+const REPORT_PATH = path.join(ROOT, 'output/reports/web-app-complexity-report.html')
+const BASELINE_PATH = path.join(ROOT, 'scripts/baselines/web-app-complexity-baseline.json')
+const BUDGET_CONFIG_PATH = path.join(ROOT, 'scripts/baselines/web-complexity-budgets.json')
 
 const args = new Set(process.argv.slice(2))
 const shouldCheck = args.has('--check')

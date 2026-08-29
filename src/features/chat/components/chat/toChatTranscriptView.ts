@@ -181,6 +181,15 @@ export function createWebChatTranscriptAdapter() {
           Array.isArray((response as { parts?: unknown[] }).parts)
             ? (response as { parts: unknown[] }).parts
             : undefined,
+          responseStatuses[responseIndex] === 'completed'
+            ? { terminalState: 'completed' }
+            : responseStatuses[responseIndex] === 'error'
+              ? { terminalState: 'error' }
+              : responseStatuses[responseIndex] === 'cancelled'
+                ? { terminalState: 'cancelled' }
+                : responseStatuses[responseIndex] === 'interrupted'
+                  ? { terminalState: 'interrupted' }
+                  : undefined,
         )
         const runtime = input.getResponseRuntime?.(modelId, exchangeIndex)
         const persistedStatus = (response as { status?: PersistedResponseStatus }).status

@@ -27,7 +27,7 @@ That installer creates `/opt/overlay/overlay.config.json`, `/opt/overlay/.env`, 
 
 For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](/deploy-operate/tenancy). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
 
-For licensing and brand constraints, see [Licensing](/legal/licensing) and [Legal Self-Hosting Notes](/legal/self-hosting-obligations). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
+For licensing and brand constraints, see [Licensing](/legal/licensing) and [Legal Self-Hosting Notes](/legal/self-hosting-obligations). The short version: first-party material in this repository is `AGPL-3.0-only`, separate submodules and third-party material keep their own licenses, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
 
 The app now loads configuration from three layers, highest precedence first:
 
@@ -215,7 +215,7 @@ Enterprise provider matrix:
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | User prompts, context, tool results | Model provider policy | Supported. Use `features.modelRouting=false` plus `providers.models.provider="none"` to disable. |
 | Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio`, `executor`, and `none` supported. `executor` uses a separate customer-hosted service and provider-managed connections. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
 | Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, credentials entered during tasks | Browser provider region | `browser-use` and `none` supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
-| Sandboxes | `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, generated artifacts | Sandbox provider region | `daytona` and `none` supported. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
+| Sandboxes | `vercel`, `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, generated artifacts | Sandbox provider region | `vercel` is the hosted default and `daytona` remains an explicit opt-in. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | Search/model provider policy | `ai-gateway` and `none` supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |

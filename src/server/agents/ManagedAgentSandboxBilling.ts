@@ -12,10 +12,12 @@ import type {
   RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
 import { managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
+import {
+  calculateVercelSandboxCostUsd,
+  estimateVercelSandboxReservationUsd,
+  sandboxProviderCostLimitUsd,
+} from '@/server/ai/sandbox/vercel-pricing'
 
-const VERCEL_ACTIVE_CPU_USD_PER_MS = 0.128 / 3_600_000
-const VERCEL_MEMORY_USD_PER_GIB_MS = 0.0212 / 3_600_000
-const VERCEL_EGRESS_USD_PER_BYTE = 0.15 / (1024 ** 3)
 const DEFAULT_RESOURCES = { diskGiB: 20, memoryGiB: 4, vcpus: 2 }
 
 export class ManagedAgentSandboxBilling {
@@ -47,18 +49,22 @@ export class ManagedAgentSandboxBilling {
     const instance = await runtime.reconnect(lease.providerReference)
     const baselineUsage = await instance.usage()
     const resources = sandboxResources(lease.usage)
+    const estimatedProviderCostUsd = sandboxReservationCostUsd({
+      provider: lease.provider,
+      resources,
+      maxRunTimeMs: args.maxRunTimeMs,
+      maxSandboxEgressBytes: args.maxSandboxEgressBytes,
+    })
+    if (estimatedProviderCostUsd > sandboxProviderCostLimitUsd()) {
+      throw new ManagedAgentSandboxBudgetError(503, 'sandbox_provider_cost_limit')
+    }
     const reservation = await this.dependencies.policy.reserve({
       entitlements: args.entitlements,
       idempotencyKey: args.idempotencyKey,
       kind: 'sandbox',
       modelId: `sandbox/${lease.provider}`,
       operationId: args.operationId,
-      providerCostUsd: sandboxCostUsd({
-        provider: lease.provider,
-        resources,
-        usage: { wallTimeMs: args.maxRunTimeMs, activeCpuTimeMs: args.maxRunTimeMs * resources.vcpus,
-          egressBytes: args.maxSandboxEgressBytes },
-      }),
+      providerCostUsd: estimatedProviderCostUsd,
       requestFingerprint: args.requestFingerprint,
       programmaticSubjectId: `agent:${args.agentId}`,
       userId: args.userId,
@@ -181,12 +187,34 @@ export function sandboxCostUsd(args: {
     diskGiB: args.resources.diskGiB,
     elapsedSeconds: wallTimeMs / 1_000,
   }).costUsd
-  if (args.provider === 'vercel') return Math.max(0,
-    Math.max(0, args.usage.activeCpuTimeMs ?? 0) * VERCEL_ACTIVE_CPU_USD_PER_MS
-      + wallTimeMs * args.resources.memoryGiB * VERCEL_MEMORY_USD_PER_GIB_MS
-      + Math.max(0, args.usage.egressBytes ?? 0) * VERCEL_EGRESS_USD_PER_BYTE,
-  )
+  if (args.provider === 'vercel') return calculateVercelSandboxCostUsd({
+    memoryGb: args.resources.memoryGiB,
+    usage: args.usage,
+  })
   throw new Error(`MANAGED_SANDBOX_PROVIDER_UNPRICED:${args.provider}`)
+}
+
+function sandboxReservationCostUsd(args: {
+  maxRunTimeMs: number
+  maxSandboxEgressBytes: number
+  provider: string
+  resources: { diskGiB: number; memoryGiB: number; vcpus: number }
+}) {
+  if (args.provider === 'vercel') return estimateVercelSandboxReservationUsd({
+    maxEgressBytes: args.maxSandboxEgressBytes,
+    maxRunTimeMs: args.maxRunTimeMs,
+    memoryGb: args.resources.memoryGiB,
+    vcpus: args.resources.vcpus,
+  })
+  return sandboxCostUsd({
+    provider: args.provider,
+    resources: args.resources,
+    usage: {
+      activeCpuTimeMs: args.maxRunTimeMs * args.resources.vcpus,
+      egressBytes: args.maxSandboxEgressBytes,
+      wallTimeMs: args.maxRunTimeMs,
+    },
+  })
 }
 
 function usageDelta(baseline: Record<string, unknown>, current: SandboxUsage, fallbackWallTimeMs: number): SandboxUsage {
