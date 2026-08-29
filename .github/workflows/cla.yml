@@ -87,6 +87,24 @@ jobs:
               }
             }
 
+            function signatureKey(entry) {
+              return `${String(entry.githubUser || '').toLowerCase()}::${entry.claVersion || ''}`;
+            }
+
+            function mergeSignatures(base, incoming) {
+              const byKey = new Map();
+              for (const entry of [...base, ...incoming]) {
+                const key = signatureKey(entry);
+                if (key === '::') {
+                  continue;
+                }
+                if (!byKey.has(key)) {
+                  byKey.set(key, entry);
+                }
+              }
+              return [...byKey.values()];
+            }
+
             async function saveRegistry(registry, sha, message) {
               const content = Buffer.from(
                 `${JSON.stringify(registry, null, 2)}\n`,
@@ -223,8 +241,7 @@ jobs:
                 return;
               }
               if (!isAllowlisted(signer.login) && !signedLogins.has(signer.login.toLowerCase())) {
-                registry.claVersion = CLA_VERSION;
-                registry.signatures.push({
+                const nextSignature = {
                   githubUser: signer.login,
                   githubUserId: signer.id,
                   signedAt: new Date().toISOString(),
@@ -232,13 +249,35 @@ jobs:
                   repository: `${owner}/${repo}`,
                   pullRequest: pullNumber,
                   commentUrl: context.payload.comment.html_url,
-                });
-                await saveRegistry(
-                  registry,
-                  sha,
-                  `Record CLA signature from @${signer.login} on PR #${pullNumber}`,
-                );
-                signedLogins.add(signer.login.toLowerCase());
+                };
+                let lastError = null;
+                for (let attempt = 0; attempt < 5; attempt++) {
+                  const current = attempt === 0 ? { sha, registry } : await loadRegistry();
+                  current.registry.claVersion = CLA_VERSION;
+                  current.registry.signatures = mergeSignatures(
+                    current.registry.signatures,
+                    [nextSignature],
+                  );
+                  try {
+                    await saveRegistry(
+                      current.registry,
+                      current.sha,
+                      `Record CLA signature from @${signer.login} on PR #${pullNumber}`,
+                    );
+                    registry.signatures = current.registry.signatures;
+                    signedLogins.add(signer.login.toLowerCase());
+                    lastError = null;
+                    break;
+                  } catch (error) {
+                    lastError = error;
+                    if (error.status !== 409 && error.status !== 422) {
+                      throw error;
+                    }
+                  }
+                }
+                if (lastError) {
+                  throw lastError;
+                }
               }
             }
 
