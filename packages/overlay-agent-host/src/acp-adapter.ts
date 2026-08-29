@@ -10,6 +10,7 @@ export type AcpAdapterOptions = {
   command: string
   args?: string[]
   env?: Record<string, string>
+  verify?: () => Promise<void>
 }
 
 type Deferred<T> = { promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void }
@@ -24,7 +25,10 @@ export class AcpAgentAdapter implements AgentAdapter {
     }
   }
 
-  async discover() { return this.capability }
+  async discover() {
+    await this.options.verify?.()
+    return this.capability
+  }
 
   async start(input: StartAdapterSessionInput, emit: EmitAgentEvent): Promise<AgentAdapterSession> {
     const ready = deferred<{ sessionId: string; context: acp.ClientContext }>()

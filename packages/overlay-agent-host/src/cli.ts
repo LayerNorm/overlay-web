@@ -126,8 +126,17 @@ function buildAdapters(configs: AgentHostConfigAdapter[]): AgentAdapter[] {
     return new AcpAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, command: adapter.command,
       ...(adapter.args ? { args: adapter.args } : {}), ...(adapter.env ? { env: adapter.env } : {}),
+      ...(isHermesManifestAdapter(adapter) ? { verify: verifyHermesAcpReadiness } : {}),
     })
   })
+}
+
+function isHermesManifestAdapter(adapter: AgentHostConfigAdapter): boolean {
+  return adapter.protocol === 'acp'
+    && adapter.id === 'hermes'
+    && adapter.command === 'hermes'
+    && adapter.args?.length === 1
+    && adapter.args[0] === 'acp'
 }
 
 type AgentHostConfigAdapter = Awaited<ReturnType<typeof loadAgentHostConfig>>['adapters'][number]
