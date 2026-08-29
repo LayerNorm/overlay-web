@@ -41,7 +41,7 @@ validation, and a shared positive and negative provider contract. The contract p
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
 required live gate whenever the local or remote contract database is available.
 
-Phase 2 is implemented in two Apache-licensed workspace packages:
+Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
 - `@overlay/agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
   payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
@@ -103,14 +103,19 @@ The Agents directory derives its connected-harness label from the active binding
 agent's historical model ID, so agents created before the BYO editor still display their actual
 runtime.
 The agent editor starts with an explicit `Overlay agent` versus `Bring your own agent` choice.
+That choice is rendered only after a workspace-scoped connected-agent request succeeds; deployments
+with the global flag disabled and workspaces outside the active rollout stage stay on the normal
+Overlay-agent editor instead of exposing a form that can never submit.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
 records an explicitly granted default working directory. Creating an environment stays inside the
 same dialog and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
-ships data-only manifests for Codex
-(`@agentclientprotocol/codex-acp`) and Claude Code (`@agentclientprotocol/claude-agent-acp`); adding
-another ACP target extends the manifest and conformance fixtures, not conversation orchestration.
+ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
+(`@agentclientprotocol/claude-agent-acp@0.70.0`); adding another ACP target extends the manifest and
+conformance fixtures, not conversation orchestration. The built-in user-owned adapter IDs live in
+`@overlay/workspace-contracts`; they are deliberately separate from the managed-sandbox adapter
+allowlist so enabling a local or VPS adapter never makes Overlay Cloud eligible.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
 nullable conversation-message edit-history column required by the shared transcript writer.
 
@@ -186,7 +191,11 @@ a remote or headless flow. Overlay never copies, mounts, uploads, or imports a u
 Claude, or equivalent authentication directory into a managed sandbox.
 
 Phase 7 makes `@overlay/agent-host` and `@overlay/agent-bridge-protocol` publishable packages and
-requires Node.js 24. The same executable runs as a foreground CLI, a restartable systemd service,
+requires Node.js 24. The first production package line is `0.1.0`; the application copies an exact
+`npx --yes @overlay/agent-host@0.1.0 ...` command rather than following npm `latest`. The host and
+protocol packages release together, the host depends on the exact protocol version, and the npm
+release workflow publishes both with provenance after the compatibility and package-content gates.
+The same executable runs as a foreground CLI, a restartable systemd service,
 or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
 unit runs under a dedicated OS account; operators must align `ReadWritePaths` with the exact roots
@@ -382,6 +391,23 @@ managed-environment choice while that release is deferred.
 Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
 workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
 does not make any workspace eligible.
+
+The first production activation is intentionally narrow:
+
+- publish and independently install-smoke the exact Agent Host and bridge-protocol versions;
+- set `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=1` and
+  `OVERLAY_FEATURE_REMOTE_AGENT_RUNS=1` in production;
+- keep `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS=0` and
+  `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=0`;
+- set the rollout stage to `internal` or `invited` and populate only the corresponding exact
+  workspace IDs; and
+- verify the public capability response, an ineligible workspace's hidden BYO editor, and a full
+  eligible-workspace enroll, approve, bind, invoke, stream, cancel, reconnect, revoke path before
+  widening the allowlist.
+
+Changing a rollout variable requires a new production deployment so the immutable web runtime reads
+the approved values. Roll back by setting the rollout stage to `off`; use either global feature flag
+as the incident kill switch when the entire control plane or all new remote dispatch must stop.
 
 Route services read these flags before selecting a database repository, so Convex and
 PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly

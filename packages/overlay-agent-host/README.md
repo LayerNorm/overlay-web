@@ -7,7 +7,7 @@ unacknowledged events in SQLite, so restarting the host does not duplicate accep
 Node.js 24 or newer is required. Run it in the foreground with the one-copy command from Overlay:
 
 ```sh
-npx @overlay/agent-host connect <enrollment-code> \
+npx --yes @overlay/agent-host@0.1.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --run
@@ -37,8 +37,9 @@ Keep credentials out of the JSON file:
 }
 ```
 
-The built-in manifests resolve to the maintained
-`@agentclientprotocol/codex-acp` and `@agentclientprotocol/claude-agent-acp` packages. A custom
+The built-in manifests resolve to the exact, release-tested
+`@agentclientprotocol/codex-acp@1.7.0` and
+`@agentclientprotocol/claude-agent-acp@0.70.0` packages. A custom
 ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
 shape.
 
@@ -61,7 +62,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx @overlay/agent-host connect <enrollment-code> \
+npx --yes @overlay/agent-host@0.1.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --adapter eve \

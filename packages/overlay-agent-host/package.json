@@ -1,8 +1,17 @@
 {
   "name": "@overlay/agent-host",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Outbound-only host for connecting user-owned and managed agents to Overlay.",
   "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LayerNorm/overlay-web.git",
+    "directory": "packages/overlay-agent-host"
+  },
+  "homepage": "https://github.com/LayerNorm/overlay-web/tree/main/packages/overlay-agent-host#readme",
+  "bugs": {
+    "url": "https://github.com/LayerNorm/overlay-web/issues"
+  },
   "type": "module",
   "bin": {
     "overlay-agent-host": "./src/cli.mjs"
@@ -33,7 +42,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
-    "@overlay/agent-bridge-protocol": "0.0.1",
+    "@overlay/agent-bridge-protocol": "0.1.0",
     "eve": "0.44.4",
     "tsx": "^4.8.1",
     "zod": "^3.25.76"

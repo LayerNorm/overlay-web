@@ -9,14 +9,14 @@ test('first native ACP targets are data-only manifests', () => {
     displayName: 'Codex',
     protocol: 'acp',
     command: 'npx',
-    args: ['-y', '@agentclientprotocol/codex-acp'],
+    args: ['-y', '@agentclientprotocol/codex-acp@1.7.0'],
   })
   assert.deepEqual(resolveAcpAdapterManifest('claude-code'), {
     id: 'claude-code',
     displayName: 'Claude Code',
     protocol: 'acp',
     command: 'npx',
-    args: ['-y', '@agentclientprotocol/claude-agent-acp'],
+    args: ['-y', '@agentclientprotocol/claude-agent-acp@0.70.0'],
   })
 })
 

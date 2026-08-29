@@ -1,7 +1,11 @@
 import type { AgentEnvironmentResource } from '@overlay/api-client'
-import type { WorkspaceAgentHarness } from '@overlay/workspace-contracts'
+import {
+  BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS,
+  type BuiltInUserOwnedAcpAdapterId,
+  type WorkspaceAgentHarness,
+} from '@overlay/workspace-contracts'
 
-export const MANAGED_BYO_HARNESSES = [
+export const BUILT_IN_BYO_HARNESSES = [
   {
     id: 'codex',
     label: 'Codex',
@@ -12,15 +16,19 @@ export const MANAGED_BYO_HARNESSES = [
     label: 'Claude Code',
     description: 'Run Anthropic Claude Code through the Agent Client Protocol.',
   },
-] as const
+] as const satisfies ReadonlyArray<{
+  id: BuiltInUserOwnedAcpAdapterId
+  label: string
+  description: string
+}>
 
-export type ManagedByoHarnessId = (typeof MANAGED_BYO_HARNESSES)[number]['id']
+export type BuiltInByoHarnessId = (typeof BUILT_IN_BYO_HARNESSES)[number]['id']
 
 export type ByoHarnessOption = {
   id: string
   label: string
   description: string
-  managed: boolean
+  connectable: boolean
 }
 
 export type AcpAdapterCapability = {
@@ -41,9 +49,9 @@ export function acpAdaptersForEnvironment(environment: AgentEnvironmentResource)
 }
 
 export function availableByoHarnesses(environments: AgentEnvironmentResource[]): ByoHarnessOption[] {
-  const options = new Map<string, ByoHarnessOption>(MANAGED_BYO_HARNESSES.map((harness) => [
+  const options = new Map<string, ByoHarnessOption>(BUILT_IN_BYO_HARNESSES.map((harness) => [
     harness.id,
-    { ...harness, managed: true },
+    { ...harness, connectable: true },
   ]))
   for (const environment of environments) {
     for (const adapter of acpAdaptersForEnvironment(environment)) {
@@ -52,12 +60,19 @@ export function availableByoHarnesses(environments: AgentEnvironmentResource[]):
           id: adapter.id,
           label: adapter.label,
           description: 'Use the ACP-compatible harness advertised by this environment.',
-          managed: false,
+          connectable: false,
         })
       }
     }
   }
   return [...options.values()]
+}
+
+export function builtInHarnessCatalogIsComplete() {
+  return BUILT_IN_BYO_HARNESSES.length === BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS.length
+    && BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS.every((id) => (
+      BUILT_IN_BYO_HARNESSES.some((harness) => harness.id === id)
+    ))
 }
 
 export function environmentSupportsHarness(environment: AgentEnvironmentResource, harnessId: string) {

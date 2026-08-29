@@ -30,7 +30,7 @@ import {
   environmentSupportsHarness,
   generatedByoInstructions,
   workspaceHarnessForByo,
-  type ManagedByoHarnessId,
+  type BuiltInByoHarnessId,
 } from '../lib/byo-agent-setup'
 
 const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
@@ -41,6 +41,7 @@ export function AgentEditorDialog({
   open,
   agent,
   showcase = false,
+  connectedAgentsEnabled = false,
   busy,
   error,
   onOpenChange,
@@ -50,6 +51,7 @@ export function AgentEditorDialog({
   open: boolean
   agent?: WorkspaceAgentDirectoryItem | null
   showcase?: boolean
+  connectedAgentsEnabled?: boolean
   teams: WorkspaceManagementItem[]
   busy: boolean
   error: string | null
@@ -97,7 +99,7 @@ export function AgentEditorDialog({
   }, [activeWorkspaceId, showcase])
 
   useEffect(() => {
-    if (!open || !activeWorkspaceId || showcase || (!agent && agentType !== 'byo')) return
+    if (!open || !activeWorkspaceId || showcase || !connectedAgentsEnabled || (!agent && agentType !== 'byo')) return
     let cancelled = false
     setEnvironmentsLoading(true)
     setEnvironmentError(null)
@@ -123,7 +125,11 @@ export function AgentEditorDialog({
       if (!cancelled) setEnvironmentsLoading(false)
     })
     return () => { cancelled = true }
-  }, [activeWorkspaceId, agent, agentType, open, showcase])
+  }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, open, showcase])
+
+  useEffect(() => {
+    if (!connectedAgentsEnabled && agentType === 'byo') setAgentType('overlay')
+  }, [agentType, connectedAgentsEnabled])
 
   useEffect(() => {
     if (!command || setupEnvironmentId) return
@@ -188,7 +194,7 @@ export function AgentEditorDialog({
       setWorkingDirectory('')
     }
     const nextHarness = harnessOptions.find((harness) => harness.id === nextAdapterId)
-    if (nextHarness && !nextHarness.managed && environmentChoice !== 'existing') {
+    if (nextHarness && !nextHarness.connectable && environmentChoice !== 'existing') {
       setEnvironmentChoice('existing')
     }
   }
@@ -204,7 +210,7 @@ export function AgentEditorDialog({
       setEnvironmentError('Sign in to connect an environment.')
       return
     }
-    if (!activeWorkspaceId || !selectedHarness?.managed) return
+    if (!activeWorkspaceId || !selectedHarness?.connectable) return
     setEnvironmentBusy('connect')
     setEnvironmentError(null)
     setCommand('')
@@ -213,7 +219,7 @@ export function AgentEditorDialog({
     setEnrollmentBaselineIds(environments.map((environment) => environment.id))
     try {
       const result = await overlayAppClient.agentEnvironments.createEnrollment(activeWorkspaceId, {
-        adapterId: adapterId as ManagedByoHarnessId,
+        adapterId: adapterId as BuiltInByoHarnessId,
       })
       setCommand(result.command)
     } catch (value) {
@@ -302,7 +308,7 @@ export function AgentEditorDialog({
         </>
       )}
     >
-      {!isDefaultMaster ? <AgentTypeSelector value={agentType} onChange={setAgentType} /> : null}
+      {!isDefaultMaster && connectedAgentsEnabled ? <AgentTypeSelector value={agentType} onChange={setAgentType} /> : null}
 
       <div className="mt-5 grid gap-5 sm:grid-cols-[112px_minmax(0,1fr)]">
         <AgentAvatar color={avatarColor} onChange={setAvatarColor} />
@@ -319,7 +325,7 @@ export function AgentEditorDialog({
           {agentType === 'overlay' ? (
             <OverlayAgentFields instructions={instructions} onInstructionsChange={setInstructions} modelId={modelId} onModelChange={setModelId} modelOptions={modelOptions} enabledToolGroups={enabledToolGroups} onToggleToolGroup={toggleToolGroup} advanced={advanced} onAdvancedChange={setAdvanced} />
           ) : (
-            <ByoAgentFields adapterId={adapterId} harnessOptions={harnessOptions} onHarnessChange={chooseHarness} choice={environmentChoice} onChoiceChange={setEnvironmentChoice} compatibleEnvironments={compatibleEnvironments} environmentsLoading={environmentsLoading} environmentId={environmentId} onEnvironmentChange={chooseEnvironment} workingDirectory={workingDirectory} onWorkingDirectoryChange={setWorkingDirectory} selectedHarnessManaged={Boolean(selectedHarness?.managed)} environmentBusy={environmentBusy} environmentError={environmentError} command={command} copied={copied} onCopyCommand={copyCommand} onBeginConnection={beginConnection} setupEnvironment={setupEnvironment} setupRoots={setupRoots} onSetupRootsChange={setSetupRoots} onApproveSetup={approveSetupEnvironment} />
+            <ByoAgentFields adapterId={adapterId} harnessOptions={harnessOptions} onHarnessChange={chooseHarness} choice={environmentChoice} onChoiceChange={setEnvironmentChoice} compatibleEnvironments={compatibleEnvironments} environmentsLoading={environmentsLoading} environmentId={environmentId} onEnvironmentChange={chooseEnvironment} workingDirectory={workingDirectory} onWorkingDirectoryChange={setWorkingDirectory} selectedHarnessConnectable={Boolean(selectedHarness?.connectable)} environmentBusy={environmentBusy} environmentError={environmentError} command={command} copied={copied} onCopyCommand={copyCommand} onBeginConnection={beginConnection} setupEnvironment={setupEnvironment} setupRoots={setupRoots} onSetupRootsChange={setSetupRoots} onApproveSetup={approveSetupEnvironment} />
           )}
           {error ? <p className="text-xs text-red-500">{error}</p> : null}
         </div>
@@ -369,7 +375,7 @@ function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onMod
   )
 }
 
-function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, choice, onChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessManaged, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: { adapterId: string; harnessOptions: Array<{ id: string; label: string; description: string; managed: boolean }>; onHarnessChange(value: string): void; choice: EnvironmentChoice; onChoiceChange(value: EnvironmentChoice): void; compatibleEnvironments: AgentEnvironmentResource[]; environmentsLoading: boolean; environmentId: string; onEnvironmentChange(value: string): void; workingDirectory: string; onWorkingDirectoryChange(value: string): void; selectedHarnessManaged: boolean; environmentBusy: string | null; environmentError: string | null; command: string; copied: boolean; onCopyCommand(): void; onBeginConnection(): void; setupEnvironment?: AgentEnvironmentResource; setupRoots: string; onSetupRootsChange(value: string): void; onApproveSetup(): void }) {
+function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, choice, onChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: { adapterId: string; harnessOptions: Array<{ id: string; label: string; description: string; connectable: boolean }>; onHarnessChange(value: string): void; choice: EnvironmentChoice; onChoiceChange(value: EnvironmentChoice): void; compatibleEnvironments: AgentEnvironmentResource[]; environmentsLoading: boolean; environmentId: string; onEnvironmentChange(value: string): void; workingDirectory: string; onWorkingDirectoryChange(value: string): void; selectedHarnessConnectable: boolean; environmentBusy: string | null; environmentError: string | null; command: string; copied: boolean; onCopyCommand(): void; onBeginConnection(): void; setupEnvironment?: AgentEnvironmentResource; setupRoots: string; onSetupRootsChange(value: string): void; onApproveSetup(): void }) {
   return (
     <div className="space-y-5">
       <section>
@@ -380,10 +386,10 @@ function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, choice, on
         <p className="text-xs font-medium">Where it runs</p>
         <div className="mt-2.5 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Agent environment">
           <EnvironmentChoiceButton active={choice === 'existing'} icon={<Server size={15} />} label="Existing" onClick={() => onChoiceChange('existing')} />
-          <EnvironmentChoiceButton active={choice === 'connect'} icon={<Laptop size={15} />} label="My machine" disabled={!selectedHarnessManaged} onClick={() => onChoiceChange('connect')} />
+          <EnvironmentChoiceButton active={choice === 'connect'} icon={<Laptop size={15} />} label="My machine" disabled={!selectedHarnessConnectable} onClick={() => onChoiceChange('connect')} />
         </div>
         <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-          {choice === 'existing' ? environmentsLoading ? <p className="flex items-center gap-2 text-xs text-[var(--muted)]"><Loader2 size={14} className="animate-spin" /> Loading environments…</p> : compatibleEnvironments.length > 0 ? <div className="space-y-3"><label className="block text-xs font-medium">Environment<ListboxSelect className="mt-1.5" aria-label="Connected environment" value={environmentId} options={compatibleEnvironments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))} onChange={onEnvironmentChange} portal /></label><label className="block text-xs font-medium">Default working directory<Input className="mt-1.5" value={workingDirectory} onChange={(event) => onWorkingDirectoryChange(event.target.value)} placeholder="/Users/you/Projects/app" /></label><p className="text-[11px] leading-4 text-[var(--muted)]">This must be inside the environment’s approved roots. The environment may host other agents too.</p></div> : <div className="text-xs text-[var(--muted)]"><p>No connected environment currently advertises this harness.</p>{selectedHarnessManaged ? <p className="mt-1">Connect a computer, VPS, or sandbox to continue.</p> : null}</div> : null}
+          {choice === 'existing' ? environmentsLoading ? <p className="flex items-center gap-2 text-xs text-[var(--muted)]"><Loader2 size={14} className="animate-spin" /> Loading environments…</p> : compatibleEnvironments.length > 0 ? <div className="space-y-3"><label className="block text-xs font-medium">Environment<ListboxSelect className="mt-1.5" aria-label="Connected environment" value={environmentId} options={compatibleEnvironments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))} onChange={onEnvironmentChange} portal /></label><label className="block text-xs font-medium">Default working directory<Input className="mt-1.5" value={workingDirectory} onChange={(event) => onWorkingDirectoryChange(event.target.value)} placeholder="/Users/you/Projects/app" /></label><p className="text-[11px] leading-4 text-[var(--muted)]">This must be inside the environment’s approved roots. The environment may host other agents too.</p></div> : <div className="text-xs text-[var(--muted)]"><p>No connected environment currently advertises this harness.</p>{selectedHarnessConnectable ? <p className="mt-1">Connect a computer, VPS, or sandbox to continue.</p> : null}</div> : null}
           {choice === 'connect' ? <div className="space-y-3"><div><p className="text-xs font-medium text-[var(--foreground)]">Connect any computer, VPS, or sandbox</p><p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Run one outbound-only command. No inbound port is opened.</p></div>{!command ? <Button variant="secondary" size="sm" disabled={environmentBusy !== null} onClick={onBeginConnection}>{environmentBusy === 'connect' ? 'Creating…' : 'Create connection command'}</Button> : <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-[var(--foreground)]">{command}</code><button type="button" aria-label="Copy connection command" onClick={onCopyCommand} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>}{command && !setupEnvironment ? <p className="flex items-center gap-2 text-[11px] text-[var(--muted)]"><Loader2 size={13} className="animate-spin" /> Waiting for the host to connect…</p> : null}</div> : null}
           {setupEnvironment ? <EnvironmentApprovalPanel environment={setupEnvironment} roots={setupRoots} busy={environmentBusy === 'approve'} onRootsChange={onSetupRootsChange} onApprove={onApproveSetup} /> : null}
         </div>

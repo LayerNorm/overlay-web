@@ -1,0 +1,60 @@
+name: Publish Agent Host packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact package version to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-agent-host-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish npm packages
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: Production
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm install --global npm@11.11.0
+      - run: npm ci
+      - run: npm run check:byo-agents:release
+      - name: Verify requested version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          test "$(node -p "require('./packages/overlay-agent-host/package.json').version")" = "$REQUESTED_VERSION"
+          test "$(node -p "require('./packages/overlay-agent-bridge-protocol/package.json').version")" = "$REQUESTED_VERSION"
+      - name: Check existing releases
+        id: releases
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if npm view "@overlay/agent-bridge-protocol@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "protocol_exists=true" >> "$GITHUB_OUTPUT"; else echo "protocol_exists=false" >> "$GITHUB_OUTPUT"; fi
+          if npm view "@overlay/agent-host@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "host_exists=true" >> "$GITHUB_OUTPUT"; else echo "host_exists=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Publish bridge protocol
+        if: steps.releases.outputs.protocol_exists != 'true'
+        run: npm publish --workspace=@overlay/agent-bridge-protocol --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish Agent Host
+        if: steps.releases.outputs.host_exists != 'true'
+        run: npm publish --workspace=@overlay/agent-host --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

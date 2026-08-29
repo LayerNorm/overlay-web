@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import {
   availableByoHarnesses,
+  builtInHarnessCatalogIsComplete,
   defaultWorkingDirectory,
   environmentSupportsHarness,
   generatedByoInstructions,
@@ -22,12 +23,13 @@ const environment = {
   createdAt: 1, updatedAt: 1,
 } satisfies AgentEnvironmentResource
 
-test('BYO harness discovery keeps managed targets and adds advertised ACP adapters', () => {
+test('BYO harness discovery keeps built-in targets and adds advertised ACP adapters', () => {
   assert.deepEqual(availableByoHarnesses([environment]).map((harness) => harness.id), [
     'codex', 'claude-code', 'custom-acp',
   ])
   assert.equal(environmentSupportsHarness(environment, 'custom-acp'), true)
   assert.equal(environmentSupportsHarness(environment, 'eve'), false)
+  assert.equal(builtInHarnessCatalogIsComplete(), true)
 })
 
 test('BYO defaults preserve explicit filesystem and workspace harness boundaries', () => {
