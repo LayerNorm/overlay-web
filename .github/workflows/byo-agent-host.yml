@@ -6,12 +6,14 @@ on:
       - 'packages/overlay-agent-bridge-protocol/**'
       - 'packages/overlay-agent-host/**'
       - '.github/workflows/byo-agent-host.yml'
+      - '.github/workflows/publish-agent-host.yml'
   push:
     branches: [main, staging]
     paths:
       - 'packages/overlay-agent-bridge-protocol/**'
       - 'packages/overlay-agent-host/**'
       - '.github/workflows/byo-agent-host.yml'
+      - '.github/workflows/publish-agent-host.yml'
   workflow_dispatch:
 
 permissions:
@@ -39,3 +41,7 @@ jobs:
       - run: npm --prefix packages/overlay-agent-bridge-protocol run typecheck
       - run: npm run test:agent-host
       - run: npm --prefix packages/overlay-agent-host run typecheck
+      - if: runner.os == 'Linux'
+        run: npm run verify:agent-host-release
+      - if: runner.os == 'Linux'
+        run: npm run pack:agent-host-release

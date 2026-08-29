@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import {
-  isOverlayManagedAcpAdapterId,
-  type OverlayManagedAcpAdapterId,
-} from '@overlay/sandbox-runtime'
+  isBuiltInUserOwnedAcpAdapterId,
+  type BuiltInUserOwnedAcpAdapterId,
+} from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildAgentHostEnrollmentCommand } from '@/server/agents/agent-enrollment-command'
@@ -12,9 +12,9 @@ export async function POST(request: Request, context: AppApiRouteContext) {
   try {
     const body = context.parsedJson as Partial<{ adapterId: string }>
     const requestedAdapterId = body.adapterId?.trim()
-    let adapterId: OverlayManagedAcpAdapterId | undefined
+    let adapterId: BuiltInUserOwnedAcpAdapterId | undefined
     if (requestedAdapterId) {
-      if (!isOverlayManagedAcpAdapterId(requestedAdapterId)) {
+      if (!isBuiltInUserOwnedAcpAdapterId(requestedAdapterId)) {
         return NextResponse.json({ error: 'Unsupported agent harness', code: 'adapter_invalid' }, { status: 400 })
       }
       adapterId = requestedAdapterId

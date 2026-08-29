@@ -8,8 +8,8 @@ import {
   environmentCredentialResponseSchema,
   type HostCapabilities,
 } from '@overlay/agent-bridge-protocol'
-import { saveStoredConnection, type StoredAgentConnection } from './connection'
-import { loadOrCreateDeviceKeyPair } from './device-key'
+import { saveStoredConnection, type StoredAgentConnection } from './connection.js'
+import { loadOrCreateDeviceKeyPair } from './device-key.js'
 
 export type ConnectAgentHostOptions = {
   code: string

@@ -1,4 +1,9 @@
-import type { AgentBinding, AgentEnvironment, AgentFilesystemGrant } from '@overlay/workspace-contracts'
+import type {
+  AgentBinding,
+  AgentEnvironment,
+  AgentFilesystemGrant,
+  BuiltInUserOwnedAcpAdapterId,
+} from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 
 const WORKSPACE_HEADER = 'x-overlay-workspace-id'
@@ -23,7 +28,7 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  createEnrollment(workspaceId: string, input?: { adapterId?: 'codex' | 'claude-code' }, init?: RequestInit) {
+  createEnrollment(workspaceId: string, input?: { adapterId?: BuiltInUserOwnedAcpAdapterId }, init?: RequestInit) {
     return this.http.json<{ enrollmentSessionId: string; code: string; command: string; expiresAt: number }>(
       '/api/v1/agent-environments/enrollment-sessions',
       this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),

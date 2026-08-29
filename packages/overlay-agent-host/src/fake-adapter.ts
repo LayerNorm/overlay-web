@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter'
+import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 
 export class FakeAgentAdapter implements AgentAdapter {
   readonly capability = {

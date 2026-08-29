@@ -34,6 +34,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   const { activeWorkspaceId } = useWorkspace()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>(showcase ? SHOWCASE_AGENTS : [])
   const [activeBindingsByAgentId, setActiveBindingsByAgentId] = useState<ReadonlyMap<string, AgentBinding>>(() => new Map())
+  const [connectedAgentsEnabled, setConnectedAgentsEnabled] = useState(false)
   const [canCreate, setCanCreate] = useState(showcase)
   const [loading, setLoading] = useState(!showcase)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -50,10 +51,12 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
       const [directory, bindingResult] = await Promise.all([
         overlayAppClient.agents.list(activeWorkspaceId),
         overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId)
-          .catch(() => ({ bindings: [] })),
+          .then((result) => ({ ...result, connectedAgentsEnabled: true }))
+          .catch(() => ({ bindings: [], connectedAgentsEnabled: false })),
       ])
       setAgents(directory.agents)
       setActiveBindingsByAgentId(indexActiveAgentBindings(bindingResult.bindings))
+      setConnectedAgentsEnabled(bindingResult.connectedAgentsEnabled)
       setCanCreate(directory.canCreate)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load agents.')
@@ -244,7 +247,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
         )}
       </AppScreenBody>
       </AppScreenShell>
-      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} showcase={showcase} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input, binding) => void save(input, binding)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
+      {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} showcase={showcase} connectedAgentsEnabled={connectedAgentsEnabled} teams={[]} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input, binding) => void save(input, binding)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
       <ShareDialog
         workspaceId={activeWorkspaceId}
         isOpen={Boolean(sharingAgent)}
