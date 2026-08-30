@@ -9,6 +9,10 @@ Overlay uses two agent roles. A Builder works in one isolated worktree and submi
 
 GitHub pull requests, checks, and commit history are the authoritative integration record. Do not maintain a second hand-written queue of open pull requests: it will drift. [`CHANGELOG.md`](https://github.com/LayerNorm/overlay-web/blob/main/CHANGELOG.md) is the concise record of changes that actually reached `main`.
 
+## Reusable role prompts
+
+When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNorm/overlay-web/blob/main/BUILDER_AGENT_PROMPT.md) for implementation and PR submission, or [`INTEGRATION_AGENT_PROMPT.md`](https://github.com/LayerNorm/overlay-web/blob/main/INTEGRATION_AGENT_PROMPT.md) for review, staging QA, promotion, and production verification. These prompts restate the role boundaries below so an agent can execute the workflow without relying on a shortened task description.
+
 ## Roles
 
 | Role | Responsibility |
