@@ -10,26 +10,27 @@ const smokeDirectory = mkdtempSync(join(tmpdir(), 'overlay-agent-host-release-')
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const hostPackage = JSON.parse(readFileSync(join(repositoryRoot, 'packages/overlay-agent-host/package.json'), 'utf8'))
 const protocolPackage = JSON.parse(readFileSync(join(repositoryRoot, 'packages/overlay-agent-bridge-protocol/package.json'), 'utf8'))
+const tarballName = (packageMetadata) => `${packageMetadata.name.replace(/^@/, '').replaceAll('/', '-')}-${packageMetadata.version}.tgz`
 
 try {
   execFileSync(npmCommand, [
-    'pack', '--workspace=@overlay/agent-bridge-protocol', '--pack-destination', smokeDirectory,
+    'pack', `--workspace=${protocolPackage.name}`, '--pack-destination', smokeDirectory,
   ], { cwd: repositoryRoot, stdio: 'pipe' })
   execFileSync(npmCommand, [
-    'pack', '--workspace=@overlay/agent-host', '--pack-destination', smokeDirectory,
+    'pack', `--workspace=${hostPackage.name}`, '--pack-destination', smokeDirectory,
   ], { cwd: repositoryRoot, stdio: 'pipe' })
   writeFileSync(join(smokeDirectory, 'package.json'), JSON.stringify({ private: true, type: 'module' }))
   execFileSync(npmCommand, [
     'install', '--ignore-scripts', '--no-audit', '--no-fund',
     '--min-release-age=0',
-    `./overlay-agent-bridge-protocol-${protocolPackage.version}.tgz`,
-    `./overlay-agent-host-${hostPackage.version}.tgz`,
+    `./${tarballName(protocolPackage)}`,
+    `./${tarballName(hostPackage)}`,
   ], { cwd: smokeDirectory, stdio: 'pipe' })
 
   execFileSync(process.execPath, [
     '--input-type=module',
     '--eval',
-    "const protocol = await import('@overlay/agent-bridge-protocol'); const host = await import('@overlay/agent-host'); if (!protocol.filesystemGrantSchema || !host.AgentHostRuntime) process.exit(2)",
+    `const protocol = await import(${JSON.stringify(protocolPackage.name)}); const host = await import(${JSON.stringify(hostPackage.name)}); if (!protocol.filesystemGrantSchema || !host.AgentHostRuntime) process.exit(2)`,
   ], { cwd: smokeDirectory, stdio: 'pipe' })
 
   const cliPath = join(

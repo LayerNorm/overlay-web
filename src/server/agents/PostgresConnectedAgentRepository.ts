@@ -7,7 +7,7 @@ import type {
   AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentRemoteSession,
   AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
-import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@overlay/agent-bridge-protocol'
+import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@layernorm/agent-bridge-protocol'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   agentApprovalRequests, agentArtifacts, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
