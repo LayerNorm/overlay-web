@@ -5,7 +5,7 @@
 - Prefer plain-language explanations for security, auth, and billing setup—not only code or env var names.
 - When debugging integrations (Convex, WorkOS, Stripe), use concrete error logs or network responses early so fixes match the actual failure mode.
 - Convex worktree safety: `main` + production Vercel must match production Convex; `staging` + `staging.getoverlay.io` uses the shared dev Convex deployment. A coding agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. It may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. Never run `convex:push:all`, `convex:push:prod`, `convex:deploy`, or `convex:deploy:all` from a feature worktree. Do not pass `.env.local` to production Convex deploys.
-- For local web work, use `npm run dev` (or `./scripts/dev-setup.sh <port>`) from feature worktrees. Follow `docs/develop/agentic-development.md` for worktree creation. `npm run dev:with-convex` deploys shared dev Convex and is reserved for the dedicated `staging` worktree. Coordinate Convex changes because staging/local development share one dev backend. See `docs/develop/worktree-staging-qa.mdx` for QA and deploy lanes.
+- For local web work, use `npm run dev` (or `./scripts/dev-setup.sh <port>`) from feature worktrees. Follow `docs/develop/agentic-development.mdx` for worktree creation. `npm run dev:with-convex` deploys shared dev Convex and is reserved for the dedicated `staging` worktree. Coordinate Convex changes because staging/local development share one dev backend. See `docs/develop/worktree-staging-qa.mdx` for QA and deploy lanes.
 - For UI work, align new controls with the existing app chrome and design language. Dark mode should use dark gray surfaces/buttons with light text—not full-white cards or full-black CTAs. Use Lucide icons, not emoji or decorative icon sets. The user's aesthetic bar is very high — first-pass designs have been rejected repeatedly as "hideous"; default to the simplest, cleanest possible implementation and validate visually before considering it done.
 - Run deploys, tests, and shell workflows in the environment when possible instead of only describing steps. After substantial implementation work (especially architecture phases), include a brief QA checklist: commands to run, routes to hit, and what should look normal.
 - Merge PRs once required checks and proportionate QA are green. Do not wait for a second human reviewer. Sole merge authority on `LayerNorm/overlay-web` is `DevelopedByDev`; a designated integration agent acting on that identity may merge. Prefer a merge commit for meaningful reviewed commits; squash only trivial or noisy history. Do not re-enable required approving reviews on `main` — a sole author cannot approve their own PRs.
@@ -32,7 +32,7 @@
 
 ## Agentic Development and Main Integration (MUST FOLLOW)
 
-- Read `docs/develop/agentic-development.md` before creating a branch, worktree, pull request, or merge. It is the source of truth for parallel-agent development and main integration.
+- Read `docs/develop/agentic-development.mdx` before creating a branch, worktree, pull request, or merge. It is the source of truth for parallel-agent development and main integration.
 - Keep the canonical checkout clean on `main`. Each task and builder agent gets one descriptive `codex/<slug>` branch in a sibling worktree created from the latest `origin/main`; agents must not share feature worktrees or branches.
 - Builder agents implement, test, document, and open focused pull requests. A designated integration agent owns dependency ordering, conflict resolution, required checks, staging evidence, merge method, and post-merge SHA verification.
 - GitHub pull requests and checks are the authoritative queue and detailed record. Do not create a second Markdown PR ledger. Maintain root `CHANGELOG.md` as the concise record of user-visible and operational changes that actually reach `main`.
@@ -46,7 +46,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 
 | Doc | When to update |
 | --- | --- |
-| `docs/develop/agentic-development.md` | Any change to feature worktrees, branch ownership, pull request contracts, integration roles, merge methods, changelog policy, or main-branch workflow. |
+| `docs/develop/agentic-development.mdx` | Any change to feature worktrees, branch ownership, pull request contracts, integration roles, merge methods, changelog policy, or main-branch workflow. |
 | `docs/develop/cache-components-design-decisions.md` | Any change to `instant = false` opt-outs, `<Suspense>` boundaries in routes, `cacheComponents`/`partialPrefetching` config, or route-level PPR status. Add the route to the converted list or update its opt-out reason. |
 | `docs/develop/browser-testing-with-agent-browser.md` | Any change to the agent-browser setup, tool usage patterns, or QA workflow. Add new workflow patterns or gotchas discovered during testing. |
 | `docs/develop/browser-use-with-playwright-mcp.md` | Any change to Overlay staging QA with Playwright MCP, dedicated testing Chrome setup, or staging-specific browser gotchas. |
