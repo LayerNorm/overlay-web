@@ -275,8 +275,11 @@ export function createPostgresRuntime(args: {
         billingSpendSubjectId: stringPayload(job.payload.billingSpendSubjectId),
         conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
         messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
+        memoryOwnerId: stringPayload(job.payload.memoryOwnerId),
+        targetActor: job.payload.targetActor === 'agent' ? 'agent' : 'human',
         turnId: requiredStringPayload(job.payload.turnId, 'turnId'),
         userId: requiredStringPayload(job.payload.userId, 'userId'),
+        workspaceId: stringPayload(job.payload.workspaceId),
       }),
       'knowledge.maintenance': async () => {
         const config = runtimeConfig()

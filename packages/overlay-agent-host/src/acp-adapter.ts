@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
-import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter'
+import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 
 export type AcpAdapterOptions = {
   id: string
@@ -10,6 +10,7 @@ export type AcpAdapterOptions = {
   command: string
   args?: string[]
   env?: Record<string, string>
+  verify?: () => Promise<void>
 }
 
 type Deferred<T> = { promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void }
@@ -24,7 +25,10 @@ export class AcpAgentAdapter implements AgentAdapter {
     }
   }
 
-  async discover() { return this.capability }
+  async discover() {
+    await this.options.verify?.()
+    return this.capability
+  }
 
   async start(input: StartAdapterSessionInput, emit: EmitAgentEvent): Promise<AgentAdapterSession> {
     const ready = deferred<{ sessionId: string; context: acp.ClientContext }>()

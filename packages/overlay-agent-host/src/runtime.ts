@@ -6,13 +6,13 @@ import {
   type AgentHostCommand,
   type AgentHostEvent,
   type FilesystemGrant,
-} from '@overlay/agent-bridge-protocol'
-import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter'
-import { resolveFilesystemScope } from './filesystem-policy'
-import { StructuredLogger } from './logger'
-import { SqliteHostStateStore } from './state'
-import type { AgentControlPlaneClient } from './transport'
-import { nextReconnectDelay } from './transport'
+} from '@layernorm/agent-bridge-protocol'
+import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
+import { resolveFilesystemScope } from './filesystem-policy.js'
+import { StructuredLogger } from './logger.js'
+import { SqliteHostStateStore } from './state.js'
+import type { AgentControlPlaneClient } from './transport.js'
+import { nextReconnectDelay } from './transport.js'
 
 export type AgentHostRuntimeOptions = {
   environmentId: string

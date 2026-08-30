@@ -41,12 +41,12 @@ validation, and a shared positive and negative provider contract. The contract p
 an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
 required live gate whenever the local or remote contract database is available.
 
-Phase 2 is implemented in two Apache-licensed workspace packages:
+Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
-- `@overlay/agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
+- `@layernorm/agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
   payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
   and explicit filesystem grants.
-- `@overlay/agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
+- `@layernorm/agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
   outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
   official ACP TypeScript SDK adapter.
@@ -98,19 +98,48 @@ return the existing acknowledgement and never append a second transcript row. In
 mentions have a two-minute claim window and visibly render `Waiting for <environment>` with Cancel
 and Retry; expired leases cannot be claimed.
 
+Agent DMs and channels use the same per-message memory policy for hosted and connected agents.
+Memory defaults on only when an agent participates in the room; the composer switch disables both
+recall and extraction for that turn. An invoked agent receives bounded workspace memory, hybrid
+retrieval, the participant roster, and recent role-tagged room history. ACP transports this context
+inside a delimited, size-bounded prompt envelope so existing protocol-v1 hosts remain compatible.
+Only an agent-triggering human message is eligible for human-owned extraction; ordinary human-only
+room chatter is never silently ingested. A completed agent reply may produce conservative,
+agent-owned memories for explicit decisions, verified outcomes, stable project facts, and reusable
+constraints. Suggestions, private reasoning, secrets, and unverified action claims are excluded.
+Both Convex and PostgreSQL validate the exact workspace, room, message, author kind, and memory
+owner before scheduling extraction; duplicate deliveries remain idempotent.
+Extraction prompts may include bounded prior messages by that same human or exact agent principal,
+but never messages authored by other room participants. Room-wide context is reserved for the
+invoked agent turn and is not implicitly forwarded to the separate memory-extraction model.
+The PostgreSQL memory and memory-index `user_id` columns are legacy-named opaque owner identifiers,
+not human-user foreign keys. Human account deletion removes human-owned rows explicitly; agent
+rows remain attributed to the stable `agent-memory:<agentId>` principal within their workspace.
+The database also keeps a user-delete compatibility trigger so older runtimes retain the prior
+cascade behavior during a rolling upgrade or rollback.
+
 Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
 The Agents directory derives its connected-harness label from the active binding rather than the
 agent's historical model ID, so agents created before the BYO editor still display their actual
 runtime.
 The agent editor starts with an explicit `Overlay agent` versus `Bring your own agent` choice.
+That choice is rendered only after a workspace-scoped connected-agent request succeeds; deployments
+with the global flag disabled and workspaces outside the active rollout stage stay on the normal
+Overlay-agent editor instead of exposing a form that can never submit.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
 records an explicitly granted default working directory. Creating an environment stays inside the
 same dialog and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
-ships data-only manifests for Codex
-(`@agentclientprotocol/codex-acp`) and Claude Code (`@agentclientprotocol/claude-agent-acp`); adding
-another ACP target extends the manifest and conformance fixtures, not conversation orchestration.
+ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
+(`@agentclientprotocol/claude-agent-acp@0.70.0`). Hermes 0.20.6 or newer is a third built-in target
+through the official `hermes acp` stdio server. It uses the unchanged ACP lifecycle for session
+creation/loading, streamed message and tool updates, permissions, cancellation, and authentication;
+the host does not translate Hermes through a private protocol. Adding another ACP target extends the
+manifest and conformance fixtures, not conversation orchestration. The built-in user-owned adapter
+IDs live in
+`@overlay/workspace-contracts`; they are deliberately separate from the managed-sandbox adapter
+allowlist so enabling a local or VPS adapter never makes Overlay Cloud eligible.
 PostgreSQL migration 0066 repairs older databases whose recorded migration history omitted the
 nullable conversation-message edit-history column required by the shared transcript writer.
 
@@ -159,7 +188,7 @@ operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. V
 pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates match a
 known region. Both providers boot
 the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
-`@overlay/agent-host` executable used on user-owned machines and invokes the same one-time
+`@layernorm/agent-host` executable used on user-owned machines and invokes the same one-time
 enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
 Managed hosts enroll as `overlay_cloud` and default their explicit approval root to `/workspace`.
 Provisioning receives the selected managed ACP adapter and starts only that pinned harness manifest;
@@ -185,8 +214,15 @@ Provider-specific browser or device login may be added only when that provider o
 a remote or headless flow. Overlay never copies, mounts, uploads, or imports a user's local Codex,
 Claude, or equivalent authentication directory into a managed sandbox.
 
-Phase 7 makes `@overlay/agent-host` and `@overlay/agent-bridge-protocol` publishable packages and
-requires Node.js 24. The same executable runs as a foreground CLI, a restartable systemd service,
+Phase 7 makes `@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` publishable packages and
+requires Node.js 24. The first production package line is `0.1.0`; Hermes support is released in
+the lockstep `0.2.0` package line. The application copies an exact
+`npx --yes @layernorm/agent-host@0.2.0 ...` command rather than following npm `latest`. The host and
+protocol packages release together, the host depends on the exact protocol version, and the npm
+release workflow publishes compiled ESM plus declarations for both packages with provenance after
+the compatibility, package-content, and clean Node.js installation gates. Published package entry
+points never require TypeScript stripping or a consumer-supplied loader.
+The same executable runs as a foreground CLI, a restartable systemd service,
 or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
 unit runs under a dedicated OS account; operators must align `ReadWritePaths` with the exact roots
@@ -203,8 +239,8 @@ be publicly reachable. Eve connection
 authorization (`authorization.required`) is not bridged by the current host contract, so the
 adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
 app-scoped Eve connection auth until a dedicated authorization capability is added.
-Hermes, OpenClaw, and other native adapters remain ineligible unless ACP is unavailable and the
-unchanged host conformance suite passes.
+Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
+is unavailable and the unchanged host conformance suite passes.
 
 Phase 8 uses one entitlement-derived policy for both persistence providers. Environment redemption
 rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
@@ -382,6 +418,23 @@ managed-environment choice while that release is deferred.
 Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
 workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
 does not make any workspace eligible.
+
+The first production activation is intentionally narrow:
+
+- publish and independently install-smoke the exact Agent Host and bridge-protocol versions;
+- set `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=1` and
+  `OVERLAY_FEATURE_REMOTE_AGENT_RUNS=1` in production;
+- keep `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS=0` and
+  `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=0`;
+- set the rollout stage to `internal` or `invited` and populate only the corresponding exact
+  workspace IDs; and
+- verify the public capability response, an ineligible workspace's hidden BYO editor, and a full
+  eligible-workspace enroll, approve, bind, invoke, stream, cancel, reconnect, revoke path before
+  widening the allowlist.
+
+Changing a rollout variable requires a new production deployment so the immutable web runtime reads
+the approved values. Roll back by setting the rollout stage to `off`; use either global feature flag
+as the incident kill switch when the entire control plane or all new remote dispatch must stop.
 
 Route services read these flags before selecting a database repository, so Convex and
 PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly

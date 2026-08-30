@@ -15,12 +15,15 @@ export async function enqueueMemoryExtractionJob(db: JobDb, args: {
   billingSpendSubjectId?: string
   conversationId: string
   messageId: string
+  memoryOwnerId?: string
+  targetActor?: 'human' | 'agent'
   turnId: string
   userId: string
+  workspaceId?: string
 }): Promise<string> {
   const id = randomUUID()
   const dedupeKey = createHash('sha256')
-    .update(`memory-extract:${args.userId}:${args.conversationId}:${args.turnId}`)
+    .update(`memory-extract:${args.userId}:${args.memoryOwnerId ?? args.userId}:${args.conversationId}:${args.turnId}`)
     .digest('hex')
   const inserted = await db.insert(durableJobs).values({
     dedupeKey,

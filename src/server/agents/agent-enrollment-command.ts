@@ -1,9 +1,19 @@
-import type { OverlayManagedAcpAdapterId } from '@overlay/sandbox-runtime'
+import type { BuiltInUserOwnedAcpAdapterId } from '@overlay/workspace-contracts'
+
+export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.2.0'
+export const OVERLAY_AGENT_HOST_PACKAGE_SPEC = `@layernorm/agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION}`
 
 export function buildAgentHostEnrollmentCommand(input: {
   code: string
   origin: string
-  adapterId?: OverlayManagedAcpAdapterId
+  adapterId?: BuiltInUserOwnedAcpAdapterId
 }) {
-  return `npx @overlay/agent-host connect ${input.code} --server ${input.origin}${input.adapterId ? ` --adapter ${input.adapterId}` : ''} --run`
+  if (!/^[A-Za-z0-9_-]+$/.test(input.code)) {
+    throw new Error('Agent Host enrollment code contains unsupported characters')
+  }
+  const origin = new URL(input.origin)
+  if (origin.protocol !== 'https:' || origin.origin !== input.origin) {
+    throw new Error('Agent Host enrollment origin must be an HTTPS origin')
+  }
+  return `npx --yes ${OVERLAY_AGENT_HOST_PACKAGE_SPEC} connect ${input.code} --server ${origin.origin}${input.adapterId ? ` --adapter ${input.adapterId}` : ''} --run`
 }

@@ -498,6 +498,13 @@
       "when": 1787731201000,
       "tag": "0070_byok_provider_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1788048000000,
+      "tag": "0071_agent_memory_owners",
+      "breakpoints": true
     }
   ]
 }

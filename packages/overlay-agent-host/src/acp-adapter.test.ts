@@ -39,8 +39,24 @@ test('official ACP SDK adapter streams supervised updates and bridges approval a
     assert.ok(events.some((event) => event.type === 'completed'))
   } finally {
     await session?.stop()
-    await rm(directory, { recursive: true, force: true })
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
+})
+
+test('ACP adapter discovery enforces its readiness verifier', async () => {
+  let checks = 0
+  const ready = new AcpAgentAdapter({
+    id: 'ready', displayName: 'Ready', command: process.execPath,
+    verify: async () => { checks += 1 },
+  })
+  assert.equal((await ready.discover()).id, 'ready')
+  assert.equal(checks, 1)
+
+  const unavailable = new AcpAgentAdapter({
+    id: 'unavailable', displayName: 'Unavailable', command: process.execPath,
+    verify: async () => { throw new Error('adapter is not ready') },
+  })
+  await assert.rejects(unavailable.discover(), /adapter is not ready/)
 })
 
 async function waitFor(predicate: () => boolean): Promise<void> {

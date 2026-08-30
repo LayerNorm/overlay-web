@@ -1,10 +1,10 @@
 import { access, mkdir } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentAdapter } from './adapter'
-import type { AgentHostConfig } from './config'
-import { loadOrCreateDeviceKeyPair } from './device-key'
-import { SqliteHostStateStore } from './state'
+import type { AgentAdapter } from './adapter.js'
+import type { AgentHostConfig } from './config.js'
+import { loadOrCreateDeviceKeyPair } from './device-key.js'
+import { SqliteHostStateStore } from './state.js'
 
 export type DoctorCheck = { name: string; ok: boolean; detail: string }
 

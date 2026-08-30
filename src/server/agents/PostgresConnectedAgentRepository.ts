@@ -7,7 +7,7 @@ import type {
   AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentRemoteSession,
   AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
-import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@overlay/agent-bridge-protocol'
+import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@layernorm/agent-bridge-protocol'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   agentApprovalRequests, agentArtifacts, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
@@ -584,11 +584,15 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
           billing: {
             reservationId: input.reservationId,
             agentId: input.agentId,
+            conversationId: input.conversationId,
             environmentId: input.environmentId,
             modelId: input.modelId,
             modelUsageBilling: input.modelUsageBilling,
+            memoryEnabled: input.memoryEnabled !== false,
+            messageId,
             runId: input.runId,
             userId: input.actorUserId,
+            turnId: input.turnId,
             workspaceId: input.workspaceId,
             operationId: `workspace-agent:${input.turnId}`,
           },
@@ -1619,11 +1623,14 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 
     ? tokensValue as Record<string, unknown> : {}
   return {
     agentId: typeof billing.agentId === 'string' ? billing.agentId : '',
+    conversationId: typeof billing.conversationId === 'string' ? billing.conversationId : '',
     environmentId: typeof billing.environmentId === 'string' ? billing.environmentId : '',
     forceFreeTierLimits: false,
     inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
     modelId: typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
     modelUsageBilling: billing.modelUsageBilling === 'overlay' ? 'overlay' as const : 'byok' as const,
+    memoryEnabled: billing.memoryEnabled === true,
+    messageId: typeof billing.messageId === 'string' ? billing.messageId : '',
     operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
     outcome,
     outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
@@ -1633,6 +1640,7 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 
       ? snapshot.sandboxBilling as import('./ConnectedAgentRepository').ConnectedAgentSandboxBilling
       : null,
     userId: typeof billing.userId === 'string' ? billing.userId : '',
+    turnId: typeof billing.turnId === 'string' ? billing.turnId : '',
     workspaceId: typeof billing.workspaceId === 'string' ? billing.workspaceId : '',
   }
 }

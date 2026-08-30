@@ -6,7 +6,7 @@ import {
   filesystemGrantSchema,
   hostCapabilitiesSchema,
   initialCredentialRequestSchema,
-} from '@overlay/agent-bridge-protocol'
+} from '@layernorm/agent-bridge-protocol'
 import {
   CreateWebhookSubscriptionRequest,
   DeleteWebhookSubscriptionRequest,

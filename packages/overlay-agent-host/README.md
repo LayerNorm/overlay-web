@@ -1,13 +1,13 @@
 # Overlay Agent Host
 
-`@overlay/agent-host` runs the same outbound-only bridge on a local computer, VPS, container, or
+`@layernorm/agent-host` runs the same outbound-only bridge on a local computer, VPS, container, or
 managed sandbox. It persists command outcomes, remote sessions, adapter stream cursors, and
 unacknowledged events in SQLite, so restarting the host does not duplicate accepted work.
 
 Node.js 24 or newer is required. Run it in the foreground with the one-copy command from Overlay:
 
 ```sh
-npx @overlay/agent-host connect <enrollment-code> \
+npx --yes @layernorm/agent-host@0.2.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --run
@@ -32,13 +32,18 @@ Keep credentials out of the JSON file:
   },
   "adapters": [
     { "manifest": "codex" },
-    { "manifest": "claude-code" }
+    { "manifest": "claude-code" },
+    { "manifest": "hermes" }
   ]
 }
 ```
 
-The built-in manifests resolve to the maintained
-`@agentclientprotocol/codex-acp` and `@agentclientprotocol/claude-agent-acp` packages. A custom
+The built-in manifests resolve to the exact, release-tested
+`@agentclientprotocol/codex-acp@1.7.0` and
+`@agentclientprotocol/claude-agent-acp@0.70.0` packages. Hermes uses its official
+`hermes acp` stdio server and requires Hermes Agent 0.20.6 or newer. Install Hermes from the
+official Nous Research distribution, then verify it before enrollment with
+`hermes acp --check`. A custom
 ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
 shape.
 
@@ -61,7 +66,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx @overlay/agent-host connect <enrollment-code> \
+npx --yes @layernorm/agent-host@0.2.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --adapter eve \
@@ -91,7 +96,7 @@ sudo systemctl status overlay-agent-host
 ```
 
 The unit restarts after process or machine failure and keeps state in `/var/lib/overlay-agent-host`.
-Upgrades are `npm install -g @overlay/agent-host@<version>` followed by `systemctl restart`; do not
+Upgrades are `npm install -g @layernorm/agent-host@<version>` followed by `systemctl restart`; do not
 delete the state directory. `docker-compose.example.yml` provides the same persistent, outbound-only
 shape for Docker. It exposes no host ports. Mount the approved workspaces and state volume, pull a
 pinned image version, and recreate the service to upgrade.
@@ -109,6 +114,6 @@ directory and ACP workspace roots; they are not an operating-system sandbox. For
 isolation, run the host and harness under a restricted OS account, container, VM, or managed
 sandbox.
 
-Native adapters such as Hermes or OpenClaw are added only when the harness cannot expose ACP and
-only after the unchanged Agent Host conformance suite passes. MCP remains a tool/resource protocol;
-it is not used as the execution lifecycle transport.
+Native adapters such as OpenClaw are added only when the harness cannot expose ACP and only after
+the unchanged Agent Host conformance suite passes. Hermes uses its official ACP server. MCP remains
+a tool/resource protocol; it is not used as the execution lifecycle transport.

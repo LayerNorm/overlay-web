@@ -1,5 +1,5 @@
 import { Client, isCurrentTurnBoundaryEvent, type ClientSession, type InputRequest, type InputResponse, type MessageResponse, type MessageStreamEvent } from 'eve/client'
-import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter'
+import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 
 type EveSessionLike = Pick<ClientSession, 'state' | 'send' | 'respond' | 'cancel' | 'stream'>
 type EveResponseLike = Pick<MessageResponse, 'cancel'> & AsyncIterable<MessageStreamEvent>
