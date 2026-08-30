@@ -98,6 +98,23 @@ return the existing acknowledgement and never append a second transcript row. In
 mentions have a two-minute claim window and visibly render `Waiting for <environment>` with Cancel
 and Retry; expired leases cannot be claimed.
 
+Agent DMs and channels use the same per-message memory policy for hosted and connected agents.
+Memory defaults on only when an agent participates in the room; the composer switch disables both
+recall and extraction for that turn. An invoked agent receives bounded workspace memory, hybrid
+retrieval, the participant roster, and recent role-tagged room history. ACP transports this context
+inside a delimited, size-bounded prompt envelope so existing protocol-v1 hosts remain compatible.
+Only an agent-triggering human message is eligible for human-owned extraction; ordinary human-only
+room chatter is never silently ingested. A completed agent reply may produce conservative,
+agent-owned memories for explicit decisions, verified outcomes, stable project facts, and reusable
+constraints. Suggestions, private reasoning, secrets, and unverified action claims are excluded.
+Both Convex and PostgreSQL validate the exact workspace, room, message, author kind, and memory
+owner before scheduling extraction; duplicate deliveries remain idempotent.
+The PostgreSQL memory and memory-index `user_id` columns are legacy-named opaque owner identifiers,
+not human-user foreign keys. Human account deletion removes human-owned rows explicitly; agent
+rows remain attributed to the stable `agent-memory:<agentId>` principal within their workspace.
+The database also keeps a user-delete compatibility trigger so older runtimes retain the prior
+cascade behavior during a rolling upgrade or rollback.
+
 Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
 The Agents directory derives its connected-harness label from the active binding rather than the
 agent's historical model ID, so agents created before the BYO editor still display their actual

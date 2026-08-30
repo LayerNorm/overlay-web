@@ -14,6 +14,7 @@ export type MemoryExtractionTurn = {
   messageId: string
   projectId?: string
   targetText: string
+  targetActor: 'human' | 'agent'
   turnId: string
   workspaceId?: string
 }
@@ -24,8 +25,9 @@ export class PostgresMemoryExtractionRepository {
   async getTurn(args: {
     conversationId: string
     messageId: string
+    targetActor?: 'human' | 'agent'
     turnId: string
-    userId: string
+    workspaceId?: string
   }): Promise<MemoryExtractionTurn | null> {
     const [conversation] = await this.db.select({
       projectId: conversations.projectId,
@@ -34,20 +36,22 @@ export class PostgresMemoryExtractionRepository {
       .from(conversations)
       .where(and(
         eq(conversations.id, args.conversationId),
-        eq(conversations.userId, args.userId),
+        args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         isNull(conversations.deletedAt),
       ))
       .limit(1)
     if (!conversation) return null
     const rows = await this.db.select().from(conversationMessages)
-      .where(and(
-        eq(conversationMessages.conversationId, args.conversationId),
-        eq(conversationMessages.userId, args.userId),
-      ))
+      .where(eq(conversationMessages.conversationId, args.conversationId))
       .orderBy(asc(conversationMessages.createdAt))
     const recent = rows.slice(-8)
-    const target = recent.find((message) => (
-      message.id === args.messageId && message.turnId === args.turnId && message.role === 'user'
+    const targetActor = args.targetActor ?? 'human'
+    const target = rows.find((message) => (
+      message.id === args.messageId
+      && message.turnId === args.turnId
+      && (targetActor === 'agent'
+        ? message.role === 'assistant' && message.authorKind === 'agent'
+        : message.role === 'user' && message.authorKind === 'human')
     ))
     if (!target) return null
     return {
@@ -57,6 +61,7 @@ export class PostgresMemoryExtractionRepository {
       messageId: target.id,
       projectId: conversation.projectId ?? undefined,
       targetText: messageText(target),
+      targetActor,
       turnId: target.turnId,
       workspaceId: conversation.workspaceId ?? undefined,
     }

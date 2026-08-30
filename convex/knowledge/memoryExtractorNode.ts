@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -21,7 +22,7 @@ const API_KEY = process.env.AI_GATEWAY_API_KEY;
 const MIN_CONFIDENCE = 0.4;
 const MAX_CANDIDATES_PER_MESSAGE = 8;
 
-const SYSTEM_PROMPT = `You are an aggressive memory extraction assistant. Read the user's message and extract EVERY personal fact, preference, goal, identity detail, constraint, habit, or standing instruction that would be useful to remember in future conversations.
+const HUMAN_SYSTEM_PROMPT = `You are a careful memory extraction assistant. Read the user's message and extract durable personal facts, preferences, goals, identity details, constraints, habits, or standing instructions that would be useful in future conversations.
 
 Return a JSON object with this exact shape:
 {
@@ -46,6 +47,12 @@ Rules:
 - Keep each content to one concise sentence. Start with "User prefers...", "User is...", "User wants...", "User decided...", "Always...", "Never...".
 - If nothing is memorable, return {"candidates": []}.`;
 
+const AGENT_SYSTEM_PROMPT = `Extract only durable workspace knowledge from the target agent message.
+Return the same JSON candidates shape, using project, decision, fact, or agent types.
+Save explicit decisions, verified task outcomes, stable project facts, and reusable constraints.
+Do not save suggestions, speculation, conversational filler, secrets, credentials, private reasoning, or unverified claims that an action occurred.
+Each memory must be one concise factual sentence about the workspace or completed work. If nothing is durable, return {"candidates": []}.`;
+
 const ExtractionSchema = z.object({
   candidates: z.array(
     z.object({
@@ -67,7 +74,8 @@ const ExtractionSchema = z.object({
 
 function buildExtractionPrompt(
   targetText: string,
-  contextMessages: Array<{ role: string; text: string }>
+  contextMessages: Array<{ role: string; text: string }>,
+  targetActor: "human" | "agent",
 ): string {
   const context = contextMessages
     .map((m) => `${m.role}: ${m.text.slice(0, 400)}`)
@@ -77,11 +85,13 @@ function buildExtractionPrompt(
     context ? "Recent conversation context:" : "",
     context,
     context
-      ? "\n---\nTarget message to extract memories from:"
-      : "Message to extract memories from:",
+      ? `\n---\nTarget ${targetActor} message to extract memories from:`
+      : `${targetActor === "agent" ? "Agent" : "User"} message to extract memories from:`,
     targetText,
     "",
-    "Extract any memorable personal facts, preferences, or standing instructions about the user from this message.",
+    targetActor === "agent"
+      ? "Extract only durable workspace facts, decisions, constraints, or verified outcomes."
+      : "Extract memorable personal facts, preferences, or standing instructions about the user.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -104,6 +114,9 @@ export const extractFromTurn = internalAction({
     billingSpendSubjectId: v.optional(v.string()),
     billingSpendSubjectKind: v.optional(v.union(v.literal("member"), v.literal("programmatic"))),
     conversationId: v.id("conversations"),
+    memoryOwnerId: v.optional(v.string()),
+    messageId: v.optional(v.id("conversationMessages")),
+    targetActor: v.optional(v.union(v.literal("human"), v.literal("agent"))),
     turnId: v.string(),
     userId: v.string(),
     isPaid: v.optional(v.boolean()),
@@ -115,6 +128,9 @@ export const extractFromTurn = internalAction({
     billingSpendSubjectId,
     billingSpendSubjectKind,
     conversationId,
+    memoryOwnerId,
+    messageId,
+    targetActor: rawTargetActor,
     turnId,
     userId,
     isPaid,
@@ -124,23 +140,30 @@ export const extractFromTurn = internalAction({
       // 1. Fetch message + context
       const messages = (await ctx.runQuery(
         internal.knowledge.memoryExtractor.getRecentMessages,
-        { conversationId, userId }
+        { conversationId, userId, targetMessageId: messageId }
       )) as Array<{
+        id: Id<"conversationMessages">;
+        authorKind?: string;
         role: string;
         turnId: string;
         text: string;
         createdAt: number;
       }>;
 
-      const targetMsg = messages.find(
-        (m) => m.turnId === turnId && m.role === "user"
-      );
+      const targetActor = rawTargetActor ?? "human";
+      const targetMsg = messages.find((m) => (
+        (messageId ? m.id === messageId : m.turnId === turnId)
+        && m.turnId === turnId
+        && (targetActor === "agent"
+          ? m.role === "assistant" && m.authorKind === "agent"
+          : m.role === "user" && (m.authorKind === "human" || !m.authorKind))
+      ));
       if (!targetMsg) {
         return {
           extracted: 0,
           inserted: 0,
           duplicates: 0,
-          reason: "no_user_message",
+          reason: "no_target_message",
         };
       }
 
@@ -171,7 +194,7 @@ export const extractFromTurn = internalAction({
       const contextMessages = messages.filter(
         (m: { turnId: string }) => m.turnId !== turnId
       );
-      const prompt = buildExtractionPrompt(targetText, contextMessages);
+      const prompt = buildExtractionPrompt(targetText, contextMessages, targetActor);
 
       // 3. Call AI Gateway with generateObject + Zod
       if (!API_KEY) {
@@ -188,7 +211,8 @@ export const extractFromTurn = internalAction({
       const model = getExtractorModel(modelId);
       const serverSecret = process.env.INTERNAL_API_SECRET;
       const maxOutputTokens = 1200;
-      const estimatedInputTokens = Math.ceil((SYSTEM_PROMPT.length + prompt.length) / 4);
+      const systemPrompt = targetActor === "agent" ? AGENT_SYSTEM_PROMPT : HUMAN_SYSTEM_PROMPT;
+      const estimatedInputTokens = Math.ceil((systemPrompt.length + prompt.length) / 4);
       const estimatedCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, estimatedInputTokens, 0, maxOutputTokens);
       if (estimatedCostUsd === null) {
         return {
@@ -294,7 +318,7 @@ export const extractFromTurn = internalAction({
         result = await generateObject({
           model,
           schema: ExtractionSchema,
-          instructions: SYSTEM_PROMPT,
+          instructions: systemPrompt,
           messages: [{ role: "user", content: prompt }],
           maxOutputTokens,
         });
@@ -372,6 +396,7 @@ export const extractFromTurn = internalAction({
       let inserted = 0;
       let duplicates = 0;
 
+      const ownerId = memoryOwnerId?.trim() || userId;
       for (const candidate of candidates.slice(
         0,
         MAX_CANDIDATES_PER_MESSAGE
@@ -383,7 +408,7 @@ export const extractFromTurn = internalAction({
 
         const existingId = await ctx.runQuery(
           internal.knowledge.memoryExtractor.findExactDuplicate,
-          { userId, workspaceId, normalizedContent: normalized }
+          { userId: ownerId, workspaceId, normalizedContent: normalized }
         );
 
         if (existingId) {
@@ -393,7 +418,7 @@ export const extractFromTurn = internalAction({
 
         // Insert memory (no status field — all memories are treated equally now)
         await ctx.runMutation(api.knowledge.memories.add, {
-          userId,
+          userId: ownerId,
           workspaceId,
           serverSecret: serverSecret || "",
           content: candidate.content.trim(),
@@ -405,7 +430,7 @@ export const extractFromTurn = internalAction({
             | "decision"
             | "agent"
             | undefined,
-          actor: "user",
+          actor: targetActor === "agent" ? "agent" : "user",
         });
 
         inserted++;
