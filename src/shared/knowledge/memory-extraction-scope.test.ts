@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { hasSameMemoryExtractionAuthor } from './memory-extraction-scope'
+import {
+  hasSameMemoryExtractionAuthor,
+  selectMessagesAtOrBeforeTarget,
+} from './memory-extraction-scope'
 
 test('human extraction context includes only messages by the target human', () => {
   const target = { authorKind: 'human', authorPrincipalId: 'human-1', userId: 'user-1' }
@@ -35,4 +38,32 @@ test('agent extraction refuses an unidentifiable target principal', () => {
     { authorKind: 'agent', authorPrincipalId: 'agent-1', userId: 'billing-user' },
     { authorKind: 'agent', userId: 'billing-user' },
   ), false)
+})
+
+test('database position excludes later messages when timestamps tie', () => {
+  const later = { id: 'later', createdAt: 1_000 }
+  const target = { id: 'target', createdAt: 1_000 }
+  const earlier = { id: 'earlier', createdAt: 999 }
+
+  assert.deepEqual(
+    selectMessagesAtOrBeforeTarget(
+      [later, target, earlier],
+      target,
+      (message) => message.id === target.id,
+    ),
+    [target, earlier],
+  )
+})
+
+test('a target outside the bounded window does not admit newer messages', () => {
+  const target = { id: 'target' }
+
+  assert.deepEqual(
+    selectMessagesAtOrBeforeTarget(
+      [{ id: 'newer-2' }, { id: 'newer-1' }],
+      target,
+      (message) => message.id === target.id,
+    ),
+    [target],
+  )
 })

@@ -23,3 +23,18 @@ export function hasSameMemoryExtractionAuthor(
   }
   return false
 }
+
+/**
+ * The input must be in newest-first database order. Selecting by position,
+ * instead of a millisecond timestamp, makes equal-timestamp rows unambiguous.
+ */
+export function selectMessagesAtOrBeforeTarget<T>(
+  messagesNewestFirst: readonly T[],
+  target: T,
+  isTarget: (message: T) => boolean,
+): T[] {
+  const targetIndex = messagesNewestFirst.findIndex(isTarget)
+  return targetIndex >= 0
+    ? messagesNewestFirst.slice(targetIndex)
+    : [target]
+}
