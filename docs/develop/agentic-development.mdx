@@ -1,0 +1,130 @@
+---
+title: "Agentic Development"
+description: "The standard workflow for parallel agent work, pull requests, integration, and main branch history."
+---
+
+## Operating model
+
+Overlay uses one isolated worktree and one focused branch for each task. Builder agents work in those lanes; a designated integration agent reviews and merges pull requests into `main`. The canonical checkout stays clean and remains the trusted source for production operations.
+
+GitHub pull requests, checks, and commit history are the authoritative integration record. Do not maintain a second hand-written queue of open pull requests: it will drift. [`CHANGELOG.md`](https://github.com/LayerNorm/overlay-web/blob/main/CHANGELOG.md) is the concise record of changes that actually reached `main`.
+
+## Roles
+
+| Role | Responsibility |
+| --- | --- |
+| Builder agent | Owns one worktree and branch, implements one coherent change, tests it, documents it, and opens a pull request. |
+| Reviewer agent | Reads the diff and relevant surrounding code, checks the evidence, and reports concrete regressions or gaps. It does not edit the builder's worktree. |
+| Integration agent | Orders dependent changes, resolves integration conflicts, verifies required checks and staging evidence, selects the merge method, and merges. |
+| Release authority | Promotes the exact accepted revision to production and verifies the deployed web and Convex revisions. |
+
+One agent can hold more than one role for a small change, but the responsibilities remain explicit. With several coding agents, keep a single integration agent for `main` so parallel work has one consistent merge order and release view.
+
+## Start every task from `origin/main`
+
+Fetch before creating the worktree. Never assume the local `main` branch is current.
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing
+git fetch origin
+git worktree add ../overlay-landing-<slug> -b codex/<slug> origin/main
+cd ../overlay-landing-<slug>
+```
+
+Use a short, descriptive slug such as `agent-memory-retrieval` or `project-navigation`. One worktree belongs to one branch and one task. Agents must not share a feature branch or edit the canonical `main` checkout.
+
+If a task depends on an unmerged pull request, branch from that pull request's reviewed head and declare the dependency in both pull requests. Otherwise, branch from `origin/main`.
+
+## Make reviewable commits
+
+Commits should describe reversible units of behavior. Keep tests and the documentation for a behavior change in the same commit when practical. Do not mix formatting, generated files, refactors, and unrelated product behavior merely to make the worktree clean.
+
+Before opening a pull request:
+
+1. Fetch `origin/main` and inspect the divergence.
+2. Rebase or merge the latest `origin/main` into the feature branch before review when the base has moved materially.
+3. Resolve conflicts by understanding both changes; never choose an entire side mechanically.
+4. Run checks proportional to the changed surface.
+5. Update the applicable living documentation and `CHANGELOG.md`.
+6. Push the branch and open a focused pull request.
+
+Rewriting unpublished local commits is fine. Once review or staging QA has started, force-pushing or rewriting commits invalidates the recorded evidence and requires a fresh review.
+
+## Pull request contract
+
+Every pull request must state:
+
+- the user or operational outcome;
+- the important implementation decisions;
+- touched systems and known dependencies;
+- risk and rollback approach;
+- exact checks run and their results;
+- staging or browser evidence when the behavior needs it;
+- migration, environment, Convex, or deployment steps;
+- the base and tested head commit when release provenance matters.
+
+The pull request is the detailed change record. `CHANGELOG.md` stays user-focused and concise.
+
+## Checks should match risk
+
+Overlay does not require the maximum possible gate for every change. It requires enough evidence for the actual risk:
+
+| Change | Minimum evidence |
+| --- | --- |
+| Documentation only | Link/docs health checks and review of rendered structure. |
+| Isolated UI behavior | Targeted lint or tests plus visual QA at affected breakpoints. |
+| Shared contract or cross-package code | Targeted tests and full typecheck. |
+| Auth, billing, tenant boundaries, secrets, or data migration | Relevant security/contract tests, explicit rollback, and staging verification. |
+| Convex or production runtime behavior | Staging web and backend on the same revision, followed by production smoke after promotion. |
+
+Required GitHub checks remain mandatory. Zero approving reviews is intentional for the current sole-maintainer setup; do not add a gate that the pull-request author cannot satisfy. A reviewer agent is still useful for risky changes, but its job is to produce actionable findings rather than a ceremonial approval.
+
+## Preserve meaningful history
+
+The default merge method is a **merge commit** when the pull request contains meaningful, reviewed commits. This preserves the exact branch commits, the pull-request boundary, and the ability to revert one independent commit without undoing the whole change.
+
+Use a **squash merge** when the branch history is disposable—for example, a trivial one-commit change or a branch full of fixups that do not represent independently valid states. Rebase merging is disabled because it rewrites commit identities and loses the explicit integration boundary.
+
+History preservation does not make a broken commit safe. Every commit retained on `main` should build or be an intentionally inseparable part of the pull request. The integration agent may ask the builder to clean up a noisy history before merging.
+
+To undo a retained commit, use `git revert <commit>`. To undo an entire merge-commit pull request, use `git revert -m 1 <merge-commit>`. Never reset or force-push `main` to perform a production rollback.
+
+## Integration procedure
+
+The integration agent works from the pull request and a clean checkout:
+
+1. Confirm the pull request's base, head, scope, dependencies, and changelog entry.
+2. Read the diff and the relevant surrounding implementation. Test evidence is not a substitute for review.
+3. Confirm the branch is current enough to expose likely conflicts with `main`.
+4. Verify required checks and any proportionate staging QA.
+5. Merge dependencies first, then refresh and retest dependent branches.
+6. Prefer a merge commit for a clean, meaningful series; squash only when the series itself should not be retained.
+7. Record the resulting `main` SHA and verify it exists on `origin/main`.
+8. Verify the production deployment resolves to that accepted revision before any production Convex push.
+
+An administrator's pull-request-only ruleset bypass is for a demonstrably stuck or broken gate, not for skipping relevant validation. Force-pushing and deleting `main` remain prohibited.
+
+## Staging and production QA
+
+The shared `staging` branch and staging Vercel project are the only hosted pre-production lane. The production `overlay-landing` Vercel project does not build pull-request previews; this avoids duplicate builds and keeps QA on a single known environment.
+
+Follow [Worktree Staging QA](/develop/worktree-staging-qa) for staging integration, Convex deployment boundaries, smoke tests, and production promotion. A successful pull-request check does not prove the staging or production UI, and an HTTP response does not prove an authenticated browser flow.
+
+## Maintain the changelog
+
+Every pull request that changes user-visible behavior, developer workflow, deployment behavior, data, security posture, or operations adds a concise item under `Unreleased` in root `CHANGELOG.md`. Pure maintenance may omit an entry only when the pull request explains why it has no meaningful release impact.
+
+At release time, the integration agent moves the shipped `Unreleased` entries into a dated section and leaves a fresh `Unreleased` heading. Link pull requests where that improves traceability; do not copy implementation detail already preserved in the pull request and Git history.
+
+## Clean up completed work
+
+After merge and verification:
+
+```bash
+git fetch origin
+git merge-base --is-ancestor <feature-head> origin/main
+git worktree remove ../overlay-landing-<slug>
+git branch -d codex/<slug>
+```
+
+The ancestry check works directly for merge commits because the feature head is retained. For squash merges, verify the pull request's merged state and resulting commit instead; the original feature head will not be an ancestor of `main`.

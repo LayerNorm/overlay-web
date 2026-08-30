@@ -87,7 +87,7 @@
       },
       {
         "group": "Develop",
-        "pages": ["develop/architecture", "develop/worktree-staging-qa", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth", "develop/api-route-catalog", "develop/compact-api-route-catalog"]
+        "pages": ["develop/architecture", "develop/agentic-development", "develop/worktree-staging-qa", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth", "develop/api-route-catalog", "develop/compact-api-route-catalog"]
       },
       {
         "group": "Deploy & Operate",
