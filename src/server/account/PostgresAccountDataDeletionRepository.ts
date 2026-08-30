@@ -80,6 +80,12 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       // human owner explicitly before removing the user row.
       await deleteHumanOwnedMemoryAndIndexRows(tx, args.userId)
 
+      // Memory and knowledge-index ownership is principal-neutral: workspace
+      // agents use synthetic owner ids and therefore these columns cannot
+      // reference users directly. Preserve account-deletion semantics for a
+      // human owner explicitly before removing the user row.
+      await deleteHumanOwnedMemoryAndIndexRows(tx, args.userId)
+
       await tx.execute(sql`
         DELETE FROM users
         WHERE id = ${args.userId}
