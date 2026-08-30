@@ -6,6 +6,7 @@ Thank you for helping improve Overlay. Small, focused pull requests with clear t
 
 - Use Node.js 22 or newer and npm 11.11.0.
 - Read the relevant guide under `docs/develop/` before changing an architectural area.
+- Follow `docs/develop/agentic-development.md` for worktrees, branch ownership, pull requests, commit history, and integration.
 - Never include production credentials, customer data, or copied authentication state.
 - Report security issues privately through the process in `SECURITY.md`.
 
@@ -26,6 +27,8 @@ Use placeholders for local secrets. Feature worktrees must not deploy Convex. Th
 3. Run the smallest checks that cover the change, plus `npm run typecheck` for cross-contract changes.
 4. Explain user-visible behavior, security or billing impact, and rollback considerations.
 5. Wait for required GitHub checks before merging.
+
+Meaningful, independently valid commits are merged with a merge commit so their identities and the pull-request boundary remain available for targeted reverts. Squash merging is reserved for trivial changes or noisy fixup history. Rebase merging is not used. User-visible and operational pull requests must also update `CHANGELOG.md` under `Unreleased`.
 
 The main release gate is the `Security Checks` workflow. Useful local checks include:
 
