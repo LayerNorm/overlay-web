@@ -449,6 +449,7 @@ function ProjectHubBody({
       draftName={draftName}
       savingName={savingName}
       actions={headerActions}
+      onBack={() => { router.push('/app/projects') }}
       onStartRename={() => { setDraftName(projectName); setEditingName(true) }}
       onDraftNameChange={setDraftName}
       onCommitRename={() => void commitProjectRename()}
@@ -514,11 +515,15 @@ function ProjectsLanding({
   loading,
   creating,
   onCreateProject,
+  renamingProjectId,
+  onCommitRename,
 }: {
   projects: readonly ProjectSummary[]
   loading: boolean
   creating: boolean
   onCreateProject: () => void
+  renamingProjectId: string | null
+  onCommitRename: (projectId: string, name: string) => void
 }) {
   const router = useRouter()
   const rootProjectRows = useMemo(() => {
@@ -563,18 +568,44 @@ function ProjectsLanding({
               const subprojectCount = getChildProjects(projects, project._id).length
               const updatedLabel = formatProjectUpdatedAt(project.updatedAt)
               return (
-                <button
+                <div
                   key={project._id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => router.push(projectHubHref(project))}
-                  className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)]"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && event.target === event.currentTarget) {
+                      router.push(projectHubHref(project))
+                    }
+                  }}
+                  className="group flex min-h-32 cursor-pointer flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
                 >
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]">
                       <Folder size={16} strokeWidth={1.75} />
                     </span>
                     <div className="min-w-0">
+                      {renamingProjectId === project._id ? (
+                        <input
+                          autoFocus
+                          aria-label="Project name"
+                          defaultValue={project.name}
+                          disabled={creating}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              void onCommitRename(project._id, (event.currentTarget as HTMLInputElement).value.trim() || project.name)
+                            }
+                            if (event.key === 'Escape') {
+                              ;(event.currentTarget as HTMLInputElement).blur()
+                            }
+                          }}
+                          className="w-full truncate rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                        />
+                      ) : (
                       <p className="truncate text-sm font-medium text-[var(--foreground)]">{project.name}</p>
+                      )}
                       {project.description || project.instructions ? (
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
                           {project.description || project.instructions}
@@ -588,7 +619,7 @@ function ProjectsLanding({
                     <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
                     {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
@@ -613,11 +644,11 @@ export default function ProjectsView({
   firstName?: string
   initialProjects?: ProjectSummary[]
 }) {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [projects, setProjects] = useState<ProjectSummary[]>(initialProjects)
   const [projectsLoading, setProjectsLoading] = useState(initialProjects.length === 0)
   const [creatingProject, setCreatingProject] = useState(false)
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
   const projectId = searchParams?.get('projectId') ?? null
@@ -674,15 +705,14 @@ export default function ProjectsView({
         void loadProjects()
       }
       const createdId = created?._id || data.id
-      const createdName = created?.name || 'Untitled project'
       window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
       if (createdId) {
-        router.push(projectHubHref({ _id: createdId, name: createdName }))
+        setRenamingProjectId(createdId)
       }
     } finally {
       setCreatingProject(false)
     }
-  }, [creatingProject, loadProjects, router])
+  }, [creatingProject, loadProjects])
 
   if (view === 'chat' && id) {
     return (
@@ -715,6 +745,13 @@ export default function ProjectsView({
       loading={projectsLoading}
       creating={creatingProject}
       onCreateProject={() => void createProject()}
+      renamingProjectId={renamingProjectId}
+      onCommitRename={async (projectId, name) => {
+        const trimmed = name.trim()
+        if (!trimmed || trimmed === 'Untitled project') return
+        await overlayAppClient.projects.updateResponse({ projectId, name: trimmed })
+        setProjects((prev) => prev.map((project) => project._id === projectId ? { ...project, name: trimmed } : project))
+      }}
     />
   )
 }
