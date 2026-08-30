@@ -7,7 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ### Changed
 
 - Established a worktree-first agentic development process with a designated integration role and history-preserving merge commits by default.
-- Disabled Preview deployments for the production `overlay-landing` Vercel project; hosted pre-production QA runs through the dedicated staging project and `staging` branch.
+- Disabled pull-request Preview deployments in both Vercel projects; hosted pre-production QA runs only from the dedicated staging project's `staging` branch.
 
 ## 2026-08-30
 
