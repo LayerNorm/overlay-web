@@ -277,7 +277,7 @@
     "@tiptap/extension-mention": "^3.22.5",
     "@tiptap/extension-placeholder": "^3.20.1",
     "@tiptap/extension-subscript": "^3.20.1",
-    "@tiptap/extension-superscript": "^3.20.1",
+    "@tiptap/extension-superscript": "^3.30.2",
     "@tiptap/extension-table": "^3.20.1",
     "@tiptap/extension-table-cell": "^3.20.1",
     "@tiptap/extension-table-header": "^3.20.1",
