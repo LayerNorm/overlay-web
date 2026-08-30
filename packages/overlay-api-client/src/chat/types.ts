@@ -73,6 +73,7 @@ export interface ConversationMessageRequest {
   clientNonce?: string
   threadRootMessageId?: string
   mentionedPrincipalIds?: string[]
+  memoryEnabled?: boolean
 }
 
 export type ActConversationRequest = Record<string, unknown>

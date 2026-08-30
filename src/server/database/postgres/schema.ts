@@ -861,9 +861,9 @@ export const notes = pgTable('notes', {
 
 export const memories = pgTable('memories', {
   id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+  // Memory owners are principals, not necessarily human users. Workspace
+  // agents use the stable `agent-memory:<agentId>` owner namespace.
+  userId: text('user_id').notNull(),
   clientId: text('client_id'),
   content: text('content').notNull(),
   contentHash: text('content_hash').notNull(),
@@ -908,9 +908,9 @@ export const memories = pgTable('memories', {
 
 export const knowledgeChunks = pgTable('knowledge_chunks', {
   id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+  // Mirrors the owning principal of the indexed source. Agent-owned memory
+  // chunks therefore do not have a corresponding row in `users`.
+  userId: text('user_id').notNull(),
   workspaceId: text('workspace_id'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
@@ -937,9 +937,8 @@ export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
   chunkId: text('chunk_id')
     .primaryKey()
     .references(() => knowledgeChunks.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+  // Mirrors knowledgeChunks.userId and may identify a workspace agent.
+  userId: text('user_id').notNull(),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
   embedding: vector('embedding', { dimensions: 1536 }).notNull(),
   provider: text('provider').notNull(),

@@ -84,6 +84,7 @@ export class ConnectedAgentControlPlaneService {
     artifactsEnabled?: () => boolean | Promise<boolean>
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
+    onTerminalMessage?: (input: RemoteAgentUsageSettlement) => Promise<void>
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
@@ -773,6 +774,20 @@ export class ConnectedAgentControlPlaneService {
     if (result.terminal && this.dependencies.settleUsage &&
       (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
       await this.settleWithAudit(result.terminal)
+    }
+    if (
+      result.terminal?.outcome === 'completed'
+      && result.terminal.memoryEnabled
+      && !result.duplicate
+      && this.dependencies.onTerminalMessage
+    ) {
+      await this.dependencies.onTerminalMessage(result.terminal).catch((error) => {
+        logger.warn('Connected-agent memory extraction enqueue failed', {
+          error,
+          runId: result.terminal?.runId,
+          workspaceId: result.terminal?.workspaceId,
+        })
+      })
     }
     return result
   }
