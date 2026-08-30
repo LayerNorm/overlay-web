@@ -363,7 +363,7 @@
     "eslint-config-next": "16.3.0",
     "mintlify": "^4.2.816",
     "playwright": "^1.61.1",
-    "postcss": "8.5.23",
+    "postcss": "8.5.26",
     "tailwindcss": "^3.4.19",
     "typescript": "^5",
     "vitest": "^4.1.11",
@@ -372,7 +372,7 @@
   "overrides": {
     "axios": "1.18.1",
     "follow-redirects": "1.16.0",
-    "postcss": "8.5.23",
+    "postcss": "8.5.26",
     "protobufjs": "8.6.6",
     "sharp": "0.35.3",
     "tar": "7.5.22",
