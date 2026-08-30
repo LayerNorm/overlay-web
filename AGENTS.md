@@ -41,6 +41,7 @@
 - Prefer merge commits when a pull request contains meaningful, independently valid commits. Squash only trivial changes or disposable fixup history. Never rebase-merge, force-push, or reset `main`.
 - Apply checks proportional to risk; do not add maximum-security ceremony to low-risk iteration. Required repository checks stay mandatory, while auth, billing, tenant, migration, Convex, and production-runtime changes require the stronger relevant tests and staged verification.
 - Hosted pre-production QA runs only through the `staging` branch and its dedicated Vercel project. Both Vercel projects have their Preview environments disabled, so feature branches must not create hosted builds. Follow `docs/develop/worktree-staging-qa.mdx` for QA and promotion only.
+- Reusable role prompts are in [`BUILDER_AGENT_PROMPT.md`](BUILDER_AGENT_PROMPT.md) and [`INTEGRATION_AGENT_PROMPT.md`](INTEGRATION_AGENT_PROMPT.md). Tag the matching file when assigning Builder or Integration work; the Builder stops at PR submission, and the Integration agent owns staging QA and promotion.
 
 ## Self-Updating Documentation (MUST READ)
 

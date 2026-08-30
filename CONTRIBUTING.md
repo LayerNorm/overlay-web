@@ -7,6 +7,7 @@ Thank you for helping improve Overlay. Small, focused pull requests with clear t
 - Use Node.js 22 or newer and npm 11.11.0.
 - Read the relevant guide under `docs/develop/` before changing an architectural area.
 - Follow `docs/develop/agentic-development.mdx` for worktrees, branch ownership, pull requests, commit history, and integration.
+- Use [`BUILDER_AGENT_PROMPT.md`](BUILDER_AGENT_PROMPT.md) when assigning implementation work and [`INTEGRATION_AGENT_PROMPT.md`](INTEGRATION_AGENT_PROMPT.md) when assigning review, staging QA, and promotion.
 - Never include production credentials, customer data, or copied authentication state.
 - Report security issues privately through the process in `SECURITY.md`.
 
