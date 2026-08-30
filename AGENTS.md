@@ -45,6 +45,8 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
 | `docs/develop/feature-modules.mdx` | Any change to the feature module registry, extension system, or `@overlay/app-core` shell config. |
 | `docs/develop/api-source-of-truth.mdx` | Any change to where API logic lives (Convex vs BFF vs `@overlay/api-client`), or the contract between layers. |
+| `docs/develop/api-route-catalog.mdx` | Any change to a web API route's existence, methods, behavior, authentication boundary, or implementation files. Keep the exhaustive route descriptions current. |
+| `docs/develop/compact-api-route-catalog.mdx` | Any change to a web API route's existence or exported HTTP methods. Keep it synchronized with the full route catalog. |
 | `docs/develop/customization.mdx` | Any change to theming, settings panels, or workspace configuration. |
 | `docs/develop/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
 | `docs/develop/external-imports.md` | Any change to the external import architecture, canonical import model, adapter interface, or Slack/Teams/Discord/Telegram import implementation. |
