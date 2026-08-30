@@ -109,6 +109,9 @@ agent-owned memories for explicit decisions, verified outcomes, stable project f
 constraints. Suggestions, private reasoning, secrets, and unverified action claims are excluded.
 Both Convex and PostgreSQL validate the exact workspace, room, message, author kind, and memory
 owner before scheduling extraction; duplicate deliveries remain idempotent.
+Extraction prompts may include bounded prior messages by that same human or exact agent principal,
+but never messages authored by other room participants. Room-wide context is reserved for the
+invoked agent turn and is not implicitly forwarded to the separate memory-extraction model.
 The PostgreSQL memory and memory-index `user_id` columns are legacy-named opaque owner identifiers,
 not human-user foreign keys. Human account deletion removes human-owned rows explicitly; agent
 rows remain attributed to the stable `agent-memory:<agentId>` principal within their workspace.

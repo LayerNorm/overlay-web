@@ -225,14 +225,16 @@ test('connected agents receive bounded memory and room context without confusing
   assert.match(oversized, /The current request must survive truncation/)
 })
 
-test('room memory ingestion is provider-neutral and gated by the message toggle', async () => {
-  const [route, service, contract, convexRoom, postgresRoom, convexExtractor] = await Promise.all([
+test('room memory ingestion is provider-neutral, owner-scoped, and gated by the message toggle', async () => {
+  const [route, service, contract, convexRoom, postgresRoom, convexExtractor, convexMemoryQuery, postgresMemoryQuery] = await Promise.all([
     readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/PostgresConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/knowledge/memoryExtractorNode.ts`, 'utf8'),
+    readFile(`${root}/convex/knowledge/memoryExtractor.ts`, 'utf8'),
+    readFile(`${root}/src/server/memory/PostgresMemoryExtractionRepository.ts`, 'utf8'),
   ])
 
   assert.match(route, /args\.memoryEnabled && invocations\.length > 0/)
@@ -246,4 +248,6 @@ test('room memory ingestion is provider-neutral and gated by the message toggle'
   assert.match(postgresRoom, /eq\(workspacePrincipals\.agentId, agentId\)/)
   assert.match(convexExtractor, /AGENT_SYSTEM_PROMPT/)
   assert.match(convexExtractor, /memoryOwnerId/)
+  assert.match(convexMemoryQuery, /hasSameMemoryExtractionAuthor\(message, validTarget\)/)
+  assert.match(postgresMemoryQuery, /hasSameMemoryExtractionAuthor\(message, target\)/)
 })

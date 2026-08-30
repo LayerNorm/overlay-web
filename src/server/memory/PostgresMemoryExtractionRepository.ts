@@ -8,6 +8,7 @@ import {
   conversations,
   memoryExtractionRuns,
 } from '@/server/database/postgres/schema'
+import { hasSameMemoryExtractionAuthor } from '@/shared/knowledge/memory-extraction-scope'
 
 export type MemoryExtractionTurn = {
   contextMessages: Array<{ role: string; text: string }>
@@ -44,16 +45,20 @@ export class PostgresMemoryExtractionRepository {
     const rows = await this.db.select().from(conversationMessages)
       .where(eq(conversationMessages.conversationId, args.conversationId))
       .orderBy(asc(conversationMessages.createdAt))
-    const recent = rows.slice(-8)
     const targetActor = args.targetActor ?? 'human'
-    const target = rows.find((message) => (
+    const targetIndex = rows.findIndex((message) => (
       message.id === args.messageId
       && message.turnId === args.turnId
       && (targetActor === 'agent'
         ? message.role === 'assistant' && message.authorKind === 'agent'
         : message.role === 'user' && message.authorKind === 'human')
     ))
+    const target = targetIndex >= 0 ? rows[targetIndex] : undefined
     if (!target) return null
+    const recent = rows
+      .slice(0, targetIndex + 1)
+      .filter((message) => hasSameMemoryExtractionAuthor(message, target))
+      .slice(-8)
     return {
       contextMessages: recent
         .filter((message) => message.id !== target.id)

@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { hasSameMemoryExtractionAuthor } from '@/shared/knowledge/memory-extraction-scope'
 import { internalQuery } from '../_generated/server'
 
 export const getRecentMessages = internalQuery({
@@ -12,17 +13,21 @@ export const getRecentMessages = internalQuery({
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('desc')
-      .take(8)
+      .take(32)
     const target = targetMessageId ? await ctx.db.get(targetMessageId) : null
-    const messages = target
-      && target.conversationId === conversationId
-      && !recent.some((message) => message._id === target._id)
-      ? [...recent, target]
+    const validTarget = target?.conversationId === conversationId ? target : null
+    const messages = validTarget
+      && !recent.some((message) => message._id === validTarget._id)
+      ? [...recent, validTarget]
       : recent
 
     return messages
-      .filter((m) => targetMessageId ? true : m.userId === userId)
+      .filter((message) => validTarget
+        ? message.createdAt <= validTarget.createdAt
+          && hasSameMemoryExtractionAuthor(message, validTarget)
+        : message.userId === userId && message.authorKind !== 'agent')
       .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(-8)
       .map((m) => {
         const textParts =
           m.parts
