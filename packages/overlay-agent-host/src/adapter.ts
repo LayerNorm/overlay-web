@@ -1,4 +1,4 @@
-import type { AdapterCapability, AgentHostEvent } from '@overlay/agent-bridge-protocol'
+import type { AdapterCapability, AgentHostEvent } from '@layernorm/agent-bridge-protocol'
 
 type NormalizeEvent<Event> = Event extends AgentHostEvent ? Pick<Event, 'type' | 'payload'> : never
 export type NormalizedAgentEvent = NormalizeEvent<AgentHostEvent>

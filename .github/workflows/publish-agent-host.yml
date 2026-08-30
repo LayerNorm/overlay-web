@@ -46,15 +46,15 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          if npm view "@overlay/agent-bridge-protocol@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "protocol_exists=true" >> "$GITHUB_OUTPUT"; else echo "protocol_exists=false" >> "$GITHUB_OUTPUT"; fi
-          if npm view "@overlay/agent-host@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "host_exists=true" >> "$GITHUB_OUTPUT"; else echo "host_exists=false" >> "$GITHUB_OUTPUT"; fi
+          if npm view "@layernorm/agent-bridge-protocol@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "protocol_exists=true" >> "$GITHUB_OUTPUT"; else echo "protocol_exists=false" >> "$GITHUB_OUTPUT"; fi
+          if npm view "@layernorm/agent-host@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "host_exists=true" >> "$GITHUB_OUTPUT"; else echo "host_exists=false" >> "$GITHUB_OUTPUT"; fi
       - name: Publish bridge protocol
         if: steps.releases.outputs.protocol_exists != 'true'
-        run: npm publish --workspace=@overlay/agent-bridge-protocol --access public --provenance
+        run: npm publish --workspace=@layernorm/agent-bridge-protocol --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish Agent Host
         if: steps.releases.outputs.host_exists != 'true'
-        run: npm publish --workspace=@overlay/agent-host --access public --provenance
+        run: npm publish --workspace=@layernorm/agent-host --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

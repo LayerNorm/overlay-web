@@ -157,8 +157,8 @@ application, duplicate delivery, cancellation races, revocation, and deletion.
 
 ## ✅ Phase 2: Overlay Agent Host and protocol conformance
 
-Implementation status: complete in `@overlay/agent-bridge-protocol` and
-`@overlay/agent-host`. Phase 3 layers enrollment and server routes onto these
+Implementation status: complete in `@layernorm/agent-bridge-protocol` and
+`@layernorm/agent-host`. Phase 3 layers enrollment and server routes onto these
 packages without changing the Phase 2 execution protocol. The live PostgreSQL
 contract must still be rerun whenever the contract database is available.
 
@@ -200,7 +200,7 @@ Enrollment should work as follows:
 1. The signed-in user chooses a workspace and creates a short-lived,
    single-use enrollment code.
 2. The UI presents one copyable command, such as
-   `npx @overlay/agent-host connect <code>`.
+   `npx @layernorm/agent-host connect <code>`.
 3. The host generates a device key pair, redeems the code, and appears as
    pending with its name, operating system, host version, and capabilities.
 4. The browser shows a short verification phrase; the user approves the

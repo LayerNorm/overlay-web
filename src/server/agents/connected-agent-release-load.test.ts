@@ -5,7 +5,7 @@ import {
   commandPollResponseSchema,
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
-} from '@overlay/agent-bridge-protocol'
+} from '@layernorm/agent-bridge-protocol'
 import { resolveMentionFirstInvocations } from './mention-policy'
 
 const MAX_REHEARSAL_MS = 30_000

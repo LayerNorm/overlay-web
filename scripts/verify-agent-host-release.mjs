@@ -12,7 +12,7 @@ assert.equal(protocolPackage.types, './dist/index.d.ts', 'protocol package must 
 assert.equal(hostPackage.main, './dist/index.js', 'host library runtime must publish compiled JavaScript')
 assert.equal(hostPackage.types, './dist/index.d.ts', 'host package must publish declarations')
 assert.equal(
-  hostPackage.dependencies['@overlay/agent-bridge-protocol'],
+  hostPackage.dependencies['@layernorm/agent-bridge-protocol'],
   protocolPackage.version,
   'host must depend on the exact protocol release',
 )
