@@ -30,17 +30,21 @@ cd ../overlay-landing-staging
 git pull --ff-only origin staging
 ```
 
-When a pull-request head is ready for QA, merge the exact reviewed branch into this staging worktree:
+The Builder opens its pull request against `staging` and stops at submission. The Integration agent reviews the diff and required checks, then merges the Builder PR into `staging` through GitHub.
+
+After that merge, update the dedicated staging worktree to the exact remote revision:
 
 ```bash
 cd ~/Downloads/overlay-mono/overlay-landing-staging
-git merge --no-ff codex/my-feature
-git push origin staging
+git fetch origin
+git pull --ff-only origin staging
+git rev-parse HEAD
+git rev-parse origin/staging
 ```
 
-Do not force-push `staging`. If a release candidate must be removed, create a revert commit so staging history stays auditable.
+Both SHAs must match. Record the staging SHA before testing. Do not force-push `staging`; if a candidate must be removed, create a revert commit so staging history stays auditable.
 
-The feature branch is pushed for its pull request, but the production `overlay-landing` Vercel project has Preview disabled. Only the dedicated staging project builds the `staging` branch for hosted QA.
+Prefer one release candidate at a time. If the Integration agent intentionally batches several Builder PRs, record every included PR and test the combined staging revision. Both Vercel projects have Preview disabled, so only the staging project's `staging` branch creates the hosted QA build.
 
 ## Push Convex for staging QA
 
@@ -71,7 +75,21 @@ Record the migration schema version, the complete contract count, and the Vercel
 
 ## Promote a verified release
 
-After staging passes, merge the same reviewed changes to `main` through the process in [Agentic Development](/develop/agentic-development). Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
+After staging passes, confirm that the tested staging SHA is still current and that the latest `main` is included in the candidate:
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/staging
+git merge-base --is-ancestor origin/main origin/staging
+```
+
+If either staging SHA differs from the recorded QA revision, or if the ancestry check fails, update `staging` and repeat the affected QA before promotion.
+
+The Integration agent then opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA.
+
+Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
 
 ```bash
 cd ~/Downloads/overlay-mono/overlay-landing
@@ -89,12 +107,23 @@ npm run convex:push:prod
 
 Then run an authenticated smoke test on `https://www.getoverlay.io`. For chat, send a message, confirm the streamed answer completes, refresh the page, and confirm the message remains in the conversation.
 
-## Agent checklist
+After production verification, align `staging` with the accepted `main` merge commit so the next Builder PR has a clean comparison:
 
-Before an agent runs a Convex command, it must state:
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git fetch origin
+git merge --ff-only origin/main
+git push origin staging
+```
+
+This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing.
+
+## Integration agent checklist
+
+Before the Integration agent runs a Convex command, it must state:
 
 1. its current branch and worktree path;
 2. whether it is targeting the shared development or production deployment;
 3. why that deployment is the correct lane for the revision being tested.
 
-An agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. An agent may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. `convex:push:all` is not part of the worktree workflow.
+The Integration agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. It may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. `convex:push:all` is not part of the worktree workflow. The Builder never deploys Convex.

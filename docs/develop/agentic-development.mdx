@@ -5,7 +5,7 @@ description: "The standard workflow for parallel agent work, pull requests, inte
 
 ## Operating model
 
-Overlay uses one isolated worktree and one focused branch for each task. Builder agents work in those lanes; a designated integration agent reviews and merges pull requests into `main`. The canonical checkout stays clean and remains the trusted source for production operations.
+Overlay uses two agent roles. A Builder works in one isolated worktree and submits a pull request to `staging`. The Integration agent reviews and merges that pull request, tests the resulting staging revision, then promotes the tested `staging` branch to `main`. The canonical checkout stays clean and remains the trusted source for production operations.
 
 GitHub pull requests, checks, and commit history are the authoritative integration record. Do not maintain a second hand-written queue of open pull requests: it will drift. [`CHANGELOG.md`](https://github.com/LayerNorm/overlay-web/blob/main/CHANGELOG.md) is the concise record of changes that actually reached `main`.
 
@@ -13,12 +13,10 @@ GitHub pull requests, checks, and commit history are the authoritative integrati
 
 | Role | Responsibility |
 | --- | --- |
-| Builder agent | Owns one worktree and branch, implements one coherent change, tests it, documents it, and opens a pull request. |
-| Reviewer agent | Reads the diff and relevant surrounding code, checks the evidence, and reports concrete regressions or gaps. It does not edit the builder's worktree. |
-| Integration agent | Orders dependent changes, resolves integration conflicts, verifies required checks and staging evidence, selects the merge method, and merges. |
-| Release authority | Promotes the exact accepted revision to production and verifies the deployed web and Convex revisions. |
+| Builder | Owns one worktree and branch, implements one coherent change, runs focused validation, updates documentation and `CHANGELOG.md`, and opens a pull request against `staging`. The Builder stops at PR submission. |
+| Integration agent | Reviews the change, resolves integration conflicts, merges it into `staging`, runs staging QA, promotes the tested `staging` revision to `main`, and verifies production. |
 
-One agent can hold more than one role for a small change, but the responsibilities remain explicit. With several coding agents, keep a single integration agent for `main` so parallel work has one consistent merge order and release view.
+Do not require separate Reviewer or Release Authority agents. The Integration agent owns those responsibilities so each change normally consumes only one Builder and one Integration agent.
 
 ## Start every task from `origin/main`
 
@@ -46,9 +44,9 @@ Before opening a pull request:
 3. Resolve conflicts by understanding both changes; never choose an entire side mechanically.
 4. Run checks proportional to the changed surface.
 5. Update the applicable living documentation and `CHANGELOG.md`.
-6. Push the branch and open a focused pull request.
+6. Push the branch and open a focused pull request with `staging` as its base.
 
-Rewriting unpublished local commits is fine. Once review or staging QA has started, force-pushing or rewriting commits invalidates the recorded evidence and requires a fresh review.
+The Builder's handoff ends when the pull request is complete and ready for integration. Rewriting unpublished local commits is fine. Once integration review or staging QA has started, force-pushing or rewriting commits invalidates the recorded evidence and requires a fresh review.
 
 ## Pull request contract
 
@@ -77,7 +75,7 @@ Overlay does not require the maximum possible gate for every change. It requires
 | Auth, billing, tenant boundaries, secrets, or data migration | Relevant security/contract tests, explicit rollback, and staging verification. |
 | Convex or production runtime behavior | Staging web and backend on the same revision, followed by production smoke after promotion. |
 
-Required GitHub checks remain mandatory. Zero approving reviews is intentional for the current sole-maintainer setup; do not add a gate that the pull-request author cannot satisfy. A reviewer agent is still useful for risky changes, but its job is to produce actionable findings rather than a ceremonial approval.
+Required GitHub checks remain mandatory. Zero approving reviews is intentional for the current sole-maintainer setup; do not add a gate that the pull-request author cannot satisfy. The Integration agent performs the substantive review and may request Builder changes when evidence or implementation is incomplete.
 
 ## Preserve meaningful history
 
@@ -85,28 +83,30 @@ The default merge method is a **merge commit** when the pull request contains me
 
 Use a **squash merge** when the branch history is disposable—for example, a trivial one-commit change or a branch full of fixups that do not represent independently valid states. Rebase merging is disabled because it rewrites commit identities and loses the explicit integration boundary.
 
-History preservation does not make a broken commit safe. Every commit retained on `main` should build or be an intentionally inseparable part of the pull request. The integration agent may ask the builder to clean up a noisy history before merging.
+History preservation does not make a broken commit safe. Every commit retained through `staging` and `main` should build or be an intentionally inseparable part of the pull request. The Integration agent may ask the Builder to clean up a noisy history before merging.
 
 To undo a retained commit, use `git revert <commit>`. To undo an entire merge-commit pull request, use `git revert -m 1 <merge-commit>`. Never reset or force-push `main` to perform a production rollback.
 
 ## Integration procedure
 
-The integration agent works from the pull request and a clean checkout:
+The Integration agent owns the change from PR review through production verification:
 
-1. Confirm the pull request's base, head, scope, dependencies, and changelog entry.
-2. Read the diff and the relevant surrounding implementation. Test evidence is not a substitute for review.
-3. Confirm the branch is current enough to expose likely conflicts with `main`.
-4. Verify required checks and any proportionate staging QA.
-5. Merge dependencies first, then refresh and retest dependent branches.
-6. Prefer a merge commit for a clean, meaningful series; squash only when the series itself should not be retained.
-7. Record the resulting `main` SHA and verify it exists on `origin/main`.
-8. Verify the production deployment resolves to that accepted revision before any production Convex push.
+1. Before accepting a candidate, confirm `staging` contains the current `origin/main`. If it does not, synchronize `main` into `staging` without rewriting either branch, then verify the resulting tree.
+2. Confirm the Builder PR targets `staging` and records its head SHA, scope, dependencies, risk, validation, and changelog entry.
+3. Read the diff and relevant surrounding implementation. Test evidence is not a substitute for review.
+4. Confirm which PRs are already present in `staging`. Prefer one release candidate at a time; if several PRs are intentionally batched, list and test the complete batch.
+5. Verify the required checks, resolve conflicts deliberately, and merge the Builder PR into `staging`. Prefer a merge commit for meaningful commits; squash only disposable fixup history.
+6. Test the exact resulting `origin/staging` SHA using the staging web and matching development Convex deployment. Record the SHA and evidence.
+7. If `staging` or `main` changes after QA begins, incorporate the new state into `staging` and repeat the affected QA. Never promote a revision different from the one tested.
+8. Open or update a release pull request from `staging` to `main`. Include every Builder PR in the candidate, the tested staging SHA, checks, rollback notes, and deployment steps.
+9. After the release PR checks pass, merge it with a merge commit. Verify the resulting commit on `origin/main`, the production web deployment, and production Convex when applicable.
+10. Fast-forward `staging` to the accepted `origin/main` merge commit before the next Builder PR. This keeps the two long-lived branches aligned without force-pushing and prevents the next review from containing old release-history differences.
 
 An administrator's pull-request-only ruleset bypass is for a demonstrably stuck or broken gate, not for skipping relevant validation. Force-pushing and deleting `main` remain prohibited.
 
 ## Staging and production QA
 
-The shared `staging` branch and staging Vercel project are the only hosted pre-production lane. The production `overlay-landing` Vercel project does not build pull-request previews; this avoids duplicate builds and keeps QA on a single known environment.
+The shared `staging` branch and staging Vercel project are the only hosted pre-production lane. Builder pull requests target `staging`; feature branches do not produce hosted previews. The Integration agent tests after the Builder PR reaches `staging`, then promotes `staging` through a separate pull request to `main`.
 
 Follow [Worktree Staging QA](/develop/worktree-staging-qa) for staging integration, Convex deployment boundaries, smoke tests, and production promotion. A successful pull-request check does not prove the staging or production UI, and an HTTP response does not prove an authenticated browser flow.
 
