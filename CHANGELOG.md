@@ -6,11 +6,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
-- Simplified agentic development to two roles: Builders submit pull requests to `staging`, and the Integration agent owns staging QA and promotion from `staging` to `main`.
-- Added reusable Builder and Integration agent prompt files that encode the role boundaries and handoff contract.
-- Established a worktree-first agentic development process with a designated integration role and history-preserving merge commits by default.
-- Disabled pull-request Preview deployments in both Vercel projects; hosted pre-production QA runs only from the dedicated staging project's `staging` branch.
-
 ## 2026-08-30
 
 ### Added
@@ -21,6 +16,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Renamed the public Agent Host packages to the product-qualified `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` names ([#78](https://github.com/LayerNorm/overlay-web/pull/78)).
+- Simplified agentic development to two roles: Builders submit pull requests to `staging`, and the Integration agent owns staging QA and promotion from `staging` to `main` ([#77](https://github.com/LayerNorm/overlay-web/pull/77)).
+- Added reusable Builder and Integration agent prompt files that encode the role boundaries and handoff contract ([#77](https://github.com/LayerNorm/overlay-web/pull/77)).
+- Established a worktree-first agentic development process with a designated integration role and history-preserving merge commits by default ([#77](https://github.com/LayerNorm/overlay-web/pull/77)).
+- Disabled pull-request Preview deployments in both Vercel projects; hosted pre-production QA runs only from the dedicated staging project's `staging` branch ([#77](https://github.com/LayerNorm/overlay-web/pull/77)).
+- Disabled Git-triggered production Vercel deployments; merging `main` now leaves a release merged but not deployed until an explicit production deployment is authorized ([#79](https://github.com/LayerNorm/overlay-web/pull/79)).
 - Enabled contextual memory in agent direct messages and channels ([#69](https://github.com/LayerNorm/overlay-web/pull/69)).
 - Improved project navigation and made inline project naming safer ([#71](https://github.com/LayerNorm/overlay-web/pull/71)).
 - Published agent-host packages under the LayerNorm npm scope ([#68](https://github.com/LayerNorm/overlay-web/pull/68)).

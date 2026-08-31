@@ -1,13 +1,13 @@
 # Overlay Agent Host
 
-`@layernorm/agent-host` runs the same outbound-only bridge on a local computer, VPS, container, or
+`@layernorm/overlay-agent-host` runs the same outbound-only bridge on a local computer, VPS, container, or
 managed sandbox. It persists command outcomes, remote sessions, adapter stream cursors, and
 unacknowledged events in SQLite, so restarting the host does not duplicate accepted work.
 
 Node.js 24 or newer is required. Run it in the foreground with the one-copy command from Overlay:
 
 ```sh
-npx --yes @layernorm/agent-host@0.2.0 connect <enrollment-code> \
+npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --run
@@ -66,7 +66,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes @layernorm/agent-host@0.2.0 connect <enrollment-code> \
+npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --adapter eve \
@@ -96,7 +96,7 @@ sudo systemctl status overlay-agent-host
 ```
 
 The unit restarts after process or machine failure and keeps state in `/var/lib/overlay-agent-host`.
-Upgrades are `npm install -g @layernorm/agent-host@<version>` followed by `systemctl restart`; do not
+Upgrades are `npm install -g @layernorm/overlay-agent-host@<version>` followed by `systemctl restart`; do not
 delete the state directory. `docker-compose.example.yml` provides the same persistent, outbound-only
 shape for Docker. It exposes no host ports. Mount the approved workspaces and state volume, pull a
 pinned image version, and recreate the service to upgrade.

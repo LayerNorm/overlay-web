@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 30
     environment: Production
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node v4
@@ -46,15 +46,22 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          if npm view "@layernorm/agent-bridge-protocol@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "protocol_exists=true" >> "$GITHUB_OUTPUT"; else echo "protocol_exists=false" >> "$GITHUB_OUTPUT"; fi
-          if npm view "@layernorm/agent-host@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "host_exists=true" >> "$GITHUB_OUTPUT"; else echo "host_exists=false" >> "$GITHUB_OUTPUT"; fi
+          if npm view "@layernorm/overlay-agent-bridge-protocol@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "protocol_exists=true" >> "$GITHUB_OUTPUT"; else echo "protocol_exists=false" >> "$GITHUB_OUTPUT"; fi
+          if npm view "@layernorm/overlay-agent-host@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "host_exists=true" >> "$GITHUB_OUTPUT"; else echo "host_exists=false" >> "$GITHUB_OUTPUT"; fi
       - name: Publish bridge protocol
         if: steps.releases.outputs.protocol_exists != 'true'
-        run: npm publish --workspace=@layernorm/agent-bridge-protocol --access public --provenance
+        run: npm publish --workspace=@layernorm/overlay-agent-bridge-protocol --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish Agent Host
         if: steps.releases.outputs.host_exists != 'true'
-        run: npm publish --workspace=@layernorm/agent-host --access public --provenance
+        run: npm publish --workspace=@layernorm/overlay-agent-host --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Deprecate legacy package names
+        if: inputs.version == '0.3.0'
+        run: |
+          npm deprecate '@layernorm/agent-bridge-protocol@*' 'Moved to @layernorm/overlay-agent-bridge-protocol'
+          npm deprecate '@layernorm/agent-host@*' 'Moved to @layernorm/overlay-agent-host'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
