@@ -40,10 +40,10 @@ If QA fails, fix the issue through a new Builder pull request or a clearly recor
 1. Before promotion, fetch again. Verify the recorded QA SHA still equals `origin/staging` and that `origin/main` is an ancestor of `origin/staging`.
 2. Open or update one release pull request from `staging` to `main`. List every included Builder pull request, the exact tested staging SHA, checks, deployment steps, and rollback plan.
 3. Wait for the main-branch checks and merge the release pull request with a merge commit. Verify the resulting `origin/main` SHA. The production Vercel project's Git deployment source is disabled, so this merge does not deploy production.
-4. Unless the user explicitly authorizes a production deployment, stop here and report the exact `main` SHA as merged but not deployed. Do not deploy production Convex in this state.
-5. When the user explicitly authorizes deployment, deploy the accepted `origin/main` revision from the clean canonical `main` worktree. Verify the production Vercel deployment, then deploy production Convex only when the release includes Convex changes and only after the web deployment is live.
-6. Run the appropriate production smoke test. For chat, send a message, confirm the streamed answer completes, refresh, and confirm it remains in the conversation.
-7. Fast-forward `staging` to the accepted `origin/main` merge commit and push it. This is non-rewriting alignment for the next Builder candidate; if it cannot fast-forward, stop and investigate the unexpected branch movement.
+4. Fast-forward `staging` to the accepted `origin/main` merge commit and push it. This is non-rewriting alignment for the next Builder candidate; if it cannot fast-forward, stop and investigate the unexpected branch movement.
+5. Unless the user explicitly authorizes a production deployment, stop here and report the exact `main` SHA as merged but not deployed. Do not deploy production Convex in this state.
+6. When the user explicitly authorizes deployment, deploy the accepted `origin/main` revision from the clean canonical `main` worktree. Verify the production Vercel deployment, then deploy production Convex only when the release includes Convex changes and only after the web deployment is live.
+7. Run the appropriate production smoke test. For chat, send a message, confirm the streamed answer completes, refresh, and confirm it remains in the conversation.
 
 ## Report and rollback
 
