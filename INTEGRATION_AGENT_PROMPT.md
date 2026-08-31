@@ -12,7 +12,7 @@ Do not require a separate Reviewer or Release Authority agent unless the user ex
 
 1. Read `AGENTS.md`, `docs/develop/agentic-development.mdx`, and `docs/develop/worktree-staging-qa.mdx`.
 2. Fetch `origin` and identify the Builder pull request, its base, head SHA, dependencies, and included changelog/documentation updates.
-3. Use the dedicated `staging` worktree for staging operations and the clean canonical `main` worktree for production operations. Preserve unrelated dirty files; never use a feature worktree as a deployment source.
+3. Reuse the dedicated `staging` worktree for every sequential PR and all staging operations; do not create a new Integration worktree per PR or check out feature branches there. Use the clean canonical `main` worktree for production operations. Preserve unrelated dirty files; never use a feature worktree as a deployment source. Create a temporary worktree only for an exceptional conflict or side-by-side investigation, then remove it after verification.
 4. Confirm `staging` contains the current `origin/main`. If it does not, synchronize `main` into `staging` without rewriting either branch and verify the resulting tree before accepting the candidate.
 5. Prefer one staging candidate at a time. If several Builder pull requests are intentionally batched, enumerate every included pull request and test the combined revision.
 

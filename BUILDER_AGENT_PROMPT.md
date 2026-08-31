@@ -59,4 +59,6 @@ Mention related pull requests explicitly. If `origin/main` moves materially befo
 
 End your report with the pull-request URL, base branch (`staging`), head SHA, files changed, checks run, known limitations, and any follow-up needed from the Integration agent. Then stop and wait for integration.
 
+The Integration agent uses its own dedicated `staging` worktree and will not adopt or retain the Builder's feature worktree. Keep the feature worktree available until the Integration agent confirms that the pull request has been merged and verified, then remove it using the documented ancestry check.
+
 The Integration agent owns substantive review, conflict resolution, merge into `staging`, staging deployment and QA, the `staging` to `main` release pull request, production verification, and post-release staging alignment. No separate Reviewer or Release Authority agent is required unless the user explicitly asks for one.

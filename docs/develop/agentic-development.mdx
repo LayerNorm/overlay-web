@@ -22,6 +22,17 @@ When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNor
 
 Do not require separate Reviewer or Release Authority agents. The Integration agent owns those responsibilities so each change normally consumes only one Builder and one Integration agent.
 
+## Worktree ownership
+
+Worktrees are scoped to active work, not to every pull request:
+
+- Each active Builder task gets one isolated `codex/<slug>` feature worktree. That worktree belongs to the Builder until the pull request is handed off.
+- The Integration agent reuses one long-lived sibling worktree, `../overlay-landing-staging`, checked out on `staging`, for every sequential Builder pull request. After a merge, fetch and fast-forward that same worktree to `origin/staging`; do not create or retain a new Integration worktree for each PR, and do not check out feature branches in the staging worktree.
+- Keep the canonical `main` worktree separate and clean for production operations. It is not an Integration scratch area.
+- A short-lived temporary worktree is justified only for an exceptional conflict reproduction or side-by-side investigation. Remove it after the investigation and confirm its branch is no longer needed.
+
+This keeps the working set small while preserving isolation: GitHub pull requests and the `staging` branch remain the integration record, and the dedicated staging worktree is the single local checkout used for staged QA.
+
 ## Start every task from `origin/main`
 
 Fetch before creating the worktree. Never assume the local `main` branch is current.
