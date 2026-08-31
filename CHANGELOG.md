@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Renamed the public Agent Host packages to the product-qualified `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` names.
 - Simplified agentic development to two roles: Builders submit pull requests to `staging`, and the Integration agent owns staging QA and promotion from `staging` to `main`.
 - Added reusable Builder and Integration agent prompt files that encode the role boundaries and handoff contract.
 - Established a worktree-first agentic development process with a designated integration role and history-preserving merge commits by default.

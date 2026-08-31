@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { filesystemGrantSchema } from '@layernorm/agent-bridge-protocol'
+import { filesystemGrantSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../shared'

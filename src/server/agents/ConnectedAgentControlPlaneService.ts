@@ -32,7 +32,7 @@ import {
   type EventBatch,
   type HostCapabilities,
   type ArtifactUploadRequest,
-} from '@layernorm/agent-bridge-protocol'
+} from '@layernorm/overlay-agent-bridge-protocol'
 import type { AuditService } from '@/server/admin'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'

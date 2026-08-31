@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { FilesystemGrant } from '@layernorm/agent-bridge-protocol'
+import type { FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
 
 export type ResolvedFilesystemScope = {
   workingDirectory: string
