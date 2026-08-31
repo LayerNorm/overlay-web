@@ -10,6 +10,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Made the staging Vercel project branch-only: its Ignored Build Step now fails closed and runs only for the exact `staging` ref, preventing PR, manual, hook, and other-branch builds.
 - Retired the obsolete Overlay Vercel projects (`overlay-web-rc`, `overlay-landing-prod-migration-runner`, and the misspelled `overlay-web-postgress`); the canonical Overlay set is now `overlay-landing`, `overlay-web-staging`, and `overlay-web-postgres`.
 - Clarified that the Integration agent reuses one long-lived `staging` worktree across pull requests, reserving temporary worktrees for exceptional investigations.
+- Added an Integration preflight to confirm the PR base (`staging` or `main`) and Vercel deployment intent before acting.
 
 ## 2026-08-30
 
