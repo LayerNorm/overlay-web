@@ -104,13 +104,13 @@ git log --oneline -1 origin/main
 After explicit user authorization, create a production build without immediately assigning the production domain:
 
 ```bash
-npx --yes vercel@59.10.0 deploy --prod --skip-domain --yes
+npx --yes vercel@59.5.0 deploy --prod --skip-domain --yes
 ```
 
 Inspect the returned deployment and verify it was built from the accepted `origin/main` SHA. Promote that verified deployment explicitly:
 
 ```bash
-npx --yes vercel@59.10.0 promote <deployment-url> --yes
+npx --yes vercel@59.5.0 promote <deployment-url> --yes
 ```
 
 After `main` is deployed to Vercel, and only when that main revision contains `convex/` changes, sync production Convex from this `main` checkout:
