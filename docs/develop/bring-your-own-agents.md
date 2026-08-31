@@ -5,6 +5,10 @@ hosted agent services, and Overlay-managed sandboxes. The rollout is provider-ne
 Convex and PostgreSQL must expose identical behavior, and PostgreSQL mode must never fall
 back to Convex.
 
+See [Bring Your Own Agents architecture](./bring-your-own-agents-architecture.md) for diagrams of
+the environment topology, protocol layers, enrollment, Agent Host loop, ACP adapters, durable run
+flow, memory, and package boundaries.
+
 ## Release boundary
 
 The first release supports agent conversations and supervised work through one outbound-only
@@ -222,10 +226,9 @@ package names begin with lockstep `0.3.0`. The application copies an exact
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
 the compatibility, package-content, and clean Node.js installation gates. Published package entry
-points never require TypeScript stripping or a consumer-supplied loader. The legacy
-`@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` releases remain installable for
-existing environments but are deprecated in npm with migration guidance to the product-qualified
-names.
+points never require TypeScript stripping or a consumer-supplied loader. The release workflow leaves
+the legacy `@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` releases installable and
+deprecates them with migration guidance only after the `0.3.0` packages publish successfully.
 The same executable runs as a foreground CLI, a restartable systemd service,
 or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
