@@ -30,7 +30,7 @@ cd ../overlay-landing-staging
 git pull --ff-only origin staging
 ```
 
-The Builder opens its pull request against `staging` and stops at submission. The Integration agent reviews the diff and required checks, then merges the Builder PR into `staging` through GitHub.
+The Builder normally opens its pull request against `staging` and stops at submission. The Integration agent reviews the diff and required checks, then merges the Builder PR into `staging` through GitHub. If `DevelopedByDev` explicitly authorizes the owner-only direct-push fast path, the Integration agent instead performs the documented local review and checks, integrates in this dedicated staging worktree, confirms a fast-forward update, and pushes without force. A direct `staging` push normally starts the staging Vercel build.
 
 Review feature branches through GitHub and the pull request diff. After each merge, update this same staging worktree to the exact remote `staging` revision before testing. Create a short-lived additional worktree only when an unusual conflict or side-by-side investigation cannot be performed safely in the dedicated staging worktree; remove it after the investigation.
 
@@ -98,7 +98,7 @@ git merge-base --is-ancestor origin/main origin/staging
 
 If either staging SHA differs from the recorded QA revision, or if the ancestry check fails, update `staging` and repeat the affected QA before promotion.
 
-The Integration agent then opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA.
+The Integration agent normally opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA. If `DevelopedByDev` explicitly authorizes a direct push to `main`, the Integration agent may instead fast-forward `main` to the exact tested staging revision after completing the owner fast-path checks in [Agentic Development](/develop/agentic-development). The direct path must not change the tested tree or rewrite either branch.
 
 Before merging a release PR, confirm root `vercel.json` sets `git.deploymentEnabled.main` to `false`. Vercel evaluates this source-controlled rule for Git events, so `staging` continues to deploy for hosted QA while a release PR merge updates `main` without creating a production deployment. Do not rely on an account-level deployment-source policy alone. After the merge, verify both the exact `origin/main` SHA and that Vercel created no production deployment for it, then align `staging` with the accepted merge commit so the next Builder PR has a clean comparison:
 

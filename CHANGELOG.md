@@ -11,6 +11,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Retired the obsolete Overlay Vercel projects (`overlay-web-rc`, `overlay-landing-prod-migration-runner`, and the misspelled `overlay-web-postgress`); the canonical Overlay set is now `overlay-landing`, `overlay-web-staging`, and `overlay-web-postgres`.
 - Clarified that the Integration agent reuses one long-lived `staging` worktree across pull requests, reserving temporary worktrees for exceptional investigations.
 - Added an Integration preflight to confirm the PR base (`staging` or `main`) and Vercel deployment intent before acting.
+- Added an owner-only direct-push fast path for `DevelopedByDev` on `main` and `staging`, while keeping force-pushes and branch deletion blocked for every account.
 
 ## 2026-08-30
 
