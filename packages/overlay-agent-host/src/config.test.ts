@@ -26,7 +26,12 @@ test('enrollment restart configuration is private and excludes credentials', asy
     })
 
     const contents = await readFile(path, 'utf8')
-    assert.equal((await stat(path)).mode & 0o777, 0o600)
+    // Windows does not expose POSIX owner/group/other permission bits through
+    // stat().mode. The host still writes the file with the restrictive mode on
+    // POSIX systems, where that guarantee is meaningful and enforceable.
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(path)).mode & 0o777, 0o600)
+    }
     assert.equal('credential' in JSON.parse(contents), false)
     assert.match(contents, /"environmentId": "environment-1"/)
   } finally {
