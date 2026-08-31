@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { OVERLAY_AGENT_PROTOCOL_VERSION } from '@layernorm/agent-bridge-protocol'
+import { OVERLAY_AGENT_PROTOCOL_VERSION } from '@layernorm/overlay-agent-bridge-protocol'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../shared'
 import { emptyBody, enforceAgentHostRateLimit } from '../../host-security'

@@ -120,6 +120,23 @@ implements ConversationCollaborationRepository {
     return id
   }
 
+  async enqueueMemoryExtraction(args: {
+    actorUserId: string
+    conversationId: string
+    memoryOwnerId: string
+    messageId: string
+    targetActor: 'human' | 'agent'
+    turnId: string
+    workspaceId: string
+  }): Promise<void> {
+    await convex.mutation('collaboration/directMessages:enqueueMemoryExtraction', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
   async startAgentMessage(args: {
     actorUserId: string
     authorPrincipalId: string

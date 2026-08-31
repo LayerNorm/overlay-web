@@ -449,6 +449,7 @@ function ProjectHubBody({
       draftName={draftName}
       savingName={savingName}
       actions={headerActions}
+      onBack={() => { router.push('/app/projects') }}
       onStartRename={() => { setDraftName(projectName); setEditingName(true) }}
       onDraftNameChange={setDraftName}
       onCommitRename={() => void commitProjectRename()}
@@ -509,16 +510,88 @@ function formatProjectUpdatedAt(updatedAt: number): string {
   }).format(new Date(updatedAt))
 }
 
+function ProjectRenameInput({
+  projectName,
+  saving,
+  error,
+  onCommit,
+  onCancel,
+  onChange,
+}: {
+  projectName: string
+  saving: boolean
+  error: string | null
+  onCommit: (name: string) => void
+  onCancel: () => void
+  onChange: () => void
+}) {
+  const [draftName, setDraftName] = useState(projectName)
+  const cancelledRef = useRef(false)
+
+  const commit = () => {
+    if (cancelledRef.current || saving) return
+    onCommit(draftName)
+  }
+
+  return (
+    <div className="min-w-0">
+      <input
+        autoFocus
+        aria-label="Project name"
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? 'project-rename-error' : undefined}
+        value={draftName}
+        readOnly={saving}
+        onChange={(event) => {
+          setDraftName(event.target.value)
+          onChange()
+        }}
+        onFocus={(event) => event.currentTarget.select()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            commit()
+          }
+          if (event.key === 'Escape' && !saving) {
+            event.preventDefault()
+            cancelledRef.current = true
+            onCancel()
+          }
+        }}
+        onBlur={commit}
+        className="w-full truncate rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] read-only:opacity-70"
+      />
+      {error ? (
+        <p id="project-rename-error" role="alert" className="mt-1 text-[11px] leading-4 text-red-500">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function ProjectsLanding({
   projects,
   loading,
   creating,
   onCreateProject,
+  renamingProjectId,
+  renamingProjectPending,
+  renameError,
+  onCommitRename,
+  onCancelRename,
+  onRenameChange,
 }: {
   projects: readonly ProjectSummary[]
   loading: boolean
   creating: boolean
   onCreateProject: () => void
+  renamingProjectId: string | null
+  renamingProjectPending: boolean
+  renameError: string | null
+  onCommitRename: (projectId: string, name: string) => void
+  onCancelRename: () => void
+  onRenameChange: () => void
 }) {
   const router = useRouter()
   const rootProjectRows = useMemo(() => {
@@ -562,19 +635,26 @@ function ProjectsLanding({
             {rootProjectRows.map((project) => {
               const subprojectCount = getChildProjects(projects, project._id).length
               const updatedLabel = formatProjectUpdatedAt(project.updatedAt)
-              return (
-                <button
-                  key={project._id}
-                  type="button"
-                  onClick={() => router.push(projectHubHref(project))}
-                  className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)]"
-                >
+              const isRenaming = renamingProjectId === project._id
+              const content = (
+                <>
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]">
                       <Folder size={16} strokeWidth={1.75} />
                     </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[var(--foreground)]">{project.name}</p>
+                    <div className="min-w-0 flex-1">
+                      {isRenaming ? (
+                        <ProjectRenameInput
+                          projectName={project.name}
+                          saving={renamingProjectPending}
+                          error={renameError}
+                          onCommit={(name) => onCommitRename(project._id, name)}
+                          onCancel={onCancelRename}
+                          onChange={onRenameChange}
+                        />
+                      ) : (
+                        <p className="truncate text-sm font-medium text-[var(--foreground)]">{project.name}</p>
+                      )}
                       {project.description || project.instructions ? (
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
                           {project.description || project.instructions}
@@ -588,6 +668,24 @@ function ProjectsLanding({
                     <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
                     {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
                   </div>
+                </>
+              )
+
+              return isRenaming ? (
+                <div
+                  key={project._id}
+                  className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--muted-light)] bg-[var(--surface-subtle)] p-4 text-left"
+                >
+                  {content}
+                </div>
+              ) : (
+                <button
+                  key={project._id}
+                  type="button"
+                  onClick={() => router.push(projectHubHref(project))}
+                  className="group flex min-h-32 cursor-pointer flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+                >
+                  {content}
                 </button>
               )
             })}
@@ -613,11 +711,14 @@ export default function ProjectsView({
   firstName?: string
   initialProjects?: ProjectSummary[]
 }) {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [projects, setProjects] = useState<ProjectSummary[]>(initialProjects)
   const [projectsLoading, setProjectsLoading] = useState(initialProjects.length === 0)
   const [creatingProject, setCreatingProject] = useState(false)
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [renamingProjectPending, setRenamingProjectPending] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const renameRequestRef = useRef(false)
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
   const projectId = searchParams?.get('projectId') ?? null
@@ -674,15 +775,15 @@ export default function ProjectsView({
         void loadProjects()
       }
       const createdId = created?._id || data.id
-      const createdName = created?.name || 'Untitled project'
       window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
       if (createdId) {
-        router.push(projectHubHref({ _id: createdId, name: createdName }))
+        setRenameError(null)
+        setRenamingProjectId(createdId)
       }
     } finally {
       setCreatingProject(false)
     }
-  }, [creatingProject, loadProjects, router])
+  }, [creatingProject, loadProjects])
 
   if (view === 'chat' && id) {
     return (
@@ -715,6 +816,53 @@ export default function ProjectsView({
       loading={projectsLoading}
       creating={creatingProject}
       onCreateProject={() => void createProject()}
+      renamingProjectId={renamingProjectId}
+      renamingProjectPending={renamingProjectPending}
+      renameError={renameError}
+      onCommitRename={async (projectId, name) => {
+        const trimmed = name.trim()
+        if (!trimmed) {
+          setRenameError('Enter a project name.')
+          return
+        }
+        if (renameRequestRef.current) return
+        const currentProject = projects.find((project) => project._id === projectId)
+        if (trimmed === currentProject?.name) {
+          setRenameError(null)
+          setRenamingProjectId(null)
+          return
+        }
+
+        renameRequestRef.current = true
+        setRenamingProjectPending(true)
+        setRenameError(null)
+        try {
+          const response = await overlayAppClient.projects.updateResponse({ projectId, name: trimmed })
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string; message?: string; project?: ProjectSummary | null }
+            | null
+          if (!response.ok) {
+            setRenameError(payload?.message || payload?.error || 'Could not rename this project. Try again.')
+            return
+          }
+          const finalName = payload?.project?.name?.trim() || trimmed
+          setProjects((prev) => prev.map((project) => (
+            project._id === projectId ? { ...project, ...payload?.project, name: finalName } : project
+          )))
+          setRenamingProjectId(null)
+          window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+        } catch {
+          setRenameError('Could not rename this project. Check your connection and try again.')
+        } finally {
+          renameRequestRef.current = false
+          setRenamingProjectPending(false)
+        }
+      }}
+      onCancelRename={() => {
+        setRenameError(null)
+        setRenamingProjectId(null)
+      }}
+      onRenameChange={() => setRenameError(null)}
     />
   )
 }
