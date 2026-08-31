@@ -49,6 +49,7 @@ const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
 const ARTIFACT_UPLOAD_TTL_MS = 5 * 60_000
 const ARTIFACT_RETENTION_MS = 30 * 24 * 60 * 60_000
 const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
+export const AGENT_ENVIRONMENT_ONLINE_WINDOW_MS = 45_000
 
 const PHRASE_WORDS = [
   'amber', 'birch', 'cedar', 'coral', 'dawn', 'ember', 'fern', 'harbor',
@@ -180,7 +181,12 @@ export class ConnectedAgentControlPlaneService {
     await this.assertEnabled(args.workspaceId)
     await this.dependencies.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
-    return await Promise.all(environments.map(async (environment) => {
+    const now = this.now()
+    return await Promise.all(environments.map(async (storedEnvironment) => {
+      const environment = {
+        ...storedEnvironment,
+        status: effectiveAgentEnvironmentStatus(storedEnvironment, now),
+      }
       const enrollment = environment.status === 'pending'
         ? await this.dependencies.repository.getEnvironmentEnrollment({
             workspaceId: args.workspaceId,
@@ -894,6 +900,16 @@ export class ConnectedAgentControlPlaneService {
       resourceType,
     })
   }
+}
+
+export function effectiveAgentEnvironmentStatus(
+  environment: Pick<AgentEnvironment, 'status' | 'lastSeenAt'>,
+  now: number,
+): AgentEnvironment['status'] {
+  if (environment.status !== 'online') return environment.status
+  return (environment.lastSeenAt ?? 0) >= now - AGENT_ENVIRONMENT_ONLINE_WINDOW_MS
+    ? 'online'
+    : 'offline'
 }
 
 function translatePolicyError(error: unknown) {

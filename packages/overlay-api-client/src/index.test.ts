@@ -112,6 +112,38 @@ test('conversation participant removal uses the scoped participant endpoint', as
   assert.deepEqual(await jsonBody(calls[0]!), { principalId: 'principal_1' })
 })
 
+test('workspace direct-message creation sends the visible workspace scope', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.conversations.createWorkspaceDirectMessage('workspace_personal', {
+    principalIds: ['agent_hermes'],
+  })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/direct-messages')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.equal(new Headers(calls[0]!.init?.headers).get('x-overlay-workspace-id'), 'workspace_personal')
+  assert.deepEqual(await jsonBody(calls[0]!), { principalIds: ['agent_hermes'] })
+})
+
+test('workspace channel creation sends the visible workspace scope', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.conversations.createWorkspaceChannel('workspace_personal', {
+    name: 'hermes-qa',
+    visibility: 'private',
+    principalIds: ['agent_hermes'],
+  })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/channels')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.equal(new Headers(calls[0]!.init?.headers).get('x-overlay-workspace-id'), 'workspace_personal')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    name: 'hermes-qa',
+    visibility: 'private',
+    principalIds: ['agent_hermes'],
+  })
+})
+
 test('current AgentRun lookup uses the conversation run endpoint', async () => {
   const { calls, client } = createRecordedClient()
 

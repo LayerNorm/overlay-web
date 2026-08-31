@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { AcpAgentAdapter } from './acp-adapter.js'
 import type { AgentAdapter } from './adapter.js'
-import { loadAgentHostConfig } from './config.js'
+import { loadAgentHostConfig, saveAgentHostConfig } from './config.js'
 import type { AgentHostConfig } from './config.js'
 import { diagnoseHost } from './doctor.js'
 import { FakeAgentAdapter } from './fake-adapter.js'
@@ -16,6 +16,12 @@ import { loadStoredConnection, saveStoredConnection } from './connection.js'
 import { resolveAcpAdapterManifest } from './adapter-manifests.js'
 import { EveAgentAdapter } from './eve-adapter.js'
 import { verifyHermesAcpReadiness } from './hermes-readiness.js'
+import { assertSupportedNodeVersion } from './runtime-version.js'
+import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
+
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.0'
+
+assertSupportedNodeVersion()
 
 const [command, ...args] = process.argv.slice(2)
 const configPath = option(args, '--config')
@@ -53,18 +59,46 @@ if (command === 'connect') {
       process.stdout.write(`Verify this phrase in Overlay: ${verificationPhrase}\nWaiting for approval…\n`)
     },
   })
-  process.stdout.write(`Connected ${connection.environmentId}. Credential stored with mode 0600 in ${stateDirectory}.\n`)
+  const persistentConfigPath = join(stateDirectory, 'config.json')
+  const persistentConfig: Omit<AgentHostConfig, 'credential'> = {
+    environmentId: connection.environmentId,
+    workspaceId: connection.workspaceId,
+    controlPlaneUrl: connection.controlPlaneUrl,
+    credentialEnv: 'OVERLAY_AGENT_HOST_CREDENTIAL',
+    stateDirectory,
+    filesystem: connection.filesystemGrant,
+    adapters: adapterConfigs,
+  }
+  await saveAgentHostConfig(persistentConfigPath, persistentConfig)
+  process.stdout.write(`Connected ${connection.environmentId}. Credential and restart configuration stored with mode 0600 in ${stateDirectory}.\n`)
+  process.stdout.write(`Restart later with: npx --yes --package node@24 --package ${PACKAGE_SPEC} overlay-agent-host run --config ${shellQuote(persistentConfigPath)}\n`)
+  if (process.platform === 'darwin') {
+    process.stdout.write(`Keep it online after Terminal closes with: npx --yes --package node@24 --package ${PACKAGE_SPEC} overlay-agent-host service install --config ${shellQuote(persistentConfigPath)}\n`)
+  }
   if (args.includes('--run')) {
     await runHost({
-      environmentId: connection.environmentId,
-      workspaceId: connection.workspaceId,
-      controlPlaneUrl: connection.controlPlaneUrl,
-      credentialEnv: 'OVERLAY_AGENT_HOST_CREDENTIAL',
+      ...persistentConfig,
       credential: connection.token,
-      stateDirectory,
-      filesystem: connection.filesystemGrant,
-      adapters: adapterConfigs,
     })
+  }
+} else if (command === 'service') {
+  const action = args[0]
+  if (!configPath || !['install', 'uninstall', 'status'].includes(action ?? '')) usage()
+  const config = await loadAgentHostConfig(configPath)
+  if (action === 'install') {
+    const path = await installLaunchAgent({
+      environmentId: config.environmentId,
+      configPath,
+      stateDirectory: config.stateDirectory,
+      packageSpec: PACKAGE_SPEC,
+    })
+    process.stdout.write(`Installed and started ${path}\n`)
+  } else if (action === 'uninstall') {
+    const path = await uninstallLaunchAgent(config.environmentId)
+    process.stdout.write(`Stopped and removed ${path}\n`)
+  } else {
+    const status = await launchAgentStatus(config.environmentId)
+    process.stdout.write(status.stdout)
   }
 } else if (!configPath || (command !== 'run' && command !== 'doctor')) {
   usage()
@@ -151,6 +185,10 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
   process.exit(2)
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`
 }

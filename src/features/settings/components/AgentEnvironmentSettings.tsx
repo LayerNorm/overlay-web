@@ -38,8 +38,11 @@ export function AgentEnvironmentSettings() {
 
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
-    if (!environments.some((environment) => environment.status === 'pending' || environment.status === 'offline')) return
-    const timer = window.setInterval(() => void refresh(), 3_000)
+    if (environments.length === 0) return
+    const refreshInterval = environments.some((environment) => environment.status === 'pending')
+      ? 3_000
+      : 15_000
+    const timer = window.setInterval(() => void refresh(), refreshInterval)
     return () => window.clearInterval(timer)
   }, [environments, refresh])
 
@@ -129,7 +132,10 @@ export function AgentEnvironmentSettings() {
                   <h3 className="text-sm font-medium text-[var(--foreground)]">{environment.name}</h3>
                   <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">{environment.status}</span>
                 </div>
-                <p className="mt-1 truncate text-xs text-[var(--muted)]">{environment.platform ?? environment.kind}{environment.hostVersion ? ` · host ${environment.hostVersion}` : ''}</p>
+                <p className="mt-1 truncate text-xs text-[var(--muted)]">
+                  {environment.platform ?? environment.kind}{environment.hostVersion ? ` · host ${environment.hostVersion}` : ''}
+                  {environment.lastSeenAt ? ` · ${lastSeenLabel(environment.lastSeenAt)}` : ''}
+                </p>
                 {environment.status === 'pending' ? (
                   <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
                     <div className="flex items-center gap-2 text-sm text-[var(--foreground)]"><ShieldCheck size={16} className="text-[var(--muted)]" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting'}</strong></div>
@@ -177,4 +183,12 @@ export function AgentEnvironmentSettings() {
 
 function parseRoots(value: string) {
   return value.split(/[,\n]/).map((root) => root.trim()).filter(Boolean)
+}
+
+function lastSeenLabel(lastSeenAt: number) {
+  const elapsed = Math.max(0, Date.now() - lastSeenAt)
+  if (elapsed < 60_000) return 'seen just now'
+  if (elapsed < 60 * 60_000) return `seen ${Math.floor(elapsed / 60_000)}m ago`
+  if (elapsed < 24 * 60 * 60_000) return `seen ${Math.floor(elapsed / (60 * 60_000))}h ago`
+  return `seen ${Math.floor(elapsed / (24 * 60 * 60_000))}d ago`
 }

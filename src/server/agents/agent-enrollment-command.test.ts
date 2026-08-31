@@ -9,14 +9,14 @@ test('the copyable enrollment command starts the selected harness in one step', 
       origin: 'https://getoverlay.io',
       adapterId: 'claude-code',
     }),
-    'npx --yes @layernorm/overlay-agent-host@0.3.0 connect single-use-code --server https://getoverlay.io --adapter claude-code --run',
+    'npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 overlay-agent-host connect single-use-code --server https://getoverlay.io --adapter claude-code --run',
   )
 })
 
 test('the compatibility command still starts the host when no harness is selected', () => {
   assert.equal(
     buildAgentHostEnrollmentCommand({ code: 'single-use-code', origin: 'https://getoverlay.io' }),
-    'npx --yes @layernorm/overlay-agent-host@0.3.0 connect single-use-code --server https://getoverlay.io --run',
+    'npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 overlay-agent-host connect single-use-code --server https://getoverlay.io --run',
   )
 })
 
@@ -27,7 +27,7 @@ test('the copyable enrollment command starts Hermes through its official ACP ser
       origin: 'https://getoverlay.io',
       adapterId: 'hermes',
     }),
-    'npx --yes @layernorm/overlay-agent-host@0.3.0 connect single-use-code --server https://getoverlay.io --adapter hermes --run',
+    'npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 overlay-agent-host connect single-use-code --server https://getoverlay.io --adapter hermes --run',
   )
 })
 

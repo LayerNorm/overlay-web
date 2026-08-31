@@ -132,7 +132,7 @@ export function NewDirectMessageDialog({
         setQuery('')
         return
       }
-      const { directMessage } = await overlayAppClient.conversations.createDirectMessage({
+      const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
         principalIds: addToConversationId
           ? [...excludedPrincipalIds, ...selected]
           : selected,

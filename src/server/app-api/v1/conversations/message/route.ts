@@ -14,6 +14,7 @@ import {
 } from '@/server/agents/workspace-agent-invocation'
 import { workspaceAgentTurnWorkflow } from '@/workflows/workspace-agent-turn'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { agentStartFailureMessage } from './agent-start-failure'
 
 /**
  * Opens a durable run per agent that owes a reply, and starts the workflow that
@@ -102,6 +103,32 @@ async function triggerWorkspaceAgentTurns(args: {
         conversationId: args.conversationId,
         error,
         messageId: args.messageId,
+      })
+      const failureMessage = agentStartFailureMessage(invocation.agentName, error)
+      await collaboration.startAgentMessage({
+        actorUserId: args.actorUserId,
+        authorPrincipalId: invocation.agentPrincipalId,
+        clientNonce: invocation.invocationNonce,
+        conversationId: args.conversationId,
+        modelId: invocation.modelId,
+        threadRootMessageId: args.threadRootMessageId,
+        turnId: invocation.turnId,
+        workspaceId: args.workspaceId,
+      }).then(async (failureMessageId) => {
+        await collaboration.failAgentMessage({
+          actorUserId: args.actorUserId,
+          content: failureMessage,
+          conversationId: args.conversationId,
+          messageId: failureMessageId,
+          workspaceId: args.workspaceId,
+        })
+      }).catch((persistenceError) => {
+        logger.error('[conversations/message POST] Failed to persist agent-start failure', {
+          agentId: invocation.agentId,
+          conversationId: args.conversationId,
+          error: persistenceError,
+          messageId: args.messageId,
+        })
       })
     }
   }

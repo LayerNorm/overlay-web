@@ -160,7 +160,8 @@ Overlay generates one harness-specific command. For a local Codex environment, t
 this shape:
 
 ```sh
-npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+  overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind local \
   --adapter codex \
@@ -168,7 +169,9 @@ npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
 ```
 
 For Hermes on a VPS, use `--kind vps --adapter hermes`. The package requires Node.js 24 or newer.
-`npx` installs and launches the pinned package. `connect` enrolls the environment, and `--run`
+The generated command installs and launches both the pinned Node 24 runtime and host package, so a
+machine-wide Node 22 installation does not silently run unsupported code. `connect` enrolls the
+environment, saves a mode-0600 restart config beside the private connection state, and `--run`
 keeps the host in the foreground after approval.
 
 ```mermaid
@@ -176,7 +179,7 @@ flowchart TD
     Start["npx starts the pinned Agent Host package"]
     Connect["connect enrolls the environment"]
     Key["Create or reuse device key"]
-    Save["Persist connection credential<br/>with restrictive permissions"]
+    Save["Persist credential and restart config<br/>with restrictive permissions"]
     Run["--run starts the host loop"]
     Heartbeat["Send heartbeat and capabilities"]
     Poll["Long-poll Overlay for commands"]
@@ -198,8 +201,10 @@ flowchart TD
 
 The host stores accepted command results, remote session identifiers, adapter state, cursors, and
 unacknowledged events in SQLite. A restart therefore does not duplicate accepted work or discard
-unacknowledged visible output. The same executable can run in the foreground, under `systemd`, or
-as the default process in the Agent Host container.
+unacknowledged visible output. The same executable can run in the foreground, as a per-user macOS
+LaunchAgent installed through `service install`, under `systemd`, or as the default process in the
+Agent Host container. The macOS service pins both Node and package versions and preserves state
+when Terminal closes.
 
 ## Built-in adapters start exact ACP processes
 
@@ -290,10 +295,11 @@ sequences, advances the remote cursor, and updates the existing assistant messag
 Duplicate terminal batches receive the existing acknowledgement instead of creating a second
 message or settling a run twice.
 
-If the host goes offline before claiming interactive work, Overlay displays
-`Waiting for <environment>` and exposes Cancel and Retry. Reconnection resumes from acknowledged
-command and event cursors. Durable HTTP polling remains authoritative even if a future transport
-optimizes latency.
+If the host goes offline before claiming interactive work, Overlay persists a visible failed-to-start
+assistant row with reconnection guidance instead of leaving the human message unanswered. The
+environment list treats an `online` status as stale after 45 seconds without a heartbeat and refreshes
+while the settings surface is open. Reconnection resumes from acknowledged command and event cursors.
+Durable HTTP polling remains authoritative even if a future transport optimizes latency.
 
 ## Memory is assembled by Overlay before ACP receives the prompt
 

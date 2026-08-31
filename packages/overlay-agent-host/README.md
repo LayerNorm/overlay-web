@@ -4,10 +4,12 @@
 managed sandbox. It persists command outcomes, remote sessions, adapter stream cursors, and
 unacknowledged events in SQLite, so restarting the host does not duplicate accepted work.
 
-Node.js 24 or newer is required. Run it in the foreground with the one-copy command from Overlay:
+Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned Node 24 runtime even
+when the machine's default `node` is older:
 
 ```sh
-npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+  overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --run
@@ -16,8 +18,8 @@ npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
 The machine needs outbound HTTPS access to Overlay and durable storage for the state directory.
 It does not need an inbound port.
 
-Phase 2 uses a manual config while Phase 3 adds browser enrollment and short-lived credentials.
-Keep credentials out of the JSON file:
+Browser enrollment writes a restartable `config.json` beside the private connection state. The
+credential remains in the mode-0600 connection store rather than the JSON file:
 
 ```json
 {
@@ -66,7 +68,8 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes @layernorm/overlay-agent-host@0.3.0 connect <enrollment-code> \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+  overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
   --adapter eve \
@@ -83,6 +86,20 @@ requires `start fresh`. Eve connection OAuth pauses are not bridged; an `authori
 event fails the run closed instead of leaving it parked without an Overlay control.
 
 ## Background and container operation
+
+On macOS, install the per-user LaunchAgent after enrollment so the environment remains online when
+Terminal closes and returns after login or process failure. Use the exact config path printed by
+`connect`:
+
+```sh
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+  overlay-agent-host service install --config "$HOME/.overlay/agent-host/config.json"
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+  overlay-agent-host service status --config "$HOME/.overlay/agent-host/config.json"
+```
+
+`service uninstall` stops and removes only that environment's LaunchAgent. It preserves the
+credential, config, and SQLite state so the connection can be restarted later.
 
 For a Linux VPS, create a dedicated `overlay-agent` system account, install the CLI globally, copy
 `systemd/overlay-agent-host.service` to `/etc/systemd/system/`, and place configuration under
