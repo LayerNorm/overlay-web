@@ -89,6 +89,8 @@ If either staging SHA differs from the recorded QA revision, or if the ancestry 
 
 The Integration agent then opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA.
 
+The production Vercel project's Git deployment source is disabled. A release PR merge therefore updates `main` without creating a production deployment. Verify and report the exact `origin/main` SHA as **merged but not deployed**, then stop unless the user explicitly authorizes production deployment.
+
 Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
 
 ```bash
@@ -97,6 +99,18 @@ git fetch origin
 git status --short
 git log --oneline -1 HEAD
 git log --oneline -1 origin/main
+```
+
+After explicit user authorization, create a production build without immediately assigning the production domain:
+
+```bash
+npx --yes vercel@59.10.0 deploy --prod --skip-domain --yes
+```
+
+Inspect the returned deployment and verify it was built from the accepted `origin/main` SHA. Promote that verified deployment explicitly:
+
+```bash
+npx --yes vercel@59.10.0 promote <deployment-url> --yes
 ```
 
 After `main` is deployed to Vercel, and only when that main revision contains `convex/` changes, sync production Convex from this `main` checkout:
@@ -126,4 +140,4 @@ Before the Integration agent runs a Convex command, it must state:
 2. whether it is targeting the shared development or production deployment;
 3. why that deployment is the correct lane for the revision being tested.
 
-The Integration agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. It may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. `convex:push:all` is not part of the worktree workflow. The Builder never deploys Convex.
+The Integration agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. It may run `npm run convex:push:prod` only after explicit production-deployment authorization, from the clean canonical `main` worktree, and after main's web deployment is live. `convex:push:all` is not part of the worktree workflow. The Builder never deploys Convex.
