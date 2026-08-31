@@ -12,6 +12,7 @@ type PackageLockPackage = {
   licenses?: Array<string | { type?: string }> | string
   dev?: boolean
   devOptional?: boolean
+  link?: boolean
 }
 
 type PackageLock = {
@@ -177,7 +178,7 @@ async function checkRuntimeDependencyLicenses(failures: string[]) {
 function isThirdPartyRuntimePackage(packagePath: string, metadata: PackageLockPackage): boolean {
   return (
     packagePath.startsWith('node_modules/') &&
-    !packagePath.startsWith('node_modules/@overlay/') &&
+    metadata.link !== true &&
     metadata.dev !== true &&
     metadata.devOptional !== true
   )

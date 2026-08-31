@@ -6,13 +6,15 @@ const protocolPackage = JSON.parse(await readFile(new URL('../packages/overlay-a
 const enrollmentCommand = await readFile(new URL('../src/server/agents/agent-enrollment-command.ts', import.meta.url), 'utf8')
 const adapterManifests = await readFile(new URL('../packages/overlay-agent-host/src/adapter-manifests.ts', import.meta.url), 'utf8')
 
+assert.equal(hostPackage.name, '@layernorm/overlay-agent-host', 'host must publish under the product-qualified package name')
+assert.equal(protocolPackage.name, '@layernorm/overlay-agent-bridge-protocol', 'protocol must publish under the product-qualified package name')
 assert.equal(hostPackage.version, protocolPackage.version, 'host and protocol versions must be released together')
 assert.equal(protocolPackage.main, './dist/index.js', 'protocol runtime must publish compiled JavaScript')
 assert.equal(protocolPackage.types, './dist/index.d.ts', 'protocol package must publish declarations')
 assert.equal(hostPackage.main, './dist/index.js', 'host library runtime must publish compiled JavaScript')
 assert.equal(hostPackage.types, './dist/index.d.ts', 'host package must publish declarations')
 assert.equal(
-  hostPackage.dependencies['@layernorm/agent-bridge-protocol'],
+  hostPackage.dependencies['@layernorm/overlay-agent-bridge-protocol'],
   protocolPackage.version,
   'host must depend on the exact protocol release',
 )

@@ -31,7 +31,13 @@ const docsDir = path.join(root, 'docs')
 const configExamplesDir = path.join(docsDir, 'config')
 const openApiFile = path.join(docsDir, 'openapi/overlay-web.openapi.json')
 const packageJsonFile = path.join(root, 'package.json')
+const appApiDir = path.join(root, 'src/app/api')
+const apiRouteCatalogFiles = [
+  path.join(docsDir, 'develop/api-route-catalog.mdx'),
+  path.join(docsDir, 'develop/compact-api-route-catalog.mdx'),
+] as const
 const publicRepositoryUrl = 'https://github.com/LayerNorm/overlay-web'
+const exportedHttpMethods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT'] as const
 
 const allowedDocsEntries = new Set([
   'README.md',
@@ -94,6 +100,7 @@ async function main() {
   await checkDocumentedCommands(failures)
   await checkConfigExamples(failures)
   await checkOpenApiOutput(failures)
+  await checkApiRouteCatalogs(failures)
   await checkProviderDocs(failures)
 
   if (failures.length > 0) {
@@ -122,8 +129,11 @@ async function checkNavigationTargets(failures: string[]) {
 
   for (const page of pages) {
     if (page.endsWith('/*')) continue
-    const file = path.join(docsDir, `${page}.mdx`)
-    if (!(await fileExists(file))) {
+    const hasPage = await anyFileExists([
+      path.join(docsDir, `${page}.mdx`),
+      path.join(docsDir, `${page}.md`),
+    ])
+    if (!hasPage) {
       failures.push(`docs.json references missing page ${page}`)
     }
   }
@@ -403,6 +413,92 @@ async function checkOpenApiOutput(failures: string[]) {
   }
 }
 
+async function checkApiRouteCatalogs(failures: string[]) {
+  const routeFiles = (await listFiles(appApiDir)).filter((file) => path.basename(file) === 'route.ts')
+  const actualRoutes = new Map<string, string[]>()
+
+  for (const file of routeFiles) {
+    const source = await readFile(file, 'utf8')
+    const methods = exportedHttpMethods.filter((method) =>
+      new RegExp(`export\\s+(?:async\\s+function|(?:const|let|var))\\s+${method}\\b`).test(source),
+    )
+    const route = apiRoutePath(file)
+    if (methods.length === 0) {
+      failures.push(`${relative(file)} exports no recognized HTTP method`)
+    }
+    actualRoutes.set(route, [...methods].sort())
+  }
+
+  for (const catalogFile of apiRouteCatalogFiles) {
+    if (!(await fileExists(catalogFile))) {
+      failures.push(`${relative(catalogFile)} is missing`)
+      continue
+    }
+
+    const catalogText = await readFile(catalogFile, 'utf8')
+    const catalogRoutes = parseApiRouteCatalog(catalogText, catalogFile, failures)
+    for (const [route, methods] of actualRoutes) {
+      const documentedMethods = catalogRoutes.get(route)
+      if (!documentedMethods) {
+        failures.push(`${relative(catalogFile)} is missing ${methods.join(', ')} ${route}`)
+        continue
+      }
+      if (documentedMethods.join(',') !== methods.join(',')) {
+        failures.push(
+          `${relative(catalogFile)} documents ${documentedMethods.join(', ')} ${route}; route exports ${methods.join(', ')}`,
+        )
+      }
+    }
+
+    for (const route of catalogRoutes.keys()) {
+      if (!actualRoutes.has(route)) {
+        failures.push(`${relative(catalogFile)} contains stale route ${route}`)
+      }
+    }
+
+    if (catalogFile === apiRouteCatalogFiles[0]) {
+      await checkApiRouteCatalogFileReferences(catalogText, catalogFile, failures)
+    }
+  }
+}
+
+async function checkApiRouteCatalogFileReferences(text: string, catalogFile: string, failures: string[]) {
+  const references = new Set(
+    [...text.matchAll(/`((?:convex|packages|src)\/[^`]+)`/g)]
+      .map((match) => match[1])
+      .filter((reference): reference is string => Boolean(reference) && !reference.includes('*')),
+  )
+
+  for (const reference of references) {
+    if (!(await fileExists(path.join(root, reference)))) {
+      failures.push(`${relative(catalogFile)} references missing implementation file ${reference}`)
+    }
+  }
+}
+
+function apiRoutePath(file: string) {
+  const routeDirectory = path.relative(appApiDir, path.dirname(file)).split(path.sep).join('/')
+  return `/api${routeDirectory ? `/${routeDirectory}` : ''}`
+}
+
+function parseApiRouteCatalog(text: string, file: string, failures: string[]) {
+  const routes = new Map<string, string[]>()
+  const routePattern = /^- `((?:(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT)(?:, )?)+) (\/api\/[^`]+)`/gm
+
+  for (const match of text.matchAll(routePattern)) {
+    const methodList = match[1]
+    const route = match[2]
+    if (!methodList || !route) continue
+    if (routes.has(route)) {
+      failures.push(`${relative(file)} documents ${route} more than once`)
+      continue
+    }
+    routes.set(route, methodList.split(', ').sort())
+  }
+
+  return routes
+}
+
 async function checkProviderDocs(failures: string[]) {
   const providerDocs = [
     await readFile(path.join(docsDir, 'configure/providers.mdx'), 'utf8'),
@@ -518,6 +614,11 @@ async function fileExists(file: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function anyFileExists(files: string[]) {
+  const results = await Promise.all(files.map((file) => fileExists(file)))
+  return results.some(Boolean)
 }
 
 function isExternalLink(href: string): boolean {
