@@ -1,18 +1,38 @@
 import { v } from 'convex/values'
+import {
+  hasSameMemoryExtractionAuthor,
+  selectMessagesAtOrBeforeTarget,
+} from '@/shared/knowledge/memory-extraction-scope'
 import { internalQuery } from '../_generated/server'
 
 export const getRecentMessages = internalQuery({
-  args: { conversationId: v.id('conversations'), userId: v.string() },
-  handler: async (ctx, { conversationId, userId }) => {
-    const messages = await ctx.db
+  args: {
+    conversationId: v.id('conversations'),
+    targetMessageId: v.optional(v.id('conversationMessages')),
+    userId: v.string(),
+  },
+  handler: async (ctx, { conversationId, targetMessageId, userId }) => {
+    const recent = await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('desc')
-      .take(8)
+      .take(32)
+    const target = targetMessageId ? await ctx.db.get(targetMessageId) : null
+    const validTarget = target?.conversationId === conversationId ? target : null
+    const messages = validTarget
+      ? selectMessagesAtOrBeforeTarget(
+          recent,
+          validTarget,
+          (message) => message._id === validTarget._id,
+        )
+      : recent
 
     return messages
-      .filter((m) => m.userId === userId)
+      .filter((message) => validTarget
+        ? hasSameMemoryExtractionAuthor(message, validTarget)
+        : message.userId === userId && message.authorKind !== 'agent')
       .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(-8)
       .map((m) => {
         const textParts =
           m.parts
@@ -27,7 +47,14 @@ export const getRecentMessages = internalQuery({
             )
             .map((p) => p.text || '') ?? []
         const text = textParts.join(' ').trim() || m.content
-        return { role: m.role, turnId: m.turnId, text: text.slice(0, 800), createdAt: m.createdAt }
+        return {
+          id: m._id,
+          authorKind: m.authorKind,
+          role: m.role,
+          turnId: m.turnId,
+          text: text.slice(0, 800),
+          createdAt: m.createdAt,
+        }
       })
   },
 })

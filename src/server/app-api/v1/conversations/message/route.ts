@@ -33,11 +33,26 @@ async function triggerWorkspaceAgentTurns(args: {
   mentionedPrincipalIds: string[]
   initiatorPrincipalId: string
   prompt: string
+  memoryEnabled: boolean
+  turnId: string
   threadRootMessageId?: string
   workspaceId: string
 }): Promise<void> {
   const collaboration = getOverlayServerContext().appData.repositories.conversationCollaboration
   const invocations = await resolveWorkspaceAgentInvocations(args)
+  if (args.memoryEnabled && invocations.length > 0) {
+    await collaboration.enqueueMemoryExtraction({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      memoryOwnerId: args.actorUserId,
+      messageId: args.messageId,
+      targetActor: 'human',
+      turnId: args.turnId,
+      workspaceId: args.workspaceId,
+    }).catch((error) => {
+      logger.warn('[conversations/message POST] Failed to enqueue human memory extraction', { error })
+    })
+  }
   for (const invocation of invocations) {
     try {
       if (invocation.remoteTarget) {
@@ -47,6 +62,7 @@ async function triggerWorkspaceAgentTurns(args: {
           initiatorPrincipalId: args.initiatorPrincipalId,
           invocation: { ...invocation, remoteTarget: invocation.remoteTarget },
           messageId: args.messageId,
+          memoryEnabled: args.memoryEnabled,
           prompt: args.prompt,
           ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
           workspaceId: args.workspaceId,
@@ -74,6 +90,7 @@ async function triggerWorkspaceAgentTurns(args: {
         agentId: invocation.agentId,
         conversationId: args.conversationId,
         messageId: args.messageId,
+        memoryEnabled: args.memoryEnabled,
         runId: turn.runId,
         ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
         turnMessageId: turn.messageId,
@@ -109,6 +126,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
       mentionedPrincipalIds?: string[]
+      memoryEnabled?: boolean
       threadRootMessageId?: string
       clientNonce?: string
     }
@@ -242,6 +260,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         mentionedPrincipalIds,
         messageId: String(messageId),
         prompt: normalizedContent,
+        memoryEnabled: body.memoryEnabled !== false,
+        turnId,
         ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
         workspaceId,
       }).catch((error) => {

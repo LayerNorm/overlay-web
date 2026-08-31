@@ -1,12 +1,14 @@
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
+import { internal } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { ROOM_AGENT_RUN_LEASE_MS } from '../../src/shared/agents/agent-run'
+import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -562,6 +564,98 @@ export const addAgentMessage = mutation({
     })
     await notifyAgentMessage(ctx, { ...args, messageId })
     return messageId
+  },
+})
+
+/**
+ * Provider-neutral room-memory enqueue boundary. The BFF calls this only after
+ * an agent-triggering human message or a completed agent reply, but the
+ * mutation still revalidates the exact workspace, room, message, and owner.
+ */
+export const enqueueMemoryExtraction = mutation({
+  args: {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    memoryOwnerId: v.string(),
+    messageId: v.id('conversationMessages'),
+    targetActor: v.union(v.literal('human'), v.literal('agent')),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    await requireConversationAccess(ctx, args)
+    const [conversation, message] = await Promise.all([
+      ctx.db.get(args.conversationId),
+      ctx.db.get(args.messageId),
+    ])
+    if (
+      !conversation
+      || conversation.workspaceId !== args.workspaceId
+      || !message
+      || message.conversationId !== args.conversationId
+      || message.turnId !== args.turnId
+      || message.deletedAt
+    ) throw new Error('MESSAGE_NOT_FOUND')
+
+    if (args.targetActor === 'human') {
+      if (message.authorKind !== 'human' || message.userId !== args.memoryOwnerId) {
+        throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      }
+    } else {
+      const principal = message.authorPrincipalId
+        ? await ctx.db.query('workspacePrincipals')
+            .withIndex('by_principalId', (q) => q.eq('principalId', message.authorPrincipalId!))
+            .unique()
+        : null
+      if (
+        message.authorKind !== 'agent'
+        || principal?.type !== 'agent'
+        || principal.workspaceId !== args.workspaceId
+        || !principal.agentId
+        || agentMemoryOwnerId(principal.agentId) !== args.memoryOwnerId
+      ) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+    }
+
+    const subscription = await ctx.db.query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.actorUserId))
+      .first()
+    const isPaid = subscription ? subscription.tier !== 'free' : false
+    const today = new Date().toISOString().split('T')[0]
+    let dailyUsage = await ctx.db.query('dailyUsage')
+      .withIndex('by_userId_date', (q) => q.eq('userId', args.actorUserId).eq('date', today))
+      .first()
+    if (!dailyUsage) {
+      const dailyUsageId = await ctx.db.insert('dailyUsage', {
+        userId: args.actorUserId,
+        date: today,
+        askCount: 0,
+        agentCount: 0,
+        writeCount: 0,
+        transcriptionSeconds: 0,
+        memoryExtractionCount: 0,
+      })
+      dailyUsage = await ctx.db.get(dailyUsageId)
+    }
+    if ((dailyUsage?.memoryExtractionCount ?? 0) >= 120) return
+    if (dailyUsage) {
+      await ctx.db.patch(dailyUsage._id, {
+        memoryExtractionCount: (dailyUsage.memoryExtractionCount ?? 0) + 1,
+      })
+    }
+
+    await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
+      billingActorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      isPaid,
+      memoryOwnerId: args.memoryOwnerId,
+      messageId: args.messageId,
+      targetActor: args.targetActor,
+      turnId: args.turnId,
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+    })
   },
 })
 

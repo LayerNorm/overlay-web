@@ -33,6 +33,7 @@ export async function executeWorkspaceAgentTurn(input: {
   agentId: string
   conversationId: string
   messageId: string
+  memoryEnabled: boolean
   threadRootMessageId?: string
   turnMessageId: string
   workspaceId: string
@@ -47,6 +48,7 @@ export async function executeWorkspaceAgentTurn(input: {
     conversationId: input.conversationId,
     existingMessageId: input.turnMessageId,
     messageId: input.messageId,
+    memoryEnabled: input.memoryEnabled,
     threadRootMessageId: input.threadRootMessageId,
     workspaceId: input.workspaceId,
   })
