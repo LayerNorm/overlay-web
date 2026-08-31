@@ -7,7 +7,7 @@ RUN apt-get update \
 WORKDIR /opt/overlay
 COPY package.json package-lock.json ./
 COPY packages ./packages
-RUN npm ci --omit=dev --workspace=@layernorm/agent-host --include-workspace-root=false \
+RUN npm ci --omit=dev --workspace=@layernorm/overlay-agent-host --include-workspace-root=false \
   && ln -s /opt/overlay/packages/overlay-agent-host/src/cli.mjs /usr/local/bin/overlay-agent-host \
   && chmod +x /opt/overlay/packages/overlay-agent-host/src/cli.mjs \
   && mkdir -p /workspace /var/lib/overlay-agent-host \

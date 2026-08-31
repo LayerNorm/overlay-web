@@ -6,6 +6,8 @@ Thank you for helping improve Overlay. Small, focused pull requests with clear t
 
 - Use Node.js 22 or newer and npm 11.11.0.
 - Read the relevant guide under `docs/develop/` before changing an architectural area.
+- Follow `docs/develop/agentic-development.mdx` for worktrees, branch ownership, pull requests, commit history, and integration.
+- Use [`BUILDER_AGENT_PROMPT.md`](BUILDER_AGENT_PROMPT.md) when assigning implementation work and [`INTEGRATION_AGENT_PROMPT.md`](INTEGRATION_AGENT_PROMPT.md) when assigning review, staging QA, and promotion.
 - Never include production credentials, customer data, or copied authentication state.
 - Report security issues privately through the process in `SECURITY.md`.
 
@@ -22,10 +24,13 @@ Use placeholders for local secrets. Feature worktrees must not deploy Convex. Th
 ## Pull Requests
 
 1. Create a focused branch from the latest `main`.
-2. Update the relevant living documentation in the same pull request.
-3. Run the smallest checks that cover the change, plus `npm run typecheck` for cross-contract changes.
-4. Explain user-visible behavior, security or billing impact, and rollback considerations.
-5. Wait for required GitHub checks before merging.
+2. Open the Builder pull request against `staging`.
+3. Update the relevant living documentation in the same pull request.
+4. Run the smallest checks that cover the change, plus `npm run typecheck` for cross-contract changes.
+5. Explain user-visible behavior, security or billing impact, and rollback considerations.
+6. Hand the pull request to the Integration agent. The Integration agent merges it into `staging`, tests the exact staging revision, then promotes `staging` to `main` through a release pull request.
+
+Meaningful, independently valid commits are merged with a merge commit so their identities and the pull-request boundary remain available for targeted reverts. Squash merging is reserved for trivial changes or noisy fixup history. Rebase merging is not used. User-visible and operational pull requests must also update `CHANGELOG.md` under `Unreleased`.
 
 The main release gate is the `Security Checks` workflow. Useful local checks include:
 

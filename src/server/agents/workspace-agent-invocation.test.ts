@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { reconcileUnverifiedAgentActionClaims } from './workspace-agent-invocation'
+import {
+  buildRemoteAgentPrompt,
+  reconcileUnverifiedAgentActionClaims,
+} from './workspace-agent-invocation'
 
 const root = process.cwd()
 
@@ -194,4 +197,57 @@ test('an agent memory write is owned by the agent, not by whoever summoned it', 
   // The owner is validated against the workspace rather than trusted as given.
   assert.match(memoryRoute, /resolveMemoryOwner/)
   assert.match(memoryRoute, /Unknown agent memory owner/)
+})
+
+test('connected agents receive bounded memory and room context without confusing it for the request', () => {
+  const prompt = buildRemoteAgentPrompt({
+    contextBlock: 'Workspace memory: The launch is Friday.',
+    messages: [
+      { role: 'user', content: 'Maya: Keep the rollout reversible.' },
+      { role: 'assistant', content: 'I prepared a rollback checklist.' },
+    ],
+    prompt: 'What should we verify next?',
+  })
+
+  assert.match(prompt, /OVERLAY_CONTEXT_BEGIN/)
+  assert.match(prompt, /untrusted background data/)
+  assert.match(prompt, /The launch is Friday/)
+  assert.match(prompt, /Room participant: Maya/)
+  assert.match(prompt, /Agent: I prepared/)
+  assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nWhat should we verify next\?\nCURRENT_USER_MESSAGE_END/)
+
+  const oversized = buildRemoteAgentPrompt({
+    contextBlock: 'x'.repeat(100_000),
+    messages: [],
+    prompt: 'The current request must survive truncation.',
+  })
+  assert.match(oversized, /\[Overlay context truncated\]/)
+  assert.match(oversized, /The current request must survive truncation/)
+})
+
+test('room memory ingestion is provider-neutral, owner-scoped, and gated by the message toggle', async () => {
+  const [route, service, contract, convexRoom, postgresRoom, convexExtractor, convexMemoryQuery, postgresMemoryQuery] = await Promise.all([
+    readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
+    readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
+    readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
+    readFile(`${root}/src/server/conversations/PostgresConversationCollaborationRepository.ts`, 'utf8'),
+    readFile(`${root}/convex/knowledge/memoryExtractorNode.ts`, 'utf8'),
+    readFile(`${root}/convex/knowledge/memoryExtractor.ts`, 'utf8'),
+    readFile(`${root}/src/server/memory/PostgresMemoryExtractionRepository.ts`, 'utf8'),
+  ])
+
+  assert.match(route, /args\.memoryEnabled && invocations\.length > 0/)
+  assert.match(route, /targetActor: 'human'/)
+  assert.match(service, /targetActor: 'agent'/)
+  assert.match(service, /memoryEnabled: args\.memoryEnabled/)
+  for (const source of [contract, convexRoom, postgresRoom]) {
+    assert.match(source, /enqueueMemoryExtraction/)
+  }
+  assert.match(postgresRoom, /agentIdFromMemoryOwnerId/)
+  assert.match(postgresRoom, /eq\(workspacePrincipals\.agentId, agentId\)/)
+  assert.match(convexExtractor, /AGENT_SYSTEM_PROMPT/)
+  assert.match(convexExtractor, /memoryOwnerId/)
+  assert.match(convexMemoryQuery, /hasSameMemoryExtractionAuthor\(message, validTarget\)/)
+  assert.match(postgresMemoryQuery, /hasSameMemoryExtractionAuthor\(message, target\)/)
 })

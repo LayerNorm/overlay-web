@@ -42,6 +42,7 @@ export type WorkspaceAgentTurnInput = {
   conversationId: string
   /** The human message being replied to. */
   messageId: string
+  memoryEnabled?: boolean
   runId: string
   threadRootMessageId?: string
   /** The `generating` reply row opened with the run record. */
@@ -83,6 +84,7 @@ export async function workspaceAgentTurnWorkflow(input: WorkspaceAgentTurnInput)
       agentId: input.agentId,
       conversationId: input.conversationId,
       messageId: input.messageId,
+      memoryEnabled: input.memoryEnabled !== false,
       threadRootMessageId: input.threadRootMessageId,
       turnMessageId: input.turnMessageId,
       workspaceId: input.workspaceId,
