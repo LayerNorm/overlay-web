@@ -37,7 +37,7 @@ function parseUsd(value: string | number | null | undefined): number {
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let concurrencySlot: { release: () => void } | null = null
   try {
-    const { task, sessionId, keepAlive, model, proxyCountryCode, conversationId, turnId }: {
+    const { task, sessionId, keepAlive, model = 'bu-mini', proxyCountryCode, conversationId, turnId }: {
       task?: string
       sessionId?: string
       keepAlive?: boolean
@@ -82,10 +82,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 400 },
       )
     }
-    // Browser Use 3.11 widened its model catalog and changed the service default.
-    // Keep Overlay's supported model boundary and historical default explicit so
-    // fallback billing always uses a model with known pricing.
-    const browserUseModel: 'bu-mini' | 'bu-max' = model ?? 'bu-mini'
     const MAX_TASK_LENGTH = 4096
     const sanitizedTask = task.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, MAX_TASK_LENGTH)
     if (!sanitizedTask) {
@@ -150,7 +146,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       idempotencyKey: context.requestIdempotencyKey,
       providerCostUsd: BROWSER_USE_TASK_INIT_USD + cappedVariableBudgetUsd,
       kind: 'generation',
-      modelId: `browser-use/${browserUseModel}`,
+      modelId: `browser-use/${model}`,
       operationId: 'agent.browser-task',
       programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
@@ -173,7 +169,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
       result = await client.run(sanitizedTask, {
         ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
-        model: browserUseModel,
+        model,
         ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
         maxCostUsd: cappedVariableBudgetUsd,
       })
@@ -194,7 +190,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       reportedVariableCostUsd > 0
         ? reportedVariableCostUsd
         : calculateBrowserUseV3TokenCost(
-            browserUseModel,
+            model,
             result.totalInputTokens ?? 0,
             result.totalOutputTokens ?? 0,
           ) + proxyCostUsd + browserCostUsd
