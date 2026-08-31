@@ -89,7 +89,16 @@ If either staging SHA differs from the recorded QA revision, or if the ancestry 
 
 The Integration agent then opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA.
 
-The production Vercel project's Git deployment source is disabled. A release PR merge therefore updates `main` without creating a production deployment. Verify and report the exact `origin/main` SHA as **merged but not deployed**, then stop unless the user explicitly authorizes production deployment.
+The production Vercel project's Git deployment source is disabled. A release PR merge therefore updates `main` without creating a production deployment. Verify the exact `origin/main` SHA, then align `staging` with the accepted merge commit so the next Builder PR has a clean comparison:
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git fetch origin
+git merge --ff-only origin/main
+git push origin staging
+```
+
+This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing. After alignment, report the accepted SHA as **merged but not deployed**, then stop unless the user explicitly authorizes production deployment.
 
 Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
 
@@ -120,17 +129,6 @@ npm run convex:push:prod
 ```
 
 Then run an authenticated smoke test on `https://www.getoverlay.io`. For chat, send a message, confirm the streamed answer completes, refresh the page, and confirm the message remains in the conversation.
-
-After production verification, align `staging` with the accepted `main` merge commit so the next Builder PR has a clean comparison:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git fetch origin
-git merge --ff-only origin/main
-git push origin staging
-```
-
-This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing.
 
 ## Integration agent checklist
 
