@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ### Changed
 
 - Enforced manual production releases with a source-controlled Vercel rule that suppresses Git-triggered deployments from `main` while preserving explicit CLI deployment and promotion.
+- Made the staging Vercel project branch-only: its Ignored Build Step now fails closed and runs only for the exact `staging` ref, preventing PR, manual, hook, and other-branch builds.
 
 ## 2026-08-30
 
