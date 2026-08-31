@@ -10,6 +10,7 @@ import {
   BookOpen,
   Bot,
   Brain,
+  Folder,
   Hash,
   Loader2,
   Mail,
@@ -221,9 +222,12 @@ export function FilesInlinePanel({
 
 export function ProjectsInlinePanel({
   refreshKey,
+  archived = false,
   onNavigate,
 }: {
   refreshKey: number
+  /** When true, list archived projects instead of active ones. */
+  archived?: boolean
   onNavigate?: () => void
 }) {
   const router = useRouter()
@@ -242,12 +246,13 @@ export function ProjectsInlinePanel({
     try {
       const page = await overlayAppClient.projects.getPage<Project>({
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
+        archived: archived || undefined,
       })
       setProjects(arrayOrEmpty<Project>(page.data))
       setNextCursor(page.nextCursor)
       setHasMore(page.hasMore)
     } catch { setProjects([]) } finally { setLoading(false) }
-  }, [])
+  }, [archived])
 
   useEffect(() => {
     setLoading(true)
@@ -263,6 +268,7 @@ export function ProjectsInlinePanel({
       const page = await overlayAppClient.projects.getPage<Project>({
         cursor: nextCursor,
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
+        archived: archived || undefined,
       })
       setProjects((current) => {
         const byId = new Map(current.map((project) => [project._id, project]))
@@ -547,6 +553,11 @@ export const chatsInlineItems = [
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
   { id: 'activity', label: 'Activity', icon: Bell },
+  { id: 'archived', label: 'Archived', icon: Archive },
+] as const
+
+export const projectsInlineItems = [
+  { id: 'all', label: 'All', icon: Folder },
   { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
 

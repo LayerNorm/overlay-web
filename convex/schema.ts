@@ -634,6 +634,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
   })
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])

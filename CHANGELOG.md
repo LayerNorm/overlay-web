@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Projects can now be archived and restored from a three-dot menu on each project tile, and the projects sidebar gained All/Archived subpages that list active and archived projects respectively.
+- Newly created projects now open straight into inline rename with the title text pre-selected, whether created from the projects page or the sidebar, so the name can be typed immediately.
 - Enforced manual production releases with a source-controlled Vercel rule that suppresses Git-triggered deployments from `main` while preserving explicit CLI deployment and promotion.
 - Made the staging Vercel project branch-only: its Ignored Build Step now fails closed and runs only for the exact `staging` ref, preventing PR, manual, hook, and other-branch builds.
 - Retired the obsolete Overlay Vercel projects (`overlay-web-rc`, `overlay-landing-prod-migration-runner`, and the misspelled `overlay-web-postgress`); the canonical Overlay set is now `overlay-landing`, `overlay-web-staging`, and `overlay-web-postgres`.

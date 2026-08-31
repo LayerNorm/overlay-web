@@ -30,6 +30,7 @@ export class ConvexProjectRepository implements ProjectRepository {
   async listProjects(args: {
     includeDeleted?: boolean
     updatedSince?: number
+    archived?: boolean
     userId: string
     workspaceId?: string
   }): Promise<ProjectRecord[]> {
@@ -38,6 +39,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       serverSecret: this.serverSecret,
       updatedSince: args.updatedSince,
       includeDeleted: args.includeDeleted,
+      ...(args.archived !== undefined ? { archived: args.archived } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }) ?? []
   }
@@ -69,6 +71,7 @@ export class ConvexProjectRepository implements ProjectRepository {
     instructions?: string | null
     name?: string
     parentId?: string | null
+    archived?: boolean
     projectId: string
     userId: string
     workspaceId?: string
@@ -82,6 +85,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       instructions: args.instructions,
       name: args.name,
       parentId: args.parentId,
+      ...(args.archived !== undefined ? { archived: args.archived } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }, { throwOnError: true })
     return await this.getProject(args)

@@ -39,6 +39,7 @@ export interface ProjectRepository {
   listProjects(args: {
     includeDeleted?: boolean
     updatedSince?: number
+    archived?: boolean
     userId: string
     workspaceId?: string
   }): Promise<ProjectRecord[]>
@@ -54,6 +55,7 @@ export interface ProjectRepository {
     instructions?: string | null
     name?: string
     parentId?: string | null
+    archived?: boolean
     projectId: string
     userId: string
     workspaceId?: string
