@@ -326,7 +326,7 @@
     "pg": "^8.22.0",
     "picomatch": "^2.3.2",
     "posthog-js": "^1.369.0",
-    "posthog-node": "^5.29.2",
+    "posthog-node": "^5.50.0",
     "proxy-from-env": "^2.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
