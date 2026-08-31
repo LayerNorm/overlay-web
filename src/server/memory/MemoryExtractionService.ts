@@ -26,8 +26,11 @@ export class MemoryExtractionService {
     billingSpendSubjectId?: string
     conversationId: string
     messageId: string
+    memoryOwnerId?: string
+    targetActor?: 'human' | 'agent'
     turnId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ duplicates: number; extracted: number; inserted: number; reason?: string }> {
     const turn = await this.deps.runs.getTurn(args)
     if (!turn) return { duplicates: 0, extracted: 0, inserted: 0, reason: 'no_user_message' }
@@ -76,6 +79,7 @@ export class MemoryExtractionService {
       if (providerCostUsd === null) throw new Error(`pricing_missing:${this.deps.extractor.modelId}`)
       const extract = () => this.deps.extractor.extract({
         contextMessages: turn.contextMessages,
+        targetActor: turn.targetActor,
         targetText: turn.targetText,
       })
       const extracted = this.deps.usageMeter
@@ -87,6 +91,7 @@ export class MemoryExtractionService {
             providerCostUsd,
             requestFingerprint: providerRequestFingerprint({
               contextMessages: turn.contextMessages,
+              targetActor: turn.targetActor,
               targetText: turn.targetText,
             }),
             usageEvent: { inputTokens: estimatedInputTokens, outputTokens: 1_200 },
@@ -100,10 +105,11 @@ export class MemoryExtractionService {
       const candidates = extracted.filter((candidate) => (
         candidate.content.trim().length > 5 && candidate.confidence >= MIN_CONFIDENCE
       )).slice(0, MAX_CANDIDATES)
+      const memoryOwnerId = args.memoryOwnerId?.trim() || args.userId
       const existingHashes = new Set(
         (await this.deps.memories.list({
           includeDeleted: false,
-          userId: args.userId,
+          userId: memoryOwnerId,
           workspaceId: turn.workspaceId,
         }))
           .map((memory) => hashMemoryContent(memory.content)),
@@ -118,15 +124,15 @@ export class MemoryExtractionService {
           continue
         }
         await this.deps.memories.create({
-          actor: 'user',
+          actor: turn.targetActor === 'agent' ? 'agent' : 'user',
           content,
           conversationId: args.conversationId,
           messageId: turn.messageId,
-          projectId: turn.projectId,
+          ...(turn.targetActor === 'human' ? { projectId: turn.projectId } : {}),
           source: 'chat',
           turnId: turn.turnId,
           type: candidate.type,
-          userId: args.userId,
+          userId: memoryOwnerId,
           workspaceId: turn.workspaceId,
         })
         existingHashes.add(hash)

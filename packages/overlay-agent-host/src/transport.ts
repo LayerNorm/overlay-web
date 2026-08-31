@@ -13,7 +13,7 @@ import {
   type ArtifactUploadRequest,
   type ArtifactUploadResponse,
   artifactUploadResponseSchema,
-} from '@layernorm/agent-bridge-protocol'
+} from '@layernorm/overlay-agent-bridge-protocol'
 import { createHash, randomBytes, sign } from 'node:crypto'
 
 export interface AgentControlPlaneClient {
@@ -36,7 +36,7 @@ export type HttpControlPlaneClientOptions = {
   onCredentialRotated?: (credential: {
     token: string
     expiresAt: number
-    filesystemGrant: import('@layernorm/agent-bridge-protocol').FilesystemGrant
+    filesystemGrant: import('@layernorm/overlay-agent-bridge-protocol').FilesystemGrant
   }) => Promise<void> | void
   fetch?: typeof globalThis.fetch
   requestTimeoutMs?: number

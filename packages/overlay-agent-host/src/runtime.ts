@@ -6,7 +6,7 @@ import {
   type AgentHostCommand,
   type AgentHostEvent,
   type FilesystemGrant,
-} from '@layernorm/agent-bridge-protocol'
+} from '@layernorm/overlay-agent-bridge-protocol'
 import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { StructuredLogger } from './logger.js'
