@@ -31,6 +31,7 @@ export class ProjectService {
   listProjects(args: {
     includeDeleted?: boolean
     updatedSince?: number
+    archived?: boolean
     userId: string
     workspaceId?: string
   }): Promise<ProjectRecord[]> {
@@ -60,6 +61,7 @@ export class ProjectService {
     instructions?: string
     name?: string
     parentId?: string | null
+    archived?: boolean
     projectId: string
     userId: string
     workspaceId?: string
@@ -70,6 +72,7 @@ export class ProjectService {
         : normalizeOptional(args.instructions) ?? null,
       name: args.name === undefined ? undefined : requiredName(args.name),
       parentId: args.parentId === undefined ? undefined : normalizeParentId(args.parentId),
+      archived: args.archived,
       projectId: args.projectId,
       userId: args.userId,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),

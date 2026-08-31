@@ -10,6 +10,7 @@ export interface ProjectSummary {
   instructions?: string
   parentId?: string | null
   deletedAt?: number
+  archivedAt?: number | null
   updatedAt: number
   createdAt: number
 }
@@ -18,6 +19,7 @@ export interface ProjectQueryContract extends PaginationQueryContract {
   projectId?: string
   updatedSince?: number
   includeDeleted?: boolean
+  archived?: boolean
 }
 
 export interface ProjectTreeNode extends ProjectSummary {
@@ -52,6 +54,7 @@ export interface UpdateProjectRequest {
   name?: string
   instructions?: string
   parentId?: string | null
+  archived?: boolean
   accessToken?: string
   userId?: string
 }

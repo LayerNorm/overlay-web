@@ -14,24 +14,33 @@ const ProjectsView = dynamic(() => import('@/features/projects/components/Projec
 async function ProjectsRouteContent({
   searchParams,
 }: {
-  searchParams?: Promise<{ showcase?: string | string[] }>
+  searchParams?: Promise<{ showcase?: string | string[]; archived?: string | string[] }>
 }) {
   const session = await getOverlaySession()
   const params = await searchParams
   const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
+  const archivedParam = Array.isArray(params?.archived) ? params.archived[0] : params?.archived
 
   if (showcaseParam === '1') return <PublicShowcaseProjectsView />
   if (!session) {
     redirect('/app/chat?signin=nav')
   }
-  const initialProjects = await getInitialProjectList()
-  return <ProjectsView userId={session.user.id} firstName={session.user.firstName ?? undefined} initialProjects={initialProjects} />
+  const archived = archivedParam === '1' || archivedParam === 'true'
+  const initialProjects = await getInitialProjectList(archived)
+  return (
+    <ProjectsView
+      userId={session.user.id}
+      firstName={session.user.firstName ?? undefined}
+      initialProjects={initialProjects}
+      initialArchived={archived}
+    />
+  )
 }
 
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ showcase?: string | string[] }>
+  searchParams?: Promise<{ showcase?: string | string[]; archived?: string | string[] }>
 }) {
   const capabilities = await getOverlayCapabilities()
   if (!capabilities.projects) {

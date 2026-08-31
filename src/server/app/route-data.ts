@@ -86,9 +86,9 @@ export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConvers
   )
 }
 
-export function getInitialProjectList(): Promise<ProjectSummary[]> {
+export function getInitialProjectList(archived = false): Promise<ProjectSummary[]> {
   return callAppApi<ProjectSummary[]>(
-    '/api/v1/projects?limit=100',
+    `/api/v1/projects?limit=100${archived ? '&archived=true' : ''}`,
     projectsService.GET as BffDomainService,
     [],
   )
