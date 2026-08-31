@@ -45,7 +45,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # github/codeql-action/autobuild v4.36.2
+        uses: github/codeql-action/autobuild@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # github/codeql-action/autobuild v4.37.8
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # github/codeql-action/analyze v4.36.2
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # github/codeql-action/analyze v4.37.8
