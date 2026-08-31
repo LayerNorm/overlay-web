@@ -5,6 +5,10 @@ hosted agent services, and Overlay-managed sandboxes. The rollout is provider-ne
 Convex and PostgreSQL must expose identical behavior, and PostgreSQL mode must never fall
 back to Convex.
 
+See [Bring Your Own Agents architecture](./bring-your-own-agents-architecture.md) for diagrams of
+the environment topology, protocol layers, enrollment, Agent Host loop, ACP adapters, durable run
+flow, memory, and package boundaries.
+
 ## Release boundary
 
 The first release supports agent conversations and supervised work through one outbound-only
@@ -43,10 +47,10 @@ required live gate whenever the local or remote contract database is available.
 
 Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
-- `@layernorm/agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
+- `@layernorm/overlay-agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
   payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
   and explicit filesystem grants.
-- `@layernorm/agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
+- `@layernorm/overlay-agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
   outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
   official ACP TypeScript SDK adapter.
@@ -97,6 +101,26 @@ command, token metrics, and existing conversation event exactly once. Duplicate 
 return the existing acknowledgement and never append a second transcript row. Interactive offline
 mentions have a two-minute claim window and visibly render `Waiting for <environment>` with Cancel
 and Retry; expired leases cannot be claimed.
+
+Agent DMs and channels use the same per-message memory policy for hosted and connected agents.
+Memory defaults on only when an agent participates in the room; the composer switch disables both
+recall and extraction for that turn. An invoked agent receives bounded workspace memory, hybrid
+retrieval, the participant roster, and recent role-tagged room history. ACP transports this context
+inside a delimited, size-bounded prompt envelope so existing protocol-v1 hosts remain compatible.
+Only an agent-triggering human message is eligible for human-owned extraction; ordinary human-only
+room chatter is never silently ingested. A completed agent reply may produce conservative,
+agent-owned memories for explicit decisions, verified outcomes, stable project facts, and reusable
+constraints. Suggestions, private reasoning, secrets, and unverified action claims are excluded.
+Both Convex and PostgreSQL validate the exact workspace, room, message, author kind, and memory
+owner before scheduling extraction; duplicate deliveries remain idempotent.
+Extraction prompts may include bounded prior messages by that same human or exact agent principal,
+but never messages authored by other room participants. Room-wide context is reserved for the
+invoked agent turn and is not implicitly forwarded to the separate memory-extraction model.
+The PostgreSQL memory and memory-index `user_id` columns are legacy-named opaque owner identifiers,
+not human-user foreign keys. Human account deletion removes human-owned rows explicitly; agent
+rows remain attributed to the stable `agent-memory:<agentId>` principal within their workspace.
+The database also keeps a user-delete compatibility trigger so older runtimes retain the prior
+cascade behavior during a rolling upgrade or rollback.
 
 Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
 The Agents directory derives its connected-harness label from the active binding rather than the
@@ -168,7 +192,7 @@ operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. V
 pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates match a
 known region. Both providers boot
 the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
-`@layernorm/agent-host` executable used on user-owned machines and invokes the same one-time
+`@layernorm/overlay-agent-host` executable used on user-owned machines and invokes the same one-time
 enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
 Managed hosts enroll as `overlay_cloud` and default their explicit approval root to `/workspace`.
 Provisioning receives the selected managed ACP adapter and starts only that pinned harness manifest;
@@ -194,14 +218,17 @@ Provider-specific browser or device login may be added only when that provider o
 a remote or headless flow. Overlay never copies, mounts, uploads, or imports a user's local Codex,
 Claude, or equivalent authentication directory into a managed sandbox.
 
-Phase 7 makes `@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` publishable packages and
-requires Node.js 24. The first production package line is `0.1.0`; Hermes support is released in
-the lockstep `0.2.0` package line. The application copies an exact
-`npx --yes @layernorm/agent-host@0.2.0 ...` command rather than following npm `latest`. The host and
+Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
+requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
+the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
+package names begin with lockstep `0.3.0`. The application copies an exact
+`npx --yes @layernorm/overlay-agent-host@0.3.0 ...` command rather than following npm `latest`. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
 the compatibility, package-content, and clean Node.js installation gates. Published package entry
-points never require TypeScript stripping or a consumer-supplied loader.
+points never require TypeScript stripping or a consumer-supplied loader. The release workflow leaves
+the legacy `@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` releases installable and
+deprecates them with migration guidance only after the `0.3.0` packages publish successfully.
 The same executable runs as a foreground CLI, a restartable systemd service,
 or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd

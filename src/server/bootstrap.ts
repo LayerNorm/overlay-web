@@ -72,6 +72,7 @@ import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
+import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
 import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
@@ -311,6 +312,18 @@ export function createOverlayServerContext(
       const entitlements = await chatUsagePolicy.getEntitlements({ userId, workspaceId })
       if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')
       return connectedAgentPolicyFor(entitlements)
+    },
+    onTerminalMessage: async (terminal) => {
+      if (!terminal.agentId || !terminal.conversationId || !terminal.messageId || !terminal.turnId) return
+      await conversationCollaboration.enqueueMemoryExtraction({
+        actorUserId: terminal.userId,
+        conversationId: terminal.conversationId,
+        memoryOwnerId: agentMemoryOwnerId(terminal.agentId),
+        messageId: terminal.messageId,
+        targetActor: 'agent',
+        turnId: terminal.turnId,
+        workspaceId: terminal.workspaceId,
+      })
     },
     settleUsage: async (usage) => {
       if (!usage.userId) return

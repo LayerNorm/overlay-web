@@ -408,6 +408,7 @@
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/chat/conversations.ts",
+    "convex/collaboration/directMessages.ts",
     "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",

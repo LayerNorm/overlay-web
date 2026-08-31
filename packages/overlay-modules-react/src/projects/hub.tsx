@@ -6,7 +6,7 @@ ProjectFileSummary,
 ProjectHubTab
 } from '@overlay/app-core'
 import { projectRouteViewForFile } from '@overlay/app-core'
-import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Upload } from 'lucide-react'
+import { ArrowLeft,BookOpen,ChevronDown,FileText,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Upload } from 'lucide-react'
 import { type ChangeEvent,type ReactNode,type RefObject } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 import { FileTypeIcon } from '../shared/file-type-icon'
@@ -17,6 +17,8 @@ export interface ProjectHubHeaderProps {
   draftName: string
   savingName?: boolean
   actions?: ReactNode
+  /** When provided, shows a back affordance to the left of the project name. */
+  onBack?: () => void
   onStartRename: () => void
   onDraftNameChange: (value: string) => void
   onCommitRename: () => void
@@ -29,6 +31,7 @@ export function ProjectHubHeader({
   draftName,
   savingName,
   actions,
+  onBack,
   onStartRename,
   onDraftNameChange,
   onCommitRename,
@@ -37,7 +40,16 @@ export function ProjectHubHeader({
   return (
     <AppScreenHeader className="px-3 py-2.5 md:px-4 md:py-0">
       <div className="flex min-w-0 items-center gap-2">
-        <FolderOpen size={16} className="shrink-0 text-[var(--muted)]" />
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to projects"
+            className="shrink-0 rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft size={16} />
+          </button>
+        ) : null}
         {editingName ? (
           <input
             className="max-w-md min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
