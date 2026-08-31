@@ -37,7 +37,7 @@ function parseUsd(value: string | number | null | undefined): number {
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let concurrencySlot: { release: () => void } | null = null
   try {
-    const { task, sessionId, keepAlive, model, proxyCountryCode, conversationId, turnId }: {
+    const { task, sessionId, keepAlive, model = 'bu-mini', proxyCountryCode, conversationId, turnId }: {
       task?: string
       sessionId?: string
       keepAlive?: boolean
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       idempotencyKey: context.requestIdempotencyKey,
       providerCostUsd: BROWSER_USE_TASK_INIT_USD + cappedVariableBudgetUsd,
       kind: 'generation',
-      modelId: `browser-use/${model ?? 'auto'}`,
+      modelId: `browser-use/${model}`,
       operationId: 'agent.browser-task',
       programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
       result = await client.run(sanitizedTask, {
         ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
-        ...(model ? { model } : {}),
+        model,
         ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
         maxCostUsd: cappedVariableBudgetUsd,
       })
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       reportedVariableCostUsd > 0
         ? reportedVariableCostUsd
         : calculateBrowserUseV3TokenCost(
-            result.model,
+            model,
             result.totalInputTokens ?? 0,
             result.totalOutputTokens ?? 0,
           ) + proxyCostUsd + browserCostUsd

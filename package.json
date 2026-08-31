@@ -305,7 +305,7 @@
     "@xyflow/react": "^12.11.2",
     "ai": "^7.0.65",
     "better-auth": "^1.6.23",
-    "browser-use-sdk": "^3.3.1",
+    "browser-use-sdk": "^3.11.1",
     "convex": "^1.41.0",
     "dagre": "^0.8.5",
     "docx": "^9.6.1",
