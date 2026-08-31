@@ -113,6 +113,8 @@ An administrator's pull-request-only ruleset bypass is for a demonstrably stuck 
 
 The shared `staging` branch and staging Vercel project are the only hosted pre-production lane. Builder pull requests target `staging`; feature branches do not produce hosted previews. The Integration agent tests after the Builder PR reaches `staging`, then promotes `staging` through a separate pull request to `main`. Root `vercel.json` disables Git-triggered deployments for `main` while leaving `staging` available for hosted QA, so promotion and production deployment are separate, explicitly reported states. Do not rely on an account-level deployment-source policy alone; verify the source-controlled rule and the absence of a production deployment after every release merge.
 
+The staging project is explicitly branch-gated to `staging` to prevent PR and other branch builds from consuming Vercel build minutes. Its Ignored Build Step runs `scripts/vercel-ignore-build.sh` with `DEPLOY_BRANCH=staging` in both Vercel environments. For that staging target the guard fails closed: only an exact `staging` Git ref runs a build; missing refs (including manual or hook-triggered deploys), unset targets, and every other branch are skipped. The shared script preserves no-ref manual releases for any separate, explicitly configured target. Preview deployment sources stay disabled. Verify these project settings when rotating Vercel projects or credentials.
+
 Follow [Worktree Staging QA](/develop/worktree-staging-qa) for staging integration, Convex deployment boundaries, smoke tests, and production promotion. A successful pull-request check does not prove the staging or production UI, and an HTTP response does not prove an authenticated browser flow.
 
 ## Maintain the changelog

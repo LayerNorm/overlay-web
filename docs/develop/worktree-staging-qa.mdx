@@ -44,7 +44,16 @@ git rev-parse origin/staging
 
 Both SHAs must match. Record the staging SHA before testing. Do not force-push `staging`; if a candidate must be removed, create a revert commit so staging history stays auditable.
 
-Prefer one release candidate at a time. If the Integration agent intentionally batches several Builder PRs, record every included PR and test the combined staging revision. Both Vercel projects have Preview disabled, so only the staging project's `staging` branch creates the hosted QA build.
+Prefer one release candidate at a time. If the Integration agent intentionally batches several Builder PRs, record every included PR and test the combined staging revision.
+
+The staging Vercel project is branch-gated to `staging` to keep build costs predictable:
+
+- Its Git production branch is `staging`.
+- `DEPLOY_BRANCH=staging` is configured for both the Preview and Production environments.
+- `bash scripts/vercel-ignore-build.sh` is the project's Ignored Build Step. With the staging target, it runs only when `VERCEL_GIT_COMMIT_REF` exactly matches `DEPLOY_BRANCH`; missing variables, missing branch refs, pull-request branches, manual deployments, and deploy hooks are skipped (Vercel exit `0`). If the shared script is ever reused for another explicit target, its no-ref manual-release behavior remains available for that target.
+- Preview deployment sources remain disabled. The project therefore has one hosted QA lane: the `staging` branch's deployment.
+
+When changing this policy, verify the project settings and run the guard locally with both matching and non-matching branch refs before merging. Do not rely on an account-level deployment-source policy alone; the repository guard is the defense that travels with the project configuration.
 
 ## Push Convex for staging QA
 

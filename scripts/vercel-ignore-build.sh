@@ -40,21 +40,21 @@ skip_build() {
   exit 0
 }
 
-# Without an explicit target, fall back to the conservative reading of intent:
-# build only this project's own production branch, never previews. A missing
-# variable must not silently re-enable the preview builds this guard exists to
-# prevent.
+# Fail closed when the project has not been configured. A missing target must
+# never silently re-enable the preview builds this guard exists to prevent.
 if [ -z "$target" ]; then
-  if [ "$environment" = "production" ]; then
-    run_build "DEPLOY_BRANCH is unset and VERCEL_ENV=production"
-  fi
-  skip_build "DEPLOY_BRANCH is unset and VERCEL_ENV=$environment is not production"
+  skip_build "DEPLOY_BRANCH is unset (VERCEL_ENV=$environment)"
 fi
 
 if [ -z "$branch" ]; then
   # A deploy with no branch reference is a manual or hook-triggered deploy.
-  # Those are deliberate, so they are allowed through.
-  run_build "no VERCEL_GIT_COMMIT_REF (manual or deploy-hook build)"
+  # The staging project is intentionally branch-only, so do not allow a manual
+  # or hook-triggered deployment to bypass the staging-branch gate. Other
+  # explicitly configured targets retain their deliberate manual-release path.
+  if [ "$target" = "staging" ]; then
+    skip_build "no VERCEL_GIT_COMMIT_REF (manual or deploy-hook build)"
+  fi
+  run_build "no VERCEL_GIT_COMMIT_REF (manual or deploy-hook build; target=$target)"
 fi
 
 if [ "$branch" = "$target" ]; then
