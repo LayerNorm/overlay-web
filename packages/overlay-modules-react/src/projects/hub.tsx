@@ -38,7 +38,7 @@ export function ProjectHubHeader({
   onCancelRename,
 }: ProjectHubHeaderProps) {
   return (
-    <AppScreenHeader className="px-3 py-2.5 md:px-4 md:py-0">
+    <AppScreenHeader>
       <div className="flex min-w-0 items-center gap-2">
         {onBack ? (
           <button

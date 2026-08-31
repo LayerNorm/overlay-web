@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Unified the list-page UI system: added shared `Tile`, `TileGrid`, `TileIcon`, `TileSkeleton`, `CreateTile`, `ListRow`, and `HeaderSearch` primitives to `@overlay/ui` and migrated the Projects, Knowledge, Agents, and Extensions (Connectors, Skills, MCP Servers) list pages plus the Files/Knowledge header onto them, so tiles, list rows, and page headers share one spacing, radius, hover, and dark-mode language.
 - Enforced manual production releases with a source-controlled Vercel rule that suppresses Git-triggered deployments from `main` while preserving explicit CLI deployment and promotion.
 - Made the staging Vercel project branch-only: its Ignored Build Step now fails closed and runs only for the exact `staging` ref, preventing PR, manual, hook, and other-branch builds.
 - Retired the obsolete Overlay Vercel projects (`overlay-web-rc`, `overlay-landing-prod-migration-runner`, and the misspelled `overlay-web-postgress`); the canonical Overlay set is now `overlay-landing`, `overlay-web-staging`, and `overlay-web-postgres`.

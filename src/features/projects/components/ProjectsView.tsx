@@ -45,6 +45,7 @@ import {
   ProjectHubTabs,
 } from '@overlay/modules-react/projects'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { Button, Tile, TileGrid, TileIcon, TileSkeleton } from '@overlay/ui/primitives'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@overlay/modules-react/knowledge'
@@ -604,92 +605,64 @@ function ProjectsLanding({
       header={
         <AppScreenHeader
           title="Projects"
-          className="px-3 py-2.5 md:px-4 md:py-0"
           actions={
-            <button
-              type="button"
-              onClick={onCreateProject}
-              disabled={creating}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
-            >
+            <Button variant="secondary" size="sm" onClick={onCreateProject} disabled={creating}>
               {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               New project
-            </button>
+            </Button>
           }
         />
       }
     >
       <AppScreenBody padding="none" maxWidth="none" className="px-5 py-5">
         {loading && projects.length === 0 ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <TileGrid columns={3}>
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-                <div className="ui-skeleton-line mb-4 h-8 w-8 rounded-md" />
-                <div className="ui-skeleton-line mb-2 h-3.5 w-36 rounded" />
-                <div className="ui-skeleton-line h-3 w-2/3 rounded opacity-75" />
-              </div>
+              <TileSkeleton key={index} />
             ))}
-          </div>
+          </TileGrid>
         ) : rootProjectRows.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <TileGrid columns={3}>
             {rootProjectRows.map((project) => {
               const subprojectCount = getChildProjects(projects, project._id).length
               const updatedLabel = formatProjectUpdatedAt(project.updatedAt)
               const isRenaming = renamingProjectId === project._id
-              const content = (
-                <>
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]">
+              return (
+                <Tile
+                  key={project._id}
+                  as={isRenaming ? 'div' : 'button'}
+                  onClick={isRenaming ? undefined : () => router.push(projectHubHref(project))}
+                  selected={isRenaming}
+                  leading={(
+                    <TileIcon>
                       <Folder size={16} strokeWidth={1.75} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      {isRenaming ? (
-                        <ProjectRenameInput
-                          projectName={project.name}
-                          saving={renamingProjectPending}
-                          error={renameError}
-                          onCommit={(name) => onCommitRename(project._id, name)}
-                          onCancel={onCancelRename}
-                          onChange={onRenameChange}
-                        />
-                      ) : (
-                        <p className="truncate text-sm font-medium text-[var(--foreground)]">{project.name}</p>
-                      )}
-                      {project.description || project.instructions ? (
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
-                          {project.description || project.instructions}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-[var(--muted)]">Project workspace</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-5 flex items-center justify-between gap-3 text-[11px] text-[var(--muted-light)]">
-                    <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
-                    {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
-                  </div>
-                </>
-              )
-
-              return isRenaming ? (
-                <div
-                  key={project._id}
-                  className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--muted-light)] bg-[var(--surface-subtle)] p-4 text-left"
-                >
-                  {content}
-                </div>
-              ) : (
-                <button
-                  key={project._id}
-                  type="button"
-                  onClick={() => router.push(projectHubHref(project))}
-                  className="group flex min-h-32 cursor-pointer flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
-                >
-                  {content}
-                </button>
+                    </TileIcon>
+                  )}
+                  title={
+                    isRenaming ? (
+                      <ProjectRenameInput
+                        projectName={project.name}
+                        saving={renamingProjectPending}
+                        error={renameError}
+                        onCommit={(name) => onCommitRename(project._id, name)}
+                        onCancel={onCancelRename}
+                        onChange={onRenameChange}
+                      />
+                    ) : (
+                      project.name
+                    )
+                  }
+                  description={project.description || project.instructions || 'Project workspace'}
+                  footer={(
+                    <>
+                      <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
+                      {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
+                    </>
+                  )}
+                />
               )
             })}
-          </div>
+          </TileGrid>
         ) : (
           <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6">
             <p className="text-sm text-[var(--muted)]">No projects yet.</p>

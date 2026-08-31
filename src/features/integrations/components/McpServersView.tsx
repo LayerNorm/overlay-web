@@ -39,7 +39,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   const [servers, setServers] = useState<McpServerSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
-  const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const dispatchMcpsChanged = useCallback(() => {
@@ -205,7 +204,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       header={
         <ExtensionPageHeader
           title="MCP Servers"
-          searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchPlaceholder="Search servers…"
           searchTitle="Search servers"
@@ -218,7 +216,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
               Add Server
             </button>
           )}
-          onSearchOpenChange={setSearchOpen}
           onSearchQueryChange={setSearchQuery}
         />
       }

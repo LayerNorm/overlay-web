@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookOpen, Brain, Loader2, Plus, Search, Users } from 'lucide-react'
+import { BookOpen, Brain, Loader2, Plus, Users } from 'lucide-react'
 import type { KnowledgeBase } from '@overlay/app-core'
-import { Button, DialogFrame, IconButton } from '@overlay/ui'
+import { Button, DialogFrame, HeaderSearch, Tile, TileGrid, TileIcon } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
@@ -24,7 +24,6 @@ export function KnowledgeBaseListView({
   const { activeWorkspace } = useWorkspace()
   const [knowledgeBases, setKnowledgeBases] = useState(initialKnowledgeBases)
   const [query, setQuery] = useState('')
-  const [searchOpen, setSearchOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -115,37 +114,11 @@ export function KnowledgeBaseListView({
           title="Knowledge"
           actions={(
             <>
-              {searchOpen ? (
-                <label className="relative block w-52 max-w-[45vw]">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={14} />
-                  <span className="sr-only">Search knowledge bases</span>
-                  <input
-                    autoFocus
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') {
-                        setQuery('')
-                        setSearchOpen(false)
-                      }
-                    }}
-                    placeholder="Search"
-                    className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] pl-8 pr-3 text-xs outline-none focus:border-[var(--muted)]"
-                  />
-                </label>
-              ) : null}
-              <IconButton
-                aria-label={searchOpen ? 'Close search' : 'Search knowledge bases'}
-                aria-pressed={searchOpen}
-                onClick={() => {
-                  setSearchOpen((open) => {
-                    if (open) setQuery('')
-                    return !open
-                  })
-                }}
-              >
-                <Search size={15} />
-              </IconButton>
+              <HeaderSearch
+                value={query}
+                onChange={setQuery}
+                label="Search knowledge bases"
+              />
               <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus size={14} />
                 New
@@ -157,53 +130,46 @@ export function KnowledgeBaseListView({
     >
       <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
         {showPersonalBrain || regularFiltered.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="knowledge-base-list">
+          <TileGrid columns={3} data-testid="knowledge-base-list">
             {showPersonalBrain ? (
-              <button
-                type="button"
+              <Tile
+                as="button"
                 onClick={() => void openPersonalBrain()}
                 disabled={openingPersonal}
-                className="group min-h-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-5 text-left transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+                className="min-h-40"
                 data-testid="personal-brain"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)] group-hover:text-[var(--foreground)]">
+                leading={(
+                  <TileIcon>
                     {openingPersonal ? <Loader2 className="animate-spin" size={17} /> : <Brain size={17} />}
-                  </span>
-                  <span className="text-xs text-[var(--muted)]">Private</span>
-                </div>
-                <h2 className="mt-5 text-sm font-medium text-[var(--foreground)]">My knowledge</h2>
-                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
-                  Curate reusable facts, answers, and sources that belong to you.
-                </p>
-              </button>
+                  </TileIcon>
+                )}
+                topRight={<span className="text-xs text-[var(--muted)]">Private</span>}
+                title="My knowledge"
+                description="Curate reusable facts, answers, and sources that belong to you."
+              />
             ) : null}
             {regularFiltered.map((base) => {
               const owned = base.ownerUserId === userId
               return (
-                <Link
+                <Tile
                   key={base.id}
+                  as={Link}
                   href={`/app/knowledge/${encodeURIComponent(base.id)}`}
-                  className="group min-h-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-5 transition-colors hover:bg-[var(--surface-subtle)]"
+                  className="min-h-40"
                   data-testid={`knowledge-base-${base.id}`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)] group-hover:text-[var(--foreground)]">
-                      <BookOpen size={17} />
-                    </span>
+                  leading={<TileIcon><BookOpen size={17} /></TileIcon>}
+                  topRight={(
                     <span className="inline-flex items-center gap-1 text-xs text-[var(--muted)]">
                       {!owned ? <Users size={12} /> : null}
                       {owned ? 'Yours' : 'Shared'}
                     </span>
-                  </div>
-                  <h2 className="mt-5 line-clamp-2 text-sm font-medium text-[var(--foreground)]">{base.title}</h2>
-                  <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
-                    {base.description || 'Add sources and start asking questions.'}
-                  </p>
-                </Link>
+                  )}
+                  title={base.title}
+                  description={base.description || 'Add sources and start asking questions.'}
+                />
               )
             })}
-          </div>
+          </TileGrid>
         ) : (
           <div className="flex min-h-[55vh] flex-col items-center justify-center px-4 text-center" data-testid="knowledge-base-empty">
             <BookOpen size={24} className="text-[var(--muted)]" />
