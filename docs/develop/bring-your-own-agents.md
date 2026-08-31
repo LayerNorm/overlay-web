@@ -43,10 +43,10 @@ required live gate whenever the local or remote contract database is available.
 
 Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
-- `@layernorm/agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
+- `@layernorm/overlay-agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
   payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
   and explicit filesystem grants.
-- `@layernorm/agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
+- `@layernorm/overlay-agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
   outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
   official ACP TypeScript SDK adapter.
@@ -188,7 +188,7 @@ operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. V
 pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates match a
 known region. Both providers boot
 the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
-`@layernorm/agent-host` executable used on user-owned machines and invokes the same one-time
+`@layernorm/overlay-agent-host` executable used on user-owned machines and invokes the same one-time
 enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
 Managed hosts enroll as `overlay_cloud` and default their explicit approval root to `/workspace`.
 Provisioning receives the selected managed ACP adapter and starts only that pinned harness manifest;
@@ -214,14 +214,18 @@ Provider-specific browser or device login may be added only when that provider o
 a remote or headless flow. Overlay never copies, mounts, uploads, or imports a user's local Codex,
 Claude, or equivalent authentication directory into a managed sandbox.
 
-Phase 7 makes `@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` publishable packages and
-requires Node.js 24. The first production package line is `0.1.0`; Hermes support is released in
-the lockstep `0.2.0` package line. The application copies an exact
-`npx --yes @layernorm/agent-host@0.2.0 ...` command rather than following npm `latest`. The host and
+Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
+requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
+the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
+package names begin with lockstep `0.3.0`. The application copies an exact
+`npx --yes @layernorm/overlay-agent-host@0.3.0 ...` command rather than following npm `latest`. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
 the compatibility, package-content, and clean Node.js installation gates. Published package entry
-points never require TypeScript stripping or a consumer-supplied loader.
+points never require TypeScript stripping or a consumer-supplied loader. The legacy
+`@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` releases remain installable for
+existing environments but are deprecated in npm with migration guidance to the product-qualified
+names.
 The same executable runs as a foreground CLI, a restartable systemd service,
 or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd

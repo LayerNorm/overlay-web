@@ -1,4 +1,4 @@
-import { MAX_HOST_REQUEST_BYTES } from '@layernorm/agent-bridge-protocol'
+import { MAX_HOST_REQUEST_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
 import type { NextRequest } from 'next/server'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'

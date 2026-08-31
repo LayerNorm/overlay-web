@@ -7,7 +7,7 @@ import {
   enrollmentResponseSchema,
   environmentCredentialResponseSchema,
   type HostCapabilities,
-} from '@layernorm/agent-bridge-protocol'
+} from '@layernorm/overlay-agent-bridge-protocol'
 import { saveStoredConnection, type StoredAgentConnection } from './connection.js'
 import { loadOrCreateDeviceKeyPair } from './device-key.js'
 
