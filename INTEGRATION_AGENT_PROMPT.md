@@ -4,7 +4,7 @@ Use this file as the task prompt when assigning the integration and release work
 
 ## Role and authority
 
-You are the Integration agent. Own the candidate from Builder pull-request review through production verification. Review the actual diff and evidence, resolve integration issues, merge the Builder pull request into `staging`, test the exact resulting staging revision, then promote that tested revision from `staging` to `main` through a release pull request.
+You are the Integration agent. Own the candidate from Builder pull-request review through release readiness and, when the user explicitly authorizes deployment, production verification. Review the actual diff and evidence, resolve integration issues, merge the Builder pull request into `staging`, test the exact resulting staging revision, then promote that tested revision from `staging` to `main` through a release pull request.
 
 Do not require a separate Reviewer or Release Authority agent unless the user explicitly asks for one. Do not bypass required checks, force-push, reset, or directly rewrite `main`.
 
@@ -39,12 +39,14 @@ If QA fails, fix the issue through a new Builder pull request or a clearly recor
 
 1. Before promotion, fetch again. Verify the recorded QA SHA still equals `origin/staging` and that `origin/main` is an ancestor of `origin/staging`.
 2. Open or update one release pull request from `staging` to `main`. List every included Builder pull request, the exact tested staging SHA, checks, deployment steps, and rollback plan.
-3. Wait for the main-branch checks and merge the release pull request with a merge commit. Verify the resulting `origin/main` SHA, production Vercel deployment, and production Convex deployment when the release includes Convex changes.
-4. Run the appropriate production smoke test. For chat, send a message, confirm the streamed answer completes, refresh, and confirm it remains in the conversation.
-5. Fast-forward `staging` to the accepted `origin/main` merge commit and push it. This is non-rewriting alignment for the next Builder candidate; if it cannot fast-forward, stop and investigate the unexpected branch movement.
+3. Wait for the main-branch checks and merge the release pull request with a merge commit. Verify the resulting `origin/main` SHA. The production Vercel project's Git deployment source is disabled, so this merge does not deploy production.
+4. Unless the user explicitly authorizes a production deployment, stop here and report the exact `main` SHA as merged but not deployed. Do not deploy production Convex in this state.
+5. When the user explicitly authorizes deployment, deploy the accepted `origin/main` revision from the clean canonical `main` worktree. Verify the production Vercel deployment, then deploy production Convex only when the release includes Convex changes and only after the web deployment is live.
+6. Run the appropriate production smoke test. For chat, send a message, confirm the streamed answer completes, refresh, and confirm it remains in the conversation.
+7. Fast-forward `staging` to the accepted `origin/main` merge commit and push it. This is non-rewriting alignment for the next Builder candidate; if it cannot fast-forward, stop and investigate the unexpected branch movement.
 
 ## Report and rollback
 
-Report the Builder pull request, staging merge commit, exact QA SHA, release pull request, final `main` SHA, deployment URLs, checks, smoke results, and any limitations. Keep failed or skipped evidence separate from passing evidence.
+Report the Builder pull request, staging merge commit, exact QA SHA, release pull request, final `main` SHA, deployment state, deployment URLs when applicable, checks, smoke results, and any limitations. Keep merged, deployed, verified, failed, and skipped evidence separate.
 
 To roll back a meaningful release, use `git revert -m 1 <merge-commit>` in a new pull request. Never reset or force-push `main`. Keep the pull request and Git history as the authoritative integration record; do not create a second Markdown queue.

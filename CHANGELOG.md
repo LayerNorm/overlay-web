@@ -11,6 +11,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Added reusable Builder and Integration agent prompt files that encode the role boundaries and handoff contract.
 - Established a worktree-first agentic development process with a designated integration role and history-preserving merge commits by default.
 - Disabled pull-request Preview deployments in both Vercel projects; hosted pre-production QA runs only from the dedicated staging project's `staging` branch.
+- Disabled Git-triggered production Vercel deployments; merging `main` now leaves a release merged but not deployed until an explicit production deployment is authorized.
 
 ## 2026-08-30
 
