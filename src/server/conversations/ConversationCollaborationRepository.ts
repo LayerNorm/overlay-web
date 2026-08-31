@@ -74,6 +74,16 @@ export interface ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<string>
+  /** Schedule best-effort durable-memory extraction for one completed room message. */
+  enqueueMemoryExtraction(args: {
+    actorUserId: string
+    conversationId: string
+    memoryOwnerId: string
+    messageId: string
+    targetActor: 'human' | 'agent'
+    turnId: string
+    workspaceId: string
+  }): Promise<void>
   /**
    * Durable agent turn persistence. A room agent writes its reply as it is
    * generated rather than once at the end, so the transcript itself — not a

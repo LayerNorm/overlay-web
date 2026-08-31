@@ -42,7 +42,7 @@ Routes may include additional fields.
 
 ## API keys and extensions
 
-`/api/v1/api-keys` exists in the route tree but currently returns `501` because API key management is not exposed yet.
+`/api/v1/api-keys` lists and manages API keys owned by the authenticated user. `POST` creates a key, `PATCH` rotates one, and `DELETE` revokes one; administrative scopes require separate administrator authority.
 
 `/api/v1/extensions/[extensionId]/[...path]` is an extension proxy route and is intentionally excluded from the stable public API reference.
 

@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { agentHostEventSchema, type AgentHostEvent } from '@layernorm/agent-bridge-protocol'
+import { agentHostEventSchema, type AgentHostEvent } from '@layernorm/overlay-agent-bridge-protocol'
 
 export type StoredRemoteSession = { runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
 export type StoredCommandResult = { accepted: boolean; errorCode?: string; errorMessage?: string; sequence: number }
