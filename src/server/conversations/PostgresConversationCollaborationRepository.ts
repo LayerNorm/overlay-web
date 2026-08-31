@@ -40,6 +40,8 @@ import type { ConversationCollaborationRepository } from './ConversationCollabor
 import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
 import { resolveConversationActivityState } from '@/shared/chat/conversation-activity-state'
 import { ROOM_AGENT_RUN_LEASE_MS } from '@/shared/agents/agent-run'
+import { agentIdFromMemoryOwnerId } from '@/shared/agents/agent-memory'
+import { enqueueMemoryExtractionJob } from '@/server/memory/PostgresMemoryExtractionJobs'
 import type {
   ConversationEventRow,
   ConversationListRow,
@@ -289,6 +291,62 @@ implements ConversationCollaborationRepository {
     })
     await this.notifyAgentMessage({ ...args, messageId: id })
     return id
+  }
+
+  async enqueueMemoryExtraction(args: {
+    actorUserId: string
+    conversationId: string
+    memoryOwnerId: string
+    messageId: string
+    targetActor: 'human' | 'agent'
+    turnId: string
+    workspaceId: string
+  }): Promise<void> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [row] = await this.db.select({
+      authorKind: conversationMessages.authorKind,
+      authorPrincipalId: conversationMessages.authorPrincipalId,
+      messageUserId: conversationMessages.userId,
+      turnId: conversationMessages.turnId,
+    }).from(conversationMessages).innerJoin(
+      conversations,
+      eq(conversations.id, conversationMessages.conversationId),
+    ).where(and(
+      eq(conversationMessages.id, args.messageId),
+      eq(conversationMessages.conversationId, args.conversationId),
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversationMessages.deletedAt),
+    )).limit(1)
+    if (!row || row.turnId !== args.turnId) throw new Error('MESSAGE_NOT_FOUND')
+    if (args.targetActor === 'human') {
+      if (row.authorKind !== 'human' || row.messageUserId !== args.memoryOwnerId) {
+        throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      }
+    } else {
+      const agentId = agentIdFromMemoryOwnerId(args.memoryOwnerId)
+      const [principal] = agentId && row.authorPrincipalId
+        ? await this.db.select({ id: workspacePrincipals.id }).from(workspacePrincipals).where(and(
+            eq(workspacePrincipals.id, row.authorPrincipalId),
+            eq(workspacePrincipals.workspaceId, args.workspaceId),
+            eq(workspacePrincipals.type, 'agent'),
+            eq(workspacePrincipals.agentId, agentId),
+            isNull(workspacePrincipals.archivedAt),
+          )).limit(1)
+        : []
+      if (row.authorKind !== 'agent' || !principal) {
+        throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      }
+    }
+    await enqueueMemoryExtractionJob(this.db, {
+      billingActorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      memoryOwnerId: args.memoryOwnerId,
+      messageId: args.messageId,
+      targetActor: args.targetActor,
+      turnId: args.turnId,
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+    })
   }
 
   /**

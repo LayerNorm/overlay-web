@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { commandAcknowledgementSchema } from '@layernorm/agent-bridge-protocol'
+import { commandAcknowledgementSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { ConnectedAgentControlPlaneError } from '@/server/agents'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../../../shared'

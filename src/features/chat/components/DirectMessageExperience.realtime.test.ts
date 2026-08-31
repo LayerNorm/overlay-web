@@ -39,3 +39,16 @@ test('a streaming agent reply lives in the transcript, not in local component st
   // events it would have masked are now the reply itself.
   assert.match(source, /hasActiveLocalStream: \(\) => false/)
 })
+
+test('agent rooms expose a real per-message memory toggle', async () => {
+  const source = await readFile(new URL('./DirectMessageExperience.tsx', import.meta.url), 'utf8')
+
+  assert.match(source, /const \[memoryEnabled, setMemoryEnabled\] = useState/)
+  assert.match(source, /memoryEnabled,\n\s*capabilities:/)
+  assert.match(source, /onToggleMemory: \(\) => setMemoryEnabled/)
+  assert.match(source, /mentionedPrincipalIds,\n\s*memoryEnabled,/)
+  assert.doesNotMatch(source, /memoryEnabled: false/)
+  // Human-only rooms must not advertise an agent-memory control.
+  assert.match(source, /principalType === 'agent'/)
+  assert.match(source, /memory: false, vectorSearch: false/)
+})

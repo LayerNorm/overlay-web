@@ -67,6 +67,7 @@ import { useQuery } from '@/components/providers/convex-hooks'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
+import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -321,6 +322,9 @@ export function DirectMessageExperience({
   const [isDragging, setIsDragging] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
+  const [memoryEnabled, setMemoryEnabled] = useState(() =>
+    defaultMemoryEnabled({ temporary: false }),
+  )
   const [mentions, setMentions] = useState<MentionItem[]>([])
   const [replyContext, setReplyContext] = useState<
     { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
@@ -954,6 +958,7 @@ export function DirectMessageExperience({
         contentType: 'text',
         clientNonce,
         mentionedPrincipalIds,
+        memoryEnabled,
         threadRootMessageId,
         ...(parts?.length ? { parts: parts as Array<Record<string, unknown>> } : {}),
         ...(options?.attachmentNames?.length ? { attachmentNames: options.attachmentNames } : {}),
@@ -1698,10 +1703,12 @@ export function DirectMessageExperience({
                 setShowAttachMenu,
                 attachMenuRef,
                 selectedToolIds: [],
-                memoryEnabled: false,
-                capabilities,
+                memoryEnabled,
+                capabilities: participants.some((participant) => participant.principalType === 'agent')
+                  ? capabilities
+                  : { ...capabilities, memory: false, vectorSearch: false },
                 onToggleTool: () => {},
-                onToggleMemory: () => {},
+                onToggleMemory: () => setMemoryEnabled((current) => !current),
                 onRemoveTool: () => {},
               }}
               modeState={{
