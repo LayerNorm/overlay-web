@@ -326,7 +326,7 @@ eve also provides useful remote-agent primitives:
   credentials.
 
 These are useful adapters and prior art for any future eve adoption. The bounded
-`@layernorm/agent-host` adapter now validates the public client/session transport,
+`@layernorm/overlay-agent-host` adapter now validates the public client/session transport,
 durable cursor, approval, cancellation, and restart-projection seams; it does
 not establish eve as Overlay's default runtime or control plane.
 

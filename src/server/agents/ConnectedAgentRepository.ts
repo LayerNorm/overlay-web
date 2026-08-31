@@ -27,11 +27,14 @@ export type ApplyRemoteEventsResult =
       duplicate: boolean
       terminal?: {
         agentId: string
+        conversationId: string
         environmentId: string
         forceFreeTierLimits: boolean
         inputTokens: number
         modelId: string
         modelUsageBilling: 'byok' | 'overlay'
+        memoryEnabled: boolean
+        messageId: string
         operationId: string
         outputTokens: number
         outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
@@ -39,6 +42,7 @@ export type ApplyRemoteEventsResult =
         runId: string
         sandboxBilling: ConnectedAgentSandboxBilling | null
         userId: string
+        turnId: string
         workspaceId: string
       }
     }
@@ -111,6 +115,7 @@ export type ConnectedAgentStartRemoteTurn = {
   modelUsageBilling: 'byok' | 'overlay'
   maxConcurrentRuns: number
   maxRunTimeMs: number
+  memoryEnabled?: boolean
   prompt: string
   queueExpiresAt: number
   reservationId: string | null

@@ -186,6 +186,7 @@ export const startRemoteAgentTurnByServer = mutation({
     environmentId: v.string(), environmentName: v.string(), environmentOnline: v.boolean(),
     initiatorPrincipalId: v.string(), modelId: v.string(), modelUsageBilling: v.union(v.literal('byok'), v.literal('overlay')),
     maxConcurrentRuns: v.number(), maxRunTimeMs: v.number(), prompt: v.string(), queueExpiresAt: v.number(),
+    memoryEnabled: v.optional(v.boolean()),
     reservationId: v.union(v.string(), v.null()), runId: v.string(), sessionId: v.string(),
     sandboxBilling: v.optional(anyObject),
     startPayload: anyObject, threadRootMessageId: v.optional(v.id('conversationMessages')),
@@ -283,8 +284,9 @@ export const startRemoteAgentTurnByServer = mutation({
       sessionId: args.sessionId, workspaceId: args.workspaceId, environmentId: args.environmentId,
       bindingId: args.bindingId, runId: args.runId, status: 'starting', commandCursor: 0, eventCursor: 0,
       capabilitySnapshot: { ...environment.capabilities, billing: { reservationId: args.reservationId,
-        agentId: args.agentId, environmentId: args.environmentId, modelId: args.modelId,
-        modelUsageBilling: args.modelUsageBilling, runId: args.runId, userId: args.actorUserId,
+        agentId: args.agentId, conversationId: args.conversationId, environmentId: args.environmentId,
+        memoryEnabled: args.memoryEnabled !== false, messageId, modelId: args.modelId,
+        modelUsageBilling: args.modelUsageBilling, runId: args.runId, turnId: args.turnId, userId: args.actorUserId,
         workspaceId: args.workspaceId, operationId: `workspace-agent:${args.turnId}` },
         hardExpiresAt: args.now + args.maxRunTimeMs,
         ...(args.sandboxBilling ? { sandboxBilling: args.sandboxBilling } : {}),
@@ -1072,11 +1074,14 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 
     ? tokensValue as Record<string, unknown> : {}
   return {
     agentId: typeof billing.agentId === 'string' ? billing.agentId : '',
+    conversationId: typeof billing.conversationId === 'string' ? billing.conversationId : '',
     environmentId: typeof billing.environmentId === 'string' ? billing.environmentId : '',
     forceFreeTierLimits: false,
     inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
     modelId: typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
     modelUsageBilling: billing.modelUsageBilling === 'overlay' ? 'overlay' as const : 'byok' as const,
+    memoryEnabled: billing.memoryEnabled === true,
+    messageId: typeof billing.messageId === 'string' ? billing.messageId : '',
     operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
     outcome,
     outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
@@ -1086,6 +1091,7 @@ function terminalBilling(snapshotValue: unknown, tokensValue: unknown, outcome: 
       ? snapshot.sandboxBilling as Record<string, unknown>
       : null,
     userId: typeof billing.userId === 'string' ? billing.userId : '',
+    turnId: typeof billing.turnId === 'string' ? billing.turnId : '',
     workspaceId: typeof billing.workspaceId === 'string' ? billing.workspaceId : '',
   }
 }

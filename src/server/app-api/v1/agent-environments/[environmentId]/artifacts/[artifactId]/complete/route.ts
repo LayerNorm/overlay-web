@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { artifactCompleteRequestSchema } from '@layernorm/agent-bridge-protocol'
+import { artifactCompleteRequestSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../../../shared'
 import { enforceAgentHostRateLimit, readAgentHostBody } from '../../../../host-security'

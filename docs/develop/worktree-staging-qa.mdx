@@ -1,7 +1,9 @@
 ---
 title: "Worktree Staging QA"
-description: "Safely create feature worktrees, test a staging release candidate, and promote it to production."
+description: "Test a staging release candidate and promote the verified revision to production."
 ---
+
+This guide covers hosted QA and release promotion only. Follow [Agentic Development](/develop/agentic-development) for feature branches, worktree creation, pull requests, commit history, and integration ownership.
 
 ## Deployment lanes
 
@@ -16,85 +18,6 @@ A feature worktree must never change production Convex. The `main` app and produ
 
 The development Convex deployment is shared by local development and `staging.getoverlay.io`. A Convex change from one branch changes that backend for every user of this lane. Do not run concurrent staging QA sessions that make incompatible changes under `convex/`.
 
-## Create a feature worktree
-
-Keep the canonical checkout at `~/Downloads/overlay-mono/overlay-landing` on `main`. Create feature worktrees beside it; do not check `staging` out inside a feature worktree.
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing
-git fetch origin
-git worktree add ../overlay-landing-my-feature -b agent/my-feature origin/main
-cd ../overlay-landing-my-feature
-./scripts/dev-setup.sh 3001
-```
-
-`dev-setup.sh` links `node_modules`, `.env.local`, and `.env.development.local` from the canonical checkout, then starts Next.js on the supplied port. Run `npm install` once in the canonical checkout before creating worktrees.
-
-The linked environment files are for local development only. Never edit secrets through a worktree link, commit an environment file, or pass `.env.local` to a production Convex deploy.
-
-## Develop locally
-
-For changes outside `convex/`, use the dev server started by `dev-setup.sh` and run the smallest relevant tests or lint checks.
-
-For a change under `convex/`, do not use `npm run dev:with-convex` from the feature worktree: it pushes that branch into the shared development backend. First integrate the branch into the staging release candidate described below. Then push development Convex only from the dedicated `staging` worktree.
-
-Never run these from a feature worktree:
-
-```bash
-npm run convex:push:prod
-npm run convex:push:all
-npm run convex:deploy
-npm run convex:deploy:all
-```
-
-## Long-lived development branch: `codex/workspaces`
-
-For extended staging work (e.g. the workspaces feature track), a long-lived development branch can replace per-feature branches. This branch lives in its own worktree and tracks `origin/staging` rather than `origin/main`, so it accumulates staging-bound changes across multiple sessions without creating a new branch each time.
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing
-git fetch origin
-git worktree add ../overlay-landing-workspaces -b codex/workspaces origin/staging
-cd ../overlay-landing-workspaces
-./scripts/dev-setup.sh 3001
-```
-
-### Ship from `codex/workspaces` to `staging`
-
-The workflow is: commit on `codex/workspaces` in the workspaces worktree, merge into `staging` in the dedicated staging worktree, push only `staging` to origin, then push Convex dev from the staging worktree.
-
-```bash
-# 1. Commit on codex/workspaces
-cd ~/Downloads/overlay-mono/overlay-landing-workspaces
-git add -A && git commit -m "fix: ..."
-
-# 2. Merge into staging (fast-forward when possible)
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git merge codex/workspaces --no-edit
-
-# 3. Push only staging — do NOT push codex/workspaces
-git push origin staging
-
-# 4. Push Convex dev from the staging worktree
-npm run convex:push:dev
-```
-
-### Do not push `codex/workspaces`
-
-`codex/workspaces` is a local development branch only. Vercel builds every pushed branch, so pushing both `codex/workspaces` and `staging` triggers two concurrent deployments of the same code. The branch is preserved in the `staging` merge commit; only `staging` needs to reach origin.
-
-### Maintain parity
-
-After every merge and push, verify that `codex/workspaces` (local), `staging` (local), and `origin/staging` point at the same commit:
-
-```bash
-git rev-parse codex/workspaces          # workspaces worktree
-git rev-parse staging                   # staging worktree
-git rev-parse origin/staging            # remote
-```
-
-All three must match. If they diverge, fast-forward the lagging branch to the latest commit before starting new work. This ensures the workspaces worktree, the staging Vercel deployment, and the shared development Convex backend always reflect the same code.
-
 ## Prepare the staging release candidate
 
 Use one dedicated worktree for the shared `staging` branch. This prevents a feature worktree from accidentally becoming the staging or production deployment source.
@@ -107,30 +30,21 @@ cd ../overlay-landing-staging
 git pull --ff-only origin staging
 ```
 
-When a feature is ready for QA, merge its branch into this staging worktree:
+The Builder opens its pull request against `staging` and stops at submission. The Integration agent reviews the diff and required checks, then merges the Builder PR into `staging` through GitHub.
+
+After that merge, update the dedicated staging worktree to the exact remote revision:
 
 ```bash
 cd ~/Downloads/overlay-mono/overlay-landing-staging
-git merge --no-ff agent/my-feature
-git push origin staging
+git fetch origin
+git pull --ff-only origin staging
+git rev-parse HEAD
+git rev-parse origin/staging
 ```
 
-Do not force-push `staging`. If a release candidate must be removed, create a revert commit so staging history stays auditable.
+Both SHAs must match. Record the staging SHA before testing. Do not force-push `staging`; if a candidate must be removed, create a revert commit so staging history stays auditable.
 
-### Do not push the feature branch
-
-Push only `staging` to origin. Do **not** push the feature branch (e.g. `agent/my-feature` or `codex/my-feature`) to origin at this stage. Vercel builds every pushed branch, so pushing both `staging` and the feature branch triggers two concurrent deployments — wasting build minutes and creating duplicate preview URLs for the same code. The feature branch is already preserved in the merge commit; staging is the only branch that needs to reach origin for QA.
-
-```bash
-# Correct: push only staging
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git push origin staging
-
-# Wrong: do not push the feature branch
-# git push origin agent/my-feature  # triggers a redundant Vercel build
-```
-
-If the feature branch must be pushed later (e.g. for a PR), do it after staging QA passes, and be aware it will trigger its own Vercel preview build.
+Prefer one release candidate at a time. If the Integration agent intentionally batches several Builder PRs, record every included PR and test the combined staging revision. Both Vercel projects have Preview disabled, so only the staging project's `staging` branch creates the hosted QA build.
 
 ## Push Convex for staging QA
 
@@ -161,7 +75,21 @@ Record the migration schema version, the complete contract count, and the Vercel
 
 ## Promote a verified release
 
-After staging passes, promote the same reviewed changes to `main` through the normal pull request process. Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
+After staging passes, confirm that the tested staging SHA is still current and that the latest `main` is included in the candidate:
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/staging
+git merge-base --is-ancestor origin/main origin/staging
+```
+
+If either staging SHA differs from the recorded QA revision, or if the ancestry check fails, update `staging` and repeat the affected QA before promotion.
+
+The Integration agent then opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA.
+
+Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
 
 ```bash
 cd ~/Downloads/overlay-mono/overlay-landing
@@ -179,12 +107,23 @@ npm run convex:push:prod
 
 Then run an authenticated smoke test on `https://www.getoverlay.io`. For chat, send a message, confirm the streamed answer completes, refresh the page, and confirm the message remains in the conversation.
 
-## Agent checklist
+After production verification, align `staging` with the accepted `main` merge commit so the next Builder PR has a clean comparison:
 
-Before an agent runs a Convex command, it must state:
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git fetch origin
+git merge --ff-only origin/main
+git push origin staging
+```
+
+This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing.
+
+## Integration agent checklist
+
+Before the Integration agent runs a Convex command, it must state:
 
 1. its current branch and worktree path;
 2. whether it is targeting the shared development or production deployment;
 3. why that deployment is the correct lane for the revision being tested.
 
-An agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. An agent may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. `convex:push:all` is not part of the worktree workflow.
+The Integration agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. It may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. `convex:push:all` is not part of the worktree workflow. The Builder never deploys Convex.
