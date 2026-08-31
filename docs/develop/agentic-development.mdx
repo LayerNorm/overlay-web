@@ -5,7 +5,7 @@ description: "The standard workflow for parallel agent work, pull requests, inte
 
 ## Operating model
 
-Overlay uses two agent roles. A Builder works in one isolated worktree and submits a pull request to `staging`. The Integration agent reviews and merges that pull request, tests the resulting staging revision, then promotes the tested `staging` branch to `main`. The canonical checkout stays clean and remains the trusted source for production operations.
+Overlay uses two agent roles. A Builder works in one isolated worktree and normally submits a pull request to `staging`. The Integration agent reviews and merges the owner-selected candidate base, tests the required revision, and promotes or deploys it according to the explicit release choice. The canonical checkout stays clean and remains the trusted source for production operations.
 
 GitHub pull requests, checks, and commit history are the authoritative integration record. Do not maintain a second hand-written queue of open pull requests: it will drift. [`CHANGELOG.md`](https://github.com/LayerNorm/overlay-web/blob/main/CHANGELOG.md) is the concise record of changes that actually reached `main`.
 
@@ -21,6 +21,19 @@ When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNor
 | Integration agent | Reviews the change, resolves integration conflicts, merges it into `staging`, runs staging QA, promotes the tested `staging` revision to `main`, and verifies production. |
 
 Do not require separate Reviewer or Release Authority agents. The Integration agent owns those responsibilities so each change normally consumes only one Builder and one Integration agent.
+
+Before Integration creates or retargets a pull request, it asks the owner: “Should this candidate target `staging` or `main`?” and “Should Vercel deploy after merge; if so, staging or production?” If the current request already answers either question, the agent records that choice instead of asking again. The default remains `staging` for hosted QA and no Vercel deployment unless explicitly authorized. A direct-to-`main` choice still uses a protected GitHub pull request and required checks; it does not permit a direct branch push.
+
+## Worktree ownership
+
+Worktrees are scoped to active work, not to every pull request:
+
+- Each active Builder task gets one isolated `codex/<slug>` feature worktree. That worktree belongs to the Builder until the pull request is handed off.
+- The Integration agent reuses one long-lived sibling worktree, `../overlay-landing-staging`, checked out on `staging`, for every sequential Builder pull request. After a merge, fetch and fast-forward that same worktree to `origin/staging`; do not create or retain a new Integration worktree for each PR, and do not check out feature branches in the staging worktree.
+- Keep the canonical `main` worktree separate and clean for production operations. It is not an Integration scratch area.
+- A short-lived temporary worktree is justified only for an exceptional conflict reproduction or side-by-side investigation. Remove it after the investigation and confirm its branch is no longer needed.
+
+This keeps the working set small while preserving isolation: GitHub pull requests and the `staging` branch remain the integration record, and the dedicated staging worktree is the single local checkout used for staged QA.
 
 ## Start every task from `origin/main`
 
