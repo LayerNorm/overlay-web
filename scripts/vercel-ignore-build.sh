@@ -49,8 +49,12 @@ fi
 if [ -z "$branch" ]; then
   # A deploy with no branch reference is a manual or hook-triggered deploy.
   # The staging project is intentionally branch-only, so do not allow a manual
-  # or hook-triggered deployment to bypass the staging-branch gate.
-  skip_build "no VERCEL_GIT_COMMIT_REF (manual or deploy-hook build)"
+  # or hook-triggered deployment to bypass the staging-branch gate. Other
+  # explicitly configured targets retain their deliberate manual-release path.
+  if [ "$target" = "staging" ]; then
+    skip_build "no VERCEL_GIT_COMMIT_REF (manual or deploy-hook build)"
+  fi
+  run_build "no VERCEL_GIT_COMMIT_REF (manual or deploy-hook build; target=$target)"
 fi
 
 if [ "$branch" = "$target" ]; then
