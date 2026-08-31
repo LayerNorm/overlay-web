@@ -20,6 +20,7 @@ import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWork
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { MemoryRepository } from '@/server/memory'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
+import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 
 export interface AppDataRepositoryContractBackend {
   accountDeletionRepository?: AccountDataDeletionRepository
@@ -941,6 +942,37 @@ export async function runAppDataRepositoryContractSuite(
       })
       assert.deepEqual(memberOnly.map((memory) => memory._id), [memberMemory._id])
       assert.equal(await backend.memories.get({ memoryId: memberMemory._id, userId }), null)
+    })
+
+    await t.test(`${backend.name}: workspace-agent memories use a non-user owner`, async () => {
+      const workspaceId = `contract_agent_memory_workspace_${randomUUID()}`
+      const memoryOwnerId = agentMemoryOwnerId(`contract_agent_${randomUUID()}`)
+      const agentMemory = await backend.memories.create({
+        actor: 'agent',
+        content: 'The workspace agent records a durable verified outcome.',
+        source: 'chat',
+        userId: memoryOwnerId,
+        workspaceId,
+      })
+      try {
+        assert.equal(agentMemory.userId, memoryOwnerId)
+        assert.equal(agentMemory.actor, 'agent')
+        assert.deepEqual(
+          (await backend.memories.list({
+            creatorUserId: memoryOwnerId,
+            scope: 'workspace',
+            userId,
+            workspaceId,
+          })).map((memory) => memory._id),
+          [agentMemory._id],
+        )
+      } finally {
+        await backend.memories.remove({
+          memoryId: agentMemory._id,
+          userId: memoryOwnerId,
+          workspaceId,
+        })
+      }
     })
 
     await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {

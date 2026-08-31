@@ -67,7 +67,7 @@
     "test:agent-bridge-protocol": "npm --prefix packages/overlay-agent-bridge-protocol test",
     "test:agent-host": "npm --prefix packages/overlay-agent-host test",
     "verify:agent-host-release": "node scripts/verify-agent-host-release.mjs",
-    "pack:agent-host-release": "npm pack --dry-run --workspace=@layernorm/agent-bridge-protocol && npm pack --dry-run --workspace=@layernorm/agent-host",
+    "pack:agent-host-release": "npm pack --dry-run --workspace=@layernorm/overlay-agent-bridge-protocol && npm pack --dry-run --workspace=@layernorm/overlay-agent-host",
     "smoke:agent-host-release": "node scripts/smoke-agent-host-package-install.mjs",
     "check:byo-agents": "npm run test:p2:unit && npm run test:connected-agents:convex && npm run test:connected-agents:security && npm run test:agent-bridge-protocol && npm run test:agent-host",
     "check:byo-agents:release": "npm run check:byo-agents && npm run test:connected-agents:load && npm run test:connected-agents:release-safety && npm --prefix packages/overlay-sandbox-runtime test && NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/agents/ManagedAgentSandboxService.test.ts && npm run verify:agent-host-release && npm run pack:agent-host-release && npm run smoke:agent-host-release",

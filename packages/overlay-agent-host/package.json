@@ -1,6 +1,6 @@
 {
-  "name": "@layernorm/agent-host",
-  "version": "0.2.0",
+  "name": "@layernorm/overlay-agent-host",
+  "version": "0.3.0",
   "description": "Outbound-only host for connecting user-owned and managed agents to Overlay.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
-    "@layernorm/agent-bridge-protocol": "0.2.0",
+    "@layernorm/overlay-agent-bridge-protocol": "0.3.0",
     "ai": "7.0.65",
     "eve": "0.44.4",
     "tsx": "^4.8.1",

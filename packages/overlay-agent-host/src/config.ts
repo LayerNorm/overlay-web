@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { filesystemGrantSchema } from '@layernorm/agent-bridge-protocol'
+import { filesystemGrantSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { loadStoredConnection } from './connection.js'
 import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-manifests.js'
 
