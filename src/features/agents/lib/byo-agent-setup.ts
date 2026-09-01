@@ -103,3 +103,13 @@ export function workspaceHarnessForByo(harnessId: string): WorkspaceAgentHarness
 export function generatedByoInstructions(harnessLabel: string) {
   return `Run delegated work through ${harnessLabel} in the connected environment. Stream user-visible progress and return a concise final result to Overlay.`
 }
+
+export function generatedAgentSetupPrompt(command: string) {
+  return [
+    'Connect this computer to Overlay, my AI workspace.',
+    '',
+    'Run this command in the background so it keeps running after our session ends (for example with `nohup … &` on macOS or Linux), then check its output for a "Verify this phrase in Overlay: …" line and tell me the phrase so I can approve the connection. Leave the process running — it is the connector Overlay talks to. It is outbound-only and opens no ports.',
+    '',
+    command,
+  ].join('\n')
+}
