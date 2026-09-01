@@ -12,6 +12,7 @@ import {
   MousePointerClick,
   Plus,
   Send,
+  Slash,
   SquareTerminal,
   Video,
   X,
@@ -229,11 +230,16 @@ type ComposerControlsProps = ComposerViewProps & {
 
 function ComposerControls(props: ComposerControlsProps) {
   const mentionTooltip = mentionReferenceLabel(props)
+  const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
-      props.isTemporaryChat
-        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
-        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
+      hasAgentCommands
+        ? (props.isTemporaryChat
+          ? 'grid-cols-[auto_auto_auto_minmax(0,1fr)_auto]'
+          : 'grid-cols-[auto_auto_auto_minmax(0,1fr)_auto_auto]')
+        : (props.isTemporaryChat
+          ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
+          : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]')
     }`}>
       <AttachMenu {...props} />
       <DelayedTooltip label={mentionTooltip} side="top">
@@ -241,6 +247,21 @@ function ComposerControls(props: ComposerControlsProps) {
           <AtSign size={16} strokeWidth={1.75} />
         </button>
       </DelayedTooltip>
+      {hasAgentCommands ? (
+        <DelayedTooltip label="Agent slash commands" side="top">
+          <button
+            type="button"
+            onClick={() => {
+              if (!props.hasComposerText) props.onInputChange('/')
+              props.textareaRef.current?.focus()
+            }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            aria-label="Agent slash commands"
+          >
+            <Slash size={16} strokeWidth={1.75} />
+          </button>
+        </DelayedTooltip>
+      ) : null}
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
