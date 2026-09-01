@@ -89,14 +89,22 @@ using them; names and parameters can differ by Playwright MCP version.
 
 ## Dedicated browser setup
 
-The automation browser should run as a separate Chrome process with its own user-data directory and
-remote debugging port. On this machine, the existing launcher can be used:
+On this machine, the canonical setup is CDP mode against a dedicated automation Chrome. Agents
+launch it with `bash ~/.config/devin/launch-chrome-testing.sh`, which starts Chrome with the
+user-data directory `~/Chrome-Automation`, remote debugging port 9222, and background-throttling
+flags (`--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`,
+`--disable-renderer-backgrounding`, `--disable-features=CalculateNativeWinOcclusion`). The MCP
+server then attaches with `npx @playwright/mcp@latest --cdp-endpoint http://localhost:9222`.
 
-```bash
-bash ~/.config/devin/launch-chrome-testing.sh
-```
+Prefer this setup for unattended QA: a separate Chrome instance keeps running and hydrating while
+unfocused. The alternative — Playwright MCP extension mode (`--extension` with the Playwright MCP
+Bridge extension, used by Devin via `~/.config/devin/playwright-mcp-extension.sh`) — attaches to
+the user's everyday Chrome and stalls on hydration whenever that window is backgrounded
+(`visibilityState: hidden`), so it is only suitable for interactive, foreground sessions.
 
-A portable launcher should use the equivalent of:
+For a CDP-based setup, the automation browser should run as a separate Chrome process with its own
+user-data directory and remote debugging port, and the MCP server should use
+`--cdp-endpoint http://localhost:<port>`. A portable launcher should use the equivalent of:
 
 ```bash
 "/path/to/Google Chrome" \
