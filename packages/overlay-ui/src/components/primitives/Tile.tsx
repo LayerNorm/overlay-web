@@ -64,7 +64,7 @@ export function Tile({
       disabled={Component === 'button' ? disabled : undefined}
       aria-disabled={disabled || undefined}
       className={cn(
-        'group relative flex min-h-32 flex-col rounded-lg border p-4 text-left transition-colors',
+        'group relative flex min-h-32 w-full flex-col rounded-lg border p-4 text-left transition-colors',
         interactive
           ? 'cursor-pointer border-[var(--border)] bg-[var(--surface-elevated)] hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)] disabled:pointer-events-none disabled:opacity-60'
           : null,
