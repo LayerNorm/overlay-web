@@ -5,6 +5,7 @@ export const ProjectListQuery = PaginationQuery.extend({
   projectId: IdQuery,
   updatedSince: IntegerQueryValue,
   includeDeleted: BooleanQueryValue,
+  archived: BooleanQueryValue,
 })
 
 export const CreateProjectRequest = z.object({
@@ -20,6 +21,7 @@ export const CreateProjectRequest = z.object({
 export const UpdateProjectRequest = CreateProjectRequest.partial().extend({
   ...AuthFields,
   projectId: z.string().min(1),
+  archived: z.boolean().optional(),
 })
 
 export const DeleteProjectRequest = z.object({

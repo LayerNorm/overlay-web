@@ -25,7 +25,7 @@ X,
 Zap
 } from 'lucide-react'
 import { useState,type MouseEvent } from 'react'
-import { ListboxSelect } from '@overlay/ui/primitives'
+import { ListboxSelect, Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
 
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
@@ -323,11 +323,11 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
   return (
     <AppScreenBody padding="none" maxWidth="none" className="h-full">
       <div className="mx-auto max-w-3xl px-6 py-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <TileGrid columns={3}>
           {filteredServers.map((server) => (
             <McpServerCard key={server._id} server={server} onEdit={onEdit} onToggle={onToggle} />
           ))}
-        </div>
+        </TileGrid>
       </div>
     </AppScreenBody>
   )
@@ -343,46 +343,54 @@ function McpServerCard({
   onToggle: (server: McpServerSummary, event: MouseEvent) => void
 }) {
   return (
-    <div onClick={() => onEdit(server)} className="group relative cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 transition-all hover:bg-[var(--surface-muted)] hover:shadow-sm">
-      <span className={`absolute right-4 top-4 h-2 w-2 rounded-full transition-colors ${server.enabled ? 'bg-[var(--foreground)]' : 'bg-[var(--muted-light)]'}`} title={server.enabled ? 'Active' : 'Disabled'} />
-      <div className="mb-3 flex items-start gap-2 pr-6">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-subtle)]">
-          <Link2 size={13} className="text-[var(--muted)]" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[var(--foreground)]">{server.name || 'Untitled'}</p>
-          <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--muted)]">{server.url}</p>
-          {server.description ? <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--muted-light)]">{server.description}</p> : null}
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{server.transport}</span>
-        {server.hasAuth && server.authType !== 'oauth' ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Auth</span> : null}
-        {server.authType === 'oauth' ? (
-          <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] ${
-            server.oauthStatus === 'connected'
-              ? 'border-[var(--border)] text-[var(--muted)]'
-              : 'border-red-500/30 text-red-400'
-          }`}>
-            {server.oauthStatus === 'connected'
-              ? 'OAuth'
-              : server.oauthStatus === 'needs_reauth'
-                ? 'Reconnect needed'
-                : 'Not connected'}
-          </span>
-        ) : null}
-        {server.toolCatalogCount ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{server.toolCatalogCount} tools</span> : null}
-      </div>
+    <Tile
+      onClick={() => onEdit(server)}
+      leading={(
+        <TileIcon>
+          <Link2 size={15} strokeWidth={1.75} />
+        </TileIcon>
+      )}
+      title={server.name || 'Untitled'}
+      description={server.description || server.url}
+      topRight={(
+        <span
+          className={`h-2 w-2 rounded-full transition-colors ${server.enabled ? 'bg-[var(--foreground)]' : 'bg-[var(--muted-light)]'}`}
+          title={server.enabled ? 'Active' : 'Disabled'}
+        />
+      )}
+      footer={(
+        <>
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{server.transport}</span>
+            {server.hasAuth && server.authType !== 'oauth' ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Auth</span> : null}
+            {server.authType === 'oauth' ? (
+              <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] ${
+                server.oauthStatus === 'connected'
+                  ? 'border-[var(--border)] text-[var(--muted)]'
+                  : 'border-red-500/30 text-red-400'
+              }`}>
+                {server.oauthStatus === 'connected'
+                  ? 'OAuth'
+                  : server.oauthStatus === 'needs_reauth'
+                    ? 'Reconnect needed'
+                    : 'Not connected'}
+              </span>
+            ) : null}
+            {server.toolCatalogCount ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{server.toolCatalogCount} tools</span> : null}
+          </div>
+          <div className="hidden items-center gap-1 group-hover:flex">
+            <button type="button" onClick={(event) => onToggle(server, event)} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
+            <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title="Edit"><Pencil size={13} /></button>
+          </div>
+        </>
+      )}
+    >
       {server.toolCatalogError ? (
         <p title={server.toolCatalogError} className="mt-2 flex items-start gap-1 text-[10px] text-red-400">
           <AlertCircle size={10} className="mt-0.5 shrink-0" />
           <span className="line-clamp-2">Tools unavailable: {server.toolCatalogError}</span>
         </p>
       ) : null}
-      <div className="absolute bottom-3 right-3 hidden items-center gap-1 group-hover:flex">
-        <button type="button" onClick={(event) => onToggle(server, event)} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
-        <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title="Edit"><Pencil size={13} /></button>
-      </div>
-    </div>
+    </Tile>
   )
 }

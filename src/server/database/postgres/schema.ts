@@ -529,6 +529,7 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   workspaceId: text('workspace_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
 }, (table) => [
   index('projects_user_id_idx').on(table.userId),
   uniqueIndex('projects_user_id_client_id_idx').on(table.userId, table.clientId),

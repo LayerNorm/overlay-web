@@ -505,6 +505,13 @@
       "when": 1788048000000,
       "tag": "0071_agent_memory_owners",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1788480000000,
+      "tag": "0072_project_archival",
+      "breakpoints": true
     }
   ]
 }

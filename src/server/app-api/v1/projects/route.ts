@@ -47,12 +47,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const updatedSinceParam = query.updatedSince
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
     const includeDeleted = readBooleanParam(query.includeDeleted ?? null)
+    // Absent `archived` keeps the long-standing listing behavior: active projects only.
+    const archived = readBooleanParam(query.archived ?? null) ?? false
 
     const projects = await projectService.listProjects({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
+      archived,
     })
     return NextResponse.json(projects || [])
   } catch (error) {
@@ -98,7 +101,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
     const { auth } = context
-    const { projectId, name, instructions, parentId } = body
+    const { projectId, name, instructions, parentId, archived } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const project = await projectService.updateProject({
       projectId,
@@ -107,6 +110,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       name,
       instructions,
       parentId,
+      archived,
     })
     return NextResponse.json({ success: true, project })
   } catch (error) {

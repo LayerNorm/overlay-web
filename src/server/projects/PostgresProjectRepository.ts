@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { and, asc, eq, gt, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, notInArray, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   automations,
@@ -51,6 +51,7 @@ export class PostgresProjectRepository implements ProjectRepository {
   async listProjects(args: {
     includeDeleted?: boolean
     updatedSince?: number
+    archived?: boolean
     userId: string
     workspaceId?: string
   }): Promise<ProjectRecord[]> {
@@ -61,6 +62,7 @@ export class PostgresProjectRepository implements ProjectRepository {
       .where(and(
         eq(projects.userId, args.userId),
         args.includeDeleted ? undefined : isNull(projects.deletedAt),
+        args.archived === undefined ? undefined : args.archived ? isNotNull(projects.archivedAt) : isNull(projects.archivedAt),
         updatedSince ? gt(projects.updatedAt, updatedSince) : undefined,
         args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
       ))
@@ -140,6 +142,7 @@ export class PostgresProjectRepository implements ProjectRepository {
     instructions?: string | null
     name?: string
     parentId?: string | null
+    archived?: boolean
     projectId: string
     userId: string
     workspaceId?: string
@@ -169,6 +172,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           ...(args.instructions !== undefined ? { instructions: args.instructions } : {}),
           ...(args.name !== undefined ? { name: args.name } : {}),
           ...(args.parentId !== undefined ? { parentId: normalizeOptional(args.parentId) } : {}),
+          ...(args.archived !== undefined ? { archivedAt: args.archived ? new Date() : null } : {}),
           updatedAt: new Date(),
         })
         .where(and(
@@ -374,6 +378,7 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     deletedAt: row.deletedAt?.getTime(),
+    archivedAt: row.archivedAt?.getTime() ?? null,
   }
 }
 

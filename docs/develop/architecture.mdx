@@ -14,6 +14,12 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
+- `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
+  and the list-page system: `Tile`/`TileGrid`/`TileIcon`/`TileSkeleton`/`CreateTile` for grid
+  tiles, `ListRow` for list rows, and `HeaderSearch` for collapsible header search). List pages
+  (Projects, Knowledge, Files, Agents, Extensions) must render their tiles, rows, and headers
+  through these primitives instead of hand-rolled markup so spacing, radii, hover language, and
+  dark-mode surfaces stay uniform.
 - `packages/overlay-agent-bridge-protocol/**` owns the vendor-neutral, versioned Zod wire
   protocol between Overlay and connected execution environments.
 - `packages/overlay-agent-host/**` is the portable outbound-only host executable. It owns local

@@ -31,6 +31,7 @@ import {
   KnowledgeInlinePanel,
   ProjectsInlinePanel,
   chatsInlineItems,
+  projectsInlineItems,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
 import { filesInlineItems, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
@@ -336,6 +337,7 @@ export default function AppSidebar({
     return 'connectors'
   })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
+  const projectsView = currentSearchParams.get('archived') === '1' ? 'archived' : 'all'
   const chatViewParam = currentSearchParams.get('view')
   const chatsView = (() => {
     if (activityOpen) return 'activity'
@@ -849,6 +851,35 @@ export default function AppSidebar({
         },
       }
     }
+    if (panelKind === 'projects') {
+      return {
+        items: projectsInlineItems,
+        activeId: projectsView,
+        pendingId: effectivePendingSecondaryNavId,
+        onSelect: (next) => {
+          closeMobileDrawer()
+          // Like the files categories: selecting the tab you are already in is
+          // how you get back out of an open project hub to the list.
+          const hasOpenProject = currentSearchParams.has('projectId') || currentSearchParams.has('view') || currentSearchParams.has('rename')
+          if (next === projectsView && !hasOpenProject) return
+          beginSecondaryNavigation(next)
+          const params = new URLSearchParams(currentSearchParams.toString())
+          if (publicShowcase) params.set('showcase', '1')
+          if (next === 'archived') params.set('archived', '1')
+          else params.delete('archived')
+          params.delete('projectId')
+          params.delete('projectName')
+          params.delete('view')
+          params.delete('id')
+          params.delete('rename')
+          const query = params.toString()
+          const projectsHref = canonicalWorkspaceRoute && activeWorkspaceId
+            ? buildWorkspaceHref(activeWorkspaceId, '/app/projects')
+            : '/app/projects'
+          router.push(query ? `${projectsHref}?${query}` : projectsHref)
+        },
+      }
+    }
     return undefined
   })()
 
@@ -887,7 +918,11 @@ export default function AppSidebar({
       {panelKind === 'projects' ? (
         renderProjectsPanel
           ? renderProjectsPanel({ onNavigate: closeMobileDrawer })
-          : <ProjectsInlinePanel refreshKey={projectsPanelRefreshKey} onNavigate={closeMobileDrawer} />
+          : <ProjectsInlinePanel
+            refreshKey={projectsPanelRefreshKey}
+            archived={projectsView === 'archived'}
+            onNavigate={closeMobileDrawer}
+          />
       ) : null}
       {panelKind === 'agents' ? (
         renderAgentsPanel
