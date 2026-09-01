@@ -221,8 +221,8 @@ Claude, or equivalent authentication directory into a managed sandbox.
 Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
-package names begin with lockstep `0.3.0`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 overlay-agent-host ...`
+package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.2`. The application copies an exact
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after

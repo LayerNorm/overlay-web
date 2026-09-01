@@ -160,7 +160,7 @@ Overlay generates one harness-specific command. For a local Codex environment, t
 this shape:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind local \
@@ -359,7 +359,8 @@ continue using `@overlay/*`.
 | `@overlay/sandbox-runtime` | Provider-neutral lifecycle for Vercel and Daytona managed sandboxes. |
 | Overlay control plane | Workspace identity, authorization, bindings, runs, approvals, audit, transcript, memory, billing, and artifacts. |
 
-The product-qualified public names begin with the lockstep `0.3.0` release. The host depends on the
+The product-qualified public names begin with the lockstep `0.3.0` release; the PATH-safe host and
+matching protocol ship together as `0.3.2`. The host depends on the
 exact matching protocol version. The release workflow publishes the protocol first, then the host,
 and only after both succeed does it deprecate the shorter `0.2.0` names with migration guidance.
 

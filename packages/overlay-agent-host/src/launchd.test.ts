@@ -8,7 +8,7 @@ test('macOS service definitions are restartable and escape paths safely', () => 
     environmentId: 'environment:one',
     configPath: "/Users/test/O'Reilly/config.json",
     stateDirectory: '/Users/test/Agent & Host',
-    packageSpec: '@layernorm/overlay-agent-host@0.3.1',
+    packageSpec: '@layernorm/overlay-agent-host@0.3.2',
     executablePath: '/Users/test/.local/bin:/opt/homebrew/bin:/usr/bin:/bin',
   })
   assert.match(plist, /KeepAlive/)
@@ -20,8 +20,8 @@ test('macOS service definitions are restartable and escape paths safely', () => 
 })
 
 test('macOS service PATH keeps absolute shell entries and adds common agent locations', () => {
-  const path = launchAgentExecutablePath('/custom/bin:relative:/usr/bin:/custom/bin')
+  const path = launchAgentExecutablePath('/custom/bin:relative:/usr/bin:/custom/bin', '/Users/test')
   assert.deepEqual(path.split(':').slice(0, 2), ['/custom/bin', '/usr/bin'])
-  assert.match(path, /\/\.local\/bin/)
+  assert.match(path, /\/Users\/test\/\.local\/bin/)
   assert.doesNotMatch(path, /(^|:)relative(:|$)/)
 })

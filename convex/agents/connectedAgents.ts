@@ -459,6 +459,28 @@ export const acknowledgeCommandByServer = mutation({
       await ctx.db.patch(command._id, {
         status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now,
       })
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_externalRunId', q => q.eq('externalRunId', command.runId)).unique()
+      const session = await ctx.db.query('agentRemoteSessions')
+        .withIndex('by_runId', q => q.eq('runId', command.runId)).unique()
+      const message = run ? await ctx.db.get(run.assistantMessageId) : null
+      const environment = session
+        ? await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', session.environmentId)).unique()
+        : null
+      if (run && session && message && !['completed', 'failed', 'cancelled'].includes(run.status)) {
+        const code = 'remote_command_rejected'
+        const failureMessage = 'The connected environment rejected this command. Reconnect it, then retry this message.'
+        await ctx.db.patch(run._id, { status: 'failed', failedAt: args.now,
+          terminalError: { code, message: failureMessage, retryable: true }, updatedAt: args.now })
+        await ctx.db.patch(session._id, { status: 'failed', endedAt: args.now, updatedAt: args.now })
+        await ctx.db.patch(message._id, { content: failureMessage,
+          parts: conversationParts(recoveryParts(message.parts, command.runId,
+            environment?.name ?? 'connected environment', code, failureMessage, args.now)),
+          status: 'error', updatedAt: args.now })
+        await ctx.db.insert('conversationEvents', { conversationId: run.conversationId,
+          workspaceId: args.workspaceId, messageId: message._id, type: 'message.failed',
+          userId: run.userId, createdAt: args.now })
+      }
       return true
     }
     if (command.status !== 'acknowledged') {
@@ -1247,6 +1269,7 @@ function recoveryParts(value: unknown, runId: string, environmentName: string, c
       : part
   }), {
     type: 'data-remote-agent-status', data: { runId, environmentName, queueExpiresAt: 0,
-      state: 'recoverable', retryable: true, retryClass: code.includes('offline') ? 'host_offline' : 'timeout', message },
+      state: 'recoverable', retryable: true,
+      retryClass: code.includes('offline') ? 'host_offline' : code.includes('timeout') ? 'timeout' : 'transient', message },
   }]
 }

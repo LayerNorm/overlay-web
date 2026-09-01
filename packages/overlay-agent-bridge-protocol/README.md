@@ -7,7 +7,7 @@ signature payloads, protocol limits, and TypeScript types; it does not start an 
 Install the matching protocol and host versions together:
 
 ```sh
-npm install @layernorm/overlay-agent-bridge-protocol@0.3.0 @layernorm/overlay-agent-host@0.3.1
+npm install @layernorm/overlay-agent-bridge-protocol@0.3.2 @layernorm/overlay-agent-host@0.3.2
 ```
 
 Protocol version 1 fails closed on unknown versions, invalid event sequences, oversized payloads,

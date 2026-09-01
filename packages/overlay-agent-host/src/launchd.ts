@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { chmod, mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -45,13 +45,12 @@ export function launchAgentPlist(input: LaunchAgentDefinition) {
 `
 }
 
-export function launchAgentExecutablePath(source = process.env.PATH) {
-  const home = homedir()
+export function launchAgentExecutablePath(source = process.env.PATH, home = homedir()) {
   const candidates = [
     ...(source?.split(':') ?? []),
-    join(home, '.local', 'bin'),
-    join(home, '.cargo', 'bin'),
-    join(home, '.bun', 'bin'),
+    posix.join(home.replaceAll('\\', '/'), '.local', 'bin'),
+    posix.join(home.replaceAll('\\', '/'), '.cargo', 'bin'),
+    posix.join(home.replaceAll('\\', '/'), '.bun', 'bin'),
     '/opt/homebrew/bin',
     '/opt/homebrew/sbin',
     '/usr/local/bin',
