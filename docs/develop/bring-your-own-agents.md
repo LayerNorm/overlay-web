@@ -109,6 +109,15 @@ Memory defaults on only when an agent participates in the room; the composer swi
 recall and extraction for that turn. An invoked agent receives bounded workspace memory, hybrid
 retrieval, the participant roster, and recent role-tagged room history. ACP transports this context
 inside a delimited, size-bounded prompt envelope so existing protocol-v1 hosts remain compatible.
+
+ACP session surfaces pass through to the composer when an agent advertises them. The host forwards
+`available_commands_update` as a `commands_update` bridge event; the shared projection stores it as
+a `data-remote-agent-commands` part on the run's assistant message, and the DM composer renders
+those commands as a slash menu (selecting one fills `/name ` into the input — ACP unstructured
+semantics keep the command and its trailing input in the prompt text). Agents that never advertise
+commands simply show no menu; Overlay renders only what the protocol advertises and never writes
+agent configuration outside ACP. Session modes and config options follow the same pass-through
+pattern in later slices.
 Only an agent-triggering human message is eligible for human-owned extraction; ordinary human-only
 room chatter is never silently ingested. A completed agent reply may produce conservative,
 agent-owned memories for explicit decisions, verified outcomes, stable project facts, and reusable

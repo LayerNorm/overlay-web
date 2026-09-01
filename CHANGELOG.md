@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Added
+
+- Connected agents that advertise slash commands over ACP now power a composer slash menu in their DMs: the Agent Host forwards `available_commands_update`, the transcript stores it as a stable part, and typing `/` lists the agent's commands with descriptions. Agents that do not advertise commands are unaffected; activating this in production requires the next Agent Host package release.
+
 ### Changed
 
 - Made a pristine Agent Host state store adopt the server's command stream position on first delivery (a previous host incarnation may have consumed earlier sequences), while keeping out-of-order rejection fail-closed once a cursor exists; released the Agent Host and bridge protocol together at `0.3.4`.
@@ -14,6 +18,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Clarified that the Integration agent reuses one long-lived `staging` worktree across pull requests, reserving temporary worktrees for exceptional investigations.
 - Added an Integration preflight to confirm the PR base (`staging` or `main`) and Vercel deployment intent before acting.
 - Added an owner-only direct-push fast path for `DevelopedByDev` on `main` and `staging`, while keeping force-pushes and branch deletion blocked for every account.
+
+### Fixed
+
+- Allowed `data-remote-agent-commands` parts in the conversation message schema and BFF serialization: the Convex validator rejected connected-agent command events with 500s, and the BFF conversation serializer dropped the commands payload, leaving the agent DM slash menu empty after a page load.
+- Fixed the agent DM slash menu ignoring typed input: the composer kept its live text outside React state by design, so the slash-menu hook only ever saw programmatically set text — typing `/` did not open the menu, filtering and selection did not update, and choosing a command left the menu stuck open. Typing now refreshes composer state only while a slash token is on screen, preserving the no-re-render-per-keystroke behavior for normal text.
 
 ## 2026-08-30
 

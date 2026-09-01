@@ -37,6 +37,11 @@ test('official ACP SDK adapter streams supervised updates and bridges approval a
     assert.ok(events.some((event) => event.type === 'diff'))
     assert.ok(events.some((event) => event.type === 'terminal'))
     assert.ok(events.some((event) => event.type === 'completed'))
+    const commands = events.find((event) => event.type === 'commands_update')
+    assert.deepEqual(commands?.payload.commands, [
+      { name: 'fixture-compact', description: 'Compact the fixture session', inputHint: 'instructions' },
+      { name: 'fixture-review', description: 'Review the fixture workspace' },
+    ])
   } finally {
     await session?.stop()
     await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })

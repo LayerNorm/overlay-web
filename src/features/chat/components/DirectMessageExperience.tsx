@@ -71,8 +71,10 @@ import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
+  remoteAgentCommands,
   roomMessageRowKey,
   toRoomMessageView,
+  type RemoteAgentCommand,
   type RoomMessageRecord,
 } from './collaboration/room-message-view'
 import {
@@ -744,6 +746,13 @@ export function DirectMessageExperience({
     }
   }, [commitDraftConversation, draft, messages])
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
+  const agentCommands = useMemo<RemoteAgentCommand[]>(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const commands = remoteAgentCommands(messages[index]?.parts)
+      if (commands.length > 0) return commands
+    }
+    return []
+  }, [messages])
   const threadRoot = messages.find((message) => message.id === threadRootId)
   const threadReplies = messages.filter((message) => (
     Boolean(threadRootId) && message.threadRootMessageId === threadRootId
@@ -1665,6 +1674,7 @@ export function DirectMessageExperience({
                 hideGenerationModes: true,
                 placeholder: `Message ${title}, use @ to notify someone…`,
                 mentionCategories,
+                agentCommands,
               }}
               emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
               attachments={{

@@ -11,16 +11,18 @@ import {
   Image as ImageIcon,
   MousePointerClick,
   Plus,
-  Reply,
   Send,
   SquareTerminal,
   Video,
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { MentionInput } from './chat-interface/MentionInput'
+import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
+import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
+import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
@@ -148,11 +150,27 @@ export function ChatComposer(props: ChatComposerProps) {
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
+  const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)
+
+  const handleComposerKeyDown = (event: ReactKeyboardEvent) => {
+    if (slash.handleKeyDown(event)) return
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void props.onSend()
+    }
+  }
 
   return (
     <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
-      <div className="p-2.5 sm:p-3">
+      <div className="relative p-2.5 sm:p-3">
+        {slash.open ? (
+          <AgentSlashMenu
+            commands={slash.commands}
+            highlightedIndex={slash.index}
+            onSelect={slash.select}
+          />
+        ) : null}
         <AttachmentPreviewTray {...props} />
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
         <input
@@ -192,12 +210,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           mentionCategories={props.mentionCategories}
           placeholder={composerPlaceholder(props)}
           className={undefined}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void props.onSend()
-            }
-          }}
+          onKeyDown={handleComposerKeyDown}
         />
         <ComposerControls
           {...props}
@@ -208,21 +221,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   )
 }
 
-function ReplyContextBar({ replyContext, setReplyContext }: Pick<ComposerViewProps, 'replyContext' | 'setReplyContext'>) {
-  if (!replyContext) return null
-  return (
-    <div className="flex items-start gap-2 rounded-t-2xl border-b border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-xs text-[var(--muted)]">
-      <Reply size={14} className="mt-0.5 shrink-0 text-[var(--muted)]" strokeWidth={1.75} />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-[var(--foreground)]">Replying to prior response</p>
-        <p className="mt-0.5 line-clamp-2 text-[var(--muted)]">{replyContext.snippet}</p>
-      </div>
-      <button type="button" onClick={() => setReplyContext(null)} className="shrink-0 rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]" aria-label="Cancel reply">
-        <X size={14} strokeWidth={1.75} />
-      </button>
-    </div>
-  )
-}
 
 type ComposerControlsProps = ComposerViewProps & {
   disabledSend: boolean
