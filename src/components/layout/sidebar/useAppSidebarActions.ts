@@ -4,6 +4,7 @@ import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  PROJECTS_CHANGED_EVENT,
   createKnowledgeMutationPublisher,
   type OverlaySidebarAction,
   type OverlaySidebarActionKey,
@@ -131,9 +132,20 @@ export function useAppSidebarActions({
     }
     const res = await overlayAppClient.projects.createResponse({ name: 'Untitled Project' })
     if (!res.ok) return false
+    const data = (await res.json().catch(() => ({}))) as {
+      id?: string
+      project?: { _id?: string }
+    }
+    const createdId = data.project?._id ?? data.id
+    // The projects page listens for this to reload, and the `rename` query
+    // param puts the new tile straight into inline rename with its text
+    // selected, so the keyboard can immediately retitle it.
+    window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
     onProjectCreated()
     onCloseMobileMenu()
-    router.push('/app/projects')
+    router.push(createdId
+      ? `/app/projects?rename=${encodeURIComponent(createdId)}`
+      : '/app/projects')
     return true
   }, [onCloseMobileMenu, onProjectCreated, requireAuth, router, user])
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Bot, MessageSquare, MoreHorizontal, Plus, Share2 } from 'lucide-react'
 import type { AgentBinding, WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { Button } from '@overlay/ui/primitives'
+import { Button, CreateTile, Tile, TileGrid, TileSkeleton } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
@@ -206,44 +206,49 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
         <AppScreenHeader
           title="Agents"
           actions={canCreate ? <Button variant="secondary" onClick={() => { setEditing(null); setError(null); setDialogOpen(true) }}><Plus size={14} /> New agent</Button> : null}
-          className="px-6"
         />
       }
     >
       <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
         {error && !dialogOpen ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-500">{error}</div> : null}
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((value) => <div key={value} className="h-52 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]" />)}</div>
+          <TileGrid columns={3}>{[0, 1, 2].map((value) => <TileSkeleton key={value} className="min-h-52" />)}</TileGrid>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <TileGrid columns={3}>
             {agents.map((agent) => {
               const isDefaultMaster = Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
               const runtimeLabel = getAgentRuntimeLabel(agent.modelId, activeBindingsByAgentId.get(agent.id))
               return (
-                <article key={agent.id} className="group relative flex min-h-52 flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-shadow hover:shadow-sm">
-                  <button type="button" onClick={() => { setEditing(agent); setError(null); setDialogOpen(true) }} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 hover:bg-[var(--surface-subtle)] group-hover:opacity-100" aria-label={`Edit ${agent.name}`}><MoreHorizontal size={15} /></button>
-                  <div className="flex items-center gap-2">
+                <Tile
+                  key={agent.id}
+                  as="article"
+                  className="min-h-52 p-5"
+                  leading={(
                     <div className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-sm" style={{ backgroundColor: agent.avatarColor ?? '#18181b' }}><Bot size={22} strokeWidth={1.5} /></div>
-                    {isDefaultMaster ? (
-                      <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--foreground)]">Master Agent</span>
-                    ) : null}
-                  </div>
-                  <h2 className="mt-4 font-medium">{agent.name}</h2>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{agent.description ?? agent.instructions}</p>
-                  <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-5">
-                    <div className="min-w-0 flex-1 text-[10px] text-[var(--muted-light)]"><span className="block truncate" title={runtimeLabel}>{runtimeLabel}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {!showcase ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
-                      <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
-                    </div>
-                  </div>
-                </article>
+                  )}
+                  topRight={isDefaultMaster ? (
+                    <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--foreground)]">Master Agent</span>
+                  ) : null}
+                  title={<span className="text-base">{agent.name}</span>}
+                  description={agent.description ?? agent.instructions}
+                  footer={(
+                    <>
+                      <div className="min-w-0 flex-1"><span className="block truncate" title={runtimeLabel}>{runtimeLabel}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!showcase ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
+                        <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
+                      </div>
+                    </>
+                  )}
+                >
+                  <button type="button" onClick={() => { setEditing(agent); setError(null); setDialogOpen(true) }} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] group-hover:opacity-100" aria-label={`Edit ${agent.name}`}><MoreHorizontal size={15} /></button>
+                </Tile>
               )
             })}
             {canCreate ? (
-              <button type="button" onClick={() => { setEditing(null); setError(null); setDialogOpen(true) }} className="flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><Plus size={22} /><span className="mt-2">New agent</span></button>
+              <CreateTile label="New agent" className="min-h-52" onClick={() => { setEditing(null); setError(null); setDialogOpen(true) }} />
             ) : null}
-          </div>
+          </TileGrid>
         )}
       </AppScreenBody>
       </AppScreenShell>

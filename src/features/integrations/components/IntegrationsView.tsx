@@ -85,7 +85,6 @@ export default function IntegrationsView({
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [connectedVisible, setConnectedVisible] = useState(LIST_PAGE_SIZE)
   const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
-  const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const rememberLogos = useCallback((items: readonly ConnectorCatalogItem[]) => {
@@ -314,11 +313,9 @@ export default function IntegrationsView({
       header={
         <ExtensionPageHeader
           title="Connectors"
-          searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchPlaceholder="Search integrations…"
           searchTitle="Search integrations"
-          onSearchOpenChange={setSearchOpen}
           onSearchQueryChange={setSearchQuery}
         />
       }

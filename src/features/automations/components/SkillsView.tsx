@@ -34,7 +34,6 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
-  const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const dispatchSkillsChanged = useCallback(() => {
@@ -106,7 +105,6 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
       header={
         <ExtensionPageHeader
           title="Skills"
-          searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchPlaceholder="Search skills…"
           searchTitle="Search skills"
@@ -119,7 +117,6 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
               New Skill
             </button>
           )}
-          onSearchOpenChange={setSearchOpen}
           onSearchQueryChange={setSearchQuery}
         />
       }

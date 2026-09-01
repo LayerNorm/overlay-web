@@ -4,7 +4,7 @@
 // boundary while reusable project and file presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { Folder, Loader2, Plus } from 'lucide-react'
+import { Archive, ArchiveRestore, Folder, Loader2, MoreVertical, Pencil, Plus } from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -45,6 +45,7 @@ import {
   ProjectHubTabs,
 } from '@overlay/modules-react/projects'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { Button, Tile, TileGrid, TileIcon, TileSkeleton } from '@overlay/ui/primitives'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@overlay/modules-react/knowledge'
@@ -570,10 +571,88 @@ function ProjectRenameInput({
   )
 }
 
+const tileMenuButtonClass =
+  'flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]'
+
+function ProjectTileMenu({
+  projectName,
+  archived,
+  onRename,
+  onSetArchived,
+}: {
+  projectName: string
+  archived: boolean
+  onRename: () => void
+  onSetArchived: (archived: boolean) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onMouseDown(event: globalThis.MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    window.addEventListener('mousedown', onMouseDown)
+    return () => window.removeEventListener('mousedown', onMouseDown)
+  }, [open])
+
+  return (
+    <div ref={menuRef} className="absolute right-3 top-3 z-10">
+      <button
+        type="button"
+        aria-label={`Project options for ${projectName}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((value) => !value)
+        }}
+        className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+      >
+        <MoreVertical size={14} strokeWidth={1.75} />
+      </button>
+      {open ? (
+        <div role="menu" className="absolute right-0 top-8 w-36 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(event) => {
+              event.stopPropagation()
+              setOpen(false)
+              onRename()
+            }}
+            className={tileMenuButtonClass}
+          >
+            <Pencil size={13} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+            Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(event) => {
+              event.stopPropagation()
+              setOpen(false)
+              onSetArchived(!archived)
+            }}
+            className={tileMenuButtonClass}
+          >
+            {archived
+              ? <ArchiveRestore size={13} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+              : <Archive size={13} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />}
+            {archived ? 'Unarchive' : 'Archive'}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ProjectsLanding({
   projects,
   loading,
   creating,
+  archived,
   onCreateProject,
   renamingProjectId,
   renamingProjectPending,
@@ -581,10 +660,13 @@ function ProjectsLanding({
   onCommitRename,
   onCancelRename,
   onRenameChange,
+  onStartRename,
+  onSetProjectArchived,
 }: {
   projects: readonly ProjectSummary[]
   loading: boolean
   creating: boolean
+  archived: boolean
   onCreateProject: () => void
   renamingProjectId: string | null
   renamingProjectPending: boolean
@@ -592,6 +674,8 @@ function ProjectsLanding({
   onCommitRename: (projectId: string, name: string) => void
   onCancelRename: () => void
   onRenameChange: () => void
+  onStartRename: (projectId: string) => void
+  onSetProjectArchived: (projectId: string, archived: boolean) => void
 }) {
   const router = useRouter()
   const rootProjectRows = useMemo(() => {
@@ -604,46 +688,42 @@ function ProjectsLanding({
       header={
         <AppScreenHeader
           title="Projects"
-          className="px-3 py-2.5 md:px-4 md:py-0"
           actions={
-            <button
-              type="button"
-              onClick={onCreateProject}
-              disabled={creating}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
-            >
+            <Button variant="secondary" size="sm" onClick={onCreateProject} disabled={creating}>
               {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               New project
-            </button>
+            </Button>
           }
         />
       }
     >
       <AppScreenBody padding="none" maxWidth="none" className="px-5 py-5">
         {loading && projects.length === 0 ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <TileGrid columns={3}>
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-                <div className="ui-skeleton-line mb-4 h-8 w-8 rounded-md" />
-                <div className="ui-skeleton-line mb-2 h-3.5 w-36 rounded" />
-                <div className="ui-skeleton-line h-3 w-2/3 rounded opacity-75" />
-              </div>
+              <TileSkeleton key={index} />
             ))}
-          </div>
+          </TileGrid>
         ) : rootProjectRows.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <TileGrid columns={3}>
             {rootProjectRows.map((project) => {
               const subprojectCount = getChildProjects(projects, project._id).length
               const updatedLabel = formatProjectUpdatedAt(project.updatedAt)
               const isRenaming = renamingProjectId === project._id
-              const content = (
-                <>
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]">
-                      <Folder size={16} strokeWidth={1.75} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      {isRenaming ? (
+              return (
+                <div key={project._id} className="relative">
+                  <Tile
+                    as={isRenaming ? 'div' : 'button'}
+                    onClick={isRenaming ? undefined : () => router.push(projectHubHref(project))}
+                    selected={isRenaming}
+                    leading={(
+                      <TileIcon>
+                        <Folder size={16} strokeWidth={1.75} />
+                      </TileIcon>
+                    )}
+                    topRight={<span className="h-7 w-7 shrink-0" aria-hidden="true" />}
+                    title={
+                      isRenaming ? (
                         <ProjectRenameInput
                           projectName={project.name}
                           saving={renamingProjectPending}
@@ -653,46 +733,33 @@ function ProjectsLanding({
                           onChange={onRenameChange}
                         />
                       ) : (
-                        <p className="truncate text-sm font-medium text-[var(--foreground)]">{project.name}</p>
-                      )}
-                      {project.description || project.instructions ? (
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
-                          {project.description || project.instructions}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-[var(--muted)]">Project workspace</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-5 flex items-center justify-between gap-3 text-[11px] text-[var(--muted-light)]">
-                    <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
-                    {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
-                  </div>
-                </>
-              )
-
-              return isRenaming ? (
-                <div
-                  key={project._id}
-                  className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--muted-light)] bg-[var(--surface-subtle)] p-4 text-left"
-                >
-                  {content}
+                        project.name
+                      )
+                    }
+                    description={project.description || project.instructions || 'Project workspace'}
+                    footer={(
+                      <>
+                        <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
+                        {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
+                      </>
+                    )}
+                  />
+                  <ProjectTileMenu
+                    projectName={project.name}
+                    archived={archived}
+                    onRename={() => {
+                      onRenameChange()
+                      onStartRename(project._id)
+                    }}
+                    onSetArchived={(nextArchived) => onSetProjectArchived(project._id, nextArchived)}
+                  />
                 </div>
-              ) : (
-                <button
-                  key={project._id}
-                  type="button"
-                  onClick={() => router.push(projectHubHref(project))}
-                  className="group flex min-h-32 cursor-pointer flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
-                >
-                  {content}
-                </button>
               )
             })}
-          </div>
+          </TileGrid>
         ) : (
           <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6">
-            <p className="text-sm text-[var(--muted)]">No projects yet.</p>
+            <p className="text-sm text-[var(--muted)]">{archived ? 'No archived projects.' : 'No projects yet.'}</p>
           </div>
         )}
       </AppScreenBody>
@@ -706,11 +773,16 @@ export default function ProjectsView({
   userId,
   firstName,
   initialProjects = [],
+  initialArchived = false,
 }: {
   userId: string
   firstName?: string
   initialProjects?: ProjectSummary[]
+  /** Whether `initialProjects` is the archived list (server-rendered deep link). */
+  initialArchived?: boolean
 }) {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [projects, setProjects] = useState<ProjectSummary[]>(initialProjects)
   const [projectsLoading, setProjectsLoading] = useState(initialProjects.length === 0)
@@ -719,21 +791,33 @@ export default function ProjectsView({
   const [renamingProjectPending, setRenamingProjectPending] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
   const renameRequestRef = useRef(false)
+  const skipInitialFetchRef = useRef(initialProjects.length > 0)
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
   const projectId = searchParams?.get('projectId') ?? null
+  const archivedView = searchParams?.get('archived') === '1'
+  const renameProjectParam = searchParams?.get('rename') ?? null
   const initialProject = projectId ? projects.find((project) => project._id === projectId) : undefined
   const projectName = searchParams?.get('projectName') ?? initialProject?.name ?? undefined
 
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true)
     try {
-      const data = await overlayAppClient.projects.get<ProjectSummary[]>({ limit: 100 })
+      // Omit the flag when listing active projects: the BFF defaults to them
+      // and existing Convex deployments tolerate the missing argument best.
+      const data = await overlayAppClient.projects.get<ProjectSummary[]>({ limit: 100, archived: archivedView || undefined })
       setProjects(Array.isArray(data) ? data : [])
     } finally {
       setProjectsLoading(false)
     }
-  }, [])
+  }, [archivedView])
+
+  const setParams = useCallback((apply: (params: URLSearchParams) => void) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    apply(params)
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }, [pathname, router, searchParams])
 
   useEffect(() => {
     if (initialProjects.length > 0) {
@@ -743,18 +827,33 @@ export default function ProjectsView({
   }, [initialProjects])
 
   useEffect(() => {
-    // Skip the initial mount fetch when server-rendered data is already present.
-    // The loadProjects() call would duplicate the BFF request that the server
-    // already made.  We still listen for mutation events.
-    if (initialProjects.length === 0) {
-      void loadProjects()
-    }
+    // Skip the initial mount fetch when server-rendered data matching the
+    // current filter is already present. The loadProjects() call would
+    // duplicate the BFF request that the server already made. Switching the
+    // All/Archived filter always refetches because the SSR list was for the
+    // other filter.
+    const skipInitialFetch = skipInitialFetchRef.current && archivedView === initialArchived
+    skipInitialFetchRef.current = false
     function onProjectsChanged() {
       void loadProjects()
     }
     window.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
+    if (!skipInitialFetch) {
+      void loadProjects()
+    }
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
-  }, [initialProjects.length, loadProjects])
+  }, [archivedView, initialArchived, loadProjects])
+
+  // A fresh project created from the sidebar lands here with ?rename=<id>;
+  // once it shows up in the loaded list, put its tile straight into rename
+  // with the text selected and clean the param back out of the URL.
+  useEffect(() => {
+    if (!renameProjectParam) return
+    if (!projects.some((project) => project._id === renameProjectParam)) return
+    setRenameError(null)
+    setRenamingProjectId(renameProjectParam)
+    setParams((params) => params.delete('rename'))
+  }, [projects, renameProjectParam, setParams])
 
   useWorkspaceChanged(loadProjects)
 
@@ -779,11 +878,31 @@ export default function ProjectsView({
       if (createdId) {
         setRenameError(null)
         setRenamingProjectId(createdId)
+        // The archived grid hides the fresh project; land back on All so the
+        // rename input is actually visible.
+        if (archivedView) {
+          setParams((params) => params.delete('archived'))
+        }
       }
     } finally {
       setCreatingProject(false)
     }
-  }, [creatingProject, loadProjects])
+  }, [archivedView, creatingProject, loadProjects, setParams])
+
+  const setProjectArchived = useCallback(async (targetProjectId: string, archived: boolean) => {
+    try {
+      const response = await overlayAppClient.projects.updateResponse({ projectId: targetProjectId, archived })
+      if (!response.ok) return
+      setProjects((prev) => prev.map((project) => (
+        project._id === targetProjectId
+          ? { ...project, archivedAt: archived ? Date.now() : null }
+          : project
+      )))
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+    } catch {
+      // Leave the tile as-is; the next projects reload reflects the real state.
+    }
+  }, [])
 
   if (view === 'chat' && id) {
     return (
@@ -815,10 +934,12 @@ export default function ProjectsView({
       projects={projects}
       loading={projectsLoading}
       creating={creatingProject}
+      archived={archivedView}
       onCreateProject={() => void createProject()}
       renamingProjectId={renamingProjectId}
       renamingProjectPending={renamingProjectPending}
       renameError={renameError}
+      onStartRename={(startProjectId) => setRenamingProjectId(startProjectId)}
       onCommitRename={async (projectId, name) => {
         const trimmed = name.trim()
         if (!trimmed) {
@@ -863,6 +984,7 @@ export default function ProjectsView({
         setRenamingProjectId(null)
       }}
       onRenameChange={() => setRenameError(null)}
+      onSetProjectArchived={(archiveProjectId, nextArchived) => void setProjectArchived(archiveProjectId, nextArchived)}
     />
   )
 }

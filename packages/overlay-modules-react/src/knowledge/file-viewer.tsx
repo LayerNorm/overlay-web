@@ -504,7 +504,7 @@ export function FileViewerPanel({
     <AppScreenShell
       className="overlay-file-viewer-panel flex min-h-0 flex-1 flex-col"
       header={
-        <AppScreenHeader className="px-6">
+        <AppScreenHeader>
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               {headerLeft}
@@ -595,7 +595,7 @@ export function OutputViewer({
     <AppScreenShell
       className="overlay-output-viewer flex min-h-0 flex-1 flex-col"
       header={(
-        <AppScreenHeader className="px-4">
+        <AppScreenHeader>
           <div className="flex min-w-0 items-center gap-2">
             {headerLeft}
             <FileTypeIcon file={{ name, mimeType, extension: name.split('.').pop() }} size={16} />

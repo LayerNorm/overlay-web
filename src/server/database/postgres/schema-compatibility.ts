@@ -3,7 +3,7 @@ import 'server-only'
 import type { Pool } from 'pg'
 import { createOverlayPostgresPool } from './client'
 
-export const APP_DATA_SCHEMA_VERSION = 71
+export const APP_DATA_SCHEMA_VERSION = 72
 // Schema 60 drops conversation_message_deltas and is the rollback boundary.
 // Schemas 61-71 only add nullable columns, enum values, indexes, new tables, or relax
 // ownership constraints, so the

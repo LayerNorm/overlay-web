@@ -45,7 +45,6 @@ export function PublicShowcaseToolsView() {
   const searchParams = useSearchParams()
   const view = searchParams?.get('view') ?? 'connectors'
   const { requireAuth } = useGuestGate()
-  const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const connected = useMemo(
     () => filterConnectorCatalog(SHOWCASE_CONNECTORS.filter((item) => item.isConnected), query),
@@ -67,11 +66,9 @@ export function PublicShowcaseToolsView() {
       header={(
         <ExtensionPageHeader
           title={title}
-          searchOpen={searchOpen}
           searchQuery={query}
           searchPlaceholder={`Search ${title.toLowerCase()}…`}
           searchTitle={`Search ${title.toLowerCase()}`}
-          onSearchOpenChange={setSearchOpen}
           onSearchQueryChange={setQuery}
         />
       )}

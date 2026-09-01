@@ -17,6 +17,7 @@ Trash2,
 X
 } from 'lucide-react'
 import { useEffect,useRef,useState,type MouseEvent } from 'react'
+import { Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
 
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
@@ -193,11 +194,11 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
   return (
     <AppScreenBody padding="none" maxWidth="none" className="h-full">
       <div className="mx-auto max-w-3xl px-6 py-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <TileGrid columns={3}>
           {filteredSkills.map((skill) => (
             <SkillCard key={skill._id} skill={skill} onEdit={onEdit} onToggle={onToggle} />
           ))}
-        </div>
+        </TileGrid>
       </div>
     </AppScreenBody>
   )
@@ -213,31 +214,21 @@ function SkillCard({
   onToggle: (skill: SkillSummary, event: MouseEvent) => void
 }) {
   return (
-    <div
+    <Tile
       onClick={() => onEdit(skill)}
-      className="group relative cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 transition-all hover:bg-[var(--surface-muted)] hover:shadow-sm"
+      leading={<TileIcon><Sparkles size={15} strokeWidth={1.75} /></TileIcon>}
+      title={skill.name || 'Untitled'}
+      description={skill.description}
+      topRight={(
+        <span
+          className={`h-2 w-2 rounded-full transition-colors ${skill.enabled !== false ? 'bg-[var(--foreground)]' : 'bg-[var(--muted-light)]'}`}
+          title={skill.enabled !== false ? 'Active' : 'Disabled'}
+        />
+      )}
+      footer={skill.instructions ? (
+        <span className="line-clamp-2 font-mono text-[10px] text-[var(--muted-light)]">{skill.instructions}</span>
+      ) : undefined}
     >
-      <span
-        className={`absolute right-4 top-4 h-2 w-2 rounded-full transition-colors ${skill.enabled !== false ? 'bg-[var(--foreground)]' : 'bg-[var(--muted-light)]'}`}
-        title={skill.enabled !== false ? 'Active' : 'Disabled'}
-      />
-
-      <div className="mb-3 flex items-start gap-2 pr-6">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-subtle)]">
-          <Sparkles size={13} className="text-[var(--muted)]" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[var(--foreground)]">{skill.name || 'Untitled'}</p>
-          {skill.description ? (
-            <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--muted)]">{skill.description}</p>
-          ) : null}
-        </div>
-      </div>
-
-      {skill.instructions ? (
-        <p className="line-clamp-2 font-mono text-[10px] text-[var(--muted-light)]">{skill.instructions}</p>
-      ) : null}
-
       <div className="absolute bottom-3 right-3 hidden items-center gap-1 group-hover:flex">
         <button
           type="button"
@@ -259,6 +250,6 @@ function SkillCard({
           <Pencil size={13} />
         </button>
       </div>
-    </div>
+    </Tile>
   )
 }

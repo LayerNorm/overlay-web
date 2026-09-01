@@ -10,7 +10,6 @@ import {
   LayoutList,
   Plus,
   RefreshCw,
-  Search,
   SquareMousePointer,
   Trash2,
 } from 'lucide-react'
@@ -20,6 +19,7 @@ import type {
   KnowledgeTab as Tab,
 } from '@overlay/app-core'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
+import { HeaderSearch } from '@overlay/ui/primitives'
 import { FilesCreateUploadControls, OutputFilterMenu } from './toolbar-menus'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
@@ -399,7 +399,7 @@ export function KnowledgeViewHeader({
   onCommitOutputFilter: (filter: OutputFilter) => void
 }) {
   return (
-    <AppScreenHeader className="px-3 py-2.5 sm:px-6">
+    <AppScreenHeader>
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       {selectedFile ? (
         <SelectedFileHeader
@@ -429,26 +429,25 @@ export function KnowledgeViewHeader({
               mode={mode}
             />
           )}
-          {activeTab === 'files' && fileSearchOpen ? (
-            <input
+          {activeTab === 'files' ? (
+            <HeaderSearch
               value={fileSearchQuery}
-              onChange={(e) => onSetFileSearchQuery(e.target.value)}
+              onChange={onSetFileSearchQuery}
+              open={fileSearchOpen}
+              onOpenChange={onSetFileSearchOpen}
+              label="Search files"
               placeholder="Search files…"
-              aria-label="Search files"
-              autoFocus
-              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] max-sm:order-3 max-sm:w-full max-sm:flex-none"
             />
-          ) : activeTab === 'memories' && memorySearchOpen ? (
-            <input
+          ) : activeTab === 'memories' ? (
+            <HeaderSearch
               value={memorySearchQuery}
-              onChange={(e) => onSetMemorySearchQuery(e.target.value)}
+              onChange={onSetMemorySearchQuery}
+              open={memorySearchOpen}
+              onOpenChange={onSetMemorySearchOpen}
+              label="Search memories"
               placeholder="Search memories…"
-              autoFocus
-              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] max-sm:order-3 max-sm:w-full max-sm:flex-none"
             />
-          ) : (
-            <div className="flex-1" />
-          )}
+          ) : null}
           <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] max-sm:order-2 max-sm:w-full sm:ml-auto sm:w-auto sm:overflow-visible [&::-webkit-scrollbar]:hidden">
             <BulkSelectControls
               activeTab={activeTab}
@@ -487,16 +486,6 @@ export function KnowledgeViewHeader({
             ) : null}
             {activeTab === 'memories' ? (
               <>
-                <button
-                  type="button"
-                  title="Search memories"
-                  onClick={() => onSetMemorySearchOpen((v) => !v)}
-                  className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                    memorySearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-                  }`}
-                >
-                  <Search size={14} strokeWidth={1.75} />
-                </button>
                 <button type="button" onClick={onImportMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
                   <FolderInput size={13} />
                   Import
@@ -508,16 +497,6 @@ export function KnowledgeViewHeader({
               </>
             ) : activeTab === 'files' ? (
               <>
-              <button
-                type="button"
-                title="Search files"
-                onClick={() => onSetFileSearchOpen((value) => !value)}
-                className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                  fileSearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-                }`}
-              >
-                <Search size={14} strokeWidth={1.75} />
-              </button>
               <FilesCreateUploadControls
                 activeFolder={activeFolder}
                 createMenuOpen={createMenuOpen}

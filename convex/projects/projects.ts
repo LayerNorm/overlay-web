@@ -23,10 +23,11 @@ export const list = query({
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
+    archived: v.optional(v.boolean()),
     limit: v.optional(v.number()),
     beforeUpdatedAt: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, limit, beforeUpdatedAt }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, archived, limit, beforeUpdatedAt }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -48,6 +49,7 @@ export const list = query({
     return projects
       .filter((project) => (updatedSince !== undefined ? project.updatedAt > updatedSince : true))
       .filter((project) => (includeDeleted ? true : !project.deletedAt))
+      .filter((project) => (archived !== undefined ? Boolean(project.archivedAt) === archived : true))
       .filter((project) => (workspaceId !== undefined ? project.workspaceId === workspaceId : true))
       .slice(0, pageLimit)
   },
@@ -94,6 +96,7 @@ export const create = mutation({
           })
           await ctx.db.patch(existing._id, {
             deletedAt: undefined,
+            archivedAt: undefined,
             instructions: instructions?.trim() || undefined,
             name,
             parentId,
@@ -128,8 +131,9 @@ export const update = mutation({
     name: v.optional(v.string()),
     instructions: v.optional(v.union(v.string(), v.null())),
     parentId: v.optional(v.union(v.string(), v.null())),
+    archived: v.optional(v.boolean()),
   },
-  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, name, instructions, parentId }) => {
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, name, instructions, parentId, archived }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
     if (!project || project.userId !== userId || (workspaceId !== undefined && project.workspaceId !== workspaceId)) {
@@ -142,6 +146,8 @@ export const update = mutation({
     if (name !== undefined) patch.name = name
     if (instructions !== undefined) patch.instructions = instructions?.trim() || undefined
     if (parentId !== undefined) patch.parentId = parentId || undefined
+    if (archived === true) patch.archivedAt = Date.now()
+    if (archived === false) patch.archivedAt = undefined
     await ctx.db.patch(projectId, patch)
   },
 })
