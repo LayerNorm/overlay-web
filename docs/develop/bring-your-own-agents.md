@@ -222,7 +222,7 @@ Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-brid
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
 package names begin with lockstep `0.3.0`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 overlay-agent-host ...`
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
@@ -233,8 +233,9 @@ deprecates them with migration guidance only after the `0.3.0` packages publish 
 Enrollment atomically saves a mode-0600 restart configuration beside the private credential state.
 The same executable runs as a foreground CLI, a per-user macOS LaunchAgent, a restartable systemd
 service, or the default process in the Agent Host container. The macOS service command uses the
-pinned Node 24 and host package versions, survives Terminal closure, and restarts after login or
-process failure. The documented VPS and Docker shapes expose no
+pinned Node 24 and host package versions, survives Terminal closure, restarts after login or
+process failure, and persists a sanitized executable search path so adapters installed under
+user-level locations such as `~/.local/bin` remain available to `launchd`. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
 unit runs under a dedicated OS account; operators must align `ReadWritePaths` with the exact roots
 approved in Overlay.

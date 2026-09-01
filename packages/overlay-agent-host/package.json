@@ -1,6 +1,6 @@
 {
   "name": "@layernorm/overlay-agent-host",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Outbound-only host for connecting user-owned and managed agents to Overlay.",
   "license": "AGPL-3.0-only",
   "repository": {

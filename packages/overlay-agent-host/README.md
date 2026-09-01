@@ -8,7 +8,7 @@ Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned No
 when the machine's default `node` is older:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
@@ -68,7 +68,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
@@ -92,12 +92,14 @@ Terminal closes and returns after login or process failure. Use the exact config
 `connect`:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 \
   overlay-agent-host service install --config "$HOME/.overlay/agent-host/config.json"
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 \
   overlay-agent-host service status --config "$HOME/.overlay/agent-host/config.json"
 ```
 
+The installer records the current executable search path plus common user-level agent locations,
+so adapters installed in locations such as `~/.local/bin` remain available after Terminal closes.
 `service uninstall` stops and removes only that environment's LaunchAgent. It preserves the
 credential, config, and SQLite state so the connection can be restarted later.
 

@@ -160,7 +160,7 @@ Overlay generates one harness-specific command. For a local Codex environment, t
 this shape:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.1 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind local \
@@ -203,8 +203,9 @@ The host stores accepted command results, remote session identifiers, adapter st
 unacknowledged events in SQLite. A restart therefore does not duplicate accepted work or discard
 unacknowledged visible output. The same executable can run in the foreground, as a per-user macOS
 LaunchAgent installed through `service install`, under `systemd`, or as the default process in the
-Agent Host container. The macOS service pins both Node and package versions and preserves state
-when Terminal closes.
+Agent Host container. The macOS service pins both Node and package versions, preserves state when
+Terminal closes, and records the installation shell's executable search path plus common user-bin
+locations so locally installed adapter CLIs remain discoverable under `launchd`.
 
 ## Built-in adapters start exact ACP processes
 

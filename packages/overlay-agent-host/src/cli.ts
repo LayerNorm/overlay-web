@@ -19,7 +19,7 @@ import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.0'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.1'
 
 assertSupportedNodeVersion()
 

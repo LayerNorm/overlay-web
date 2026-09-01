@@ -11,6 +11,7 @@ export type LaunchAgentDefinition = {
   configPath: string
   stateDirectory: string
   packageSpec: string
+  executablePath?: string
 }
 
 export function launchAgentLabel(environmentId: string) {
@@ -19,6 +20,7 @@ export function launchAgentLabel(environmentId: string) {
 
 export function launchAgentPlist(input: LaunchAgentDefinition) {
   const label = launchAgentLabel(input.environmentId)
+  const executablePath = input.executablePath ?? launchAgentExecutablePath()
   const command = [
     'exec npx --yes --package node@24 --package',
     shellQuote(input.packageSpec),
@@ -32,6 +34,8 @@ export function launchAgentPlist(input: LaunchAgentDefinition) {
   <key>Label</key><string>${xml(label)}</string>
   <key>ProgramArguments</key>
   <array><string>/bin/zsh</string><string>-lc</string><string>${xml(command)}</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>${xml(executablePath)}</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${xml(join(input.stateDirectory, 'launchd.stdout.log'))}</string>
@@ -39,6 +43,24 @@ export function launchAgentPlist(input: LaunchAgentDefinition) {
 </dict>
 </plist>
 `
+}
+
+export function launchAgentExecutablePath(source = process.env.PATH) {
+  const home = homedir()
+  const candidates = [
+    ...(source?.split(':') ?? []),
+    join(home, '.local', 'bin'),
+    join(home, '.cargo', 'bin'),
+    join(home, '.bun', 'bin'),
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ]
+  return [...new Set(candidates.filter((entry) => entry.startsWith('/')))].join(':')
 }
 
 export async function installLaunchAgent(input: LaunchAgentDefinition) {
