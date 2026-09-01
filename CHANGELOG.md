@@ -10,7 +10,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
-<<<<<<< HEAD
 - Unified the list-page UI system: added shared `Tile`, `TileGrid`, `TileIcon`, `TileSkeleton`, `CreateTile`, `ListRow`, and `HeaderSearch` primitives to `@overlay/ui` and migrated the Projects, Knowledge, Agents, and Extensions (Connectors, Skills, MCP Servers) list pages plus the Files/Knowledge header onto them, so tiles, list rows, and page headers share one spacing, radius, hover, and dark-mode language.
 - Projects can now be archived and restored from a three-dot menu on each project tile, and the projects sidebar gained All/Archived subpages that list active and archived projects respectively.
 - Newly created projects now open straight into inline rename with the title text pre-selected, whether created from the projects page or the sidebar, so the name can be typed immediately.
