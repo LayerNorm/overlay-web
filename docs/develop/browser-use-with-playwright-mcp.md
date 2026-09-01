@@ -381,6 +381,14 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
   Call `browser_tabs` with `action: "select"` and the tab's index to bring it to
   the foreground; hydration completes within a few seconds. Verify with
   `browser_evaluate` returning `document.visibilityState === 'visible'`.
+- **NEVER call `browser_resize` in extension mode.** It resizes the user's real
+  Chrome window, and the renderer's layout viewport repeatedly desyncs from the
+  window: pages render truncated with black filler, the composer gets cut off,
+  and `window.innerWidth/innerHeight` disagree with the visible window. Every
+  observed instance traced back to a resize. If a tab is already desynced, a
+  plain reload re-syncs it. Verify responsive behavior by asking the user to
+  resize their own window, or use the CDP testing Chrome where viewport control
+  is reliable.
 - **Snapshot refs are ephemeral.** Every `browser_navigate` or `browser_click` invalidates
   previous refs. Call `browser_snapshot` again before clicking.
 - **Console errors persist across navigations.** Use `browser_console_messages` with
