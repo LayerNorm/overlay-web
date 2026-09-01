@@ -10,11 +10,13 @@ export function PersonalMentionConversionPrompt({
   draft,
   mentions,
   sourceConversationId,
+  workspaceId,
   onCancel,
 }: {
   draft: string
   mentions: MentionItem[]
   sourceConversationId?: string | null
+  workspaceId: string
   onCancel(): void
 }) {
   const [busy, setBusy] = useState<'dm' | 'channel' | null>(null)
@@ -30,12 +32,12 @@ export function PersonalMentionConversionPrompt({
     try {
       let conversationId: string | undefined
       if (kind === 'dm') {
-        conversationId = (await overlayAppClient.conversations.createDirectMessage({
-            principalIds: participantIds,
-            sourceConversationId: sourceConversationId ?? undefined,
-          })).directMessage.conversationId
+        conversationId = (await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
+          principalIds: participantIds,
+          sourceConversationId: sourceConversationId ?? undefined,
+        })).directMessage.conversationId
       } else {
-        conversationId = (await overlayAppClient.conversations.createChannel({
+        conversationId = (await overlayAppClient.conversations.createWorkspaceChannel(workspaceId, {
           name: `${names.join(' & ') || 'New'} discussion`.slice(0, 100),
           visibility: 'private',
           principalIds: participantIds,

@@ -95,7 +95,7 @@ async function AppShellContent({
                     <GuestGateProvider suppressPrompts={suppressGuestPrompts}>
                       <OnboardingProvider>
                         <AppShellSidebar publicShowcase={publicShowcase} />
-                        <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
+                        <main className="app-main flex-1 overflow-hidden pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                           <Suspense fallback={<AppMainFallback />}>
                             <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
                               <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>

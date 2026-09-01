@@ -62,7 +62,7 @@ export function NewChannelDialog({
     setBusy(true)
     setError(null)
     try {
-      const response = await overlayAppClient.conversations.createChannel({
+      const response = await overlayAppClient.conversations.createWorkspaceChannel(workspaceId, {
         name: name.trim(),
         topic: topic.trim() || undefined,
         visibility,

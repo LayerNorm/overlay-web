@@ -26,6 +26,16 @@ await acp.agent({ name: 'overlay-agent-host-test-fixture' })
     if (!sessions.has(params.sessionId)) throw new Error('unknown session')
     await client.notify(acp.methods.client.session.update, {
       sessionId: params.sessionId,
+      update: {
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [
+          { name: 'fixture-compact', description: 'Compact the fixture session', input: { type: 'unstructured', hint: 'instructions' } },
+          { name: 'fixture-review', description: 'Review the fixture workspace' },
+        ],
+      },
+    })
+    await client.notify(acp.methods.client.session.update, {
+      sessionId: params.sessionId,
       update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ACP fixture output' } },
     })
     const permission = await client.request(acp.methods.client.session.requestPermission, {

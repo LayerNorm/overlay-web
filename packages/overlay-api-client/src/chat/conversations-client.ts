@@ -373,11 +373,31 @@ export class ConversationsClient {
     )
   }
 
+  createWorkspaceChannel(
+    workspaceId: string,
+    body: ChannelCreateInput,
+    init?: MutationRequestInit,
+  ) {
+    const headers = new Headers(init?.headers)
+    headers.set('x-overlay-workspace-id', workspaceId)
+    return this.createChannel(body, { ...init, headers })
+  }
+
   createDirectMessage(body: DirectMessageCreateInput, init?: MutationRequestInit) {
     return this.http.json<{ directMessage: DirectMessageSummary; error?: string }>(
       '/api/v1/conversations/direct-messages',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
+  }
+
+  createWorkspaceDirectMessage(
+    workspaceId: string,
+    body: DirectMessageCreateInput,
+    init?: MutationRequestInit,
+  ) {
+    const headers = new Headers(init?.headers)
+    headers.set('x-overlay-workspace-id', workspaceId)
+    return this.createDirectMessage(body, { ...init, headers })
   }
 
   updatePresence(

@@ -889,9 +889,38 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       )).for('update')
       if (!row || row.status === 'cancelled') return false
       if (args.accepted === false) {
+        const now = new Date(args.now)
         await tx.update(agentRunCommands).set({
-          status: 'cancelled', claimExpiresAt: null, updatedAt: new Date(args.now),
+          status: 'cancelled', claimExpiresAt: null, updatedAt: now,
         }).where(eq(agentRunCommands.id, row.id))
+        const [active] = await tx.select({
+          run: agentRuns, session: agentRemoteSessions, environment: agentEnvironments,
+          message: conversationMessages,
+        }).from(agentRuns)
+          .innerJoin(agentRemoteSessions, eq(agentRemoteSessions.runId, agentRuns.id))
+          .innerJoin(agentEnvironments, eq(agentEnvironments.id, agentRemoteSessions.environmentId))
+          .innerJoin(conversationMessages, eq(conversationMessages.id, agentRuns.assistantMessageId))
+          .where(and(
+            eq(agentRuns.id, row.runId), eq(agentRemoteSessions.workspaceId, args.workspaceId),
+            eq(agentRemoteSessions.environmentId, args.environmentId),
+            inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+          )).for('update')
+        if (active) {
+          const code = 'remote_command_rejected'
+          const message = 'The connected environment rejected this command. Reconnect it, then retry this message.'
+          await tx.update(agentRuns).set({ status: 'failed', failedAt: now,
+            terminalError: { code, message, retryable: true }, updatedAt: now })
+            .where(eq(agentRuns.id, active.run.id))
+          await tx.update(agentRemoteSessions).set({ status: 'failed', endedAt: now, updatedAt: now })
+            .where(eq(agentRemoteSessions.id, active.session.id))
+          await tx.update(conversationMessages).set({ content: message,
+            parts: recoveryParts(active.message.parts, active.run.id, active.environment.name,
+              code, message, args.now), status: 'error', updatedAt: now })
+            .where(eq(conversationMessages.id, active.message.id))
+          await tx.insert(conversationEvents).values({ conversationId: active.run.conversationId,
+            messageId: active.message.id, type: 'message.failed', userId: active.run.userId,
+            createdAt: now })
+        }
         return true
       }
       if (row.status !== 'acknowledged') {
@@ -1665,7 +1694,7 @@ function recoveryParts(value: unknown, runId: string, environmentName: string, c
     }),
     { type: 'data-remote-agent-status', data: {
       runId, environmentName, queueExpiresAt: 0, state: 'recoverable', retryable: true,
-      retryClass: code.includes('offline') ? 'host_offline' : 'timeout', message,
+      retryClass: code.includes('offline') ? 'host_offline' : code.includes('timeout') ? 'timeout' : 'transient', message,
     } },
   ]
 }

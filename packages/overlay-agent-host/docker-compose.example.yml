@@ -1,6 +1,6 @@
 services:
   agent-host:
-    image: ghcr.io/layernorm/overlay-agent-host:0.3.0
+    image: ghcr.io/layernorm/overlay-agent-host:0.3.4
     restart: unless-stopped
     init: true
     # No ports: the host and its harnesses connect to Overlay over outbound HTTPS.

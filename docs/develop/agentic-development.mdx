@@ -22,7 +22,20 @@ When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNor
 
 Do not require separate Reviewer or Release Authority agents. The Integration agent owns those responsibilities so each change normally consumes only one Builder and one Integration agent.
 
-Before Integration creates or retargets a pull request, it asks the owner: “Should this candidate target `staging` or `main`?” and “Should Vercel deploy after merge; if so, staging or production?” If the current request already answers either question, the agent records that choice instead of asking again. The default remains `staging` for hosted QA and no Vercel deployment unless explicitly authorized. A direct-to-`main` choice still uses a protected GitHub pull request and required checks; it does not permit a direct branch push.
+Before Integration acts, it asks the owner: “Should this use a pull request or the owner-only direct-push fast path?”, “Should it target `staging` or `main`?”, and “Should Vercel deploy after integration; if so, staging or production?” If the current request already answers a question, the agent records that choice instead of asking again. The default remains a pull request to `staging` for hosted QA and no production Vercel deployment unless explicitly authorized.
+
+## Owner-only direct pushes
+
+Repository rules require pull requests and status checks on `main` and `staging` for every actor except the specific `DevelopedByDev` user. This exception is a release-velocity option for the owner, not the default agent workflow. An agent authenticated as `DevelopedByDev` may use it only when the owner explicitly requests a direct push for the current task; full access, account identity, or an earlier instruction is not authorization.
+
+Two stacked rulesets keep the exception narrow:
+
+- **Pull requests and checks** requires a pull request, conversation resolution, and the configured CI/security checks. Only `DevelopedByDev` has an always-bypass for direct pushes; repository administrators retain a PR-only bypass for stuck checks.
+- **History integrity** blocks branch deletion and non-fast-forward updates to `main` and `staging` with no bypass actors. The owner exception therefore cannot be used to force-push, reset, or delete either branch.
+
+Before an authorized direct push, fetch the target, verify the local target matches its remote, review the complete outgoing commit range and diff, run checks proportional to the change, and confirm the update is fast-forward. Push from the dedicated target worktree without force, then verify the remote SHA and post-push Actions. A direct push to `main` still requires the `CHANGELOG.md` and living-doc updates that a PR would carry, plus confirmation that no unauthorized production Vercel deployment was created.
+
+A direct push to `staging` normally starts its branch-gated Vercel build. If the owner declines a staging deployment, do not push `staging` until the deployment trigger is deliberately suppressed or the owner chooses a different target.
 
 ## Worktree ownership
 
@@ -120,7 +133,7 @@ The Integration agent owns the change from PR review through production verifica
 10. Fast-forward `staging` to the accepted `origin/main` merge commit before the next Builder PR. This keeps the two long-lived branches aligned without force-pushing and prevents the next review from containing old release-history differences.
 11. Stop unless the user explicitly authorizes production deployment. When authorized, deploy the accepted `origin/main` revision from the clean canonical `main` worktree, verify the production web deployment, deploy production Convex when applicable and only after the web deployment is live, then run the production smoke test.
 
-An administrator's pull-request-only ruleset bypass is for a demonstrably stuck or broken gate, not for skipping relevant validation. Force-pushing and deleting `main` remain prohibited.
+An administrator's pull-request-only ruleset bypass is for a demonstrably stuck or broken gate, not for skipping relevant validation. The `DevelopedByDev` direct-push bypass is available only through the explicit owner fast path above. Force-pushing and deleting `main` or `staging` remain prohibited by the separate history-integrity ruleset.
 
 ## Staging and production QA
 

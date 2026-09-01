@@ -12,6 +12,7 @@ import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
 import {
   ConnectedAgentControlPlaneError,
   ConnectedAgentControlPlaneService,
+  effectiveAgentEnvironmentStatus,
   type HostAuthentication,
 } from './ConnectedAgentControlPlaneService'
 
@@ -140,6 +141,13 @@ test('working directories must stay within an explicitly approved project root',
     () => service.assertWorkingDirectory(environment, '/etc'),
     (error: unknown) => error instanceof ConnectedAgentControlPlaneError && error.code === 'filesystem_scope_denied',
   )
+})
+
+test('environment health expires when its heartbeat is stale', () => {
+  assert.equal(effectiveAgentEnvironmentStatus({ status: 'online', lastSeenAt: NOW - 44_999 }, NOW), 'online')
+  assert.equal(effectiveAgentEnvironmentStatus({ status: 'online', lastSeenAt: NOW - 45_001 }, NOW), 'offline')
+  assert.equal(effectiveAgentEnvironmentStatus({ status: 'offline', lastSeenAt: NOW }, NOW), 'offline')
+  assert.equal(effectiveAgentEnvironmentStatus({ status: 'pending' }, NOW), 'pending')
 })
 
 test('artifact intents are scoped and clean bytes become downloadable only after validation', async () => {

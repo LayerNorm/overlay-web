@@ -152,6 +152,32 @@ describe('Convex remote agent room turns', () => {
     })).rejects.toThrow(/AGENT_RUN_TERMINAL/)
   })
 
+  test('a rejected host command terminates the visible run with a recoverable error', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+
+    expect(await call<boolean>('acknowledgeCommandByServer', {
+      workspaceId, environmentId, commandId: 'command-remote-turn', accepted: false, now: now + 1,
+    })).toBe(true)
+
+    const state = await projectedState(convex, started.messageId)
+    expect(state.command?.status).toBe('cancelled')
+    expect(state.run).toEqual(expect.objectContaining({ status: 'failed',
+      terminalError: expect.objectContaining({ code: 'remote_command_rejected', retryable: true }) }))
+    expect(state.session?.status).toBe('failed')
+    expect(state.message).toEqual(expect.objectContaining({ status: 'error',
+      content: 'The connected environment rejected this command. Reconnect it, then retry this message.' }))
+    expect(state.message?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'data-remote-agent-status', data: expect.objectContaining({
+        state: 'recoverable', retryClass: 'transient',
+      }) }),
+    ]))
+  })
+
   test('approval, elicitation, artifacts, and structured work remain server-authorized and exactly once', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)

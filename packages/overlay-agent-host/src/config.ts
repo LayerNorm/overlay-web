@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { z } from 'zod'
 import { filesystemGrantSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { loadStoredConnection } from './connection.js'
@@ -51,4 +52,16 @@ export async function loadAgentHostConfig(path: string): Promise<AgentHostConfig
   }
   const credential = process.env[config.credentialEnv]?.trim() ?? stored?.token
   return { ...config, ...(credential ? { credential } : {}) }
+}
+
+export async function saveAgentHostConfig(
+  path: string,
+  config: Omit<AgentHostConfig, 'credential'>,
+): Promise<void> {
+  const parsed = agentHostConfigSchema.parse(config)
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+  const temporary = `${path}.${process.pid}.tmp`
+  await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600, flag: 'wx' })
+  await rename(temporary, path)
+  await chmod(path, 0o600)
 }
