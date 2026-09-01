@@ -121,28 +121,42 @@ required manual recovery.
 The safe procedure is:
 
 1. **Quit Chrome entirely.** All Chrome windows must be closed. Verify with
-   `pgrep -f "Google Chrome"` — it should return nothing.
+   `pgrep -f "Google Chrome"` — it should return nothing. This includes both
+   the user's main Chrome and any running testing Chrome instances.
 2. **Create a new user-data-dir** (not inside the main Chrome directory):
    ```
-   ~/Library/Application Support/Google/Chrome-Testing
+   ~/Chrome-Automation
    ```
 3. **Copy only the profile directory** (e.g., `Profile 6`) into the new
-   user-data-dir **as `Default`**, skipping large cache directories:
+   user-data-dir **as `Default`**, skipping caches, extensions, and credential
+   stores (this is the exact exclude set used for the working clone):
    ```bash
    rsync -a \
-     --exclude='GPUCache' --exclude='Cache' --exclude='Code Cache' \
-     --exclude='Service Worker/CacheStorage' --exclude='Service Worker/ScriptCache' \
-     --exclude='File System' --exclude='blob_storage' --exclude='IndexedDB' \
+     --exclude='Extensions' --exclude='Extension State' \
+     --exclude='Local Extension Settings' --exclude='Extension Rules' \
+     --exclude='Extension Scripts' \
+     --exclude='Service Worker' --exclude='Favicons' --exclude='Favicons-journal' \
+     --exclude='blob_storage' --exclude='GPUCache' --exclude='Shared Dictionary' \
+     --exclude='Cache' --exclude='Code Cache' --exclude='Crashpad' \
+     --exclude='GrShaderCache' --exclude='ShaderCache' \
+     --exclude='Login Data' --exclude='Login Data-journal' \
+     --exclude='Login Data For Account' \
      --exclude='.com.google.Chrome.*' \
      ~/Library/Application\ Support/Google/Chrome/Profile\ 6/ \
-     ~/Library/Application\ Support/Google/Chrome-Testing/Default/
+     ~/Chrome-Automation/Default/
    ```
+   Cookies, `Local Storage`, `IndexedDB`, and `Preferences` are what carry the
+   staging session and app state; they must be copied. On macOS the cookie
+   decryption key comes from the per-user Keychain (`Chrome Safe Storage`),
+   which is shared across profiles for the same macOS user, so cookies decrypt
+   in the new user-data-dir even without the original `Local State`.
 4. **Do NOT copy the main Chrome's `Local State` file.** Let the new Chrome
    instance generate its own `Local State` on first launch. Copying the original
    `Local State` is what triggers the anti-cloning protection that wipes
    extensions.
 5. **Do NOT copy `SingletonLock`, `SingletonSocket`, or `SingletonCookie`** files
-   if they exist — they point to the original Chrome process.
+   if they exist — they point to the original Chrome process. They live at the
+   user-data-dir root, so copying only the profile directory skips them.
 6. **Have the user reopen their main Chrome first.** Confirm all profiles and
    extensions are intact.
 7. **Then launch the testing Chrome instance(s)** via the launch scripts. Because
@@ -150,7 +164,10 @@ The safe procedure is:
    do not merge into the user's Chrome.
 
 The launch script at `~/.config/devin/launch-chrome-testing.sh` handles step 7
-(assuming the profile was cloned correctly per steps 1-5).
+(assuming the profile was cloned correctly per steps 1-5). It exists on this
+machine and launches `~/Chrome-Automation` with CDP on port 9222. Extensions
+and saved passwords are deliberately not cloned: agent QA does not need them,
+and excluding credential stores keeps the automation profile clean.
 
 ### Why launch order matters
 
@@ -168,17 +185,20 @@ The correct order is:
 
 ### What gets copied
 
-The profile directory contains everything the agent needs:
-- `Cookies`, `Login Data` — SSO sessions for staging and production
-- `Local Storage`, `Session Storage` — app state
-- `History` — browsing history (not needed for QA but harmless)
-- `Extensions/` — installed extensions (files only; Chrome re-enables them on
-  first launch in the new user-data-dir)
+The working clone copies what the agent needs and leaves out what it does not:
+- `Cookies` — SSO and app sessions (the Overlay session is an httpOnly cookie)
+- `Local Storage`, `Session Storage`, `IndexedDB` — app state
 - `Preferences`, `Secure Preferences` — profile settings
+- `History` — copied by the rsync block above (small; harmless)
 
-Skip large cache directories to save disk space:
-- `GPUCache`, `Cache`, `Code Cache`, `Service Worker/CacheStorage`
-- `File System`, `blob_storage`
+Deliberately excluded:
+- `Extensions/`, `Extension State`, `Local Extension Settings` — agent QA does
+  not need extensions, and cloned extensions are the main anti-cloning risk
+- `Login Data`, `Login Data For Account` — saved passwords stay in the user's
+  profile; sessions travel via cookies, never credential stores
+- Caches: `GPUCache`, `Cache`, `Code Cache`, `Service Worker`,
+  `Shared Dictionary`, `blob_storage`, `Favicons`, `Crashpad`,
+  `GrShaderCache`, `ShaderCache` — refetched or regenerated on first run
 
 ### When SSO cookies expire
 
@@ -244,8 +264,8 @@ The current setup provides two testing Chrome instances:
 
 | Instance | CDP port | User-data-dir | Launch script |
 | --- | --- | --- | --- |
-| 1 | 9222 | `Chrome-Testing` | `~/.config/devin/launch-chrome-testing.sh` |
-| 2 | 9223 | `Chrome-Testing-2` | `~/.config/devin/launch-chrome-testing-2.sh` |
+| 1 | 9222 | `Chrome-Automation` | `~/.config/devin/launch-chrome-testing.sh` |
+| 2 | 9223 | `Chrome-Automation-2` | `~/.config/devin/launch-chrome-testing-2.sh` |
 
 Each agent's MCP config should point to its own CDP port. To create additional
 instances beyond the first two, follow the safe cloning procedure in
@@ -377,10 +397,14 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
   `--extension` mode against the user's Chrome (the `PLAYWRIGHT_MCP_EXTENSION_TOKEN`
   setup), the throttling flags above do not exist, so a backgrounded tab stalls on
   the `Loading overlay` shell indefinitely — hydration is paused while
-  `document.hidden` is true. Don't wait it out and don't ask the user to click.
-  Call `browser_tabs` with `action: "select"` and the tab's index to bring it to
-  the foreground; hydration completes within a few seconds. Verify with
-  `browser_evaluate` returning `document.visibilityState === 'visible'`.
+  `document.hidden` is true (verified: zero console errors, all chunks 200, no
+  Convex websocket while `visibilityState` is `hidden`). Don't wait it out and
+  don't ask the user to click. `browser_tabs` with `action: "select"` can bring
+  the tab forward when the Chrome window itself is visible but another tab is
+  active; if the whole window is backgrounded or minimized, `visibilityState`
+  can stay `hidden` even after a select (observed 2026-09-01) — only the user
+  focusing the window fixes it. For unattended QA, use the CDP testing Chrome
+  instead of extension mode; that is the supported path.
 - **NEVER call `browser_resize` in extension mode.** It resizes the user's real
   Chrome window, and the renderer's layout viewport repeatedly desyncs from the
   window: pages render truncated with black filler, the composer gets cut off,
