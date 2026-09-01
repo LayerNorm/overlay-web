@@ -50,8 +50,8 @@ Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 - `@layernorm/overlay-agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
   payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
   and explicit filesystem grants.
-- `@layernorm/overlay-agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
-  outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
+- `@layernorm/overlay-agent-host` owns Ed25519 device keys, environment- and workspace-scoped SQLite command
+  deduplication and durable event outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
   official ACP TypeScript SDK adapter.
 
@@ -221,8 +221,8 @@ Claude, or equivalent authentication directory into a managed sandbox.
 Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
-package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.2`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 overlay-agent-host ...`
+package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.3`. The application copies an exact
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.3 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after

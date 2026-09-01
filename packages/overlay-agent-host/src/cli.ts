@@ -19,7 +19,7 @@ import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.2'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.3'
 
 assertSupportedNodeVersion()
 
@@ -120,7 +120,10 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
   const keys = await loadOrCreateDeviceKeyPair(config.stateDirectory)
   const stored = await loadStoredConnection(config.stateDirectory)
   const logger = new StructuredLogger()
-  const state = new SqliteHostStateStore(join(config.stateDirectory, 'host.sqlite'))
+  const state = new SqliteHostStateStore(join(config.stateDirectory, 'host.sqlite'), {
+    environmentId: config.environmentId,
+    workspaceId: config.workspaceId,
+  })
   const runtime = new AgentHostRuntime({
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,

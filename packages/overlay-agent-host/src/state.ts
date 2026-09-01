@@ -6,11 +6,12 @@ import { agentHostEventSchema, type AgentHostEvent } from '@layernorm/overlay-ag
 export type StoredRemoteSession = { runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
 export type StoredCommandResult = { accepted: boolean; errorCode?: string; errorMessage?: string; sequence: number }
 export type StoredAdapterSessionState = { runId: string; adapterId: string; state: Record<string, unknown> }
+export type HostStateScope = { environmentId: string; workspaceId: string }
 
 export class SqliteHostStateStore {
   private readonly database: DatabaseSync
 
-  constructor(path: string) {
+  constructor(path: string, scope?: HostStateScope) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
     this.database = new DatabaseSync(path)
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
@@ -26,6 +27,10 @@ export class SqliteHostStateStore {
       CREATE TABLE IF NOT EXISTS host_state (
         key TEXT PRIMARY KEY,
         value INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS host_scope (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS remote_sessions (
         run_id TEXT PRIMARY KEY,
@@ -55,9 +60,26 @@ export class SqliteHostStateStore {
       );
       CREATE INDEX IF NOT EXISTS event_outbox_run_sequence ON event_outbox(run_id, source_sequence);
     `)
+    if (scope) this.assertScope(scope)
   }
 
   close(): void { this.database.close() }
+
+  private assertScope(scope: HostStateScope): void {
+    const environmentId = this.scopeValue('environment_id')
+    const workspaceId = this.scopeValue('workspace_id')
+    if (environmentId && workspaceId && (environmentId !== scope.environmentId || workspaceId !== scope.workspaceId)) {
+      this.database.close()
+      throw new Error('host state scope does not match the host configuration')
+    }
+    this.database.prepare('INSERT OR IGNORE INTO host_scope(key, value) VALUES (?, ?)').run('environment_id', scope.environmentId)
+    this.database.prepare('INSERT OR IGNORE INTO host_scope(key, value) VALUES (?, ?)').run('workspace_id', scope.workspaceId)
+  }
+
+  private scopeValue(key: string): string | undefined {
+    const row = this.database.prepare('SELECT value FROM host_scope WHERE key = ?').get(key) as { value: string } | undefined
+    return row?.value
+  }
 
   hasProcessedCommand(commandId: string): boolean {
     return this.getProcessedCommand(commandId) !== undefined

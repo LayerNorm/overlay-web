@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
-- Scoped direct-message and channel creation to the workspace visible in the UI, surfaced connected-agent start failures in chat, expired stale environment health, terminalized rejected host commands, and released the Agent Host and bridge protocol together at `0.3.2` with a pinned Node 24 macOS LaunchAgent that retains access to user-installed adapter CLIs.
+- Scoped direct-message and channel creation to the workspace visible in the UI, surfaced connected-agent start failures in chat, expired stale environment health, terminalized rejected host commands, and released the Agent Host and bridge protocol together at `0.3.3` with a pinned Node 24 macOS LaunchAgent that retains access to user-installed adapter CLIs. Agent Host SQLite state is now bound to its environment and workspace, preventing a misconfigured or migrated host from rejecting a new environment's command sequence using stale durable state.
 - Enforced manual production releases with a source-controlled Vercel rule that suppresses Git-triggered deployments from `main` while preserving explicit CLI deployment and promotion.
 - Made the staging Vercel project branch-only: its Ignored Build Step now fails closed and runs only for the exact `staging` ref, preventing PR, manual, hook, and other-branch builds.
 - Retired the obsolete Overlay Vercel projects (`overlay-web-rc`, `overlay-landing-prod-migration-runner`, and the misspelled `overlay-web-postgress`); the canonical Overlay set is now `overlay-landing`, `overlay-web-staging`, and `overlay-web-postgres`.

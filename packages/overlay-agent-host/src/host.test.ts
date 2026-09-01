@@ -192,6 +192,19 @@ test('device keys persist privately and logs redact credential fields', async ()
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 
+test('state cannot be reused by a different environment or workspace', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-state-scope-'))
+  const path = join(directory, 'host.sqlite')
+  try {
+    const state = new SqliteHostStateStore(path, { environmentId: 'environment-1', workspaceId: 'workspace-1' })
+    state.close()
+    assert.throws(
+      () => new SqliteHostStateStore(path, { environmentId: 'environment-2', workspaceId: 'workspace-1' }),
+      /host state scope does not match the host configuration/,
+    )
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
 test('doctor validates state, device key, SQLite and adapter discovery', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-doctor-'))
   try {

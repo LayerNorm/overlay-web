@@ -160,7 +160,7 @@ Overlay generates one harness-specific command. For a local Codex environment, t
 this shape:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.3 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind local \
@@ -200,8 +200,10 @@ flowchart TD
 ```
 
 The host stores accepted command results, remote session identifiers, adapter state, cursors, and
-unacknowledged events in SQLite. A restart therefore does not duplicate accepted work or discard
-unacknowledged visible output. The same executable can run in the foreground, as a per-user macOS
+unacknowledged events in SQLite. That state is bound to its enrolled environment and workspace, so
+a configuration mismatch fails before it can reuse another environment's command cursor. A restart
+therefore does not duplicate accepted work or discard unacknowledged visible output. The same
+executable can run in the foreground, as a per-user macOS
 LaunchAgent installed through `service install`, under `systemd`, or as the default process in the
 Agent Host container. The macOS service pins both Node and package versions, preserves state when
 Terminal closes, and records the installation shell's executable search path plus common user-bin
@@ -360,7 +362,7 @@ continue using `@overlay/*`.
 | Overlay control plane | Workspace identity, authorization, bindings, runs, approvals, audit, transcript, memory, billing, and artifacts. |
 
 The product-qualified public names begin with the lockstep `0.3.0` release; the PATH-safe host and
-matching protocol ship together as `0.3.2`. The host depends on the
+matching protocol ship together as `0.3.3`. The host depends on the
 exact matching protocol version. The release workflow publishes the protocol first, then the host,
 and only after both succeed does it deprecate the shorter `0.2.0` names with migration guidance.
 
