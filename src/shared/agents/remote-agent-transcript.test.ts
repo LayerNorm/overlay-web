@@ -146,6 +146,29 @@ test('supervised events persist request, plan, diff, terminal, and artifact part
   assert.equal(request.state, 'resolved')
 })
 
+test('commands_update persists one replaceable advertised-commands part', () => {
+  const projection = projectRemoteAgentEvents({
+    content: '',
+    parts: [],
+    events: [
+      event(1, 'session_started', { remoteSessionId: 'hermes-session', adapterId: 'hermes' }),
+      event(2, 'commands_update', { commands: [
+        { name: 'compact', description: 'Compact the session', inputHint: 'instructions' },
+        { name: 'review' },
+      ] }),
+      event(3, 'commands_update', { commands: [{ name: 'compact', description: 'Updated description' }] }),
+    ],
+    environmentName: 'MacBook', queueExpiresAt: 5_000, runId: 'run-1',
+  })
+  const commandParts = projection.parts.filter((part) => part.type === 'data-remote-agent-commands')
+  assert.equal(commandParts.length, 1)
+  const data = commandParts[0]!.data as Record<string, unknown>
+  const commands = data.commands as Array<Record<string, unknown>>
+  assert.equal(commands.length, 1)
+  assert.equal(commands[0]!.name, 'compact')
+  assert.equal(commands[0]!.description, 'Updated description')
+})
+
 test('retryable failure becomes a recoverable transcript without losing completed work', () => {
   const projection = projectRemoteAgentEvents({
     content: 'Partial result', parts: [{ type: 'text', text: 'Partial result' }],

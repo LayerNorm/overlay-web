@@ -1,7 +1,8 @@
 import type { BuiltInUserOwnedAcpAdapterId } from '@overlay/workspace-contracts'
 
-export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.3.0'
+export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.3.4'
 export const OVERLAY_AGENT_HOST_PACKAGE_SPEC = `@layernorm/overlay-agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION}`
+export const OVERLAY_AGENT_HOST_NODE_SPEC = 'node@24'
 
 export function buildAgentHostEnrollmentCommand(input: {
   code: string
@@ -15,5 +16,5 @@ export function buildAgentHostEnrollmentCommand(input: {
   if (origin.protocol !== 'https:' || origin.origin !== input.origin) {
     throw new Error('Agent Host enrollment origin must be an HTTPS origin')
   }
-  return `npx --yes ${OVERLAY_AGENT_HOST_PACKAGE_SPEC} connect ${input.code} --server ${origin.origin}${input.adapterId ? ` --adapter ${input.adapterId}` : ''} --run`
+  return `npx --yes --package ${OVERLAY_AGENT_HOST_NODE_SPEC} --package ${OVERLAY_AGENT_HOST_PACKAGE_SPEC} overlay-agent-host connect ${input.code} --server ${origin.origin}${input.adapterId ? ` --adapter ${input.adapterId}` : ''} --run`
 }

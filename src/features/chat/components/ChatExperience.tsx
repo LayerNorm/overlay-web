@@ -2238,11 +2238,12 @@ export default function ChatExperience({
               },
               runtime: {
                 composerNotice,
-                beforeComposerContent: personalMentionConfirmationOpen ? (
+                beforeComposerContent: personalMentionConfirmationOpen && activeWorkspaceId ? (
                   <PersonalMentionConversionPrompt
                     draft={inputRef.current ?? input}
                     mentions={personMentions}
                     sourceConversationId={activeChatId}
+                    workspaceId={activeWorkspaceId}
                     onCancel={() => setPersonalMentionConfirmationOpen(false)}
                   />
                 ) : workApprovalContent,

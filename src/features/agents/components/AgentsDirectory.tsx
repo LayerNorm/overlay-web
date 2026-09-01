@@ -158,7 +158,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     if (!activeWorkspaceId) return
     setError(null)
     try {
-      const { directMessage } = await overlayAppClient.conversations.createDirectMessage({
+      const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(activeWorkspaceId, {
         principalIds: [agent.principalId],
       })
       dispatchChatCreated({

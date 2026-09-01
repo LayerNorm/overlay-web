@@ -6,6 +6,7 @@ export const REMOTE_AGENT_REQUEST_PART_TYPE = 'data-remote-agent-request'
 export const REMOTE_AGENT_PLAN_PART_TYPE = 'data-remote-agent-plan'
 export const REMOTE_AGENT_DIFF_PART_TYPE = 'data-remote-agent-diff'
 export const REMOTE_AGENT_TERMINAL_PART_TYPE = 'data-remote-agent-terminal'
+export const REMOTE_AGENT_COMMANDS_PART_TYPE = 'data-remote-agent-commands'
 
 export type RemoteAgentStatusPart = {
   type: typeof REMOTE_AGENT_STATUS_PART_TYPE
@@ -107,6 +108,11 @@ export function projectRemoteAgentEvents(input: {
     if (event.type === 'plan') {
       removeWaiting()
       parts = upsertDataPart(parts, REMOTE_AGENT_PLAN_PART_TYPE, 'plan', { entries: event.payload.entries ?? [] })
+      continue
+    }
+    if (event.type === 'commands_update') {
+      const commands = Array.isArray(event.payload.commands) ? event.payload.commands : []
+      parts = upsertDataPart(parts, REMOTE_AGENT_COMMANDS_PART_TYPE, 'available-commands', { commands })
       continue
     }
     if (event.type === 'diff') {

@@ -50,10 +50,12 @@ Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 - `@layernorm/overlay-agent-bridge-protocol` owns protocol version 1, strict Zod command/event schemas,
   payload and batch limits, contiguous sequence validation, acknowledgements, capabilities,
   and explicit filesystem grants.
-- `@layernorm/overlay-agent-host` owns Ed25519 device keys, SQLite command deduplication and durable event
-  outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
+- `@layernorm/overlay-agent-host` owns Ed25519 device keys, environment- and workspace-scoped SQLite command
+  deduplication and durable event outbox state, bounded outbound HTTP polling, reconnect backoff, backpressure, diagnostics,
   redacted JSON logs, adapter discovery/lifecycle, the deterministic fake adapter, and the
-  official ACP TypeScript SDK adapter.
+  official ACP TypeScript SDK adapter. A pristine host state store adopts the server's command
+  stream position on first delivery (a previous host incarnation may have consumed earlier
+  sequences); once a cursor exists, out-of-order commands still fail closed as replays.
 
 The host executable supports `connect <code> --server <origin>`. The agent editor emits a single
 harness-specific command with `--adapter <id> --run`; the same command works on a local computer,
@@ -62,8 +64,8 @@ phrase shown in Overlay, waits for browser approval, stores
 the resulting short-lived credential in a mode-0600 connection file, signs every control-plane
 request, and rotates credentials before expiry. A named environment-variable credential remains
 available for operational compatibility. Conformance tests cover start, stream, approval, cancel,
-duplicate delivery, out-of-order rejection, server outage, host restart, reconnect/resume, and
-an actual ACP subprocess exchange.
+duplicate delivery, out-of-order rejection, fresh-state stream adoption, server outage, host
+restart, reconnect/resume, and an actual ACP subprocess exchange.
 
 Phase 3 enrollment begins in Agents > New agent > Bring your own agent. The user selects a harness
 and either reuses an approved environment, creates one outbound connection for a local computer,
@@ -107,6 +109,15 @@ Memory defaults on only when an agent participates in the room; the composer swi
 recall and extraction for that turn. An invoked agent receives bounded workspace memory, hybrid
 retrieval, the participant roster, and recent role-tagged room history. ACP transports this context
 inside a delimited, size-bounded prompt envelope so existing protocol-v1 hosts remain compatible.
+
+ACP session surfaces pass through to the composer when an agent advertises them. The host forwards
+`available_commands_update` as a `commands_update` bridge event; the shared projection stores it as
+a `data-remote-agent-commands` part on the run's assistant message, and the DM composer renders
+those commands as a slash menu (selecting one fills `/name ` into the input — ACP unstructured
+semantics keep the command and its trailing input in the prompt text). Agents that never advertise
+commands simply show no menu; Overlay renders only what the protocol advertises and never writes
+agent configuration outside ACP. Session modes and config options follow the same pass-through
+pattern in later slices.
 Only an agent-triggering human message is eligible for human-owned extraction; ordinary human-only
 room chatter is never silently ingested. A completed agent reply may produce conservative,
 agent-owned memories for explicit decisions, verified outcomes, stable project facts, and reusable
@@ -221,16 +232,21 @@ Claude, or equivalent authentication directory into a managed sandbox.
 Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
-package names begin with lockstep `0.3.0`. The application copies an exact
-`npx --yes @layernorm/overlay-agent-host@0.3.0 ...` command rather than following npm `latest`. The host and
+package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.4`. The application copies an exact
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.4 overlay-agent-host ...`
+command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
 the compatibility, package-content, and clean Node.js installation gates. Published package entry
 points never require TypeScript stripping or a consumer-supplied loader. The release workflow leaves
 the legacy `@layernorm/agent-host` and `@layernorm/agent-bridge-protocol` releases installable and
 deprecates them with migration guidance only after the `0.3.0` packages publish successfully.
-The same executable runs as a foreground CLI, a restartable systemd service,
-or the default process in the Agent Host container. The documented VPS and Docker shapes expose no
+Enrollment atomically saves a mode-0600 restart configuration beside the private credential state.
+The same executable runs as a foreground CLI, a per-user macOS LaunchAgent, a restartable systemd
+service, or the default process in the Agent Host container. The macOS service command uses the
+pinned Node 24 and host package versions, survives Terminal closure, restarts after login or
+process failure, and persists a sanitized executable search path so adapters installed under
+user-level locations such as `~/.local/bin` remain available to `launchd`. The documented VPS and Docker shapes expose no
 inbound port and persist SQLite/device state across restarts and upgrades. The hardened systemd
 unit runs under a dedicated OS account; operators must align `ReadWritePaths` with the exact roots
 approved in Overlay.
@@ -388,7 +404,10 @@ required by law may be tombstoned and access-restricted rather than silently orp
 
 ## Offline policy
 
-An offline environment never appears to be working. Interactive mentions may remain queued
+An offline environment never appears to be working. The environment list derives its displayed
+health from the most recent heartbeat: an `online` row becomes effectively `offline` after 45
+seconds without a heartbeat, and the settings UI refreshes every 15 seconds while environments
+exist. Interactive mentions may remain queued
 for a short, explicitly displayed window; the UI must show `Waiting for <environment>` with
 Cancel and Retry. Commands are durable and claim-once. Revocation prevents new claims
 immediately; active credentials expire and leases terminate safely. Reconnect resumes from
@@ -399,7 +418,7 @@ gaps are rejected with the next expected sequence.
 
 | Host target | First-release support | Packaging |
 | --- | --- | --- |
-| macOS 14+ (Apple Silicon and x64) | Supported | npm executable; foreground first |
+| macOS 14+ (Apple Silicon and x64) | Supported | npm executable plus per-user LaunchAgent service commands |
 | Linux x64/arm64 (current Ubuntu/Debian/RHEL-family) | Supported | npm executable and Docker; systemd follows host hardening |
 | Windows 11 / Server 2022 x64 | Supported | npm executable; Windows service packaging may follow |
 | Overlay Cloud Linux sandbox | Deferred and unavailable in product UI | Same host image and bridge protocol after the managed-environment release gate |
