@@ -200,6 +200,11 @@ export const agentHostEventSchema = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('approval_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), options: z.array(z.object({ id: identifier, label: z.string().max(500) }).strict()).min(1).max(20), context: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('elicitation_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), requestedSchema: jsonObject, context: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('plan'), payload: z.object({ entries: z.array(z.object({ id: identifier, title: z.string().max(2_000), status: z.enum(['pending', 'in_progress', 'completed', 'failed']) }).strict()).max(100) }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('commands_update'), payload: z.object({ commands: z.array(z.object({
+    name: z.string().trim().min(1).max(200),
+    description: z.string().max(2_000).optional(),
+    inputHint: z.string().max(500).optional(),
+  }).strict()).max(100) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('diff'), payload: z.object({ diffId: identifier, title: z.string().max(2_000), patch: z.string().max(200_000), language: z.string().max(100).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('terminal'), payload: z.object({ terminalId: identifier, title: z.string().max(2_000), summary: z.string().max(20_000), exitCode: z.number().int().optional(), status: z.enum(['running', 'completed', 'failed']) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('artifact'), payload: z.object({ name: z.string().min(1).max(500), mediaType: z.string().min(1).max(200), size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/), uploadReference: identifier }).strict() }).strict(),

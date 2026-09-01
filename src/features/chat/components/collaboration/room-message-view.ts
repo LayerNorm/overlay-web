@@ -48,6 +48,24 @@ function remoteRunStatus(parts: RoomMessagePart[] | undefined) {
     retryable: data.retryable === true, retryClass: typeof data.retryClass === 'string' ? data.retryClass : undefined }
 }
 
+export type RemoteAgentCommand = { name: string; description?: string; inputHint?: string }
+
+/** Slash commands the connected agent advertised for its session, if any. */
+export function remoteAgentCommands(parts: RoomMessagePart[] | undefined): RemoteAgentCommand[] {
+  const data = parts?.find((part) => part.type === 'data-remote-agent-commands')?.data
+  const commands = data && Array.isArray(data.commands) ? data.commands : []
+  return commands.flatMap((command) => {
+    if (!command || typeof command !== 'object') return []
+    const record = command as Record<string, unknown>
+    if (typeof record.name !== 'string' || record.name.trim().length === 0) return []
+    return [{
+      name: record.name,
+      ...(typeof record.description === 'string' && record.description ? { description: record.description } : {}),
+      ...(typeof record.inputHint === 'string' && record.inputHint ? { inputHint: record.inputHint } : {}),
+    }]
+  })
+}
+
 export type RoomMessageRecord = {
   id: string
   turnId: string

@@ -18,12 +18,14 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { MentionInput } from './chat-interface/MentionInput'
+import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
+import type { RemoteAgentCommand } from './collaboration/room-message-view'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
 
 const DOCUMENT_FILE_ACCEPT = [
@@ -148,11 +150,66 @@ export function ChatComposer(props: ChatComposerProps) {
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
+  const slashToken = props.input.startsWith('/') && !/\s/.test(props.input)
+    ? props.input.slice(1).toLowerCase()
+    : null
+  const slashCommands = useMemo(() => {
+    if (slashToken === null) return []
+    const advertised = props.agentCommands ?? []
+    const matched = advertised.filter((command) => command.name.toLowerCase().startsWith(slashToken))
+    if (matched.length > 0) return matched
+    return slashToken.length === 0 ? advertised : []
+  }, [props.agentCommands, slashToken])
+  const [slash, setSlash] = useState({ index: 0, dismissedFor: null as string | null })
+  const slashIndex = Math.min(slash.index, Math.max(slashCommands.length - 1, 0))
+  const slashOpen = slashToken !== null && slashCommands.length > 0 && slash.dismissedFor !== props.input
+
+  const selectSlashCommand = (command: RemoteAgentCommand) => {
+    props.onInputChange(`/${command.name} `)
+    setSlash({ index: 0, dismissedFor: null })
+  }
+
+  const handleComposerKeyDown = (event: ReactKeyboardEvent) => {
+    if (slashOpen) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setSlash((current) => ({ ...current, index: Math.min(current.index + 1, slashCommands.length - 1) }))
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setSlash((current) => ({ ...current, index: Math.max(current.index - 1, 0) }))
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        const command = slashCommands[slashIndex]
+        if (command) selectSlashCommand(command)
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setSlash({ index: 0, dismissedFor: props.input })
+        return
+      }
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void props.onSend()
+    }
+  }
 
   return (
     <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
-      <div className="p-2.5 sm:p-3">
+      <div className="relative p-2.5 sm:p-3">
+        {slashOpen ? (
+          <AgentSlashMenu
+            commands={slashCommands}
+            highlightedIndex={slashIndex}
+            onSelect={selectSlashCommand}
+          />
+        ) : null}
         <AttachmentPreviewTray {...props} />
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
         <input
@@ -192,12 +249,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           mentionCategories={props.mentionCategories}
           placeholder={composerPlaceholder(props)}
           className={undefined}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void props.onSend()
-            }
-          }}
+          onKeyDown={handleComposerKeyDown}
         />
         <ComposerControls
           {...props}

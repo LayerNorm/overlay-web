@@ -191,6 +191,15 @@ async function normalizeAcpUpdate(
   }
   if (update.sessionUpdate === 'plan_removed') {
     await emit({ type: 'plan', payload: { entries: [] } })
+    return
+  }
+  if (update.sessionUpdate === 'available_commands_update') {
+    const commands = (update.availableCommands ?? []).slice(0, 100).map((command) => ({
+      name: command.name,
+      ...(command.description ? { description: command.description } : {}),
+      ...(command.input?.hint ? { inputHint: command.input.hint } : {}),
+    }))
+    await emit({ type: 'commands_update', payload: { commands } })
   }
 }
 
