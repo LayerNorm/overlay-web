@@ -373,6 +373,14 @@ Use `browser_take_screenshot` after `browser_navigate` and after interactions th
   background tabs without needing to be focused. If you see a page stuck on the
   loading shell, check that the testing Chrome was launched via
   `~/.config/devin/launch-chrome-testing.sh` (not a normal Chrome launch).
+- **Extension mode still throttles hidden tabs.** When Playwright MCP runs in
+  `--extension` mode against the user's Chrome (the `PLAYWRIGHT_MCP_EXTENSION_TOKEN`
+  setup), the throttling flags above do not exist, so a backgrounded tab stalls on
+  the `Loading overlay` shell indefinitely — hydration is paused while
+  `document.hidden` is true. Don't wait it out and don't ask the user to click.
+  Call `browser_tabs` with `action: "select"` and the tab's index to bring it to
+  the foreground; hydration completes within a few seconds. Verify with
+  `browser_evaluate` returning `document.visibilityState === 'visible'`.
 - **Snapshot refs are ephemeral.** Every `browser_navigate` or `browser_click` invalidates
   previous refs. Call `browser_snapshot` again before clicking.
 - **Console errors persist across navigations.** Use `browser_console_messages` with

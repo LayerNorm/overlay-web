@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Made a pristine Agent Host state store adopt the server's command stream position on first delivery (a previous host incarnation may have consumed earlier sequences), while keeping out-of-order rejection fail-closed once a cursor exists; released the Agent Host and bridge protocol together at `0.3.4`.
 - Scoped direct-message and channel creation to the workspace visible in the UI, surfaced connected-agent start failures in chat, expired stale environment health, terminalized rejected host commands, and released the Agent Host and bridge protocol together at `0.3.3` with a pinned Node 24 macOS LaunchAgent that retains access to user-installed adapter CLIs. Agent Host SQLite state is now bound to its environment and workspace, preventing a misconfigured or migrated host from rejecting a new environment's command sequence using stale durable state.
 - Enforced manual production releases with a source-controlled Vercel rule that suppresses Git-triggered deployments from `main` while preserving explicit CLI deployment and promotion.
 - Made the staging Vercel project branch-only: its Ignored Build Step now fails closed and runs only for the exact `staging` ref, preventing PR, manual, hook, and other-branch builds.

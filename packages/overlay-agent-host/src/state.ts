@@ -100,6 +100,14 @@ export class SqliteHostStateStore {
     return Number(row?.value ?? 0)
   }
 
+  adoptCommandCursor(lastConsumedSequence: number): boolean {
+    if (lastConsumedSequence < 1) return false
+    if (this.commandCursor() !== 0) return false
+    this.database.prepare(`INSERT INTO host_state(key, value) VALUES ('command_cursor', ?)
+      ON CONFLICT(key) DO UPDATE SET value=MAX(value, excluded.value)`).run(lastConsumedSequence)
+    return true
+  }
+
   recordCommandResult(commandId: string, result: StoredCommandResult, now = Date.now()): void {
     this.database.exec('BEGIN IMMEDIATE')
     try {

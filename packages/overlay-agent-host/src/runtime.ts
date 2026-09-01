@@ -98,6 +98,10 @@ export class AgentHostRuntime {
       await this.acknowledge(command, processed.accepted, processed.errorMessage, processed.errorCode)
       return
     }
+    const cursor = this.options.state.commandCursor()
+    if (cursor === 0 && command.sequence > 1) {
+      this.options.state.adoptCommandCursor(command.sequence - 1)
+    }
     const expectedSequence = this.options.state.commandCursor() + 1
     if (command.sequence !== expectedSequence) {
       await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')

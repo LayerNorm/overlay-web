@@ -93,6 +93,37 @@ test('host conformance: start, stream, approval, cancel, duplicates, outage, cra
   }
 })
 
+test('a fresh host adopts the server command stream position instead of rejecting it', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-host-adopt-'))
+  const root = join(directory, 'workspace')
+  await mkdir(root)
+  const databasePath = join(directory, 'state', 'host.sqlite')
+  const controlPlane = new FakeControlPlane()
+  const state = new SqliteHostStateStore(databasePath)
+  const runtime = createRuntime(state, controlPlane, root)
+  try {
+    // The server stream already consumed sequence 1 in a previous host
+    // incarnation, so the first delivered command arrives at sequence 2.
+    controlPlane.commands.push(command('late-start', 'run-1', 2, 'start', { bindingId: 'binding-1', adapterId: 'fake', workingDirectory: root, prompt: 'hello', metadata: {} }))
+    await runtime.pollOnce(0)
+    await waitFor(() => eventTypes(controlPlane).includes('completed'))
+    assert.equal(state.commandCursor(), 2)
+    assert.equal(controlPlane.acknowledgements.at(-1)?.accepted, true)
+
+    controlPlane.commands.push(command('next-1', 'run-2', 3, 'start', { bindingId: 'binding-1', adapterId: 'fake', workingDirectory: root, prompt: 'next', metadata: {} }))
+    await runtime.pollOnce(0)
+    assert.equal(state.commandCursor(), 3)
+
+    await assert.rejects(runtime.processCommand(command('gap-1', 'run-3', 7, 'prompt', { prompt: 'gap' })), /expected command sequence 4/)
+    assert.equal(state.commandCursor(), 3)
+    assert.equal(state.adoptCommandCursor(9), false, 'adoption is refused once the store has a cursor')
+    assert.equal(state.commandCursor(), 3)
+  } finally {
+    state.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('host load rehearsal drains a command burst and reconnects every persisted session after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-host-storm-'))
   const root = join(directory, 'workspace')
