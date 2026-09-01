@@ -493,5 +493,6 @@ function serializeConversationMessagePart(part: Record<string, unknown>) {
     mediaType: typeof part.mediaType === 'string' ? part.mediaType : undefined,
     fileName: typeof part.fileName === 'string' ? part.fileName : undefined,
     state: typeof part.state === 'string' ? part.state : undefined,
+    ...(part.data && typeof part.data === 'object' ? { data: part.data } : {}),
   }
 }
