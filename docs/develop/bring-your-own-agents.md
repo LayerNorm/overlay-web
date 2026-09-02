@@ -508,6 +508,19 @@ completion, failure, and cancellation events. The HTTP client treats route URLs 
 control-plane configuration; `/api/v1/agent-environments/**` is the canonical Phase 3 control
 plane. Credentials are bearer-scoped by that control plane and are never included in logs.
 
+### Publishing the Agent Host packages
+
+`@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publish through
+GitHub Actions via npm Trusted Publishing (OIDC) — no npm token exists anywhere. Bump both
+package versions together (and the `OVERLAY_AGENT_HOST_PACKAGE_VERSION` pin in
+`src/server/agents/agent-enrollment-command.ts`), land on `main`, then run
+`gh workflow run publish-agent-host.yml --ref main -f version=<same version>`. The Trusted
+Publisher registration (LayerNorm/overlay-web, `publish-agent-host.yml`, environment
+`Production`) is configured in each package's Settings on npmjs.com; re-register there if the
+workflow file is ever renamed. npm's 2026 bypass-2FA token restriction revoked the legacy
+`NPM_TOKEN`, so the workflow must not set `NODE_AUTH_TOKEN` — with the token absent, npm uses
+the OIDC exchange.
+
 ## Provider-neutral persistence contract
 
 `AgentEnvironment`, `AgentBinding`, `AgentRunCommand`, `AgentRemoteSession`,
