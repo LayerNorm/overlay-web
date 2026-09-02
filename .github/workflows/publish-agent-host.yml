@@ -50,14 +50,13 @@ jobs:
           if npm view "@layernorm/overlay-agent-host@$REQUESTED_VERSION" version >/dev/null 2>&1; then echo "host_exists=true" >> "$GITHUB_OUTPUT"; else echo "host_exists=false" >> "$GITHUB_OUTPUT"; fi
       - name: Publish bridge protocol
         if: steps.releases.outputs.protocol_exists != 'true'
+        # Trusted publishing: npm exchanges the workflow's OIDC token against
+        # the Trusted Publisher registered on the package. No NODE_AUTH_TOKEN
+        # here — setting it would force npm down the legacy token path.
         run: npm publish --workspace=@layernorm/overlay-agent-bridge-protocol --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish Agent Host
         if: steps.releases.outputs.host_exists != 'true'
         run: npm publish --workspace=@layernorm/overlay-agent-host --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Deprecate legacy package names
         if: inputs.version == '0.3.0'
         run: |
