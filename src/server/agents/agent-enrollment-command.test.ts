@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildAgentHostEnrollmentCommand } from './agent-enrollment-command'
+import { OVERLAY_AGENT_HOST_PACKAGE_VERSION, buildAgentHostEnrollmentCommand } from './agent-enrollment-command'
+
+/** The pinned host version must track the release constant, not a copied literal. */
+function expectedCommand(params: { code: string; origin: string; adapterId?: string }): string {
+  const adapter = params.adapterId ? ` --adapter ${params.adapterId}` : ''
+  return `npx --yes --package node@24 --package @layernorm/overlay-agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION} overlay-agent-host connect ${params.code} --server ${params.origin}${adapter} --run`
+}
 
 test('the copyable enrollment command starts the selected harness in one step', () => {
   assert.equal(
@@ -9,14 +15,14 @@ test('the copyable enrollment command starts the selected harness in one step', 
       origin: 'https://getoverlay.io',
       adapterId: 'claude-code',
     }),
-    'npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 overlay-agent-host connect single-use-code --server https://getoverlay.io --adapter claude-code --run',
+    expectedCommand({ code: 'single-use-code', origin: 'https://getoverlay.io', adapterId: 'claude-code' }),
   )
 })
 
 test('the compatibility command still starts the host when no harness is selected', () => {
   assert.equal(
     buildAgentHostEnrollmentCommand({ code: 'single-use-code', origin: 'https://getoverlay.io' }),
-    'npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 overlay-agent-host connect single-use-code --server https://getoverlay.io --run',
+    expectedCommand({ code: 'single-use-code', origin: 'https://getoverlay.io' }),
   )
 })
 
@@ -27,7 +33,7 @@ test('the copyable enrollment command starts Hermes through its official ACP ser
       origin: 'https://getoverlay.io',
       adapterId: 'hermes',
     }),
-    'npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.2 overlay-agent-host connect single-use-code --server https://getoverlay.io --adapter hermes --run',
+    expectedCommand({ code: 'single-use-code', origin: 'https://getoverlay.io', adapterId: 'hermes' }),
   )
 })
 

@@ -1,6 +1,6 @@
 import type { BuiltInUserOwnedAcpAdapterId } from '@overlay/workspace-contracts'
 
-export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.3.4'
+export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.3.5'
 export const OVERLAY_AGENT_HOST_PACKAGE_SPEC = `@layernorm/overlay-agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION}`
 export const OVERLAY_AGENT_HOST_NODE_SPEC = 'node@24'
 
