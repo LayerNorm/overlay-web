@@ -61,7 +61,7 @@ export type SlackActionWork = {
 export type SlackBotDeps = {
   access: Pick<PlatformAgentAccess, 'openAgentDirectMessage'>
   collaboration: Pick<ConversationCollaborationRepository, 'addMessage'>
-  governance: Pick<WorkspaceGovernanceService, 'resolvePlatformActor' | 'getPlatformInstallationByTeam'>
+  governance: Pick<WorkspaceGovernanceService, 'resolvePlatformActor' | 'getPlatformInstallationByTeam' | 'claimPlatformEvent'>
   workspaceAgents: Pick<WorkspaceAgentService, 'get' | 'list'>
   audit: Pick<AuditService, 'record'>
   runTurn: typeof runWorkspaceAgentTurn
@@ -126,6 +126,13 @@ export class SlackWebhookService {
     const schedule = this.deps.scheduleWork ?? after
     if (payload.kind === 'slash_command') {
       if (!payload.teamId || !payload.userId) return Response.json({ received: true, handled: false })
+      if (payload.triggerId && await this.isDuplicate({
+        directory: 'slack',
+        externalTeamId: payload.teamId,
+        eventId: payload.triggerId,
+      })) {
+        return Response.json({ received: true, handled: false, duplicate: true })
+      }
       const work: SlackSlashWork = {
         teamId: payload.teamId,
         channelId: payload.channelId,
@@ -140,6 +147,13 @@ export class SlackWebhookService {
     if (payload.kind === 'block_actions') {
       const action = payload.actions[0]
       if (payload.teamId && payload.userId && action?.actionId === MANAGE_ACTION_ID && action.value) {
+        if (payload.triggerId && await this.isDuplicate({
+          directory: 'slack',
+          externalTeamId: payload.teamId,
+          eventId: `action:${payload.triggerId}`,
+        })) {
+          return Response.json({ received: true, handled: false, duplicate: true })
+        }
         const work: SlackActionWork = {
           teamId: payload.teamId,
           channelId: payload.channelId,
@@ -156,6 +170,13 @@ export class SlackWebhookService {
     }
     if (!payload.userId || !payload.teamId) {
       return Response.json({ received: true, handled: false })
+    }
+    if (payload.eventId && await this.isDuplicate({
+      directory: 'slack',
+      externalTeamId: payload.teamId,
+      eventId: payload.eventId,
+    })) {
+      return Response.json({ received: true, handled: false, duplicate: true })
     }
     const work: SlackMentionWork = {
       teamId: payload.teamId,
@@ -287,6 +308,20 @@ export class SlackWebhookService {
         text: { type: 'mrkdwn', text: `<${url}|Manage *${agent.name}* in Overlay>` },
       }],
     })
+  }
+
+  /**
+   * First-writer-wins delivery claim. A redelivered Slack event acks without
+   * re-running; the deterministic client nonces underneath stay as
+   * defense-in-depth for deliveries that predate receipts.
+   */
+  private async isDuplicate(args: { directory: string; externalTeamId: string; eventId: string }) {
+    try {
+      return !(await this.deps.governance.claimPlatformEvent(args))
+    } catch (_claimError) {
+      void _claimError
+      return false
+    }
   }
 
   private async failSilent(work: { teamId?: string; channelId?: string }, task: () => Promise<void>) {

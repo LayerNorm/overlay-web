@@ -41,19 +41,37 @@ function masterAgent() {
   return { ...scoutAgent(), id: 'agent-master', principalId: 'agent-principal-master', name: 'Overlay', isDefault: true }
 }
 
+type FakeCalls = {
+  posted: unknown[]
+  ephemeral: unknown[]
+  messages: unknown[]
+  guards: unknown[]
+  audits: unknown[]
+  scheduled: Array<() => Promise<void>>
+  order: string[]
+  runTurnArgs: unknown[]
+  claimed: Set<string>
+}
+
 function fakeDeps(overrides: Partial<SlackBotDeps> = {}): SlackBotDeps & {
-  calls: { posted: unknown[]; ephemeral: unknown[]; messages: unknown[]; guards: unknown[]; audits: unknown[] }
+  calls: FakeCalls
 } {
-  const calls: { posted: unknown[]; ephemeral: unknown[]; messages: unknown[]; guards: unknown[]; audits: unknown[] } = {
+  const calls: FakeCalls = {
     posted: [],
     ephemeral: [],
     messages: [],
     guards: [],
     audits: [],
+    scheduled: [],
+    order: [],
+    runTurnArgs: [],
+    claimed: new Set<string>(),
   }
   return {
     calls,
-    scheduleWork: () => undefined,
+    scheduleWork: (task: () => Promise<void>) => {
+      calls.scheduled.push(task)
+    },
     access: {
       async openAgentDirectMessage() {
         return {
@@ -68,6 +86,7 @@ function fakeDeps(overrides: Partial<SlackBotDeps> = {}): SlackBotDeps & {
     collaboration: {
       async addMessage(args: unknown) {
         calls.messages.push(args)
+        calls.order.push('message')
         return 'message-1'
       },
     },
@@ -88,6 +107,16 @@ function fakeDeps(overrides: Partial<SlackBotDeps> = {}): SlackBotDeps & {
           updatedAt: 1,
         }
       },
+      async claimPlatformEvent({ directory, externalTeamId, eventId }: {
+        directory: string
+        externalTeamId: string
+        eventId: string
+      }) {
+        const key = `${directory}:${externalTeamId}:${eventId}`
+        if (calls.claimed.has(key)) return false
+        calls.claimed.add(key)
+        return true
+      },
     },
     workspaceAgents: {
       async get() {
@@ -102,7 +131,11 @@ function fakeDeps(overrides: Partial<SlackBotDeps> = {}): SlackBotDeps & {
         calls.audits.push(args)
       },
     },
-    runTurn: (async () => ({ content: 'Probe reply', modelId: 'test-model', parts: [], tokens: { input: 1, output: 1 } })) as SlackBotDeps['runTurn'],
+    runTurn: (async (args: unknown) => {
+      calls.order.push('run')
+      calls.runTurnArgs.push(args)
+      return { content: 'Probe reply', modelId: 'test-model', parts: [], tokens: { input: 1, output: 1 } }
+    }) as SlackBotDeps['runTurn'],
     resolveInvocations: (async () => [{
       agentId: AGENT_ID,
       agentName: 'Scout',
@@ -113,6 +146,7 @@ function fakeDeps(overrides: Partial<SlackBotDeps> = {}): SlackBotDeps & {
     }]) as SlackBotDeps['resolveInvocations'],
     postMessage: (async (args: unknown) => {
       calls.posted.push(args)
+      calls.order.push('post')
       return { ok: true, channel: 'C123', ts: '1.0' }
     }) as SlackBotDeps['postMessage'],
     postEphemeral: (async (args: unknown) => {
@@ -123,9 +157,10 @@ function fakeDeps(overrides: Partial<SlackBotDeps> = {}): SlackBotDeps & {
     decryptToken: () => 'xoxb-test',
     assertLimits: (async (args: unknown) => {
       calls.guards.push(args)
+      calls.order.push('guard')
     }),
     ...overrides,
-  } as SlackBotDeps & { calls: { posted: unknown[]; messages: unknown[]; guards: unknown[] } }
+  } as SlackBotDeps & { calls: FakeCalls }
 }
 
 function mentionBody() {
@@ -220,6 +255,98 @@ test('mention runs the agent turn and posts the reply to the thread', async () =
   assert.equal(reply.text, 'Probe reply')
   assert.equal(reply.blocks[1]?.elements?.[0]?.action_id, 'overlay_manage')
   assert.equal(reply.blocks[1]?.elements?.[0]?.value, AGENT_ID)
+})
+
+test('redelivered events ack as duplicates without rescheduling', async () => {
+  const deps = fakeDeps()
+  const service = new SlackWebhookService(deps)
+  const deliver = () => {
+    const body = mentionBody()
+    const timestamp = String(Math.floor(Date.now() / 1_000))
+    return service.handleRequest(
+      new Request('https://overlay.test/api/webhooks/slack', {
+        method: 'POST',
+        body,
+        headers: {
+          'x-slack-signature': signSlackRequest(body, timestamp),
+          'x-slack-request-timestamp': timestamp,
+        },
+      }),
+      { signingSecret: SECRET },
+    )
+  }
+  const first = await deliver()
+  assert.equal(first.status, 200)
+  assert.deepEqual(await first.json(), { received: true, handled: true })
+  const second = await deliver()
+  assert.equal(second.status, 200)
+  assert.deepEqual(await second.json(), { received: true, handled: false, duplicate: true })
+  assert.equal(deps.calls.scheduled.length, 1)
+})
+
+test('claim failures fail open so receipts never block the bot', async () => {
+  const deps = fakeDeps({
+    governance: {
+      async resolvePlatformActor() {
+        return { principalId: PRINCIPAL, userId: USER }
+      },
+      async getPlatformInstallationByTeam() {
+        return {
+          id: 'T123',
+          workspaceId: WORKSPACE,
+          directory: 'slack',
+          externalTeamId: 'T123',
+          isEnterpriseInstall: false,
+          botTokenCipher: 'cipher',
+          installedByPrincipalId: PRINCIPAL,
+          createdAt: 1,
+          updatedAt: 1,
+        }
+      },
+      async claimPlatformEvent() {
+        throw new Error('receipts unavailable')
+      },
+    } as SlackBotDeps['governance'],
+  })
+  const body = mentionBody()
+  const timestamp = String(Math.floor(Date.now() / 1_000))
+  const response = await new SlackWebhookService(deps).handleRequest(
+    new Request('https://overlay.test/api/webhooks/slack', {
+      method: 'POST',
+      body,
+      headers: {
+        'x-slack-signature': signSlackRequest(body, timestamp),
+        'x-slack-request-timestamp': timestamp,
+      },
+    }),
+    { signingSecret: SECRET },
+  )
+  assert.equal(response.status, 200)
+  assert.equal(deps.calls.scheduled.length, 1)
+})
+
+test('bot turns run the mapped user through limits before any model work', async () => {
+  const deps = fakeDeps()
+  await new SlackWebhookService(deps).handleMention({
+    teamId: 'T123',
+    channelId: 'C123',
+    threadTs: '1788000000.0001',
+    text: '<@U123> scout, summarize this',
+    slackUserId: 'U999',
+    eventId: 'EvMeter',
+  }, { signingSecret: SECRET, workspaceId: WORKSPACE, botToken: 'xoxb-test' })
+  // The usage gate precedes persistence, which precedes the model turn,
+  // which precedes the post — the same order first-party clients enforce,
+  // so bot invocations bill through the identical entitlement path.
+  assert.deepEqual(deps.calls.order, ['guard', 'message', 'run', 'post'])
+  assert.deepEqual(deps.calls.guards, [{
+    workspaceId: WORKSPACE,
+    principalId: PRINCIPAL,
+    conversationId: 'dm-1',
+  }])
+  const runArgs = deps.calls.runTurnArgs[0] as { actorUserId: string; workspaceId: string }
+  assert.equal(runArgs.actorUserId, USER)
+  assert.equal(runArgs.workspaceId, WORKSPACE)
 })
 
 test('uninstalled teams and unmapped users stay silent', async () => {

@@ -157,6 +157,16 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'GET /api/v1/mcps/oauth/callback': [
     { bucket: 'mcps/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
   ],
+  // Slack platform webhooks are likewise unauthenticated (HMAC-verified, not
+  // session-authed). Slack delivers from a small set of egress IPs, so the IP
+  // budget stays generous; per-team abuse is enforced downstream by the
+  // message.send usage gate on the mapped user.
+  'POST /api/webhooks/slack': [
+    { bucket: 'slack/webhook:ip', limit: 1000, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/webhooks/slack/oauth': [
+    { bucket: 'slack/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {

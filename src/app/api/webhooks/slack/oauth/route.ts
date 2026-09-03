@@ -1,12 +1,25 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
+import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import { logger } from '@/server/observability/logger'
 import { SlackInstallService, exchangeSlackCode } from '@/server/slack/SlackInstallService'
 import { encryptPlatformToken } from '@/server/slack/slack-token-crypto'
 import { verifyInstallState } from '@/server/slack/slack-oauth-state'
 
 /** Slack OAuth callback (unauthenticated by design; the signed state authorizes). */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const rateLimited = await enforceRateLimits(
+    request,
+    getEndpointRateLimitSpecs({
+      ip: getClientIp(request),
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+      userId: 'anonymous',
+    }),
+  ).catch((_limitError) => null)
+  if (rateLimited) return rateLimited
+
   const url = new URL(request.url)
   const code = url.searchParams.get('code')?.trim()
   const state = url.searchParams.get('state')?.trim()
