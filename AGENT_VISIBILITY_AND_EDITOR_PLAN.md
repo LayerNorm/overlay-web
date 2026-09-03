@@ -1,8 +1,8 @@
 # Agent visibility + full-page agent editor — implementation plan
 
-Status: **Phases 1–2 implemented** on `codex/agents-visibility-phase-1` (unpushed).
-Phases 3–4 remain planned. Corrections from implementation are recorded
-inline below (marked IMPLEMENTATION NOTE).
+Status: **Phases 1–3 implemented** on `codex/agents-visibility-phase-1` (unpushed).
+Only Phase 4 (bot surfaces) remains planned. Corrections from implementation are
+recorded inline below (marked IMPLEMENTATION NOTE).
 
 ## 0. Goal and non-goals
 
@@ -256,6 +256,13 @@ creator's own usage (including in public channels) works everywhere.
 - **Remove `AgentEditorDialog`** once the pages ship (one editor, no
   divergence). Showcase mode renders the directory only, or a read-only variant
   — decide at implementation; do not keep the dialog alive just for showcase.
+  - IMPLEMENTATION NOTE: dialog removed in the same commits. Form sections
+    moved verbatim into `AgentEditorForm.tsx`; the state machine lives in
+    `AgentEditorPage.tsx` (`new` + `[agentId]` routes). Showcase edit pages
+    load the static `SHOWCASE_AGENTS` and discard saves back to the showcase
+    directory (demo-only; no backend). The Phase-5 characterization test now
+    reads the new files — which also fixed a pre-existing failure on `main`
+    (`/Create connection command/` never matched the dialog copy).
 
 ### 5.2 Editor page structure (both Overlay and BYO types)
 
@@ -282,6 +289,12 @@ Sections, in order, single column (max-w to match `AppScreenBody` rhythm):
 - "Only me" badge; owner line ("by {displayName}") on tiles where the viewer is
   not the creator — resolve via existing principal display names, no new
   endpoint.
+  - IMPLEMENTATION NOTE: no client-side principal directory exists (members
+    route has no GET), and the client does not know its own principal id, so
+    "by you" was not distinguishable. Instead `WorkspaceAgentService.list`
+    enriches each item with optional `createdByDisplayName` (best-effort
+    `resolvePrincipal`, both backends, no new route) and tiles show
+    "by {name}" for non-default agents when known.
 - Keep runtime label (`adapter · connected` / model) and room counts as-is.
 - Keep Share dialog unchanged: explicit share grants never override
   creator-only visibility (document this in the share copy later, not in this

@@ -143,8 +143,8 @@ with the global flag disabled and workspaces outside the active rollout stage st
 Overlay-agent editor instead of exposing a form that can never submit.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
-records an explicitly granted default working directory. Creating an environment stays inside the
-same dialog and returns directly to the binding step after phrase and root approval. A failed
+records an explicitly granted default working directory. Creating an environment stays inside the same editor
+and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
 ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
 (`@agentclientprotocol/claude-agent-acp@0.70.0`). Hermes 0.20.6 or newer is a third built-in target
