@@ -536,6 +536,8 @@ export type WorkspaceAgentUpdateInput = Partial<WorkspaceAgentCreateInput>
 export type WorkspaceAgentDirectoryItem = WorkspaceAgentDefinition & {
   teamIds: string[]
   roomCount: number
+  /** Creator display name for directory attribution; resolved server-side, absent when unknown. */
+  createdByDisplayName?: string
 }
 
 export type WorkspaceAgentListResponse = {

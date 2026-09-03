@@ -34,8 +34,17 @@ export class WorkspaceAgentService {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
     const agents = await this.repository.list({ workspaceId: access.workspace.id })
+    const visible = agents.filter((agent) => canSeeAgent(agent, access.principal.id))
+    // Attribute tiles to their creator. Resolved best-effort: an unknown
+    // principal simply yields no owner line.
+    const creators = await Promise.all(
+      visible.map((agent) => this.workspaces.resolvePrincipal(agent.createdByPrincipalId)),
+    )
     return {
-      agents: agents.filter((agent) => canSeeAgent(agent, access.principal.id)),
+      agents: visible.map((agent, index) => {
+        const displayName = creators[index]?.displayName
+        return displayName ? { ...agent, createdByDisplayName: displayName } : agent
+      }),
       canCreate: canCreateAgent(access.membership.role),
     }
   }
