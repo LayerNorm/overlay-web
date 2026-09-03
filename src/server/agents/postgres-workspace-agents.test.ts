@@ -42,9 +42,11 @@ test('Postgres named agents preserve workspace identity, team, room, and archive
       agentId, principalId: agentPrincipalId, workspaceId, name: 'Scout',
       description: 'Finds evidence', instructions: 'Find primary evidence and cite it.',
       harness: 'overlay', modelId: 'openrouter/free', avatarColor: '#2563eb',
-      allowedToolIds: ['web.search'], teamIds: [team.id], createdByPrincipalId: ownerPrincipalId, now: 120,
+      allowedToolIds: ['web.search'], teamIds: [team.id], visibility: 'creator',
+      createdByPrincipalId: ownerPrincipalId, now: 120,
     })
     assert.equal(created.principalId, agentPrincipalId)
+    assert.equal(created.visibility, 'creator')
     assert.deepEqual(created.teamIds, [team.id])
     assert.equal(created.roomCount, 1)
     assert.equal((await workspaces.getPrincipal(agentPrincipalId))?.agentId, agentId)
@@ -54,6 +56,7 @@ test('Postgres named agents preserve workspace identity, team, room, and archive
       agentId, workspaceId, name: 'Scout Prime', instructions: 'Find and compare primary evidence.', now: 130,
     })
     assert.equal(updated?.name, 'Scout Prime')
+    assert.equal((await agents.update({ agentId, workspaceId, visibility: 'workspace', now: 132 }))?.visibility, 'workspace')
     assert.equal((await workspaces.getPrincipal(agentPrincipalId))?.displayName, 'Scout Prime')
 
     assert.equal(await agents.archive({ agentId, workspaceId, now: 140 }), true)

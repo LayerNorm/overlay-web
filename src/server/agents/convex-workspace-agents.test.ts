@@ -38,9 +38,10 @@ test('Convex named agents match the Postgres identity and archive contract', {
       agentId, principalId, workspaceId, name: 'Scout', description: 'Finds evidence',
       instructions: 'Find primary evidence and cite it.', harness: 'overlay', modelId: 'openrouter/free',
       avatarColor: '#2563eb', allowedToolIds: ['web.search'], teamIds: [team.id],
-      createdByPrincipalId: ownerPrincipalId, now: Date.now(),
+      visibility: 'creator', createdByPrincipalId: ownerPrincipalId, now: Date.now(),
     })
     assert.equal(created.principalId, principalId)
+    assert.equal(created.visibility, 'creator')
     assert.deepEqual(created.teamIds, [team.id])
     assert.equal(created.roomCount, 1)
     assert.equal((await workspaces.getPrincipal(principalId))?.agentId, agentId)
@@ -49,6 +50,9 @@ test('Convex named agents match the Postgres identity and archive contract', {
     assert.equal((await agents.update({
       agentId, workspaceId, name: 'Scout Prime', instructions: 'Compare primary evidence.', now: Date.now(),
     }))?.name, 'Scout Prime')
+    assert.equal((await agents.update({
+      agentId, workspaceId, visibility: 'workspace', now: Date.now(),
+    }))?.visibility, 'workspace')
     assert.equal(await agents.archive({ agentId, workspaceId, now: Date.now() }), true)
     assert.equal((await agents.list({ workspaceId })).length, 0)
     assert.equal((await workspaces.getMembership({ workspaceId, principalId }))?.status, 'suspended')

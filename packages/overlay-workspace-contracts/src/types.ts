@@ -495,6 +495,9 @@ export type WorkspaceChatSearchResult = {
 export const WORKSPACE_AGENT_HARNESSES = ['overlay', 'claude-code'] as const
 export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
 
+export const WORKSPACE_AGENT_VISIBILITIES = ['creator', 'workspace'] as const
+export type WorkspaceAgentVisibility = (typeof WORKSPACE_AGENT_VISIBILITIES)[number]
+
 export type WorkspaceAgentDefinition = {
   id: string
   workspaceId: string
@@ -507,6 +510,7 @@ export type WorkspaceAgentDefinition = {
   avatarColor?: string
   allowedToolIds: string[]
   invocationPolicy: 'mention'
+  visibility: WorkspaceAgentVisibility
   createdByPrincipalId: string
   createdAt: number
   updatedAt: number
@@ -524,6 +528,7 @@ export type WorkspaceAgentCreateInput = {
   allowedToolIds?: string[]
   teamIds?: string[]
   isDefault?: boolean
+  visibility?: WorkspaceAgentVisibility
 }
 
 export type WorkspaceAgentUpdateInput = Partial<WorkspaceAgentCreateInput>

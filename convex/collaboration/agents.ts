@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
 const harness = v.union(v.literal('overlay'), v.literal('claude-code'))
+const agentVisibility = v.union(v.literal('creator'), v.literal('workspace'))
 const agentValidator = v.object({
   agentId: v.string(),
   workspaceId: v.string(),
@@ -17,6 +18,7 @@ const agentValidator = v.object({
   avatarColor: v.optional(v.string()),
   allowedToolIds: v.array(v.string()),
   invocationPolicy: v.literal('mention'),
+  visibility: agentVisibility,
   createdByPrincipalId: v.string(),
   createdAt: v.number(),
   updatedAt: v.number(),
@@ -31,7 +33,8 @@ export const createByServer = mutation({
     serverSecret: v.string(), agentId: v.string(), principalId: v.string(), workspaceId: v.string(),
     name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness,
     modelId: v.string(), avatarColor: v.optional(v.string()), allowedToolIds: v.array(v.string()),
-    teamIds: v.array(v.string()), createdByPrincipalId: v.string(), now: v.number(),
+    teamIds: v.array(v.string()), visibility: v.optional(agentVisibility),
+    createdByPrincipalId: v.string(), now: v.number(),
     isDefault: v.optional(v.boolean()),
   },
   returns: agentValidator,
@@ -64,7 +67,8 @@ export const createByServer = mutation({
       name: args.name.trim(), description: cleanOptional(args.description),
       instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
       avatarColor: cleanOptional(args.avatarColor), allowedToolIds: unique(args.allowedToolIds),
-      invocationPolicy: 'mention', createdByPrincipalId: args.createdByPrincipalId,
+      invocationPolicy: 'mention', visibility: args.visibility ?? 'workspace',
+      createdByPrincipalId: args.createdByPrincipalId,
       teamIds: unique(args.teamIds), roomCount: 0,
       createdAt: args.now, updatedAt: args.now,
       isDefault: args.isDefault || args.name.trim().toLowerCase() === 'overlay' ? true : undefined,
@@ -128,7 +132,8 @@ export const updateByServer = mutation({
     name: v.optional(v.string()), description: v.optional(v.string()), instructions: v.optional(v.string()),
     harness: v.optional(harness), modelId: v.optional(v.string()), avatarColor: v.optional(v.string()),
     allowedToolIds: v.optional(v.array(v.string())), now: v.number(),
-    teamIds: v.optional(v.array(v.string())), updatedByPrincipalId: v.optional(v.string()),
+    teamIds: v.optional(v.array(v.string())), visibility: v.optional(agentVisibility),
+    updatedByPrincipalId: v.optional(v.string()),
   },
   returns: v.union(agentValidator, v.null()),
   handler: async (ctx, args) => {
@@ -152,6 +157,7 @@ export const updateByServer = mutation({
       avatarColor?: string
       allowedToolIds?: string[]
       teamIds?: string[]
+      visibility?: 'creator' | 'workspace'
       updatedAt: number
     } = {
       ...(args.name === undefined ? {} : { name: args.name.trim() }),
@@ -161,6 +167,7 @@ export const updateByServer = mutation({
       ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
       ...(args.avatarColor === undefined ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
       ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),
+      ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
       updatedAt: args.now,
     }
     if ('name' in patch && !patch.name || 'instructions' in patch && !patch.instructions || 'modelId' in patch && !patch.modelId) {
@@ -254,8 +261,11 @@ async function directoryValue(
   // Fall back to live computation only for older rows that predate stored
   // projections — this maintains backward compatibility while eliminating
   // N+1 queries for the common case.
+  // `visibility` predates the access-mode feature on older rows; absence means
+  // a workspace-visible agent.
+  const visibility = row.visibility ?? 'workspace'
   if (row.teamIds !== undefined && row.roomCount !== undefined) {
-    return { ...value, teamIds: row.teamIds, roomCount: row.roomCount }
+    return { ...value, visibility, teamIds: row.teamIds, roomCount: row.roomCount }
   }
 
   // Legacy fallback: compute from related tables.
@@ -264,7 +274,7 @@ async function directoryValue(
   const rooms = await ctx.db.query('conversationParticipants')
     .withIndex('by_workspaceId_principalId_status', (q) =>
       q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
-  return { ...value, teamIds: teams.map((item) => item.teamId).sort(), roomCount: rooms.length }
+  return { ...value, visibility, teamIds: teams.map((item) => item.teamId).sort(), roomCount: rooms.length }
 }
 
 async function requireActiveWorkspace(ctx: QueryCtx | MutationCtx, workspaceId: string) {
