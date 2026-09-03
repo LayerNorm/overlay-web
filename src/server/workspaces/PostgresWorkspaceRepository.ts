@@ -15,6 +15,7 @@ import type {
   WorkspaceTeam,
   WorkspaceTeamMember,
 } from '@overlay/workspace-contracts'
+import type { WorkspacePlatformInstallationRecord } from './WorkspaceRepository'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import type {
   AcceptWorkspaceInvitationInput,
@@ -90,6 +91,15 @@ type IdentityMappingRow = Omit<
   updatedAt: DateValue
   deprovisionedAt: DateValue | null
   externalGroupIds: string[] | null
+}
+
+type PlatformInstallationRow = Omit<
+  WorkspacePlatformInstallationRecord,
+  'createdAt' | 'updatedAt' | 'isEnterpriseInstall'
+> & {
+  createdAt: DateValue
+  updatedAt: DateValue
+  isEnterpriseInstall: boolean
 }
 
 type AuditExportRow = Omit<
@@ -1027,6 +1037,87 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return result.rows[0] ? identityMappingFromRow(result.rows[0]) : null
   }
 
+  async upsertPlatformInstallation(
+    input: Parameters<WorkspaceRepository['upsertPlatformInstallation']>[0],
+  ): Promise<WorkspacePlatformInstallationRecord> {
+    const result = await this.db.execute<PlatformInstallationRow>(sql`
+      INSERT INTO workspace_platform_installations (
+        id, workspace_id, directory, external_team_id, enterprise_id,
+        is_enterprise_install, team_name, bot_user_id, bot_token_cipher,
+        installed_by_principal_id, created_at, updated_at
+      ) VALUES (
+        ${input.installationId}, ${input.workspaceId}, ${input.directory}, ${input.externalTeamId},
+        ${input.enterpriseId ?? null}, ${input.isEnterpriseInstall ?? false}, ${input.teamName ?? null},
+        ${input.botUserId ?? null}, ${input.botTokenCipher}, ${input.installedByPrincipalId},
+        ${new Date(input.now)}, ${new Date(input.now)}
+      )
+      ON CONFLICT (workspace_id, directory, external_team_id) DO UPDATE SET
+        id = excluded.id,
+        enterprise_id = excluded.enterprise_id,
+        is_enterprise_install = excluded.is_enterprise_install,
+        team_name = excluded.team_name,
+        bot_user_id = excluded.bot_user_id,
+        bot_token_cipher = excluded.bot_token_cipher,
+        installed_by_principal_id = excluded.installed_by_principal_id,
+        updated_at = excluded.updated_at
+      RETURNING ${platformInstallationColumns}
+    `)
+    const row = result.rows[0]
+    if (!row) throw new Error('WORKSPACE_PLATFORM_INSTALLATION_UPSERT_FAILED')
+    return platformInstallationFromRow(row)
+  }
+
+  async getPlatformInstallation(
+    args: Parameters<WorkspaceRepository['getPlatformInstallation']>[0],
+  ): Promise<WorkspacePlatformInstallationRecord | null> {
+    const result = await this.db.execute<PlatformInstallationRow>(sql`
+      SELECT ${platformInstallationColumns}
+      FROM workspace_platform_installations
+      WHERE workspace_id = ${args.workspaceId}
+        AND directory = ${args.directory}
+        AND external_team_id = ${args.externalTeamId}
+      LIMIT 1
+    `)
+    return result.rows[0] ? platformInstallationFromRow(result.rows[0]) : null
+  }
+
+  async getPlatformInstallationByTeam(
+    args: Parameters<WorkspaceRepository['getPlatformInstallationByTeam']>[0],
+  ): Promise<WorkspacePlatformInstallationRecord | null> {
+    const result = await this.db.execute<PlatformInstallationRow>(sql`
+      SELECT ${platformInstallationColumns}
+      FROM workspace_platform_installations
+      WHERE directory = ${args.directory}
+        AND external_team_id = ${args.externalTeamId}
+      LIMIT 1
+    `)
+    return result.rows[0] ? platformInstallationFromRow(result.rows[0]) : null
+  }
+
+  async listPlatformInstallations(
+    args: Parameters<WorkspaceRepository['listPlatformInstallations']>[0],
+  ): Promise<WorkspacePlatformInstallationRecord[]> {
+    const result = await this.db.execute<PlatformInstallationRow>(sql`
+      SELECT ${platformInstallationColumns}
+      FROM workspace_platform_installations
+      WHERE workspace_id = ${args.workspaceId}
+      ORDER BY directory, external_team_id
+    `)
+    return result.rows.map(platformInstallationFromRow)
+  }
+
+  async deletePlatformInstallation(
+    args: Parameters<WorkspaceRepository['deletePlatformInstallation']>[0],
+  ): Promise<boolean> {
+    const result = await this.db.execute(sql`
+      DELETE FROM workspace_platform_installations
+      WHERE workspace_id = ${args.workspaceId}
+        AND directory = ${args.directory}
+        AND external_team_id = ${args.externalTeamId}
+    `)
+    return (result.rowCount ?? 0) > 0
+  }
+
   async recordAuditExport(
     input: Parameters<WorkspaceRepository['recordAuditExport']>[0],
   ): Promise<WorkspaceAuditExportRecord> {
@@ -1174,6 +1265,14 @@ const identityMappingColumns = sql.raw(`
   external_id AS "externalId", external_group_ids AS "externalGroupIds", status,
   created_at AS "createdAt", updated_at AS "updatedAt",
   deprovisioned_at AS "deprovisionedAt"
+`)
+const platformInstallationColumns = sql.raw(`
+  id, workspace_id AS "workspaceId", directory,
+  external_team_id AS "externalTeamId", enterprise_id AS "enterpriseId",
+  is_enterprise_install AS "isEnterpriseInstall", team_name AS "teamName",
+  bot_user_id AS "botUserId", bot_token_cipher AS "botTokenCipher",
+  installed_by_principal_id AS "installedByPrincipalId",
+  created_at AS "createdAt", updated_at AS "updatedAt"
 `)
 const auditExportColumns = sql.raw(`
   id, workspace_id AS "workspaceId",
@@ -1460,6 +1559,23 @@ function identityMappingFromRow(row: IdentityMappingRow): WorkspaceIdentityMappi
     createdAt: millisRequired(row.createdAt),
     updatedAt: millisRequired(row.updatedAt),
     deprovisionedAt: millis(row.deprovisionedAt),
+  }
+}
+
+function platformInstallationFromRow(row: PlatformInstallationRow): WorkspacePlatformInstallationRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    directory: row.directory,
+    externalTeamId: row.externalTeamId,
+    enterpriseId: row.enterpriseId ?? undefined,
+    isEnterpriseInstall: row.isEnterpriseInstall,
+    teamName: row.teamName ?? undefined,
+    botUserId: row.botUserId ?? undefined,
+    botTokenCipher: row.botTokenCipher,
+    installedByPrincipalId: row.installedByPrincipalId,
+    createdAt: millisRequired(row.createdAt),
+    updatedAt: millisRequired(row.updatedAt),
   }
 }
 

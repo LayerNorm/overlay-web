@@ -107,6 +107,7 @@ export {
   type WorkspaceRolloutStage,
   type WorkspaceSharingPolicyPatch,
   type WorkspaceIdentityMapping,
+  type WorkspacePlatformInstallation,
   type WorkspaceAuditExportRecord,
   type WorkspaceOperationalMetrics,
 } from './types'

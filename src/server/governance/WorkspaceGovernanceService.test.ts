@@ -31,6 +31,7 @@ function createService(options: {
   const audit = [...(options.audit ?? [])]
   const exports: unknown[] = []
   const mappings = new Map<string, Record<string, unknown>>()
+  const installs = new Map<string, Record<string, unknown>>()
   const suspended: string[] = []
   const limitChecks: string[] = []
   const service = new WorkspaceGovernanceService({
@@ -100,6 +101,31 @@ function createService(options: {
         const mapping = mappings.get(`${directory}:${externalId}`)
         return mapping && mapping.workspaceId === workspaceId ? mapping : null
       },
+      async upsertPlatformInstallation(input: Record<string, unknown>) {
+        const record = {
+          ...input,
+          id: input.installationId,
+          createdAt: 1_000,
+          updatedAt: 1_000,
+        }
+        installs.set(`${input.directory}:${input.externalTeamId}`, record)
+        return record
+      },
+      async listPlatformInstallations() {
+        return [...installs.values()]
+      },
+      async getPlatformInstallationByTeam({ directory, externalTeamId }: {
+        directory: string
+        externalTeamId: string
+      }) {
+        return installs.get(`${directory}:${externalTeamId}`) ?? null
+      },
+      async deletePlatformInstallation({ directory, externalTeamId }: {
+        directory: string
+        externalTeamId: string
+      }) {
+        return installs.delete(`${directory}:${externalTeamId}`)
+      },
       async recordAuditExport(input: Record<string, unknown>) {
         const record = { ...input, createdAt: input.now }
         exports.push(record)
@@ -147,13 +173,19 @@ function createService(options: {
         suspended.push(principalId)
         return { principalId, status: 'suspended' }
       },
+      async getPlatformInstallationByTeam({ directory, externalTeamId }: {
+        directory: string
+        externalTeamId: string
+      }) {
+        return installs.get(`${directory}:${externalTeamId}`) ?? null
+      },
     } as never,
     appDataProvider: 'postgres',
     requiresConvexClient: false,
     id: () => 'export_1',
     now: () => 9_000,
   })
-  return { service, audit, exports, mappings, suspended, limitChecks }
+  return { service, audit, exports, mappings, installs, suspended, limitChecks }
 }
 
 function auditRow(overrides: Partial<AuditRow> = {}): AuditRow {
@@ -395,8 +427,7 @@ test('platform actor resolution hides unknown and retired identities alike', asy
   }), notFound)
 })
 
-test('platform actor resolution rejects archived and non-human principals', async () => {
-  const { service, mappings } = createService()
+test('platform actor resolution rejects archived and non-human principals', async () => {  const { service, mappings } = createService()
   mappings.set('slack:Uarch', {
     id: 'mapping_arch', workspaceId: WORKSPACE, principalId: 'principal_archived',
     directory: 'slack', externalId: 'Uarch', externalGroupIds: [],
@@ -414,4 +445,76 @@ test('platform actor resolution rejects archived and non-human principals', asyn
   await assert.rejects(() => service.resolvePlatformActor({
     workspaceId: WORKSPACE, directory: 'msteams', externalId: 'Usvc',
   }), notFound)
+})
+
+test('platform installs link, list, resolve by team, and unlink', async () => {
+  const { service, installs, audit } = createService()
+  const installation = await service.linkPlatformInstallation({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalTeamId: 'T123',
+    teamName: 'Acme',
+    botUserId: 'Ubot',
+    botTokenCipher: 'cipher-1',
+  })
+  assert.equal(installation.id, 'T123')
+  assert.equal(installation.workspaceId, WORKSPACE)
+  assert.equal(audit.some((row) => row.metadata.event === 'platform_install_linked'), true)
+
+  // Reinstall overwrites the token row in place.
+  await service.linkPlatformInstallation({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalTeamId: 'T123',
+    botTokenCipher: 'cipher-2',
+  })
+  assert.equal(installs.get('slack:T123')?.botTokenCipher, 'cipher-2')
+
+  const listed = await service.listPlatformInstallations({ actorUserId: OWNER, workspaceId: WORKSPACE })
+  assert.deepEqual(listed.map((entry) => entry.id), ['T123'])
+
+  const byTeam = await service.getPlatformInstallationByTeam({ directory: 'slack', externalTeamId: 'T123' })
+  assert.equal(byTeam?.botTokenCipher, 'cipher-2')
+  assert.equal(
+    await service.getPlatformInstallationByTeam({ directory: 'slack', externalTeamId: 'T999' }),
+    null,
+  )
+
+  await service.unlinkPlatformInstallation({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalTeamId: 'T123',
+  })
+  assert.equal(installs.has('slack:T123'), false)
+  await assert.rejects(() => service.unlinkPlatformInstallation({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalTeamId: 'T123',
+  }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'not_found')
+})
+
+test('non-managers cannot manage platform installs', async () => {
+  const { service } = createService()
+  const forbidden = (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'forbidden'
+  await assert.rejects(() => service.linkPlatformInstallation({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalTeamId: 'T123',
+    botTokenCipher: 'cipher',
+  }), forbidden)
+  await assert.rejects(() => service.listPlatformInstallations({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+  }), forbidden)
+  await assert.rejects(() => service.unlinkPlatformInstallation({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalTeamId: 'T123',
+  }), forbidden)
 })

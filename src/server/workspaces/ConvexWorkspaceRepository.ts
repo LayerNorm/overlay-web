@@ -22,6 +22,7 @@ import type {
   MembershipMutationResult,
   MembershipRemovalResult,
   OwnershipTransferResult,
+  WorkspacePlatformInstallationRecord,
   WorkspaceRepository,
 } from './WorkspaceRepository'
 
@@ -36,6 +37,7 @@ type ConvexMembership = WorkspaceMembership
 type ConvexInvitation = Omit<WorkspaceInvitation, 'id'> & { invitationId: string }
 type ConvexTeam = Omit<WorkspaceTeam, 'id'> & { teamId: string }
 type ConvexTeamMember = WorkspaceTeamMember & { teamMembershipId: string }
+type ConvexPlatformInstallation = Omit<WorkspacePlatformInstallationRecord, 'id'> & { installationId: string }
 type ConvexResourceGuest = Omit<WorkspaceResourceGuest, 'id'> & { resourceGuestId: string }
 type ConvexResourceScope = WorkspaceResourceScope
 type ConvexAccess = {
@@ -513,6 +515,31 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return row ? clean(row) : null
   }
 
+  async upsertPlatformInstallation(input: Parameters<WorkspaceRepository['upsertPlatformInstallation']>[0]) {
+    return installation(await requiredPlatformMutation<ConvexPlatformInstallation>(
+      'upsertPlatformInstallationByServer', input,
+    ))
+  }
+
+  async getPlatformInstallation(args: Parameters<WorkspaceRepository['getPlatformInstallation']>[0]) {
+    const row = await platformQuery<ConvexPlatformInstallation | null>('getPlatformInstallationByServer', args)
+    return row ? installation(row) : null
+  }
+
+  async getPlatformInstallationByTeam(args: Parameters<WorkspaceRepository['getPlatformInstallationByTeam']>[0]) {
+    const row = await platformQuery<ConvexPlatformInstallation | null>('getPlatformInstallationByTeamByServer', args)
+    return row ? installation(row) : null
+  }
+
+  async listPlatformInstallations(args: Parameters<WorkspaceRepository['listPlatformInstallations']>[0]) {
+    const rows = await platformQuery<ConvexPlatformInstallation[]>('listPlatformInstallationsByServer', args) ?? []
+    return rows.map(installation)
+  }
+
+  async deletePlatformInstallation(args: Parameters<WorkspaceRepository['deletePlatformInstallation']>[0]) {
+    return await platformMutation<boolean>('deletePlatformInstallationByServer', args) ?? false
+  }
+
   async recordAuditExport(input: Parameters<WorkspaceRepository['recordAuditExport']>[0]) {
     return clean(await requiredMutation<WorkspaceAuditExportRecord>('recordAuditExportByServer', input))
   }
@@ -591,6 +618,36 @@ async function requiredMutation<T>(
   return result
 }
 
+const PLATFORM_FUNCTION_PREFIX = 'collaboration/platformInstallations'
+
+function platformQuery<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
+  return convex.query<T>(
+    `${PLATFORM_FUNCTION_PREFIX}:${operation}`,
+    { ...stripUndefined(args), serverSecret: getInternalApiSecret() },
+    { throwOnError: true },
+  )
+}
+
+function platformMutation<T>(
+  operation: string,
+  args: Record<string, unknown>,
+): Promise<T | null> {
+  return convex.mutation<T>(
+    `${PLATFORM_FUNCTION_PREFIX}:${operation}`,
+    { ...stripUndefined(args), serverSecret: getInternalApiSecret() },
+    { throwOnError: true },
+  )
+}
+
+async function requiredPlatformMutation<T>(
+  operation: string,
+  args: Record<string, unknown>,
+): Promise<T> {
+  const result = await platformMutation<T>(operation, args)
+  if (!result) throw new Error(`Convex platform installation operation ${operation} returned no result`)
+  return result
+}
+
 function workspace(row: ConvexWorkspace): Workspace {
   const { workspaceId, personalOwnerUserId: _, ...value } = clean(row)
   return { ...value, id: workspaceId }
@@ -613,6 +670,11 @@ function invitation(row: ConvexInvitation): WorkspaceInvitation {
 function team(row: ConvexTeam): WorkspaceTeam {
   const { teamId, ...value } = clean(row)
   return { ...value, id: teamId }
+}
+
+function installation(row: ConvexPlatformInstallation): WorkspacePlatformInstallationRecord {
+  const { installationId, ...value } = clean(row)
+  return { ...value, id: installationId }
 }
 
 function teamMember(row: ConvexTeamMember): WorkspaceTeamMember {

@@ -663,6 +663,27 @@ export type WorkspaceIdentityMapping = {
   deprovisionedAt?: number
 }
 
+/**
+ * A chat-platform workspace linked to an Overlay workspace for bot surfaces
+ * (Slack teams, Teams tenants, …). The bot token itself never appears in this
+ * contract: repositories return it only through the server-side installation
+ * record, encrypted at rest.
+ */
+export type WorkspacePlatformInstallation = {
+  /** Storage key: the external team id, or the enterprise id for org-wide installs. */
+  id: string
+  workspaceId: string
+  directory: string
+  externalTeamId: string
+  enterpriseId?: string
+  isEnterpriseInstall: boolean
+  teamName?: string
+  botUserId?: string
+  installedByPrincipalId: string
+  createdAt: number
+  updatedAt: number
+}
+
 export type WorkspaceAuditExportRecord = {
   id: string
   workspaceId: string

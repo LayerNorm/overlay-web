@@ -1932,6 +1932,23 @@ export default defineSchema({
     .index('by_workspaceId_external', ['workspaceId', 'directory', 'externalId'])
     .index('by_workspaceId_principal', ['workspaceId', 'principalId']),
 
+  workspacePlatformInstallations: defineTable({
+    installationId: v.string(),
+    workspaceId: v.string(),
+    directory: v.string(),
+    externalTeamId: v.string(),
+    enterpriseId: v.optional(v.string()),
+    isEnterpriseInstall: v.boolean(),
+    teamName: v.optional(v.string()),
+    botUserId: v.optional(v.string()),
+    botTokenCipher: v.string(),
+    installedByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_directory_team', ['workspaceId', 'directory', 'externalTeamId'])
+    .index('by_directory_external', ['directory', 'externalTeamId']),
+
   workspacePresence: defineTable({
     workspaceId: v.string(),
     principalId: v.string(),

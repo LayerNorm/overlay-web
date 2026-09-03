@@ -6,6 +6,7 @@ import type {
   WorkspaceIdentityMapping,
   WorkspaceOperationalMetrics,
 } from '@overlay/workspace-contracts'
+import type { WorkspacePlatformInstallationRecord } from '@/server/workspaces/WorkspaceRepository'
 import type { RateLimiter } from '@overlay/app-core'
 import {
   isForbiddenByLimit,
@@ -193,6 +194,113 @@ export class WorkspaceGovernanceService {
     return await this.deps.repository.listIdentityMappings({
       workspaceId: access.workspace.id,
       includeDeprovisioned: args.includeDeprovisioned,
+    })
+  }
+
+  /**
+   * Links a chat-platform workspace (Slack team, Teams tenant, …) to this
+   * Overlay workspace for bot surfaces. Manager-gated and audited like
+   * directory identity linking. The token travels as server-side ciphertext;
+   * this method never sees plaintext.
+   */
+  async linkPlatformInstallation(args: {
+    actorUserId: string
+    workspaceId: string
+    directory: string
+    externalTeamId: string
+    enterpriseId?: string
+    isEnterpriseInstall?: boolean
+    teamName?: string
+    botUserId?: string
+    botTokenCipher: string
+  }): Promise<WorkspacePlatformInstallationRecord> {
+    const access = await this.requireManager(args)
+    const installer = await this.deps.repository.getPrincipal(access.principal.id)
+    if (!installer || installer.workspaceId !== access.workspace.id || installer.archivedAt) {
+      throw new WorkspaceServiceError('Principal not found in this workspace', 404, 'not_found')
+    }
+    const directory = normalized(args.directory, 'directory')
+    const externalTeamId = normalized(args.externalTeamId, 'externalTeamId')
+    const botTokenCipher = normalized(args.botTokenCipher, 'botTokenCipher')
+    // Storage key: enterprise id for org-wide installs, else the team id —
+    // the same key Chat SDK's installationProvider receives.
+    const installationId = args.isEnterpriseInstall && args.enterpriseId?.trim()
+      ? args.enterpriseId.trim()
+      : externalTeamId
+    const installation = await this.deps.repository.upsertPlatformInstallation({
+      installationId,
+      workspaceId: access.workspace.id,
+      directory,
+      externalTeamId,
+      enterpriseId: args.enterpriseId?.trim() || undefined,
+      isEnterpriseInstall: args.isEnterpriseInstall ?? false,
+      teamName: args.teamName?.trim() || undefined,
+      botUserId: args.botUserId?.trim() || undefined,
+      botTokenCipher,
+      installedByPrincipalId: installer.id,
+      now: (this.deps.now ?? Date.now)(),
+    })
+    await this.recordGovernanceAudit({
+      action: 'workspace.membership',
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      resourceId: installation.id,
+      metadata: { directory, externalTeamId, event: 'platform_install_linked' },
+    })
+    return installation
+  }
+
+  async listPlatformInstallations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<WorkspacePlatformInstallationRecord[]> {
+    const access = await this.requireManager(args)
+    return await this.deps.repository.listPlatformInstallations({
+      workspaceId: access.workspace.id,
+    })
+  }
+
+  /**
+   * Team-keyed install lookup for trusted bot processes holding the service
+   * credential. Ungated like `resolvePlatformActor`: user-facing routes must
+   * never expose it directly. Returns the ciphertext record; decryption is
+   * the platform-bot layer's job.
+   */
+  async getPlatformInstallationByTeam(args: {
+    directory: string
+    externalTeamId: string
+  }): Promise<WorkspacePlatformInstallationRecord | null> {
+    return await this.deps.repository.getPlatformInstallationByTeam({
+      directory: normalized(args.directory, 'directory'),
+      externalTeamId: normalized(args.externalTeamId, 'externalTeamId'),
+    })
+  }
+
+  /**
+   * Removes a platform install. Message history and audit records are
+   * preserved; the bot stops serving that team immediately.
+   */
+  async unlinkPlatformInstallation(args: {
+    actorUserId: string
+    workspaceId: string
+    directory: string
+    externalTeamId: string
+  }): Promise<void> {
+    const access = await this.requireManager(args)
+    const removed = await this.deps.repository.deletePlatformInstallation({
+      workspaceId: access.workspace.id,
+      directory: normalized(args.directory, 'directory'),
+      externalTeamId: normalized(args.externalTeamId, 'externalTeamId'),
+    })
+    if (!removed) {
+      throw new WorkspaceServiceError('Platform installation not found', 404, 'not_found')
+    }
+    await this.recordGovernanceAudit({
+      action: 'workspace.membership',
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      resourceId: `${args.directory}:${args.externalTeamId}`,
+      metadata: { event: 'platform_install_unlinked' },
     })
   }
 

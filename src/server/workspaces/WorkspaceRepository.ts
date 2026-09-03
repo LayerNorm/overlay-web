@@ -12,11 +12,17 @@ import type {
   WorkspaceResourceScope,
   WorkspaceAuditExportRecord,
   WorkspaceIdentityMapping,
+  WorkspacePlatformInstallation,
   WorkspaceSharingPolicy,
   WorkspaceSharingPolicyPatch,
   WorkspaceTeam,
   WorkspaceTeamMember,
 } from '@overlay/workspace-contracts'
+
+/** Installation row including the encrypted bot token (server-side only). */
+export type WorkspacePlatformInstallationRecord = WorkspacePlatformInstallation & {
+  botTokenCipher: string
+}
 
 export type SetWorkspaceSharingPolicyInput = {
   workspaceId: string
@@ -247,6 +253,42 @@ export interface WorkspaceRepository {
     externalId: string
     now: number
   }): Promise<WorkspaceIdentityMapping | null>
+
+  /**
+   * Chat-platform installs. The token travels as server-side ciphertext and
+   * is returned verbatim; encryption/decryption lives in the platform-bot
+   * layer, never in repositories.
+   */
+  upsertPlatformInstallation(input: {
+    installationId: string
+    workspaceId: string
+    directory: string
+    externalTeamId: string
+    enterpriseId?: string
+    isEnterpriseInstall?: boolean
+    teamName?: string
+    botUserId?: string
+    botTokenCipher: string
+    installedByPrincipalId: string
+    now: number
+  }): Promise<WorkspacePlatformInstallationRecord>
+  getPlatformInstallation(args: {
+    workspaceId: string
+    directory: string
+    externalTeamId: string
+  }): Promise<WorkspacePlatformInstallationRecord | null>
+  getPlatformInstallationByTeam(args: {
+    directory: string
+    externalTeamId: string
+  }): Promise<WorkspacePlatformInstallationRecord | null>
+  listPlatformInstallations(args: {
+    workspaceId: string
+  }): Promise<WorkspacePlatformInstallationRecord[]>
+  deletePlatformInstallation(args: {
+    workspaceId: string
+    directory: string
+    externalTeamId: string
+  }): Promise<boolean>
 
   recordAuditExport(input: {
     id: string
