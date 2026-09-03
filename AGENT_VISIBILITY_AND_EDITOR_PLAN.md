@@ -1,8 +1,8 @@
 # Agent visibility + full-page agent editor — implementation plan
 
-Status: **Phases 1–3 implemented** on `codex/agents-visibility-phase-1` (unpushed).
-Only Phase 4 (bot surfaces) remains planned. Corrections from implementation are
-recorded inline below (marked IMPLEMENTATION NOTE).
+Status: **Phases 1–4 implemented** on `codex/agents-visibility-phase-1` (unpushed).
+Corrections from implementation are recorded inline below
+(marked IMPLEMENTATION NOTE).
 
 ## 0. Goal and non-goals
 
@@ -330,6 +330,20 @@ When the Chat SDK bot is built, it **reuses Phases 1–2 unchanged**:
 - Prerequisite owned by Phase 4: identity-linking UX (who maps Slack user X to
   principal Y) and per-install token storage. Enforcement itself needs no new
   code.
+  - IMPLEMENTATION NOTE: implemented as the Overlay-side seam, no new routes.
+    `WorkspaceGovernanceService.resolvePlatformActor` maps
+    `(workspaceId, directory, externalId)` to the linked human principal's
+    userId (unknown/deprovisioned/archived/non-human all report `not_found`;
+    linking itself stays manager-gated via `linkDirectoryIdentity`, so no new
+    tables were needed). `PlatformAgentAccess`
+    (`src/server/agents/PlatformAgentAccess.ts`) is the single bot seam:
+    `listAgents` and `openAgentDirectMessage` resolve the platform actor first
+    and then call the same `WorkspaceAgentService`/`createDirectMessage`
+    paths, so visibility, DM guards, and mention resolution behave
+    identically; room-message invocation needs no adapter code (call
+    `resolveWorkspaceAgentInvocations` with the mapped actor — already
+    enforced). Still separate (future bot plan): the Chat SDK bot processes,
+    platform OAuth, per-install token storage, hosting, and directory review.
 
 ## 7. Sequencing and worktree notes
 
