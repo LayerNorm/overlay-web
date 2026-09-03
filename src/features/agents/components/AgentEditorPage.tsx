@@ -1,10 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { Button, Input } from '@overlay/ui/primitives'
-import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentDirectoryItem,
@@ -24,13 +23,7 @@ import {
   DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
-import {
-  availableByoHarnesses,
-  defaultWorkingDirectory,
-  environmentSupportsHarness,
-  workspaceAgentUsesByo,
-  type BuiltInByoHarnessId,
-} from '../lib/byo-agent-setup'
+import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { buildWorkspaceAgentInput, isAgentEditorValid } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 import { SHOWCASE_AGENTS } from '../lib/showcase-agents'
@@ -42,10 +35,9 @@ import {
   AVATAR_COLORS,
   ByoAgentFields,
   OverlayAgentFields,
-  parseRoots,
   type AgentType,
-  type EnvironmentChoice,
 } from './AgentEditorForm'
+import { useByoConnection } from './use-byo-connection'
 
 export function AgentEditorPage({ mode, agentId, showcase = false }: {
   mode: 'new' | 'edit'
@@ -60,21 +52,21 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   const { settings } = useAppSettings()
   const enabledModelIds = settings.enabledChatModelIds
 
-  const showcaseAgent = showcase && mode === 'edit'
-    ? SHOWCASE_AGENTS.find((candidate) => candidate.id === agentId)
-    : undefined
-  const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(showcaseAgent ?? null)
-  const [loading, setLoading] = useState(!showcase)
+  const showcaseAgent = getShowcaseAgent(showcase, mode, agentId)
+  // One initializer keeps per-field fallbacks out of the component body.
+  const [initial] = useState(() => getInitialEditorState({ showcase, mode, agent: showcaseAgent }))
+  const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(initial.agent)
+  const [loading, setLoading] = useState(initial.loading)
   const [loadFailed, setLoadFailed] = useState(false)
-  const [canCreate, setCanCreate] = useState(showcase || mode === 'edit')
+  const [canCreate, setCanCreate] = useState(initial.canCreate)
   const [connectedAgentsEnabled, setConnectedAgentsEnabled] = useState(false)
 
-  const [name, setName] = useState(showcaseAgent?.name ?? '')
-  const [description, setDescription] = useState(showcaseAgent?.description ?? '')
-  const [instructions, setInstructions] = useState(showcaseAgent?.instructions ?? '')
-  const [modelId, setModelId] = useState<string>(showcaseAgent?.modelId ?? DEFAULT_MODEL_ID)
-  const [avatarColor, setAvatarColor] = useState(showcaseAgent?.avatarColor ?? AVATAR_COLORS[0]!)
-  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(showcaseAgent?.visibility ?? 'workspace')
+  const [name, setName] = useState(initial.name)
+  const [description, setDescription] = useState(initial.description)
+  const [instructions, setInstructions] = useState(initial.instructions)
+  const [modelId, setModelId] = useState<string>(initial.modelId)
+  const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
+  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
@@ -82,19 +74,12 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   const [agentType, setAgentType] = useState<AgentType>(() => (
     workspaceAgentUsesByo(showcaseAgent) ? 'byo' : 'overlay'
   ))
-  const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
-  const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
-  const [environmentsLoading, setEnvironmentsLoading] = useState(false)
-  const [environmentId, setEnvironmentId] = useState('')
-  const [adapterId, setAdapterId] = useState('codex')
-  const [workingDirectory, setWorkingDirectory] = useState('')
-  const [environmentBusy, setEnvironmentBusy] = useState<string | null>(null)
-  const [environmentError, setEnvironmentError] = useState<string | null>(null)
-  const [command, setCommand] = useState('')
-  const [copied, setCopied] = useState(false)
-  const [setupEnvironmentId, setSetupEnvironmentId] = useState<string | null>(null)
-  const [setupRoots, setSetupRoots] = useState('')
-  const [enrollmentBaselineIds, setEnrollmentBaselineIds] = useState<string[]>([])
+  const {
+    environmentChoice, setEnvironmentChoice, environmentsLoading, environmentId, adapterId,
+    workingDirectory, setWorkingDirectory, harnessOptions, selectedHarness, compatibleEnvironments,
+    setupEnvironment, environmentBusy, environmentError, command, copied, setupRoots, setSetupRoots,
+    bindingValid, chooseHarness, chooseEnvironment, beginConnection, approveSetupEnvironment, copyCommand,
+  } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
@@ -143,71 +128,6 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     setSavedFlash(false)
   }, [agent])
 
-  const refreshEnvironments = useCallback(async () => {
-    if (!activeWorkspaceId || showcase) return []
-    const result = await overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' })
-    setEnvironments(result.environments)
-    return result.environments
-  }, [activeWorkspaceId, showcase])
-
-  useEffect(() => {
-    if (!activeWorkspaceId || showcase || !connectedAgentsEnabled || (!agent && agentType !== 'byo')) return
-    let cancelled = false
-    setEnvironmentsLoading(true)
-    setEnvironmentError(null)
-    void Promise.all([
-      overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' }),
-      agent ? overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId, agent.id) : Promise.resolve({ bindings: [] }),
-    ]).then(([environmentResult, bindingResult]) => {
-      if (cancelled) return
-      setEnvironments(environmentResult.environments)
-      const binding = bindingResult.bindings[0]
-      if (!binding) return
-      const bindingAdapterId = typeof binding.adapterConfig.adapterId === 'string'
-        ? binding.adapterConfig.adapterId : 'codex'
-      setAgentType('byo')
-      setEnvironmentChoice('existing')
-      setEnvironmentId(binding.environmentId)
-      setAdapterId(bindingAdapterId)
-      setWorkingDirectory(typeof binding.adapterConfig.workingDirectory === 'string'
-        ? binding.adapterConfig.workingDirectory : '')
-    }).catch((value) => {
-      if (!cancelled) setEnvironmentError(value instanceof Error ? value.message : 'Could not load environments.')
-    }).finally(() => {
-      if (!cancelled) setEnvironmentsLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, showcase])
-
-  useEffect(() => {
-    if (!command || setupEnvironmentId) return
-    const timer = window.setInterval(() => {
-      void refreshEnvironments().catch((value) => {
-        setEnvironmentError(value instanceof Error ? value.message : 'Could not refresh environments.')
-      })
-    }, 2_500)
-    return () => window.clearInterval(timer)
-  }, [command, refreshEnvironments, setupEnvironmentId])
-
-  useEffect(() => {
-    if (!command || setupEnvironmentId) return
-    const baseline = new Set(enrollmentBaselineIds)
-    const pending = [...environments]
-      .filter((environment) => environment.status === 'pending' && !baseline.has(environment.id))
-      .sort((left, right) => right.createdAt - left.createdAt)[0]
-    if (pending) setSetupEnvironmentId(pending.id)
-  }, [command, enrollmentBaselineIds, environments, setupEnvironmentId])
-
-  const harnessOptions = useMemo(() => availableByoHarnesses(environments), [environments])
-  const selectedHarness = harnessOptions.find((harness) => harness.id === adapterId) ?? harnessOptions[0]!
-  const compatibleEnvironments = useMemo(() => environments.filter((environment) => (
-    environment.status !== 'pending'
-      && environment.status !== 'revoked'
-      && environmentSupportsHarness(environment, adapterId)
-  )), [adapterId, environments])
-  const selectedEnvironment = environments.find((environment) => environment.id === environmentId)
-  const setupEnvironment = environments.find((environment) => environment.id === setupEnvironmentId)
-
   const modelOptions = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
@@ -217,7 +137,6 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   }, [enabledModelIds, revision])
 
   const isDefaultMaster = Boolean(agent?.isDefault || agent?.name.toLowerCase() === 'overlay')
-  const bindingValid = Boolean(environmentId && adapterId && workingDirectory.trim())
   const valid = isAgentEditorValid({
     name, instructions, modelId, agentType, connectedAgentsEnabled, bindingValid,
   })
@@ -230,90 +149,6 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
       else next.add(groupId)
       return next
     })
-  }
-
-  const chooseHarness = (nextAdapterId: string) => {
-    setAdapterId(nextAdapterId)
-    setEnvironmentError(null)
-    setCommand('')
-    setSetupEnvironmentId(null)
-    setSetupRoots('')
-    if (selectedEnvironment && !environmentSupportsHarness(selectedEnvironment, nextAdapterId)) {
-      setEnvironmentId('')
-      setWorkingDirectory('')
-    }
-    const nextHarness = harnessOptions.find((harness) => harness.id === nextAdapterId)
-    if (nextHarness && !nextHarness.connectable && environmentChoice !== 'existing') {
-      setEnvironmentChoice('existing')
-    }
-  }
-
-  const chooseEnvironment = (nextEnvironmentId: string) => {
-    const environment = environments.find((candidate) => candidate.id === nextEnvironmentId)
-    setEnvironmentId(nextEnvironmentId)
-    setWorkingDirectory(defaultWorkingDirectory(environment))
-  }
-
-  const beginConnection = async () => {
-    if (showcase) {
-      setEnvironmentError('Sign in to connect an environment.')
-      return
-    }
-    if (!activeWorkspaceId || !selectedHarness?.connectable) return
-    setEnvironmentBusy('connect')
-    setEnvironmentError(null)
-    setCommand('')
-    setSetupEnvironmentId(null)
-    setSetupRoots('')
-    setEnrollmentBaselineIds(environments.map((environment) => environment.id))
-    try {
-      const result = await overlayAppClient.agentEnvironments.createEnrollment(activeWorkspaceId, {
-        adapterId: adapterId as BuiltInByoHarnessId,
-      })
-      setCommand(result.command)
-    } catch (value) {
-      setEnvironmentError(value instanceof Error ? value.message : 'Could not create the connection command.')
-    } finally {
-      setEnvironmentBusy(null)
-    }
-  }
-
-  const approveSetupEnvironment = async () => {
-    if (!activeWorkspaceId || !setupEnvironmentId) return
-    const roots = parseRoots(setupRoots)
-    if (roots.length === 0) {
-      setEnvironmentError('Enter at least one absolute project root.')
-      return
-    }
-    setEnvironmentBusy('approve')
-    setEnvironmentError(null)
-    try {
-      await overlayAppClient.agentEnvironments.approve(activeWorkspaceId, setupEnvironmentId, {
-        mode: 'selected_roots', roots,
-      })
-      await refreshEnvironments()
-      setEnvironmentId(setupEnvironmentId)
-      setWorkingDirectory(roots[0]!)
-      setEnvironmentChoice('existing')
-      setCommand('')
-      setSetupEnvironmentId(null)
-      setSetupRoots('')
-    } catch (value) {
-      setEnvironmentError(value instanceof Error ? value.message : 'Environment approval failed.')
-    } finally {
-      setEnvironmentBusy(null)
-    }
-  }
-
-  const copyCommand = async () => {
-    if (!command) return
-    try {
-      await navigator.clipboard.writeText(command)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1_500)
-    } catch {
-      setEnvironmentError('Could not copy the command. Select it and copy it manually.')
-    }
   }
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
@@ -399,7 +234,11 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     })
   }
 
-  const title = mode === 'new' ? 'New agent' : loading ? 'Agent' : agent?.name ?? 'Agent not found'
+  const title = useMemo(() => {
+    if (mode === 'new') return 'New agent'
+    if (loading) return 'Agent'
+    return agent?.name ?? 'Agent not found'
+  }, [agent?.name, loading, mode])
 
   return (
     <AppScreenShell
@@ -411,9 +250,15 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
               <ArrowLeft size={14} /> Agents
             </Button>
           )}
-          actions={mode === 'edit' && agent && (showHello || showcase) ? (
-            <Button variant="secondary" size="sm" onClick={sayHello}><MessageSquare size={13} /> Say hello</Button>
-          ) : null}
+          actions={(
+            <SayHelloButton
+              mode={mode}
+              hasAgent={Boolean(agent)}
+              highlight={showHello}
+              showcase={showcase}
+              onSayHello={sayHello}
+            />
+          )}
         />
       )}
     >
@@ -521,14 +366,68 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
               <div className="flex items-center gap-2">
                 <span className="flex-1" />
                 <Button variant="ghost" onClick={() => router.push(directoryHref)} disabled={busy}>Cancel</Button>
-                <Button variant="secondary" disabled={busy || !valid} onClick={save}>
-                  {busy ? 'Saving…' : mode === 'new' ? 'Create agent' : 'Save changes'}
-                </Button>
+                <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={() => router.push(directoryHref)} onSave={save} />
               </div>
             </div>
           </div>
         )}
       </AppScreenBody>
     </AppScreenShell>
+  )
+}
+
+function getShowcaseAgent(
+  showcase: boolean,
+  mode: 'new' | 'edit',
+  agentId: string | undefined,
+): WorkspaceAgentDirectoryItem | null {
+  if (!showcase || mode !== 'edit') return null
+  return SHOWCASE_AGENTS.find((candidate) => candidate.id === agentId) ?? null
+}
+
+function getInitialEditorState(args: {
+  showcase: boolean
+  mode: 'new' | 'edit'
+  agent: WorkspaceAgentDirectoryItem | null
+}) {
+  const { agent } = args
+  return {
+    agent,
+    loading: !args.showcase,
+    canCreate: args.showcase || args.mode === 'edit',
+    name: agent?.name ?? '',
+    description: agent?.description ?? '',
+    instructions: agent?.instructions ?? '',
+    modelId: agent?.modelId ?? DEFAULT_MODEL_ID,
+    avatarColor: agent?.avatarColor ?? AVATAR_COLORS[0]!,
+    visibility: agent?.visibility ?? 'workspace',
+  }
+}
+
+function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello }: {
+  mode: 'new' | 'edit'
+  hasAgent: boolean
+  highlight: boolean
+  showcase: boolean
+  onSayHello(): void
+}) {
+  if (mode !== 'edit' || !hasAgent || (!highlight && !showcase)) return null
+  return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
+}
+
+function EditorFooter({ mode, busy, valid, onCancel, onSave }: {
+  mode: 'new' | 'edit'
+  busy: boolean
+  valid: boolean
+  onCancel(): void
+  onSave(): void
+}) {
+  return (
+    <>
+      <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+      <Button variant="secondary" disabled={busy || !valid} onClick={onSave}>
+        {busy ? 'Saving…' : mode === 'new' ? 'Create agent' : 'Save changes'}
+      </Button>
+    </>
   )
 }
