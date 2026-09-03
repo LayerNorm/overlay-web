@@ -22,7 +22,8 @@ const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
 ].map(([id, name, description, avatarColor], index) => ({
   id, workspaceId: 'showcase-acme', principalId: `${id}-principal`, name, description,
   instructions: description, harness: 'overlay', modelId: 'openrouter/free', avatarColor,
-  allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'showcase-divyansh',
+  allowedToolIds: [], invocationPolicy: 'mention', visibility: 'workspace',
+  createdByPrincipalId: 'showcase-divyansh',
   createdAt: Date.parse('2026-07-29T18:00:00.000Z') + index, updatedAt: Date.parse('2026-07-29T18:00:00.000Z') + index,
   teamIds: [], roomCount: 2 + index,
 }))
@@ -109,7 +110,8 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
           id, workspaceId: 'showcase-acme', principalId: `${id}-principal`, name: input.name,
           description: input.description, instructions: input.instructions, harness: input.harness ?? 'overlay',
           modelId: input.modelId, avatarColor: input.avatarColor, allowedToolIds: input.allowedToolIds ?? [],
-          invocationPolicy: 'mention', createdByPrincipalId: 'showcase-divyansh', createdAt: now, updatedAt: now,
+          invocationPolicy: 'mention', visibility: input.visibility ?? 'workspace',
+          createdByPrincipalId: 'showcase-divyansh', createdAt: now, updatedAt: now,
           teamIds: input.teamIds ?? [], roomCount: 1,
         }])
       }
@@ -217,6 +219,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
           <TileGrid columns={3}>
             {agents.map((agent) => {
               const isDefaultMaster = Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
+              const isPrivate = agent.visibility === 'creator'
               const runtimeLabel = getAgentRuntimeLabel(agent.modelId, activeBindingsByAgentId.get(agent.id))
               return (
                 <Tile
@@ -226,8 +229,11 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                   leading={(
                     <div className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-sm" style={{ backgroundColor: agent.avatarColor ?? '#18181b' }}><Bot size={22} strokeWidth={1.5} /></div>
                   )}
-                  topRight={isDefaultMaster ? (
-                    <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--foreground)]">Master Agent</span>
+                  topRight={isDefaultMaster || isPrivate ? (
+                    <span className="flex items-center gap-1.5">
+                      {isPrivate ? <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--muted)]">Only me</span> : null}
+                      {isDefaultMaster ? <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--foreground)]">Master Agent</span> : null}
+                    </span>
                   ) : null}
                   title={<span className="text-base">{agent.name}</span>}
                   description={agent.description ?? agent.instructions}

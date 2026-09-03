@@ -1,12 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Server, ShieldCheck, Sparkles, Terminal } from 'lucide-react'
+import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
 import { Button, DialogFrame, Input, ListboxSelect } from '@overlay/ui/primitives'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentDirectoryItem,
+  WorkspaceAgentVisibility,
   WorkspaceManagementItem,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -74,6 +75,7 @@ export function AgentEditorDialog({
   const [instructions, setInstructions] = useState(agent?.instructions ?? '')
   const [modelId, setModelId] = useState<string>(agent?.modelId ?? DEFAULT_MODEL_ID)
   const [avatarColor, setAvatarColor] = useState(agent?.avatarColor ?? AVATAR_COLORS[0]!)
+  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(agent?.visibility ?? 'workspace')
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (agent
     ? enabledAgentToolGroupIds(agent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
@@ -279,6 +281,7 @@ export function AgentEditorDialog({
       avatarColor,
       allowedToolIds: byo ? [] : toolIdsForEnabledGroups(enabledToolGroups),
       teamIds: agent?.teamIds ?? [],
+      visibility,
     }, byo ? {
       environmentId,
       adapterId,
@@ -321,6 +324,7 @@ export function AgentEditorDialog({
             Short description <span className="font-normal text-[var(--muted-light)]">optional</span>
             <Input className="mt-1.5" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'} />
           </label>
+          <AccessSelector value={visibility} onChange={setVisibility} />
 
           {agentType === 'overlay' ? (
             <OverlayAgentFields instructions={instructions} onInstructionsChange={setInstructions} modelId={modelId} onModelChange={setModelId} modelOptions={modelOptions} enabledToolGroups={enabledToolGroups} onToggleToolGroup={toggleToolGroup} advanced={advanced} onAdvancedChange={setAdvanced} />
@@ -343,6 +347,19 @@ function AgentTypeSelector({ value, onChange }: { value: AgentType; onChange(val
     <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-subtle)] p-1" role="radiogroup" aria-label="Agent type">
       <button type="button" role="radio" aria-checked={value === 'overlay'} onClick={() => onChange('overlay')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'overlay' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Bot size={16} /> Overlay agent</button>
       <button type="button" role="radio" aria-checked={value === 'byo'} onClick={() => onChange('byo')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'byo' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Server size={16} /> Bring your own agent</button>
+    </div>
+  )
+}
+
+function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisibility; onChange(value: WorkspaceAgentVisibility): void }) {
+  return (
+    <div>
+      <p className="text-xs font-medium">Access</p>
+      <div className="mt-1.5 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-subtle)] p-1" role="radiogroup" aria-label="Agent access">
+        <button type="button" role="radio" aria-checked={value === 'workspace'} onClick={() => onChange('workspace')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'workspace' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Users size={16} /> Everyone</button>
+        <button type="button" role="radio" aria-checked={value === 'creator'} onClick={() => onChange('creator')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'creator' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Lock size={16} /> Only me</button>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{value === 'creator' ? 'Only you can see, chat with, or @-mention this agent.' : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}</p>
     </div>
   )
 }
