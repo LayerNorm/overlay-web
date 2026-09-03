@@ -1,7 +1,7 @@
 # Slack + Teams bot — phased implementation plan
 
-Status: **B0–B2 implemented** on `staging` (direct push per standing owner
-auth). B3–B6 remain planned. Corrections from implementation are recorded
+Status: **B0–B3 implemented** on `staging` (direct push per standing owner
+auth). B4–B6 remain planned. Corrections from implementation are recorded
 inline below (marked IMPLEMENTATION NOTE). Adapter recon done (Chat SDK
 `chat` + `@chat-adapter/slack` + `@chat-adapter/teams` all at **4.39.0**,
 verified on npm). Phases 1–4 of `AGENT_VISIBILITY_AND_EDITOR_PLAN.md` are on
@@ -191,6 +191,16 @@ the mapped actor — no new authorization code:
 - **Acceptance:** creator-only agent answers its creator in Slack and is
   silent for everyone else; flip semantics hold end-to-end; conversion events
   recorded.
+  - IMPLEMENTATION NOTE: no `Chat` class yet — mentions, slash commands, and
+    actions all run through the low-level subpaths with Block Kit replies.
+    Agent selection for mentions/`ask` is longest-name-prefix match against
+    the actor-visible directory with default-agent fallback (invisible names
+    can never match). Manage buttons are action-only (link buttons never
+    dispatch) so clicks arrive as `block_actions`, audit as
+    `slack.manage_link_click` with the mapped user, and answer with an
+    ephemeral deep link. `onAgentSessionStopped` is deferred to B4 with the
+    `Chat` class and streaming: the current synchronous turn has no
+    cancellable signal to wire.
 
 ## 8. Phase B4 — Pilot hardening
 
