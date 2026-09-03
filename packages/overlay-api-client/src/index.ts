@@ -70,6 +70,7 @@ export {
   type WebhookDelivery,
   type WebhookSubscription,
 } from './webhooks/client'
+export { SlackClient } from './slack/client'
 export { createHttpContext, type HttpContext } from './shared/http'
 export { createIdempotencyKey, toRequestInit, type MutationRequestInit } from './shared/mutation'
 export * from '../../../src/shared/schemas'

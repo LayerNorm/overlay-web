@@ -24,6 +24,7 @@ import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
+import { SlackClient } from './slack/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkspacesClient } from './workspaces/client'
 import { createHttpContext } from './shared/http'
@@ -45,6 +46,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     projects: new ProjectsClient(http),
     integrations: new IntegrationsClient(http),
     skills: new SkillsClient(http),
+    slack: new SlackClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),
     settings: new SettingsClient(http),
