@@ -1118,6 +1118,30 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return (result.rowCount ?? 0) > 0
   }
 
+  async claimPlatformEvent(
+    input: Parameters<WorkspaceRepository['claimPlatformEvent']>[0],
+  ): Promise<boolean> {
+    return await this.db.transaction(async (tx) => {
+      const inserted = await tx.execute(sql`
+        INSERT INTO workspace_platform_event_receipts (
+          id, workspace_id, directory, external_team_id, event_id, created_at
+        ) VALUES (
+          ${`${input.directory}:${input.externalTeamId}:${input.eventId}`},
+          ${input.workspaceId ?? null}, ${input.directory}, ${input.externalTeamId},
+          ${input.eventId}, ${new Date(input.now)}
+        )
+        ON CONFLICT (directory, external_team_id, event_id) DO NOTHING
+        RETURNING id
+      `)
+      if ((inserted.rowCount ?? 0) === 0) return false
+      await tx.execute(sql`
+        DELETE FROM workspace_platform_event_receipts
+        WHERE created_at < ${new Date(input.now - 30 * 24 * 60 * 60 * 1_000)}
+      `)
+      return true
+    })
+  }
+
   async recordAuditExport(
     input: Parameters<WorkspaceRepository['recordAuditExport']>[0],
   ): Promise<WorkspaceAuditExportRecord> {

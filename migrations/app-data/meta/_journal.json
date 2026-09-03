@@ -526,6 +526,13 @@
       "when": 1788466639000,
       "tag": "0074_platform_installations",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1788472665000,
+      "tag": "0075_platform_event_receipts",
+      "breakpoints": true
     }
   ]
 }

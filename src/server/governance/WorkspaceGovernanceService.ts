@@ -277,6 +277,26 @@ export class WorkspaceGovernanceService {
   }
 
   /**
+   * Claims a platform webhook delivery for at-most-once handling (trusted
+   * bot path, like `getPlatformInstallationByTeam`). First claim wins;
+   * redeliveries report false so the transport can ack without re-running.
+   */
+  async claimPlatformEvent(args: {
+    workspaceId?: string
+    directory: string
+    externalTeamId: string
+    eventId: string
+  }): Promise<boolean> {
+    return await this.deps.repository.claimPlatformEvent({
+      workspaceId: args.workspaceId,
+      directory: normalized(args.directory, 'directory'),
+      externalTeamId: normalized(args.externalTeamId, 'externalTeamId'),
+      eventId: normalized(args.eventId, 'eventId'),
+      now: (this.deps.now ?? Date.now)(),
+    })
+  }
+
+  /**
    * Removes a platform install. Message history and audit records are
    * preserved; the bot stops serving that team immediately.
    */

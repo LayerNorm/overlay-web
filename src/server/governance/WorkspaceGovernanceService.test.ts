@@ -32,6 +32,7 @@ function createService(options: {
   const exports: unknown[] = []
   const mappings = new Map<string, Record<string, unknown>>()
   const installs = new Map<string, Record<string, unknown>>()
+  const claims = new Set<string>()
   const suspended: string[] = []
   const limitChecks: string[] = []
   const service = new WorkspaceGovernanceService({
@@ -126,6 +127,16 @@ function createService(options: {
       }) {
         return installs.delete(`${directory}:${externalTeamId}`)
       },
+      async claimPlatformEvent({ directory, externalTeamId, eventId }: {
+        directory: string
+        externalTeamId: string
+        eventId: string
+      }) {
+        const key = `${directory}:${externalTeamId}:${eventId}`
+        if (claims.has(key)) return false
+        claims.add(key)
+        return true
+      },
       async recordAuditExport(input: Record<string, unknown>) {
         const record = { ...input, createdAt: input.now }
         exports.push(record)
@@ -172,12 +183,6 @@ function createService(options: {
         }
         suspended.push(principalId)
         return { principalId, status: 'suspended' }
-      },
-      async getPlatformInstallationByTeam({ directory, externalTeamId }: {
-        directory: string
-        externalTeamId: string
-      }) {
-        return installs.get(`${directory}:${externalTeamId}`) ?? null
       },
     } as never,
     appDataProvider: 'postgres',
@@ -533,6 +538,19 @@ test('non-managers cannot unlink chat identities', async () => {
     directory: 'slack',
     externalId: 'U123',
   }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'forbidden')
+})
+
+test('platform event claims are first-writer-wins', async () => {
+  const { service } = createService()
+  assert.equal(await service.claimPlatformEvent({
+    workspaceId: WORKSPACE, directory: 'slack', externalTeamId: 'T123', eventId: 'Ev1',
+  }), true)
+  assert.equal(await service.claimPlatformEvent({
+    workspaceId: WORKSPACE, directory: 'slack', externalTeamId: 'T123', eventId: 'Ev1',
+  }), false)
+  assert.equal(await service.claimPlatformEvent({
+    workspaceId: WORKSPACE, directory: 'slack', externalTeamId: 'T123', eventId: 'Ev2',
+  }), true)
 })
 
 test('non-managers cannot manage platform installs', async () => {

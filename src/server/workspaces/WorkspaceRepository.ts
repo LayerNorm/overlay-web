@@ -289,6 +289,18 @@ export interface WorkspaceRepository {
     directory: string
     externalTeamId: string
   }): Promise<boolean>
+  /**
+   * Claims a platform webhook delivery for at-most-once handling. Returns
+   * true on first claim, false for a redelivery. The claim key is
+   * directory + team + platform event id.
+   */
+  claimPlatformEvent(input: {
+    workspaceId?: string
+    directory: string
+    externalTeamId: string
+    eventId: string
+    now: number
+  }): Promise<boolean>
 
   recordAuditExport(input: {
     id: string

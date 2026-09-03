@@ -1949,6 +1949,17 @@ export default defineSchema({
     .index('by_workspaceId_directory_team', ['workspaceId', 'directory', 'externalTeamId'])
     .index('by_directory_external', ['directory', 'externalTeamId']),
 
+  workspacePlatformEventReceipts: defineTable({
+    receiptId: v.string(),
+    workspaceId: v.optional(v.string()),
+    directory: v.string(),
+    externalTeamId: v.string(),
+    eventId: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_receiptId', ['receiptId'])
+    .index('by_createdAt', ['createdAt']),
+
   workspacePresence: defineTable({
     workspaceId: v.string(),
     principalId: v.string(),

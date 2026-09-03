@@ -126,6 +126,45 @@ export const listPlatformInstallationsByServer = query({
   },
 })
 
+export const claimPlatformEventByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.optional(v.string()),
+    directory: v.string(),
+    externalTeamId: v.string(),
+    eventId: v.string(),
+    now: v.number(),
+  },
+  returns: v.object({ claimed: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (!args.directory.trim() || !args.externalTeamId.trim() || !args.eventId.trim()) {
+      throw new Error('WORKSPACE_EVENT_INVALID')
+    }
+    const receiptId = `${args.directory.trim()}:${args.externalTeamId.trim()}:${args.eventId.trim()}`
+    const existing = await ctx.db.query('workspacePlatformEventReceipts')
+      .withIndex('by_receiptId', (q) => q.eq('receiptId', receiptId))
+      .unique()
+    if (existing) return { claimed: false }
+    await ctx.db.insert('workspacePlatformEventReceipts', {
+      receiptId,
+      workspaceId: args.workspaceId,
+      directory: args.directory.trim(),
+      externalTeamId: args.externalTeamId.trim(),
+      eventId: args.eventId.trim(),
+      createdAt: args.now,
+    })
+    // Bounded retention sweep: receipts older than 30 days piggyback on the
+    // claim write so the table cannot grow without bound.
+    const cutoff = args.now - 30 * 24 * 60 * 60 * 1_000
+    const stale = await ctx.db.query('workspacePlatformEventReceipts')
+      .withIndex('by_createdAt', (q) => q.lt('createdAt', cutoff))
+      .take(200)
+    for (const row of stale) await ctx.db.delete(row._id)
+    return { claimed: true }
+  },
+})
+
 export const deletePlatformInstallationByServer = mutation({
   args: {
     serverSecret: v.string(),

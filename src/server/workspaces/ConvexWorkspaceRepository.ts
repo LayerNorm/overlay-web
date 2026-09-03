@@ -540,6 +540,11 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return await platformMutation<boolean>('deletePlatformInstallationByServer', args) ?? false
   }
 
+  async claimPlatformEvent(input: Parameters<WorkspaceRepository['claimPlatformEvent']>[0]) {
+    const result = await platformMutation<{ claimed: boolean }>('claimPlatformEventByServer', input)
+    return result?.claimed ?? false
+  }
+
   async recordAuditExport(input: Parameters<WorkspaceRepository['recordAuditExport']>[0]) {
     return clean(await requiredMutation<WorkspaceAuditExportRecord>('recordAuditExportByServer', input))
   }

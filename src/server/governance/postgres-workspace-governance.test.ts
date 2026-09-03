@@ -200,6 +200,20 @@ test('Postgres governance repository scopes policy, identity, and exports per wo
         (await repository.listPlatformInstallations({ workspaceId: orgWorkspaceId })).length,
         1,
       )
+      assert.equal(await repository.claimPlatformEvent({
+        workspaceId: orgWorkspaceId,
+        directory: 'slack',
+        externalTeamId: `${scope}_team`,
+        eventId: `${scope}_event`,
+        now: 8_200,
+      }), true)
+      assert.equal(await repository.claimPlatformEvent({
+        workspaceId: orgWorkspaceId,
+        directory: 'slack',
+        externalTeamId: `${scope}_team`,
+        eventId: `${scope}_event`,
+        now: 8_201,
+      }), false)
       assert.equal(
         await repository.deletePlatformInstallation({
           workspaceId: orgWorkspaceId,
