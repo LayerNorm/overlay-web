@@ -71,6 +71,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/traversing-agent-conversations.md` | Any change to how Devin CLI, Codex, or Grok Build sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db`, Codex JSONL, or Grok `chat_history.jsonl` files. |
 | `docs/develop/bring-your-own-agents.md` | Any change to connected-agent contracts, host protocol, enrollment, remote execution, managed environments, or rollout policy. |
 | `docs/develop/bring-your-own-agents-architecture.md` | Any change to the connected-agent topology, protocol layering, enrollment flow, Agent Host loop, ACP adapters, memory flow, or public package boundaries. |
+| `docs/develop/chat-platform-bots.mdx` | Any change to the Slack/Teams bot transport, install or identity-linking flow, webhook routes, event idempotency, bot rate limits, or token custody. |
 
 **Rules:**
 1. Read the relevant doc(s) before starting work in a new area.

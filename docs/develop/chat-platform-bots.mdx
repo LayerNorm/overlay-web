@@ -1,0 +1,92 @@
+---
+title: "Chat Platform Bots"
+description: "How the Slack (and future Teams) bot transport calls the shared agent services — routes, installs, identity, idempotency, and custody."
+---
+
+The Slack bot is a transport, not a runtime. Every authorization decision —
+install resolution, actor mapping, visibility, DM guards, usage gating — runs
+in the shared services (`PlatformAgentAccess`, `WorkspaceAgentService`,
+`resolveWorkspaceAgentInvocations`). Any logic that only works in Slack is a
+bug: it must go through those services.
+
+## Request flow
+
+`POST /api/webhooks/slack` (thin route, no Overlay session) verifies the
+Slack HMAC signature, answers URL verification, and acknowledges everything
+else inside the 3s window. Real work is scheduled past the ack with `after()`:
+
+1. **Claim** the delivery (`workspace_platform_event_receipts`, keyed by
+   directory + team + platform `event_id`, `triggerId` for slash/actions).
+   Redeliveries ack as duplicates without re-running. Claim failures fail
+   open — receipts must never silence the bot.
+2. **Resolve** the install (team → workspace + decrypted bot token) and the
+   actor (`workspaceIdentityMappings` → principal → userId). Uninstalled
+   teams and unmapped users stay silent.
+3. **Invoke** through the mapped user: mentions/DMs open (or reuse) an agent
+   DM and run the turn; `/overlay agents|ask` answer ephemerally or post to
+   the channel; Manage-button clicks audit `slack.manage_link_click` and
+   answer with an ephemeral deep link.
+4. **Post back** to the thread/channel with Block Kit (answer + Manage button).
+
+Deterministic Overlay `clientNonce`s (`slack:<team>:<channel>:<ts>`) stay as
+defense-in-depth under the receipts: sequential retries converge on one
+message row and the prior-reply invocation guard turns them into no-ops.
+
+## Surfaces and files
+
+- Transport: `src/server/slack/SlackWebhookService.ts` (low-level
+  `@chat-adapter/slack/webhook` + `/api` subpaths via dynamic loaders in
+  `slack-adapter-modules.ts` — the package exports `import`-only conditions,
+  so static imports break tsx-run unit tests).
+- Pure logic: `slack-agent-resolution.ts` (name match + default fallback),
+  `slack-reply-blocks.ts` (Block Kit), `slack-oauth-state.ts` (signed install
+  state), `slack-token-crypto.ts` (AES-256-GCM envelopes).
+- Installs: manager-gated OAuth (`GET /api/v1/slack/install` mints state,
+  `GET /api/webhooks/slack/oauth` exchanges + stores ciphertext),
+  `workspace_platform_installations` on both backends.
+- Identity linking: Connected chat settings section, audited
+  `linkDirectoryIdentity`; unlink retires the mapping only (membership and
+  history untouched).
+- Routes: `POST /api/webhooks/slack`, `GET /api/webhooks/slack/oauth`,
+  `GET /api/v1/slack/install`, `GET/POST/DELETE /api/v1/slack/identities`,
+  `GET /api/v1/slack/installations`.
+
+## Rate limits
+
+Unauthenticated webhook routes enforce IP-keyed specs in
+`rate-limit-specs.ts` (`slack/webhook:ip`, `slack/oauth:callback:ip`),
+failing open. Per-team abuse is enforced downstream by the `message.send`
+usage gate on the mapped user — bot turns bill through the identical
+entitlement path as first-party clients (locked by ordering tests in
+`SlackWebhookService.test.ts`: guard → message → run → post, all under the
+mapped identity).
+
+## Token custody and rotation
+
+- Bot tokens live only in `workspace_platform_installations.bot_token_cipher`
+  (AES-256-GCM, `SLACK_ENCRYPTION_KEY`, per deployment, never committed) and
+  are decrypted per request — no caching, no logs (audit metadata carries
+  workspace/team/channel ids only).
+- Rotate `SLACK_SIGNING_SECRET` in the Slack dashboard, then update the
+  deployment env; verification is single-secret, so rotate off-hours.
+- Rotate a workspace token by reinstalling (OAuth rewrites the install row in
+  place); the resolver reads fresh on every event, so rotation is immediate.
+- Required env: `SLACK_SIGNING_SECRET` (webhook), plus `SLACK_CLIENT_ID`,
+  `SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI`, `SLACK_ENCRYPTION_KEY` (installs).
+  Without them the routes report unconfigured (503/400), never crash.
+
+## QA without a Slack app
+
+Staging has no Slack workspace wired up, so signed-path QA runs in unit tests
+(real HMAC vectors, challenge handshake, duplicate suppression, silent cases).
+Browser QA covers: unconfigured 503s, OAuth/install 400s, manager gating, the
+Connected chat section (link → unlink round-trip), and a clean console.
+The live @-mention loop needs a Slack app + staging secrets + one linked
+identity (see the bot plan's B0 notes).
+
+## Deferred to the `Chat`-class phase
+
+Native streaming with post-and-edit fallback, Agent Sessions (working
+indicator, stop-button abort wired to the turn `AbortSignal` — `runTurn`
+already accepts one), and `thread.signal` plumbing. The synchronous turn plus
+receipts is the correct pilot shape; do not bolt streaming onto it.

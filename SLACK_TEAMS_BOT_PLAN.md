@@ -1,7 +1,7 @@
 # Slack + Teams bot — phased implementation plan
 
-Status: **B0–B3 implemented** on `staging` (direct push per standing owner
-auth). B4–B6 remain planned. Corrections from implementation are recorded
+Status: **B0–B4 implemented** on `staging` (direct push per standing owner
+auth). B5–B6 remain planned. Corrections from implementation are recorded
 inline below (marked IMPLEMENTATION NOTE). Adapter recon done (Chat SDK
 `chat` + `@chat-adapter/slack` + `@chat-adapter/teams` all at **4.39.0**,
 verified on npm). Phases 1–4 of `AGENT_VISIBILITY_AND_EDITOR_PLAN.md` are on
@@ -217,6 +217,13 @@ the mapped actor — no new authorization code:
 - Docs in the same PRs: `api-route-catalog.mdx` + compact catalog for the
   webhook/OAuth routes, new living doc `docs/develop/chat-platform-bots.mdx`
   (register it in the AGENTS.md table), CHANGELOG entries.
+  - IMPLEMENTATION NOTE: streaming/`thread.signal` stay deferred to the
+    `Chat`-class phase — `runTurn` already accepts a signal, but there is no
+    session lifecycle to source cancellation from yet, and streaming cannot be
+    verified without Slack credentials. B4 shipped what is verifiable:
+    receipts, IP rate limits, metering-order tests, the custody review, and
+    the living doc. The `Chat` class (sessions, native streaming, stop
+    button) is the next transport milestone, ahead of the Teams adapter.
 
 ## 9. Phase B5 — Pilot and measure
 
