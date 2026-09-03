@@ -217,6 +217,32 @@ export class WorkspaceAgentService {
     })) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
   }
 
+  /**
+   * DM-creation guard: every requested agent principal must resolve to an
+   * agent visible to the actor. Human principals, unknown principals, and
+   * principals from other workspaces are left for the conversation layer's
+   * own validation — this gate only adds the visibility check. Invisible
+   * agents report as `not_found` so callers can map the failure to 404
+   * without disclosing existence.
+   */
+  async assertDirectMessageTargets(args: {
+    actorUserId: string
+    workspaceId: string
+    principalIds: string[]
+  }): Promise<void> {
+    const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const uniquePrincipalIds = [...new Set(args.principalIds.map((principalId) => principalId.trim()).filter(Boolean))]
+    const principals = await Promise.all(uniquePrincipalIds.map((principalId) => this.workspaces.resolvePrincipal(principalId)))
+    const agentIds = principals.flatMap((principal) => (
+      principal && principal.type === 'agent' && principal.agentId ? [principal.agentId] : []
+    ))
+    await Promise.all(agentIds.map((agentId) => this.get({
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      agentId,
+    })))
+  }
+
   private async requireEditor(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })

@@ -55,7 +55,11 @@ function defaultAgentFixture(): WorkspaceAgentDirectoryItem {
   })
 }
 
-function mockWorkspaces(principalId: string, role: WorkspaceMembershipRole) {
+function mockWorkspaces(
+  principalId: string,
+  role: WorkspaceMembershipRole,
+  principals: Record<string, { type: 'human' | 'agent'; agentId?: string }> = {},
+) {
   const access = {
     workspace: { id: WORKSPACE_ID },
     principal: { id: principalId },
@@ -66,10 +70,20 @@ function mockWorkspaces(principalId: string, role: WorkspaceMembershipRole) {
     async listTeams() { return [] },
     async assertMemberMayCreate() { /* allowed */ },
     async assertAgentHarnessAllowed() { /* allowed */ },
+    async resolvePrincipal(id: string) {
+      const found = principals[id]
+      if (!found) return null
+      return { id, workspaceId: WORKSPACE_ID, type: found.type, agentId: found.agentId, displayName: id }
+    },
   } as unknown as WorkspaceService
 }
 
-function serviceFor(principalId: string, role: WorkspaceMembershipRole, seed: WorkspaceAgentDirectoryItem[] = []) {
+function serviceFor(
+  principalId: string,
+  role: WorkspaceMembershipRole,
+  seed: WorkspaceAgentDirectoryItem[] = [],
+  principals: Record<string, { type: 'human' | 'agent'; agentId?: string }> = {},
+) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
   const created: CreateWorkspaceAgentRecord[] = []
   const updated: UpdateWorkspaceAgentRecord[] = []
@@ -111,7 +125,7 @@ function serviceFor(principalId: string, role: WorkspaceMembershipRole, seed: Wo
         return true
       },
     } as unknown as WorkspaceAgentRepository,
-    mockWorkspaces(principalId, role),
+    mockWorkspaces(principalId, role, principals),
     () => `generated-${++idCounter}`,
     () => NOW,
   )
@@ -228,4 +242,51 @@ test('the default master agent is workspace-visible', async () => {
   const master = created.find((input) => input.isDefault)
   assert.ok(master)
   assert.equal(master.visibility, 'workspace')
+})
+
+const DM_PRIVATE_AGENT_PRINCIPAL_ID = 'agent-principal-private'
+const DM_SHARED_AGENT_PRINCIPAL_ID = 'agent-principal-shared'
+
+function dmSeed(): WorkspaceAgentDirectoryItem[] {
+  return [
+    defaultAgentFixture(),
+    agentFixture({ id: 'agent-private', principalId: DM_PRIVATE_AGENT_PRINCIPAL_ID, visibility: 'creator' }),
+    agentFixture({ id: 'agent-shared', principalId: DM_SHARED_AGENT_PRINCIPAL_ID, visibility: 'workspace' }),
+  ]
+}
+
+function dmPrincipals(): Record<string, { type: 'human' | 'agent'; agentId?: string }> {
+  return {
+    [DM_PRIVATE_AGENT_PRINCIPAL_ID]: { type: 'agent', agentId: 'agent-private' },
+    [DM_SHARED_AGENT_PRINCIPAL_ID]: { type: 'agent', agentId: 'agent-shared' },
+    'principal-human': { type: 'human' },
+  }
+}
+
+test('DM targets reject a creator-only agent for anyone but its creator', async () => {
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', dmSeed(), dmPrincipals())
+  const error = await serviceError(service.assertDirectMessageTargets({
+    actorUserId: 'user-other',
+    workspaceId: WORKSPACE_ID,
+    principalIds: [DM_PRIVATE_AGENT_PRINCIPAL_ID],
+  }))
+  assert.equal(error.code, 'not_found')
+})
+
+test('DM targets let the creator reach their own creator-only agent', async () => {
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', dmSeed(), dmPrincipals())
+  await service.assertDirectMessageTargets({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    principalIds: [DM_PRIVATE_AGENT_PRINCIPAL_ID, DM_SHARED_AGENT_PRINCIPAL_ID],
+  })
+})
+
+test('DM targets leave humans, unknown principals, and workspace agents alone', async () => {
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', dmSeed(), dmPrincipals())
+  await service.assertDirectMessageTargets({
+    actorUserId: 'user-other',
+    workspaceId: WORKSPACE_ID,
+    principalIds: [DM_SHARED_AGENT_PRINCIPAL_ID, 'principal-human', 'principal-unknown'],
+  })
 })
