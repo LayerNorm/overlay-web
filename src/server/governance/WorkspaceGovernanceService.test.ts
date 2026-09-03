@@ -56,7 +56,13 @@ function createService(options: {
         if (principalId === 'principal_other_workspace') {
           return { id: principalId, workspaceId: 'workspace_rival', type: 'human' }
         }
-        return { id: principalId, workspaceId: WORKSPACE, type: 'human' }
+        if (principalId === 'principal_archived') {
+          return { id: principalId, workspaceId: WORKSPACE, type: 'human', userId: 'user_archived', archivedAt: 1_000 }
+        }
+        if (principalId === 'principal_service') {
+          return { id: principalId, workspaceId: WORKSPACE, type: 'service' }
+        }
+        return { id: principalId, workspaceId: WORKSPACE, type: 'human', userId: `user_${principalId}` }
       },
       async upsertIdentityMapping(input: Record<string, unknown>) {
         const mapping = {
@@ -85,6 +91,14 @@ function createService(options: {
         return [...mappings.values()].filter((mapping) => (
           includeDeprovisioned || mapping.status === 'active'
         ))
+      },
+      async getIdentityMapping({ workspaceId, directory, externalId }: {
+        workspaceId: string
+        directory: string
+        externalId: string
+      }) {
+        const mapping = mappings.get(`${directory}:${externalId}`)
+        return mapping && mapping.workspaceId === workspaceId ? mapping : null
       },
       async recordAuditExport(input: Record<string, unknown>) {
         const record = { ...input, createdAt: input.now }
@@ -338,4 +352,66 @@ test('metrics report denials, invitation failures, and provider parity', async (
   assert.equal(metrics.invitationFailures, 1)
   assert.deepEqual(metrics.providerParity, { provider: 'postgres', requiresConvexClient: false })
   assert.equal(metrics.workspaceId, WORKSPACE)
+})
+
+test('platform actor resolution maps a linked chat identity to its principal', async () => {
+  const { service } = createService()
+  await service.linkDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    principalId: MEMBER_PRINCIPAL,
+    directory: 'slack',
+    externalId: 'U123',
+  })
+  const actor = await service.resolvePlatformActor({
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'U123',
+  })
+  assert.deepEqual(actor, { principalId: MEMBER_PRINCIPAL, userId: 'user_principal_member' })
+})
+
+test('platform actor resolution hides unknown and retired identities alike', async () => {
+  const { service } = createService()
+  await service.linkDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    principalId: MEMBER_PRINCIPAL,
+    directory: 'slack',
+    externalId: 'U123',
+  })
+  await service.deprovisionDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'U123',
+  })
+  const notFound = (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'not_found'
+  await assert.rejects(() => service.resolvePlatformActor({
+    workspaceId: WORKSPACE, directory: 'slack', externalId: 'U999',
+  }), notFound)
+  await assert.rejects(() => service.resolvePlatformActor({
+    workspaceId: WORKSPACE, directory: 'slack', externalId: 'U123',
+  }), notFound)
+})
+
+test('platform actor resolution rejects archived and non-human principals', async () => {
+  const { service, mappings } = createService()
+  mappings.set('slack:Uarch', {
+    id: 'mapping_arch', workspaceId: WORKSPACE, principalId: 'principal_archived',
+    directory: 'slack', externalId: 'Uarch', externalGroupIds: [],
+    status: 'active', createdAt: 1_000, updatedAt: 1_000,
+  })
+  mappings.set('msteams:Usvc', {
+    id: 'mapping_svc', workspaceId: WORKSPACE, principalId: 'principal_service',
+    directory: 'msteams', externalId: 'Usvc', externalGroupIds: [],
+    status: 'active', createdAt: 1_000, updatedAt: 1_000,
+  })
+  const notFound = (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'not_found'
+  await assert.rejects(() => service.resolvePlatformActor({
+    workspaceId: WORKSPACE, directory: 'slack', externalId: 'Uarch',
+  }), notFound)
+  await assert.rejects(() => service.resolvePlatformActor({
+    workspaceId: WORKSPACE, directory: 'msteams', externalId: 'Usvc',
+  }), notFound)
 })
