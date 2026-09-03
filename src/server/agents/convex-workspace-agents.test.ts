@@ -43,7 +43,8 @@ test('Convex named agents match the Postgres identity and archive contract', {
     assert.equal(created.principalId, principalId)
     assert.equal(created.visibility, 'creator')
     assert.deepEqual(created.teamIds, [team.id])
-    assert.equal(created.roomCount, 1)
+    // Creator-only agents join no channels implicitly.
+    assert.equal(created.roomCount, 0)
     assert.equal((await workspaces.getPrincipal(principalId))?.agentId, agentId)
     assert.equal((await workspaces.getResourceWorkspace({ resourceType: 'agent', resourceId: agentId }))?.workspaceId, workspaceId)
 
@@ -53,7 +54,20 @@ test('Convex named agents match the Postgres identity and archive contract', {
     assert.equal((await agents.update({
       agentId, workspaceId, visibility: 'workspace', now: Date.now(),
     }))?.visibility, 'workspace')
+    // Flipping to workspace-visible grants no retroactive channel joins.
+    assert.equal((await agents.get({ agentId, workspaceId }))?.roomCount, 0)
+    // A workspace-visible agent still auto-joins public channels on create.
+    const sharedAgentId = `${scope}_shared`
+    const shared = await agents.create({
+      agentId: sharedAgentId, principalId: `${scope}_shared_principal`, workspaceId,
+      name: 'Herald', description: 'Announces releases',
+      instructions: 'Announce releases briefly.', harness: 'overlay', modelId: 'openrouter/free',
+      allowedToolIds: [], teamIds: [], visibility: 'workspace',
+      createdByPrincipalId: ownerPrincipalId, now: Date.now(),
+    })
+    assert.equal(shared.roomCount, 1)
     assert.equal(await agents.archive({ agentId, workspaceId, now: Date.now() }), true)
+    assert.equal(await agents.archive({ agentId: sharedAgentId, workspaceId, now: Date.now() }), true)
     assert.equal((await agents.list({ workspaceId })).length, 0)
     assert.equal((await workspaces.getMembership({ workspaceId, principalId }))?.status, 'suspended')
     await workspaces.archiveWorkspace({ workspaceId, archivedByPrincipalId: ownerPrincipalId, now: Date.now() })

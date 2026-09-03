@@ -48,7 +48,8 @@ test('Postgres named agents preserve workspace identity, team, room, and archive
     assert.equal(created.principalId, agentPrincipalId)
     assert.equal(created.visibility, 'creator')
     assert.deepEqual(created.teamIds, [team.id])
-    assert.equal(created.roomCount, 1)
+    // Creator-only agents join no channels implicitly.
+    assert.equal(created.roomCount, 0)
     assert.equal((await workspaces.getPrincipal(agentPrincipalId))?.agentId, agentId)
     assert.equal((await workspaces.getResourceWorkspace({ resourceType: 'agent', resourceId: agentId }))?.workspaceId, workspaceId)
 
@@ -57,6 +58,21 @@ test('Postgres named agents preserve workspace identity, team, room, and archive
     })
     assert.equal(updated?.name, 'Scout Prime')
     assert.equal((await agents.update({ agentId, workspaceId, visibility: 'workspace', now: 132 }))?.visibility, 'workspace')
+    // Flipping to workspace-visible grants no retroactive channel joins.
+    assert.equal((await agents.get({ agentId, workspaceId }))?.roomCount, 0)
+    // A workspace-visible agent still auto-joins public channels on create.
+    const sharedAgentId = `${scope}_shared`
+    const shared = await agents.create({
+      agentId: sharedAgentId, principalId: `${scope}_shared_principal`, workspaceId,
+      name: 'Herald', description: 'Announces releases',
+      instructions: 'Announce releases briefly.', harness: 'overlay', modelId: 'openrouter/free',
+      allowedToolIds: [], teamIds: [], visibility: 'workspace',
+      createdByPrincipalId: ownerPrincipalId, now: 134,
+    })
+    assert.equal(shared.roomCount, 1)
+
+    assert.equal(await agents.archive({ agentId, workspaceId, now: 140 }), true)
+    assert.equal(await agents.archive({ agentId: sharedAgentId, workspaceId, now: 142 }), true)
     assert.equal((await workspaces.getPrincipal(agentPrincipalId))?.displayName, 'Scout Prime')
 
     assert.equal(await agents.archive({ agentId, workspaceId, now: 140 }), true)

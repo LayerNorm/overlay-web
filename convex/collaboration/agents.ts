@@ -82,17 +82,21 @@ export const createByServer = mutation({
         addedByPrincipalId: args.createdByPrincipalId, createdAt: args.now,
       })
     }
-    const channels = await ctx.db.query('conversations')
-      .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('conversationType', 'channel'))
-      .collect()
-    for (const channel of channels) {
-      if (channel.deletedAt || channel.channelVisibility !== 'public') continue
-      await ctx.db.insert('conversationParticipants', {
-        conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
-        principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
-        joinedAt: args.now, updatedAt: args.now,
-      })
+    // Creator-only agents join no channels implicitly: only their creator can
+    // place them anywhere, and only the creator can invoke them.
+    if ((args.visibility ?? 'workspace') !== 'creator') {
+      const channels = await ctx.db.query('conversations')
+        .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
+          q.eq('workspaceId', args.workspaceId).eq('conversationType', 'channel'))
+        .collect()
+      for (const channel of channels) {
+        if (channel.deletedAt || channel.channelVisibility !== 'public') continue
+        await ctx.db.insert('conversationParticipants', {
+          conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
+          principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
+          joinedAt: args.now, updatedAt: args.now,
+        })
+      }
     }
     await ctx.db.insert('workspaceResourceScopes', {
       workspaceId: args.workspaceId, resourceType: 'agent', resourceId: args.agentId,

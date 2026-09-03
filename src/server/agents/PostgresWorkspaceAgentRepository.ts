@@ -66,21 +66,25 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
           ON CONFLICT (team_id, principal_id) DO NOTHING
         `)
       }
-      await tx.execute(sql`
-        INSERT INTO conversation_participants (
-          conversation_id, workspace_id, principal_id, principal_type, role, status,
-          notification_level, joined_at, updated_at
-        )
-        SELECT id, workspace_id, ${input.principalId}, 'agent', 'member', 'active',
-          'mentions', ${new Date(input.now)}, ${new Date(input.now)}
-        FROM conversations
-        WHERE workspace_id = ${input.workspaceId}
-          AND conversation_type = 'channel'
-          AND channel_visibility = 'public'
-          AND deleted_at IS NULL
-        ON CONFLICT (conversation_id, principal_id) DO UPDATE SET
-          status = 'active', removed_at = NULL, updated_at = EXCLUDED.updated_at
-      `)
+      // Creator-only agents join no channels implicitly: only their creator can
+      // place them anywhere, and only the creator can invoke them.
+      if (input.visibility !== 'creator') {
+        await tx.execute(sql`
+          INSERT INTO conversation_participants (
+            conversation_id, workspace_id, principal_id, principal_type, role, status,
+            notification_level, joined_at, updated_at
+          )
+          SELECT id, workspace_id, ${input.principalId}, 'agent', 'member', 'active',
+            'mentions', ${new Date(input.now)}, ${new Date(input.now)}
+          FROM conversations
+          WHERE workspace_id = ${input.workspaceId}
+            AND conversation_type = 'channel'
+            AND channel_visibility = 'public'
+            AND deleted_at IS NULL
+          ON CONFLICT (conversation_id, principal_id) DO UPDATE SET
+            status = 'active', removed_at = NULL, updated_at = EXCLUDED.updated_at
+        `)
+      }
       await tx.execute(sql`
         INSERT INTO workspace_resource_scopes (
           workspace_id, resource_type, resource_id, created_at, updated_at
