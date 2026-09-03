@@ -1,7 +1,7 @@
 # Slack + Teams bot — phased implementation plan
 
-Status: **B0–B1 implemented** on `staging` (direct push per standing owner
-auth). B2–B6 remain planned. Corrections from implementation are recorded
+Status: **B0–B2 implemented** on `staging` (direct push per standing owner
+auth). B3–B6 remain planned. Corrections from implementation are recorded
 inline below (marked IMPLEMENTATION NOTE). Adapter recon done (Chat SDK
 `chat` + `@chat-adapter/slack` + `@chat-adapter/teams` all at **4.39.0**,
 verified on npm). Phases 1–4 of `AGENT_VISIBILITY_AND_EDITOR_PLAN.md` are on
@@ -165,6 +165,15 @@ Slack @-mention → Overlay agent → threaded reply.
   enumeration).
 - **Acceptance:** mapped user invokes; unmapped user cannot (and learns
   nothing about agent existence); unlink takes effect immediately.
+  - IMPLEMENTATION NOTE: unlink is retire-only — it reuses the repo-level
+    deprovision call but skips the membership suspension that SCIM
+    deprovisioning performs, since unlinking chat access is not offboarding.
+    History and audit preserved either way. Unmapped-user behavior stays
+    silent (no ephemeral message). UI is a `connected-chat` settings section
+    (app-core entry, no capability gates; server enforces managers) rather
+    than a workspace-settings tab, avoiding backend changes to the
+    `WorkspaceManagementView` contract; member picker reuses the existing
+    management `people` view.
 
 ## 7. Phase B3 — Invocation wiring (the real bot)
 

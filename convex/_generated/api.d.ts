@@ -42,6 +42,7 @@ import type * as collaboration_channels from "../collaboration/channels.js";
 import type * as collaboration_conversationMigration from "../collaboration/conversationMigration.js";
 import type * as collaboration_directMessages from "../collaboration/directMessages.js";
 import type * as collaboration_events from "../collaboration/events.js";
+import type * as collaboration_platformInstallations from "../collaboration/platformInstallations.js";
 import type * as collaboration_sharing from "../collaboration/sharing.js";
 import type * as collaboration_workspaces from "../collaboration/workspaces.js";
 import type * as crons from "../crons.js";
@@ -132,6 +133,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/conversationMigration": typeof collaboration_conversationMigration;
   "collaboration/directMessages": typeof collaboration_directMessages;
   "collaboration/events": typeof collaboration_events;
+  "collaboration/platformInstallations": typeof collaboration_platformInstallations;
   "collaboration/sharing": typeof collaboration_sharing;
   "collaboration/workspaces": typeof collaboration_workspaces;
   crons: typeof crons;
