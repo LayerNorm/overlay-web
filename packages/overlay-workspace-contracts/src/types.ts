@@ -664,6 +664,32 @@ export type WorkspaceIdentityMapping = {
 }
 
 /**
+ * A linked chat-platform identity as shown in workspace settings. Display
+ * names are best-effort enrichment and may be absent (no install token, or
+ * the platform lookup failed) — the directory/externalId pair is the source
+ * of truth.
+ */
+export type WorkspacePlatformIdentity = {
+  directory: string
+  externalId: string
+  principalId: string
+  principalDisplayName?: string
+  status: 'active' | 'deprovisioned'
+  platformDisplayName?: string
+  platformAvatarUrl?: string
+}
+
+/** A linked platform workspace install as shown in settings (never includes tokens). */
+export type WorkspacePlatformInstallationSummary = {
+  directory: string
+  externalTeamId: string
+  teamName?: string
+  installedByPrincipalId: string
+  createdAt: number
+  updatedAt: number
+}
+
+/**
  * A chat-platform workspace linked to an Overlay workspace for bot surfaces
  * (Slack teams, Teams tenants, …). The bot token itself never appears in this
  * contract: repositories return it only through the server-side installation

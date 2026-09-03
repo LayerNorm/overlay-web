@@ -379,6 +379,39 @@ export class WorkspaceGovernanceService {
     return mapping
   }
 
+  /**
+   * Chat-identity unlink: retires the platform mapping so the bot stops
+   * resolving it, without touching workspace membership. Unlike SCIM
+   * deprovisioning (offboarding — suspends the member), unlinking a Slack or
+   * Teams identity leaves the person a full member; only future bot
+   * invocation is retired. History and audit records are preserved.
+   */
+  async unlinkDirectoryIdentity(args: {
+    actorUserId: string
+    workspaceId: string
+    directory: string
+    externalId: string
+  }): Promise<WorkspaceIdentityMapping> {
+    const access = await this.requireManager(args)
+    const mapping = await this.deps.repository.deprovisionIdentityMapping({
+      workspaceId: access.workspace.id,
+      directory: normalized(args.directory, 'directory'),
+      externalId: normalized(args.externalId, 'externalId'),
+      now: (this.deps.now ?? Date.now)(),
+    })
+    if (!mapping) {
+      throw new WorkspaceServiceError('Directory identity not found', 404, 'not_found')
+    }
+    await this.recordGovernanceAudit({
+      action: 'workspace.membership',
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      resourceId: mapping.principalId,
+      metadata: { directory: mapping.directory, externalId: mapping.externalId, event: 'identity_unlinked' },
+    })
+    return mapping
+  }
+
   /** Operational dashboard signals for one workspace. */
   async collectMetrics(args: {
     actorUserId: string

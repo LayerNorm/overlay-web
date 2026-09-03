@@ -497,6 +497,44 @@ test('platform installs link, list, resolve by team, and unlink', async () => {
   }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'not_found')
 })
 
+
+test('unlinking a chat identity retires the mapping without suspending membership', async () => {
+  const { service, suspended, mappings } = createService()
+  await service.linkDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    principalId: MEMBER_PRINCIPAL,
+    directory: 'slack',
+    externalId: 'U123',
+  })
+  const unlinked = await service.unlinkDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'U123',
+  })
+  assert.equal(unlinked.status, 'deprovisioned')
+  assert.equal(mappings.get('slack:U123')?.status, 'deprovisioned')
+  // Membership is untouched: unlinking chat access is not offboarding.
+  assert.deepEqual(suspended, [])
+  await assert.rejects(() => service.unlinkDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'U123',
+  }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'not_found')
+})
+
+test('non-managers cannot unlink chat identities', async () => {
+  const { service } = createService()
+  await assert.rejects(() => service.unlinkDirectoryIdentity({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'U123',
+  }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'forbidden')
+})
+
 test('non-managers cannot manage platform installs', async () => {
   const { service } = createService()
   const forbidden = (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'forbidden'

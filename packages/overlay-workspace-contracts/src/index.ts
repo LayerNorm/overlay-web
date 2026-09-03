@@ -108,6 +108,8 @@ export {
   type WorkspaceSharingPolicyPatch,
   type WorkspaceIdentityMapping,
   type WorkspacePlatformInstallation,
+  type WorkspacePlatformIdentity,
+  type WorkspacePlatformInstallationSummary,
   type WorkspaceAuditExportRecord,
   type WorkspaceOperationalMetrics,
 } from './types'
