@@ -5,6 +5,7 @@ import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentUpdateInput,
+  WorkspaceAgentVisibility,
   WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -32,8 +33,9 @@ export class WorkspaceAgentService {
   async list(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
+    const agents = await this.repository.list({ workspaceId: access.workspace.id })
     return {
-      agents: await this.repository.list({ workspaceId: access.workspace.id }),
+      agents: agents.filter((agent) => canSeeAgent(agent, access.principal.id)),
       canCreate: canCreateAgent(access.membership.role),
     }
   }
@@ -42,7 +44,11 @@ export class WorkspaceAgentService {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
-    if (!agent || agent.archivedAt) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    // Invisible agents report as not found so their existence does not leak to
+    // other members.
+    if (!agent || agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
+      throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    }
     return agent
   }
 
@@ -82,6 +88,7 @@ export class WorkspaceAgentService {
         allowedToolIds: [],
         teamIds: [],
         isDefault: true,
+        visibility: 'workspace',
         createdByPrincipalId: args.creatorPrincipalId,
         now: this.now(),
       })
@@ -141,6 +148,7 @@ export class WorkspaceAgentService {
         avatarColor: color(args.input.avatarColor),
         allowedToolIds: unique(args.input.allowedToolIds ?? []),
         teamIds,
+        visibility: normalizeVisibility(args.input.visibility),
         createdByPrincipalId: access.principal.id,
         now: this.now(),
       })
@@ -188,6 +196,7 @@ export class WorkspaceAgentService {
       ...(args.input.harness === undefined ? {} : { harness: args.input.harness }),
       ...(args.input.avatarColor === undefined ? {} : { avatarColor: color(args.input.avatarColor) }),
       ...(args.input.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.input.allowedToolIds) }),
+      ...(args.input.visibility === undefined ? {} : { visibility: args.input.visibility }),
       ...(teamIds === undefined ? {} : { teamIds }),
       updatedByPrincipalId: access.principal.id,
       now: this.now(),
@@ -197,7 +206,7 @@ export class WorkspaceAgentService {
   }
 
   async archive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
-    const { access, agent } = await this.requireEditor(args)
+    const { access, agent } = await this.requireArchiver(args)
     if (agent.isDefault || agent.name.toLowerCase() === 'overlay') {
       throw new WorkspaceAgentServiceError('forbidden', 'The default Overlay agent cannot be deleted or archived')
     }
@@ -211,10 +220,37 @@ export class WorkspaceAgentService {
   private async requireEditor(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
-    if (!agent || agent.archivedAt) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    // The visibility gate comes first: actors who cannot see the agent get
+    // `not_found` here (never `forbidden`), so edit attempts cannot be used as
+    // an existence oracle for creator-only agents. Managers reach creator-only
+    // agents only through `archive()` via `requireArchiver`.
+    if (!agent || agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
+      throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
     if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can edit this agent')
+    }
+    return { access, agent }
+  }
+
+  /**
+   * Archive allows the manager safety valve on creator-only agents, so it
+   * authorizes without the read-side visibility gate: creator or manager may
+   * act; anyone else gets `not_found` when the agent is invisible to them and
+   * `forbidden` when it is visible but not theirs to manage.
+   */
+  private async requireArchiver(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
+    if (!agent || agent.archivedAt) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
+    const isCreator = agent.createdByPrincipalId === access.principal.id
+    if (!isManager && !isCreator) {
+      if (!canSeeAgent(agent, access.principal.id)) {
+        throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+      }
+      throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can archive this agent')
     }
     return { access, agent }
   }
@@ -222,6 +258,15 @@ export class WorkspaceAgentService {
 
 export function canCreateAgent(role: WorkspaceMembershipRole) {
   return role !== 'guest'
+}
+
+/** Creator-only agents are visible to their creator alone. */
+export function canSeeAgent(agent: Pick<WorkspaceAgentDirectoryItem, 'visibility' | 'createdByPrincipalId'>, principalId: string) {
+  return agent.visibility !== 'creator' || agent.createdByPrincipalId === principalId
+}
+
+function normalizeVisibility(value: WorkspaceAgentVisibility | undefined): WorkspaceAgentVisibility {
+  return value === 'creator' ? 'creator' : 'workspace'
 }
 
 function required(value: string, label: string, max: number) {
