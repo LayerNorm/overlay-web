@@ -167,6 +167,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
   { id: 'webhooks', label: 'Webhooks', requiredCapabilities: ['webhooks'] },
   { id: 'agent-environments', label: 'Environments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },
+  { id: 'connected-chat', label: 'Connected chat' },
   { id: 'contact', label: 'Contact' },
 ] as const
 
@@ -287,6 +288,7 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', requiredCapabilities: ['modelRouting'], order: 50 },
   { id: 'webhooks', sectionId: 'webhooks', label: 'Webhooks', componentKey: 'overlay.settings.webhooks', requiredCapabilities: ['webhooks'], order: 60 },
   { id: 'agent-environments', sectionId: 'agent-environments', label: 'Environments', componentKey: 'overlay.settings.agentEnvironments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'], order: 65 },
+  { id: 'connected-chat', sectionId: 'connected-chat', label: 'Connected chat', componentKey: 'overlay.settings.connectedChat', order: 66 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 70 },
 ] as const
 
