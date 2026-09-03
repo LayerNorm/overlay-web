@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ### Added
 
 - Workspace agents now have an access mode: **Only me** (`visibility: 'creator'`) or **Everyone in workspace** (`visibility: 'workspace'`, the default). Creator-only agents are hidden from the agents directory, workspace search, and direct reads for everyone but their creator (reported as not found, so their existence does not leak); only the creator can edit them, while workspace managers keep archive access as a safety valve. The agent editor has a matching Access control and directory tiles show an "Only me" badge. Backed by Postgres migration `0073_agent_visibility` (nullable column; existing agents stay workspace-visible) with no Convex migration needed.
+- Creator-only agents are now also gated on every invocation path: DMs with one by anyone but its creator return 404, @-mentions of one by non-creators silently produce no agent run (including in pre-existing DMs after an Everyone → Only me flip), and new creator-only agents no longer auto-join public channels. Flipping Only me → Everyone grants no retroactive channel joins.
 
 - Connected agents that advertise slash commands over ACP now power a composer slash menu in their DMs: the Agent Host forwards `available_commands_update`, the transcript stores it as a stable part, and typing `/` lists the agent's commands with descriptions. Agents that do not advertise commands are unaffected; activating this in production requires the next Agent Host package release.
 

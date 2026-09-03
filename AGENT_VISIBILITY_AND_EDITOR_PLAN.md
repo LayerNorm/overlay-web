@@ -1,7 +1,7 @@
 # Agent visibility + full-page agent editor — implementation plan
 
-Status: **Phase 1 implemented** on `codex/agents-visibility-phase-1` (unpushed).
-Phases 2–4 remain planned. Two corrections from implementation are recorded
+Status: **Phases 1–2 implemented** on `codex/agents-visibility-phase-1` (unpushed).
+Phases 3–4 remain planned. Corrections from implementation are recorded
 inline below (marked IMPLEMENTATION NOTE).
 
 ## 0. Goal and non-goals
@@ -179,6 +179,12 @@ only future invocation is gated.
   reject with `ACCESS_DENIED` (the route already maps this to 404, §direct-messages
   route:64 — existence stays hidden).
 - Human-principal DMs are unaffected.
+  - IMPLEMENTATION NOTE: implemented as the parenthetical option — a new
+    `WorkspaceAgentService.assertDirectMessageTargets` method (reuses the
+    visibility-enforced `get()`, so no new repository wiring for either
+    provider) called from the direct-messages BFF route, which maps the
+    `not_found` failure to 404. `createDirectMessage` has no other production
+    callers, so the route guard covers every path.
 
 ### 4.2 Room mentions and runs
 
@@ -188,6 +194,16 @@ only future invocation is gated.
   whose creator ≠ message author. A mention of an invisible agent behaves as if
   the mention targeted a non-agent (no run, no error surfaced to the room —
   avoids leaking existence).
+  - IMPLEMENTATION NOTE: no new definition loading was needed. Both the
+    trigger (`resolveWorkspaceAgentInvocations`) and the turn executor
+    (`runWorkspaceAgentTurn` via `loadRoomTurnContext`) already resolve
+    candidates against the actor-scoped `WorkspaceAgentService.list`, so
+    Phase-1 filtering enforces this at both layers — including the flip case,
+    since the directory is read fresh on every trigger and every turn. The
+    work item became explicit instead: candidates are now intersected through
+    a tested `resolveInvocableAgents` helper (`mention-policy.ts`) with a
+    comment locking the invariant, so a future change to directory filtering
+    cannot silently reopen the hole.
 - Thread the acting `principalId` through to this call site (it already has
   actor context for entitlement checks — extend, don't rebuild).
 - Group-DM implicit-invocation rule (`mention-policy.ts:19-21`, 1 human + 1
