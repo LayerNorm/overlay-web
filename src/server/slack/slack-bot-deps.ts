@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { getOverlayServerContext } from '@/server/bootstrap'
 import { PlatformAgentAccess } from '@/server/agents/PlatformAgentAccess'
+import { getBaseUrl } from '@/server/web/app-url'
 import {
   resolveWorkspaceAgentInvocations,
   runWorkspaceAgentTurn,
@@ -31,6 +32,9 @@ export function buildSlackBotDeps(server: ServerContext): SlackBotDeps {
       cipher,
       keyBase64: slackEncryptionKey(),
     }),
+    audit: server.auditService,
+    postEphemeral: (...args) => loadSlackApi().then(({ postSlackEphemeral }) => postSlackEphemeral(...args)),
+    baseUrl: () => getBaseUrl(),
     assertLimits: async ({ workspaceId, principalId, conversationId }) => {
       await server.workspaceGovernanceService.assertWithinLimits({
         action: 'message.send',

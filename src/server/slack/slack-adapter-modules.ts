@@ -17,12 +17,14 @@ import type {
 import type {
   SlackApiResponse,
   callSlackApi as callSlackApiFn,
+  postSlackEphemeral as postSlackEphemeralFn,
   postSlackMessage as postSlackMessageFn,
 } from '@chat-adapter/slack/api'
 
 export type { SlackWebhookPayload }
 export type ReadSlackWebhook = typeof readSlackWebhookFn
 export type PostSlackMessage = typeof postSlackMessageFn
+export type PostSlackEphemeral = typeof postSlackEphemeralFn
 export type CallSlackApi = typeof callSlackApiFn
 export type SlackApiResponseShape = SlackApiResponse
 
@@ -32,6 +34,7 @@ export function loadSlackWebhook(): Promise<{ readSlackWebhook: ReadSlackWebhook
 
 export function loadSlackApi(): Promise<{
   postSlackMessage: PostSlackMessage
+  postSlackEphemeral: PostSlackEphemeral
   callSlackApi: CallSlackApi
 }> {
   return import('@chat-adapter/slack/api')
