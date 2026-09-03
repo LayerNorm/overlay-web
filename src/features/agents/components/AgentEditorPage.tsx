@@ -365,7 +365,6 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
             <div className="sticky bottom-0 mt-8 border-t border-[var(--border)] bg-[var(--background)]/95 py-3 backdrop-blur">
               <div className="flex items-center gap-2">
                 <span className="flex-1" />
-                <Button variant="ghost" onClick={() => router.push(directoryHref)} disabled={busy}>Cancel</Button>
                 <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={() => router.push(directoryHref)} onSave={save} />
               </div>
             </div>
