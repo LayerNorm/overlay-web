@@ -2,7 +2,11 @@ import 'server-only'
 
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
-import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/shared/billing/billing-pricing'
+import {
+  TOP_UP_MIN_AMOUNT_CENTS,
+  derivePlanKind,
+  getPersonalPlanPresentation,
+} from '@/shared/billing/billing-pricing'
 import type {
   BillingEntitlementsRecord,
   BillingRepository,
@@ -80,6 +84,7 @@ export class BillingCustomerService {
       tier: entitlements.tier,
       planKind: entitlements.planKind,
       planAmountCents: entitlements.planAmountCents,
+      ...getPersonalPlanPresentation(entitlements),
       status: 'active' as const,
       ...getTopUpPreferenceSnapshot(entitlements),
       creditsUsed: usageBuckets.budgetUsedCents,
@@ -106,6 +111,7 @@ export class BillingCustomerService {
     const usageBuckets = normalizeUsageBuckets(entitlements)
     return {
       ...entitlements,
+      ...(args.billingAccountId ? {} : getPersonalPlanPresentation(entitlements)),
       dailyUsage: entitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
       ...getTopUpPreferenceSnapshot(entitlements),
       ...usageBuckets,
@@ -234,6 +240,7 @@ export class BillingCustomerService {
       tier,
       planKind,
       planAmountCents: convexData.planAmountCents,
+      ...getPersonalPlanPresentation(convexData),
       status: 'active' as const,
       ...getTopUpPreferenceSnapshot(convexData),
       autoTopUpConsentGranted: convexData.autoTopUpConsentGranted,

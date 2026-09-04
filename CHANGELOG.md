@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Added a versioned personal plan catalog that presents existing Stripe quantities as Starter, Pro, Max, or a preserved legacy plan without rewriting customer subscriptions.
+
 ### Added
 
 - Workspace agents now have an access mode: **Only me** (`visibility: 'creator'`) or **Everyone in workspace** (`visibility: 'workspace'`, the default). Creator-only agents are hidden from the agents directory, workspace search, and direct reads for everyone but their creator (reported as not found, so their existence does not leak); only the creator can edit them, while workspace managers keep archive access as a safety valve. The agent editor has a matching Access control and directory tiles show an "Only me" badge. Backed by Postgres migration `0073_agent_visibility` (nullable column; existing agents stay workspace-visible) with no Convex migration needed.

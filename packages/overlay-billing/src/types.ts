@@ -1,7 +1,12 @@
+export type PersonalPlanId = 'free' | 'starter' | 'pro' | 'max'
+
 export interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'
   planAmountCents?: number
+  planId?: PersonalPlanId | null
+  planDisplayName?: string
+  isLegacyPlan?: boolean
   creditsUsed: number
   creditsTotal: number
   budgetUsedCents?: number

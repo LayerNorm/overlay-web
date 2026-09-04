@@ -4,6 +4,7 @@ import { unstable_rethrow } from 'next/navigation'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { rateLimitByIp } from '@/server/security/rate-limit'
+import { getPersonalPlanPresentation } from '@/shared/billing/billing-pricing'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         ...entitlements,
+        ...getPersonalPlanPresentation(entitlements),
         creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
         creditsTotal:
           entitlements.budgetTotalCents !== undefined

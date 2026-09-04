@@ -2,6 +2,22 @@ export type OverlayPlanKind = 'free' | 'paid'
 
 export type LegacyOverlayTier = 'free' | 'pro' | 'max'
 
+export type PersonalPlanId = 'free' | 'starter' | 'pro' | 'max'
+
+export type PersonalPlanDefinition = {
+  id: PersonalPlanId
+  label: string
+  amountCents: number
+  stripeQuantity: number
+  storageBytes: number
+}
+
+export type PersonalPlanPresentation = {
+  planId: PersonalPlanId | null
+  planDisplayName: string
+  isLegacyPlan: boolean
+}
+
 export const PAID_PLAN_MIN_AMOUNT_CENTS = 800
 export const PAID_PLAN_MAX_AMOUNT_CENTS = 20_000
 export const PAID_PLAN_STEP_AMOUNT_CENTS = 100
@@ -12,6 +28,84 @@ export const DEFAULT_MARKUP_BASIS_POINTS = 2_500
 export const FREE_PLAN_STORAGE_BYTES = 10 * 1024 * 1024
 export const PAID_STORAGE_BASE_PLAN_AMOUNT_CENTS = 800
 export const PAID_STORAGE_BASE_BYTES = 1024 * 1024 * 1024
+
+export const PERSONAL_PLAN_CATALOG = [
+  {
+    id: 'free',
+    label: 'Free',
+    amountCents: 0,
+    stripeQuantity: 0,
+    storageBytes: FREE_PLAN_STORAGE_BYTES,
+  },
+  {
+    id: 'starter',
+    label: 'Starter',
+    amountCents: 800,
+    stripeQuantity: 8,
+    storageBytes: PAID_STORAGE_BASE_BYTES,
+  },
+  {
+    id: 'pro',
+    label: 'Pro',
+    amountCents: 2_400,
+    stripeQuantity: 24,
+    storageBytes: PAID_STORAGE_BASE_BYTES * 3,
+  },
+  {
+    id: 'max',
+    label: 'Max',
+    amountCents: 9_600,
+    stripeQuantity: 96,
+    storageBytes: PAID_STORAGE_BASE_BYTES * 12,
+  },
+] as const satisfies readonly PersonalPlanDefinition[]
+
+export function getPersonalPlanById(planId: unknown): PersonalPlanDefinition | null {
+  if (typeof planId !== 'string') return null
+  return PERSONAL_PLAN_CATALOG.find((plan) => plan.id === planId) ?? null
+}
+
+export function getPersonalPlanFromAmountCents(amountCents: unknown): PersonalPlanDefinition | null {
+  if (typeof amountCents !== 'number' || !Number.isInteger(amountCents)) return null
+  return PERSONAL_PLAN_CATALOG.find((plan) => plan.amountCents === amountCents) ?? null
+}
+
+export function getPersonalPlanFromQuantity(quantity: unknown): PersonalPlanDefinition | null {
+  if (typeof quantity !== 'number' || !Number.isInteger(quantity)) return null
+  return PERSONAL_PLAN_CATALOG.find((plan) => plan.stripeQuantity === quantity) ?? null
+}
+
+export function isNamedPersonalPlanQuantity(quantity: unknown): boolean {
+  return getPersonalPlanFromQuantity(quantity) !== null
+}
+
+export function getPersonalPlanPresentation(params: {
+  planKind?: string | null
+  planAmountCents?: number | null
+  stripeQuantity?: number | null
+  tier?: string | null
+}): PersonalPlanPresentation {
+  const planKind = derivePlanKind(params)
+  if (planKind === 'free') {
+    return { planId: 'free', planDisplayName: 'Free', isLegacyPlan: false }
+  }
+
+  const plan = getPersonalPlanFromQuantity(params.stripeQuantity)
+    ?? getPersonalPlanFromAmountCents(params.planAmountCents)
+  if (plan && plan.id !== 'free') {
+    return { planId: plan.id, planDisplayName: plan.label, isLegacyPlan: false }
+  }
+
+  const amountCents = derivePlanAmountCents(params)
+  const formattedAmount = Number.isInteger(amountCents / 100)
+    ? `$${amountCents / 100}`
+    : `$${(amountCents / 100).toFixed(2)}`
+  return {
+    planId: null,
+    planDisplayName: `Legacy ${formattedAmount}`,
+    isLegacyPlan: true,
+  }
+}
 
 export const TOP_UP_MIN_AMOUNT_CENTS = 800
 export const TOP_UP_MAX_AMOUNT_CENTS = 20_000

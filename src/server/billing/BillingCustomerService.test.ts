@@ -76,6 +76,9 @@ test('BillingCustomerService.getLandingSubscription preserves response mapping',
 
   assert.equal(response.tier, 'pro')
   assert.equal(response.planKind, 'paid')
+  assert.equal(response.planId, null)
+  assert.equal(response.planDisplayName, 'Legacy $20')
+  assert.equal(response.isLegacyPlan, true)
   assert.equal(response.status, 'active')
   assert.equal(response.creditsUsed, 500)
   assert.equal(response.creditsTotal, 2000)
@@ -113,6 +116,7 @@ test('BillingCustomerService.getAppSubscription reads a workspace billing accoun
   assert.equal(response.planKind, 'paid')
   assert.equal(response.planAmountCents, 800)
   assert.equal(response.budgetRemainingCents, 300)
+  assert.equal('planId' in response, false)
 })
 
 test('BillingCustomerService.updateBillingSettings validates current response shapes', async () => {
@@ -168,4 +172,21 @@ test('BillingCustomerService.getEntitlements preserves nested entitlement shape'
   assert.equal(response.allowancePercentUsed, 25)
   assert.equal(response.topUpBalanceCents, 0)
   assert.equal(response.billingPeriodEnd, 1780272000)
+  assert.equal(response.planDisplayName, 'Legacy $20')
+})
+
+test('BillingCustomerService exposes named personal plans without changing stored records', async () => {
+  const service = new BillingCustomerService({
+    repository: createRepository({
+      async getEntitlementsByServer() {
+        return { ...paidEntitlements, planAmountCents: 2_400 }
+      },
+    }),
+  })
+
+  const response = await service.getLandingSubscription({ userId: 'user_1' })
+
+  assert.equal(response.planId, 'pro')
+  assert.equal(response.planDisplayName, 'Pro')
+  assert.equal(response.isLegacyPlan, false)
 })

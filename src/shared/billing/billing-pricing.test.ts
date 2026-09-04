@@ -8,6 +8,10 @@ const {
   applyMarkupToDollars,
   clampPaidPlanAmountCents,
   getStorageLimitBytes,
+  getPersonalPlanById,
+  getPersonalPlanFromAmountCents,
+  getPersonalPlanFromQuantity,
+  getPersonalPlanPresentation,
   isValidTopUpAmount,
   planAmountCentsToQuantity,
   quantityToPlanAmountCents,
@@ -22,6 +26,32 @@ test('quantity conversion tracks one dollar per quantity', () => {
   assert.equal(quantityToPlanAmountCents(8), 800)
   assert.equal(quantityToPlanAmountCents(20), 2_000)
   assert.equal(planAmountCentsToQuantity(12_300), 123)
+})
+
+test('personal plans map trusted ids, quantities, and amounts to the same catalog entries', () => {
+  assert.equal(getPersonalPlanById('starter')?.stripeQuantity, 8)
+  assert.equal(getPersonalPlanById('pro')?.amountCents, 2_400)
+  assert.equal(getPersonalPlanById('max')?.storageBytes, PAID_STORAGE_BASE_BYTES * 12)
+  assert.equal(getPersonalPlanFromQuantity(24)?.id, 'pro')
+  assert.equal(getPersonalPlanFromAmountCents(9_600)?.id, 'max')
+  assert.equal(getPersonalPlanById('enterprise'), null)
+  assert.equal(getPersonalPlanFromQuantity(24.4), null)
+  assert.equal(getPersonalPlanFromAmountCents('2400'), null)
+})
+
+test('personal plan presentation preserves non-catalog paid amounts as legacy', () => {
+  assert.deepEqual(
+    getPersonalPlanPresentation({ planKind: 'paid', planAmountCents: 800, stripeQuantity: 8 }),
+    { planId: 'starter', planDisplayName: 'Starter', isLegacyPlan: false },
+  )
+  assert.deepEqual(
+    getPersonalPlanPresentation({ planKind: 'paid', planAmountCents: 1_500, stripeQuantity: 15 }),
+    { planId: null, planDisplayName: 'Legacy $15', isLegacyPlan: true },
+  )
+  assert.deepEqual(
+    getPersonalPlanPresentation({ planKind: 'free', planAmountCents: 0 }),
+    { planId: 'free', planDisplayName: 'Free', isLegacyPlan: false },
+  )
 })
 
 test('paid storage scales linearly with spend', () => {
