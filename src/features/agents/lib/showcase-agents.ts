@@ -13,3 +13,18 @@ export const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   createdAt: Date.parse('2026-07-29T18:00:00.000Z') + index, updatedAt: Date.parse('2026-07-29T18:00:00.000Z') + index,
   teamIds: [], roomCount: 2 + index,
 }))
+
+const SHOWCASE_ARCHIVED: WorkspaceAgentDirectoryItem[] = [
+  ['showcase-retired-research', 'Retired researcher', 'Former evidence-gathering agent.', '#64748b', 'workspace'],
+  ['showcase-retired-scout', 'Retired scout', 'Former personal drafting agent.', '#d97706', 'creator'],
+].map(([id, name, description, avatarColor, visibility], index) => ({
+  id, workspaceId: 'showcase-acme', principalId: `${id}-principal`, name, description,
+  instructions: description, harness: 'overlay', modelId: 'openrouter/free', avatarColor,
+  allowedToolIds: [], invocationPolicy: 'mention', visibility,
+  createdByPrincipalId: 'showcase-divyansh',
+  createdAt: Date.parse('2026-06-01T18:00:00.000Z') + index, updatedAt: Date.parse('2026-06-02T18:00:00.000Z') + index,
+  archivedAt: Date.parse('2026-07-01T18:00:00.000Z') + index,
+  teamIds: [], roomCount: 0,
+})) as WorkspaceAgentDirectoryItem[]
+
+export const SHOWCASE_ALL_AGENTS: WorkspaceAgentDirectoryItem[] = [...SHOWCASE_AGENTS, ...SHOWCASE_ARCHIVED]

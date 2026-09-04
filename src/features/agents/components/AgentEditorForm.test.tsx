@@ -14,12 +14,12 @@ import {
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
 test('access selector marks the active mode and explains its effect', () => {
-  const everyone = renderToStaticMarkup(<AccessSelector value="workspace" onChange={() => undefined} />)
-  assert.match(everyone, /Everyone/)
-  assert.match(everyone, /Everyone in this workspace can see/)
-  const onlyMe = renderToStaticMarkup(<AccessSelector value="creator" onChange={() => undefined} />)
-  assert.match(onlyMe, /Only me/)
-  assert.match(onlyMe, /Only you can see, chat with, or @-mention/)
+  const workspace = renderToStaticMarkup(<AccessSelector value="workspace" onChange={() => undefined} />)
+  assert.match(workspace, /Workspace/)
+  assert.match(workspace, /Everyone in this workspace can see/)
+  const personal = renderToStaticMarkup(<AccessSelector value="creator" onChange={() => undefined} />)
+  assert.match(personal, /Personal/)
+  assert.match(personal, /Only you can see, chat with, or @-mention/)
 })
 
 test('agent type selector offers overlay and bring-your-own', () => {

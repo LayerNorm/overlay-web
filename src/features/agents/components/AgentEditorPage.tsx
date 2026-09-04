@@ -47,6 +47,9 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   const router = useRouter()
   const searchParams = useSearchParams()
   const showHello = searchParams?.get('hello') === '1'
+  // Tab-aware creation default: the Personal tab links here with
+  // ?scope=creator so new agents start Personal.
+  const scopeDefault = searchParams?.get('scope') === 'creator' ? 'creator' : 'workspace'
   const { activeWorkspaceId } = useWorkspace()
   const { revision } = useGatewayModelCatalog({ enabled: true })
   const { settings } = useAppSettings()
@@ -66,7 +69,9 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   const [instructions, setInstructions] = useState(initial.instructions)
   const [modelId, setModelId] = useState<string>(initial.modelId)
   const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
-  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
+  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(
+    mode === 'new' ? scopeDefault : initial.visibility,
+  )
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
