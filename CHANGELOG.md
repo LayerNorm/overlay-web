@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Added a versioned personal plan catalog that presents existing Stripe quantities as Starter, Pro, Max, or a preserved legacy plan without rewriting customer subscriptions.
+- Restricted new personal subscription checkout to Starter, Pro, or Max on the existing Stripe unit Price; added duplicate-subscription protection and a guarded preview/confirm flow that prorates upgrades now and schedules downgrades for renewal.
 
 ### Added
 

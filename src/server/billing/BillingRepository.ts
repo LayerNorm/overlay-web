@@ -60,6 +60,8 @@ export type BillingSubscriptionRecord = {
   userId?: string
   email?: string
   stripeCustomerId?: string
+  stripePriceId?: string
+  stripeQuantity?: number
   stripeSubscriptionId?: string
   tier?: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'

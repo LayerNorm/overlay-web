@@ -48,6 +48,8 @@ type SubscriptionRow = {
   planAmountCents: number
   planKind: 'free' | 'paid'
   providerCustomerId: string | null
+  providerPriceId: string | null
+  providerQuantity: number | null
   providerSubscriptionId: string | null
   status: 'active' | 'canceled' | 'past_due' | 'trialing'
   tier: 'free' | 'pro' | 'max'
@@ -1163,6 +1165,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       SELECT user_id AS "userId", email,
              billing_account_id AS "billingAccountId",
              provider_customer_id AS "providerCustomerId",
+             provider_price_id AS "providerPriceId",
+             quantity AS "providerQuantity",
              provider_subscription_id AS "providerSubscriptionId",
              tier, plan_kind AS "planKind", plan_amount_cents AS "planAmountCents",
              status, auto_top_up_enabled AS "autoTopUpEnabled",
@@ -1179,6 +1183,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       userId: row.userId,
       email: row.email ?? undefined,
       stripeCustomerId: row.providerCustomerId ?? undefined,
+      stripePriceId: row.providerPriceId ?? undefined,
+      stripeQuantity: row.providerQuantity == null ? undefined : Number(row.providerQuantity),
       stripeSubscriptionId: row.providerSubscriptionId ?? undefined,
       tier: row.tier,
       planKind: row.planKind,

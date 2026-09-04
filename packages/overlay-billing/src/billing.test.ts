@@ -135,6 +135,41 @@ it('creates and reuses one Stripe customer for workspace checkout', async () => 
   assert.equal((checkoutParams[0]?.metadata as Record<string, string>).workspaceId, 'workspace_1')
 })
 
+it('creates named personal checkout with server-owned quantity metadata and integration id', async () => {
+  const checkoutParams: Record<string, unknown>[] = []
+  const provider = new StripeBillingProvider({
+    stripe: {
+      checkout: { sessions: { async create(params) {
+        checkoutParams.push(params)
+        return { id: 'cs_named', url: 'https://stripe.test/checkout' }
+      } } },
+      billingPortal: { sessions: { async create() {
+        return { id: 'bps_1', url: 'https://stripe.test/portal' }
+      } } },
+    },
+    baseUrl: 'https://overlay.test',
+    paidPlanPriceId: 'price_paid',
+    integrationIdentifier: () => 'payment_revision_abc123',
+    normalizePlanAmountCents: (value) => value,
+    normalizeTopUpAmountCents: (value) => value,
+    planQuantityForAmountCents: (value) => value / 100,
+  })
+
+  await provider.createCheckoutSession({
+    userId: 'user_1',
+    email: 'user@example.com',
+    kind: 'paid_plan',
+    planId: 'pro',
+    planAmountCents: 2400,
+    topUpAmountCents: 800,
+  })
+
+  assert.equal(checkoutParams[0]?.integration_identifier, 'payment_revision_abc123')
+  assert.deepEqual(checkoutParams[0]?.line_items, [{ price: 'price_paid', quantity: 24 }])
+  assert.equal((checkoutParams[0]?.metadata as Record<string, string>).planId, 'pro')
+  assert.equal((checkoutParams[0]?.metadata as Record<string, string>).stripeQuantity, '24')
+})
+
 it('verifies checkout ownership by billing account instead of workspace admin', async () => {
   const provider = new StripeBillingProvider({
     stripe: {

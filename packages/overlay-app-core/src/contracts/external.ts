@@ -42,6 +42,10 @@ export type {
   Entitlements,
   PortalResult,
   PortalSessionArgs,
+  SubscriptionPlanChangeArgs,
+  SubscriptionPlanChangeDirection,
+  SubscriptionPlanChangePreview,
+  SubscriptionPlanChangeResult,
   UsageArgs,
   UsageKind,
 } from '@overlay/billing'
