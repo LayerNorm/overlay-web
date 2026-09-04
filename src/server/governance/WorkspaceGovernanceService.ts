@@ -254,9 +254,78 @@ export class WorkspaceGovernanceService {
     actorUserId: string
     workspaceId: string
   }): Promise<WorkspacePlatformInstallationRecord[]> {
-    const access = await this.requireManager(args)
+    // Token-free summaries: any active member may see which platforms are
+    // connected (the editor's "Add your agent to" step needs this). Tokens
+    // never leave the repository layer.
+    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     return await this.deps.repository.listPlatformInstallations({
       workspaceId: access.workspace.id,
+    })
+  }
+
+  /**
+   * Self-service linking: any active member may link or unlink their *own*
+   * principal to a chat identity (the per-agent editor flow depends on this).
+   * Linking anyone else stays manager-gated through `linkDirectoryIdentity`.
+   */
+  async linkOwnDirectoryIdentity(args: {
+    actorUserId: string
+    workspaceId: string
+    directory: string
+    externalId: string
+  }): Promise<WorkspaceIdentityMapping> {
+    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const directory = normalized(args.directory, 'directory')
+    const externalId = normalized(args.externalId, 'externalId')
+    if (!['slack', 'msteams'].includes(directory)) {
+      throw new WorkspaceServiceError('Unsupported chat platform', 400, 'validation')
+    }
+    const mapping = await this.deps.repository.upsertIdentityMapping({
+      id: (this.deps.id ?? randomUUID)(),
+      workspaceId: access.workspace.id,
+      principalId: access.principal.id,
+      directory,
+      externalId,
+      externalGroupIds: [],
+      now: (this.deps.now ?? Date.now)(),
+    })
+    await this.recordGovernanceAudit({
+      action: 'workspace.membership',
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      resourceId: access.principal.id,
+      metadata: { directory, externalId, event: 'identity_self_linked' },
+    })
+    return mapping
+  }
+
+  async unlinkOwnDirectoryIdentity(args: {
+    actorUserId: string
+    workspaceId: string
+    directory: string
+    externalId: string
+  }): Promise<void> {
+    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const existing = await this.deps.repository.getIdentityMapping({
+      workspaceId: access.workspace.id,
+      directory: normalized(args.directory, 'directory'),
+      externalId: normalized(args.externalId, 'externalId'),
+    })
+    if (!existing || existing.principalId !== access.principal.id) {
+      throw new WorkspaceServiceError('Directory identity not found', 404, 'not_found')
+    }
+    await this.deps.repository.deprovisionIdentityMapping({
+      workspaceId: access.workspace.id,
+      directory: existing.directory,
+      externalId: existing.externalId,
+      now: (this.deps.now ?? Date.now)(),
+    })
+    await this.recordGovernanceAudit({
+      action: 'workspace.membership',
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      resourceId: access.principal.id,
+      metadata: { directory: existing.directory, externalId: existing.externalId, event: 'identity_self_unlinked' },
     })
   }
 

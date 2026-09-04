@@ -553,6 +553,57 @@ test('platform event claims are first-writer-wins', async () => {
   }), true)
 })
 
+test('members can self-link and self-unlink their own chat identity', async () => {
+  const { service, mappings, audit } = createService()
+  const linked = await service.linkOwnDirectoryIdentity({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'Uself',
+  })
+  assert.equal(linked.principalId, MEMBER_PRINCIPAL)
+  assert.equal(linked.status, 'active')
+  assert.equal(audit.some((row) => row.metadata.event === 'identity_self_linked'), true)
+
+  await service.unlinkOwnDirectoryIdentity({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'Uself',
+  })
+  assert.equal(mappings.get('slack:Uself')?.status, 'deprovisioned')
+})
+
+test('self-link rejects other platforms and foreign identities', async () => {
+  const { service } = createService()
+  await assert.rejects(() => service.linkOwnDirectoryIdentity({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'irc',
+    externalId: 'someone',
+  }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'validation')
+  // Someone else's mapping cannot be unlinked as self.
+  await service.linkDirectoryIdentity({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    principalId: OWNER_PRINCIPAL,
+    directory: 'slack',
+    externalId: 'Uowner',
+  })
+  await assert.rejects(() => service.unlinkOwnDirectoryIdentity({
+    actorUserId: MEMBER,
+    workspaceId: WORKSPACE,
+    directory: 'slack',
+    externalId: 'Uowner',
+  }), (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'not_found')
+})
+
+test('members may list installs but not link them', async () => {
+  const { service } = createService()
+  const listed = await service.listPlatformInstallations({ actorUserId: MEMBER, workspaceId: WORKSPACE })
+  assert.deepEqual(listed, [])
+})
+
 test('non-managers cannot manage platform installs', async () => {
   const { service } = createService()
   const forbidden = (error: unknown) => error instanceof WorkspaceServiceError && error.code === 'forbidden'
@@ -562,10 +613,6 @@ test('non-managers cannot manage platform installs', async () => {
     directory: 'slack',
     externalTeamId: 'T123',
     botTokenCipher: 'cipher',
-  }), forbidden)
-  await assert.rejects(() => service.listPlatformInstallations({
-    actorUserId: MEMBER,
-    workspaceId: WORKSPACE,
   }), forbidden)
   await assert.rejects(() => service.unlinkPlatformInstallation({
     actorUserId: MEMBER,

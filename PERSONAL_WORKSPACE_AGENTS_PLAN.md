@@ -1,6 +1,11 @@
 # Personal/Workspace agents + per-agent platforms — implementation plan
 
-Status: **C1–C2 implemented** on `staging` (direct push per standing owner auth). C3–C4 planned.
+Status: **C1–C3 implemented** on `staging` (direct push per standing owner auth). C4 planned.
+
+Revision note 2: the C1 header tabstrip was replaced by secondary-sidebar
+subpages before QA (owner feedback — matches chats/files/extensions), and the
+editor's glass sticky footer became a plain end-of-scroll row. No header-tab
+code survives.
 
 Revision note: the header toggle was replaced by Personal/Workspace/Archived
 subpages (chat-surface analogy) before implementation started. No header-toggle
