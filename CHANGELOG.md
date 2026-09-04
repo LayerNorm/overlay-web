@@ -30,6 +30,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Fixed Workspace → People showing the authenticated provider user ID instead of the person’s profile name; existing member principals are repaired from the current browser session, and newly created workspaces start with the correct owner name.
 - Allowed `data-remote-agent-commands` parts in the conversation message schema and BFF serialization: the Convex validator rejected connected-agent command events with 500s, and the BFF conversation serializer dropped the commands payload, leaving the agent DM slash menu empty after a page load.
 - Fixed the agent DM slash menu ignoring typed input: the composer kept its live text outside React state by design, so the slash-menu hook only ever saw programmatically set text — typing `/` did not open the menu, filtering and selection did not update, and choosing a command left the menu stuck open. Typing now refreshes composer state only while a slash token is on screen, preserving the no-re-render-per-keystroke behavior for normal text.
 
