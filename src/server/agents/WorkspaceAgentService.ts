@@ -30,10 +30,13 @@ export class WorkspaceAgentService {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async list(args: { actorUserId: string; workspaceId: string }) {
+  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
-    const agents = await this.repository.list({ workspaceId: access.workspace.id })
+    const agents = await this.repository.list({
+      workspaceId: access.workspace.id,
+      ...(args.includeArchived ? { includeArchived: true } : {}),
+    })
     const visible = agents.filter((agent) => canSeeAgent(agent, access.principal.id))
     // Attribute tiles to their creator. Resolved best-effort: an unknown
     // principal simply yields no owner line.

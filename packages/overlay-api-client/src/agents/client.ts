@@ -17,8 +17,9 @@ function workspaceInit(workspaceId: string, init?: RequestInit): RequestInit {
 export class AgentsClient {
   constructor(private readonly http: HttpContext) {}
 
-  list(workspaceId: string, init?: RequestInit) {
-    return this.http.json<WorkspaceAgentListResponse>('/api/v1/agents', workspaceInit(workspaceId, init))
+  list(workspaceId: string, options?: { includeArchived?: boolean }, init?: RequestInit) {
+    const query = options?.includeArchived ? '?includeArchived=1' : ''
+    return this.http.json<WorkspaceAgentListResponse>(`/api/v1/agents${query}`, workspaceInit(workspaceId, init))
   }
 
   get(workspaceId: string, agentId: string, init?: RequestInit) {

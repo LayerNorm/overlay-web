@@ -59,6 +59,7 @@ function mockWorkspaces(
   principalId: string,
   role: WorkspaceMembershipRole,
   principals: Record<string, { type: 'human' | 'agent'; agentId?: string }> = {},
+  policy: { mayCreate?: boolean } = {},
 ) {
   const access = {
     workspace: { id: WORKSPACE_ID },
@@ -68,7 +69,11 @@ function mockWorkspaces(
   return {
     async resolveActiveWorkspace() { return access },
     async listTeams() { return [] },
-    async assertMemberMayCreate() { /* allowed */ },
+    async assertMemberMayCreate() {
+      if (policy.mayCreate === false) {
+        throw new WorkspaceAgentServiceError('forbidden', 'Only owners and admins can create agents in this workspace')
+      }
+    },
     async assertAgentHarnessAllowed() { /* allowed */ },
     async resolvePrincipal(id: string) {
       const found = principals[id]
@@ -83,6 +88,7 @@ function serviceFor(
   role: WorkspaceMembershipRole,
   seed: WorkspaceAgentDirectoryItem[] = [],
   principals: Record<string, { type: 'human' | 'agent'; agentId?: string }> = {},
+  policy: { mayCreate?: boolean } = {},
 ) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
   const created: CreateWorkspaceAgentRecord[] = []
@@ -91,7 +97,9 @@ function serviceFor(
   let idCounter = 0
   const service = new WorkspaceAgentService(
     {
-      async list() { return [...store.values()] },
+      async list({ includeArchived }: { includeArchived?: boolean } = {}) {
+        return [...store.values()].filter((agent) => includeArchived || !agent.archivedAt)
+      },
       async get({ agentId }: { agentId: string }) { return store.get(agentId) ?? null },
       async create(input: CreateWorkspaceAgentRecord) {
         created.push(input)
@@ -125,7 +133,7 @@ function serviceFor(
         return true
       },
     } as unknown as WorkspaceAgentRepository,
-    mockWorkspaces(principalId, role, principals),
+    mockWorkspaces(principalId, role, principals, policy),
     () => `generated-${++idCounter}`,
     () => NOW,
   )
@@ -289,4 +297,68 @@ test('DM targets leave humans, unknown principals, and workspace agents alone', 
     workspaceId: WORKSPACE_ID,
     principalIds: [DM_SHARED_AGENT_PRINCIPAL_ID, 'principal-human', 'principal-unknown'],
   })
+})
+
+test('archived agents are excluded by default and included on request', async () => {
+  const archivedShared = agentFixture({ id: 'agent-archived', visibility: 'workspace', archivedAt: NOW })
+  const archivedPrivate = agentFixture({ id: 'agent-archived-private', visibility: 'creator', archivedAt: NOW })
+  const seed = [defaultAgentFixture(), archivedShared, archivedPrivate]
+
+  const other = serviceFor(OTHER_PRINCIPAL_ID, 'member', seed)
+  const defaultIds = (await other.service.list({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID }))
+    .agents.map((agent) => agent.id)
+  assert.deepEqual(defaultIds, ['agent-default'])
+
+  const withArchived = (await other.service.list({
+    actorUserId: 'user-other', workspaceId: WORKSPACE_ID, includeArchived: true,
+  })).agents.map((agent) => agent.id)
+  // The workspace-visible archived agent appears; someone else's personal
+  // archived agent stays hidden.
+  assert.deepEqual(withArchived.sort(), ['agent-archived', 'agent-default'])
+
+  const creator = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  const creatorIds = (await creator.service.list({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, includeArchived: true,
+  })).agents.map((agent) => agent.id)
+  assert.deepEqual(creatorIds.sort(), ['agent-archived', 'agent-archived-private', 'agent-default'])
+})
+
+test('reading an archived agent reports not found', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-archived', archivedAt: NOW })]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  const error = await serviceError(service.get({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived',
+  }))
+  assert.equal(error.code, 'not_found')
+})
+
+test('members may create workspace agents under the default policy', async () => {
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', [defaultAgentFixture()])
+  const agent = await service.create({
+    actorUserId: 'user-other',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Team helper', instructions: 'Help the team.', modelId: 'test-model' },
+  })
+  assert.equal(agent.visibility, 'workspace')
+  assert.equal(agent.createdByPrincipalId, OTHER_PRINCIPAL_ID)
+})
+
+test('guests cannot create agents at all', async () => {
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'guest', [defaultAgentFixture()])
+  const error = await serviceError(service.create({
+    actorUserId: 'user-guest',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Sneaky', instructions: 'Should not exist.', modelId: 'test-model' },
+  }))
+  assert.equal(error.code, 'forbidden')
+})
+
+test('a locked-down workspace still restricts member creation to managers', async () => {
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', [defaultAgentFixture()], {}, { mayCreate: false })
+  const error = await serviceError(service.create({
+    actorUserId: 'user-other',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Blocked', instructions: 'Should not exist.', modelId: 'test-model' },
+  }))
+  assert.equal(error.code, 'forbidden')
 })
