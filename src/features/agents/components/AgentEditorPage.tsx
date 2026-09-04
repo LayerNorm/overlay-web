@@ -7,7 +7,9 @@ import { Button, Input } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentDirectoryItem,
+  WorkspaceAgentPlatform,
   WorkspaceAgentVisibility,
+  WorkspacePlatformInstallationSummary,
 } from '@overlay/workspace-contracts'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -35,6 +37,7 @@ import {
   AVATAR_COLORS,
   ByoAgentFields,
   OverlayAgentFields,
+  PlatformAccessFields,
   type AgentType,
 } from './AgentEditorForm'
 import { useByoConnection } from './use-byo-connection'
@@ -72,6 +75,17 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(
     mode === 'new' ? scopeDefault : initial.visibility,
   )
+  const [platforms, setPlatforms] = useState<WorkspaceAgentPlatform[]>(() => (
+    mode === 'new'
+      ? (scopeDefault === 'workspace' ? ['slack', 'msteams'] : [])
+      : (agent?.platforms ?? ['slack', 'msteams'])
+  ))
+  const [installs, setInstalls] = useState<WorkspacePlatformInstallationSummary[]>([])
+  const [installsLoading, setInstallsLoading] = useState(false)
+  const [platformsError, setPlatformsError] = useState<string | null>(null)
+  const [platformsBusy, setPlatformsBusy] = useState(false)
+  const [slackLinkId, setSlackLinkId] = useState('')
+  const [slackSelfId, setSlackSelfId] = useState<string | null>(null)
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
@@ -129,6 +143,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     setModelId(agent.modelId)
     setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
     setVisibility(agent.visibility)
+    setPlatforms(agent.platforms ?? ['slack', 'msteams'])
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
     setSavedFlash(false)
   }, [agent])
@@ -158,6 +173,74 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
 
+  const togglePlatform = (platform: WorkspaceAgentPlatform) => {
+    setSavedFlash(false)
+    setPlatforms((current) => current.includes(platform)
+      ? current.filter((entry) => entry !== platform)
+      : [...current, platform])
+  }
+
+  // Install inventory for the "Add your agent to" step. Member-readable;
+  // tokens never leave the server.
+  useEffect(() => {
+    if (showcase || !activeWorkspaceId) return
+    let cancelled = false
+    setInstallsLoading(true)
+    void overlayAppClient.slack.listInstallations(activeWorkspaceId, { cache: 'no-store' })
+      .then((result) => { if (!cancelled) setInstalls(result.installations) })
+      .catch(() => { if (!cancelled) setInstalls([]) })
+      .finally(() => { if (!cancelled) setInstallsLoading(false) })
+    return () => { cancelled = true }
+  }, [activeWorkspaceId, showcase])
+
+  const connectSlack = async () => {
+    if (!activeWorkspaceId) return
+    setPlatformsBusy(true)
+    setPlatformsError(null)
+    try {
+      const { authorizeUrl } = await overlayAppClient.slack.startInstall(activeWorkspaceId)
+      window.location.href = authorizeUrl
+    } catch (connectError) {
+      setPlatformsError(connectError instanceof Error ? connectError.message : 'Could not start the Slack install.')
+      setPlatformsBusy(false)
+    }
+  }
+
+  const linkSlackSelf = async () => {
+    if (!activeWorkspaceId || !slackLinkId.trim()) return
+    setPlatformsBusy(true)
+    setPlatformsError(null)
+    try {
+      await overlayAppClient.slack.linkOwnIdentity(activeWorkspaceId, {
+        directory: 'slack',
+        externalId: slackLinkId.trim(),
+      })
+      setSlackSelfId(slackLinkId.trim())
+      setSlackLinkId('')
+    } catch (linkError) {
+      setPlatformsError(linkError instanceof Error ? linkError.message : 'Could not link your Slack account.')
+    } finally {
+      setPlatformsBusy(false)
+    }
+  }
+
+  const unlinkSlackSelf = async () => {
+    if (!activeWorkspaceId || !slackSelfId) return
+    setPlatformsBusy(true)
+    setPlatformsError(null)
+    try {
+      await overlayAppClient.slack.unlinkOwnIdentity(activeWorkspaceId, {
+        directory: 'slack',
+        externalId: slackSelfId,
+      })
+      setSlackSelfId(null)
+    } catch (unlinkError) {
+      setPlatformsError(unlinkError instanceof Error ? unlinkError.message : 'Could not unlink your Slack account.')
+    } finally {
+      setPlatformsBusy(false)
+    }
+  }
+
   const save = async () => {
     if (showcase) {
       router.push(directoryHref)
@@ -168,7 +251,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     const input: WorkspaceAgentCreateInput = {
       ...buildWorkspaceAgentInput({
         name, description, instructions, agentType, harnessLabel, adapterId,
-        modelId, avatarColor, enabledToolGroups, visibility,
+        modelId, avatarColor, enabledToolGroups, visibility, platforms,
       }),
       teamIds: agent?.teamIds ?? [],
     }
@@ -353,6 +436,25 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
                 )}
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); setSavedFlash(false) }} />
+                {!showcase ? (
+                  <PlatformAccessFields
+                    platforms={platforms}
+                    onTogglePlatform={togglePlatform}
+                    slack={{
+                      installed: installs.some((install) => install.directory === 'slack'),
+                      loading: installsLoading,
+                      selfId: slackSelfId,
+                    }}
+                    teamsNote="coming soon"
+                    busy={platformsBusy}
+                    error={platformsError}
+                    linkId={slackLinkId}
+                    onLinkIdChange={setSlackLinkId}
+                    onConnectSlack={() => void connectSlack()}
+                    onLinkSlack={() => void linkSlackSelf()}
+                    onUnlinkSlack={() => void unlinkSlackSelf()}
+                  />
+                ) : null}
 
                 {mode === 'edit' && agent && !isDefaultMaster ? (
                   <section className="rounded-xl border border-red-500/25 p-4">
@@ -367,11 +469,8 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
               </div>
             </div>
 
-            <div className="sticky bottom-0 mt-8 border-t border-[var(--border)] bg-[var(--background)]/95 py-3 backdrop-blur">
-              <div className="flex items-center gap-2">
-                <span className="flex-1" />
-                <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={() => router.push(directoryHref)} onSave={save} />
-              </div>
+            <div className="mt-8 flex items-center justify-end gap-2 border-t border-[var(--border)] pt-5">
+              <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={() => router.push(directoryHref)} onSave={save} />
             </div>
           </div>
         )}

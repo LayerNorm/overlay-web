@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, Bot, MessageSquare, MoreHorizontal, Plus, Share2, UserRound, UsersRound } from 'lucide-react'
+import { Bot, MessageSquare, MoreHorizontal, Plus, Share2 } from 'lucide-react'
 import type { AgentBinding, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { Button, CreateTile, TabButton, TabsList, Tile, TileGrid, TileSkeleton } from '@overlay/ui/primitives'
+import { Button, CreateTile, Tile, TileGrid, TileSkeleton } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -15,12 +15,6 @@ import { SHOWCASE_ALL_AGENTS } from '../lib/showcase-agents'
 import { buildAgentEditorHref, startAgentChat } from '../lib/agent-chat'
 
 type AgentTab = 'personal' | 'workspace' | 'archived'
-
-const TABS: Array<{ id: AgentTab; label: string; icon: typeof Bot }> = [
-  { id: 'personal', label: 'Personal', icon: UserRound },
-  { id: 'workspace', label: 'Workspace', icon: UsersRound },
-  { id: 'archived', label: 'Archived', icon: Archive },
-]
 
 function readTab(value: string | null): AgentTab {
   return value === 'personal' || value === 'archived' ? value : 'workspace'
@@ -66,12 +60,6 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
 
   useEffect(() => { void load() }, [load])
 
-  const switchTab = useCallback((next: AgentTab) => {
-    const params = new URLSearchParams(searchParams?.toString() ?? '')
-    params.set('tab', next)
-    router.push(`${window.location.pathname}?${params.toString()}`, { scroll: false })
-  }, [router, searchParams])
-
   const openCreatePage = useCallback(() => {
     const base = buildAgentEditorHref(activeWorkspaceId, 'new', showcase)
     router.push(tab === 'personal' ? `${base}?scope=creator` : base)
@@ -114,15 +102,11 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
     }
   }
 
-  const personalAgents = agents.filter((agent) => !agent.archivedAt && isPersonal(agent))
-  const workspaceAgents = agents.filter((agent) => !agent.archivedAt && !isPersonal(agent))
-  const archivedAgents = agents.filter((agent) => agent.archivedAt)
-  const visibleAgents = tab === 'personal' ? personalAgents : tab === 'archived' ? archivedAgents : workspaceAgents
-  const counts: Record<AgentTab, number> = {
-    personal: personalAgents.length,
-    workspace: workspaceAgents.length,
-    archived: archivedAgents.length,
-  }
+  const visibleAgents = tab === 'personal'
+    ? agents.filter((agent) => !agent.archivedAt && isPersonal(agent))
+    : tab === 'archived'
+      ? agents.filter((agent) => agent.archivedAt)
+      : agents.filter((agent) => !agent.archivedAt && !isPersonal(agent))
   const emptyCopy: Record<AgentTab, { title: string; body: string }> = {
     personal: { title: 'No personal agents', body: 'Personal agents are only visible to you — in Overlay and on connected chat.' },
     workspace: { title: 'No workspace agents', body: 'Workspace agents are available to everyone in this workspace.' },
@@ -135,18 +119,6 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
       header={
         <AppScreenHeader
           title="Agents"
-          tabs={(
-            <TabsList aria-label="Agent scope">
-              {TABS.map((entry) => {
-                const Icon = entry.icon
-                return (
-                  <TabButton key={entry.id} active={tab === entry.id} onClick={() => switchTab(entry.id)}>
-                    <Icon size={13} /> {entry.label} <span className="text-[var(--muted-light)]">{counts[entry.id]}</span>
-                  </TabButton>
-                )
-              })}
-            </TabsList>
-          )}
           actions={canCreate && tab !== 'archived' ? <Button variant="secondary" onClick={openCreatePage}><Plus size={14} /> New agent</Button> : null}
         />
       }

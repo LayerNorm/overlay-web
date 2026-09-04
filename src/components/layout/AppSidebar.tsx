@@ -30,6 +30,7 @@ import {
   FilesInlinePanel,
   KnowledgeInlinePanel,
   ProjectsInlinePanel,
+  agentsInlineItems,
   chatsInlineItems,
   projectsInlineItems,
   toolsInlineItems,
@@ -335,6 +336,11 @@ export default function AppSidebar({
     if (current === 'apps') return 'apps'
     if (current === 'installed') return 'installed'
     return 'connectors'
+  })()
+  const agentsView = (() => {
+    const current = currentSearchParams.get('tab')
+    if (current === 'personal' || current === 'archived') return current
+    return 'workspace'
   })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
   const projectsView = currentSearchParams.get('archived') === '1' ? 'archived' : 'all'
@@ -848,6 +854,26 @@ export default function AppSidebar({
         onSelect: (next) => {
           if (next !== settingsSection) beginSecondaryNavigation(next)
           closeMobileDrawer()
+        },
+      }
+    }
+    if (panelKind === 'agents') {
+      return {
+        items: agentsInlineItems,
+        activeId: agentsView,
+        pendingId: effectivePendingSecondaryNavId,
+        onSelect: (next) => {
+          closeMobileDrawer()
+          if (next === agentsView) return
+          beginSecondaryNavigation(next)
+          const params = new URLSearchParams(currentSearchParams.toString())
+          if (publicShowcase) params.set('showcase', '1')
+          params.set('tab', next)
+          const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
+            ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')
+            : '/app/agents'
+          const query = params.toString()
+          router.push(query ? `${agentsHref}?${query}` : agentsHref)
         },
       }
     }

@@ -19,6 +19,8 @@ import {
   Plug,
   Server,
   Sparkles,
+  UserRound,
+  UsersRound,
 } from 'lucide-react'
 import type { KnowledgeBase } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -558,6 +560,12 @@ export const chatsInlineItems = [
 
 export const projectsInlineItems = [
   { id: 'all', label: 'All', icon: Folder },
+  { id: 'archived', label: 'Archived', icon: Archive },
+] as const
+
+export const agentsInlineItems = [
+  { id: 'personal', label: 'Personal', icon: UserRound },
+  { id: 'workspace', label: 'Workspace', icon: UsersRound },
   { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
 
