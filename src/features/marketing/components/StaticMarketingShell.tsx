@@ -47,8 +47,7 @@ export function StaticMarketingShell({ children }: { children: ReactNode }) {
   const embeddedInAppShell =
     pathname.startsWith("/app/") ||
     pathname === "/home" ||
-    pathname === "/manifesto" ||
-    pathname === "/pricing";
+    pathname === "/manifesto";
 
   if (embeddedInAppShell) {
     return <>{children}</>;

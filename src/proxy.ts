@@ -25,7 +25,6 @@ const PUBLIC_ROUTES = [
 const PUBLIC_MARKETING_REWRITES: Record<string, string> = {
   '/home': '/app/home',
   '/manifesto': '/app/manifesto',
-  '/pricing': '/app/pricing',
 }
 
 function isDocsProxyRoute(pathname: string): boolean {
@@ -273,6 +272,16 @@ export async function proxy(request: NextRequest) {
     destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.redirect(destination),
+      cspHeaderName,
+      cspPolicy,
+    )
+  }
+
+  // Pricing is public and canonical at /pricing; redirect before the app layout
+  // boots so old links do not pay the authenticated shell startup cost.
+  if (pathname === '/app/pricing') {
+    return applyBrowserSecurityHeaders(
+      NextResponse.redirect(new URL('/pricing', request.url)),
       cspHeaderName,
       cspPolicy,
     )

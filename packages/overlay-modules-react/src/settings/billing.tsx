@@ -18,9 +18,9 @@ export function BillingControlsPanel({
     <div className={panelClass}>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className={`text-lg font-medium ${headingClass}`}>Top-ups and billing controls</h2>
+          <h2 className={`text-lg font-medium ${headingClass}`}>Extra usage</h2>
           <p className={`mt-1 text-sm ${mutedClass}`}>
-            Use one top-up amount everywhere. Add it once now, or save it for future automatic recharges.
+            Add one-time balance or opt in to automatic top-ups. Subscription allowance and top-up balance stay separate.
           </p>
         </div>
       </div>

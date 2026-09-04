@@ -12,6 +12,8 @@ const required = [
   'src/app/app/home/page.tsx',
   'src/app/app/manifesto/page.tsx',
   'src/app/app/pricing/page.tsx',
+  'src/app/pricing/PricingClient.tsx',
+  'src/app/pricing/page.tsx',
   'src/app/robots.ts',
   'src/app/sitemap.ts',
   'src/components/layout/AppSidebar.tsx',
@@ -60,8 +62,8 @@ const appSidebar = read('src/components/layout/AppSidebar.tsx')
 if (!appSidebar.includes('publicShowcase')) violations.push('the real app sidebar must own public showcase mode')
 if (!appSidebar.includes('setShowcaseSidebarCollapsed')) violations.push('the real app sidebar must remain expandable in public mode')
 if (!appSidebar.includes('useState(false)')) violations.push('the public showcase sidebar must start expanded')
-for (const route of ['/app/home?showcase=1', '/app/manifesto?showcase=1', '/app/pricing?showcase=1']) {
-  if (!appSidebar.includes(route)) violations.push(`public marketing navigation must remain in the app shell: ${route}`)
+for (const route of ['/app/home?showcase=1', '/app/manifesto?showcase=1', '/pricing']) {
+  if (!appSidebar.includes(route)) violations.push(`public marketing navigation must use its canonical destination: ${route}`)
 }
 if (!appSidebar.includes('ROOT_APP_DESTINATION')) {
   violations.push('authenticated showcase users must have an App return link')
@@ -127,7 +129,7 @@ const marketingShell = read('src/features/marketing/components/StaticMarketingSh
 if (!marketingShell.includes('pathname.startsWith("/app/")')) {
   violations.push('marketing bodies must embed inside the production app shell')
 }
-for (const route of ['/home', '/manifesto', '/pricing']) {
+for (const route of ['/home', '/manifesto']) {
   if (!marketingShell.includes(`pathname === "${route}"`)) {
     violations.push(`clean marketing route must not render a second shell: ${route}`)
   }
@@ -143,7 +145,6 @@ if (!home.includes("redirect('/app/home?showcase=1')")) violations.push('/home m
 for (const [path, destination] of [
   ['src/app/about/page.tsx', '/app/home?showcase=1'],
   ['src/app/manifesto/page.tsx', '/app/manifesto?showcase=1'],
-  ['src/app/pricing/page.tsx', '/app/pricing?showcase=1'],
 ]) {
   if (!read(path).includes(`redirect('${destination}')`)) {
     violations.push(`${path} must redirect to ${destination}`)
@@ -151,7 +152,7 @@ for (const [path, destination] of [
 }
 
 const proxy = read('src/proxy.ts')
-for (const route of ["'/home': '/app/home'", "'/manifesto': '/app/manifesto'", "'/pricing': '/app/pricing'"]) {
+for (const route of ["'/home': '/app/home'", "'/manifesto': '/app/manifesto'"]) {
   if (!proxy.includes(route)) violations.push(`clean marketing routes must rewrite into the app shell: ${route}`)
 }
 
@@ -163,12 +164,26 @@ if (!marketing.includes('"https://getoverlay.io/docs"')) {
 for (const [path, canonical] of [
   ['src/app/app/home/page.tsx', "canonical: '/home'"],
   ['src/app/app/manifesto/page.tsx', "canonical: '/manifesto'"],
-  ['src/app/app/pricing/page.tsx', "canonical: '/pricing'"],
+  ['src/app/pricing/page.tsx', "canonical: '/pricing'"],
 ]) {
   const source = read(path)
   if (!source.includes(canonical) || !source.includes('index: true')) {
     violations.push(`${path} must expose indexable metadata for ${canonical}`)
   }
+}
+
+const pricingRedirect = read('src/app/app/pricing/page.tsx')
+if (!pricingRedirect.includes("redirect('/pricing')")) {
+  violations.push('/app/pricing must redirect to canonical /pricing')
+}
+if (!proxy.includes("pathname === '/app/pricing'") || !proxy.includes("new URL('/pricing', request.url)")) {
+  violations.push('/app/pricing must redirect before the authenticated app shell starts')
+}
+if (marketingShell.includes('pathname === "/pricing"')) {
+  violations.push('canonical /pricing must render the public navigation rail')
+}
+if (proxy.includes("'/pricing': '/app/pricing'")) {
+  violations.push('canonical /pricing must not rewrite back into the app shell')
 }
 
 const appLayout = read('src/app/app/layout.tsx')

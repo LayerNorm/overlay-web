@@ -15,7 +15,7 @@ were enabled. Routes are then converted in batches by removing the opt-out and
 resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 `<Suspense>` boundaries).
 
-## Converted routes (Batches 1-4; 20 remain independently validated)
+## Converted routes (Batches 1-4; 19 remain independently validated)
 
 ### Batch 1 — Static pages (5 routes)
 
@@ -23,7 +23,7 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 2. `/terms` — moved under the public showcase shell; see the route-group opt-out below.
 3. `/manifesto` — `src/app/manifesto/page.tsx` — Pure static, no I/O. Removed opt-out.
 4. `/about` — `src/app/about/page.tsx` — Pure static, no I/O. Removed opt-out.
-5. `/pricing` — `src/app/pricing/page.tsx` — Pure static, no I/O. Removed opt-out.
+5. `/pricing` — `src/app/pricing/page.tsx` — Canonical public pricing route. It reads only synchronous environment-derived capability configuration and renders the interactive pricing client. Removed opt-out.
 
 ### Batch 2 — Root layout + home page (2 routes)
 
@@ -32,41 +32,39 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 7. `/` — `src/app/page.tsx` — Session check moved inside `<Suspense>`. Static
    shell ("Opening Overlay…") renders immediately.
 
-### Batch 3 — Dynamic but already Suspense-wrapped (6 routes)
+### Batch 3 — Dynamic but already Suspense-wrapped (5 routes)
 
 8. `/app` layout — `src/app/app/layout.tsx` — `AppLayoutContent` already wrapped
    in `<Suspense>`. Removed opt-out. All `/app/*` child routes benefit.
 9. `/app/chat` — `src/app/app/chat/page.tsx` — Moved `getOverlaySession()` and
    `searchParams` inside existing `<Suspense>`.
 10. `/app/home` — `src/app/app/home/page.tsx` — No I/O. Removed opt-out.
-11. `/app/pricing` — `src/app/app/pricing/page.tsx` — `getOverlayCapabilitiesSync()`
-    reads `process.env` only. Removed opt-out.
-12. `/app/manifesto` — `src/app/app/manifesto/page.tsx` — No I/O. Removed opt-out.
-13. `/download` — moved under the public showcase shell; see the route-group opt-out below.
+11. `/app/manifesto` — `src/app/app/manifesto/page.tsx` — No I/O. Removed opt-out.
+12. `/download` — moved under the public showcase shell; see the route-group opt-out below.
 
 ### Batch 4 — Low-risk /app/* child routes (10 routes)
 
-14. `/app` (index) — `src/app/app/page.tsx` — Pure `redirect('/app/chat')`. Removed opt-out.
-15. `/app/memories` — `src/app/app/memories/page.tsx` — Pure redirect. Removed opt-out.
-16. `/app/outputs` — `src/app/app/outputs/page.tsx` — Pure redirect. Removed opt-out.
-17. `/app/agents` — `src/app/app/agents/page.tsx` — Reads `searchParams` only, no
+13. `/app` (index) — `src/app/app/page.tsx` — Pure `redirect('/app/chat')`. Removed opt-out.
+14. `/app/memories` — `src/app/app/memories/page.tsx` — Pure redirect. Removed opt-out.
+15. `/app/outputs` — `src/app/app/outputs/page.tsx` — Pure redirect. Removed opt-out.
+16. `/app/agents` — `src/app/app/agents/page.tsx` — Reads `searchParams` only, no
     session. Removed opt-out.
-18. `/app/notes` — `src/app/app/notes/page.tsx` — Moved `getOverlaySession()` +
+17. `/app/notes` — `src/app/app/notes/page.tsx` — Moved `getOverlaySession()` +
     `redirect()` inside new `<Suspense>` with `ChatRouteSkeleton` fallback.
-19. `/app/activity` — `src/app/app/activity/page.tsx` — Moved `getOverlaySession()`
+18. `/app/activity` — `src/app/app/activity/page.tsx` — Moved `getOverlaySession()`
     inside existing `<Suspense>`.
-20. `/app/automations` — `src/app/app/automations/page.tsx` — Moved session +
+19. `/app/automations` — `src/app/app/automations/page.tsx` — Moved session +
     `searchParams` inside Suspense. `getOverlayCapabilitiesSync()` (env-only)
     stays outside.
-21. `/app/integrations` — `src/app/app/integrations/page.tsx` — Moved session
+20. `/app/integrations` — `src/app/app/integrations/page.tsx` — Moved session
     inside existing `<Suspense>`.
-22. `/app/tools` — `src/app/app/tools/page.tsx` — Added `<Suspense>`. Moved
+21. `/app/tools` — `src/app/app/tools/page.tsx` — Added `<Suspense>`. Moved
     session + `searchParams` + `redirect()` inside.
-23. `/app/projects` — `src/app/app/projects/page.tsx` — Moved session +
+22. `/app/projects` — `src/app/app/projects/page.tsx` — Moved session +
     `searchParams` inside Suspense. `getOverlayCapabilities()` (async, env-only)
     + `notFound()` stay outside.
 
-## Routes intentionally NOT converted (22 routes across 19 segment opt-outs)
+## Routes intentionally NOT converted (23 routes across 20 segment opt-outs)
 
 These routes keep `export const instant = false` permanently. The opt-out is a
 supported Next.js feature, not a debt marker. Each route is documented below
@@ -160,7 +158,7 @@ with the specific reason.
 34. `/(app)/notes` — `src/app/(app)/notes/page.tsx` — Pure `redirect('/app/notes')`.
     Same reasoning as `/(app)/chat`.
 
-### Simple but low-value (1 route)
+### Simple but low-value (2 routes)
 
 35. `/home` — `src/app/home/page.tsx` — Pure `redirect('/app/home?showcase=1')`.
     Could be converted (no I/O), but this is a legacy redirect route. The actual
@@ -168,13 +166,18 @@ with the specific reason.
     the redirect adds no user-visible benefit — the route just bounces to
     `/app/home` which is already PPR-enabled.
 
+36. `/app/pricing` — `src/app/app/pricing/page.tsx` — Compatibility redirect to
+   canonical `/pricing`. Instant-navigation validation drops this redirect-only
+   segment, so it retains the opt-out; normal navigation links point directly
+   to `/pricing`.
+
 ### Test fixtures (2 routes)
 
-36. `/__fixtures/chat-parity` — `src/app/%5F_fixtures/chat-parity/page.tsx` —
+37. `/__fixtures/chat-parity` — `src/app/%5F_fixtures/chat-parity/page.tsx` —
     Test-only route for chat parity testing. Not user-facing. No benefit from
     PPR conversion.
 
-37. `/__fixtures/file-parity` — `src/app/%5F_fixtures/file-parity/page.tsx` —
+38. `/__fixtures/file-parity` — `src/app/%5F_fixtures/file-parity/page.tsx` —
     Test-only route for file parity testing. Not user-facing. No benefit from
     PPR conversion.
 
@@ -182,11 +185,11 @@ with the specific reason.
 
 | Category | Count | Status |
 | --- | --- | --- |
-| Converted (Batches 1-4) | 20 | `instant = false` removed, PPR active |
+| Converted (Batches 1-4) | 19 | `instant = false` removed, PPR active |
 | Shared shell opt-outs | 8 routes across 2 layouts and 3 public pages | Private session boundary may block group entry |
 | Medium-risk, kept as opt-out | 6 | `instant = false` retained permanently |
 | Higher-risk, kept as opt-out | 5 | `instant = false` retained permanently |
-| Low-value, kept as opt-out | 1 | `instant = false` retained permanently |
+| Low-value, kept as opt-out | 2 | `instant = false` retained permanently |
 | Test fixtures, kept as opt-out | 2 | `instant = false` retained permanently |
 | **Total inventoried routes** | **42** | |
 

@@ -1,12 +1,17 @@
 'use client'
 
-import { AlertCircle } from 'lucide-react'
+import Link from 'next/link'
+import { AlertCircle, CreditCard } from 'lucide-react'
 import { UsageMeterBar } from '@overlay/ui/primitives'
 import { formatBytes } from '@/shared/storage/storage-limits'
 
 export interface SidebarEntitlements {
   tier: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'
+  planId?: 'free' | 'starter' | 'pro' | 'max' | null
+  planDisplayName?: string
+  isLegacyPlan?: boolean
+  status?: 'active' | 'trialing' | 'past_due' | 'canceled'
   creditsUsed: number
   creditsTotal: number
   budgetUsedCents?: number
@@ -19,6 +24,48 @@ export interface SidebarEntitlements {
   dailyUsage: { ask: number; write: number; agent: number }
   overlayStorageBytesUsed: number
   overlayStorageBytesLimit: number
+}
+
+export function SidebarPlanStatus({
+  entitlements,
+  expanded,
+  onClick,
+}: {
+  entitlements: SidebarEntitlements | null
+  expanded: boolean
+  onClick?: () => void
+}) {
+  const planName = entitlements?.planDisplayName
+    ?? (entitlements?.planKind === 'paid' ? 'Paid' : 'Free')
+  const needsAttention = entitlements?.status === 'past_due'
+  const detail = needsAttention
+    ? 'Payment needs attention'
+    : entitlements?.isLegacyPlan
+      ? 'Grandfathered pricing'
+      : entitlements?.planKind === 'paid'
+        ? 'Manage plan'
+        : 'View plans'
+
+  return (
+    <Link
+      href="/app/settings?section=account"
+      onClick={onClick}
+      className={`group flex min-h-10 w-full items-center rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)] transition-[background-color,color,transform] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-[0.98] ${expanded ? 'gap-2.5 px-3 py-2' : 'justify-center'}`}
+      aria-label={`${planName} plan`}
+      title={`${planName} plan · ${detail}`}
+    >
+      <span className="relative shrink-0">
+        <CreditCard size={15} />
+        {needsAttention ? <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-amber-500" /> : null}
+      </span>
+      {expanded ? (
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-medium text-[var(--foreground)]">{planName} plan</span>
+          <span className={`block truncate text-[10px] ${needsAttention ? 'text-amber-500' : 'text-[var(--muted-light)]'}`}>{detail}</span>
+        </span>
+      ) : null}
+    </Link>
+  )
 }
 
 export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements | null }) {

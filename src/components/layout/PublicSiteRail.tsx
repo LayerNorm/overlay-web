@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
+import { useLandingThemeOptional } from '@/contexts/LandingThemeContext'
 
 type PublicSurface = 'chat' | 'files' | 'projects' | 'automations' | 'extensions'
 
@@ -41,16 +42,23 @@ export function PublicSiteRail({
   onReset?: () => void
 }) {
   const pathname = usePathname() ?? '/'
-  const [dark, setDark] = useState(false)
+  const landingTheme = useLandingThemeOptional()
+  const [documentDark, setDocumentDark] = useState(false)
+  const dark = landingTheme?.isLandingDark ?? documentDark
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setDark(document.documentElement.dataset.theme === 'dark'))
+    if (landingTheme) return
+    const frame = requestAnimationFrame(() => setDocumentDark(document.documentElement.dataset.theme === 'dark'))
     return () => cancelAnimationFrame(frame)
-  }, [])
+  }, [landingTheme])
 
   function toggleTheme() {
+    if (landingTheme) {
+      landingTheme.toggleLandingTheme()
+      return
+    }
     const next = !dark
-    setDark(next)
+    setDocumentDark(next)
     document.documentElement.dataset.theme = next ? 'dark' : 'light'
     document.documentElement.style.colorScheme = next ? 'dark' : 'light'
   }

@@ -67,7 +67,7 @@ import {
 import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
-import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
+import { SidebarPlanStatus, type SidebarEntitlements } from './sidebar/SidebarUsageMeters'
 import {
   AppSidebarPrimaryRail,
   type PrimaryRailItem,
@@ -419,6 +419,12 @@ export default function AppSidebar({
       // ignore
     }
   }, [activeWorkspaceId, authLoading, authUserId, billingEnabled, setEntitlements])
+
+  useEffect(() => {
+    const reloadBilling = () => void loadEntitlements()
+    window.addEventListener('overlay:billing-updated', reloadBilling)
+    return () => window.removeEventListener('overlay:billing-updated', reloadBilling)
+  }, [loadEntitlements])
 
   useEffect(() => {
     document.documentElement.toggleAttribute('data-temporary-chat-ui', hideTemporaryChatChrome)
@@ -896,7 +902,7 @@ export default function AppSidebar({
       { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
       { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
       { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
-      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/app/pricing?showcase=1' },
+      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/pricing' },
       { id: 'docs', label: 'Docs', icon: FileText, href: MARKETING_DOCS_URL },
     ]
     : []
@@ -1139,7 +1145,10 @@ export default function AppSidebar({
   ) : null
 
   const desktopAccountSlot = (
-    <div ref={menuRef} className="relative">
+    <div ref={menuRef} className="relative space-y-1.5">
+      {billingEnabled && !isGuestConfirmed ? (
+        <SidebarPlanStatus entitlements={entitlements} expanded={railExpanded} />
+      ) : null}
       {!isGuestConfirmed && workspace ? (
         workspace.renderSwitcher?.({
           compact: !railExpanded,
@@ -1289,6 +1298,9 @@ export default function AppSidebar({
         </SidebarNav>
 
         <SidebarSection className="space-y-3 px-3">
+          {billingEnabled && !isGuestConfirmed ? (
+            <SidebarPlanStatus entitlements={entitlements} expanded onClick={closeMobileDrawer} />
+          ) : null}
           <div ref={mobileMenuRef} className="relative">
             {!isGuestConfirmed && workspace ? (
               workspace.renderSwitcher?.({
