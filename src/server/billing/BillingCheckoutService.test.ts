@@ -211,34 +211,67 @@ test('BillingCheckoutService.createSubscriptionCheckout only accepts named plan 
   )
 })
 
-test('BillingCheckoutService.createSubscriptionCheckout blocks duplicate paid subscriptions', async () => {
+test('BillingCheckoutService.createSubscriptionCheckout blocks every non-canceled provider subscription', async () => {
+  for (const status of ['active', 'trialing', 'past_due'] as const) {
+    const service = createService(createRepository({
+      async getSubscriptionByUserIdByServer() {
+        return {
+          userId: 'user_1',
+          planKind: 'paid',
+          planAmountCents: 1500,
+          status,
+          stripeSubscriptionId: 'sub_existing',
+        }
+      },
+    }))
+
+    await assert.rejects(
+      () => service.createSubscriptionCheckout({
+        user: { id: 'user_1', email: 'user@example.com' },
+        body: {
+          planId: 'pro',
+          topUpAmountCents: 1000,
+          ...currentLegalAcceptancePayload(),
+        },
+      }),
+      (error) =>
+        error instanceof BillingServiceError &&
+        error.statusCode === 409 &&
+        error.payload.code === 'subscription_exists' &&
+        error.payload.action === (status === 'past_due' ? 'update_payment' : 'change_plan'),
+    )
+  }
+})
+
+test('BillingCheckoutService.createSubscriptionCheckout allows a new checkout after cancellation', async () => {
+  let checkoutCalls = 0
   const service = createService(createRepository({
     async getSubscriptionByUserIdByServer() {
       return {
         userId: 'user_1',
-        planKind: 'paid',
-        planAmountCents: 1500,
-        status: 'active',
-        stripeSubscriptionId: 'sub_existing',
+        planKind: 'free',
+        planAmountCents: 0,
+        status: 'canceled',
+        stripeSubscriptionId: 'sub_canceled',
       }
+    },
+  }), createBillingProvider({
+    async createCheckoutSession() {
+      checkoutCalls += 1
+      return { url: 'https://billing.example/checkout' }
     },
   }))
 
-  await assert.rejects(
-    () => service.createSubscriptionCheckout({
-      user: { id: 'user_1', email: 'user@example.com' },
-      body: {
-        planId: 'pro',
-        topUpAmountCents: 1000,
-        ...currentLegalAcceptancePayload(),
-      },
-    }),
-    (error) =>
-      error instanceof BillingServiceError &&
-      error.statusCode === 409 &&
-      error.payload.code === 'subscription_exists' &&
-      error.payload.action === 'change_plan',
-  )
+  await service.createSubscriptionCheckout({
+    user: { id: 'user_1', email: 'user@example.com' },
+    body: {
+      planId: 'starter',
+      topUpAmountCents: 1000,
+      ...currentLegalAcceptancePayload(),
+    },
+  })
+
+  assert.equal(checkoutCalls, 1)
 })
 
 test('BillingCheckoutService.changeSubscriptionPlan previews legacy migration before confirmation', async () => {
@@ -343,6 +376,56 @@ test('BillingCheckoutService.changeSubscriptionPlan applies a confirmed change a
   assert.equal(result.applied, true)
   assert.equal(upserts[0]?.stripeQuantity, 24)
   assert.equal(upserts[0]?.planAmountCents, 2400)
+})
+
+test('BillingCheckoutService does not sync a failed upgrade before Stripe collects payment', async () => {
+  const upserts: Array<Record<string, unknown>> = []
+  const service = createService(createRepository({
+    async getSubscriptionByUserIdByServer() {
+      return {
+        userId: 'user_1',
+        planKind: 'paid',
+        planAmountCents: 2400,
+        status: 'active',
+        stripeCustomerId: 'cus_1',
+        stripeSubscriptionId: 'sub_1',
+        stripePriceId: 'price_unit',
+        stripeQuantity: 24,
+      }
+    },
+    async upsertSubscription(args) {
+      upserts.push(args)
+      return null
+    },
+  }), createBillingProvider({
+    async changeSubscriptionPlan() {
+      return {
+        applied: false,
+        currency: 'usd',
+        currentAmountCents: 2400,
+        currentQuantity: 24,
+        direction: 'upgrade',
+        effectiveAt: 111_000,
+        losesLegacyPricing: false,
+        paymentActionRequired: true,
+        planId: 'max',
+        prorationAmountCents: 3600,
+        scheduled: false,
+        targetAmountCents: 9600,
+        targetQuantity: 96,
+      }
+    },
+  }))
+
+  const result = await service.changeSubscriptionPlan({
+    userId: 'user_1',
+    body: { planId: 'max', confirmation: 'CHANGE_PLAN' },
+  })
+
+  assert.equal(result.mode, 'confirmed')
+  assert.equal(result.applied, false)
+  assert.equal(result.paymentActionRequired, true)
+  assert.equal(upserts.length, 0)
 })
 
 test('BillingCheckoutService.createTopUpCheckout requires paid plan', async () => {

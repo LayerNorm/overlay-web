@@ -157,6 +157,12 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
     if (configuration.features.subscription_update.enabled) {
       throw new Error('Stripe portal subscription updates must be disabled')
     }
+    if (!configuration.features.payment_method_update.enabled) {
+      throw new Error('Stripe portal payment method updates must be enabled')
+    }
+    if (!configuration.features.subscription_cancel.enabled) {
+      throw new Error('Stripe portal subscription cancellation must be enabled')
+    }
     return await super.createCustomerPortalSession(args)
   }
 

@@ -331,6 +331,10 @@ export class BillingCheckoutService {
           serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
         'Stripe portal subscription updates must be disabled': () =>
           serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal payment method updates must be enabled': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal subscription cancellation must be enabled': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
       },
     )
 

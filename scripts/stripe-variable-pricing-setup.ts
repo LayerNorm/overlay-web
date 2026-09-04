@@ -119,7 +119,7 @@ async function ensureTopUpUnitPrice(productId: string) {
   })
 }
 
-async function ensurePortalConfiguration(productId: string, priceId: string) {
+async function ensurePortalConfiguration() {
   const configs = await stripe.billingPortal.configurations.list({ active: true, limit: 100 })
   const existing = configs.data.find((config) => config.metadata?.[PRODUCT_METADATA_KEY] === PORTAL_METADATA_VALUE)
   const payload: Stripe.BillingPortal.ConfigurationCreateParams = {
@@ -146,22 +146,10 @@ async function ensurePortalConfiguration(productId: string, priceId: string) {
         mode: 'at_period_end',
         proration_behavior: 'none',
       },
-      subscription_update: {
-        enabled: true,
-        default_allowed_updates: ['quantity'],
-        proration_behavior: 'none',
-        products: [
-          {
-            product: productId,
-            prices: [priceId],
-            adjustable_quantity: {
-              enabled: true,
-              minimum: 8,
-              maximum: 200,
-            },
-          },
-        ],
-      },
+      // Named-plan changes must pass through Overlay's guarded preview and
+      // confirmation flow. The portal remains available for payment recovery
+      // and cancellation, but cannot edit the raw unit quantity.
+      subscription_update: { enabled: false },
     },
   }
 
@@ -186,7 +174,7 @@ async function main() {
 
   const paidUnitPrice = await ensureRecurringUnitPrice(paidProduct.id)
   const topUpUnitPrice = await ensureTopUpUnitPrice(topUpProduct.id)
-  const portalConfiguration = await ensurePortalConfiguration(paidProduct.id, paidUnitPrice.id)
+  const portalConfiguration = await ensurePortalConfiguration()
 
   const mode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_') ? 'live' : 'sandbox'
   console.log(`\nStripe ${mode} resources ready:\n`)

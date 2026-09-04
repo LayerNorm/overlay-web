@@ -31,13 +31,21 @@ function subscriptionFixture(quantity: number): Stripe.Subscription {
   } as unknown as Stripe.Subscription
 }
 
+function safePortalFeatures() {
+  return {
+    payment_method_update: { enabled: true },
+    subscription_cancel: { enabled: true },
+    subscription_update: { enabled: false },
+  }
+}
+
 test('StripeBillingProvider invoices upgrades now with pending-update payment protection', async () => {
   const updates: Array<{ params: Stripe.SubscriptionUpdateParams; options?: Stripe.RequestOptions }> = []
   const subscription = subscriptionFixture(8)
   const stripeClient = {
     checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
     billingPortal: {
-      configurations: { retrieve: async () => ({ features: { subscription_update: { enabled: false } } }) },
+      configurations: { retrieve: async () => ({ features: safePortalFeatures() }) },
       sessions: { create: async () => ({ id: 'bps_1', url: 'https://stripe.test/portal' }) },
     },
     customers: { retrieve: async () => ({ id: 'cus_1' }) },
@@ -91,7 +99,7 @@ test('StripeBillingProvider schedules downgrades for the current item renewal', 
   const stripeClient = {
     checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
     billingPortal: {
-      configurations: { retrieve: async () => ({ features: { subscription_update: { enabled: false } } }) },
+      configurations: { retrieve: async () => ({ features: safePortalFeatures() }) },
       sessions: { create: async () => ({ id: 'bps_1', url: 'https://stripe.test/portal' }) },
     },
     customers: { retrieve: async () => ({ id: 'cus_1' }) },
@@ -129,6 +137,39 @@ test('StripeBillingProvider schedules downgrades for the current item renewal', 
   assert.equal(scheduleUpdates[0]?.phases?.[1]?.items[0]?.quantity, 8)
 })
 
+test('StripeBillingProvider leaves a failed upgrade pending instead of granting its target plan', async () => {
+  const subscription = subscriptionFixture(24)
+  const stripeClient = {
+    checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
+    billingPortal: {
+      configurations: { retrieve: async () => ({ features: safePortalFeatures() }) },
+      sessions: { create: async () => ({ id: 'bps_1', url: 'https://stripe.test/portal' }) },
+    },
+    invoices: { createPreview: async () => ({
+      lines: { data: [{ amount: 3600, parent: { subscription_item_details: { proration: true } } }] },
+    }) },
+    subscriptions: {
+      retrieve: async () => subscription,
+      update: async () => ({ ...subscription, pending_update: { expires_at: 1_700_086_400 } }),
+    },
+  } as unknown as Stripe
+  const provider = new StripeBillingProvider({ stripeClient, paidUnitPriceId: 'price_unit' })
+
+  const result = await provider.changeSubscriptionPlan({
+    userId: 'user_1',
+    providerCustomerId: 'cus_1',
+    providerSubscriptionId: 'sub_1',
+    planId: 'max',
+    targetAmountCents: 9600,
+    targetQuantity: 96,
+  })
+
+  assert.equal(result.direction, 'upgrade')
+  assert.equal(result.applied, false)
+  assert.equal(result.paymentActionRequired, true)
+  assert.equal(result.targetQuantity, 96)
+})
+
 test('StripeBillingProvider refuses a portal profile that allows quantity updates', async () => {
   const stripeClient = {
     checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
@@ -147,4 +188,46 @@ test('StripeBillingProvider refuses a portal profile that allows quantity update
     () => provider.createCustomerPortalSession({ userId: 'user_1' }),
     /Stripe portal subscription updates must be disabled/,
   )
+})
+
+test('StripeBillingProvider creates a recovery and cancellation portal session', async () => {
+  const portalCreates: Stripe.BillingPortal.SessionCreateParams[] = []
+  const stripeClient = {
+    checkout: { sessions: {
+      create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }),
+      retrieve: async () => ({
+        id: 'cs_paid',
+        customer: 'cus_1',
+        metadata: { kind: 'paid_plan', userId: 'user_1' },
+      }),
+    } },
+    billingPortal: {
+      configurations: { retrieve: async () => ({ features: safePortalFeatures() }) },
+      sessions: {
+        create: async (params: Stripe.BillingPortal.SessionCreateParams) => {
+          portalCreates.push(params)
+          return { id: 'bps_1', url: 'https://stripe.test/portal' }
+        },
+      },
+    },
+    customers: { retrieve: async () => ({ id: 'cus_1' }) },
+  } as unknown as Stripe
+  const provider = new StripeBillingProvider({
+    stripeClient,
+    paidUnitPriceId: 'price_unit',
+    portalConfigurationId: 'bpc_safe',
+  })
+
+  const result = await provider.createCustomerPortalSession({
+    userId: 'user_1',
+    sessionId: 'cs_paid',
+    returnUrl: 'https://overlay.test/account',
+  })
+
+  assert.equal(result.url, 'https://stripe.test/portal')
+  assert.deepEqual(portalCreates[0], {
+    configuration: 'bpc_safe',
+    customer: 'cus_1',
+    return_url: 'https://overlay.test/account',
+  })
 })

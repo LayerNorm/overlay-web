@@ -219,6 +219,8 @@
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts",
     "billing:backfill:personal-accounts": "NODE_OPTIONS=--conditions=react-server tsx scripts/personal-billing-account-backfill.ts --target=dev",
     "billing:verify:personal-subscriptions": "node --experimental-strip-types scripts/stripe-personal-account-verification.ts --target=dev --expected-active=6",
+    "billing:qa:stripe-test": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.local --env-file=.env.development.local scripts/stripe-payment-revision-qa.ts",
+    "test:billing:payment-revision": "NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test packages/overlay-billing/src/billing.test.ts src/server/billing/BillingCheckoutService.test.ts src/server/billing/StripeWebhookService.test.ts src/server/billing/providers/stripe-billing-provider.test.ts && npm run test:billing",
     "billing:audit:reconciliation": "node --experimental-strip-types scripts/usage-reconciliation-audit.ts --target=dev",
     "test:auth:native-validation": "NODE_OPTIONS=--conditions=react-server node --test --experimental-strip-types src/server/auth/native-auth-validation.test.ts src/server/auth/native-refresh-rate-limit.test.ts",
     "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts",

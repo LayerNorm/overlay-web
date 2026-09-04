@@ -135,7 +135,7 @@ it('creates and reuses one Stripe customer for workspace checkout', async () => 
   assert.equal((checkoutParams[0]?.metadata as Record<string, string>).workspaceId, 'workspace_1')
 })
 
-it('creates named personal checkout with server-owned quantity metadata and integration id', async () => {
+it('creates Starter, Pro, and Max checkout with server-owned quantities', async () => {
   const checkoutParams: Record<string, unknown>[] = []
   const provider = new StripeBillingProvider({
     stripe: {
@@ -155,19 +155,33 @@ it('creates named personal checkout with server-owned quantity metadata and inte
     planQuantityForAmountCents: (value) => value / 100,
   })
 
-  await provider.createCheckoutSession({
-    userId: 'user_1',
-    email: 'user@example.com',
-    kind: 'paid_plan',
-    planId: 'pro',
-    planAmountCents: 2400,
-    topUpAmountCents: 800,
-  })
+  for (const plan of [
+    { planId: 'starter', planAmountCents: 800, quantity: 8 },
+    { planId: 'pro', planAmountCents: 2400, quantity: 24 },
+    { planId: 'max', planAmountCents: 9600, quantity: 96 },
+  ] as const) {
+    await provider.createCheckoutSession({
+      userId: 'user_1',
+      email: 'user@example.com',
+      kind: 'paid_plan',
+      planId: plan.planId,
+      planAmountCents: plan.planAmountCents,
+      topUpAmountCents: 800,
+    })
+  }
 
-  assert.equal(checkoutParams[0]?.integration_identifier, 'payment_revision_abc123')
-  assert.deepEqual(checkoutParams[0]?.line_items, [{ price: 'price_paid', quantity: 24 }])
-  assert.equal((checkoutParams[0]?.metadata as Record<string, string>).planId, 'pro')
-  assert.equal((checkoutParams[0]?.metadata as Record<string, string>).stripeQuantity, '24')
+  assert.equal(checkoutParams.length, 3)
+  for (const [index, plan] of [
+    { planId: 'starter', quantity: 8 },
+    { planId: 'pro', quantity: 24 },
+    { planId: 'max', quantity: 96 },
+  ].entries()) {
+    const checkout = checkoutParams[index]
+    assert.equal(checkout?.integration_identifier, 'payment_revision_abc123')
+    assert.deepEqual(checkout?.line_items, [{ price: 'price_paid', quantity: plan.quantity }])
+    assert.equal((checkout?.metadata as Record<string, string>).planId, plan.planId)
+    assert.equal((checkout?.metadata as Record<string, string>).stripeQuantity, String(plan.quantity))
+  }
 })
 
 it('verifies checkout ownership by billing account instead of workspace admin', async () => {

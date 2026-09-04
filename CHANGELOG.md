@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Added a versioned personal plan catalog that presents existing Stripe quantities as Starter, Pro, Max, or a preserved legacy plan without rewriting customer subscriptions.
 - Restricted new personal subscription checkout to Starter, Pro, or Max on the existing Stripe unit Price; added duplicate-subscription protection and a guarded preview/confirm flow that prorates upgrades now and schedules downgrades for renewal.
 - Replaced variable personal pricing with responsive Free, Starter, Pro, and Max cards; added guarded purchase and plan-change confirmations, current and legacy plan states, clearer Account billing indicators, and a compact sidebar plan status while keeping all top-up controls in Account.
+- Added repeatable Stripe test-mode payment QA for named Checkout quantities, legacy migration previews, failed-payment pending updates, portal recovery/cancellation, webhook allowances, and duplicate-subscription prevention; unpaid flows can no longer grant a new or upgraded allowance before Stripe confirms payment.
 
 ### Added
 
