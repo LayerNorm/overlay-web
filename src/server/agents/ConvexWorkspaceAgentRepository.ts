@@ -61,8 +61,14 @@ async function requiredMutation<T>(operation: string, args: Record<string, unkno
 function agent(row: ConvexAgent): WorkspaceAgentDirectoryItem {
   const { agentId, ...value } = clean(row)
   // Older Convex deployments predate the access-mode feature and return rows
-  // without `visibility`; treat absence as workspace-visible.
-  return { ...value, visibility: value.visibility ?? 'workspace', id: agentId }
+  // without `visibility`; treat absence as workspace-visible. Rows predating
+  // platform enablement lack `platforms`; absence means all platforms.
+  return {
+    ...value,
+    visibility: value.visibility ?? 'workspace',
+    platforms: value.platforms ?? ['slack', 'msteams'],
+    id: agentId,
+  }
 }
 
 function clean<T extends Record<string, unknown>>(row: T): T {

@@ -42,6 +42,7 @@ test('Convex named agents match the Postgres identity and archive contract', {
     })
     assert.equal(created.principalId, principalId)
     assert.equal(created.visibility, 'creator')
+    assert.deepEqual(created.platforms, [])
     assert.deepEqual(created.teamIds, [team.id])
     // Creator-only agents join no channels implicitly.
     assert.equal(created.roomCount, 0)
@@ -66,6 +67,7 @@ test('Convex named agents match the Postgres identity and archive contract', {
       createdByPrincipalId: ownerPrincipalId, now: Date.now(),
     })
     assert.equal(shared.roomCount, 1)
+    assert.deepEqual(shared.platforms, ['slack', 'msteams'])
     assert.equal(await agents.archive({ agentId, workspaceId, now: Date.now() }), true)
     assert.equal(await agents.archive({ agentId: sharedAgentId, workspaceId, now: Date.now() }), true)
     assert.equal((await agents.list({ workspaceId })).length, 0)

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import {
   WORKSPACE_AGENT_HARNESSES,
+  WORKSPACE_AGENT_PLATFORMS,
   WORKSPACE_AGENT_VISIBILITIES,
   type WorkspaceAgentHarness,
+  type WorkspaceAgentPlatform,
   type WorkspaceAgentUpdateInput,
   type WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
@@ -56,7 +58,19 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
     if (!isVisibility(body.visibility)) invalid('visibility')
     input.visibility = body.visibility
   }
+  if (body.platforms !== undefined) {
+    input.platforms = platforms(body.platforms)
+  }
   return input
+}
+
+function platforms(value: unknown): WorkspaceAgentPlatform[] {
+  if (!Array.isArray(value)) invalid('platforms')
+  const known = WORKSPACE_AGENT_PLATFORMS as readonly string[]
+  const filtered = value.filter((entry): entry is WorkspaceAgentPlatform =>
+    typeof entry === 'string' && known.includes(entry))
+  if (filtered.length !== value.length) invalid('platforms')
+  return filtered
 }
 
 function assignString<

@@ -47,6 +47,7 @@ test('Postgres named agents preserve workspace identity, team, room, and archive
     })
     assert.equal(created.principalId, agentPrincipalId)
     assert.equal(created.visibility, 'creator')
+    assert.deepEqual(created.platforms, [])
     assert.deepEqual(created.teamIds, [team.id])
     // Creator-only agents join no channels implicitly.
     assert.equal(created.roomCount, 0)
@@ -70,6 +71,7 @@ test('Postgres named agents preserve workspace identity, team, room, and archive
       createdByPrincipalId: ownerPrincipalId, now: 134,
     })
     assert.equal(shared.roomCount, 1)
+    assert.deepEqual(shared.platforms, ['slack', 'msteams'])
 
     assert.equal(await agents.archive({ agentId, workspaceId, now: 140 }), true)
     assert.equal(await agents.archive({ agentId: sharedAgentId, workspaceId, now: 142 }), true)

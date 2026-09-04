@@ -1895,6 +1895,7 @@ export default defineSchema({
     allowedToolIds: v.array(v.string()),
     invocationPolicy: v.literal('mention'),
     visibility: v.optional(v.union(v.literal('creator'), v.literal('workspace'))),
+    platforms: v.optional(v.array(v.union(v.literal('slack'), v.literal('msteams')))),
     createdByPrincipalId: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),

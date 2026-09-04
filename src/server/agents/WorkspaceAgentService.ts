@@ -1,12 +1,14 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import type {
-  WorkspaceAgentCreateInput,
-  WorkspaceAgentDirectoryItem,
-  WorkspaceAgentUpdateInput,
-  WorkspaceAgentVisibility,
-  WorkspaceMembershipRole,
+import {
+  WORKSPACE_AGENT_PLATFORMS,
+  type WorkspaceAgentCreateInput,
+  type WorkspaceAgentDirectoryItem,
+  type WorkspaceAgentPlatform,
+  type WorkspaceAgentUpdateInput,
+  type WorkspaceAgentVisibility,
+  type WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
@@ -101,6 +103,7 @@ export class WorkspaceAgentService {
         teamIds: [],
         isDefault: true,
         visibility: 'workspace',
+        platforms: ['slack', 'msteams'],
         createdByPrincipalId: args.creatorPrincipalId,
         now: this.now(),
       })
@@ -161,6 +164,7 @@ export class WorkspaceAgentService {
         allowedToolIds: unique(args.input.allowedToolIds ?? []),
         teamIds,
         visibility: normalizeVisibility(args.input.visibility),
+        platforms: normalizePlatforms(args.input.platforms, normalizeVisibility(args.input.visibility)),
         createdByPrincipalId: access.principal.id,
         now: this.now(),
       })
@@ -209,6 +213,7 @@ export class WorkspaceAgentService {
       ...(args.input.avatarColor === undefined ? {} : { avatarColor: color(args.input.avatarColor) }),
       ...(args.input.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.input.allowedToolIds) }),
       ...(args.input.visibility === undefined ? {} : { visibility: args.input.visibility }),
+      ...(args.input.platforms === undefined ? {} : { platforms: normalizePlatforms(args.input.platforms, undefined) }),
       ...(teamIds === undefined ? {} : { teamIds }),
       updatedByPrincipalId: access.principal.id,
       now: this.now(),
@@ -305,6 +310,33 @@ export function canSeeAgent(agent: Pick<WorkspaceAgentDirectoryItem, 'visibility
 
 function normalizeVisibility(value: WorkspaceAgentVisibility | undefined): WorkspaceAgentVisibility {
   return value === 'creator' ? 'creator' : 'workspace'
+}
+
+/**
+ * Explicit platform list, sanitized against the known set. Absent on create
+ * means the visibility default (Workspace: all platforms; Personal: none);
+ * absent on update means unchanged.
+ */
+function normalizePlatforms(
+  value: WorkspaceAgentPlatform[] | undefined,
+  visibility: WorkspaceAgentVisibility | undefined,
+): WorkspaceAgentPlatform[] {
+  if (value !== undefined) {
+    if (!Array.isArray(value)) return []
+    const known = WORKSPACE_AGENT_PLATFORMS as readonly string[]
+    return value.filter((entry): entry is WorkspaceAgentPlatform => known.includes(entry))
+  }
+  if (visibility === undefined || visibility === 'creator') return []
+  return [...WORKSPACE_AGENT_PLATFORMS]
+}
+
+/** Grandfathered rows (`undefined`) read as all platforms; `[]` means none. */
+export function isAgentOnPlatform(
+  agent: Pick<WorkspaceAgentDirectoryItem, 'platforms'>,
+  platform: WorkspaceAgentPlatform,
+): boolean {
+  const platforms = agent.platforms ?? [...WORKSPACE_AGENT_PLATFORMS]
+  return platforms.includes(platform)
 }
 
 function required(value: string, label: string, max: number) {

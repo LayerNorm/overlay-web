@@ -13,6 +13,7 @@ import type {
   WorkspaceAgentRepository,
 } from './WorkspaceAgentRepository'
 import {
+  isAgentOnPlatform,
   WorkspaceAgentService,
   WorkspaceAgentServiceError,
 } from './WorkspaceAgentService'
@@ -36,6 +37,7 @@ function agentFixture(overrides: Partial<WorkspaceAgentDirectoryItem> = {}): Wor
     allowedToolIds: [],
     invocationPolicy: 'mention',
     visibility: 'workspace',
+    platforms: ['slack', 'msteams'],
     createdByPrincipalId: CREATOR_PRINCIPAL_ID,
     createdAt: NOW,
     updatedAt: NOW,
@@ -114,6 +116,7 @@ function serviceFor(
           avatarColor: input.avatarColor,
           allowedToolIds: input.allowedToolIds,
           visibility: input.visibility,
+          platforms: input.platforms,
           teamIds: input.teamIds,
           createdByPrincipalId: input.createdByPrincipalId,
         })
@@ -229,6 +232,59 @@ test('create defaults to workspace visibility and passes creator visibility thro
   })
   assert.equal(privateAgent.visibility, 'creator')
   assert.deepEqual(created.map((input) => input.visibility), ['workspace', 'creator'])
+})
+
+test('new workspace agents default to all platforms, personal to none', async () => {
+  const { service, created } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [defaultAgentFixture()])
+  const shared = await service.create({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Shared', instructions: 'Help everyone.', modelId: 'test-model' },
+  })
+  assert.deepEqual(shared.platforms, ['slack', 'msteams'])
+  const personal = await service.create({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Mine', instructions: 'Help me.', modelId: 'test-model', visibility: 'creator' },
+  })
+  assert.deepEqual(personal.platforms, [])
+  assert.deepEqual(created.map((input) => input.platforms), [['slack', 'msteams'], []])
+})
+
+test('explicit platforms win over visibility defaults and unknown entries drop', async () => {
+  const { service, created } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [defaultAgentFixture()])
+  const agent = await service.create({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    input: {
+      name: 'Slack only', instructions: 'Help.', modelId: 'test-model',
+      platforms: ['slack', 'carrier-pigeon' as never],
+    },
+  })
+  assert.deepEqual(agent.platforms, ['slack'])
+  assert.deepEqual(created[0]?.platforms, ['slack'])
+})
+
+test('platform updates pass through without touching scope', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-shared', visibility: 'workspace' })]
+  const { service, updated } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  const agent = await service.update({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: 'agent-shared',
+    input: { platforms: [] },
+  })
+  assert.deepEqual(agent.platforms, [])
+  assert.equal(agent.visibility, 'workspace')
+  assert.deepEqual(updated[0]?.platforms, [])
+})
+
+test('platform-disabled agents are unreachable on that platform', async () => {
+  assert.equal(isAgentOnPlatform({ platforms: ['slack', 'msteams'] }, 'slack'), true)
+  assert.equal(isAgentOnPlatform({ platforms: ['slack'] }, 'msteams'), false)
+  assert.equal(isAgentOnPlatform({ platforms: [] }, 'slack'), false)
+  // Grandfathered rows predate the field entirely.
+  assert.equal(isAgentOnPlatform({ platforms: undefined as never }, 'slack'), true)
 })
 
 test('update passes a visibility flip through to the repository', async () => {

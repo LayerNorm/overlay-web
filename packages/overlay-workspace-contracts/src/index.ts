@@ -82,6 +82,8 @@ export {
   type WorkspaceAgentHarness,
   WORKSPACE_AGENT_VISIBILITIES,
   type WorkspaceAgentVisibility,
+  WORKSPACE_AGENT_PLATFORMS,
+  type WorkspaceAgentPlatform,
   type WorkspaceAgentDefinition,
   type WorkspaceAgentCreateInput,
   type WorkspaceAgentUpdateInput,

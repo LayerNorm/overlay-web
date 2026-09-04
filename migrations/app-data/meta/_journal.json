@@ -533,6 +533,13 @@
       "when": 1788472665000,
       "tag": "0075_platform_event_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1788485851000,
+      "tag": "0076_agent_platforms",
+      "breakpoints": true
     }
   ]
 }

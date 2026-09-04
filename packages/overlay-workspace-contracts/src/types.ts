@@ -498,6 +498,9 @@ export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
 export const WORKSPACE_AGENT_VISIBILITIES = ['creator', 'workspace'] as const
 export type WorkspaceAgentVisibility = (typeof WORKSPACE_AGENT_VISIBILITIES)[number]
 
+export const WORKSPACE_AGENT_PLATFORMS = ['slack', 'msteams'] as const
+export type WorkspaceAgentPlatform = (typeof WORKSPACE_AGENT_PLATFORMS)[number]
+
 export type WorkspaceAgentDefinition = {
   id: string
   workspaceId: string
@@ -511,6 +514,7 @@ export type WorkspaceAgentDefinition = {
   allowedToolIds: string[]
   invocationPolicy: 'mention'
   visibility: WorkspaceAgentVisibility
+  platforms: WorkspaceAgentPlatform[]
   createdByPrincipalId: string
   createdAt: number
   updatedAt: number
@@ -529,6 +533,7 @@ export type WorkspaceAgentCreateInput = {
   teamIds?: string[]
   isDefault?: boolean
   visibility?: WorkspaceAgentVisibility
+  platforms?: WorkspaceAgentPlatform[]
 }
 
 export type WorkspaceAgentUpdateInput = Partial<WorkspaceAgentCreateInput>
