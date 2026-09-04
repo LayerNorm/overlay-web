@@ -44,6 +44,26 @@ export class SlackClient {
     )
   }
 
+  linkOwnIdentity(workspaceId: string, body: {
+    directory: string
+    externalId: string
+  }, init?: RequestInit) {
+    return this.http.json<{ mapping: WorkspaceIdentityMapping }>(
+      '/api/v1/slack/identities/self',
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
+  unlinkOwnIdentity(workspaceId: string, body: {
+    directory: string
+    externalId: string
+  }, init?: RequestInit) {
+    return this.http.json<{ unlinked: true }>(
+      '/api/v1/slack/identities/self',
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'DELETE' }),
+    )
+  }
+
   listInstallations(workspaceId: string, init?: RequestInit) {
     return this.http.json<{ installations: WorkspacePlatformInstallationSummary[] }>(
       '/api/v1/slack/installations',

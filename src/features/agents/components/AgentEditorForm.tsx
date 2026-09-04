@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
-import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
+import type { WorkspaceAgentPlatform, WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 
@@ -30,6 +30,55 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
         <button type="button" role="radio" aria-checked={value === 'creator'} onClick={() => onChange('creator')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'creator' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Lock size={16} /> Personal</button>
       </div>
       <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{value === 'creator' ? 'Only you can see, chat with, or @-mention this agent.' : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}</p>
+    </div>
+  )
+}
+
+export type PlatformConnectionState = {
+  installed: boolean
+  loading: boolean
+  selfId: string | null
+}
+
+export function PlatformAccessFields({ platforms, onTogglePlatform, slack, teamsNote, busy, error, linkId, onLinkIdChange, onConnectSlack, onLinkSlack, onUnlinkSlack }: {
+  platforms: WorkspaceAgentPlatform[]
+  onTogglePlatform(platform: WorkspaceAgentPlatform): void
+  slack: PlatformConnectionState
+  teamsNote: string
+  busy: boolean
+  error: string | null
+  linkId: string
+  onLinkIdChange(value: string): void
+  onConnectSlack(): void
+  onLinkSlack(): void
+  onUnlinkSlack(): void
+}) {
+  const slackOn = platforms.includes('slack')
+  return (
+    <div>
+      <p className="text-xs font-medium">Add your agent to</p>
+      <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Enabled platforms can invoke this agent — subject to its Personal or Workspace scope.</p>
+      <div className="mt-2.5 space-y-2">
+        <div className="rounded-xl border border-[var(--border)] p-3">
+          <button type="button" role="switch" aria-checked={slackOn} onClick={() => onTogglePlatform('slack')} className="flex w-full items-center gap-2 text-left"><span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${slackOn ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{slackOn ? <Check size={11} /> : null}</span><span className="text-xs font-medium text-[var(--foreground)]">Slack</span></button>
+          {slackOn ? (
+            <div className="mt-2.5 border-t border-[var(--border)] pt-2.5">
+              {slack.loading ? <p className="text-[11px] text-[var(--muted)]">Checking Slack connection…</p>
+                : !slack.installed ? (
+                  <div className="space-y-2"><p className="text-[11px] leading-4 text-[var(--muted)]">Slack is not connected to this workspace yet. A manager connects it once; then anyone can add their agents.</p><Button variant="secondary" size="sm" disabled={busy} onClick={onConnectSlack}>Connect Slack workspace</Button></div>
+                ) : slack.selfId ? (
+                  <div className="flex items-center gap-2"><p className="min-w-0 flex-1 truncate text-[11px] text-[var(--muted)]">Linked as {slack.selfId}</p><Button variant="ghost" size="sm" disabled={busy} onClick={onUnlinkSlack}>Unlink</Button></div>
+                ) : (
+                  <div className="space-y-2"><p className="text-[11px] leading-4 text-[var(--muted)]">Link your Slack user so the bot answers as you. Find your member ID in Slack under Profile → More actions.</p><div className="flex gap-2"><Input aria-label="Your Slack user id" className="h-8 text-xs" value={linkId} onChange={(event) => onLinkIdChange(event.target.value)} placeholder="U012ABC34" /><Button variant="secondary" size="sm" disabled={busy || !linkId.trim()} onClick={onLinkSlack}>Link</Button></div></div>
+                )}
+            </div>
+          ) : null}
+        </div>
+        <div className="rounded-xl border border-[var(--border)] p-3 opacity-60">
+          <div className="flex w-full items-center gap-2"><span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--border)]" /><span className="text-xs font-medium text-[var(--foreground)]">MS Teams</span><span className="ml-auto text-[10px] text-[var(--muted-light)]">{teamsNote}</span></div>
+        </div>
+      </div>
+      {error ? <p role="alert" className="mt-2 text-xs text-red-500">{error}</p> : null}
     </div>
   )
 }

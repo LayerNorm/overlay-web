@@ -10,6 +10,7 @@ import {
   resolveWorkspaceAgentInvocations,
   runWorkspaceAgentTurn,
 } from '@/server/agents/workspace-agent-invocation'
+import { isAgentOnPlatform } from '@/server/agents/WorkspaceAgentService'
 import type { PlatformAgentAccess } from '@/server/agents/PlatformAgentAccess'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import type { WorkspaceGovernanceService } from '@/server/governance/WorkspaceGovernanceService'
@@ -198,7 +199,12 @@ export class SlackWebhookService {
     if (!context) return
     const directory = await this.visibleDirectory(context)
     if (!directory) return
-    const agent = resolveMentionedAgent({ text: work.text, visibleAgents: directory.agents })
+    // Platform enablement is per-agent: disabled agents behave exactly like
+    // invisible ones (no run, no error that could disclose them).
+    const agent = resolveMentionedAgent({
+      text: work.text,
+      visibleAgents: directory.agents.filter((candidate) => isAgentOnPlatform(candidate, 'slack')),
+    })
     if (!agent) return
     await this.invokeAgentAndPost({
       ...context,
@@ -239,7 +245,10 @@ export class SlackWebhookService {
       })
       return
     }
-    const agent = resolveMentionedAgent({ text: parsed.query, visibleAgents: directory.agents })
+    const agent = resolveMentionedAgent({
+      text: parsed.query,
+      visibleAgents: directory.agents.filter((candidate) => isAgentOnPlatform(candidate, 'slack')),
+    })
     if (!agent) return
     await this.invokeAgentAndPost({
       ...context,
@@ -276,7 +285,7 @@ export class SlackWebhookService {
       void _invisibleError
       return
     }
-    if (!agent) return
+    if (!agent || !isAgentOnPlatform(agent, 'slack')) return
     const url = manageAgentUrl({
       baseUrl: this.deps.baseUrl(),
       workspaceId: context.installation.workspaceId,

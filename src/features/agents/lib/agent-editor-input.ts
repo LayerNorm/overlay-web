@@ -1,5 +1,6 @@
 import type {
   WorkspaceAgentCreateInput,
+  WorkspaceAgentPlatform,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
@@ -17,6 +18,7 @@ export function buildWorkspaceAgentInput(args: {
   avatarColor: string
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
+  platforms: WorkspaceAgentPlatform[]
 }): WorkspaceAgentCreateInput {
   const byo = args.agentType === 'byo'
   return {
@@ -28,6 +30,7 @@ export function buildWorkspaceAgentInput(args: {
     avatarColor: args.avatarColor,
     allowedToolIds: byo ? [] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
+    platforms: args.platforms,
   }
 }
 

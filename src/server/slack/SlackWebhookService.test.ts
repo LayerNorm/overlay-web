@@ -29,6 +29,7 @@ function scoutAgent() {
     allowedToolIds: [],
     invocationPolicy: 'mention',
     visibility: 'workspace',
+    platforms: ['slack', 'msteams'],
     createdByPrincipalId: PRINCIPAL,
     createdAt: 1,
     updatedAt: 1,
@@ -599,6 +600,46 @@ test('slash and action payloads route through the signed webhook', async () => {
     { signingSecret: SECRET },
   )
   assert.equal(actionResponse.status, 200)
+})
+
+test('platform-disabled agents are silent on mentions, asks, and manage actions', async () => {
+  const offSlack = { ...scoutAgent(), id: 'agent-off', principalId: 'agent-principal-off', platforms: [] as never }
+  const deps = fakeDeps({
+    workspaceAgents: {
+      async get() {
+        return offSlack
+      },
+      async list() {
+        return { agents: [offSlack], canCreate: true }
+      },
+    } as SlackBotDeps['workspaceAgents'],
+  })
+  const service = new SlackWebhookService(deps)
+  await service.handleMention({
+    teamId: 'T123',
+    channelId: 'C123',
+    threadTs: '1.0',
+    text: '<@U123> scout, summarize this',
+    slackUserId: 'U999',
+  }, { signingSecret: SECRET })
+  await service.handleSlash({
+    teamId: 'T123',
+    channelId: 'C123',
+    text: 'ask scout summarize this',
+    slackUserId: 'U999',
+    command: '/overlay',
+    triggerId: '123.457',
+  }, { signingSecret: SECRET })
+  await service.handleManageAction({
+    teamId: 'T123',
+    channelId: 'C123',
+    slackUserId: 'U999',
+    agentId: 'agent-off',
+  }, { signingSecret: SECRET })
+  assert.deepEqual(deps.calls.posted, [])
+  assert.deepEqual(deps.calls.ephemeral, [])
+  assert.deepEqual(deps.calls.messages, [])
+  assert.deepEqual(deps.calls.audits, [])
 })
 
 test('install completion stores the encrypted token against the claimed workspace', async () => {
