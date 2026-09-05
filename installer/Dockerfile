@@ -13,5 +13,6 @@ RUN chmod 0755 /usr/local/bin/overlayctl
 # service. Docker-socket access is equivalent to host-root access. The image has
 # no listening port, daemon, health server, or long-running command; it exits
 # after overlayctl finishes. See docs/deploy-operate/one-command-install.mdx.
-# nosemgrep: dockerfile.security.missing-user.missing-user,dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
+# nosemgrep: dockerfile.security.missing-user.missing-user
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["overlayctl"]

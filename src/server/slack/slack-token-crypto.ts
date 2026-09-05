@@ -3,6 +3,7 @@ import 'server-only'
 import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto'
 
 const ALGORITHM = 'aes-256-gcm'
+const AUTH_TAG_BYTES = 16
 const IV_BYTES = 12
 const KEY_BYTES = 32
 
@@ -34,8 +35,12 @@ export function decryptPlatformToken(args: {
   if (parts.length !== 4 || parts[0] !== 'v1' || !parts[1] || !parts[2] || !parts[3]) {
     throw new Error('PLATFORM_TOKEN_CIPHER_INVALID')
   }
-  const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(parts[1], 'base64url'))
-  decipher.setAuthTag(Buffer.from(parts[3], 'base64url'))
+  const authenticationTag = Buffer.from(parts[3], 'base64url')
+  if (authenticationTag.length !== AUTH_TAG_BYTES) throw new Error('PLATFORM_TOKEN_CIPHER_INVALID')
+  const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(parts[1], 'base64url'), {
+    authTagLength: AUTH_TAG_BYTES,
+  })
+  decipher.setAuthTag(authenticationTag)
   const plaintext = Buffer.concat([
     decipher.update(Buffer.from(parts[2], 'base64url')),
     decipher.final(),
