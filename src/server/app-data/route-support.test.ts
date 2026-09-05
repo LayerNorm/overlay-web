@@ -156,6 +156,11 @@ test('Postgres app-data mode supports bootstrap and gates external integration r
     method: 'GET',
     pathname: '/api/v1/conversations/abc/participants',
   }).status, 'supported')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/slack/installations',
+  }).status, 'supported')
 })
 
 test('Postgres app-data mode exposes the provider-neutral workspace and agent vertical slice', () => {

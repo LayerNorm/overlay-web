@@ -34,8 +34,9 @@ App-data portability is capability-driven: `src/server/app-data/capabilities.ts`
 and `src/server/app-data/route-support.ts` are the source of truth for what
 Postgres mode exposes. Unsupported routes must return the structured
 `app_data_route_not_supported` response before domain services or Convex are
-called. Workspace collaboration and connector mappings are currently Convex
-only; Postgres must not silently fall back to Convex for them.
+called. Core workspace collaboration and Slack workspace install and identity
+routes use the provider-neutral workspace repositories; remaining gated
+collaboration and connector routes must not silently fall back to Convex.
 
 Connected-agent persistence is provider-neutral through
 `ConnectedAgentRepository`. Environment, binding, command, remote-session,

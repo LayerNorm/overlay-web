@@ -160,7 +160,12 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Workspace and collaboration surfaces',
     targetPhase: 'P1',
     capabilities: [],
-    routeRuleIds: ['workspace-collaboration', 'workspace-collaboration-gated', 'mention-search-convex-only'],
+    routeRuleIds: [
+      'workspace-collaboration',
+      'workspace-collaboration-gated',
+      'mention-search-convex-only',
+      'slack-workspace-integration',
+    ],
     exitGate: 'Workspaces, agents, rooms, and connected-agent invocation use provider-neutral repositories; remaining sharing and search surfaces stay explicitly gated and no Postgres browser path calls Convex.',
   },
   {

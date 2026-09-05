@@ -29,6 +29,7 @@
     "src/app/api/portal/route.ts",
     "src/app/api/security/csp-report/route.ts",
     "src/app/api/share/file/[token]/route.ts",
+    "src/app/api/subscription/change-plan/route.ts",
     "src/app/api/subscription/route.ts",
     "src/app/api/subscription/settings/route.ts",
     "src/app/api/topups/checkout/route.ts",
@@ -174,6 +175,9 @@
     "src/app/api/v1/shares/route.ts",
     "src/app/api/v1/shares/shared-with-me/route.ts",
     "src/app/api/v1/skills/route.ts",
+    "src/app/api/v1/slack/identities/route.ts",
+    "src/app/api/v1/slack/install/route.ts",
+    "src/app/api/v1/slack/installations/route.ts",
     "src/app/api/v1/subscription/route.ts",
     "src/app/api/v1/subscription/settings/route.ts",
     "src/app/api/v1/transcribe/route.ts",
@@ -196,6 +200,8 @@
     "src/app/api/v1/workspaces/[workspaceId]/teams/route.ts",
     "src/app/api/v1/workspaces/active/route.ts",
     "src/app/api/v1/workspaces/route.ts",
+    "src/app/api/webhooks/slack/oauth/route.ts",
+    "src/app/api/webhooks/slack/route.ts",
     "src/app/api/webhooks/stripe/route.ts"
   ],
   "browserRuntimeFiles": [
@@ -299,7 +305,6 @@
     }
   ],
   "convexRuntimeImportFiles": [
-    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",

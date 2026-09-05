@@ -87,6 +87,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     reason: 'Slack import job state and its worker bridge still use Convex.',
   },
   {
+    id: 'slack-workspace-integration',
+    methods: '*',
+    prefixes: ['/api/v1/slack'],
+    status: 'supported',
+    feature: 'workspace-collaboration',
+  },
+  {
     id: 'mention-search-convex-only',
     methods: ['GET'],
     paths: ['/api/v1/mention-search'],
