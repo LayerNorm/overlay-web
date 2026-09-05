@@ -132,6 +132,88 @@ function dateLabel(timestamp: number | string) {
   }).format(new Date(timestamp))
 }
 
+type PricingLoadingState = 'checkout' | 'portal' | 'preview' | 'change' | null
+
+function PricingHeader({ authLoading, isAuthenticated }: { authLoading: boolean; isAuthenticated: boolean }) {
+  return (
+    <Reveal>
+      <div className="mx-auto max-w-3xl text-center">
+        <p className={minimalLabel()}>Plans and pricing</p>
+        <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
+          A plan for the way you work.
+        </h1>
+        <p className={`mx-auto mt-6 max-w-2xl ${minimalBody()}`}>
+          Every paid plan includes premium models and tools. Your monthly price becomes an included AI usage allowance—choose the level that fits your workload.
+        </p>
+        {!authLoading && !isAuthenticated ? (
+          <p className="mt-5 text-sm text-[var(--muted)]">
+            <Link href="/auth/sign-in?redirect=/pricing" className="font-medium text-[var(--foreground)] underline underline-offset-4">Sign in</Link>{' '}
+            to subscribe or see your current plan.
+          </p>
+        ) : null}
+      </div>
+    </Reveal>
+  )
+}
+
+function PricingNotices({
+  error,
+  loading,
+  notice,
+  onManageBilling,
+  pendingPlan,
+  subscription,
+}: {
+  error: string | null
+  loading: PricingLoadingState
+  notice: string | null
+  onManageBilling: () => void
+  pendingPlan: PaidPlan | null
+  subscription: LandingSubscription
+}) {
+  return (
+    <>
+      {subscription.isLegacyPlan ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)]">{subscription.planDisplayName} plan · Grandfathered</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">You can keep your current price. Choosing a named plan permanently ends legacy pricing.</p>
+          </div>
+          <ShieldCheck className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
+        </div>
+      ) : null}
+
+      {subscription.cancelAtPeriodEnd ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)]">Cancellation scheduled</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+              Your {subscription.planDisplayName} plan stays active
+              {subscription.billingPeriodEnd ? ` until ${dateLabel(subscription.billingPeriodEnd)}` : ' through the current billing period'}.
+              {' '}Resume it in billing before changing plans.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onManageBilling}
+            disabled={loading !== null}
+            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-[background-color,transform] hover:bg-[var(--surface-muted)] active:scale-[0.98] disabled:opacity-50"
+          >
+            {loading === 'portal' ? 'Opening billing…' : 'Manage billing'}
+          </button>
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--success)_35%,var(--border))] bg-[color:color-mix(in_srgb,var(--success)_9%,var(--surface-elevated))] px-5 py-4 text-sm text-[var(--success)]">{notice}</div>
+      ) : null}
+      {error && !pendingPlan ? (
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--danger)_35%,var(--border))] bg-[color:color-mix(in_srgb,var(--danger)_10%,var(--surface-elevated))] px-5 py-4 text-sm text-[var(--danger)]">{error}</div>
+      ) : null}
+    </>
+  )
+}
+
 function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const router = useRouter()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -140,7 +222,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const [pendingPlan, setPendingPlan] = useState<PaidPlan | null>(null)
   const [preview, setPreview] = useState<PlanChangePreview | null>(null)
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
-  const [loading, setLoading] = useState<'checkout' | 'portal' | 'preview' | 'change' | null>(null)
+  const [loading, setLoading] = useState<PricingLoadingState>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -409,61 +491,15 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
       <Suspense fallback={null}><UserIdExtractor /></Suspense>
       <main className={minimalSection()}>
         <div className="mx-auto flex max-w-6xl flex-col gap-12">
-          <Reveal>
-            <div className="mx-auto max-w-3xl text-center">
-              <p className={minimalLabel()}>Plans and pricing</p>
-              <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
-                A plan for the way you work.
-              </h1>
-              <p className={`mx-auto mt-6 max-w-2xl ${minimalBody()}`}>
-                Every paid plan includes premium models and tools. Your monthly price becomes an included AI usage allowance—choose the level that fits your workload.
-              </p>
-              {!authLoading && !isAuthenticated ? (
-                <p className="mt-5 text-sm text-[var(--muted)]">
-                  <Link href="/auth/sign-in?redirect=/pricing" className="font-medium text-[var(--foreground)] underline underline-offset-4">Sign in</Link>{' '}
-                  to subscribe or see your current plan.
-                </p>
-              ) : null}
-            </div>
-          </Reveal>
-
-          {subscription.isLegacyPlan ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-[var(--foreground)]">{subscription.planDisplayName} plan · Grandfathered</p>
-                <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">You can keep your current price. Choosing a named plan permanently ends legacy pricing.</p>
-              </div>
-              <ShieldCheck className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
-            </div>
-          ) : null}
-
-          {subscription.cancelAtPeriodEnd ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-[var(--foreground)]">Cancellation scheduled</p>
-                <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                  Your {subscription.planDisplayName} plan stays active
-                  {subscription.billingPeriodEnd ? ` until ${dateLabel(subscription.billingPeriodEnd)}` : ' through the current billing period'}.
-                  {' '}Resume it in billing before changing plans.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleManageBilling()}
-                disabled={loading !== null}
-                className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-[background-color,transform] hover:bg-[var(--surface-muted)] active:scale-[0.98] disabled:opacity-50"
-              >
-                {loading === 'portal' ? 'Opening billing…' : 'Manage billing'}
-              </button>
-            </div>
-          ) : null}
-
-          {notice ? (
-            <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--success)_35%,var(--border))] bg-[color:color-mix(in_srgb,var(--success)_9%,var(--surface-elevated))] px-5 py-4 text-sm text-[var(--success)]">{notice}</div>
-          ) : null}
-          {error && !pendingPlan ? (
-            <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--danger)_35%,var(--border))] bg-[color:color-mix(in_srgb,var(--danger)_10%,var(--surface-elevated))] px-5 py-4 text-sm text-[var(--danger)]">{error}</div>
-          ) : null}
+          <PricingHeader authLoading={authLoading} isAuthenticated={isAuthenticated} />
+          <PricingNotices
+            error={error}
+            loading={loading}
+            notice={notice}
+            onManageBilling={() => { void handleManageBilling() }}
+            pendingPlan={pendingPlan}
+            subscription={subscription}
+          />
 
           <Reveal>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

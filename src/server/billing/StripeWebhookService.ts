@@ -3,7 +3,7 @@ import 'server-only'
 import type Stripe from 'stripe'
 import { createHash } from 'node:crypto'
 import { quantityToPlanAmountCents } from '@/shared/billing/billing-pricing'
-import type { BillingRepository } from './BillingRepository'
+import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
 import type {
   BillingProviderEventRepository,
   BillingWebhookRepository,
@@ -185,40 +185,26 @@ export class StripeWebhookService {
             billingAccountId: payer.billingAccountId,
           })
         : await this.deps.billing.getSubscriptionByUserIdByServer({ userId: payer.userId })
-    const preservesExistingPaidAccess = status === 'past_due' && existing?.planKind === 'paid'
-    const planKind = grantsPaidAccess || preservesExistingPaidAccess ? 'paid' : 'free'
-    const planAmountCents = grantsPaidAccess
-      ? positiveInteger(metadata.planAmountCents) ?? quantityToPlanAmountCents(quantity)
-      : preservesExistingPaidAccess
-        ? positiveInteger(existing?.planAmountCents) ?? 0
-        : 0
+    const entitlement = subscriptionEntitlementProjection({
+      existing,
+      grantsPaidAccess,
+      metadata,
+      quantity,
+      status,
+    })
     const subscriptionUpdate = {
       email: metadata.email,
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: item?.price.id,
-      stripeQuantity: preservesExistingPaidAccess
-        ? positiveInteger(existing?.stripeQuantity) ?? quantity
-        : quantity,
-      tier: planKind === 'paid' ? existing?.tier ?? 'pro' : 'free',
-      planKind,
+      stripeQuantity: entitlement.stripeQuantity,
+      tier: entitlement.planKind === 'paid' ? existing?.tier ?? 'pro' : 'free',
+      planKind: entitlement.planKind,
       planVersion: metadata.planVersion ?? 'variable_v2',
-      planAmountCents,
-      autoTopUpEnabled: grantsPaidAccess
-        ? metadata.autoTopUpEnabled === 'true'
-        : preservesExistingPaidAccess
-          ? existing?.autoTopUpEnabled ?? false
-          : false,
-      autoTopUpAmountCents: grantsPaidAccess
-        ? positiveInteger(metadata.topUpAmountCents) ?? 0
-        : preservesExistingPaidAccess
-          ? existing?.autoTopUpAmountCents ?? 0
-          : 0,
-      offSessionConsentAt: grantsPaidAccess
-        ? positiveInteger(metadata.offSessionConsentAt)
-        : preservesExistingPaidAccess
-          ? existing?.offSessionConsentAt
-          : undefined,
+      planAmountCents: entitlement.planAmountCents,
+      autoTopUpEnabled: entitlement.autoTopUpEnabled,
+      autoTopUpAmountCents: entitlement.autoTopUpAmountCents,
+      offSessionConsentAt: entitlement.offSessionConsentAt,
       cancelAtPeriodEnd: deleted ? false : Boolean(subscription.cancel_at_period_end),
       status,
       currentPeriodStart: periodStart,
@@ -236,7 +222,7 @@ export class StripeWebhookService {
     await this.publishLifecycleEvent({
       attributes: {
         changeSource: 'provider_webhook',
-        planKind,
+        planKind: entitlement.planKind,
         provider: 'stripe',
         status,
       },
@@ -425,4 +411,42 @@ function normalizeSubscriptionStatus(
   if (status === 'active') return 'active'
   if (status === 'trialing') return 'trialing'
   return 'past_due'
+}
+
+function subscriptionEntitlementProjection(args: {
+  existing: BillingSubscriptionRecord | null
+  grantsPaidAccess: boolean
+  metadata: Stripe.Metadata
+  quantity: number
+  status: 'active' | 'canceled' | 'past_due' | 'trialing'
+}) {
+  const preservesExistingPaidAccess = args.status === 'past_due' && args.existing?.planKind === 'paid'
+  if (args.grantsPaidAccess) {
+    return {
+      autoTopUpAmountCents: positiveInteger(args.metadata.topUpAmountCents) ?? 0,
+      autoTopUpEnabled: args.metadata.autoTopUpEnabled === 'true',
+      offSessionConsentAt: positiveInteger(args.metadata.offSessionConsentAt),
+      planAmountCents: positiveInteger(args.metadata.planAmountCents) ?? quantityToPlanAmountCents(args.quantity),
+      planKind: 'paid' as const,
+      stripeQuantity: args.quantity,
+    }
+  }
+  if (preservesExistingPaidAccess) {
+    return {
+      autoTopUpAmountCents: args.existing?.autoTopUpAmountCents ?? 0,
+      autoTopUpEnabled: args.existing?.autoTopUpEnabled ?? false,
+      offSessionConsentAt: args.existing?.offSessionConsentAt,
+      planAmountCents: positiveInteger(args.existing?.planAmountCents) ?? 0,
+      planKind: 'paid' as const,
+      stripeQuantity: positiveInteger(args.existing?.stripeQuantity) ?? args.quantity,
+    }
+  }
+  return {
+    autoTopUpAmountCents: 0,
+    autoTopUpEnabled: false,
+    offSessionConsentAt: undefined,
+    planAmountCents: 0,
+    planKind: 'free' as const,
+    stripeQuantity: args.quantity,
+  }
 }
