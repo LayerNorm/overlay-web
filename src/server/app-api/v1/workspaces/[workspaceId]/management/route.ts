@@ -28,13 +28,14 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
     const server = getOverlayServerContext()
     const service = server.workspaceService
     let access = await service.resolveActiveWorkspace(context.auth.userId, workspaceId)
-    const account = (await server.appData.repositories.users.listDirectory())
-      .find((user) => user.id === context.auth.userId)
+    const account = context.auth.profile ?? (
+      await server.appData.repositories.users.listDirectory()
+    ).find((user) => user.id === context.auth.userId)
     if (account) {
       const principal = await service.syncHumanPrincipalProfile({
         userId: context.auth.userId,
         workspaceId,
-        displayName: account.name,
+        displayName: 'displayName' in account ? account.displayName : account.name,
         email: account.email,
       })
       access = { ...access, principal }
