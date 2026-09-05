@@ -48,6 +48,8 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/topups/checkout': ['POST'],
   '/api/topups/history': ['GET'],
   '/api/topups/verify': ['POST'],
+  '/api/webhooks/slack': ['POST'],
+  '/api/webhooks/slack/oauth': ['GET'],
   '/api/webhooks/stripe': ['POST'],
 }
 
