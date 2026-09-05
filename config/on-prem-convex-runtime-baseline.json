@@ -305,6 +305,7 @@
     }
   ],
   "convexRuntimeImportFiles": [
+    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
