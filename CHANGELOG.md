@@ -4,6 +4,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Added a versioned personal plan catalog that presents existing Stripe quantities as Starter, Pro, Max, or a preserved legacy plan without rewriting customer subscriptions.
+- Restricted new personal subscription checkout to Starter, Pro, or Max on the existing Stripe unit Price; added duplicate-subscription protection and a guarded preview/confirm flow that prorates upgrades now and schedules downgrades for renewal.
+- Replaced variable personal pricing with responsive Free, Starter, Pro, and Max cards; added guarded purchase and plan-change confirmations, current and legacy plan states, clearer Account billing indicators, and a compact sidebar plan status while keeping all top-up controls in Account.
+- Added repeatable Stripe test-mode payment QA for named Checkout quantities, legacy migration previews, failed-payment pending updates, portal recovery/cancellation, webhook allowances, and duplicate-subscription prevention; unpaid flows can no longer grant a new or upgraded allowance before Stripe confirms payment.
+- Propagated authoritative past-due and scheduled-cancellation state through Convex, PostgreSQL, web, sidebar, Account, bootstrap, and native subscription responses; the Customer Portal now fails closed unless cancellation occurs at period end, and both webhook lanes preserve the last paid allowance until Stripe confirms a change.
+
 ### Added
 
 - Agent scope navigation moved from header tabs into the secondary sidebar (Personal/Workspace/Archived, matching chats/files), the editor footer is a plain end-of-scroll action row, and agents carry an explicit chat-platform enablement list: Workspace agents default to all platforms, Personal agents default to none, older agents grandfather to all, and the Slack bot silently skips disabled agents on mentions, slash commands, and Manage actions. Backed by Postgres migration `0076_agent_platforms` with no Convex migration needed.

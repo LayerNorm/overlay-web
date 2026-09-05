@@ -41,6 +41,7 @@ type SubscriptionRow = {
   autoTopUpAmountCents: number
   autoTopUpEnabled: boolean
   billingAccountId: string | null
+  cancelAtPeriodEnd: boolean
   currentPeriodEnd: Date | string | null
   currentPeriodStart: Date | string | null
   email: string | null
@@ -48,6 +49,8 @@ type SubscriptionRow = {
   planAmountCents: number
   planKind: 'free' | 'paid'
   providerCustomerId: string | null
+  providerPriceId: string | null
+  providerQuantity: number | null
   providerSubscriptionId: string | null
   status: 'active' | 'canceled' | 'past_due' | 'trialing'
   tier: 'free' | 'pro' | 'max'
@@ -189,19 +192,24 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       autoTopUpAmountCents: number
       autoTopUpEnabled: boolean
       billingAccountId: string
+      cancelAtPeriodEnd: boolean
       currentPeriodEnd: Date | string | null
       currentPeriodStart: Date | string | null
       offSessionConsentAt: Date | string | null
       planAmountCents: number
       planKind: 'free' | 'paid'
       providerCustomerId: string | null
+      providerPriceId: string | null
+      providerQuantity: number | null
       providerSubscriptionId: string | null
       status: 'active' | 'canceled' | 'past_due' | 'trialing'
     }>(sql`
       SELECT billing_account_id AS "billingAccountId",
              provider_customer_id AS "providerCustomerId",
              provider_subscription_id AS "providerSubscriptionId",
+             provider_price_id AS "providerPriceId", provider_quantity AS "providerQuantity",
              plan_kind AS "planKind", plan_amount_cents AS "planAmountCents", status,
+             cancel_at_period_end AS "cancelAtPeriodEnd",
              auto_top_up_enabled AS "autoTopUpEnabled",
              auto_top_up_amount_cents AS "autoTopUpAmountCents",
              off_session_consent_at AS "offSessionConsentAt",
@@ -216,11 +224,14 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     return {
       billingAccountId: row.billingAccountId,
       stripeCustomerId: row.providerCustomerId ?? undefined,
+      stripePriceId: row.providerPriceId ?? undefined,
+      stripeQuantity: row.providerQuantity == null ? undefined : Number(row.providerQuantity),
       stripeSubscriptionId: row.providerSubscriptionId ?? undefined,
       tier: row.planKind === 'paid' ? 'pro' : 'free',
       planKind: row.planKind,
       planAmountCents: Number(row.planAmountCents),
       status: row.status,
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: Number(row.autoTopUpAmountCents),
       offSessionConsentAt: row.offSessionConsentAt ? millisValue(row.offSessionConsentAt) : undefined,
@@ -236,10 +247,12 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       allowanceUsedMicros: number | string
       billingAccountId: string
       currentPeriodEnd: Date | string | null
+      cancelAtPeriodEnd: boolean | null
       includedMicros: number | string
       institutionalGrantMicros: number | string
       planAmountCents: number | null
       planKind: 'free' | 'paid' | null
+      providerQuantity: number | null
       reservedMicros: number | string
       status: 'active' | 'canceled' | 'past_due' | 'trialing' | null
       topUpBalanceMicros: number | string
@@ -252,7 +265,9 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
              balance.top_up_balance_micros AS "topUpBalanceMicros",
              balance.used_micros AS "usedMicros", balance.reserved_micros AS "reservedMicros",
              subscription.plan_kind AS "planKind", subscription.plan_amount_cents AS "planAmountCents",
-             subscription.status, subscription.current_period_end AS "currentPeriodEnd"
+             subscription.status, subscription.provider_quantity AS "providerQuantity",
+             subscription.cancel_at_period_end AS "cancelAtPeriodEnd",
+             subscription.current_period_end AS "currentPeriodEnd"
       FROM billing_account_balances balance
       JOIN billing_accounts account ON account.id = balance.billing_account_id
       LEFT JOIN billing_account_subscriptions subscription
@@ -274,6 +289,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       planKind: row.planKind ?? 'free',
       planAmountCents: Number(row.planAmountCents ?? 0),
       status: row.status ?? 'active',
+      stripeQuantity: row.providerQuantity == null ? undefined : Number(row.providerQuantity),
+      cancelAtPeriodEnd: Boolean(row.cancelAtPeriodEnd),
       budgetUsedCents: used,
       budgetTotalCents: total,
       budgetRemainingCents: Math.max(0, total - used - reserved),
@@ -564,6 +581,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
              subscription.plan_kind AS "planKind",
              subscription.plan_amount_cents AS "planAmountCents",
              subscription.status,
+             subscription.provider_quantity AS "providerQuantity",
+             subscription.cancel_at_period_end AS "cancelAtPeriodEnd",
              subscription.auto_top_up_enabled AS "autoTopUpEnabled",
              subscription.auto_top_up_amount_cents AS "autoTopUpAmountCents",
              subscription.off_session_consent_at AS "offSessionConsentAt",
@@ -593,6 +612,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       planKind: row.planKind,
       planAmountCents: Number(row.planAmountCents),
       status: row.status,
+      stripeQuantity: row.providerQuantity == null ? undefined : Number(row.providerQuantity),
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
       budgetUsedCents: usedCents,
       budgetTotalCents: totalCents,
       budgetRemainingCents: Math.max(0, totalCents - usedCents - reservedCents),
@@ -683,7 +704,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
         INSERT INTO billing_subscriptions (
           user_id, billing_account_id, email, name, provider, provider_customer_id, provider_subscription_id,
           provider_price_id, provider_quantity, tier, plan_kind, plan_version,
-          plan_amount_cents, markup_basis_points, status, auto_top_up_enabled,
+          plan_amount_cents, markup_basis_points, status, cancel_at_period_end, auto_top_up_enabled,
           auto_top_up_amount_cents, off_session_consent_at, current_period_start,
           current_period_end, provider_event_created_at, updated_at
         ) VALUES (
@@ -693,7 +714,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           ${numberValue(args.stripeQuantity ?? args.providerQuantity) ?? null},
           ${tierValue(args.tier)}, ${planKindValue(args.planKind)}, ${textValue(args.planVersion) ?? null},
           ${numberValue(args.planAmountCents) ?? 0}, ${numberValue(args.markupBasisPoints) ?? null},
-          ${statusValue(args.status)}, ${booleanValue(args.autoTopUpEnabled) ?? false},
+          ${statusValue(args.status)}, ${booleanValue(args.cancelAtPeriodEnd) ?? false}, ${booleanValue(args.autoTopUpEnabled) ?? false},
           ${numberValue(args.autoTopUpAmountCents) ?? 0}, ${dateValue(args.offSessionConsentAt)},
           ${incomingPeriodStart}, ${dateValue(args.currentPeriodEnd)},
           ${dateValue(args.providerEventCreatedAt)}, now()
@@ -713,6 +734,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           plan_amount_cents = EXCLUDED.plan_amount_cents,
           markup_basis_points = COALESCE(EXCLUDED.markup_basis_points, billing_subscriptions.markup_basis_points),
           status = EXCLUDED.status,
+          cancel_at_period_end = EXCLUDED.cancel_at_period_end,
           auto_top_up_enabled = EXCLUDED.auto_top_up_enabled,
           auto_top_up_amount_cents = EXCLUDED.auto_top_up_amount_cents,
           off_session_consent_at = COALESCE(EXCLUDED.off_session_consent_at, billing_subscriptions.off_session_consent_at),
@@ -819,7 +841,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
         INSERT INTO billing_account_subscriptions (
           billing_account_id, provider, provider_customer_id, provider_subscription_id,
           provider_price_id, provider_quantity, plan_kind, plan_version, plan_amount_cents,
-          markup_basis_points, status, auto_top_up_enabled, auto_top_up_amount_cents,
+          markup_basis_points, status, cancel_at_period_end, auto_top_up_enabled, auto_top_up_amount_cents,
           off_session_consent_at, current_period_start, current_period_end,
           provider_event_created_at, updated_at
         ) VALUES (
@@ -828,7 +850,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           ${numberValue(args.stripeQuantity ?? args.providerQuantity) ?? null},
           ${planKindValue(args.planKind)}, 'variable_v2', ${planAmountCents},
           ${numberValue(args.markupBasisPoints) ?? CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS},
-          ${statusValue(args.status)}, ${booleanValue(args.autoTopUpEnabled) ?? false},
+          ${statusValue(args.status)}, ${booleanValue(args.cancelAtPeriodEnd) ?? false}, ${booleanValue(args.autoTopUpEnabled) ?? false},
           ${numberValue(args.autoTopUpAmountCents) ?? 0}, ${dateValue(args.offSessionConsentAt)},
           ${incomingPeriodStart}, ${dateValue(args.currentPeriodEnd)},
           ${incomingEventAt}, now()
@@ -841,6 +863,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           provider_quantity = COALESCE(EXCLUDED.provider_quantity, billing_account_subscriptions.provider_quantity),
           plan_kind = EXCLUDED.plan_kind, plan_amount_cents = EXCLUDED.plan_amount_cents,
           markup_basis_points = EXCLUDED.markup_basis_points, status = EXCLUDED.status,
+          cancel_at_period_end = EXCLUDED.cancel_at_period_end,
           auto_top_up_enabled = EXCLUDED.auto_top_up_enabled,
           auto_top_up_amount_cents = EXCLUDED.auto_top_up_amount_cents,
           off_session_consent_at = COALESCE(EXCLUDED.off_session_consent_at, billing_account_subscriptions.off_session_consent_at),
@@ -1163,9 +1186,12 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       SELECT user_id AS "userId", email,
              billing_account_id AS "billingAccountId",
              provider_customer_id AS "providerCustomerId",
+             provider_price_id AS "providerPriceId",
+             provider_quantity AS "providerQuantity",
              provider_subscription_id AS "providerSubscriptionId",
              tier, plan_kind AS "planKind", plan_amount_cents AS "planAmountCents",
-             status, auto_top_up_enabled AS "autoTopUpEnabled",
+             status, cancel_at_period_end AS "cancelAtPeriodEnd",
+             auto_top_up_enabled AS "autoTopUpEnabled",
              auto_top_up_amount_cents AS "autoTopUpAmountCents",
              off_session_consent_at AS "offSessionConsentAt",
              current_period_start AS "currentPeriodStart",
@@ -1179,11 +1205,14 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       userId: row.userId,
       email: row.email ?? undefined,
       stripeCustomerId: row.providerCustomerId ?? undefined,
+      stripePriceId: row.providerPriceId ?? undefined,
+      stripeQuantity: row.providerQuantity == null ? undefined : Number(row.providerQuantity),
       stripeSubscriptionId: row.providerSubscriptionId ?? undefined,
       tier: row.tier,
       planKind: row.planKind,
       planAmountCents: Number(row.planAmountCents),
       status: row.status,
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: Number(row.autoTopUpAmountCents),
       offSessionConsentAt: row.offSessionConsentAt ? millisValue(row.offSessionConsentAt) : undefined,
@@ -1263,7 +1292,7 @@ async function syncCanonicalSubscriptionFromLegacy(
     INSERT INTO billing_account_subscriptions (
       billing_account_id, provider, provider_customer_id, provider_subscription_id,
       provider_price_id, provider_quantity, plan_kind, plan_version, plan_amount_cents,
-      markup_basis_points, status, auto_top_up_enabled, auto_top_up_amount_cents,
+      markup_basis_points, status, cancel_at_period_end, auto_top_up_enabled, auto_top_up_amount_cents,
       off_session_consent_at, current_period_start, current_period_end,
       provider_event_created_at, created_at, updated_at
     )
@@ -1271,7 +1300,7 @@ async function syncCanonicalSubscriptionFromLegacy(
       ${billingAccountId}, provider, provider_customer_id, provider_subscription_id,
       provider_price_id, provider_quantity, plan_kind, 'variable_v2', plan_amount_cents,
       COALESCE(markup_basis_points, ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}),
-      status, auto_top_up_enabled, auto_top_up_amount_cents,
+      status, cancel_at_period_end, auto_top_up_enabled, auto_top_up_amount_cents,
       off_session_consent_at, current_period_start, current_period_end,
       provider_event_created_at, created_at, updated_at
     FROM billing_subscriptions
@@ -1287,6 +1316,7 @@ async function syncCanonicalSubscriptionFromLegacy(
       plan_amount_cents = EXCLUDED.plan_amount_cents,
       markup_basis_points = EXCLUDED.markup_basis_points,
       status = EXCLUDED.status,
+      cancel_at_period_end = EXCLUDED.cancel_at_period_end,
       auto_top_up_enabled = EXCLUDED.auto_top_up_enabled,
       auto_top_up_amount_cents = EXCLUDED.auto_top_up_amount_cents,
       off_session_consent_at = EXCLUDED.off_session_consent_at,

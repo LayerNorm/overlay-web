@@ -3,11 +3,14 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 import {
-  clampPaidPlanAmountCents,
   clampTopUpAmountCents,
   formatDollarAmount,
+  getPersonalPlanById,
+  getPersonalPlanFromAmountCents,
   isValidTopUpAmount,
   quantityToPlanAmountCents,
+  type PersonalPlanDefinition,
+  type PersonalPlanId,
 } from '@/shared/billing/billing-pricing'
 import { sameOriginPathUrl } from '@/shared/security/safe-url'
 import type { BillingProvider } from '@overlay/app-core'
@@ -63,7 +66,6 @@ export class BillingCheckoutService {
   }): Promise<{ url: string | null }> {
     const body = objectBody(args.body)
     const legalMetadata = legalAcceptanceMetadata(requireCurrentLegalAcceptance(body))
-    const planAmountCents = clampPaidPlanAmountCents(Number(body.planAmountCents))
     const requestedTopUpAmountCents = Number(body.topUpAmountCents)
     const autoTopUpEnabled = Boolean(body.autoTopUpEnabled)
 
@@ -71,6 +73,21 @@ export class BillingCheckoutService {
       serviceError({ error: 'Unsupported top-up amount.' }, 400)
     }
     const topUpAmountCents = clampTopUpAmountCents(requestedTopUpAmountCents)
+    const plan = resolveRequestedPaidPlan(body)
+    const existingSubscription = await this.deps.repository.getSubscriptionByUserIdByServer({
+      userId: args.user.id,
+    })
+    if (
+      existingSubscription &&
+      existingSubscription.status !== 'canceled' &&
+      (existingSubscription.planKind === 'paid' || Boolean(existingSubscription.stripeSubscriptionId))
+    ) {
+      serviceError({
+        error: 'An existing subscription must be managed instead of creating another checkout.',
+        code: 'subscription_exists',
+        action: existingSubscription.status === 'past_due' ? 'update_payment' : 'change_plan',
+      }, 409)
+    }
 
     const offSessionConsentAt = autoTopUpEnabled ? this.clock.now() : undefined
     const checkoutSession = await this.callProvider(
@@ -78,7 +95,8 @@ export class BillingCheckoutService {
         userId: args.user.id,
         email: args.user.email,
         kind: 'paid_plan',
-        planAmountCents,
+        planId: plan.id,
+        planAmountCents: plan.amountCents,
         topUpAmountCents,
         autoTopUpEnabled,
         metadata: {
@@ -99,7 +117,7 @@ export class BillingCheckoutService {
     )
 
     logger.info(
-      `[Checkout] Created paid plan session for user ${args.user.id} (${args.user.email}) — plan=${formatDollarAmount(planAmountCents)} topUp=${formatDollarAmount(topUpAmountCents)} autoTopUp=${autoTopUpEnabled}`,
+      `[Checkout] Created named paid plan session — plan=${plan.id} topUp=${formatDollarAmount(topUpAmountCents)} autoTopUp=${autoTopUpEnabled}`,
     )
     return { url: checkoutSession.url }
   }
@@ -143,6 +161,18 @@ export class BillingCheckoutService {
 
     const quantity = verification.providerQuantity ?? 1
     const planAmountCents = verification.planAmountCents ?? quantityToPlanAmountCents(quantity)
+    const requestedPlanId = verification.metadata?.planId
+    if (requestedPlanId) {
+      const requestedPlan = getPersonalPlanById(requestedPlanId)
+      if (
+        !requestedPlan ||
+        requestedPlan.id === 'free' ||
+        requestedPlan.stripeQuantity !== quantity ||
+        requestedPlan.amountCents !== planAmountCents
+      ) {
+        serviceError({ error: 'Checkout plan does not match the subscription.' }, 400)
+      }
+    }
     const topUpAmountCents = verification.topUpAmountCents
     const autoTopUpEnabled = Boolean(verification.autoTopUpEnabled)
 
@@ -159,6 +189,7 @@ export class BillingCheckoutService {
       autoTopUpEnabled,
       autoTopUpAmountCents: topUpAmountCents,
       offSessionConsentAt: verification.offSessionConsentAt,
+      cancelAtPeriodEnd: Boolean(verification.cancelAtPeriodEnd),
       status: verification.status,
       currentPeriodStart: verification.currentPeriodStart,
       currentPeriodEnd: verification.currentPeriodEnd,
@@ -186,6 +217,100 @@ export class BillingCheckoutService {
     }
   }
 
+  async changeSubscriptionPlan(args: {
+    body: unknown
+    userId: string
+  }) {
+    const body = objectBody(args.body)
+    const plan = resolveRequestedPaidPlan(body)
+    const subscription = await this.deps.repository.getSubscriptionByUserIdByServer({
+      userId: args.userId,
+    })
+    if (
+      subscription?.planKind !== 'paid' ||
+      !subscription.stripeSubscriptionId ||
+      !['active', 'trialing'].includes(subscription.status ?? '') ||
+      subscription.cancelAtPeriodEnd
+    ) {
+      serviceError({
+        error: subscription?.status === 'past_due'
+          ? 'Update your payment method before changing plans.'
+          : subscription?.cancelAtPeriodEnd
+            ? 'Resume your subscription in billing before changing plans.'
+          : 'An active paid subscription is required to change plans.',
+        code: subscription?.status === 'past_due'
+          ? 'payment_required'
+          : subscription?.cancelAtPeriodEnd
+            ? 'subscription_canceling'
+            : 'active_subscription_required',
+      }, 409)
+    }
+
+    const providerArgs = {
+      userId: args.userId,
+      providerCustomerId: subscription.stripeCustomerId,
+      providerSubscriptionId: subscription.stripeSubscriptionId,
+      planId: plan.id,
+      targetAmountCents: plan.amountCents,
+      targetQuantity: plan.stripeQuantity,
+      idempotencyKey: [
+        'payment_revision',
+        subscription.stripeSubscriptionId,
+        plan.id,
+        subscription.currentPeriodEnd ?? 'current',
+      ].join(':'),
+    }
+    const provider = this.billingProvider()
+
+    if (body.confirmation == null) {
+      if (!provider.previewSubscriptionPlanChange) {
+        serviceError({ error: 'Plan changes are not supported by the billing provider.' }, 501)
+      }
+      const preview = await this.callProvider(
+        () => provider.previewSubscriptionPlanChange!(providerArgs),
+        planChangeErrorMappers,
+      )
+      return { mode: 'preview' as const, ...preview }
+    }
+
+    if (body.confirmation !== 'CHANGE_PLAN') {
+      serviceError({ error: 'Plan change confirmation required.' }, 403)
+    }
+    if (!provider.changeSubscriptionPlan) {
+      serviceError({ error: 'Plan changes are not supported by the billing provider.' }, 501)
+    }
+    const result = await this.callProvider(
+      () => provider.changeSubscriptionPlan!(providerArgs),
+      planChangeErrorMappers,
+    )
+
+    if (result.applied) {
+      await this.deps.repository.upsertSubscription({
+        userId: args.userId,
+        stripeCustomerId: subscription.stripeCustomerId,
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        stripePriceId: subscription.stripePriceId,
+        stripeQuantity: plan.stripeQuantity,
+        tier: 'pro',
+        planKind: 'paid',
+        planVersion: 'variable_v2',
+        planAmountCents: plan.amountCents,
+        autoTopUpEnabled: subscription.autoTopUpEnabled,
+        autoTopUpAmountCents: subscription.autoTopUpAmountCents,
+        offSessionConsentAt: subscription.offSessionConsentAt,
+        cancelAtPeriodEnd: false,
+        status: subscription.status,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      })
+    }
+
+    logger.info(
+      `[Billing] Personal plan change confirmed — plan=${plan.id} direction=${result.direction} scheduled=${result.scheduled}`,
+    )
+    return { mode: 'confirmed' as const, ...result }
+  }
+
   async createPortalSession(args: {
     accessToken?: string
     body: unknown
@@ -211,6 +336,16 @@ export class BillingCheckoutService {
           serviceError({ error: 'Checkout session does not belong to the authenticated user.' }, 403),
         'No Stripe customer found for user': () =>
           serviceError({ error: 'No customer found. Please subscribe first.' }, 400),
+        'Stripe portal configuration ID is not configured': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal subscription updates must be disabled': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal payment method updates must be enabled': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal subscription cancellation must be enabled': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal subscription cancellation must occur at period end': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
       },
     )
 
@@ -256,7 +391,7 @@ export class BillingCheckoutService {
       },
     )
 
-    logger.info(`[TopUp Checkout] Created manual top-up checkout for ${args.userId}: ${formatDollarAmount(amountCents)}`)
+    logger.info(`[TopUp Checkout] Created manual top-up checkout — amount=${formatDollarAmount(amountCents)}`)
     return { url: checkoutSession.url }
   }
 
@@ -355,6 +490,42 @@ export class BillingCheckoutService {
       throw error
     }
   }
+}
+
+type PaidPersonalPlanDefinition = Omit<PersonalPlanDefinition, 'id'> & {
+  id: Exclude<PersonalPlanId, 'free'>
+}
+
+function resolveRequestedPaidPlan(body: Record<string, unknown>): PaidPersonalPlanDefinition {
+  const requestedById = getPersonalPlanById(body.planId)
+  const requestedByLegacyAmount = getPersonalPlanFromAmountCents(body.planAmountCents)
+  const plan = body.planId == null ? requestedByLegacyAmount : requestedById
+  if (!plan || plan.id === 'free') {
+    serviceError({
+      error: 'Choose Starter, Pro, or Max.',
+      code: 'unsupported_personal_plan',
+    }, 400)
+  }
+  return plan as PaidPersonalPlanDefinition
+}
+
+const planChangeErrorMappers: Record<string, () => never> = {
+  'Subscription is not eligible for a plan change': () =>
+    serviceError({ error: 'This subscription cannot change plans in its current state.' }, 409),
+  'Subscription customer mismatch': () =>
+    serviceError({ error: 'Subscription ownership could not be verified.' }, 403),
+  'Subscription must have exactly one plan item': () =>
+    serviceError({ error: 'This subscription requires billing support to change plans.' }, 409),
+  'Unexpected subscription price': () =>
+    serviceError({ error: 'This subscription requires billing support to change plans.' }, 409),
+  'Subscription billing period is unavailable': () =>
+    serviceError({ error: 'The current billing period is unavailable. Try again later.' }, 409),
+  'Trialing subscriptions cannot schedule a downgrade': () =>
+    serviceError({ error: 'Trial plans cannot schedule a downgrade yet.' }, 409),
+  'Canceling subscriptions cannot schedule a plan change': () =>
+    serviceError({ error: 'Restore the subscription before scheduling a plan change.' }, 409),
+  'Subscription already has a scheduled change': () =>
+    serviceError({ error: 'A plan change is already scheduled for this subscription.' }, 409),
 }
 
 function lifecycleSubscriptionStatus(

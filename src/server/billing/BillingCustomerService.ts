@@ -2,7 +2,11 @@ import 'server-only'
 
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
 import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
-import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/shared/billing/billing-pricing'
+import {
+  TOP_UP_MIN_AMOUNT_CENTS,
+  derivePlanKind,
+  getPersonalPlanPresentation,
+} from '@/shared/billing/billing-pricing'
 import type {
   BillingEntitlementsRecord,
   BillingRepository,
@@ -80,7 +84,10 @@ export class BillingCustomerService {
       tier: entitlements.tier,
       planKind: entitlements.planKind,
       planAmountCents: entitlements.planAmountCents,
-      status: 'active' as const,
+      ...getPersonalPlanPresentation(entitlements),
+      status: entitlements.status ?? 'active',
+      stripeQuantity: entitlements.stripeQuantity,
+      cancelAtPeriodEnd: Boolean(entitlements.cancelAtPeriodEnd),
       ...getTopUpPreferenceSnapshot(entitlements),
       creditsUsed: usageBuckets.budgetUsedCents,
       creditsTotal: usageBuckets.budgetTotalCents,
@@ -106,6 +113,7 @@ export class BillingCustomerService {
     const usageBuckets = normalizeUsageBuckets(entitlements)
     return {
       ...entitlements,
+      ...(args.billingAccountId ? {} : getPersonalPlanPresentation(entitlements)),
       dailyUsage: entitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
       ...getTopUpPreferenceSnapshot(entitlements),
       ...usageBuckets,
@@ -234,7 +242,10 @@ export class BillingCustomerService {
       tier,
       planKind,
       planAmountCents: convexData.planAmountCents,
-      status: 'active' as const,
+      ...getPersonalPlanPresentation(convexData),
+      status: convexData.status ?? 'active',
+      stripeQuantity: convexData.stripeQuantity,
+      cancelAtPeriodEnd: Boolean(convexData.cancelAtPeriodEnd),
       ...getTopUpPreferenceSnapshot(convexData),
       autoTopUpConsentGranted: convexData.autoTopUpConsentGranted,
       limits: {

@@ -85,8 +85,8 @@ export function AccountBillingPanel({
                 {entitlements.planKind === 'free' ? (
                   <Link
                     href="/pricing"
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
-                      dark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
+                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] ${
+                      dark ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700' : 'bg-zinc-900 text-white hover:bg-zinc-800'
                     }`}
                   >
                     Upgrade to paid
@@ -95,21 +95,23 @@ export function AccountBillingPanel({
                 ) : null}
                 {entitlements.planKind === 'paid' ? (
                   <>
-                    <Link
-                      href="/pricing?intent=change-plan"
-                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
-                        dark
-                          ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-                          : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                      }`}
-                    >
-                      Change plan
-                    </Link>
+                    {!entitlements.cancelAtPeriodEnd ? (
+                      <Link
+                        href="/pricing?intent=change-plan"
+                        className={`rounded-lg border px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] ${
+                          dark
+                            ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+                            : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                        }`}
+                      >
+                        Change plan
+                      </Link>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void onManageBilling()}
                       disabled={actionLoading === 'billing'}
-                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] disabled:opacity-50 ${
                         dark
                           ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
                           : 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
@@ -139,8 +141,8 @@ export function AccountBillingPanel({
                   <TopUpPreferenceControl
                     variant="marketing"
                     isDark={dark}
-                    title="Top-up amount"
-                    description="The same amount is used for manual top-ups and, if enabled, future automatic recharges."
+                    title="Top-up preferences"
+                    description="Choose a one-time amount. Automatic top-ups use the same amount only after you opt in."
                     amountCents={topUpAmountDraftCents}
                     minAmountCents={billingSettings?.topUpMinAmountCents ?? 800}
                     maxAmountCents={billingSettings?.topUpMaxAmountCents ?? 20_000}
@@ -148,15 +150,15 @@ export function AccountBillingPanel({
                     onAmountChange={setTopUpAmountDraftCents}
                     autoTopUpEnabled={autoTopUpEnabledDraft}
                     onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
-                    checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
-                    note="Saving or checking the box authorizes off-session recharges for the selected amount."
+                    checkboxDescription="Recharge this amount automatically when your extra balance and included allowance reach zero."
+                    note="Automatic top-up is optional. Enabling and saving it authorizes off-session charges for the selected amount."
                     footer={
                       <>
                         <button
                           type="button"
                           onClick={() => void onStartTopUp(topUpAmountDraftCents, autoTopUpEnabledDraft)}
                           disabled={actionLoading === `topup-${topUpAmountDraftCents}`}
-                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] disabled:opacity-50 ${
                             dark
                               ? 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
                               : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
@@ -168,9 +170,9 @@ export function AccountBillingPanel({
                           type="button"
                           onClick={() => void onSaveTopUpPreference()}
                           disabled={actionLoading === 'topup-settings'}
-                          className={`rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                          className={`rounded-lg px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] disabled:opacity-50 ${
                             dark
-                              ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                              ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
                               : 'bg-zinc-900 text-white hover:bg-zinc-800'
                           }`}
                         >

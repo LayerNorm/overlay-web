@@ -114,6 +114,7 @@ export class StripeWebhookService {
     }
 
     if (metadata.kind === 'paid_plan') {
+      if (session.payment_status !== 'paid') return false
       const subscriptionUpdate = {
         email: metadata.email ?? session.customer_details?.email ?? undefined,
         stripeCustomerId: idValue(session.customer),
@@ -127,6 +128,7 @@ export class StripeWebhookService {
         autoTopUpEnabled: metadata.autoTopUpEnabled === 'true',
         autoTopUpAmountCents: positiveInteger(metadata.topUpAmountCents) ?? 0,
         offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
+        cancelAtPeriodEnd: false,
         status: 'active',
       }
       if (payer.scope === 'workspace') {
@@ -174,20 +176,51 @@ export class StripeWebhookService {
     const quantity = item?.quantity ?? positiveInteger(metadata.stripeQuantity) ?? 1
     const periodStart = unixSecondsToMillis(item?.current_period_start)
     const periodEnd = unixSecondsToMillis(item?.current_period_end)
+    const status = deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status)
+    const grantsPaidAccess = status === 'active' || status === 'trialing'
+    const existing = grantsPaidAccess || deleted
+      ? null
+      : payer.scope === 'workspace'
+        ? await this.deps.billing.getBillingAccountSubscriptionByServer({
+            billingAccountId: payer.billingAccountId,
+          })
+        : await this.deps.billing.getSubscriptionByUserIdByServer({ userId: payer.userId })
+    const preservesExistingPaidAccess = status === 'past_due' && existing?.planKind === 'paid'
+    const planKind = grantsPaidAccess || preservesExistingPaidAccess ? 'paid' : 'free'
+    const planAmountCents = grantsPaidAccess
+      ? positiveInteger(metadata.planAmountCents) ?? quantityToPlanAmountCents(quantity)
+      : preservesExistingPaidAccess
+        ? positiveInteger(existing?.planAmountCents) ?? 0
+        : 0
     const subscriptionUpdate = {
       email: metadata.email,
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: item?.price.id,
-      stripeQuantity: quantity,
-      tier: deleted ? 'free' : 'pro',
-      planKind: deleted ? 'free' : 'paid',
+      stripeQuantity: preservesExistingPaidAccess
+        ? positiveInteger(existing?.stripeQuantity) ?? quantity
+        : quantity,
+      tier: planKind === 'paid' ? existing?.tier ?? 'pro' : 'free',
+      planKind,
       planVersion: metadata.planVersion ?? 'variable_v2',
-      planAmountCents: positiveInteger(metadata.planAmountCents) ?? quantityToPlanAmountCents(quantity),
-      autoTopUpEnabled: metadata.autoTopUpEnabled === 'true',
-      autoTopUpAmountCents: positiveInteger(metadata.topUpAmountCents) ?? 0,
-      offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
-      status: deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status),
+      planAmountCents,
+      autoTopUpEnabled: grantsPaidAccess
+        ? metadata.autoTopUpEnabled === 'true'
+        : preservesExistingPaidAccess
+          ? existing?.autoTopUpEnabled ?? false
+          : false,
+      autoTopUpAmountCents: grantsPaidAccess
+        ? positiveInteger(metadata.topUpAmountCents) ?? 0
+        : preservesExistingPaidAccess
+          ? existing?.autoTopUpAmountCents ?? 0
+          : 0,
+      offSessionConsentAt: grantsPaidAccess
+        ? positiveInteger(metadata.offSessionConsentAt)
+        : preservesExistingPaidAccess
+          ? existing?.offSessionConsentAt
+          : undefined,
+      cancelAtPeriodEnd: deleted ? false : Boolean(subscription.cancel_at_period_end),
+      status,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
       providerEventCreatedAt: unixSecondsToMillis(eventCreatedSeconds),
@@ -203,9 +236,9 @@ export class StripeWebhookService {
     await this.publishLifecycleEvent({
       attributes: {
         changeSource: 'provider_webhook',
-        planKind: deleted ? 'free' : 'paid',
+        planKind,
         provider: 'stripe',
-        status: deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status),
+        status,
       },
       idempotencyKey: `subscription.changed:stripe:${eventId}`,
       name: 'subscription.changed',
@@ -389,7 +422,7 @@ function normalizeSubscriptionStatus(
   status: Stripe.Subscription.Status,
 ): 'active' | 'canceled' | 'past_due' | 'trialing' {
   if (status === 'canceled') return 'canceled'
-  if (status === 'past_due' || status === 'unpaid' || status === 'incomplete' || status === 'incomplete_expired') return 'past_due'
+  if (status === 'active') return 'active'
   if (status === 'trialing') return 'trialing'
-  return 'active'
+  return 'past_due'
 }

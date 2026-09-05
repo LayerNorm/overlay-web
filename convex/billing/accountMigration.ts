@@ -304,6 +304,9 @@ async function syncCanonicalSubscription(
     ...(subscription.stripeQuantity === undefined ? {} : { providerQuantity: subscription.stripeQuantity }),
     ...(subscription.stripeSubscriptionId ? { providerSubscriptionId: subscription.stripeSubscriptionId } : {}),
     status: subscription.status,
+    ...(subscription.cancelAtPeriodEnd === undefined
+      ? {}
+      : { cancelAtPeriodEnd: subscription.cancelAtPeriodEnd }),
     updatedAt: now,
   }
   if (existing) {

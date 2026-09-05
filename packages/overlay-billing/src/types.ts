@@ -1,7 +1,15 @@
+export type PersonalPlanId = 'free' | 'starter' | 'pro' | 'max'
+
 export interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'
   planAmountCents?: number
+  planId?: PersonalPlanId | null
+  planDisplayName?: string
+  isLegacyPlan?: boolean
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  stripeQuantity?: number
+  cancelAtPeriodEnd?: boolean
   creditsUsed: number
   creditsTotal: number
   budgetUsedCents?: number
@@ -36,6 +44,7 @@ export interface CheckoutArgs {
   workspaceId?: string
   email?: string
   kind?: 'paid_plan' | 'budget_topup'
+  planId?: Exclude<PersonalPlanId, 'free'>
   planAmountCents?: number
   topUpAmountCents?: number
   autoTopUpEnabled?: boolean
@@ -43,6 +52,37 @@ export interface CheckoutArgs {
   cancelUrl?: string
   returnUrl?: string
   metadata?: Record<string, string | number | boolean | null | undefined>
+}
+
+export type SubscriptionPlanChangeDirection = 'upgrade' | 'downgrade' | 'same'
+
+export interface SubscriptionPlanChangeArgs {
+  userId: string
+  providerCustomerId?: string
+  providerSubscriptionId: string
+  planId: Exclude<PersonalPlanId, 'free'>
+  targetAmountCents: number
+  targetQuantity: number
+  idempotencyKey?: string
+}
+
+export interface SubscriptionPlanChangePreview {
+  currency: string
+  currentAmountCents: number
+  currentQuantity: number
+  direction: SubscriptionPlanChangeDirection
+  effectiveAt: number
+  losesLegacyPricing: boolean
+  planId: Exclude<PersonalPlanId, 'free'>
+  prorationAmountCents: number
+  targetAmountCents: number
+  targetQuantity: number
+}
+
+export interface SubscriptionPlanChangeResult extends SubscriptionPlanChangePreview {
+  applied: boolean
+  paymentActionRequired: boolean
+  scheduled: boolean
 }
 
 export interface CheckoutResult {
@@ -88,6 +128,7 @@ export interface CheckoutSessionVerificationResult {
   offSessionConsentAt?: number
   currentPeriodStart?: number
   currentPeriodEnd?: number
+  cancelAtPeriodEnd?: boolean
   amountTotalCents?: number
   currency?: string
   paymentIntentId?: string
@@ -121,6 +162,8 @@ export interface BillingProvider {
   createPortalSession(userId: string): Promise<PortalResult>
   createCustomerPortalSession?(args: PortalSessionArgs): Promise<PortalResult>
   verifyCheckoutSession?(args: CheckoutSessionVerificationArgs): Promise<CheckoutSessionVerificationResult>
+  previewSubscriptionPlanChange?(args: SubscriptionPlanChangeArgs): Promise<SubscriptionPlanChangePreview>
+  changeSubscriptionPlan?(args: SubscriptionPlanChangeArgs): Promise<SubscriptionPlanChangeResult>
   recordUsage(args: UsageArgs): Promise<void>
   cancelSubscription?(subscriptionId: string): Promise<void>
 }

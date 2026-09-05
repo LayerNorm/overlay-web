@@ -107,13 +107,74 @@ export function mapSubscriptionStatus(
     case 'active':
       return 'active'
     case 'canceled':
-    case 'unpaid':
       return 'canceled'
     case 'past_due':
       return 'past_due'
     case 'trialing':
       return 'trialing'
     default:
-      return 'active'
+      return 'past_due'
+  }
+}
+
+export type OverlaySubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'trialing'
+
+export type StripeEntitlementFields = {
+  tier?: 'free' | 'pro' | 'max'
+  planKind?: 'free' | 'paid'
+  planVersion?: 'fixed_v1' | 'variable_v2'
+  planAmountCents?: number
+  stripePriceId?: string
+  stripeQuantity?: number
+  autoTopUpEnabled?: boolean
+  autoTopUpAmountCents?: number
+  offSessionConsentAt?: number
+}
+
+export function resolveStripeEntitlementFields(
+  status: OverlaySubscriptionStatus,
+  incoming: StripeEntitlementFields,
+  existing?: StripeEntitlementFields | null,
+): Required<Pick<StripeEntitlementFields, 'tier' | 'planKind' | 'planVersion' | 'planAmountCents' | 'autoTopUpEnabled' | 'autoTopUpAmountCents'>> &
+  Pick<StripeEntitlementFields, 'stripePriceId' | 'stripeQuantity' | 'offSessionConsentAt'> {
+  if (status === 'active' || status === 'trialing') {
+    const planKind = incoming.planKind ?? 'free'
+    return {
+      tier: planKind === 'paid' ? incoming.tier ?? 'pro' : 'free',
+      planKind,
+      planVersion: incoming.planVersion ?? 'variable_v2',
+      planAmountCents: planKind === 'paid' ? Math.max(0, incoming.planAmountCents ?? 0) : 0,
+      stripePriceId: incoming.stripePriceId,
+      stripeQuantity: incoming.stripeQuantity,
+      autoTopUpEnabled: planKind === 'paid' && Boolean(incoming.autoTopUpEnabled),
+      autoTopUpAmountCents: planKind === 'paid' ? Math.max(0, incoming.autoTopUpAmountCents ?? 0) : 0,
+      offSessionConsentAt: planKind === 'paid' ? incoming.offSessionConsentAt : undefined,
+    }
+  }
+
+  if (status === 'past_due' && existing?.planKind === 'paid') {
+    return {
+      tier: existing.tier ?? 'pro',
+      planKind: 'paid',
+      planVersion: existing.planVersion ?? 'variable_v2',
+      planAmountCents: Math.max(0, existing.planAmountCents ?? 0),
+      stripePriceId: existing.stripePriceId,
+      stripeQuantity: existing.stripeQuantity,
+      autoTopUpEnabled: Boolean(existing.autoTopUpEnabled),
+      autoTopUpAmountCents: Math.max(0, existing.autoTopUpAmountCents ?? 0),
+      offSessionConsentAt: existing.offSessionConsentAt,
+    }
+  }
+
+  return {
+    tier: 'free',
+    planKind: 'free',
+    planVersion: 'variable_v2',
+    planAmountCents: 0,
+    stripePriceId: incoming.stripePriceId,
+    stripeQuantity: incoming.stripeQuantity,
+    autoTopUpEnabled: false,
+    autoTopUpAmountCents: 0,
+    offSessionConsentAt: undefined,
   }
 }

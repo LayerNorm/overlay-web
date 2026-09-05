@@ -19,6 +19,14 @@ class CapturingEventBus implements EventBus {
   }
 }
 
+function acquiredEvents(): BillingProviderEventRepository {
+  return {
+    async reserve() { return { attempt: 1, status: 'acquired' as const } },
+    async markProcessed() {},
+    async markFailed() {},
+  }
+}
+
 test('StripeWebhookService emits a top-up lifecycle event with identifiers only', async () => {
   const eventBus = new CapturingEventBus()
   const billing = {
@@ -158,6 +166,9 @@ test('StripeWebhookService supplies event time so stale workspace subscription e
         status: 'active',
       }
     },
+    async getBillingAccountSubscriptionByServer() {
+      return { planKind: 'paid', planAmountCents: 800, status: 'active' }
+    },
     async upsertBillingAccountSubscription(args: Record<string, unknown>) {
       const incoming = Number(args.providerEventCreatedAt ?? 0)
       if (incoming >= lastProviderEventCreatedAt) {
@@ -197,4 +208,176 @@ test('StripeWebhookService supplies event time so stale workspace subscription e
 
   assert.equal(lastProviderEventCreatedAt, 200_000)
   assert.equal(status, 'active')
+})
+
+test('StripeWebhookService creates the named-plan allowance for quantities 8, 24, and 96', async () => {
+  const upserts: Array<Record<string, unknown>> = []
+  const billing = {
+    async resolveBillingAccountIdByProviderReference() { return null },
+    async resolveUserIdByProviderReference() { return 'user_1' },
+    async upsertSubscription(args: Record<string, unknown>) { upserts.push(args) },
+  } as unknown as BillingRepository & BillingWebhookRepository
+  const service = new StripeWebhookService({ billing, events: acquiredEvents() })
+
+  for (const quantity of [8, 24, 96]) {
+    const event = {
+      created: 1_700_000_000,
+      data: { object: {
+        customer: 'cus_1',
+        id: `cs_${quantity}`,
+        metadata: {
+          kind: 'paid_plan',
+          planAmountCents: String(quantity * 100),
+          planId: quantity === 8 ? 'starter' : quantity === 24 ? 'pro' : 'max',
+          planVersion: 'variable_v2',
+          stripeQuantity: String(quantity),
+          userId: 'user_1',
+        },
+        payment_status: 'paid',
+        subscription: `sub_${quantity}`,
+      } },
+      id: `evt_checkout_${quantity}`,
+      type: 'checkout.session.completed',
+    } as unknown as Stripe.Event
+
+    assert.deepEqual(await service.handle({ event, rawBody: `checkout-${quantity}` }), {
+      duplicate: false,
+      handled: true,
+    })
+  }
+
+  assert.deepEqual(upserts.map(({ planAmountCents, stripeQuantity }) => ({
+    planAmountCents,
+    stripeQuantity,
+  })), [
+    { planAmountCents: 800, stripeQuantity: 8 },
+    { planAmountCents: 2400, stripeQuantity: 24 },
+    { planAmountCents: 9600, stripeQuantity: 96 },
+  ])
+})
+
+test('StripeWebhookService ignores unpaid subscription checkout completion', async () => {
+  let writes = 0
+  const billing = {
+    async resolveBillingAccountIdByProviderReference() { return null },
+    async resolveUserIdByProviderReference() { return 'user_1' },
+    async upsertSubscription() { writes += 1 },
+  } as unknown as BillingRepository & BillingWebhookRepository
+  const service = new StripeWebhookService({ billing, events: acquiredEvents() })
+  const event = {
+    created: 1_700_000_000,
+    data: { object: {
+      customer: 'cus_1',
+      id: 'cs_unpaid',
+      metadata: {
+        kind: 'paid_plan',
+        planAmountCents: '9600',
+        stripeQuantity: '96',
+        userId: 'user_1',
+      },
+      payment_status: 'unpaid',
+      subscription: 'sub_unpaid',
+    } },
+    id: 'evt_checkout_unpaid',
+    type: 'checkout.session.completed',
+  } as unknown as Stripe.Event
+
+  assert.deepEqual(await service.handle({ event, rawBody: 'checkout-unpaid' }), {
+    duplicate: false,
+    handled: false,
+  })
+  assert.equal(writes, 0)
+})
+
+test('StripeWebhookService withholds a new incomplete subscription allowance until payment recovery', async () => {
+  const upserts: Array<Record<string, unknown>> = []
+  const billing = {
+    async resolveBillingAccountIdByProviderReference() { return null },
+    async resolveUserIdByProviderReference() { return 'user_1' },
+    async getSubscriptionByUserIdByServer() { return null },
+    async upsertSubscription(args: Record<string, unknown>) { upserts.push(args) },
+  } as unknown as BillingRepository & BillingWebhookRepository
+  const service = new StripeWebhookService({ billing, events: acquiredEvents() })
+  const subscriptionEvent = (id: string, status: string) => ({
+    created: 1_700_000_000,
+    data: { object: {
+      customer: 'cus_1',
+      id: 'sub_1',
+      items: { data: [{
+        current_period_end: 1_702_592_000,
+        current_period_start: 1_700_000_000,
+        price: { id: 'price_unit' },
+        quantity: 24,
+      }] },
+      metadata: { planAmountCents: '2400', planVersion: 'variable_v2', userId: 'user_1' },
+      cancel_at_period_end: status === 'active',
+      status,
+    } },
+    id,
+    type: status === 'incomplete' ? 'customer.subscription.created' : 'customer.subscription.updated',
+  }) as unknown as Stripe.Event
+
+  await service.handle({ event: subscriptionEvent('evt_incomplete', 'incomplete'), rawBody: 'incomplete' })
+  await service.handle({ event: subscriptionEvent('evt_recovered', 'active'), rawBody: 'active' })
+
+  assert.deepEqual(upserts.map(({ cancelAtPeriodEnd, planAmountCents, planKind, status }) => ({
+    cancelAtPeriodEnd,
+    planAmountCents,
+    planKind,
+    status,
+  })), [
+    { cancelAtPeriodEnd: false, planAmountCents: 0, planKind: 'free', status: 'past_due' },
+    { cancelAtPeriodEnd: true, planAmountCents: 2400, planKind: 'paid', status: 'active' },
+  ])
+})
+
+test('StripeWebhookService preserves the paid allowance during recovery and clears it on cancellation', async () => {
+  const upserts: Array<Record<string, unknown>> = []
+  const existing = {
+    autoTopUpAmountCents: 800,
+    autoTopUpEnabled: true,
+    offSessionConsentAt: 123,
+    planAmountCents: 2400,
+    planKind: 'paid' as const,
+    stripeQuantity: 24,
+    tier: 'pro' as const,
+  }
+  const billing = {
+    async resolveBillingAccountIdByProviderReference() { return null },
+    async resolveUserIdByProviderReference() { return 'user_1' },
+    async getSubscriptionByUserIdByServer() { return existing },
+    async upsertSubscription(args: Record<string, unknown>) { upserts.push(args) },
+  } as unknown as BillingRepository & BillingWebhookRepository
+  const service = new StripeWebhookService({ billing, events: acquiredEvents() })
+  const subscriptionEvent = (id: string, status: string, deleted = false) => ({
+    created: 1_700_000_000,
+    data: { object: {
+      customer: 'cus_1',
+      id: 'sub_1',
+      items: { data: [{
+        current_period_end: 1_702_592_000,
+        current_period_start: 1_700_000_000,
+        price: { id: 'price_unit' },
+        quantity: 96,
+      }] },
+      metadata: { planAmountCents: '9600', planVersion: 'variable_v2', userId: 'user_1' },
+      status,
+    } },
+    id,
+    type: deleted ? 'customer.subscription.deleted' : 'customer.subscription.updated',
+  }) as unknown as Stripe.Event
+
+  await service.handle({ event: subscriptionEvent('evt_failed_upgrade', 'past_due'), rawBody: 'past-due' })
+  await service.handle({ event: subscriptionEvent('evt_canceled', 'canceled', true), rawBody: 'canceled' })
+
+  assert.deepEqual(upserts.map(({ autoTopUpEnabled, planAmountCents, planKind, status, stripeQuantity }) => ({
+    autoTopUpEnabled,
+    planAmountCents,
+    planKind,
+    status,
+    stripeQuantity,
+  })), [
+    { autoTopUpEnabled: true, planAmountCents: 2400, planKind: 'paid', status: 'past_due', stripeQuantity: 24 },
+    { autoTopUpEnabled: false, planAmountCents: 0, planKind: 'free', status: 'canceled', stripeQuantity: 96 },
+  ])
 })

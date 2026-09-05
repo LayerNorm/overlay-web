@@ -135,6 +135,55 @@ it('creates and reuses one Stripe customer for workspace checkout', async () => 
   assert.equal((checkoutParams[0]?.metadata as Record<string, string>).workspaceId, 'workspace_1')
 })
 
+it('creates Starter, Pro, and Max checkout with server-owned quantities', async () => {
+  const checkoutParams: Record<string, unknown>[] = []
+  const provider = new StripeBillingProvider({
+    stripe: {
+      checkout: { sessions: { async create(params) {
+        checkoutParams.push(params)
+        return { id: 'cs_named', url: 'https://stripe.test/checkout' }
+      } } },
+      billingPortal: { sessions: { async create() {
+        return { id: 'bps_1', url: 'https://stripe.test/portal' }
+      } } },
+    },
+    baseUrl: 'https://overlay.test',
+    paidPlanPriceId: 'price_paid',
+    integrationIdentifier: () => 'payment_revision_abc123',
+    normalizePlanAmountCents: (value) => value,
+    normalizeTopUpAmountCents: (value) => value,
+    planQuantityForAmountCents: (value) => value / 100,
+  })
+
+  for (const plan of [
+    { planId: 'starter', planAmountCents: 800, quantity: 8 },
+    { planId: 'pro', planAmountCents: 2400, quantity: 24 },
+    { planId: 'max', planAmountCents: 9600, quantity: 96 },
+  ] as const) {
+    await provider.createCheckoutSession({
+      userId: 'user_1',
+      email: 'user@example.com',
+      kind: 'paid_plan',
+      planId: plan.planId,
+      planAmountCents: plan.planAmountCents,
+      topUpAmountCents: 800,
+    })
+  }
+
+  assert.equal(checkoutParams.length, 3)
+  for (const [index, plan] of [
+    { planId: 'starter', quantity: 8 },
+    { planId: 'pro', quantity: 24 },
+    { planId: 'max', quantity: 96 },
+  ].entries()) {
+    const checkout = checkoutParams[index]
+    assert.equal(checkout?.integration_identifier, 'payment_revision_abc123')
+    assert.deepEqual(checkout?.line_items, [{ price: 'price_paid', quantity: plan.quantity }])
+    assert.equal((checkout?.metadata as Record<string, string>).planId, plan.planId)
+    assert.equal((checkout?.metadata as Record<string, string>).stripeQuantity, String(plan.quantity))
+  }
+})
+
 it('verifies checkout ownership by billing account instead of workspace admin', async () => {
   const provider = new StripeBillingProvider({
     stripe: {

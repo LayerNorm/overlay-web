@@ -13,6 +13,15 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 
 Use matching Stripe test secrets in `.env.local`.
 
+For the personal named-plan regression, keep the development Stripe key and the existing recurring one-dollar Price in `DEV_STRIPE_SECRET_KEY` and `DEV_STRIPE_PAID_UNIT_PRICE_ID`, then run:
+
+```bash
+npm run test:billing:payment-revision
+npm run billing:qa:stripe-test
+```
+
+The sandbox smoke refuses live keys. It creates and expires Starter, Pro, and Max Checkout sessions, creates a temporary quantity-15 subscription, verifies Stripe's upgrade proration and failed-payment pending-update behavior, opens the configured portal, and deletes its fixtures. The configured portal must allow payment-method recovery and at-period-end cancellation while disabling subscription updates; use `npm run billing:qa:stripe-test -- --configure-portal=true` only when intentionally repairing the test portal profile.
+
 ## Auth
 
 WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, staging, and production WorkOS credentials separate.

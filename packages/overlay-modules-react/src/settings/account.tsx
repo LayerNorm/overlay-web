@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { AlertCircle, ArrowRight, Check, RefreshCw } from 'lucide-react'
 import type { AccountEntitlements, TopUpHistoryItem } from '@overlay/app-core'
 import {
-  accountPlanLabel,
   accountStatusDescription,
   formatAccountDateTime,
   formatCents,
@@ -223,23 +222,67 @@ export function AccountSubscriptionCard({
   entitlements,
   actions,
 }: AccountSubscriptionCardProps) {
+  const planName = entitlements.planDisplayName
+    ?? (entitlements.planKind === 'paid' ? `${(entitlements.planAmountCents / 100).toFixed(0)} dollar` : 'Free')
+  const isPastDue = entitlements.status === 'past_due'
+  const isCanceling = Boolean(entitlements.cancelAtPeriodEnd)
+  const statusLabel = isCanceling ? 'canceling' : entitlements.status
+
   return (
     <div className={panelClass}>
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h2 className={`text-lg font-medium mb-1 ${headingClass}`}>{accountPlanLabel(entitlements)}</h2>
-          <p className={`text-sm ${mutedClass}`}>{accountStatusDescription(entitlements)}</p>
+      <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
+        <div className="min-w-0">
+          <p className={`text-xs font-medium uppercase tracking-[0.16em] ${mutedClass}`}>Current plan</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <h2 className={`text-2xl font-medium ${headingClass}`}>{planName}</h2>
+            {entitlements.isLegacyPlan ? (
+              <span className={dark
+                ? 'rounded-full bg-amber-900/35 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-amber-200 ring-1 ring-amber-700/50'
+                : 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-amber-800'}>
+                Grandfathered
+              </span>
+            ) : null}
+          </div>
+          <p className={`mt-2 text-sm ${mutedClass}`}>
+            {entitlements.planKind === 'paid' ? `${formatCents(entitlements.planAmountCents, 0)} per month` : 'No monthly charge'}
+          </p>
+          {entitlements.isLegacyPlan ? (
+            <p className={`mt-3 max-w-xl text-xs leading-relaxed ${mutedClass}`}>
+              Your legacy price stays in place until you choose a named plan. Once changed, legacy pricing cannot be restored.
+            </p>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <span className={accountStatusBadgeClass(entitlements.status, Boolean(dark))}>{entitlements.status}</span>
+        <div className={`min-w-40 rounded-xl border px-4 py-3 ${dark ? 'border-zinc-700 bg-zinc-800/60' : 'border-zinc-200 bg-zinc-50'}`}>
+          <p className={`text-xs ${mutedClass}`}>Subscription</p>
+          <div className="mt-2 flex items-center gap-2">
+            <span className={accountStatusBadgeClass(entitlements.status, Boolean(dark), isCanceling)}>{statusLabel}</span>
+            <span className={`text-xs ${mutedClass}`}>{accountStatusDescription(entitlements)}</span>
+          </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 flex-wrap">{actions}</div>
+      {isPastDue ? (
+        <div className={`mt-5 flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${dark ? 'border-amber-700/50 bg-amber-950/30 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          Update your payment method to keep premium features active.
+        </div>
+      ) : null}
+      {isCanceling ? (
+        <div className={`mt-5 flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${dark ? 'border-amber-700/50 bg-amber-950/30 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          Your subscription remains active until the end of this billing period. Manage billing to resume it.
+        </div>
+      ) : null}
+      <div className="mt-6 flex flex-wrap items-center gap-3">{actions}</div>
     </div>
   )
 }
 
-function accountStatusBadgeClass(status: AccountEntitlements['status'], dark: boolean) {
+function accountStatusBadgeClass(status: AccountEntitlements['status'], dark: boolean, isCanceling = false) {
+  if (isCanceling) {
+    return dark
+      ? 'rounded-full px-3 py-1 text-xs font-medium bg-amber-900/40 text-amber-200 ring-1 ring-amber-700/50'
+      : 'rounded-full px-3 py-1 text-xs font-medium bg-amber-100 text-amber-800'
+  }
   if (status === 'active') {
     return dark
       ? 'rounded-full px-3 py-1 text-xs font-medium bg-emerald-900/50 text-emerald-200 ring-1 ring-emerald-700/60'
@@ -274,17 +317,20 @@ export function AccountPaidUsageCard({
 }: AccountPaidUsageCardProps) {
   return (
     <div className={panelClass}>
-      <h2 className={`text-lg font-medium mb-4 ${headingClass}`}>Usage this period</h2>
+      <div className="mb-5">
+        <h2 className={`text-lg font-medium ${headingClass}`}>Included usage</h2>
+        <p className={`mt-1 text-sm ${mutedClass}`}>Your subscription allowance resets each billing period.</p>
+      </div>
       <UsageProgressBar
         used={entitlements.allowanceUsedCents ?? Math.min(entitlements.budgetUsedCents, entitlements.planAmountCents)}
         total={entitlements.allowanceTotalCents ?? entitlements.planAmountCents}
         label="Subscription allowance"
         showAsPercentage={true}
-        percentageMode="used"
+        percentageMode="remaining"
         isLandingDark={dark}
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Personal top-up credits" value={`${new Intl.NumberFormat('en-US').format((entitlements.topUpBalanceCents ?? 0) * 10)} credits`} />
+        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Extra balance" value={`${formatCents(entitlements.topUpBalanceCents ?? 0)} available`} />
         <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Storage" value={storageUsageLabel} />
       </div>
     </div>
@@ -434,7 +480,7 @@ export function UsageProgressBar({
         </span>
       </div>
       <div className={`h-1.5 overflow-hidden rounded-full ${track}`}>
-        <div className={`h-full rounded-full transition-all duration-300 ${fill}`} style={{ width: `${displayedPercentage}%` }} />
+        <div className={`h-full rounded-full transition-[width] duration-300 ${fill}`} style={{ width: `${displayedPercentage}%` }} />
       </div>
     </div>
   )
@@ -473,8 +519,8 @@ export function AccountPrimaryLink({
   return (
     <a
       href={href}
-      className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 ${
-        dark ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-900 text-white'
+      className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] ${
+        dark ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700' : 'bg-zinc-900 text-white hover:bg-zinc-800'
       }`}
     >
       {children}

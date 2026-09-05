@@ -75,6 +75,7 @@ export default defineSchema({
       v.literal('past_due'),
       v.literal('trialing'),
     ),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     autoTopUpEnabled: v.boolean(),
     autoTopUpAmountCents: v.number(),
     offSessionConsentAt: v.optional(v.number()),
@@ -171,6 +172,7 @@ export default defineSchema({
       v.literal('past_due'),
       v.literal('trialing')
     ),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
     // Live credit accumulator for the current billing period (in cents, may

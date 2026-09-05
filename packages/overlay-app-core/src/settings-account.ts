@@ -11,6 +11,7 @@ import type {
 
 export type AccountPlanKind = 'free' | 'paid'
 export type AccountPlanStatus = 'active' | 'canceled' | 'past_due' | 'trialing'
+export type AccountPersonalPlanId = 'free' | 'starter' | 'pro' | 'max'
 
 export interface AccountUsageLimits {
   askPerDay: number
@@ -34,7 +35,12 @@ export interface AccountEntitlements {
   tier: 'free' | 'pro' | 'max'
   planKind: AccountPlanKind
   planAmountCents: number
+  planId?: AccountPersonalPlanId | null
+  planDisplayName?: string
+  isLegacyPlan?: boolean
   status: AccountPlanStatus
+  stripeQuantity?: number
+  cancelAtPeriodEnd?: boolean
   autoTopUpEnabled: boolean
   topUpAmountCents: number
   autoTopUpAmountCents: number
@@ -225,15 +231,21 @@ export function formatCents(amountCents: number, fractionDigits = 2): string {
   return `$${(amountCents / 100).toFixed(fractionDigits)}`
 }
 
-export function accountPlanLabel(entitlements: Pick<AccountEntitlements, 'planKind' | 'planAmountCents'>): string {
+export function accountPlanLabel(entitlements: Pick<AccountEntitlements, 'planKind' | 'planAmountCents' | 'planDisplayName'>): string {
+  if (entitlements.planDisplayName) return `${entitlements.planDisplayName} plan`
   return entitlements.planKind === 'paid'
     ? `${(entitlements.planAmountCents / 100).toFixed(0)} dollar plan`
     : 'Free plan'
 }
 
 export function accountStatusDescription(
-  entitlements: Pick<AccountEntitlements, 'status' | 'billingPeriodEnd'>,
+  entitlements: Pick<AccountEntitlements, 'status' | 'billingPeriodEnd' | 'cancelAtPeriodEnd'>,
 ): string {
+  if (entitlements.cancelAtPeriodEnd) {
+    return entitlements.billingPeriodEnd
+      ? `Cancels ${formatAccountDate(entitlements.billingPeriodEnd)}`
+      : 'Cancellation scheduled'
+  }
   if (entitlements.status === 'active' && entitlements.billingPeriodEnd) {
     return `Renews ${formatAccountDate(entitlements.billingPeriodEnd)}`
   }
