@@ -39,7 +39,8 @@ type LandingSubscription = {
   planDisplayName: string
   isLegacyPlan: boolean
   status: 'active' | 'trialing' | 'past_due' | 'canceled'
-  billingPeriodEnd?: number | null
+  cancelAtPeriodEnd?: boolean
+  billingPeriodEnd?: number | string | null
 }
 
 type PlanChangePreview = {
@@ -123,7 +124,7 @@ function money(amountCents: number) {
   }).format(amountCents / 100)
 }
 
-function dateLabel(timestamp: number) {
+function dateLabel(timestamp: number | string) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -187,6 +188,10 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     }
     if (subscription.status === 'past_due') {
       setError('Update your payment method before changing plans.')
+      return
+    }
+    if (subscription.cancelAtPeriodEnd) {
+      setError('Resume your subscription in billing before changing plans.')
       return
     }
 
@@ -429,6 +434,27 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                 <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">You can keep your current price. Choosing a named plan permanently ends legacy pricing.</p>
               </div>
               <ShieldCheck className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
+            </div>
+          ) : null}
+
+          {subscription.cancelAtPeriodEnd ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)]">Cancellation scheduled</p>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                  Your {subscription.planDisplayName} plan stays active
+                  {subscription.billingPeriodEnd ? ` until ${dateLabel(subscription.billingPeriodEnd)}` : ' through the current billing period'}.
+                  {' '}Resume it in billing before changing plans.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleManageBilling()}
+                disabled={loading !== null}
+                className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-[background-color,transform] hover:bg-[var(--surface-muted)] active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading === 'portal' ? 'Opening billing…' : 'Manage billing'}
+              </button>
             </div>
           ) : null}
 

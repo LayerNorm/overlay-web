@@ -31,6 +31,8 @@ export type BillingEntitlementsRecord = {
   planKind: 'free' | 'paid'
   planAmountCents: number
   status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  stripeQuantity?: number
+  cancelAtPeriodEnd?: boolean
   budgetUsedCents: number
   budgetTotalCents: number
   budgetRemainingCents: number
@@ -67,6 +69,7 @@ export type BillingSubscriptionRecord = {
   planKind?: 'free' | 'paid'
   planAmountCents?: number
   status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  cancelAtPeriodEnd?: boolean
   autoTopUpEnabled?: boolean
   autoTopUpAmountCents?: number
   offSessionConsentAt?: number

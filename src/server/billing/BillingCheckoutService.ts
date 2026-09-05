@@ -189,6 +189,7 @@ export class BillingCheckoutService {
       autoTopUpEnabled,
       autoTopUpAmountCents: topUpAmountCents,
       offSessionConsentAt: verification.offSessionConsentAt,
+      cancelAtPeriodEnd: Boolean(verification.cancelAtPeriodEnd),
       status: verification.status,
       currentPeriodStart: verification.currentPeriodStart,
       currentPeriodEnd: verification.currentPeriodEnd,
@@ -228,13 +229,20 @@ export class BillingCheckoutService {
     if (
       subscription?.planKind !== 'paid' ||
       !subscription.stripeSubscriptionId ||
-      !['active', 'trialing'].includes(subscription.status ?? '')
+      !['active', 'trialing'].includes(subscription.status ?? '') ||
+      subscription.cancelAtPeriodEnd
     ) {
       serviceError({
         error: subscription?.status === 'past_due'
           ? 'Update your payment method before changing plans.'
+          : subscription?.cancelAtPeriodEnd
+            ? 'Resume your subscription in billing before changing plans.'
           : 'An active paid subscription is required to change plans.',
-        code: subscription?.status === 'past_due' ? 'payment_required' : 'active_subscription_required',
+        code: subscription?.status === 'past_due'
+          ? 'payment_required'
+          : subscription?.cancelAtPeriodEnd
+            ? 'subscription_canceling'
+            : 'active_subscription_required',
       }, 409)
     }
 
@@ -285,11 +293,12 @@ export class BillingCheckoutService {
         stripeQuantity: plan.stripeQuantity,
         tier: 'pro',
         planKind: 'paid',
-        planVersion: 'named_v1',
+        planVersion: 'variable_v2',
         planAmountCents: plan.amountCents,
         autoTopUpEnabled: subscription.autoTopUpEnabled,
         autoTopUpAmountCents: subscription.autoTopUpAmountCents,
         offSessionConsentAt: subscription.offSessionConsentAt,
+        cancelAtPeriodEnd: false,
         status: subscription.status,
         currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd,
@@ -334,6 +343,8 @@ export class BillingCheckoutService {
         'Stripe portal payment method updates must be enabled': () =>
           serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
         'Stripe portal subscription cancellation must be enabled': () =>
+          serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
+        'Stripe portal subscription cancellation must occur at period end': () =>
           serviceError({ error: 'Billing management is temporarily unavailable.' }, 503),
       },
     )

@@ -225,6 +225,8 @@ export function AccountSubscriptionCard({
   const planName = entitlements.planDisplayName
     ?? (entitlements.planKind === 'paid' ? `${(entitlements.planAmountCents / 100).toFixed(0)} dollar` : 'Free')
   const isPastDue = entitlements.status === 'past_due'
+  const isCanceling = Boolean(entitlements.cancelAtPeriodEnd)
+  const statusLabel = isCanceling ? 'canceling' : entitlements.status
 
   return (
     <div className={panelClass}>
@@ -253,7 +255,7 @@ export function AccountSubscriptionCard({
         <div className={`min-w-40 rounded-xl border px-4 py-3 ${dark ? 'border-zinc-700 bg-zinc-800/60' : 'border-zinc-200 bg-zinc-50'}`}>
           <p className={`text-xs ${mutedClass}`}>Subscription</p>
           <div className="mt-2 flex items-center gap-2">
-            <span className={accountStatusBadgeClass(entitlements.status, Boolean(dark))}>{entitlements.status}</span>
+            <span className={accountStatusBadgeClass(entitlements.status, Boolean(dark), isCanceling)}>{statusLabel}</span>
             <span className={`text-xs ${mutedClass}`}>{accountStatusDescription(entitlements)}</span>
           </div>
         </div>
@@ -264,12 +266,23 @@ export function AccountSubscriptionCard({
           Update your payment method to keep premium features active.
         </div>
       ) : null}
+      {isCanceling ? (
+        <div className={`mt-5 flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${dark ? 'border-amber-700/50 bg-amber-950/30 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          Your subscription remains active until the end of this billing period. Manage billing to resume it.
+        </div>
+      ) : null}
       <div className="mt-6 flex flex-wrap items-center gap-3">{actions}</div>
     </div>
   )
 }
 
-function accountStatusBadgeClass(status: AccountEntitlements['status'], dark: boolean) {
+function accountStatusBadgeClass(status: AccountEntitlements['status'], dark: boolean, isCanceling = false) {
+  if (isCanceling) {
+    return dark
+      ? 'rounded-full px-3 py-1 text-xs font-medium bg-amber-900/40 text-amber-200 ring-1 ring-amber-700/50'
+      : 'rounded-full px-3 py-1 text-xs font-medium bg-amber-100 text-amber-800'
+  }
   if (status === 'active') {
     return dark
       ? 'rounded-full px-3 py-1 text-xs font-medium bg-emerald-900/50 text-emerald-200 ring-1 ring-emerald-700/60'

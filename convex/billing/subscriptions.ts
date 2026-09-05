@@ -9,6 +9,7 @@ import {
 } from '../../src/shared/billing/billing-pricing'
 import { syncPersonalBillingShadows } from './accountMigration'
 import { ensurePersonalBillingAccount } from './accountModel'
+import { resolveStripeEntitlementFields } from './lib/stripeOverlaySubscription'
 
 // Minimum gap between two period-start timestamps that counts as a genuine
 // rollover. Anything smaller is treated as the same billing cycle (repeated
@@ -281,6 +282,7 @@ export const upsertSubscription = mutation({
         v.literal('trialing')
       )
     ),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
     autoTopUpEnabled: v.optional(v.boolean()),
@@ -314,6 +316,7 @@ export const upsertSubscription = mutation({
       if (args.stripePriceId !== undefined) updateData.stripePriceId = args.stripePriceId
       if (args.stripeQuantity !== undefined) updateData.stripeQuantity = args.stripeQuantity
       if (args.status !== undefined) updateData.status = args.status
+      if (args.cancelAtPeriodEnd !== undefined) updateData.cancelAtPeriodEnd = args.cancelAtPeriodEnd
       if (args.currentPeriodStart !== undefined) updateData.currentPeriodStart = args.currentPeriodStart
       if (args.currentPeriodEnd !== undefined) updateData.currentPeriodEnd = args.currentPeriodEnd
       if (args.autoTopUpEnabled !== undefined) updateData.autoTopUpEnabled = args.autoTopUpEnabled
@@ -379,6 +382,7 @@ export const upsertSubscription = mutation({
           markupBasisPoints: args.markupBasisPoints,
         }),
         status: args.status || 'active',
+        cancelAtPeriodEnd: args.cancelAtPeriodEnd ?? false,
         currentPeriodStart: args.currentPeriodStart || now,
         currentPeriodEnd: args.currentPeriodEnd || now + thirtyDays,
         creditsUsed: 0,
@@ -415,7 +419,11 @@ export const updateStatus = internalMutation({
       .first()
 
     if (subscription) {
-      const patch: Record<string, unknown> = { status, billingAccountId: billingAccount.billingAccountId }
+      const patch: Record<string, unknown> = {
+        status,
+        billingAccountId: billingAccount.billingAccountId,
+        cancelAtPeriodEnd: false,
+      }
       if (status === 'canceled') {
         patch.tier = 'free'
         patch.planKind = 'free'
@@ -525,6 +533,7 @@ export const upsertFromStripeInternal = internalMutation({
       v.literal('past_due'),
       v.literal('trialing')
     ),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number()
   },
@@ -550,19 +559,44 @@ export const upsertFromStripeInternal = internalMutation({
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .first()
 
+    const entitlement = resolveStripeEntitlementFields(args.status, {
+      tier: args.tier,
+      planKind: args.planKind,
+      planVersion: args.planVersion,
+      planAmountCents: args.planAmountCents,
+      stripePriceId: args.stripePriceId,
+      stripeQuantity: args.stripeQuantity,
+      autoTopUpEnabled: args.autoTopUpEnabled,
+      autoTopUpAmountCents: args.autoTopUpAmountCents,
+      offSessionConsentAt: args.offSessionConsentAt,
+    }, existing ? {
+      tier: existing.tier,
+      planKind: existing.planKind,
+      planVersion: existing.planVersion,
+      planAmountCents: existing.planAmountCents,
+      stripePriceId: existing.stripePriceId,
+      stripeQuantity: existing.stripeQuantity,
+      autoTopUpEnabled: existing.autoTopUpEnabled,
+      autoTopUpAmountCents: existing.autoTopUpAmountCents,
+      offSessionConsentAt: existing.offSessionConsentAt,
+    } : null)
+
     if (existing) {
-      const periodRolled = isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
+      const periodRolled = (args.status === 'active' || args.status === 'trialing')
+        && isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
+      const subscriptionEnded = args.status === 'canceled'
+      const resetUsage = periodRolled || subscriptionEnded
       let topUpBalanceCents = existing.topUpBalanceCents
       const nextPlanMetadata = defaultPlanMetadata({
-        tier: args.tier,
-        planKind: args.planKind,
-        planVersion: args.planVersion,
-        planAmountCents: args.planAmountCents,
-        stripePriceId: args.stripePriceId,
-        stripeQuantity: args.stripeQuantity,
+        tier: entitlement.tier,
+        planKind: entitlement.planKind,
+        planVersion: entitlement.planVersion,
+        planAmountCents: entitlement.planAmountCents,
+        stripePriceId: entitlement.stripePriceId,
+        stripeQuantity: entitlement.stripeQuantity,
         markupBasisPoints: args.markupBasisPoints ?? existing.markupBasisPoints,
       })
-      if (periodRolled) {
+      if (resetUsage) {
         const activeReservations = await ctx.db
           .query('budgetReservations')
           .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
@@ -572,14 +606,14 @@ export const upsertFromStripeInternal = internalMutation({
         }
         topUpBalanceCents = await topUpBalanceForRollover(ctx, existing)
       }
-      const rebalancedUsage = periodRolled
+      const rebalancedUsage = resetUsage
         ? {
             allowanceUsedCents: 0,
             topUpPurchasedCents: topUpBalanceCents,
             topUpBalanceCents,
           }
         : await rebalanceUsageForAllowance(ctx, existing, {
-            tier: args.tier,
+            tier: entitlement.tier,
             planKind: nextPlanMetadata.planKind,
             planAmountCents: nextPlanMetadata.planAmountCents,
           })
@@ -590,16 +624,17 @@ export const upsertFromStripeInternal = internalMutation({
         name: args.name,
         stripeCustomerId: args.stripeCustomerId,
         stripeSubscriptionId: args.stripeSubscriptionId,
-        tier: args.tier,
+        tier: entitlement.tier,
         ...nextPlanMetadata,
-        ...(args.autoTopUpEnabled !== undefined ? { autoTopUpEnabled: args.autoTopUpEnabled } : {}),
-        ...(args.autoTopUpAmountCents !== undefined ? { autoTopUpAmountCents: args.autoTopUpAmountCents } : {}),
-        ...(args.offSessionConsentAt !== undefined ? { offSessionConsentAt: args.offSessionConsentAt } : {}),
+        autoTopUpEnabled: entitlement.autoTopUpEnabled,
+        autoTopUpAmountCents: entitlement.autoTopUpAmountCents,
+        offSessionConsentAt: entitlement.offSessionConsentAt,
         status: args.status,
+        cancelAtPeriodEnd: args.cancelAtPeriodEnd ?? existing.cancelAtPeriodEnd ?? false,
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         // Reset credit counter on period rollover (monthly renewal or plan change)
-        creditsUsed: periodRolled ? 0 : (existing.creditsUsed ?? 0),
+        creditsUsed: resetUsage ? 0 : (existing.creditsUsed ?? 0),
         ...rebalancedUsage,
       })
       await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
@@ -612,20 +647,21 @@ export const upsertFromStripeInternal = internalMutation({
         name: args.name,
         stripeCustomerId: args.stripeCustomerId,
         stripeSubscriptionId: args.stripeSubscriptionId,
-        tier: args.tier,
+        tier: entitlement.tier,
         ...defaultPlanMetadata({
-          tier: args.tier,
-          planKind: args.planKind,
-          planVersion: args.planVersion,
-          planAmountCents: args.planAmountCents,
-          stripePriceId: args.stripePriceId,
-          stripeQuantity: args.stripeQuantity,
+          tier: entitlement.tier,
+          planKind: entitlement.planKind,
+          planVersion: entitlement.planVersion,
+          planAmountCents: entitlement.planAmountCents,
+          stripePriceId: entitlement.stripePriceId,
+          stripeQuantity: entitlement.stripeQuantity,
           markupBasisPoints: args.markupBasisPoints,
         }),
-        autoTopUpEnabled: args.autoTopUpEnabled ?? false,
-        autoTopUpAmountCents: args.autoTopUpAmountCents,
-        offSessionConsentAt: args.offSessionConsentAt,
+        autoTopUpEnabled: entitlement.autoTopUpEnabled,
+        autoTopUpAmountCents: entitlement.autoTopUpAmountCents,
+        offSessionConsentAt: entitlement.offSessionConsentAt,
         status: args.status,
+        cancelAtPeriodEnd: args.cancelAtPeriodEnd ?? false,
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         creditsUsed: 0,

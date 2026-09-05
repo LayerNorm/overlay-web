@@ -34,7 +34,7 @@ function subscriptionFixture(quantity: number): Stripe.Subscription {
 function safePortalFeatures() {
   return {
     payment_method_update: { enabled: true },
-    subscription_cancel: { enabled: true },
+    subscription_cancel: { enabled: true, mode: 'at_period_end' },
     subscription_update: { enabled: false },
   }
 }
@@ -170,6 +170,26 @@ test('StripeBillingProvider leaves a failed upgrade pending instead of granting 
   assert.equal(result.targetQuantity, 96)
 })
 
+test('StripeBillingProvider rejects plan changes while cancellation is scheduled', async () => {
+  const subscription = { ...subscriptionFixture(24), cancel_at_period_end: true }
+  const stripeClient = {
+    checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
+    subscriptions: { retrieve: async () => subscription },
+  } as unknown as Stripe
+  const provider = new StripeBillingProvider({ stripeClient, paidUnitPriceId: 'price_unit' })
+
+  await assert.rejects(
+    () => provider.previewSubscriptionPlanChange({
+      userId: 'user_1',
+      providerSubscriptionId: 'sub_1',
+      planId: 'max',
+      targetAmountCents: 9_600,
+      targetQuantity: 96,
+    }),
+    /Canceling subscriptions cannot schedule a plan change/,
+  )
+})
+
 test('StripeBillingProvider refuses a portal profile that allows quantity updates', async () => {
   const stripeClient = {
     checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
@@ -187,6 +207,31 @@ test('StripeBillingProvider refuses a portal profile that allows quantity update
   await assert.rejects(
     () => provider.createCustomerPortalSession({ userId: 'user_1' }),
     /Stripe portal subscription updates must be disabled/,
+  )
+})
+
+test('StripeBillingProvider refuses a portal profile that cancels immediately', async () => {
+  const stripeClient = {
+    checkout: { sessions: { create: async () => ({ id: 'cs_1', url: 'https://stripe.test' }) } },
+    billingPortal: {
+      configurations: { retrieve: async () => ({
+        features: {
+          ...safePortalFeatures(),
+          subscription_cancel: { enabled: true, mode: 'immediately' },
+        },
+      }) },
+      sessions: { create: async () => ({ id: 'bps_1', url: 'https://stripe.test/portal' }) },
+    },
+  } as unknown as Stripe
+  const provider = new StripeBillingProvider({
+    stripeClient,
+    paidUnitPriceId: 'price_unit',
+    portalConfigurationId: 'bpc_immediate',
+  })
+
+  await assert.rejects(
+    () => provider.createCustomerPortalSession({ userId: 'user_1' }),
+    /Stripe portal subscription cancellation must occur at period end/,
   )
 })
 

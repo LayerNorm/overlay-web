@@ -39,6 +39,8 @@ export interface AccountEntitlements {
   planDisplayName?: string
   isLegacyPlan?: boolean
   status: AccountPlanStatus
+  stripeQuantity?: number
+  cancelAtPeriodEnd?: boolean
   autoTopUpEnabled: boolean
   topUpAmountCents: number
   autoTopUpAmountCents: number
@@ -237,8 +239,13 @@ export function accountPlanLabel(entitlements: Pick<AccountEntitlements, 'planKi
 }
 
 export function accountStatusDescription(
-  entitlements: Pick<AccountEntitlements, 'status' | 'billingPeriodEnd'>,
+  entitlements: Pick<AccountEntitlements, 'status' | 'billingPeriodEnd' | 'cancelAtPeriodEnd'>,
 ): string {
+  if (entitlements.cancelAtPeriodEnd) {
+    return entitlements.billingPeriodEnd
+      ? `Cancels ${formatAccountDate(entitlements.billingPeriodEnd)}`
+      : 'Cancellation scheduled'
+  }
   if (entitlements.status === 'active' && entitlements.billingPeriodEnd) {
     return `Renews ${formatAccountDate(entitlements.billingPeriodEnd)}`
   }

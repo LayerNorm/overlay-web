@@ -7,6 +7,9 @@ const paidEntitlements: BillingEntitlementsRecord = {
   tier: 'pro',
   planKind: 'paid',
   planAmountCents: 2000,
+  status: 'active',
+  stripeQuantity: 20,
+  cancelAtPeriodEnd: false,
   budgetUsedCents: 500,
   budgetTotalCents: 2000,
   budgetRemainingCents: 1500,
@@ -80,6 +83,8 @@ test('BillingCustomerService.getLandingSubscription preserves response mapping',
   assert.equal(response.planDisplayName, 'Legacy $20')
   assert.equal(response.isLegacyPlan, true)
   assert.equal(response.status, 'active')
+  assert.equal(response.stripeQuantity, 20)
+  assert.equal(response.cancelAtPeriodEnd, false)
   assert.equal(response.creditsUsed, 500)
   assert.equal(response.creditsTotal, 2000)
   assert.equal(response.topUpAmountCents, 1000)
@@ -189,4 +194,29 @@ test('BillingCustomerService exposes named personal plans without changing store
   assert.equal(response.planId, 'pro')
   assert.equal(response.planDisplayName, 'Pro')
   assert.equal(response.isLegacyPlan, false)
+})
+
+test('BillingCustomerService exposes past-due and scheduled-cancellation states', async () => {
+  const pastDueService = new BillingCustomerService({
+    repository: createRepository({
+      async getEntitlementsByServer() {
+        return { ...paidEntitlements, status: 'past_due', stripeQuantity: 24 }
+      },
+    }),
+  })
+  const cancelingService = new BillingCustomerService({
+    repository: createRepository({
+      async getEntitlementsByServer() {
+        return { ...paidEntitlements, cancelAtPeriodEnd: true, stripeQuantity: 24 }
+      },
+    }),
+  })
+
+  const pastDue = await pastDueService.getEntitlements({ userId: 'user_1' })
+  const canceling = await cancelingService.getLandingSubscription({ userId: 'user_1' })
+
+  assert.equal(pastDue.status, 'past_due')
+  assert.equal(pastDue.planId, 'pro')
+  assert.equal(canceling.cancelAtPeriodEnd, true)
+  assert.equal(canceling.planId, 'pro')
 })

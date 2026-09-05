@@ -173,7 +173,7 @@ async function main(): Promise<void> {
     try {
       const failedUpgrade = await stripe.subscriptions.update(legacySubscription.id, {
         items: [{ id: item.id, quantity: 96 }],
-        metadata: { planAmountCents: '9600', planVersion: 'named_v1', qaRunId },
+        metadata: { planAmountCents: '9600', planVersion: 'variable_v2', qaRunId },
         payment_behavior: 'pending_if_incomplete',
         proration_behavior: 'always_invoice',
       })

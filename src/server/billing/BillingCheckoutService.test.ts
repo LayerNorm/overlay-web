@@ -327,6 +327,30 @@ test('BillingCheckoutService.changeSubscriptionPlan previews legacy migration be
   })
 })
 
+test('BillingCheckoutService.changeSubscriptionPlan rejects a canceling subscription', async () => {
+  const service = createService(createRepository({
+    async getSubscriptionByUserIdByServer() {
+      return {
+        userId: 'user_1',
+        planKind: 'paid',
+        planAmountCents: 2_400,
+        status: 'active',
+        cancelAtPeriodEnd: true,
+        stripeCustomerId: 'cus_1',
+        stripeSubscriptionId: 'sub_1',
+        stripeQuantity: 24,
+      }
+    },
+  }), createBillingProvider())
+
+  await assert.rejects(
+    () => service.changeSubscriptionPlan({ userId: 'user_1', body: { planId: 'max' } }),
+    (error) => error instanceof BillingServiceError
+      && error.statusCode === 409
+      && error.payload.code === 'subscription_canceling',
+  )
+})
+
 test('BillingCheckoutService.changeSubscriptionPlan applies a confirmed change and syncs local state', async () => {
   const upserts: Array<Record<string, unknown>> = []
   const service = createService(createRepository({
@@ -376,6 +400,7 @@ test('BillingCheckoutService.changeSubscriptionPlan applies a confirmed change a
   assert.equal(result.applied, true)
   assert.equal(upserts[0]?.stripeQuantity, 24)
   assert.equal(upserts[0]?.planAmountCents, 2400)
+  assert.equal(upserts[0]?.planVersion, 'variable_v2')
 })
 
 test('BillingCheckoutService does not sync a failed upgrade before Stripe collects payment', async () => {

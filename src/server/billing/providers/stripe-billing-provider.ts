@@ -163,6 +163,9 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
     if (!configuration.features.subscription_cancel.enabled) {
       throw new Error('Stripe portal subscription cancellation must be enabled')
     }
+    if (configuration.features.subscription_cancel.mode !== 'at_period_end') {
+      throw new Error('Stripe portal subscription cancellation must occur at period end')
+    }
     return await super.createCustomerPortalSession(args)
   }
 
@@ -239,9 +242,6 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
     if (state.subscription.status === 'trialing') {
       throw new Error('Trialing subscriptions cannot schedule a downgrade')
     }
-    if (state.subscription.cancel_at_period_end || state.subscription.cancel_at) {
-      throw new Error('Canceling subscriptions cannot schedule a plan change')
-    }
     const scheduleKey = args.idempotencyKey ?? [
       'payment_revision',
       state.subscription.id,
@@ -314,6 +314,9 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
     if (!['active', 'trialing'].includes(subscription.status)) {
       throw new Error('Subscription is not eligible for a plan change')
     }
+    if (subscription.cancel_at_period_end || subscription.cancel_at) {
+      throw new Error('Canceling subscriptions cannot schedule a plan change')
+    }
 
     const customerId = typeof subscription.customer === 'string'
       ? subscription.customer
@@ -367,7 +370,7 @@ function planChangeMetadata(
     ...current,
     planId: args.planId,
     planKind: 'paid',
-    planVersion: 'named_v1',
+    planVersion: 'variable_v2',
     planAmountCents: String(args.targetAmountCents),
     stripeQuantity: String(args.targetQuantity),
   }
@@ -430,6 +433,9 @@ function toCoreEntitlements(
     tier: value.tier,
     planKind: value.planKind,
     planAmountCents: value.planAmountCents,
+    status: value.status,
+    stripeQuantity: value.stripeQuantity,
+    cancelAtPeriodEnd: value.cancelAtPeriodEnd,
     creditsUsed: value.creditsUsed,
     creditsTotal: value.creditsTotal,
     budgetUsedCents: value.budgetUsedCents,

@@ -52,6 +52,7 @@ export interface StripeSubscription {
   customer?: string | { id?: string } | null
   items?: { data?: StripeSubscriptionItem[] } | null
   status?: string | null
+  cancel_at_period_end?: boolean | null
 }
 
 export interface StripeBillingClient {
@@ -499,6 +500,7 @@ export class StripeBillingProvider implements BillingProvider {
       offSessionConsentAt,
       currentPeriodStart: period.currentPeriodStart,
       currentPeriodEnd: period.currentPeriodEnd,
+      cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
       metadata: checkoutSession.metadata ?? undefined,
     }
   }

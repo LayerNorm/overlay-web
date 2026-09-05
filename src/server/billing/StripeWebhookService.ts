@@ -128,6 +128,7 @@ export class StripeWebhookService {
         autoTopUpEnabled: metadata.autoTopUpEnabled === 'true',
         autoTopUpAmountCents: positiveInteger(metadata.topUpAmountCents) ?? 0,
         offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
+        cancelAtPeriodEnd: false,
         status: 'active',
       }
       if (payer.scope === 'workspace') {
@@ -218,6 +219,7 @@ export class StripeWebhookService {
         : preservesExistingPaidAccess
           ? existing?.offSessionConsentAt
           : undefined,
+      cancelAtPeriodEnd: deleted ? false : Boolean(subscription.cancel_at_period_end),
       status,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,

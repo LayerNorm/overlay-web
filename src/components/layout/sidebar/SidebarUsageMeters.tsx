@@ -12,6 +12,7 @@ export interface SidebarEntitlements {
   planDisplayName?: string
   isLegacyPlan?: boolean
   status?: 'active' | 'trialing' | 'past_due' | 'canceled'
+  cancelAtPeriodEnd?: boolean
   creditsUsed: number
   creditsTotal: number
   budgetUsedCents?: number
@@ -38,8 +39,11 @@ export function SidebarPlanStatus({
   const planName = entitlements?.planDisplayName
     ?? (entitlements?.planKind === 'paid' ? 'Paid' : 'Free')
   const needsAttention = entitlements?.status === 'past_due'
+  const isCanceling = Boolean(entitlements?.cancelAtPeriodEnd)
   const detail = needsAttention
     ? 'Payment needs attention'
+    : isCanceling
+      ? 'Cancellation scheduled'
     : entitlements?.isLegacyPlan
       ? 'Grandfathered pricing'
       : entitlements?.planKind === 'paid'

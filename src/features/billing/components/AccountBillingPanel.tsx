@@ -95,16 +95,18 @@ export function AccountBillingPanel({
                 ) : null}
                 {entitlements.planKind === 'paid' ? (
                   <>
-                    <Link
-                      href="/pricing?intent=change-plan"
-                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] ${
-                        dark
-                          ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-                          : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                      }`}
-                    >
-                      Change plan
-                    </Link>
+                    {!entitlements.cancelAtPeriodEnd ? (
+                      <Link
+                        href="/pricing?intent=change-plan"
+                        className={`rounded-lg border px-4 py-2 text-sm font-medium transition-[background-color,transform] active:scale-[0.98] ${
+                          dark
+                            ? 'border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
+                            : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                        }`}
+                      >
+                        Change plan
+                      </Link>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void onManageBilling()}

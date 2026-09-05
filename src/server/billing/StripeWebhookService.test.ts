@@ -229,7 +229,7 @@ test('StripeWebhookService creates the named-plan allowance for quantities 8, 24
           kind: 'paid_plan',
           planAmountCents: String(quantity * 100),
           planId: quantity === 8 ? 'starter' : quantity === 24 ? 'pro' : 'max',
-          planVersion: 'named_v1',
+          planVersion: 'variable_v2',
           stripeQuantity: String(quantity),
           userId: 'user_1',
         },
@@ -309,7 +309,8 @@ test('StripeWebhookService withholds a new incomplete subscription allowance unt
         price: { id: 'price_unit' },
         quantity: 24,
       }] },
-      metadata: { planAmountCents: '2400', planVersion: 'named_v1', userId: 'user_1' },
+      metadata: { planAmountCents: '2400', planVersion: 'variable_v2', userId: 'user_1' },
+      cancel_at_period_end: status === 'active',
       status,
     } },
     id,
@@ -319,13 +320,14 @@ test('StripeWebhookService withholds a new incomplete subscription allowance unt
   await service.handle({ event: subscriptionEvent('evt_incomplete', 'incomplete'), rawBody: 'incomplete' })
   await service.handle({ event: subscriptionEvent('evt_recovered', 'active'), rawBody: 'active' })
 
-  assert.deepEqual(upserts.map(({ planAmountCents, planKind, status }) => ({
+  assert.deepEqual(upserts.map(({ cancelAtPeriodEnd, planAmountCents, planKind, status }) => ({
+    cancelAtPeriodEnd,
     planAmountCents,
     planKind,
     status,
   })), [
-    { planAmountCents: 0, planKind: 'free', status: 'past_due' },
-    { planAmountCents: 2400, planKind: 'paid', status: 'active' },
+    { cancelAtPeriodEnd: false, planAmountCents: 0, planKind: 'free', status: 'past_due' },
+    { cancelAtPeriodEnd: true, planAmountCents: 2400, planKind: 'paid', status: 'active' },
   ])
 })
 
@@ -358,7 +360,7 @@ test('StripeWebhookService preserves the paid allowance during recovery and clea
         price: { id: 'price_unit' },
         quantity: 96,
       }] },
-      metadata: { planAmountCents: '9600', planVersion: 'named_v1', userId: 'user_1' },
+      metadata: { planAmountCents: '9600', planVersion: 'variable_v2', userId: 'user_1' },
       status,
     } },
     id,

@@ -7,6 +7,9 @@ export interface Entitlements {
   planId?: PersonalPlanId | null
   planDisplayName?: string
   isLegacyPlan?: boolean
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  stripeQuantity?: number
+  cancelAtPeriodEnd?: boolean
   creditsUsed: number
   creditsTotal: number
   budgetUsedCents?: number
@@ -125,6 +128,7 @@ export interface CheckoutSessionVerificationResult {
   offSessionConsentAt?: number
   currentPeriodStart?: number
   currentPeriodEnd?: number
+  cancelAtPeriodEnd?: boolean
   amountTotalCents?: number
   currency?: string
   paymentIntentId?: string

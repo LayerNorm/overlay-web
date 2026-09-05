@@ -519,6 +519,13 @@
       "when": 1788411109000,
       "tag": "0073_agent_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1788529107000,
+      "tag": "0074_billing_cancel_at_period_end",
+      "breakpoints": true
     }
   ]
 }

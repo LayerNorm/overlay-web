@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { ensureEmptyBalance } from './accountModel'
+import { resolveStripeEntitlementFields } from './lib/stripeOverlaySubscription'
 
 const subscriptionStatus = v.union(
   v.literal('active'),
@@ -14,10 +15,13 @@ const subscriptionRecord = v.object({
   billingAccountId: v.string(),
   stripeCustomerId: v.optional(v.string()),
   stripeSubscriptionId: v.optional(v.string()),
+  stripePriceId: v.optional(v.string()),
+  stripeQuantity: v.optional(v.number()),
   tier: v.union(v.literal('free'), v.literal('pro'), v.literal('max')),
   planKind: v.union(v.literal('free'), v.literal('paid')),
   planAmountCents: v.number(),
   status: subscriptionStatus,
+  cancelAtPeriodEnd: v.optional(v.boolean()),
   autoTopUpEnabled: v.boolean(),
   autoTopUpAmountCents: v.number(),
   offSessionConsentAt: v.optional(v.number()),
@@ -38,10 +42,13 @@ export const getByServer = query({
       billingAccountId: row.billingAccountId,
       ...(row.providerCustomerId ? { stripeCustomerId: row.providerCustomerId } : {}),
       ...(row.providerSubscriptionId ? { stripeSubscriptionId: row.providerSubscriptionId } : {}),
+      ...(row.providerPriceId ? { stripePriceId: row.providerPriceId } : {}),
+      ...(row.providerQuantity === undefined ? {} : { stripeQuantity: row.providerQuantity }),
       tier: row.planKind === 'paid' ? 'pro' as const : 'free' as const,
       planKind: row.planKind,
       planAmountCents: row.planAmountCents,
       status: row.status,
+      ...(row.cancelAtPeriodEnd === undefined ? {} : { cancelAtPeriodEnd: row.cancelAtPeriodEnd }),
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: row.autoTopUpAmountCents,
       ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
@@ -59,6 +66,8 @@ export const getEntitlementsByServer = query({
     planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
     planAmountCents: v.optional(v.number()),
     status: subscriptionStatus,
+    stripeQuantity: v.optional(v.number()),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     budgetUsedCents: v.number(),
     budgetTotalCents: v.number(),
     budgetRemainingCents: v.number(),
@@ -99,6 +108,8 @@ export const getEntitlementsByServer = query({
       planKind: subscription?.planKind ?? 'free',
       planAmountCents: subscription?.planAmountCents ?? 0,
       status: subscription?.status ?? 'active',
+      ...(subscription?.providerQuantity === undefined ? {} : { stripeQuantity: subscription.providerQuantity }),
+      ...(subscription?.cancelAtPeriodEnd === undefined ? {} : { cancelAtPeriodEnd: subscription.cancelAtPeriodEnd }),
       budgetUsedCents: used,
       budgetTotalCents: included + topUp,
       budgetRemainingCents: Math.max(0, included + topUp - used - reserved),
@@ -131,6 +142,7 @@ export const upsertByServer = mutation({
     planAmountCents: v.optional(v.number()),
     markupBasisPoints: v.optional(v.number()),
     status: v.optional(subscriptionStatus),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
@@ -156,7 +168,9 @@ export const upsertByServer = mutation({
       && args.providerEventCreatedAt < existing.providerEventCreatedAt
     ) return { billingAccountId, applied: false }
     const now = Date.now()
-    const periodChanged = existing?.currentPeriodStart !== undefined
+    const effectiveStatus = args.status ?? existing?.status ?? 'active'
+    const periodChanged = (effectiveStatus === 'active' || effectiveStatus === 'trialing')
+      && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const planKind = args.planKind ?? existing?.planKind ?? 'free'
@@ -181,6 +195,7 @@ export const upsertByServer = mutation({
       planAmountCents,
       markupBasisPoints: args.markupBasisPoints ?? existing?.markupBasisPoints ?? account.markupBasisPoints,
       status: args.status ?? existing?.status ?? 'active' as const,
+      cancelAtPeriodEnd: args.cancelAtPeriodEnd ?? existing?.cancelAtPeriodEnd ?? false,
       autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
       autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
       ...(args.offSessionConsentAt ?? existing?.offSessionConsentAt
@@ -391,6 +406,7 @@ export const upsertFromStripeInternal = internalMutation({
     planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
     planAmountCents: v.optional(v.number()),
     status: subscriptionStatus,
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
@@ -410,9 +426,32 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing?.providerEventCreatedAt !== undefined
       && args.providerEventCreatedAt < existing.providerEventCreatedAt) return { applied: false }
     const now = Date.now()
-    const periodChanged = existing?.currentPeriodStart !== undefined
+    const periodChanged = (args.status === 'active' || args.status === 'trialing')
+      && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
+    const subscriptionEnded = args.status === 'canceled'
+    const entitlement = resolveStripeEntitlementFields(args.status, {
+      tier: args.planKind === 'paid' ? 'pro' : 'free',
+      planKind: args.planKind,
+      planVersion: 'variable_v2',
+      planAmountCents: args.planAmountCents,
+      stripePriceId: args.stripePriceId,
+      stripeQuantity: args.stripeQuantity,
+      autoTopUpEnabled: args.autoTopUpEnabled,
+      autoTopUpAmountCents: args.autoTopUpAmountCents,
+      offSessionConsentAt: args.offSessionConsentAt,
+    }, existing ? {
+      tier: existing.planKind === 'paid' ? 'pro' : 'free',
+      planKind: existing.planKind,
+      planVersion: 'variable_v2',
+      planAmountCents: existing.planAmountCents,
+      stripePriceId: existing.providerPriceId,
+      stripeQuantity: existing.providerQuantity,
+      autoTopUpEnabled: existing.autoTopUpEnabled,
+      autoTopUpAmountCents: existing.autoTopUpAmountCents,
+      offSessionConsentAt: existing.offSessionConsentAt,
+    } : null)
     const value = {
       billingAccountId: args.billingAccountId,
       provider: 'stripe',
@@ -422,21 +461,22 @@ export const upsertFromStripeInternal = internalMutation({
       ...(args.stripeSubscriptionId ?? existing?.providerSubscriptionId
         ? { providerSubscriptionId: args.stripeSubscriptionId ?? existing?.providerSubscriptionId }
         : {}),
-      ...(args.stripePriceId ?? existing?.providerPriceId
-        ? { providerPriceId: args.stripePriceId ?? existing?.providerPriceId }
+      ...(entitlement.stripePriceId ?? existing?.providerPriceId
+        ? { providerPriceId: entitlement.stripePriceId ?? existing?.providerPriceId }
         : {}),
-      ...(args.stripeQuantity ?? existing?.providerQuantity
-        ? { providerQuantity: args.stripeQuantity ?? existing?.providerQuantity }
+      ...(entitlement.stripeQuantity ?? existing?.providerQuantity
+        ? { providerQuantity: entitlement.stripeQuantity ?? existing?.providerQuantity }
         : {}),
-      planKind: args.planKind ?? existing?.planKind ?? 'free',
+      planKind: entitlement.planKind,
       planVersion: 'variable_v2' as const,
-      planAmountCents: args.planAmountCents ?? existing?.planAmountCents ?? 0,
+      planAmountCents: entitlement.planAmountCents,
       markupBasisPoints: account.markupBasisPoints,
       status: args.status,
-      autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
-      autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
-      ...(args.offSessionConsentAt ?? existing?.offSessionConsentAt
-        ? { offSessionConsentAt: args.offSessionConsentAt ?? existing?.offSessionConsentAt }
+      cancelAtPeriodEnd: args.cancelAtPeriodEnd ?? existing?.cancelAtPeriodEnd ?? false,
+      autoTopUpEnabled: entitlement.autoTopUpEnabled,
+      autoTopUpAmountCents: entitlement.autoTopUpAmountCents,
+      ...(entitlement.offSessionConsentAt
+        ? { offSessionConsentAt: entitlement.offSessionConsentAt }
         : {}),
       ...(args.currentPeriodStart ?? existing?.currentPeriodStart
         ? { currentPeriodStart: args.currentPeriodStart ?? existing?.currentPeriodStart }
@@ -450,18 +490,19 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
-    const includedMicros = (args.planAmountCents ?? existing?.planAmountCents ?? 0) * 10_000
-    if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
-    const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
-    const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    const nextTopUpPurchasedMicros = periodChanged ? balance.topUpBalanceMicros : balance.topUpPurchasedMicros
+    const includedMicros = entitlement.planAmountCents * 10_000
+    const resetUsage = periodChanged || subscriptionEnded
+    if (resetUsage && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
+    const nextUsedMicros = resetUsage ? 0 : balance.usedMicros
+    const nextReservedMicros = resetUsage ? 0 : balance.reservedMicros
+    const nextTopUpPurchasedMicros = resetUsage ? balance.topUpBalanceMicros : balance.topUpPurchasedMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')
     }
     await ctx.db.patch(balance._id, {
       includedMicros,
-      allowanceUsedMicros: periodChanged ? 0 : balance.allowanceUsedMicros,
+      allowanceUsedMicros: resetUsage ? 0 : balance.allowanceUsedMicros,
       usedMicros: nextUsedMicros,
       reservedMicros: nextReservedMicros,
       topUpPurchasedMicros: nextTopUpPurchasedMicros,
