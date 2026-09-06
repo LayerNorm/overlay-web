@@ -272,7 +272,7 @@
     "@tiptap/extension-emoji": "^3.20.1",
     "@tiptap/extension-highlight": "^3.20.1",
     "@tiptap/extension-image": "^3.20.1",
-    "@tiptap/extension-link": "^3.20.1",
+    "@tiptap/extension-link": "^3.30.5",
     "@tiptap/extension-mathematics": "^3.20.1",
     "@tiptap/extension-mention": "^3.22.5",
     "@tiptap/extension-placeholder": "^3.20.1",
