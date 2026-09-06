@@ -1,6 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveVerifiedBearerUserId } from './app-api-auth'
+import {
+  authenticatedAppUserProfile,
+  resolveVerifiedBearerUserId,
+} from './app-api-auth'
+
+test('session profile uses the same full name shown in the app shell', () => {
+  assert.deepEqual(authenticatedAppUserProfile({
+    email: 'dslalwani@gmail.com',
+    firstName: ' Divyansh ',
+    lastName: ' Lalwani ',
+  }), {
+    displayName: 'Divyansh Lalwani',
+    email: 'dslalwani@gmail.com',
+  })
+})
+
+test('session profile falls back to email when no first name is available', () => {
+  assert.deepEqual(authenticatedAppUserProfile({
+    email: ' person@example.com ',
+    lastName: 'Only',
+  }), {
+    displayName: 'person@example.com',
+    email: 'person@example.com',
+  })
+})
 
 test('bearer authentication derives user identity from verified token claims', () => {
   assert.equal(

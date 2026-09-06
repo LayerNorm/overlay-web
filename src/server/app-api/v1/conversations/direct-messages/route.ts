@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { DirectMessageCreateInput } from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { WorkspaceAgentServiceError } from '@/server/agents/WorkspaceAgentService'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 
@@ -14,6 +15,21 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
   }
   try {
     const server = getOverlayServerContext()
+    // Creator-only agents reject DMs from anyone but their creator. The
+    // service reports invisible agents as not found; surface that as 404 so
+    // the attempt does not disclose whether the agent exists.
+    try {
+      await server.workspaceAgentService.assertDirectMessageTargets({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        principalIds,
+      })
+    } catch (guardError) {
+      if (guardError instanceof WorkspaceAgentServiceError && guardError.code === 'not_found') {
+        return NextResponse.json({ error: 'ACCESS_DENIED' }, { status: 404 })
+      }
+      throw guardError
+    }
     const directMessage = await server.appData.repositories
       .conversationCollaboration.createDirectMessage({
         actorUserId: context.auth.userId,

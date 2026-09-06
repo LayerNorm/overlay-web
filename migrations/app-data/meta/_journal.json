@@ -512,6 +512,13 @@
       "when": 1788480000000,
       "tag": "0072_project_archival",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788411109000,
+      "tag": "0073_agent_visibility",
+      "breakpoints": true
     }
   ]
 }

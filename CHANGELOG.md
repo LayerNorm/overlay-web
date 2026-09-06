@@ -6,6 +6,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Workspace agents now have an access mode: **Only me** (`visibility: 'creator'`) or **Everyone in workspace** (`visibility: 'workspace'`, the default). Creator-only agents are hidden from the agents directory, workspace search, and direct reads for everyone but their creator (reported as not found, so their existence does not leak); only the creator can edit them, while workspace managers keep archive access as a safety valve. The agent editor has a matching Access control and directory tiles show an "Only me" badge. Backed by Postgres migration `0073_agent_visibility` (nullable column; existing agents stay workspace-visible) with no Convex migration needed.
+- Creator-only agents are now also gated on every invocation path: DMs with one by anyone but its creator return 404, @-mentions of one by non-creators silently produce no agent run (including in pre-existing DMs after an Everyone → Only me flip), and new creator-only agents no longer auto-join public channels. Flipping Only me → Everyone grants no retroactive channel joins.
+- Agent creation and editing moved from a dialog to dedicated full-page routes (`/app/agents/new` and `/app/agents/:id`) with Identity, Behavior, Access, Connection, and Danger-zone sections, a sticky save bar, and a post-create "Say hello" handoff that opens a DM with the new agent. Directory tiles now attribute each agent to its creator ("by {name}").
+- Added the chat-platform bot seam: `WorkspaceGovernanceService.resolvePlatformActor` maps a linked Slack/Teams user to its workspace principal (manager-gated linking, uniform not-found for unmapped identities), and the new `PlatformAgentAccess` routes bot list/DM requests through the same visibility-enforced services first-party clients use. No new API routes; the Chat SDK bot processes, platform OAuth, and install storage remain future work.
+
 - Connected agents that advertise slash commands over ACP now power a composer slash menu in their DMs: the Agent Host forwards `available_commands_update`, the transcript stores it as a stable part, and typing `/` lists the agent's commands with descriptions. Agents that do not advertise commands are unaffected; activating this in production requires the next Agent Host package release.
 
 ### Changed
@@ -25,6 +30,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Fixed Workspace → People showing the authenticated provider user ID instead of the person’s profile name; existing member principals are repaired from the current browser session, and newly created workspaces start with the correct owner name.
 - Allowed `data-remote-agent-commands` parts in the conversation message schema and BFF serialization: the Convex validator rejected connected-agent command events with 500s, and the BFF conversation serializer dropped the commands payload, leaving the agent DM slash menu empty after a page load.
 - Fixed the agent DM slash menu ignoring typed input: the composer kept its live text outside React state by design, so the slash-menu hook only ever saw programmatically set text — typing `/` did not open the menu, filtering and selection did not update, and choosing a command left the menu stuck open. Typing now refreshes composer state only while a slash token is on screen, preserving the no-re-render-per-keystroke behavior for normal text.
 

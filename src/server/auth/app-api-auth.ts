@@ -12,9 +12,29 @@ export type AuthenticatedAppUser = {
   userId: string
   accessToken: string
   authType: 'session' | 'api-key' | 'service' | 'access-token'
+  profile?: AuthenticatedAppUserProfile
   apiKeyId?: string
   organizationId?: string
   scopes?: ApiKeyScope[]
+}
+
+export type AuthenticatedAppUserProfile = {
+  displayName: string
+  email: string
+}
+
+export function authenticatedAppUserProfile(user: {
+  email: string
+  firstName?: string
+  lastName?: string
+}): AuthenticatedAppUserProfile {
+  const email = user.email.trim()
+  const firstName = user.firstName?.trim()
+  const lastName = user.lastName?.trim()
+  return {
+    displayName: firstName ? [firstName, lastName].filter(Boolean).join(' ') : email,
+    email,
+  }
 }
 
 export function resolveVerifiedBearerUserId(
@@ -56,6 +76,7 @@ export async function resolveAuthenticatedAppUser(
       userId: session.user.id,
       accessToken: session.accessToken,
       authType: 'session',
+      profile: authenticatedAppUserProfile(session.user),
       ...(organizationId ? { organizationId } : {}),
     })
   }

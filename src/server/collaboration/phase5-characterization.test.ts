@@ -68,18 +68,19 @@ test('Phase 5 group and channel invocation is human mention or agent-thread repl
 })
 
 test('Phase 5 ships the Buzz-inspired directory and explicit mention-first copy', async () => {
-  const [directory, editor] = await Promise.all([
+  const [directory, form, page] = await Promise.all([
     readFile(`${root}/src/features/agents/components/AgentsDirectory.tsx`, 'utf8'),
-    readFile(`${root}/src/features/agents/components/AgentEditorDialog.tsx`, 'utf8'),
+    readFile(`${root}/src/features/agents/components/AgentEditorForm.tsx`, 'utf8'),
+    readFile(`${root}/src/features/agents/components/AgentEditorPage.tsx`, 'utf8'),
   ])
   assert.doesNotMatch(directory, /Agent teams/)
   assert.match(directory, /New agent/)
   assert.match(directory, /listBindings/)
   assert.match(directory, /getAgentRuntimeLabel/)
-  assert.match(editor, /Create agent/)
-  assert.match(editor, /Bring your own agent/)
-  assert.match(editor, /Create connection command/)
-  assert.doesNotMatch(editor, /Create Overlay Cloud environment/)
-  assert.match(editor, /computer, VPS, or sandbox/)
-  assert.match(editor, /Mention-first is enforced/)
+  assert.match(page, /Create agent/)
+  assert.match(form, /Create connection/)
+  assert.match(form, /Bring your own agent/)
+  assert.doesNotMatch(form, /Create Overlay Cloud environment/)
+  assert.match(form, /computer, VPS, or sandbox/)
+  assert.match(form, /Mention-first is enforced/)
 })
