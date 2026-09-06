@@ -11,6 +11,7 @@ import {
 } from '@/shared/search/workspace-search'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import { canSeeAgent } from '@/server/agents/WorkspaceAgentService'
 import type { WorkspaceAgentRepository } from '@/server/agents/WorkspaceAgentRepository'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
@@ -137,11 +138,16 @@ export class WorkspaceSearchService {
   }
 
   private async searchAgents(args: {
+    actorUserId: string
     query: string
     workspaceId: string
   }): Promise<WorkspaceSearchResult[]> {
-    const agents = await this.deps.agents.list({ workspaceId: args.workspaceId })
+    const [access, agents] = await Promise.all([
+      this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId),
+      this.deps.agents.list({ workspaceId: args.workspaceId }),
+    ])
     return agents
+      .filter((agent) => canSeeAgent(agent, access.principal.id))
       .filter((agent) => (
         matchesSearchQuery(agent.name, args.query)
         || matchesSearchQuery(agent.description ?? undefined, args.query)

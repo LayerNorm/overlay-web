@@ -197,6 +197,40 @@ export class WorkspaceGovernanceService {
   }
 
   /**
+   * Resolves a chat-platform user (Slack, Teams, …) to its linked workspace
+   * principal for bot surfaces. The link itself is created through the
+   * manager-gated `linkDirectoryIdentity`; this lookup is deliberately
+   * ungated so trusted bot processes holding the service credential can call
+   * it — user-facing routes must never expose it directly.
+   *
+   * Unknown, deprovisioned, archived, or non-human identities all report as
+   * `not_found`, so mapping existence never leaks to the platform. Callers
+   * then act with the returned `userId` through the standard services, which
+   * keeps directory, DM, and mention authorization (including creator-only
+   * agent visibility) identical inside and outside Overlay.
+   */
+  async resolvePlatformActor(args: {
+    workspaceId: string
+    directory: string
+    externalId: string
+  }): Promise<{ principalId: string; userId: string }> {
+    const unlinked = new WorkspaceServiceError('Platform identity is not linked', 404, 'not_found')
+    const mapping = await this.deps.repository.getIdentityMapping({
+      workspaceId: args.workspaceId,
+      directory: normalized(args.directory, 'directory'),
+      externalId: normalized(args.externalId, 'externalId'),
+    })
+    if (!mapping || mapping.status !== 'active') throw unlinked
+    const principal = await this.deps.repository.getPrincipal(mapping.principalId)
+    if (!principal
+      || principal.workspaceId !== args.workspaceId
+      || principal.archivedAt
+      || principal.type !== 'human'
+      || !principal.userId) throw unlinked
+    return { principalId: principal.id, userId: principal.userId }
+  }
+
+  /**
    * SCIM deprovisioning: the mapping is retired and the principal's membership
    * suspended. Message history and audit records are preserved.
    */

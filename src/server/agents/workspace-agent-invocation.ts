@@ -25,7 +25,7 @@ import {
 } from './agent-message-stream'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import { buildAgentTurnContext } from './agent-turn-context'
-import { resolveMentionFirstInvocations } from './mention-policy'
+import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling, ManagedAgentSandboxBudgetError } from './ManagedAgentSandboxBilling'
@@ -360,7 +360,27 @@ export async function resolveWorkspaceAgentInvocations(args: {
       workspaceId: args.workspaceId,
     })
   }
-  const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
+  // `directory` holds only agents visible to the triggering actor
+  // (WorkspaceAgentService.list filters out creator-only agents anyone else
+  // created), so a candidate missing here is either archived or invisible:
+  // mentioning it behaves as if the mention had targeted a non-agent, with
+  // no error reaching the room that could disclose its existence. This also
+  // covers pre-existing DMs after an Everyone → Only me flip, because the
+  // directory is read fresh on every trigger.
+  const invocableAgents = resolveInvocableAgents({
+    candidatePrincipalIds: principalIds.slice(0, MAX_AGENTS_PER_MESSAGE),
+    visibleAgents: directory.agents,
+  })
+  const invocablePrincipalIds = new Set(invocableAgents.map((agent) => agent.principalId))
+  for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {
+    if (invocablePrincipalIds.has(principalId)) continue
+    logger.warn('[workspace-agent] mentioned agent is unavailable', {
+      conversationId: args.conversationId,
+      principalId,
+      reason: 'no_agent_participant',
+      workspaceId: args.workspaceId,
+    })
+  }
   const runtime = await getOverlayRuntimeConfig()
   const connectedAgentRollout = resolveConnectedAgentRollout(
     connectedAgentRolloutConfigFromEnv(process.env),
@@ -370,17 +390,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
     && runtime.features.remoteAgentRuns === true
     && connectedAgentRollout.eligible
   const invocations: WorkspaceAgentInvocation[] = []
-  for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {
-    const agent = agentsByPrincipal.get(principalId)
-    if (!agent || agent.archivedAt) {
-      logger.warn('[workspace-agent] mentioned agent is unavailable', {
-        conversationId: args.conversationId,
-        principalId,
-        reason: 'no_agent_participant',
-        workspaceId: args.workspaceId,
-      })
-      continue
-    }
+  for (const agent of invocableAgents) {
     const target = remoteRunsEnabled
       ? await server.appData.repositories.connectedAgents.findInvocationTarget({
           workspaceId: args.workspaceId,
