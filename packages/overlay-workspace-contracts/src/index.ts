@@ -80,6 +80,8 @@ export {
   type WorkspaceChatSearchResult,
   WORKSPACE_AGENT_HARNESSES,
   type WorkspaceAgentHarness,
+  WORKSPACE_AGENT_VISIBILITIES,
+  type WorkspaceAgentVisibility,
   type WorkspaceAgentDefinition,
   type WorkspaceAgentCreateInput,
   type WorkspaceAgentUpdateInput,

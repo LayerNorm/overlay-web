@@ -1894,6 +1894,7 @@ export default defineSchema({
     avatarColor: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
     invocationPolicy: v.literal('mention'),
+    visibility: v.optional(v.union(v.literal('creator'), v.literal('workspace'))),
     createdByPrincipalId: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),

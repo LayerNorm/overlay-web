@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import type { WorkspaceAgentCreateInput } from '@overlay/workspace-contracts'
+import {
+  WORKSPACE_AGENT_VISIBILITIES,
+  type WorkspaceAgentCreateInput,
+  type WorkspaceAgentVisibility,
+} from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentErrorResponse } from './shared'
@@ -30,12 +34,20 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
         avatarColor: typeof body.avatarColor === 'string' ? body.avatarColor : undefined,
         allowedToolIds: strings(body.allowedToolIds),
         teamIds: strings(body.teamIds),
+        visibility: visibility(body.visibility),
       },
     })
     return NextResponse.json({ agent }, { status: 201 })
   } catch (error) {
     return agentErrorResponse(error)
   }
+}
+
+function visibility(value: unknown): WorkspaceAgentVisibility | undefined {
+  return typeof value === 'string'
+    && (WORKSPACE_AGENT_VISIBILITIES as readonly string[]).includes(value)
+    ? (value as WorkspaceAgentVisibility)
+    : undefined
 }
 
 function strings(value: unknown) {

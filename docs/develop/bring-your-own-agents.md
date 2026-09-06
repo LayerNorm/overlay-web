@@ -143,8 +143,8 @@ with the global flag disabled and workspaces outside the active rollout stage st
 Overlay-agent editor instead of exposing a form that can never submit.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
-records an explicitly granted default working directory. Creating an environment stays inside the
-same dialog and returns directly to the binding step after phrase and root approval. A failed
+records an explicitly granted default working directory. Creating an environment stays inside the same editor
+and returns directly to the binding step after phrase and root approval. A failed
 binding retry edits the already-durable agent identity rather than creating a duplicate. The host
 ships data-only manifests for Codex (`@agentclientprotocol/codex-acp@1.7.0`) and Claude Code
 (`@agentclientprotocol/claude-agent-acp@0.70.0`). Hermes 0.20.6 or newer is a third built-in target
@@ -507,6 +507,19 @@ permission/elicitation requests, plans, diffs, terminal summaries, validated art
 completion, failure, and cancellation events. The HTTP client treats route URLs as
 control-plane configuration; `/api/v1/agent-environments/**` is the canonical Phase 3 control
 plane. Credentials are bearer-scoped by that control plane and are never included in logs.
+
+### Publishing the Agent Host packages
+
+`@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publish through
+GitHub Actions via npm Trusted Publishing (OIDC) — no npm token exists anywhere. Bump both
+package versions together (and the `OVERLAY_AGENT_HOST_PACKAGE_VERSION` pin in
+`src/server/agents/agent-enrollment-command.ts`), land on `main`, then run
+`gh workflow run publish-agent-host.yml --ref main -f version=<same version>`. The Trusted
+Publisher registration (LayerNorm/overlay-web, `publish-agent-host.yml`, environment
+`Production`) is configured in each package's Settings on npmjs.com; re-register there if the
+workflow file is ever renamed. npm's 2026 bypass-2FA token restriction revoked the legacy
+`NPM_TOKEN`, so the workflow must not set `NODE_AUTH_TOKEN` — with the token absent, npm uses
+the OIDC exchange.
 
 ## Provider-neutral persistence contract
 
