@@ -301,7 +301,7 @@
     "@workflow/world-postgres": "4.3.5",
     "@workos-inc/authkit-nextjs": "^2.14.0",
     "@workos-inc/node": "^8.7.0",
-    "@xmldom/xmldom": "^0.9.9",
+    "@xmldom/xmldom": "^0.9.12",
     "@xyflow/react": "^12.11.2",
     "ai": "^7.0.65",
     "better-auth": "^1.6.23",
