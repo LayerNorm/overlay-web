@@ -12,7 +12,11 @@ import { toWorkspaceSummary } from './presentation'
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
     const service = getOverlayServerContext().workspaceService
-    await service.ensurePersonalWorkspace({ userId: context.auth.userId })
+    await service.ensurePersonalWorkspace({
+      userId: context.auth.userId,
+      displayName: context.auth.profile?.displayName,
+      email: context.auth.profile?.email,
+    })
     const [accesses, active] = await Promise.all([
       service.listForUser(context.auth.userId),
       service.resolveActiveWorkspace(context.auth.userId),
@@ -42,6 +46,8 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       actorUserId: context.auth.userId,
       name: input.name,
       slug: input.slug,
+      displayName: context.auth.profile?.displayName,
+      email: context.auth.profile?.email,
     })
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceCreateResponse = {

@@ -9,10 +9,11 @@ import type {
   WorkspaceAgentRepository,
 } from './WorkspaceAgentRepository'
 
-type AgentRow = Omit<WorkspaceAgentDefinition, 'createdAt' | 'updatedAt' | 'archivedAt'> & {
+type AgentRow = Omit<WorkspaceAgentDefinition, 'createdAt' | 'updatedAt' | 'archivedAt' | 'visibility'> & {
   createdAt: Date | string
   updatedAt: Date | string
   archivedAt: Date | string | null
+  visibility: string | null
   teamIds: string[] | null
   roomCount: number | string
 }
@@ -43,12 +44,13 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
       await tx.execute(sql`
         INSERT INTO workspace_agent_definitions (
           id, workspace_id, principal_id, name, description, instructions, harness,
-          model_id, avatar_color, allowed_tool_ids, invocation_policy,
+          model_id, avatar_color, allowed_tool_ids, invocation_policy, visibility,
           created_by_principal_id, created_at, updated_at
         ) VALUES (
           ${input.agentId}, ${input.workspaceId}, ${input.principalId}, ${input.name},
           ${input.description ?? null}, ${input.instructions}, ${input.harness}, ${input.modelId},
           ${input.avatarColor ?? null}, ${JSON.stringify(input.allowedToolIds)}::jsonb, 'mention',
+          ${input.visibility},
           ${input.createdByPrincipalId}, ${new Date(input.now)}, ${new Date(input.now)}
         )
       `)
@@ -64,21 +66,25 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
           ON CONFLICT (team_id, principal_id) DO NOTHING
         `)
       }
-      await tx.execute(sql`
-        INSERT INTO conversation_participants (
-          conversation_id, workspace_id, principal_id, principal_type, role, status,
-          notification_level, joined_at, updated_at
-        )
-        SELECT id, workspace_id, ${input.principalId}, 'agent', 'member', 'active',
-          'mentions', ${new Date(input.now)}, ${new Date(input.now)}
-        FROM conversations
-        WHERE workspace_id = ${input.workspaceId}
-          AND conversation_type = 'channel'
-          AND channel_visibility = 'public'
-          AND deleted_at IS NULL
-        ON CONFLICT (conversation_id, principal_id) DO UPDATE SET
-          status = 'active', removed_at = NULL, updated_at = EXCLUDED.updated_at
-      `)
+      // Creator-only agents join no channels implicitly: only their creator can
+      // place them anywhere, and only the creator can invoke them.
+      if (input.visibility !== 'creator') {
+        await tx.execute(sql`
+          INSERT INTO conversation_participants (
+            conversation_id, workspace_id, principal_id, principal_type, role, status,
+            notification_level, joined_at, updated_at
+          )
+          SELECT id, workspace_id, ${input.principalId}, 'agent', 'member', 'active',
+            'mentions', ${new Date(input.now)}, ${new Date(input.now)}
+          FROM conversations
+          WHERE workspace_id = ${input.workspaceId}
+            AND conversation_type = 'channel'
+            AND channel_visibility = 'public'
+            AND deleted_at IS NULL
+          ON CONFLICT (conversation_id, principal_id) DO UPDATE SET
+            status = 'active', removed_at = NULL, updated_at = EXCLUDED.updated_at
+        `)
+      }
       await tx.execute(sql`
         INSERT INTO workspace_resource_scopes (
           workspace_id, resource_type, resource_id, created_at, updated_at
@@ -120,6 +126,7 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
         modelId: input.modelId ?? current.modelId,
         avatarColor: input.avatarColor === undefined ? current.avatarColor : input.avatarColor,
         allowedToolIds: input.allowedToolIds ?? current.allowedToolIds,
+        visibility: input.visibility ?? current.visibility,
       }
       await tx.execute(sql`
         UPDATE workspace_agent_definitions SET
@@ -127,6 +134,7 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
           instructions = ${next.instructions}, harness = ${next.harness}, model_id = ${next.modelId},
           avatar_color = ${next.avatarColor ?? null},
           allowed_tool_ids = ${JSON.stringify(next.allowedToolIds)}::jsonb,
+          visibility = ${next.visibility},
           updated_at = ${new Date(input.now)}
         WHERE id = ${input.agentId} AND workspace_id = ${input.workspaceId} AND archived_at IS NULL
       `)
@@ -194,6 +202,7 @@ const agentColumns = sql.raw(`
   a.name, a.description, a.instructions, a.harness, a.model_id AS "modelId",
   a.avatar_color AS "avatarColor", a.allowed_tool_ids AS "allowedToolIds",
   a.invocation_policy AS "invocationPolicy",
+  a.visibility AS "visibility",
   a.created_by_principal_id AS "createdByPrincipalId", a.created_at AS "createdAt",
   a.updated_at AS "updatedAt", a.archived_at AS "archivedAt",
   COALESCE((SELECT jsonb_agg(tm.team_id ORDER BY tm.team_id)
@@ -220,6 +229,8 @@ function agentFromRow(row: AgentRow): WorkspaceAgentDirectoryItem {
   return {
     ...row,
     allowedToolIds: Array.isArray(row.allowedToolIds) ? row.allowedToolIds : [],
+    // NULL predates the access-mode feature and means workspace-visible.
+    visibility: row.visibility === 'creator' ? 'creator' : 'workspace',
     teamIds: Array.isArray(row.teamIds) ? row.teamIds : [],
     roomCount: Number(row.roomCount),
     createdAt: new Date(row.createdAt).getTime(),

@@ -223,3 +223,48 @@ test('a non-member cannot search the workspace at all', async () => {
     kinds: ['file'],
   }))
 })
+
+test('creator-only agents are hidden from search for other members', async () => {
+  const agents = [
+    {
+      id: 'agent_private',
+      name: 'Secret scout',
+      description: 'Finds secret evidence',
+      visibility: 'creator',
+      createdByPrincipalId: 'principal_someone_else',
+      updatedAt: 7,
+    },
+    {
+      id: 'agent_shared',
+      name: 'Shared scout',
+      description: 'Finds shared evidence',
+      visibility: 'workspace',
+      createdByPrincipalId: 'principal_someone_else',
+      updatedAt: 8,
+    },
+  ]
+  const service = new WorkspaceSearchService({
+    agents: { async list() { return agents } },
+    collaboration: { async searchWorkspaceChats() { return [] } },
+    conversations: {},
+    sharing: { async listAccessibleResources() { return [] } },
+    workspaces: {
+      async resolveActiveWorkspace() {
+        return {
+          workspace: { id: WORKSPACE },
+          principal: { id: 'principal_actor' },
+          membership: { role: 'member' },
+        }
+      },
+    },
+    sources: { files: async () => [], projects: async () => [], knowledgeBases: async () => [], automations: async () => [] },
+    loaders: { file: async () => null, project: async () => null, knowledge_base: async () => null, automation: async () => null },
+  } as never)
+  const response = await service.search({
+    actorUserId: ACTOR,
+    workspaceId: WORKSPACE,
+    query: 'scout',
+    kinds: ['agent'],
+  })
+  assert.deepEqual(response.results.map((result) => result.id), ['agent_shared'])
+})

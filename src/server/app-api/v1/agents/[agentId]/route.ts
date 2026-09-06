@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import {
   WORKSPACE_AGENT_HARNESSES,
+  WORKSPACE_AGENT_VISIBILITIES,
   type WorkspaceAgentHarness,
   type WorkspaceAgentUpdateInput,
+  type WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -50,6 +52,10 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
     if (!isHarness(body.harness)) invalid('harness')
     input.harness = body.harness
   }
+  if (body.visibility !== undefined) {
+    if (!isVisibility(body.visibility)) invalid('visibility')
+    input.visibility = body.visibility
+  }
   return input
 }
 
@@ -76,6 +82,11 @@ function assignStrings<Key extends 'allowedToolIds' | 'teamIds'>(
 function isHarness(value: unknown): value is WorkspaceAgentHarness {
   return typeof value === 'string'
     && (WORKSPACE_AGENT_HARNESSES as readonly string[]).includes(value)
+}
+
+function isVisibility(value: unknown): value is WorkspaceAgentVisibility {
+  return typeof value === 'string'
+    && (WORKSPACE_AGENT_VISIBILITIES as readonly string[]).includes(value)
 }
 
 function invalid(field: string): never {
