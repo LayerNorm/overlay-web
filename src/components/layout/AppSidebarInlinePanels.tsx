@@ -56,6 +56,12 @@ import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   type AgentDirectoryChangedEventDetail,
 } from '@/shared/workspace/sidebar-events'
+import {
+  getAgentOpenedAt,
+  getLastOpenedAgentId,
+  rememberAgentOpened,
+  sortAgentsByRecency,
+} from '@/shared/agents/last-agent-by-workspace'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 
 type Project = ProjectSummary
@@ -419,6 +425,10 @@ export function ProjectsInlinePanel({
 const resourceRowClass =
   'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
+// One initial auto-open plus two silent retries before surfacing the error
+// row; beyond that only an explicit retry attempts again.
+const MAX_AGENT_AUTO_OPEN_ATTEMPTS = 3
+
 export function AgentsInlinePanel({
   workspaceId,
   baseHref = '/app/agents',
@@ -434,9 +444,16 @@ export function AgentsInlinePanel({
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
-  const autoOpenAttemptRef = useRef<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
+  const autoOpenAttemptRef = useRef<{ agentId: string; attempts: number } | null>(null)
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
+
+  // Most recently used first; agents with no recorded use stay alphabetical.
+  const sortedAgents = useMemo(
+    () => sortAgentsByRecency(agents, getAgentOpenedAt(workspaceId)),
+    [agents, workspaceId],
+  )
 
   const loadAgents = useCallback(async (showLoading = true) => {
     if (!workspaceId) {
@@ -459,6 +476,7 @@ export function AgentsInlinePanel({
 
   useEffect(() => {
     autoOpenAttemptRef.current = null
+    setOpenError(null)
   }, [workspaceId])
 
   useEffect(() => {
@@ -481,6 +499,8 @@ export function AgentsInlinePanel({
       const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
         principalIds: [agent.principalId],
       })
+      rememberAgentOpened(workspaceId, agent.id)
+      setOpenError(null)
       dispatchChatCreated({
         chat: {
           _id: directMessage.conversationId,
@@ -503,16 +523,61 @@ export function AgentsInlinePanel({
     }
   }, [baseHref, onNavigate, openingAgentId, router, workspaceId])
 
+  // Remember agents opened through direct links or refreshes so recency
+  // ordering and the default selection cover every entry path.
+  useEffect(() => {
+    if (activeAgentId && sortedAgents.some((agent) => agent.id === activeAgentId)) {
+      rememberAgentOpened(workspaceId, activeAgentId)
+    }
+  }, [activeAgentId, sortedAgents, workspaceId])
+
+  const openAgentById = useCallback(async (
+    agent: WorkspaceAgentDirectoryItem,
+    navigation: 'push' | 'replace' = 'push',
+  ) => {
+    try {
+      await openAgent(agent, navigation)
+    } catch {
+      setOpenError(`Could not open ${agent.name}. Check your connection and retry.`)
+    }
+  }, [openAgent])
+
   useEffect(() => {
     if (loading || activeConversationId || openingAgentId) return
     if (!pathname.endsWith('/agents')) return
-    const targetAgent = activeAgentId
-      ? agents.find((agent) => agent.id === activeAgentId)
-      : agents[0]
-    if (!targetAgent || autoOpenAttemptRef.current === targetAgent.id) return
-    autoOpenAttemptRef.current = targetAgent.id
-    void openAgent(targetAgent, 'replace').catch(() => undefined)
-  }, [activeAgentId, activeConversationId, agents, loading, openAgent, openingAgentId, pathname])
+    if (sortedAgents.length === 0) return
+    const lastOpenedId = getLastOpenedAgentId(workspaceId)
+    const targetAgent = (activeAgentId ? sortedAgents.find((agent) => agent.id === activeAgentId) : undefined)
+      ?? (lastOpenedId ? sortedAgents.find((agent) => agent.id === lastOpenedId) : undefined)
+      ?? sortedAgents[0]
+    if (!targetAgent) return
+    const attempt = autoOpenAttemptRef.current
+    if (attempt && attempt.agentId === targetAgent.id && attempt.attempts >= MAX_AGENT_AUTO_OPEN_ATTEMPTS) return
+    autoOpenAttemptRef.current = {
+      agentId: targetAgent.id,
+      attempts: attempt && attempt.agentId === targetAgent.id ? attempt.attempts + 1 : 1,
+    }
+    // Silent retries up to the attempt cap; after that the error row offers
+    // a manual retry, so the main area can never stick on the blank state
+    // without telling the user why.
+    void openAgent(targetAgent, 'replace').catch(() => {
+      const latest = autoOpenAttemptRef.current
+      if (latest && latest.agentId === targetAgent.id && latest.attempts >= MAX_AGENT_AUTO_OPEN_ATTEMPTS) {
+        setOpenError(`Could not open ${targetAgent.name}. Check your connection and retry.`)
+      }
+    })
+  }, [activeAgentId, activeConversationId, sortedAgents, loading, openAgent, openingAgentId, pathname, workspaceId])
+
+  const retryOpen = useCallback(() => {
+    const lastOpenedId = getLastOpenedAgentId(workspaceId)
+    const targetAgent = (activeAgentId ? sortedAgents.find((agent) => agent.id === activeAgentId) : undefined)
+      ?? (lastOpenedId ? sortedAgents.find((agent) => agent.id === lastOpenedId) : undefined)
+      ?? sortedAgents[0]
+    if (!targetAgent) return
+    autoOpenAttemptRef.current = null
+    setOpenError(null)
+    void openAgentById(targetAgent, 'replace')
+  }, [activeAgentId, openAgentById, sortedAgents, workspaceId])
 
   return (
     <SidebarResourceList>
@@ -520,14 +585,14 @@ export function AgentsInlinePanel({
         <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
           <Loader2 size={13} className="animate-spin" /> Loading agents...
         </div>
-      ) : agents.length ? (
-        agents.map((agent) => (
+      ) : sortedAgents.length ? (
+        sortedAgents.map((agent) => (
           <button
             key={agent.id}
             type="button"
             disabled={Boolean(openingAgentId)}
             className={`${resourceRowClass} ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-            onClick={() => void openAgent(agent).catch(() => undefined)}
+            onClick={() => void openAgentById(agent)}
           >
             {openingAgentId === agent.id
               ? <Loader2 size={13} className="shrink-0 animate-spin" />
@@ -538,6 +603,18 @@ export function AgentsInlinePanel({
       ) : (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No agents yet</p>
       )}
+      {openError ? (
+        <div className="px-2.5 py-2">
+          <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
+          <button
+            type="button"
+            onClick={retryOpen}
+            className="mt-1.5 rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
     </SidebarResourceList>
   )
 }

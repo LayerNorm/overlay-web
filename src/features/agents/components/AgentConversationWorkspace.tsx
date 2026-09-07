@@ -9,6 +9,7 @@ import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
+import { clearAgentOpened } from '@/shared/agents/last-agent-by-workspace'
 import { AgentEditorPage } from './AgentEditorPage'
 import { buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 
@@ -54,8 +55,9 @@ export function AgentConversationWorkspace() {
 
   const handleArchived = useCallback(() => {
     setEditorMode(null)
+    if (agentId) clearAgentOpened(activeWorkspaceId, agentId)
     router.replace(buildAgentsDirectoryHref(activeWorkspaceId))
-  }, [activeWorkspaceId, router])
+  }, [activeWorkspaceId, agentId, router])
 
   const editor = editorMode ? (
     <AgentEditorPage
