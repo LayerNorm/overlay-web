@@ -21,6 +21,7 @@ import { registerSecurityIpcHandlers } from './security-ipc'
 import { registerTerminalIPC } from './terminal-ipc'
 import { registerRuntimeIPC } from './runtime-ipc'
 import { registerAppApiIPC } from './app-api-ipc'
+import { registerEmbeddedHostIPC } from './embedded-host-ipc'
 import { registerChatMediaIPC } from './chat-media-ipc'
 import { registerKnowledgeMigrationIPC } from './knowledge-migration-ipc'
 import { registerKnowledgeFilesIPC } from './knowledge-files-ipc'
@@ -39,6 +40,7 @@ export {
   registerImportIPC,
   registerAgentIPC,
   registerComposioIPC,
+  registerEmbeddedHostIPC,
   registerNotebookAgentIPC,
   registerKnowledgeIpcHandlers,
   registerDocumentIpcHandlers,
@@ -88,6 +90,7 @@ export function registerAllIPC(): void {
     )
   }
   registerAppApiIPC()
+  registerEmbeddedHostIPC()
   registerChatMediaIPC()
   registerKnowledgeMigrationIPC()
   registerKnowledgeFilesIPC()

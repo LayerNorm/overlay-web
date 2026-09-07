@@ -1007,6 +1007,27 @@ interface Bridge {
       error?: string
     }>
   }
+  // ── Embedded Agent Host ─────────────────────────────────────────
+  embeddedHost: {
+    start(input: { code: string; adapterId: string }): Promise<EmbeddedHostStatus>
+    stop(): Promise<EmbeddedHostStatus>
+    status(): Promise<EmbeddedHostStatus>
+    onState(cb: (status: EmbeddedHostStatus) => void): () => void
+  }
+}
+
+export interface EmbeddedHostStatus {
+  state: 'idle' | 'starting' | 'running' | 'stopping' | 'error'
+  adapterId: string | null
+  pid: number | null
+  startedAt: number | null
+  lastExit: {
+    code: number | null
+    signal: string | null
+    at: number
+    error?: string
+  } | null
+  logTail: string[]
 }
 
 interface BrowserChatSession {

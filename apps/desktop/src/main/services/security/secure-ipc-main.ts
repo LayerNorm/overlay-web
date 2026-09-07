@@ -46,6 +46,7 @@ const AUTH_REQUIRED_PREFIXES = [
   'chat-media:',
   'composio:',
   'document:',
+  'embedded-host:',
   'import:',
   'knowledge',
   'memory:',

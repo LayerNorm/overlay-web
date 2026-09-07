@@ -22,6 +22,16 @@ interface WorkspaceSettingsProps {
   theme: Theme
 }
 
+/** Mirrors the main-process EmbeddedHostStatus over the preload bridge. */
+interface EmbeddedHostStatus {
+  state: 'idle' | 'starting' | 'running' | 'stopping' | 'error'
+  adapterId: string | null
+  pid: number | null
+  startedAt: number | null
+  lastExit: { code: number | null; signal: string | null; at: number; error?: string } | null
+  logTail: string[]
+}
+
 function kindLabel(workspace: DesktopWorkspaceSummary): string {
   if (workspace.kind === 'personal') return 'Personal'
   return workspace.role
@@ -496,6 +506,7 @@ function EnvironmentsSection({ theme }: { theme: Theme }): ReactElement<any> {
   const [editingRootsId, setEditingRootsId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [hostStatus, setHostStatus] = useState<EmbeddedHostStatus | null>(null)
 
   // Detect the newly enrolled pending environment once the host phones home.
   useEffect(() => {
@@ -521,21 +532,65 @@ function EnvironmentsSection({ theme }: { theme: Theme }): ReactElement<any> {
     (environment) => environment.id === setupEnvironmentId
   )
 
-  const beginConnection = async (): Promise<void> => {
+  const beginConnection = async (runEmbedded: boolean): Promise<void> => {
     setBusy('connect')
     setActionError(null)
     setCommand('')
     setSetupEnvironmentId(null)
+    setHostStatus(null)
     setBaselineIds(environments.map((environment) => environment.id))
     try {
       const session = await createEnrollment(harness)
       setCommand(session.command)
+      if (runEmbedded) {
+        const embedded = window.bridge?.embeddedHost
+        if (!embedded) throw new Error('Embedded host bridge is unavailable.')
+        setBusy('embedded')
+        const started = await embedded.start({ code: session.code, adapterId: harness })
+        setHostStatus(started)
+      }
     } catch (value) {
-      setActionError(value instanceof Error ? value.message : 'Could not create the connection.')
+      setActionError(
+        value instanceof Error ? value.message : 'Could not create the connection.'
+      )
     } finally {
       setBusy(null)
     }
   }
+
+  const stopEmbeddedHost = async (): Promise<void> => {
+    const embedded = window.bridge?.embeddedHost
+    if (!embedded) return
+    setBusy('embedded')
+    try {
+      setHostStatus(await embedded.stop())
+    } catch (value) {
+      setActionError(value instanceof Error ? value.message : 'Could not stop the host.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Live host state while the embedded connector runs; the environments list
+  // (3s poll while pending) remains the enrollment readiness gate.
+  useEffect(() => {
+    if (hostStatus?.state !== 'starting' && hostStatus?.state !== 'running') return
+    const embedded = window.bridge?.embeddedHost
+    if (!embedded) return
+    const unsubscribe = embedded.onState?.((status: unknown) =>
+      setHostStatus(status as EmbeddedHostStatus)
+    )
+    const timer = window.setInterval(() => {
+      void embedded
+        .status()
+        .then(setHostStatus)
+        .catch(() => undefined)
+    }, 2_000)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe?.()
+    }
+  }, [hostStatus?.state])
 
   const copyCommand = async (): Promise<void> => {
     if (!command) return
@@ -650,31 +705,116 @@ function EnvironmentsSection({ theme }: { theme: Theme }): ReactElement<any> {
           ))}
         </div>
         {!command ? (
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void beginConnection()}
-            style={{
-              marginTop: '12px',
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: 'none',
-              background: theme.text,
-              color: theme.background,
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: busy !== null ? 'default' : 'pointer',
-              opacity: busy !== null ? 0.6 : 1
-            }}
-          >
-            {busy === 'connect' ? 'Creating…' : 'Create connection'}
-          </button>
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void beginConnection(false)}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: `1px solid ${theme.border}`,
+                background: 'transparent',
+                color: theme.text,
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: busy !== null ? 'default' : 'pointer',
+                opacity: busy !== null ? 0.6 : 1
+              }}
+            >
+              {busy === 'connect' ? 'Creating…' : 'Create connection'}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void beginConnection(true)}
+              title="Create the connection and run the connector right here — no terminal needed"
+              style={{
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                background: theme.text,
+                color: theme.background,
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: busy !== null ? 'default' : 'pointer',
+                opacity: busy !== null ? 0.6 : 1
+              }}
+            >
+              {busy === 'embedded' ? 'Starting…' : 'Run on this Mac'}
+            </button>
+          </div>
         ) : (
           <div style={{ marginTop: '12px' }}>
             <p style={{ margin: 0, fontSize: '12px', color: theme.textSecondary, lineHeight: '18px' }}>
-              Run this on your Mac. It connects outbound and keeps the connector alive
-              with <code>—run</code>. Waiting for the new environment to phone home…
+              {hostStatus && hostStatus.state !== 'idle'
+                ? 'The connector is running on this Mac. Approve its roots below once it phones home.'
+                : 'Run this on your Mac. It connects outbound and keeps the connector alive. Waiting for the new environment to phone home…'}
             </p>
+            {hostStatus && hostStatus.state !== 'idle' && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  background: theme.background,
+                  border: `1px solid ${theme.border}`
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px'
+                  }}
+                >
+                  <span style={{ fontSize: '12px', color: theme.text }}>
+                    {hostStatus.state === 'error'
+                      ? `Connector failed${hostStatus.lastExit?.error ? `: ${hostStatus.lastExit.error}` : '.'}`
+                      : hostStatus.state === 'stopping'
+                        ? 'Stopping connector…'
+                        : `Connector ${hostStatus.state}${hostStatus.pid ? ` · pid ${hostStatus.pid}` : ''}`}
+                  </span>
+                  {(hostStatus.state === 'starting' || hostStatus.state === 'running') && (
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void stopEmbeddedHost()}
+                      style={{
+                        flexShrink: 0,
+                        background: 'transparent',
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: '6px',
+                        color: theme.text,
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Stop
+                    </button>
+                  )}
+                </div>
+                {hostStatus.logTail.length > 0 && (
+                  <pre
+                    style={{
+                      margin: '8px 0 0',
+                      maxHeight: '120px',
+                      overflowY: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      fontFamily: 'ui-monospace, monospace',
+                      fontSize: '11px',
+                      lineHeight: '16px',
+                      color: theme.textSecondary
+                    }}
+                  >
+                    {hostStatus.logTail.slice(-8).join('\n')}
+                  </pre>
+                )}
+              </div>
+            )}
             <div
               style={{
                 marginTop: '8px',

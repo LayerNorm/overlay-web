@@ -74,6 +74,7 @@ import type { PanelToggleMode } from './services/hotkey-manager'
 import { registerBrowserIPC } from './services/browser-manager'
 import { whisperKitService } from './services/whisperkit-service'
 import { parakeetService } from './services/parakeet-service'
+import { embeddedHostService } from './services/embedded-host-service'
 import { subscriptionService } from './services/subscription-service'
 import { keyCacheService } from './services/key-cache-service'
 import { resetProviders as resetGatewayProvider } from './services/ai/gateway-provider'
@@ -269,6 +270,7 @@ function beginShutdown(): void {
   hotkeyManager.unregisterAll()
   parakeetService.stopServer()
   whisperKitService.stopServer()
+  embeddedHostService.stopImmediately()
 
   // Do not start an unbounded network flush while Electron is already exiting.
   // Hosted usage is authoritative; local pending events are advisory.

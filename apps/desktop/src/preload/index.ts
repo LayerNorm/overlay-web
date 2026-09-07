@@ -1924,6 +1924,26 @@ const bridge = {
     readFile(filePath: string, maxBytes?: number) {
       return ipcRenderer.invoke('workspace:read-file', { path: filePath, maxBytes })
     }
+  },
+
+  // ── Embedded Agent Host ──────────────────────────────────────────────────────
+  // Runs the pinned Agent Host on this Mac so it can enroll as a local
+  // environment. Every start is user-initiated; the child dies with the app.
+  embeddedHost: {
+    start(input: { code: string; adapterId: string }) {
+      return ipcRenderer.invoke('embedded-host:start', input)
+    },
+    stop() {
+      return ipcRenderer.invoke('embedded-host:stop')
+    },
+    status() {
+      return ipcRenderer.invoke('embedded-host:status')
+    },
+    onState(cb: (status: unknown) => void) {
+      const handler = (_event: any, status: unknown) => cb(status)
+      ipcRenderer.on('embedded-host:state', handler)
+      return () => ipcRenderer.removeListener('embedded-host:state', handler)
+    }
   }
 }
 
