@@ -181,8 +181,27 @@ function arrayField(value: unknown, field: string): unknown[] {
   return Array.isArray(fieldValue) ? fieldValue : []
 }
 
+/**
+ * The connected-agent control plane answers 404 (`feature_disabled`) for
+ * workspaces outside the rollout — persistent, not transient. List endpoints
+ * degrade to empty there (mirroring web hiding BYO UI for ineligible
+ * workspaces) instead of erroring and retry-storming the shared rate bucket.
+ * Single-resource reads (getAgent) and all mutations still throw.
+ */
+function isNotFoundError(error: unknown): boolean {
+  if ((error as { status?: unknown } | null)?.status === 404) return true
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /\(404\)|feature_disabled|not found/i.test(message)
+}
+
 export async function listEnvironments(): Promise<DesktopAgentEnvironment[]> {
-  const raw = await desktopAppJson<unknown>('/api/v1/agent-environments')
+  let raw: unknown
+  try {
+    raw = await desktopAppJson<unknown>('/api/v1/agent-environments')
+  } catch (error) {
+    if (isNotFoundError(error)) return []
+    throw error
+  }
   return arrayField(raw, 'environments')
     .map(normalizeEnvironment)
     .filter((environment): environment is DesktopAgentEnvironment => environment !== null)
@@ -190,14 +209,26 @@ export async function listEnvironments(): Promise<DesktopAgentEnvironment[]> {
 
 export async function listBindings(agentId?: string): Promise<DesktopAgentBinding[]> {
   const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''
-  const raw = await desktopAppJson<unknown>(`/api/v1/agent-bindings${query}`)
+  let raw: unknown
+  try {
+    raw = await desktopAppJson<unknown>(`/api/v1/agent-bindings${query}`)
+  } catch (error) {
+    if (isNotFoundError(error)) return []
+    throw error
+  }
   return arrayField(raw, 'bindings')
     .map(normalizeBinding)
     .filter((binding): binding is DesktopAgentBinding => binding !== null)
 }
 
 export async function fetchAgentDirectory(): Promise<DesktopAgentDirectory> {
-  const raw = await desktopAppJson<unknown>('/api/v1/agents')
+  let raw: unknown
+  try {
+    raw = await desktopAppJson<unknown>('/api/v1/agents')
+  } catch (error) {
+    if (isNotFoundError(error)) return { agents: [], canCreate: false }
+    throw error
+  }
   const items = arrayField(raw, 'agents')
   const directory = items.length > 0 ? items : arrayField(raw, 'data')
   return {

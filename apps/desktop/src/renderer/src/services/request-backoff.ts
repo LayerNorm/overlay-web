@@ -45,6 +45,29 @@ export function retryAfterMsFromError(error: unknown, fallbackMs: number): numbe
   return Math.min(Math.max(0, seconds) * 1000, MAX_RETRY_AFTER_MS)
 }
 
+const TRANSIENT_MESSAGE_PATTERN =
+  /too many requests|try again in|rate.?limit|network|fetch|offline|timeout|timed out|temporar|transient|overloaded|ipc_concurrency_limit|concurrency|econn|socket hang up|\b(429|500|502|503|504)\b/i
+const PERMANENT_MESSAGE_PATTERN =
+  /\b(400|401|403|404)\b|not found|forbidden|unauthori[sz]ed|bad request|validation|invalid|feature_disabled|not supported|unsupported/i
+
+/**
+ * Whether an automatic retry could ever succeed. 4xx (except 429) answers —
+ * unknown routes, gated features, revoked access — are persistent: retrying
+ * them on a timer self-DDoSes the shared rate-limit bucket. Callers still
+ * surface the error with a manual Retry button.
+ */
+export function isRetryableError(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status
+  if (typeof status === 'number') {
+    return status === 0 || status === 429 || status >= 500
+  }
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  if (PERMANENT_MESSAGE_PATTERN.test(message) && !TRANSIENT_MESSAGE_PATTERN.test(message)) {
+    return false
+  }
+  return true
+}
+
 function formatRetryDelay(totalSeconds: number): string {
   if (totalSeconds < 60) {
     const seconds = Math.max(1, totalSeconds)

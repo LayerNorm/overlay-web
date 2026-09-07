@@ -17,7 +17,7 @@ import {
 } from '../utils/chatStorage'
 import type { Chat, ChatMeta, Message } from '../components/chat'
 import { getAuthReadyState } from '../services/auth-service'
-import { retryAfterMsFromError } from '../services/request-backoff'
+import { isRetryableError, retryAfterMsFromError } from '../services/request-backoff'
 import { isMainAppWindow } from '../services/window-type'
 import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
 
@@ -99,6 +99,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
 
   useEffect(() => {
     if (!error) return
+    // Persistent failures (unknown routes, revoked access) park with a manual
+    // Retry instead of retry-storming the shared rate-limit bucket.
+    if (!isRetryableError(new Error(error))) return
     const retry = window.setTimeout(() => {
       void refreshConversations({ force: true }).catch((err) => {
         console.error('[ChatContext] Failed to retry conversations:', err)

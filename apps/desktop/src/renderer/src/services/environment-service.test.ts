@@ -176,6 +176,23 @@ describe('environment-service health', () => {
     ])
   })
 
+  it('treats list 404s (gated feature) as empty instead of throwing', async () => {
+    const service = await import('./environment-service')
+    // Real 404s arrive as error responses (not throws): the main process
+    // returns { ok, status, bodyText } and the client raises DesktopApiError.
+    bridgeState.request.mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      bodyText: JSON.stringify({ error: 'Connected agent control plane is disabled', code: 'feature_disabled' })
+    })
+    await expect(service.listEnvironments()).resolves.toEqual([])
+    await expect(service.listBindings()).resolves.toEqual([])
+    await expect(service.fetchAgentDirectory()).resolves.toEqual({ agents: [], canCreate: false })
+    // Single-resource reads still throw so detail pages show not-found.
+    await expect(service.getAgent('missing')).rejects.toThrow()
+  })
+
   it('validates roots as absolute paths', async () => {
     const { validateRoots } = await import('./environment-service')
     expect(validateRoots('').error).toMatch('at least one')

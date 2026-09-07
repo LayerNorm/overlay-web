@@ -10,7 +10,11 @@ import {
   type ReactNode
 } from 'react'
 import { getAuthReadyState } from '../services/auth-service'
-import { friendlyErrorMessage, retryAfterMsFromError } from '../services/request-backoff'
+import {
+  friendlyErrorMessage,
+  isRetryableError,
+  retryAfterMsFromError
+} from '../services/request-backoff'
 import {
   fetchAgentDirectory,
   listBindings,
@@ -85,7 +89,9 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
       statusRef.current = 'error'
       setStatus('error')
       // Honor the server's retry hint (429s) so a throttled burst backs off
-      // instead of retry-storming the rate limiter.
+      // instead of retry-storming the rate limiter. Persistent failures
+      // (gated features) park with a manual Retry instead.
+      if (!isRetryableError(refreshError)) return
       if (retryTimer.current) clearTimeout(retryTimer.current)
       retryTimer.current = setTimeout(() => {
         retryTimer.current = null

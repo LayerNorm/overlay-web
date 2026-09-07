@@ -10,7 +10,11 @@ import {
   type ReactNode
 } from 'react'
 import { getAuthReadyState } from '../services/auth-service'
-import { friendlyErrorMessage, retryAfterMsFromError } from '../services/request-backoff'
+import {
+  friendlyErrorMessage,
+  isRetryableError,
+  retryAfterMsFromError
+} from '../services/request-backoff'
 import { isMainAppWindow } from '../services/window-type'
 import {
   activateWorkspace,
@@ -92,7 +96,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
       if (statusRef.current === 'ready') return
       setStatusTracked('error')
       // Honor the server's retry hint (429s) so a throttled burst backs off
-      // instead of retry-storming the rate limiter.
+      // instead of retry-storming the rate limiter. Persistent failures
+      // (404s, gated features) park with a manual Retry instead.
+      if (!isRetryableError(refreshError)) return
       clearRetry()
       retryTimer.current = setTimeout(() => {
         retryTimer.current = null

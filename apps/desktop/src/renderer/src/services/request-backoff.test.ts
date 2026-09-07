@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   friendlyErrorMessage,
+  isRetryableError,
   retryAfterMsFromError,
   retryAfterSecondsFromError
 } from './request-backoff'
 import { DesktopApiError } from './app-api-client'
-
 describe('request-backoff', () => {
   it('reads the server hint from DesktopApiError', () => {
     const error = new DesktopApiError('Too many requests', 'server', 429, 113)
@@ -38,5 +38,25 @@ describe('request-backoff', () => {
       120_000
     )
     expect(friendlyErrorMessage(new Error('boom'))).toBe('boom')
+  })
+
+  it('retries transient failures but parks persistent ones', () => {
+    expect(isRetryableError(new DesktopApiError('Too many requests', 'server', 429, 60))).toBe(true)
+    expect(isRetryableError(new DesktopApiError('Server error', 'server', 500))).toBe(true)
+    expect(isRetryableError(new DesktopApiError('Network request failed', 'network'))).toBe(true)
+    expect(
+      isRetryableError(new Error('Request failed (503)'))
+    ).toBe(true)
+    expect(
+      isRetryableError(
+        new Error('Too many requests. This account has reached its temporary request limit. Try again in 2 minutes.')
+      )
+    ).toBe(true)
+    expect(
+      isRetryableError(new DesktopApiError('Connected agent control plane is disabled', 'server', 404))
+    ).toBe(false)
+    expect(isRetryableError(new DesktopApiError('Not found', 'not_found', 404))).toBe(false)
+    expect(isRetryableError(new DesktopApiError('Not authenticated', 'unauthenticated', 401))).toBe(false)
+    expect(isRetryableError(new Error('ipc_concurrency_limit'))).toBe(true)
   })
 })

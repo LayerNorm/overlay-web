@@ -165,6 +165,8 @@ export function ProjectsListPage({
 }: ProjectsListPageProps): ReactElement<any> {
   const [projects, setProjects] = useState<Project[]>(() => loadProjects())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [cloudLoaded, setCloudLoaded] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -188,9 +190,14 @@ export function ProjectsListPage({
           updatedAt: project.updatedAt
         }))
       )
+      setLoadError(null)
+      setCloudLoaded(true)
     } catch (error) {
-      console.warn('[ProjectsListPage] Failed to load cloud projects; using local cache:', error)
-      setProjects(loadProjects())
+      // Never substitute device-local folders for the workspace's projects:
+      // they are not workspace-scoped and would show the wrong data. Keep the
+      // last-known cloud list (if any) and offer an explicit retry.
+      console.warn('[ProjectsListPage] Failed to load cloud projects:', error)
+      setLoadError(error instanceof Error ? error.message : String(error))
     }
   }, [])
 
@@ -270,7 +277,87 @@ export function ProjectsListPage({
           padding: '0 8px 8px',
         }}
       >
-        {rootProjects.length === 0 ? (
+        {loadError && !cloudLoaded ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              gap: '10px',
+              color: theme.textSecondary,
+              textAlign: 'center',
+              padding: '0 24px',
+            }}
+          >
+            <FolderOpen
+              size={28}
+              strokeWidth={1}
+              style={{ opacity: 0.35, color: isDark ? '#fafafa' : '#0a0a0a' }}
+            />
+            <span style={{ fontSize: '12px', opacity: 0.85 }}>Could not load projects</span>
+            <span
+              style={{
+                fontSize: '10px',
+                lineHeight: '14px',
+                opacity: 0.55,
+                maxWidth: '240px',
+                wordBreak: 'break-word',
+              }}
+            >
+              {loadError}
+            </span>
+            <button
+              onClick={() => void refresh()}
+              style={{
+                padding: '5px 10px',
+                borderRadius: '6px',
+                border: `1px solid ${theme.border}`,
+                background: 'transparent',
+                color: theme.text,
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : loadError && cloudLoaded ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              margin: '0 0 4px',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              background: 'rgba(239,68,68,0.08)',
+              color: '#ef4444',
+              fontSize: '11px',
+            }}
+          >
+            <span>Could not refresh projects</span>
+            <button
+              onClick={() => void refresh()}
+              style={{
+                flexShrink: 0,
+                background: 'transparent',
+                border: '1px solid rgba(239,68,68,0.4)',
+                borderRadius: '6px',
+                color: '#ef4444',
+                fontSize: '11px',
+                padding: '3px 8px',
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+        {!(loadError && !cloudLoaded) && (rootProjects.length === 0 ? (
           <div
             style={{
               display: 'flex',
@@ -305,7 +392,7 @@ export function ProjectsListPage({
               theme={theme}
             />
           ))
-        )}
+        ))}
       </div>
     </div>
   )
