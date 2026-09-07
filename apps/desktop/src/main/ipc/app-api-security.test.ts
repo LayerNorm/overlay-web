@@ -34,7 +34,35 @@ describe('desktop app API security', () => {
     }
   })
 
-  it('allows the workspace list and activation routes', () => {    expect(normalizeAppApiInput({ path: '/api/v1/workspaces', method: 'GET' }).path).toBe(
+  it('allows enrollment, approval, root updates, and revocation with matching methods', () => {
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agent-environments/enrollment-sessions', method: 'POST' })
+        .path
+    ).toBe('/api/v1/agent-environments/enrollment-sessions')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agent-environments/env_123/approve', method: 'POST' })
+        .path
+    ).toBe('/api/v1/agent-environments/env_123/approve')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agent-environments/env_123/roots', method: 'PATCH' })
+        .path
+    ).toBe('/api/v1/agent-environments/env_123/roots')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agent-environments/env_123/revoke', method: 'POST' })
+        .path
+    ).toBe('/api/v1/agent-environments/env_123/revoke')
+    for (const input of [
+      { path: '/api/v1/agent-environments/env_123/approve', method: 'GET' },
+      { path: '/api/v1/agent-environments/env_123/roots', method: 'POST' },
+      { path: '/api/v1/agent-environments/env_123/credentials', method: 'POST' },
+      { path: '/api/v1/agent-environments/../admin', method: 'POST' }
+    ]) {
+      expect(() => normalizeAppApiInput(input)).toThrow('Unsupported app API route')
+    }
+  })
+
+  it('allows the workspace list and activation routes', () => {
+    expect(normalizeAppApiInput({ path: '/api/v1/workspaces', method: 'GET' }).path).toBe(
       '/api/v1/workspaces'
     )
     expect(

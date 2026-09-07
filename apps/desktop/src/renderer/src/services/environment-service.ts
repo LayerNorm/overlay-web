@@ -180,3 +180,84 @@ export async function listAgents(): Promise<DesktopAgentDirectoryItem[]> {
     .map(normalizeAgentItem)
     .filter((agent): agent is DesktopAgentDirectoryItem => agent !== null)
 }
+
+export type BuiltInHarnessId = 'codex' | 'claude-code' | 'hermes'
+
+export const BUILT_IN_HARNESSES: ReadonlyArray<{ id: BuiltInHarnessId; label: string }> = [
+  { id: 'codex', label: 'Codex' },
+  { id: 'claude-code', label: 'Claude Code' },
+  { id: 'hermes', label: 'Hermes' }
+]
+
+export interface EnrollmentSession {
+  enrollmentSessionId: string
+  code: string
+  command: string
+  expiresAt: number
+}
+
+export function parseRoots(value: string): string[] {
+  return value
+    .split(/[,\n]/)
+    .map((root) => root.trim())
+    .filter(Boolean)
+}
+
+/** Absolute roots only — the server rejects anything else, so fail fast locally. */
+export function validateRoots(value: string): { roots: string[]; error: string | null } {
+  const roots = parseRoots(value)
+  if (roots.length === 0) return { roots, error: 'Enter at least one absolute project root.' }
+  const relative = roots.find((root) => !root.startsWith('/'))
+  if (relative) return { roots, error: `Roots must be absolute paths: ${relative}` }
+  return { roots, error: null }
+}
+
+export async function createEnrollment(adapterId: BuiltInHarnessId): Promise<EnrollmentSession> {
+  const raw = await desktopAppJson<unknown>('/api/v1/agent-environments/enrollment-sessions', {
+    method: 'POST',
+    body: JSON.stringify({ adapterId })
+  })
+  if (!isRecord(raw)) throw new Error('Could not create the connection command.')
+  const command = asString(raw.command)
+  const code = asString(raw.code)
+  if (!command || !code) throw new Error('Could not create the connection command.')
+  return {
+    enrollmentSessionId: asString(raw.enrollmentSessionId) ?? '',
+    code,
+    command,
+    expiresAt: asNumber(raw.expiresAt) ?? 0
+  }
+}
+
+export async function approveEnvironment(
+  environmentId: string,
+  roots: string[]
+): Promise<void> {
+  await desktopAppJson<unknown>(
+    `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ filesystemGrant: { mode: 'selected_roots', roots } })
+    }
+  )
+}
+
+export async function updateEnvironmentRoots(
+  environmentId: string,
+  roots: string[]
+): Promise<void> {
+  await desktopAppJson<unknown>(
+    `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/roots`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ filesystemGrant: { mode: 'selected_roots', roots } })
+    }
+  )
+}
+
+export async function revokeEnvironment(environmentId: string): Promise<void> {
+  await desktopAppJson<unknown>(
+    `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/revoke`,
+    { method: 'POST' }
+  )
+}

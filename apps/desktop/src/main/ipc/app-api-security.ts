@@ -31,10 +31,27 @@ const APP_API_ROUTE_METHODS = new Map<string, ReadonlySet<string>>([
   ['/api/v1/workspaces', new Set(['GET', 'POST'])],
   ['/api/v1/workspaces/active', new Set(['POST'])],
   ['/api/v1/agent-environments', new Set(['GET'])],
+  ['/api/v1/agent-environments/enrollment-sessions', new Set(['POST'])],
   ['/api/v1/agent-bindings', new Set(['GET'])],
   ['/api/v1/agents', new Set(['GET'])],
   ['/api/subscription/settings', new Set(['GET', 'PATCH'])]
 ])
+
+const ENVIRONMENT_SUBRESOURCE_METHODS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['approve', new Set(['POST'])],
+  ['roots', new Set(['PATCH'])],
+  ['revoke', new Set(['POST'])]
+])
+
+const ENVIRONMENT_SUBRESOURCE_PATTERN =
+  /^\/api\/v1\/agent-environments\/[A-Za-z0-9_-]{1,128}\/(approve|roots|revoke)$/
+
+function environmentSubresourceMethods(pathname: string): ReadonlySet<string> | undefined {
+  const match = ENVIRONMENT_SUBRESOURCE_PATTERN.exec(pathname)
+  if (!match?.[1]) return undefined
+  return ENVIRONMENT_SUBRESOURCE_METHODS.get(match[1])
+}
+
 const STREAM_APP_API_ROUTES = new Set([
   'POST /api/v1/conversations/act',
   'POST /api/v1/generate-video'
@@ -77,7 +94,8 @@ export function normalizeAppApiInput(
     APP_API_ROUTE_METHODS.get(pathname) ??
     (/^\/api\/v1\/(?:files|outputs)\/[A-Za-z0-9_-]{1,512}\/content$/.test(pathname)
       ? new Set(['GET'])
-      : undefined)
+      : undefined) ??
+    environmentSubresourceMethods(pathname)
   if (!allowedMethods?.has(method)) {
     throw new Error(`Unsupported app API route: ${method} ${pathname}`)
   }
