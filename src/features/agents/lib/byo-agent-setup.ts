@@ -108,7 +108,7 @@ export function generatedAgentSetupPrompt(command: string) {
   return [
     'Connect this computer to Overlay, my AI workspace.',
     '',
-    'Run this command in the background so it keeps running after our session ends (for example with `nohup … &` on macOS or Linux), then check its output for a "Verify this phrase in Overlay: …" line and tell me the phrase so I can approve the connection. Leave the process running — it is the connector Overlay talks to. It is outbound-only and opens no ports.',
+    'Run this command in the background so it keeps running after our session ends (for example with `nohup … &` on macOS or Linux), then check its output for a "Verify this phrase in Overlay: …" line and tell me the phrase so I can approve the connection. Leave the process running — it is the connector Overlay talks to. It is outbound-only and opens no ports. For a permanent connector that survives Terminal restarts and logins, also run the `service install` command it prints (macOS) or enable its systemd unit (Linux); otherwise the connector goes offline when this shell exits.',
     '',
     command,
   ].join('\n')

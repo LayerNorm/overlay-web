@@ -5,6 +5,8 @@ const hostPackage = JSON.parse(await readFile(new URL('../packages/overlay-agent
 const protocolPackage = JSON.parse(await readFile(new URL('../packages/overlay-agent-bridge-protocol/package.json', import.meta.url), 'utf8'))
 const enrollmentCommand = await readFile(new URL('../src/server/agents/agent-enrollment-command.ts', import.meta.url), 'utf8')
 const adapterManifests = await readFile(new URL('../packages/overlay-agent-host/src/adapter-manifests.ts', import.meta.url), 'utf8')
+const hostCli = await readFile(new URL('../packages/overlay-agent-host/src/cli.ts', import.meta.url), 'utf8')
+const environmentSettings = await readFile(new URL('../src/features/settings/components/AgentEnvironmentSettings.tsx', import.meta.url), 'utf8')
 
 assert.equal(hostPackage.name, '@layernorm/overlay-agent-host', 'host must publish under the product-qualified package name')
 assert.equal(protocolPackage.name, '@layernorm/overlay-agent-bridge-protocol', 'protocol must publish under the product-qualified package name')
@@ -22,6 +24,16 @@ assert.match(
   enrollmentCommand,
   new RegExp(`OVERLAY_AGENT_HOST_PACKAGE_VERSION = '${hostPackage.version.replaceAll('.', '\\.')}'`),
   'the application enrollment command must pin the released host version',
+)
+assert.match(
+  hostCli,
+  new RegExp(`PACKAGE_SPEC = '@layernorm/overlay-agent-host@${hostPackage.version.replaceAll('.', '\\.')}'`),
+  'the host CLI restart/service commands must pin the released host version',
+)
+assert.match(
+  environmentSettings,
+  new RegExp(`HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@${hostPackage.version.replaceAll('.', '\\.')}'`),
+  'the environment settings recovery command must pin the released host version',
 )
 assert.match(adapterManifests, /CODEX_ACP_PACKAGE_VERSION = '1\.7\.0'/)
 assert.match(adapterManifests, /CLAUDE_AGENT_ACP_PACKAGE_VERSION = '0\.70\.0'/)
