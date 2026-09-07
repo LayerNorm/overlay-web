@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Offline Bring-Your-Own-Agent environments now explain themselves in Settings → Environments: why the machine went quiet (asleep or connector closed), that Overlay cannot wake it remotely, and — on macOS — a one-click copy of the persistent-service install command so the connector survives Terminal restarts and logins. The enrollment setup prompt now nudges toward the persistent service for the same reason.
 - Workspace agents now have an access mode: **Only me** (`visibility: 'creator'`) or **Everyone in workspace** (`visibility: 'workspace'`, the default). Creator-only agents are hidden from the agents directory, workspace search, and direct reads for everyone but their creator (reported as not found, so their existence does not leak); only the creator can edit them, while workspace managers keep archive access as a safety valve. The agent editor has a matching Access control and directory tiles show an "Only me" badge. Backed by Postgres migration `0073_agent_visibility` (nullable column; existing agents stay workspace-visible) with no Convex migration needed.
 - Creator-only agents are now also gated on every invocation path: DMs with one by anyone but its creator return 404, @-mentions of one by non-creators silently produce no agent run (including in pre-existing DMs after an Everyone → Only me flip), and new creator-only agents no longer auto-join public channels. Flipping Only me → Everyone grants no retroactive channel joins.
 - Agent creation and editing moved from a dialog to dedicated full-page routes (`/app/agents/new` and `/app/agents/:id`) with Identity, Behavior, Access, Connection, and Danger-zone sections, a sticky save bar, and a post-create "Say hello" handoff that opens a DM with the new agent. Directory tiles now attribute each agent to its creator ("by {name}").
@@ -15,6 +16,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- The Agents roster now opens the most recently used agent per workspace and orders the sidebar by recency (unused agents stay alphabetical). A conversation open that fails no longer sticks on the blank state: it retries, then shows an explicit error with a manual Retry.
 - Made Agents the first primary navigation item and default authenticated home. Selecting an agent now opens its conversation directly, while create and edit controls use the shared right-side panel (and its small-screen dialog presentation) instead of the authenticated directory grid.
 - Released the Agent Host and bridge protocol together at `0.3.5`, which forwards agents' advertised ACP slash commands (`available_commands_update`) to the transcript; production DM slash menus and the composer slash button activate once connected hosts are restarted on `0.3.5`.
 - Unified the list-page UI system: added shared `Tile`, `TileGrid`, `TileIcon`, `TileSkeleton`, `CreateTile`, `ListRow`, and `HeaderSearch` primitives to `@overlay/ui` and migrated the Projects, Knowledge, Agents, and Extensions (Connectors, Skills, MCP Servers) list pages plus the Files/Knowledge header onto them, so tiles, list rows, and page headers share one spacing, radius, hover, and dark-mode language.
@@ -31,6 +33,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Pinned the Agent Host CLI restart/service hints, README, and launchd test to the released `0.3.5` line (they still pointed at `0.3.4`), and extended the release-gate script to assert all version pins together so the drift cannot recur.
 - Fixed Workspace → People showing the authenticated provider user ID instead of the person’s profile name; existing member principals are repaired from the current browser session, and newly created workspaces start with the correct owner name.
 - Allowed `data-remote-agent-commands` parts in the conversation message schema and BFF serialization: the Convex validator rejected connected-agent command events with 500s, and the BFF conversation serializer dropped the commands payload, leaving the agent DM slash menu empty after a page load.
 - Fixed the agent DM slash menu ignoring typed input: the composer kept its live text outside React state by design, so the slash-menu hook only ever saw programmatically set text — typing `/` did not open the menu, filtering and selection did not update, and choosing a command left the menu stuck open. Typing now refreshes composer state only while a slash token is on screen, preserving the no-re-render-per-keystroke behavior for normal text.

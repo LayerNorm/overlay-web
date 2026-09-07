@@ -73,6 +73,8 @@ Slack, Microsoft Teams, Telegram, and similar products are interaction endpoints
 
 This is the first implemented slice. It establishes the product hierarchy, but it does not yet deliver the complete control plane.
 
+The roster now defaults to the most recently used agent per workspace and orders the sidebar by recency (client-side open history; server-side last-run timestamps are a future refinement). A failed conversation open retries and then surfaces an explicit error with a manual retry instead of sticking on the blank state.
+
 ### Step 2 — Create agents from conversation
 
 - Add a first-class `create_agent` tool callable from chat.
@@ -85,6 +87,7 @@ This is the first implemented slice. It establishes the product hierarchy, but i
 - Add current work, routines, knowledge, tools, runtime status, activity, artifacts, cost, and approvals around the conversation.
 - Make failures and blocked access obvious and actionable.
 - Let operators pause, resume, reassign, inspect, and improve an agent without changing its identity.
+- Decide reconnect semantics for customer-controlled runtimes: hosts are outbound-only, so Overlay cannot wake a sleeping machine. Queued work is claimed automatically when a host returns, but interrupted runs need an explicit Resume — consider auto-resuming host-offline recoveries on heartbeat return once the duplicate-work and Eve-cursor risks are resolved.
 
 ### Step 4 — Make successful work repeatable
 
