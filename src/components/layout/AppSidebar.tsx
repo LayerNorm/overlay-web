@@ -894,9 +894,9 @@ export default function AppSidebar({
   const showcasePrimaryLinks = publicShowcase
     ? [
       { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
-      { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
-      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
-      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/app/pricing?showcase=1' },
+      { id: 'home', label: 'Home', icon: House, href: '/home' },
+      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/manifesto' },
+      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/pricing' },
       { id: 'docs', label: 'Docs', icon: FileText, href: MARKETING_DOCS_URL },
     ]
     : []

@@ -1,9 +1,4 @@
 import type { Metadata } from 'next'
-import { AppShellLayout } from '@/app/_components/AppShellLayout'
-
-// The reusable shell resolves a private session before selecting authenticated
-// or showcase data. Navigations into this route group may wait for that boundary.
-export const instant = false
 
 export const metadata: Metadata = {
   robots: {
@@ -12,10 +7,15 @@ export const metadata: Metadata = {
   },
 }
 
-export default function AuthShellLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Standalone auth frame. Sign-in, sign-up, and recovery pages bring their own
+ * boundary, theme, and chrome (`AuthPageChrome`); this layout only guarantees
+ * a full-height surface outside the application shell.
+ */
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AppShellLayout publicShowcase suppressGuestPrompts>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       {children}
-    </AppShellLayout>
+    </div>
   )
 }

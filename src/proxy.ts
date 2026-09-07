@@ -22,12 +22,6 @@ const PUBLIC_ROUTES = [
   '/api/checkout/verify',
 ]
 
-const PUBLIC_MARKETING_REWRITES: Record<string, string> = {
-  '/home': '/app/home',
-  '/manifesto': '/app/manifesto',
-  '/pricing': '/app/pricing',
-}
-
 function isDocsProxyRoute(pathname: string): boolean {
   return (
     pathname === '/docs' ||
@@ -273,21 +267,6 @@ export async function proxy(request: NextRequest) {
     destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.redirect(destination),
-      cspHeaderName,
-      cspPolicy,
-    )
-  }
-
-  const publicMarketingDestination = PUBLIC_MARKETING_REWRITES[pathname]
-  if (publicMarketingDestination) {
-    const destination = new URL(publicMarketingDestination, request.url)
-    destination.searchParams.set('showcase', '1')
-    return applyBrowserSecurityHeaders(
-      NextResponse.rewrite(destination, {
-        request: {
-          headers: requestHeaders,
-        },
-      }),
       cspHeaderName,
       cspPolicy,
     )
