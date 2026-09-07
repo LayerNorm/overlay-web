@@ -21,6 +21,7 @@ import { BUILT_IN_MODELS } from '@overlay/llm-gateway'
 import type { ChatModel } from '../components/chat/types'
 import { overlayDesktopAppClient } from '../services/app-api-client'
 import { getAuthReadyState } from '../services/auth-service'
+import { isMainAppWindow } from '../services/window-type'
 import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
 import { withDisabledState } from '../utils/chatModels'
 
@@ -77,8 +78,11 @@ export function AppBootstrapProvider({ children }: { children: ReactNode }): Rea
     window.addEventListener('overlay:auth-ready', refreshWhenAuthenticated)
     if (getAuthReadyState() === true) void refreshBootstrap()
     // Entitlements and the model catalog can differ per workspace (workspace
-    // wallets, plan gates), so reload them whenever the workspace changes.
+    // wallets, plan gates), so the main window reloads them whenever the
+    // workspace changes. Panel windows skip this: they render no workspace UI
+    // and their requests stay scoped via the persisted store.
     const refreshWhenWorkspaceChanges = (): void => {
+      if (!isMainAppWindow()) return
       void refreshBootstrap()
     }
     window.addEventListener(WORKSPACE_CHANGED_EVENT, refreshWhenWorkspaceChanges)

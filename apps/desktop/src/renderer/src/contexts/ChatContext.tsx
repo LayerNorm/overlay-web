@@ -18,6 +18,7 @@ import {
 import type { Chat, ChatMeta, Message } from '../components/chat'
 import { getAuthReadyState } from '../services/auth-service'
 import { retryAfterMsFromError } from '../services/request-backoff'
+import { isMainAppWindow } from '../services/window-type'
 import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
 
 interface ChatContextValue {
@@ -121,10 +122,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
   }, [refreshConversations])
 
   // Conversations are workspace-scoped on the server. The module caches were
-  // already dropped before this event fired, so force a fresh load and drop
-  // any open-chat state pointing at the previous workspace.
+  // already dropped before this event fired, so the main window forces a
+  // fresh load and drops any open-chat state pointing at the previous
+  // workspace. Panel windows skip this: they render a single chat driven by
+  // the opener, and their requests stay scoped via the persisted store.
   useEffect(() => {
     const handleWorkspaceChanged = (): void => {
+      if (!isMainAppWindow()) return
       setCurrentChatId(null)
       setCurrentChat(null)
       setConversations([])

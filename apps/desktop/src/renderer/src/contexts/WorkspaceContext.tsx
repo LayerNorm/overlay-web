@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { getAuthReadyState } from '../services/auth-service'
 import { friendlyErrorMessage, retryAfterMsFromError } from '../services/request-backoff'
+import { isMainAppWindow } from '../services/window-type'
 import {
   activateWorkspace,
   adoptServerActiveWorkspace,
@@ -21,20 +22,6 @@ import {
 import { clearActiveWorkspaceId, getActiveWorkspaceId } from '../services/workspace-store'
 
 type WorkspaceStatus = 'idle' | 'loading' | 'ready' | 'error'
-
-/**
- * Panel windows (chat, notebook, browser) mount the same provider tree but
- * never render workspace UI. They skip eager loading to avoid N× fan-out
- * against the main-process IPC concurrency limit at startup; the workspace
- * header they need comes from the persisted store, not this context.
- */
-function isMainAppWindow(): boolean {
-  try {
-    return (new URLSearchParams(window.location.search).get('window') || 'overlay') === 'main'
-  } catch {
-    return true
-  }
-}
 
 interface WorkspaceContextValue {
   status: WorkspaceStatus
