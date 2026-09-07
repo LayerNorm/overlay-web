@@ -35,6 +35,7 @@ export function clearChatListCache(): void {
   cachedChats = null
   cachedAt = 0
   cachedPageInfo = { hasMore: false }
+  inFlight = null
 }
 
 export async function fetchChatListResult(

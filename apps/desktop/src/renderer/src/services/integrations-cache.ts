@@ -42,6 +42,12 @@ export function subscribeDesktopIntegrations(listener: SnapshotListener): () => 
   return () => listeners.delete(listener)
 }
 
+/** Drops integration state so the next fetch resolves against the new workspace. */
+export function clearDesktopIntegrations(): void {
+  cachedSnapshot = null
+  pendingLoad = null
+}
+
 export async function fetchDesktopIntegrations({
   force = false
 }: {

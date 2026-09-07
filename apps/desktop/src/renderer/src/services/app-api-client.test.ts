@@ -2,9 +2,11 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   headersToRecord,
   errorForStatus,
+  desktopAppJson,
   desktopAppStreamText,
   DesktopApiError,
-  overlayDesktopAppClient
+  overlayDesktopAppClient,
+  withWorkspaceHeader
 } from './app-api-client'
 
 describe('headersToRecord', () => {
@@ -66,6 +68,62 @@ describe('errorForStatus', () => {
     const error = errorForStatus(500, 'Server error')
     expect(error.code).toBe('server')
     expect(error.status).toBe(500)
+  })
+})
+
+describe('workspace header injection', () => {
+  it('leaves headers untouched when no workspace is active', async () => {
+    vi.resetModules()
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { dispatchEvent: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    })
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() }
+    })
+    const { withWorkspaceHeader: inject } = await import('./app-api-client')
+    const headers = inject(new Headers({ 'content-type': 'application/json' }))
+    expect(headers.has('x-overlay-workspace-id')).toBe(false)
+  })
+
+  it('forwards the active workspace id on desktop API requests', async () => {
+    vi.resetModules()
+    const request = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      bodyText: '{}'
+    }))
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        dispatchEvent: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        bridge: { appApi: { request, stream: vi.fn(), abort: vi.fn() } }
+      }
+    })
+    const storage = new Map<string, string>([['overlay-active-workspace-id', 'workspace-3']])
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => void storage.set(key, value),
+        removeItem: (key: string) => void storage.delete(key)
+      }
+    })
+    const { desktopAppJson: json } = await import('./app-api-client')
+    await json('/api/v1/files')
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls[0]?.[0].headers['x-overlay-workspace-id']).toBe('workspace-3')
+  })
+
+  it('never overrides an explicit per-request workspace header', () => {
+    const headers = withWorkspaceHeader(
+      new Headers({ 'x-overlay-workspace-id': 'workspace-explicit' })
+    )
+    expect(headers.get('x-overlay-workspace-id')).toBe('workspace-explicit')
   })
 })
 

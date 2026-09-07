@@ -1,4 +1,5 @@
 import { createOverlayAppClient } from '@overlay/api-client'
+import { ACTIVE_WORKSPACE_HEADER, getActiveWorkspaceId } from './workspace-store'
 
 export type DesktopApiErrorCode = 'unauthenticated' | 'not_found' | 'network' | 'server'
 
@@ -188,6 +189,19 @@ function withMutationIdempotencyHeader(
   ) {
     headers.set('Idempotency-Key', crypto.randomUUID())
   }
+  return withWorkspaceHeader(headers)
+}
+
+/**
+ * Central workspace-scope injection. Every cloud request carries the active
+ * workspace id so the server resolves the same workspace the web app would
+ * for `x-overlay-workspace-id`. Callers never set this header themselves;
+ * an explicit per-request value always wins.
+ */
+export function withWorkspaceHeader(headers: Headers): Headers {
+  if (headers.has(ACTIVE_WORKSPACE_HEADER)) return headers
+  const workspaceId = getActiveWorkspaceId()
+  if (workspaceId) headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
   return headers
 }
 

@@ -128,6 +128,13 @@ export function setCachedDesktopFileList(
   cachedAuthority = authority ?? cachedAuthority
 }
 
+/** Drops cloud file state so the next fetch resolves against the new workspace. */
+export function clearDesktopFileListCache(): void {
+  cachedFiles = null
+  cachedAuthority = null
+  inFlight = null
+}
+
 export async function fetchDesktopFileList(
   options: FetchDesktopFileListOptions = {}
 ): Promise<FileListItem[]> {

@@ -25,6 +25,21 @@ describe('desktop app API security', () => {
     ).toThrow('Unsupported app API stream path')
   })
 
+  it('allows the workspace list and activation routes', () => {
+    expect(normalizeAppApiInput({ path: '/api/v1/workspaces', method: 'GET' }).path).toBe(
+      '/api/v1/workspaces'
+    )
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/workspaces', method: 'POST' }).path
+    ).toBe('/api/v1/workspaces')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/workspaces/active', method: 'POST' }).path
+    ).toBe('/api/v1/workspaces/active')
+    expect(() =>
+      normalizeAppApiInput({ path: '/api/v1/workspaces/active', method: 'GET' })
+    ).toThrow('Unsupported app API route')
+  })
+
   it('rejects origins, traversal encodings, backslashes, and protocol-relative paths', () => {
     for (const path of [
       'https://evil.example/api/v1/generate-video',
