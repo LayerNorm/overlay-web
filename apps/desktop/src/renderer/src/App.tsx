@@ -307,6 +307,7 @@ function MainApp(): ReactElement<any> {
         ) : (
           <MainWindow
             onOpenSettings={handleOpenSettings}
+            onSignOut={handleSignOut}
             sidebarExpanded={sidebarExpanded}
             onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
           />

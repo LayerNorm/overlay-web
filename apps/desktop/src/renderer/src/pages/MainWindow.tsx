@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, ReactElement } from 'react'
 import { useSettings } from '../hooks/useSettings'
-import { SettingsIcon } from '../components/icons'
+import { AccountDialog } from '../components/AccountDialog'
 import {
   MessageSquare,
   Bot,
@@ -56,6 +56,7 @@ import { createNewChat, setLastOpenedChatId } from '../utils/chatStorage'
 import { PROJECTS_CHANGED_EVENT } from '../utils/projectStorage'
 import { desktopAppJson } from '../services/app-api-client'
 import { subscribeWorkspaceChanged } from '../services/workspace-store'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 type ActiveTool =
   | 'home'
@@ -77,6 +78,7 @@ interface UpdateState {
 
 interface MainWindowProps {
   onOpenSettings?: () => void
+  onSignOut?: () => void
   sidebarExpanded: boolean
   onToggleSidebar: () => void
 }
@@ -121,6 +123,7 @@ interface HeaderAction {
 
 export function MainWindow({
   onOpenSettings,
+  onSignOut,
   sidebarExpanded,
   onToggleSidebar
 }: MainWindowProps): ReactElement<any> {
@@ -151,6 +154,12 @@ export function MainWindow({
   const [projectsRefreshToken, setProjectsRefreshToken] = useState(0)
   const [automationsRefreshToken, setAutomationsRefreshToken] = useState(0)
   const [activeExtensionView, setActiveExtensionView] = useState<ExtensionView>('connectors')
+  const [accountOpen, setAccountOpen] = useState(false)
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
+  // Keying the workspace surface forces every list (chats, files, projects,
+  // automations, memories, skills, agents) to remount and refetch under the
+  // new scope. Module caches were already dropped before the change event.
+  const workspaceSurfaceKey = activeWorkspaceId ?? 'no-workspace'
 
   // Per-tool secondary panel collapsed state (persisted in localStorage)
   const PANEL_COLLAPSED_KEY = 'overlay-main-panel-collapsed'
@@ -304,6 +313,7 @@ export function MainWindow({
   useEffect(() => {
     return subscribeWorkspaceChanged(() => {
       resetEmbeddedSelections()
+      setAccountOpen(false)
       setAutomationsRefreshToken((prev) => prev + 1)
       setProjectsRefreshToken((prev) => prev + 1)
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
@@ -799,14 +809,16 @@ export function MainWindow({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <button
-            onClick={onOpenSettings}
-            title="Settings"
-            style={sidebarRowStyle('transparent')}
+            onClick={() => setAccountOpen((prev) => !prev)}
+            title="Account and workspaces"
+            aria-haspopup="menu"
+            aria-expanded={accountOpen}
+            style={sidebarRowStyle(accountOpen ? theme.border : 'transparent')}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = theme.border
+              if (!accountOpen) e.currentTarget.style.background = theme.border
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
+              if (!accountOpen) e.currentTarget.style.background = 'transparent'
             }}
           >
             <span
@@ -818,9 +830,28 @@ export function MainWindow({
                 flexShrink: 0
               }}
             >
-              <SettingsIcon color={theme.text} size={16} />
+              <span
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '9999px',
+                  background: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: theme.text,
+                  fontFamily: 'system-ui, -apple-system, sans-serif'
+                }}
+              >
+                {activeWorkspace?.name?.trim()?.[0]?.toUpperCase() ?? '?'}
+              </span>
             </span>
-            <span style={labelStyle(theme.text)}>settings</span>
+            <span style={labelStyle(theme.text)}>
+              {activeWorkspace?.name ?? 'account'}
+            </span>
           </button>
           <button
             onClick={onToggleSidebar}
@@ -865,6 +896,7 @@ export function MainWindow({
         <div style={{ height: `${TITLEBAR_HEIGHT}px`, flexShrink: 0 }} />
 
         <div
+          key={workspaceSurfaceKey}
           style={{
             flex: 1,
             display: 'flex',
@@ -1412,6 +1444,46 @@ export function MainWindow({
           </div>
         </div>
       </div>
+
+      {accountOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close account menu"
+            onClick={() => setAccountOpen(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'default',
+              zIndex: 9990
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: `${sidebarWidth + 8}px`,
+              bottom: '12px',
+              zIndex: 9991
+            }}
+          >
+            <AccountDialog
+              theme={theme}
+              onOpenSettings={() => {
+                setAccountOpen(false)
+                onOpenSettings?.()
+              }}
+              onSignOut={() => {
+                setAccountOpen(false)
+                onSignOut?.()
+              }}
+              onClose={() => setAccountOpen(false)}
+            />
+          </div>
+        </>
+      )}
 
       {updateState.status === 'ready' && !updateState.dismissed && (
         <UpdateNotification
