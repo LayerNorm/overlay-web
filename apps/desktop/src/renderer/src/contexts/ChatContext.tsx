@@ -17,6 +17,7 @@ import {
 } from '../utils/chatStorage'
 import type { Chat, ChatMeta, Message } from '../components/chat'
 import { getAuthReadyState } from '../services/auth-service'
+import { retryAfterMsFromError } from '../services/request-backoff'
 import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
 
 interface ChatContextValue {
@@ -98,10 +99,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
   useEffect(() => {
     if (!error) return
     const retry = window.setTimeout(() => {
-      void refreshConversations().catch((err) => {
+      void refreshConversations({ force: true }).catch((err) => {
         console.error('[ChatContext] Failed to retry conversations:', err)
       })
-    }, 2500)
+    }, retryAfterMsFromError(new Error(error), 2500))
     return () => window.clearTimeout(retry)
   }, [error, refreshConversations])
 

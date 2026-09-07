@@ -10,6 +10,7 @@ import {
   type ReactNode
 } from 'react'
 import { getAuthReadyState } from '../services/auth-service'
+import { friendlyErrorMessage, retryAfterMsFromError } from '../services/request-backoff'
 import {
   fetchAgentDirectory,
   listBindings,
@@ -79,18 +80,18 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
       statusRef.current = 'ready'
       setStatus('ready')
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : String(refreshError))
+      setError(friendlyErrorMessage(refreshError))
       if (statusRef.current === 'ready') return
       statusRef.current = 'error'
       setStatus('error')
-      // Startup bursts across windows can trip the IPC concurrency limit;
-      // retry once shortly after instead of parking in an error state.
+      // Honor the server's retry hint (429s) so a throttled burst backs off
+      // instead of retry-storming the rate limiter.
       if (retryTimer.current) clearTimeout(retryTimer.current)
       retryTimer.current = setTimeout(() => {
         retryTimer.current = null
         inFlight.current = false
         void refresh()
-      }, 1_500)
+      }, retryAfterMsFromError(refreshError, 1_500))
     } finally {
       inFlight.current = false
     }

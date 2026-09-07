@@ -10,6 +10,7 @@ import {
   type ReactNode
 } from 'react'
 import { getAuthReadyState } from '../services/auth-service'
+import { friendlyErrorMessage, retryAfterMsFromError } from '../services/request-backoff'
 import {
   activateWorkspace,
   adoptServerActiveWorkspace,
@@ -98,21 +99,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
       setActiveWorkspaceId(resolvedId)
       setStatusTracked('ready')
     } catch (refreshError) {
-      const message =
-        refreshError instanceof Error ? refreshError.message : String(refreshError)
       // Keep a previously resolved workspace instead of signing the shell out;
       // scoped fetches still fail closed per-request on 401.
-      setError(message)
+      setError(friendlyErrorMessage(refreshError))
       if (statusRef.current === 'ready') return
       setStatusTracked('error')
-      // Startup bursts across windows can trip the IPC concurrency limit;
-      // retry once shortly after instead of parking in an error state.
+      // Honor the server's retry hint (429s) so a throttled burst backs off
+      // instead of retry-storming the rate limiter.
       clearRetry()
       retryTimer.current = setTimeout(() => {
         retryTimer.current = null
         inFlight.current = false
         void refresh()
-      }, 1_500)
+      }, retryAfterMsFromError(refreshError, 1_500))
     } finally {
       inFlight.current = false
     }
@@ -128,10 +127,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
         setActiveWorkspaceId(response.activeWorkspaceId)
         await refresh()
       } catch (switchError) {
-        setError(
-          switchError instanceof Error ? switchError.message : String(switchError)
-        )
-        throw switchError
+        const friendly = friendlyErrorMessage(switchError)
+        setError(friendly)
+        throw new Error(friendly)
       } finally {
         setSwitchingWorkspaceId(null)
       }

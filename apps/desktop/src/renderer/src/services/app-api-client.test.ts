@@ -64,6 +64,18 @@ describe('errorForStatus', () => {
     expect(error.status).toBeUndefined()
   })
 
+  it('maps 429 to a server error with the retry hint preserved', () => {
+    const error = errorForStatus(
+      429,
+      'Too many requests',
+      113
+    )
+    expect(error).toBeInstanceOf(DesktopApiError)
+    expect(error.code).toBe('server')
+    expect(error.status).toBe(429)
+    expect(error.retryAfterSeconds).toBe(113)
+  })
+
   it('maps unknown statuses to server', () => {
     const error = errorForStatus(500, 'Server error')
     expect(error.code).toBe('server')

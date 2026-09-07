@@ -66,12 +66,20 @@ const FORBIDDEN_FORWARD_HEADERS = new Set([
 export class DesktopApiError extends Error {
   code: DesktopApiErrorCode
   status?: number
+  /** Server-advised wait before retrying (seconds), present on 429 responses. */
+  retryAfterSeconds?: number
 
-  constructor(message: string, code: DesktopApiErrorCode, status?: number) {
+  constructor(
+    message: string,
+    code: DesktopApiErrorCode,
+    status?: number,
+    retryAfterSeconds?: number
+  ) {
     super(message)
     this.name = 'DesktopApiError'
     this.code = code
     this.status = status
+    if (retryAfterSeconds !== undefined) this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -372,13 +380,57 @@ function base64ToBytes(value: string): ArrayBuffer {
 
 async function errorFromResponse(response: Response): Promise<DesktopApiError> {
   const text = await response.text().catch(() => '')
-  return errorForStatus(response.status, text || response.statusText)
+  const parsed = parseErrorBody(text)
+  const error = errorForStatus(
+    response.status,
+    parsed.message ?? text ?? response.statusText,
+    parsed.retryAfterSeconds
+  )
+  return error
 }
 
-export function errorForStatus(status: number, message: string): DesktopApiError {
+/** Extracts `{ error, retryAfterSeconds }` from JSON error bodies (e.g. 429s). */
+function parseErrorBody(text: string): { message?: string; retryAfterSeconds?: number } {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('{')) return {}
+  try {
+    const value = JSON.parse(trimmed) as Record<string, unknown>
+    const result: { message?: string; retryAfterSeconds?: number } = {}
+    if (typeof value.error === 'string' && value.error.trim()) {
+      result.message = value.error.trim()
+    } else if (typeof value.message === 'string' && value.message.trim()) {
+      result.message = value.message.trim()
+    }
+    if (typeof value.retryAfterSeconds === 'number' && value.retryAfterSeconds >= 0) {
+      result.retryAfterSeconds = Math.ceil(value.retryAfterSeconds)
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+export function errorForStatus(
+  status: number,
+  message: string,
+  retryAfterSeconds?: number
+): DesktopApiError {
   if (status === 401)
     return new DesktopApiError(message || 'Not authenticated', 'unauthenticated', 401)
   if (status === 404) return new DesktopApiError(message || 'Not found', 'not_found', 404)
   if (status === 0) return new DesktopApiError(message || 'Network request failed', 'network')
-  return new DesktopApiError(message || `Request failed with ${status}`, 'server', status)
+  if (status === 429) {
+    return new DesktopApiError(
+      message || 'Too many requests. Please wait a moment, then try again.',
+      'server',
+      status,
+      retryAfterSeconds
+    )
+  }
+  return new DesktopApiError(
+    message || `Request failed with ${status}`,
+    'server',
+    status,
+    retryAfterSeconds
+  )
 }
