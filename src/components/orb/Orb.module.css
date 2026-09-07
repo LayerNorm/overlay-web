@@ -1,0 +1,79 @@
+.root {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.root > svg {
+  display: block;
+}
+
+.sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    rgb(255 255 255 / 0.2) 26deg,
+    transparent 64deg,
+    transparent 196deg,
+    rgb(255 255 255 / 0.1) 228deg,
+    transparent 262deg
+  );
+}
+
+.spin .sheen {
+  opacity: 1;
+  animation: ovorb-rotate 7s linear infinite;
+}
+
+.drift .sheen {
+  opacity: 0.7;
+  animation: ovorb-rotate 26s linear infinite;
+}
+
+.breathe {
+  animation: ovorb-breathe 3.4s ease-in-out infinite;
+}
+
+.breathe .sheen {
+  opacity: 0.8;
+  animation: ovorb-rotate 14s linear infinite;
+}
+
+.dim {
+  filter: saturate(0.35) brightness(0.8);
+}
+
+@keyframes ovorb-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ovorb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin .sheen,
+  .drift .sheen,
+  .breathe .sheen {
+    animation: none;
+    opacity: 0;
+  }
+  .breathe {
+    animation: none;
+  }
+}

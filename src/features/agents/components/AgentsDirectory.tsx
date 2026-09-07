@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, MessageSquare, MoreHorizontal, Plus, Share2 } from 'lucide-react'
+import { MessageSquare, MoreHorizontal, Plus, Share2 } from 'lucide-react'
 import type { AgentBinding, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button, CreateTile, Tile, TileGrid, TileSkeleton } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ShareDialog } from '@/components/share/ShareDialog'
+import { AgentOrb } from '@/components/orb/Orb'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { getAgentRuntimeLabel, indexActiveAgentBindings } from '../lib/agent-directory-runtime'
@@ -118,7 +119,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                   as="article"
                   className="min-h-52 p-5"
                   leading={(
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-sm" style={{ backgroundColor: agent.avatarColor ?? '#18181b' }}><Bot size={22} strokeWidth={1.5} /></div>
+                    <AgentOrb agent={agent} size={48} animated={false} glow />
                   )}
                   topRight={isDefaultMaster || isPrivate ? (
                     <span className="flex items-center gap-1.5">

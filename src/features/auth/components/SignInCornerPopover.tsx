@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import Image from 'next/image'
+import { OverlayMark } from '@/components/orb/Orb'
 import { usePathname } from 'next/navigation'
 import { SignInForm } from '@/features/auth/components/SignInForm'
 
@@ -32,7 +32,7 @@ export function SignInCornerPopover({ onDismiss, isClosing = false, ssoEnabled =
     >
       <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-3">
         <div className="flex items-center gap-2.5">
-          <Image src="/assets/overlay-logo.png" alt="" width={16} height={16} className="shrink-0" />
+          <OverlayMark size={16} label="" />
           <p className="text-sm font-medium text-[var(--foreground)]">Sign in or create an account</p>
         </div>
         <button

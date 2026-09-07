@@ -5,7 +5,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
   Bookmark,
-  Bot,
   Check,
   FileText,
   Flag,
@@ -24,6 +23,7 @@ import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
+import { Orb } from '@/components/orb/Orb'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -257,11 +257,17 @@ export function RoomMessageItem({
 
   const avatarNode = isAgent ? (
     <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
-      style={{ backgroundColor: message.authorColor ?? '#64748b' }}
+      className="flex h-9 w-9 shrink-0 items-center justify-center"
       aria-hidden
     >
-      <Bot size={16} strokeWidth={1.75} />
+      <Orb
+        variant="glow"
+        color={message.authorColor}
+        size={36}
+        state={message.streaming ? 'working' : 'idle'}
+        animated={message.streaming}
+        label=""
+      />
     </span>
   ) : (
     <AuthorIdentityPopover

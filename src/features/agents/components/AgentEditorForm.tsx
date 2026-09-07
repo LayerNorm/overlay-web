@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
+import { Orb } from '@/components/orb/Orb'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
@@ -37,9 +38,20 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
 export function AgentAvatar({ color, onChange }: { color: string; onChange(color: string): void }) {
   return (
     <div>
-      <div className="flex h-28 w-28 items-center justify-center rounded-full border border-[var(--border)] text-white shadow-sm" style={{ backgroundColor: color }}><Bot size={38} strokeWidth={1.5} /></div>
-      <div className="mt-3 grid grid-cols-3 gap-1.5">
-        {AVATAR_COLORS.map((avatarColor) => <button key={avatarColor} type="button" aria-label={`Use ${avatarColor}`} onClick={() => onChange(avatarColor)} className="flex h-7 items-center justify-center rounded-md border border-[var(--border)]" style={{ backgroundColor: avatarColor }}>{color === avatarColor ? <Check size={12} className="text-white" /> : null}</button>)}
+      <Orb variant="glow" color={color} size={112} state="idle" label="Agent orb preview" />
+      <div className="mt-3 grid grid-cols-6 gap-1.5">
+        {AVATAR_COLORS.map((avatarColor) => (
+          <button
+            key={avatarColor}
+            type="button"
+            aria-label={`Use ${avatarColor}`}
+            aria-pressed={color === avatarColor}
+            onClick={() => onChange(avatarColor)}
+            className={`flex h-10 items-center justify-center rounded-md border transition-colors ${color === avatarColor ? 'border-[var(--foreground)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+          >
+            <Orb variant="glow" color={avatarColor} size={24} animated={false} label="" />
+          </button>
+        ))}
       </div>
     </div>
   )

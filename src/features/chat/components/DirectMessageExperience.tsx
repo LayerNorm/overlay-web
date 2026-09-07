@@ -13,7 +13,6 @@ import {
   Archive,
   Bell,
   BellOff,
-  Bot,
   Hash,
   MoreHorizontal,
   Paperclip,
@@ -25,6 +24,7 @@ import {
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { AgentOrb } from '@/components/orb/Orb'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -706,11 +706,35 @@ export function DirectMessageExperience({
     : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
   const HeaderIcon = conversationType === 'channel'
     ? Hash
-    : otherParticipants.length === 1 && otherParticipants[0]?.principalType === 'agent'
-      ? Bot
-      : otherParticipants.length <= 1
-        ? UserRound
-        : UsersRound
+    : otherParticipants.length <= 1
+      ? UserRound
+      : UsersRound
+  // One-to-one agent DMs resolve the agent's orb (metal for the Overlay
+  // master agent, tinted glow otherwise) from the directory. Falls back to
+  // the neutral orb while loading; chat-list rows keep their Lucide icons
+  // because they carry no agent color data.
+  const soloAgentParticipant = conversationType !== 'channel'
+    && otherParticipants.length === 1
+    && otherParticipants[0]?.principalType === 'agent'
+    ? otherParticipants[0]
+    : null
+  const soloAgentPrincipalId = soloAgentParticipant?.principalId ?? null
+  const [headerAgent, setHeaderAgent] = useState<{ isDefault?: boolean; name: string; avatarColor?: string } | null>(null)
+  useEffect(() => {
+    if (!soloAgentPrincipalId || !activeWorkspaceId || showcase) {
+      setHeaderAgent(null)
+      return
+    }
+    let cancelled = false
+    overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
+      if (cancelled) return
+      const match = response.agents.find((agent) => agent.principalId === soloAgentPrincipalId)
+      if (match) setHeaderAgent({ isDefault: match.isDefault, name: match.name, avatarColor: match.avatarColor })
+    }).catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [soloAgentPrincipalId, activeWorkspaceId, showcase])
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
@@ -1456,9 +1480,13 @@ export function DirectMessageExperience({
             title={title}
             subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
             leading={(
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                <HeaderIcon size={15} />
-              </span>
+              soloAgentParticipant
+                ? <AgentOrb agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} animated={false} />
+                : (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+                    <HeaderIcon size={15} />
+                  </span>
+                )
             )}
             actions={(
               <div className="relative flex items-center gap-1">

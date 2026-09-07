@@ -8,7 +8,6 @@ import {
   Archive,
   Bell,
   BookOpen,
-  Bot,
   Brain,
   Folder,
   Hash,
@@ -52,6 +51,7 @@ import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/proj
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
+import { AgentOrb } from '@/components/orb/Orb'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   type AgentDirectoryChangedEventDetail,
@@ -596,7 +596,7 @@ export function AgentsInlinePanel({
           >
             {openingAgentId === agent.id
               ? <Loader2 size={13} className="shrink-0 animate-spin" />
-              : <Bot size={13} className="shrink-0" />}
+              : <AgentOrb agent={agent} size={16} animated={false} />}
             <span className="truncate">{agent.name}</span>
           </button>
         ))

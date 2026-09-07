@@ -45,6 +45,7 @@ import {
   getSidebarActionAuthorizationRequirement,
 } from '@/shared/authorization/client-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { OverlayMark } from '@/components/orb/Orb'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
@@ -133,6 +134,29 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'knowledge',
   'automations',
 ])
+
+/** Default brand mark path. Custom brand configs keep rendering their image. */
+const DEFAULT_BRAND_LOGO_SRC = '/assets/overlay-logo.png'
+
+/**
+ * Brand mark: the SVG Overlay orb by default, the configured raster image
+ * only when a custom brand overrides the logo (white-label seam).
+ */
+function BrandMark({ logoSrc, logoAlt, size, className }: {
+  logoSrc: string
+  logoAlt?: string
+  size: number
+  className?: string
+}) {
+  if (logoSrc !== DEFAULT_BRAND_LOGO_SRC) {
+    return <Image src={logoSrc} alt={logoAlt ?? ''} width={size} height={size} className={className} />
+  }
+  return (
+    <span className={className} style={{ display: 'inline-flex' }}>
+      <OverlayMark size={size} label={logoAlt || 'Overlay'} />
+    </span>
+  )
+}
 
 export default function AppSidebar({
   collaborationNotifications = [],
@@ -957,7 +981,7 @@ export default function AppSidebar({
       className="flex min-w-0 items-center gap-2"
       onClick={closeMobileDrawer}
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0" />
       <span
         className="truncate text-xl font-medium tracking-tight"
         style={{ fontFamily: 'var(--font-serif)' }}
@@ -978,13 +1002,7 @@ export default function AppSidebar({
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image
-        src={brandConfig.logoSrc}
-        alt={brandConfig.logoAlt ?? ''}
-        width={10}
-        height={10}
-        className="shrink-0 group-hover:hidden"
-      />
+      <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
@@ -995,7 +1013,7 @@ export default function AppSidebar({
         aria-label="Home"
         title="Home"
       >
-        <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+        <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0" />
         <span
           className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
           style={{ fontFamily: 'var(--font-serif)' }}
@@ -1025,7 +1043,7 @@ export default function AppSidebar({
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
       onClick={closeMobileDrawer}
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0" />
       <span
         className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}

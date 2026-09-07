@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, MoonStar, SunMedium, X } from "lucide-react";
-import Image from "next/image";
+import { OverlayMark } from "@/components/orb/Orb";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -96,13 +96,7 @@ export function MarketingNavbar() {
             className="flex min-w-0 items-center gap-2"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <Image
-              src="/assets/overlay-logo.png"
-              alt="Overlay"
-              width={MARKETING_LOGO_SIZE}
-              height={MARKETING_LOGO_SIZE}
-              className="shrink-0"
-            />
+            <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
             <span
               className="truncate text-xl font-medium tracking-tight"
               style={serif}

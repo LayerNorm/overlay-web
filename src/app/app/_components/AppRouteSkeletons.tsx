@@ -1,4 +1,4 @@
-import Image from 'next/image'
+import { OverlayMark } from '@/components/orb/Orb'
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />
@@ -46,7 +46,7 @@ export function InitialAppLoading() {
         aria-label="Loading overlay"
       >
         <span className="app-brand-loader-logo relative z-10 flex items-center bg-background">
-          <Image src="/assets/overlay-logo.png" alt="" width={18} height={18} priority />
+          <OverlayMark size={18} />
         </span>
         <span className="ml-2 overflow-hidden py-1">
           <span

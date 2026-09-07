@@ -8,6 +8,13 @@ The web app is the canonical surface for enterprise customization. Self-hosters 
 
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 
+The default brand mark is the `OverlayMark` SVG orb component (`src/components/orb/Orb.tsx`), not the
+`logoSrc` raster: the sidebar renders the orb whenever `brand.logoSrc` is the default
+`/assets/overlay-logo.png`, and only renders the `next/image` raster when a custom brand overrides it.
+The PNG asset stays on disk for lifecycle emails and favicons, which require raster. Agent avatars
+follow the same renderer through `AgentOrb` (metal for the Overlay master agent, the same sphere
+tinted from each agent's `avatarColor` otherwise).
+
 ```ts
 import {
   DEFAULT_OVERLAY_NAVIGATION,
