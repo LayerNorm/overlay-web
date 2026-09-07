@@ -9,7 +9,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
-import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { AppScreenBody, AppScreenHeader, AppScreenShell, AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   getEnabledChatModels,
@@ -39,10 +39,22 @@ import {
 } from './AgentEditorForm'
 import { useByoConnection } from './use-byo-connection'
 
-export function AgentEditorPage({ mode, agentId, showcase = false }: {
+export function AgentEditorPage({
+  mode,
+  agentId,
+  showcase = false,
+  presentation = 'page',
+  onClose,
+  onCreated,
+  onArchived,
+}: {
   mode: 'new' | 'edit'
   agentId?: string
   showcase?: boolean
+  presentation?: 'page' | 'panel'
+  onClose?: () => void
+  onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
+  onArchived?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -152,6 +164,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   }
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
+  const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
   const save = async () => {
     if (showcase) {
@@ -174,6 +187,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     setError(null)
     setSavedFlash(false)
     try {
+      const creating = !agent
       const saved = agent
         ? await overlayAppClient.agents.update(activeWorkspaceId, agent.id, input)
         : await overlayAppClient.agents.create(activeWorkspaceId, input)
@@ -186,15 +200,19 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
         } catch (bindingError) {
           // Agent identity may already be durable even if its remote binding
           // fails. Land on the edit page so a retry never creates a duplicate.
-          router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+          setAgent(saved.agent)
+          if (presentation === 'page') {
+            router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+          }
           throw bindingError
         }
       } else if (binding === null && agent) {
         await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
       }
       dispatchAgentDirectoryChanged(activeWorkspaceId)
-      if (!agent) {
-        router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+      if (creating) {
+        if (onCreated) onCreated(saved.agent)
+        else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
       } else {
         setAgent(saved.agent)
         setSavedFlash(true)
@@ -214,7 +232,8 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     try {
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
       dispatchAgentDirectoryChanged(activeWorkspaceId)
-      router.push(directoryHref)
+      if (onArchived) onArchived()
+      else router.push(directoryHref)
     } catch (archiveError) {
       setError(archiveError instanceof Error ? archiveError.message : 'Could not archive agent.')
     } finally {
@@ -240,13 +259,13 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     return agent?.name ?? 'Agent not found'
   }, [agent?.name, loading, mode])
 
-  return (
+  const editor = (
     <AppScreenShell
-      header={(
+      header={presentation === 'page' ? (
         <AppScreenHeader
           title={title}
           leading={(
-            <Button variant="ghost" size="sm" onClick={() => router.push(directoryHref)} aria-label="Back to agents">
+            <Button variant="ghost" size="sm" onClick={closeEditor} aria-label="Back to agents">
               <ArrowLeft size={14} /> Agents
             </Button>
           )}
@@ -260,7 +279,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
             />
           )}
         />
-      )}
+      ) : undefined}
     >
       <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
         {loading ? (
@@ -273,13 +292,13 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
             <p className="text-sm font-medium text-[var(--foreground)]">Agent not found</p>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">It may have been archived, or you may not have access to it.</p>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push(directoryHref)}>Back to agents</Button>
+            <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : mode === 'new' && !canCreate ? (
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
             <p className="text-sm font-medium text-[var(--foreground)]">You cannot create agents in this workspace</p>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Guests can chat with agents but cannot create new ones.</p>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push(directoryHref)}>Back to agents</Button>
+            <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-2xl pb-24">
@@ -365,7 +384,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
             <div className="sticky bottom-0 mt-8 border-t border-[var(--border)] bg-[var(--background)]/95 py-3 backdrop-blur">
               <div className="flex items-center gap-2">
                 <span className="flex-1" />
-                <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={() => router.push(directoryHref)} onSave={save} />
+                <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={closeEditor} onSave={save} />
               </div>
             </div>
           </div>
@@ -373,6 +392,21 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
       </AppScreenBody>
     </AppScreenShell>
   )
+
+  if (presentation === 'panel') {
+    return (
+      <AppScreenSidePanel
+        title={title}
+        onClose={closeEditor}
+        closeLabel="Close agent settings"
+        bodyClassName="overflow-hidden"
+      >
+        {editor}
+      </AppScreenSidePanel>
+    )
+  }
+
+  return editor
 }
 
 function getShowcaseAgent(

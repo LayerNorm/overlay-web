@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
+import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 
 export default function AppPage() {
-  redirect('/app/chat')
+  redirect(ROOT_APP_DESTINATION)
 }

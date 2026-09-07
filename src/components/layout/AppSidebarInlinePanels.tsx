@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Archive,
@@ -56,6 +56,7 @@ import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   type AgentDirectoryChangedEventDetail,
 } from '@/shared/workspace/sidebar-events'
+import { dispatchChatCreated } from '@/shared/chat/chat-title'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
@@ -428,10 +429,14 @@ export function AgentsInlinePanel({
   onNavigate?: () => void
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
   const [loading, setLoading] = useState(true)
-  const activeAgentId = searchParams?.get('agent') ?? null
+  const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
+  const autoOpenAttemptRef = useRef<string | null>(null)
+  const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
+  const activeConversationId = searchParams?.get('id') ?? null
 
   const loadAgents = useCallback(async (showLoading = true) => {
     if (!workspaceId) {
@@ -453,6 +458,10 @@ export function AgentsInlinePanel({
   useEffect(() => { void loadAgents() }, [loadAgents])
 
   useEffect(() => {
+    autoOpenAttemptRef.current = null
+  }, [workspaceId])
+
+  useEffect(() => {
     const refreshAgents = (event: Event) => {
       const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
       if (!changedWorkspaceId || changedWorkspaceId === workspaceId) void loadAgents(false)
@@ -460,6 +469,50 @@ export function AgentsInlinePanel({
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
   }, [loadAgents, workspaceId])
+
+  const openAgent = useCallback(async (
+    agent: WorkspaceAgentDirectoryItem,
+    navigation: 'push' | 'replace' = 'push',
+  ) => {
+    if (openingAgentId) return
+    setOpeningAgentId(agent.id)
+    try {
+      if (!workspaceId) return
+      const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
+        principalIds: [agent.principalId],
+      })
+      dispatchChatCreated({
+        chat: {
+          _id: directMessage.conversationId,
+          title: directMessage.title,
+          lastModified: Date.now(),
+          conversationType: 'dm',
+        },
+      })
+      const params = new URLSearchParams({
+        agent: agent.id,
+        view: 'dms',
+        id: directMessage.conversationId,
+      })
+      const href = `${baseHref}?${params.toString()}`
+      if (navigation === 'replace') router.replace(href)
+      else router.push(href)
+      if (navigation === 'push') onNavigate?.()
+    } finally {
+      setOpeningAgentId(null)
+    }
+  }, [baseHref, onNavigate, openingAgentId, router, workspaceId])
+
+  useEffect(() => {
+    if (loading || activeConversationId || openingAgentId) return
+    if (!pathname.endsWith('/agents')) return
+    const targetAgent = activeAgentId
+      ? agents.find((agent) => agent.id === activeAgentId)
+      : agents[0]
+    if (!targetAgent || autoOpenAttemptRef.current === targetAgent.id) return
+    autoOpenAttemptRef.current = targetAgent.id
+    void openAgent(targetAgent, 'replace').catch(() => undefined)
+  }, [activeAgentId, activeConversationId, agents, loading, openAgent, openingAgentId, pathname])
 
   return (
     <SidebarResourceList>
@@ -472,13 +525,13 @@ export function AgentsInlinePanel({
           <button
             key={agent.id}
             type="button"
+            disabled={Boolean(openingAgentId)}
             className={`${resourceRowClass} ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-            onClick={() => {
-              router.push(`${baseHref}?agent=${encodeURIComponent(agent.id)}`)
-              onNavigate?.()
-            }}
+            onClick={() => void openAgent(agent).catch(() => undefined)}
           >
-            <Bot size={13} className="shrink-0" />
+            {openingAgentId === agent.id
+              ? <Loader2 size={13} className="shrink-0 animate-spin" />
+              : <Bot size={13} className="shrink-0" />}
             <span className="truncate">{agent.name}</span>
           </button>
         ))

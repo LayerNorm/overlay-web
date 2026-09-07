@@ -15,6 +15,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Made Agents the first primary navigation item and default authenticated home. Selecting an agent now opens its conversation directly, while create and edit controls use the shared right-side panel (and its small-screen dialog presentation) instead of the authenticated directory grid.
 - Released the Agent Host and bridge protocol together at `0.3.5`, which forwards agents' advertised ACP slash commands (`available_commands_update`) to the transcript; production DM slash menus and the composer slash button activate once connected hosts are restarted on `0.3.5`.
 - Unified the list-page UI system: added shared `Tile`, `TileGrid`, `TileIcon`, `TileSkeleton`, `CreateTile`, `ListRow`, and `HeaderSearch` primitives to `@overlay/ui` and migrated the Projects, Knowledge, Agents, and Extensions (Connectors, Skills, MCP Servers) list pages plus the Files/Knowledge header onto them, so tiles, list rows, and page headers share one spacing, radius, hover, and dark-mode language.
 - Projects can now be archived and restored from a three-dot menu on each project tile, and the projects sidebar gained All/Archived subpages that list active and archived projects respectively.

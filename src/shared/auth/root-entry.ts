@@ -1,4 +1,4 @@
-export const ROOT_APP_DESTINATION = '/app/chat'
+export const ROOT_APP_DESTINATION = '/app/agents'
 export const ROOT_SHOWCASE_DESTINATION = '/app/chat?showcase=1&id=showcase-welcome'
 
 export type RootSessionResolution =

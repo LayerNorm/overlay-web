@@ -19,7 +19,7 @@ export const overlayAppShell = defineOverlayAppConfig({
     name: 'Acme AI',
     shortName: 'Acme',
     logoSrc: '/assets/acme-logo.png',
-    homeHref: '/app/chat',
+    homeHref: '/app/agents',
     supportEmail: 'it@acme.example',
   },
   navigation: [
@@ -41,7 +41,9 @@ export const overlayAppShell = defineOverlayAppConfig({
 
 Registries merge with defaults by `id`. If you provide an item with the same `id`, Overlay replaces that item’s metadata. Unspecified default items remain available.
 
-While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Chats; it should not be inserted at the top of the primary navigation.
+Agents lead the default primary navigation and `/app/agents` is the authenticated home. The authenticated Agents surface uses the contextual sidebar as its roster; selecting an agent opens that agent's direct conversation. The conversation header's settings control composes the existing agent editor inside `AppScreenSidePanel`, which is docked on desktop and presented as an overlay dialog on smaller screens. The full-page `/app/agents/new` and `/app/agents/:id` routes remain compatibility entry points.
+
+While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Agents; it should not be inserted at the top of the primary navigation.
 
 ## Component Keys
 

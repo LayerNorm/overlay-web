@@ -7,12 +7,18 @@ import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
 /** Opens (or creates) a one-to-one DM with an agent, then navigates to it. */
 export async function startAgentChat(args: {
   workspaceId: string | null
+  agentId?: string
   agentPrincipalId: string
   showcase?: boolean
+  surface?: 'agents' | 'chat'
   push(href: string): void
 }): Promise<void> {
+  const surface = args.surface ?? 'chat'
   if (args.showcase) {
-    args.push(`/app/chat?showcase=1&view=dms&id=${encodeURIComponent(args.agentPrincipalId)}`)
+    const basePath = surface === 'agents' ? '/app/agents' : '/app/chat'
+    const params = new URLSearchParams({ showcase: '1', view: 'dms', id: args.agentPrincipalId })
+    if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
+    args.push(`${basePath}?${params.toString()}`)
     return
   }
   if (!args.workspaceId) return
@@ -27,7 +33,10 @@ export async function startAgentChat(args: {
       conversationType: 'dm',
     },
   })
-  args.push(`${buildWorkspaceHref(args.workspaceId, '/app/chat')}?view=dms&id=${encodeURIComponent(directMessage.conversationId)}`)
+  const basePath = buildWorkspaceHref(args.workspaceId, surface === 'agents' ? '/app/agents' : '/app/chat')
+  const params = new URLSearchParams({ view: 'dms', id: directMessage.conversationId })
+  if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
+  args.push(`${basePath}?${params.toString()}`)
 }
 
 /** Canonical workspace-scoped href for the agent editor pages. */

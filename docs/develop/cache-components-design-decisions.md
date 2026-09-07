@@ -46,11 +46,13 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 
 ### Batch 4 — Low-risk /app/* child routes (10 routes)
 
-14. `/app` (index) — `src/app/app/page.tsx` — Pure `redirect('/app/chat')`. Removed opt-out.
+14. `/app` (index) — `src/app/app/page.tsx` — Pure redirect to the authenticated
+    Agents home. Removed opt-out.
 15. `/app/memories` — `src/app/app/memories/page.tsx` — Pure redirect. Removed opt-out.
 16. `/app/outputs` — `src/app/app/outputs/page.tsx` — Pure redirect. Removed opt-out.
-17. `/app/agents` — `src/app/app/agents/page.tsx` — Reads `searchParams` only, no
-    session. Removed opt-out.
+17. `/app/agents` — `src/app/app/agents/page.tsx` — Resolves the showcase flag and
+    authenticated client-side agent conversation workspace together inside
+    `<Suspense>`. Removed opt-out.
 18. `/app/notes` — `src/app/app/notes/page.tsx` — Moved `getOverlaySession()` +
     `redirect()` inside new `<Suspense>` with `ChatRouteSkeleton` fallback.
 19. `/app/activity` — `src/app/app/activity/page.tsx` — Moved `getOverlaySession()`

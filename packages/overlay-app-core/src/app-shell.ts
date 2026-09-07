@@ -32,7 +32,7 @@ export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
   shortName: 'overlay',
   logoSrc: '/assets/overlay-logo.png',
   logoAlt: '',
-  homeHref: '/app/chat',
+  homeHref: '/app/agents',
   supportEmail: 'divyansh@layernorm.co',
   organizationName: 'Overlay',
 }
@@ -106,19 +106,19 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
   {
+    id: 'agents',
+    href: '/app/agents',
+    label: 'Agents',
+    icon: 'bot',
+    featureFlagId: 'agents',
+  },
+  {
     id: 'chat',
     href: '/app/chat',
     label: 'Chats',
     icon: 'message-square',
     requiredCapabilities: ['chat'],
     subviews: ['personal', 'dms', 'channels', 'activity', 'all'],
-  },
-  {
-    id: 'agents',
-    href: '/app/agents',
-    label: 'Agents',
-    icon: 'bot',
-    featureFlagId: 'agents',
   },
   { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files'] },
   {

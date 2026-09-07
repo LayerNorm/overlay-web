@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import {
   Archive,
@@ -209,12 +210,20 @@ export function DirectMessageExperience({
   conversationType = 'dm',
   draft = false,
   draftTitle,
+  headerActions,
+  externalRightPanel,
+  externalRightPanelLabel,
+  onExternalRightPanelClose,
 }: {
   conversationId: string
   showcase?: boolean
   conversationType?: 'dm' | 'channel'
   draft?: boolean
   draftTitle?: string
+  headerActions?: ReactNode
+  externalRightPanel?: ReactNode
+  externalRightPanelLabel?: string
+  onExternalRightPanelClose?: () => void
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
@@ -1368,15 +1377,17 @@ export function DirectMessageExperience({
 
   // The attachment preview wins the slot while it is open; otherwise the room's
   // own panels share the shell surface the sources sidebar already uses.
-  const rightPanel = shellRightPanel ?? roomPanelContent
+  const rightPanel = shellRightPanel ?? externalRightPanel ?? roomPanelContent
   const rightPanelClose = shellRightPanel
     ? shellRightPanelClose
-    : roomPanelContent
-      ? () => {
-        setRoomPanel(null)
-        setThreadRootId(null)
-      }
-      : undefined
+    : externalRightPanel
+      ? onExternalRightPanelClose
+      : roomPanelContent
+        ? () => {
+          setRoomPanel(null)
+          setThreadRootId(null)
+        }
+        : undefined
 
   return (
     <>
@@ -1407,10 +1418,11 @@ export function DirectMessageExperience({
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
         rightPanelOpen={Boolean(rightPanel)}
-        rightPanelWidth={shellRightPanel ? shellRightPanelWidth : 380}
+        rightPanelWidth={shellRightPanel ? shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
         rightPanelMode={shellRightPanelMode}
         onRightPanelClose={rightPanelClose}
         onRightPanelResize={shellRightPanelResize}
+        rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
       >
         <div
           className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col"
@@ -1450,6 +1462,7 @@ export function DirectMessageExperience({
             )}
             actions={(
               <div className="relative flex items-center gap-1">
+                {headerActions}
                 {pins.length > 0 ? (
                   <button
                     type="button"
