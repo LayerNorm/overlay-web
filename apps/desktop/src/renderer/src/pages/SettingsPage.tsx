@@ -9,6 +9,7 @@ import { ChatSettings } from '../components/settings/ChatSettings'
 import { NotebookSettings } from '../components/settings/NotebookSettings'
 import { BrowserSettings } from '../components/settings/BrowserSettings'
 import { AccountSettings } from '../components/settings/AccountSettings'
+import { WorkspaceSettings } from '../components/settings/WorkspaceSettings'
 import { ModelsSettings } from '../components/settings/ModelsSettings'
 import { MemoryListPage } from './MemoryListPage'
 import {
@@ -25,7 +26,7 @@ import {
 import { getTheme } from '../utils/theme'
 import { TierBadge } from '../components/ui/TierBadge'
 import { useSubscription } from '../hooks/useSubscription'
-import { Bot, Brain, ChevronLeft, ChevronRight, Cpu, Plus, Search, Square } from 'lucide-react'
+import { Bot, Brain, ChevronLeft, ChevronRight, Cpu, Plus, Search, Square, Users } from 'lucide-react'
 
 type SettingsTab =
   | 'general'
@@ -38,6 +39,7 @@ type SettingsTab =
   | 'chat'
   | 'notebook'
   | 'browser'
+  | 'workspace'
   | 'account'
 
 interface SettingsPageProps {
@@ -65,7 +67,8 @@ const SETTINGS_ITEMS: {
   { id: 'models', label: 'models', icon: Cpu },
   { id: 'chat', label: 'chat', icon: ChatIcon },
   { id: 'notebook', label: 'notes', icon: NotebookIcon },
-  { id: 'browser', label: 'browser', icon: BrowserIcon }
+  { id: 'browser', label: 'browser', icon: BrowserIcon },
+  { id: 'workspace', label: 'workspace', icon: Users }
 ]
 
 export function SettingsPage({
@@ -510,6 +513,7 @@ export function SettingsPage({
             {settingsTab === 'browser' && (
               <BrowserSettings settings={settings} onUpdateSetting={updateSetting} theme={theme} />
             )}
+            {settingsTab === 'workspace' && <WorkspaceSettings theme={theme} />}
             {settingsTab === 'account' && <AccountSettings theme={theme} onSignOut={onSignOut} />}
           </div>
         </div>

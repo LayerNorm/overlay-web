@@ -116,7 +116,10 @@ describe('workspace header injection', () => {
     const { desktopAppJson: json } = await import('./app-api-client')
     await json('/api/v1/files')
     expect(request).toHaveBeenCalledTimes(1)
-    expect(request.mock.calls[0]?.[0].headers['x-overlay-workspace-id']).toBe('workspace-3')
+    const sentCall = request.mock.calls[0] as unknown as [
+      { headers: Record<string, string> }
+    ]
+    expect(sentCall[0].headers['x-overlay-workspace-id']).toBe('workspace-3')
   })
 
   it('never overrides an explicit per-request workspace header', () => {
