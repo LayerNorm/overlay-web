@@ -25,6 +25,7 @@ import { forceDesktopSync, initializeDesktopSync } from './services/desktop-sync
 import { SubscriptionProvider } from './contexts/SubscriptionContext'
 import { ChatProvider } from './contexts/ChatContext'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
+import { EnvironmentProvider } from './contexts/EnvironmentContext'
 import { AppBootstrapProvider, useAppBootstrap } from './contexts/AppBootstrapContext'
 import { migrateLocalChatsToCloud } from './utils/chatStorage'
 import { migrateLegacyDesktopKnowledge } from './services/desktop-knowledge-migration'
@@ -437,19 +438,21 @@ export default function App(): ReactElement<any> {
     <Sentry.ErrorBoundary fallback={<p>An error occurred.</p>}>
       <AppBootstrapProvider>
         <WorkspaceProvider>
-          <SubscriptionProvider>
-            <ChatProvider>
-            {isPanelWindow ? (
-              content
-            ) : (
-              <div style={{ width: '100%', height: '100%', zoom: 'var(--app-zoom, 1)' }}>
-                {content}
-              </div>
-            )}
-          </ChatProvider>
-        </SubscriptionProvider>
-      </WorkspaceProvider>
-    </AppBootstrapProvider>
+          <EnvironmentProvider>
+            <SubscriptionProvider>
+              <ChatProvider>
+                {isPanelWindow ? (
+                  content
+                ) : (
+                  <div style={{ width: '100%', height: '100%', zoom: 'var(--app-zoom, 1)' }}>
+                    {content}
+                  </div>
+                )}
+              </ChatProvider>
+            </SubscriptionProvider>
+          </EnvironmentProvider>
+        </WorkspaceProvider>
+      </AppBootstrapProvider>
     </Sentry.ErrorBoundary>
   )
 }

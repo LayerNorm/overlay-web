@@ -25,8 +25,16 @@ describe('desktop app API security', () => {
     ).toThrow('Unsupported app API stream path')
   })
 
-  it('allows the workspace list and activation routes', () => {
-    expect(normalizeAppApiInput({ path: '/api/v1/workspaces', method: 'GET' }).path).toBe(
+  it('allows read-only environment, binding, and agent lists', () => {
+    for (const path of ['/api/v1/agent-environments', '/api/v1/agent-bindings', '/api/v1/agents']) {
+      expect(normalizeAppApiInput({ path, method: 'GET' }).path).toBe(path)
+      expect(() => normalizeAppApiInput({ path, method: 'POST' })).toThrow(
+        'Unsupported app API route'
+      )
+    }
+  })
+
+  it('allows the workspace list and activation routes', () => {    expect(normalizeAppApiInput({ path: '/api/v1/workspaces', method: 'GET' }).path).toBe(
       '/api/v1/workspaces'
     )
     expect(

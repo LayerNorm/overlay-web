@@ -30,6 +30,9 @@ const APP_API_ROUTE_METHODS = new Map<string, ReadonlySet<string>>([
   ['/api/v1/bootstrap', new Set(['GET'])],
   ['/api/v1/workspaces', new Set(['GET', 'POST'])],
   ['/api/v1/workspaces/active', new Set(['POST'])],
+  ['/api/v1/agent-environments', new Set(['GET'])],
+  ['/api/v1/agent-bindings', new Set(['GET'])],
+  ['/api/v1/agents', new Set(['GET'])],
   ['/api/subscription/settings', new Set(['GET', 'PATCH'])]
 ])
 const STREAM_APP_API_ROUTES = new Set([
