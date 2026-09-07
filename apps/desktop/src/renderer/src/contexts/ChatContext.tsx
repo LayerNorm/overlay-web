@@ -17,6 +17,7 @@ import {
 } from '../utils/chatStorage'
 import type { Chat, ChatMeta, Message } from '../components/chat'
 import { getAuthReadyState } from '../services/auth-service'
+import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
 
 interface ChatContextValue {
   conversations: ChatMeta[] | undefined
@@ -55,22 +56,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const refreshConversations = useCallback(async (): Promise<ChatMeta[]> => {
-    if (getAuthReadyState() !== true) return []
-    if (loadChatsMeta().length === 0) setIsLoading(true)
-    try {
-      const chats = await listChatsMeta()
-      setConversations(chats)
-      setError(null)
-      return chats
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load chats'
-      setError(message)
-      throw err
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+  const refreshConversations = useCallback(
+    async (options: { force?: boolean } = {}): Promise<ChatMeta[]> => {
+      if (getAuthReadyState() !== true) return []
+      if (loadChatsMeta().length === 0) setIsLoading(true)
+      try {
+        const chats = await listChatsMeta(options.force)
+        setConversations(chats)
+        setError(null)
+        return chats
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load chats'
+        setError(message)
+        throw err
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    []
+  )
 
   useEffect(() => {
     const refreshWhenAuthenticated = (event: Event): void => {
@@ -112,6 +116,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
     return () => {
       window.removeEventListener('focus', refresh)
       window.removeEventListener('online', refresh)
+    }
+  }, [refreshConversations])
+
+  // Conversations are workspace-scoped on the server. The module caches were
+  // already dropped before this event fired, so force a fresh load and drop
+  // any open-chat state pointing at the previous workspace.
+  useEffect(() => {
+    const handleWorkspaceChanged = (): void => {
+      setCurrentChatId(null)
+      setCurrentChat(null)
+      setConversations([])
+      setError(null)
+      void refreshConversations({ force: true }).catch((err) => {
+        console.error('[ChatContext] Failed to reload conversations for workspace:', err)
+      })
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged)
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged)
     }
   }, [refreshConversations])
 

@@ -15,6 +15,7 @@ import {
   overlayDesktopAppClient
 } from '../services/app-api-client'
 import { fetchChatListResult, type CachedChat } from '../services/chat-list-cache'
+import { getActiveWorkspaceId } from '../services/workspace-store'
 import {
   DESKTOP_GENERATION_DATA_TYPE,
   DESKTOP_ATTACHMENTS_DATA_TYPE,
@@ -94,6 +95,25 @@ const messagePersistBlockedUntil = new Map<string, number>()
 const persistedConversationSignatures = new Map<string, string>()
 const inFlightConversationPatches = new Set<string>()
 const conversationPatchBlockedUntil = new Map<string, number>()
+
+/**
+ * Drops all in-memory conversation state. Called on workspace switch so the
+ * previous workspace's chats, TTLs, and persist bookkeeping can never leak
+ * into the newly active workspace.
+ */
+export function clearChatStorageCaches(): void {
+  chatCache.clear()
+  chatHydratedAt.clear()
+  metaCache = []
+  refreshPromise = null
+  lastMetaFetchedAt = 0
+  persistedMessageSignatures.clear()
+  inFlightMessagePersists.clear()
+  messagePersistBlockedUntil.clear()
+  persistedConversationSignatures.clear()
+  inFlightConversationPatches.clear()
+  conversationPatchBlockedUntil.clear()
+}
 
 function emitChatsChanged(): void {
   if (typeof window === 'undefined') return
@@ -754,11 +774,18 @@ export async function getChat(id: string, options: { force?: boolean } = {}): Pr
 }
 
 export function getLastOpenedChatId(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  const workspaceId = getActiveWorkspaceId()
+  if (workspaceId) {
+    const scoped = localStorage.getItem(`${LAST_CHAT_ID_KEY}:${workspaceId}`)
+    if (scoped) return scoped
+  }
   return localStorage.getItem(LAST_CHAT_ID_KEY)
 }
 
 export function setLastOpenedChatId(id: string): void {
-  localStorage.setItem(LAST_CHAT_ID_KEY, id)
+  const workspaceId = getActiveWorkspaceId()
+  localStorage.setItem(workspaceId ? `${LAST_CHAT_ID_KEY}:${workspaceId}` : LAST_CHAT_ID_KEY, id)
   emitChatsChanged()
 }
 
@@ -942,7 +969,10 @@ export async function deleteChat(id: string): Promise<boolean> {
   chatCache.delete(id)
   chatHydratedAt.delete(id)
   metaCache = metaCache.filter((meta) => meta.id !== id)
-  if (getLastOpenedChatId() === id) localStorage.removeItem(LAST_CHAT_ID_KEY)
+  if (getLastOpenedChatId() === id) {
+    const workspaceId = getActiveWorkspaceId()
+    localStorage.removeItem(workspaceId ? `${LAST_CHAT_ID_KEY}:${workspaceId}` : LAST_CHAT_ID_KEY)
+  }
   emitChatsChanged()
 
   await desktopAppJson(`/api/v1/conversations?conversationId=${encodeURIComponent(id)}`, {

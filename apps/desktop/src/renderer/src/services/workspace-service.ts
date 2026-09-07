@@ -2,6 +2,7 @@ import { desktopAppJson } from './app-api-client'
 import { clearChatListCache } from './chat-list-cache'
 import { clearDesktopFileListCache } from './files-list-cache'
 import { clearDesktopIntegrations } from './integrations-cache'
+import { clearChatStorageCaches } from '../utils/chatStorage'
 import {
   dispatchWorkspaceChanged,
   getActiveWorkspaceId,
@@ -61,6 +62,7 @@ export async function listWorkspaces(): Promise<DesktopWorkspaceListResponse> {
 
 /** Drops all workspace-scoped renderer state before it can leak across workspaces. */
 export function invalidateWorkspaceCaches(): void {
+  clearChatStorageCaches()
   clearChatListCache()
   clearDesktopFileListCache()
   clearDesktopIntegrations()
