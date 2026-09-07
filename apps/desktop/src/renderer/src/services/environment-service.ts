@@ -221,6 +221,103 @@ export async function getAgent(agentId: string): Promise<DesktopAgentDirectoryIt
   return agent
 }
 
+export type AgentType = 'overlay' | 'byo'
+
+export interface AgentMutationInput {
+  name: string
+  description?: string
+  instructions: string
+  harness: 'overlay' | 'claude-code'
+  modelId: string
+  visibility: 'creator' | 'workspace'
+}
+
+/** Mirrors the web `buildWorkspaceAgentInput` (overlay + BYO shapes). */
+export function buildAgentInput(args: {
+  name: string
+  description: string
+  instructions: string
+  agentType: AgentType
+  harnessLabel: string
+  adapterId: string
+  modelId: string
+  visibility: 'creator' | 'workspace'
+}): AgentMutationInput {
+  const byo = args.agentType === 'byo'
+  return {
+    name: args.name.trim(),
+    description: args.description.trim() || undefined,
+    instructions: byo ? generatedByoInstructions(args.harnessLabel) : args.instructions.trim(),
+    harness: byo ? workspaceHarnessForByo(args.adapterId) : 'overlay',
+    modelId: byo ? `byo/${args.adapterId}` : args.modelId.trim(),
+    visibility: args.visibility
+  }
+}
+
+/** Mirrors the web editor's save gating. */
+export function isAgentEditorValid(args: {
+  name: string
+  instructions: string
+  modelId: string
+  agentType: AgentType
+  bindingValid: boolean
+}): boolean {
+  return Boolean(
+    args.name.trim() &&
+      (args.agentType === 'overlay'
+        ? args.instructions.trim() && args.modelId.trim()
+        : args.bindingValid)
+  )
+}
+
+export async function createAgent(input: AgentMutationInput): Promise<DesktopAgentDirectoryItem> {
+  const raw = await desktopAppJson<unknown>('/api/v1/agents', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  })
+  const agent = normalizeAgentItem(isRecord(raw) ? raw.agent ?? raw : null)
+  if (!agent) throw new Error('Could not create agent.')
+  return agent
+}
+
+export async function updateAgent(
+  agentId: string,
+  input: AgentMutationInput
+): Promise<DesktopAgentDirectoryItem> {
+  const raw = await desktopAppJson<unknown>(
+    `/api/v1/agents/${encodeURIComponent(agentId)}`,
+    { method: 'PATCH', body: JSON.stringify(input) }
+  )
+  const agent = normalizeAgentItem(isRecord(raw) ? raw.agent ?? raw : null)
+  if (!agent) throw new Error('Could not save agent.')
+  return agent
+}
+
+export async function archiveAgent(agentId: string): Promise<void> {
+  await desktopAppJson<unknown>(`/api/v1/agents/${encodeURIComponent(agentId)}`, {
+    method: 'DELETE'
+  })
+}
+
+export async function upsertBinding(input: {
+  agentId: string
+  environmentId: string
+  adapterId: string
+  workingDirectory: string
+}): Promise<void> {
+  await desktopAppJson<unknown>('/api/v1/agent-bindings', {
+    method: 'PUT',
+    body: JSON.stringify(input)
+  })
+}
+
+export async function disableBindings(agentId: string): Promise<void> {
+  await desktopAppJson<unknown>(
+    `/api/v1/agent-bindings?agentId=${encodeURIComponent(agentId)}`,
+    { method: 'DELETE' }
+  )
+}
+
 /* BYO harness helpers (ported from the web `byo-agent-setup` lib). */
 
 export interface AcpAdapterCapability {

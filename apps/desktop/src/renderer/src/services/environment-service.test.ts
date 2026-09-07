@@ -186,6 +186,117 @@ describe('environment-service health', () => {
     })
   })
 
+  it('creates, updates, archives, and binds agents', async () => {
+    const service = await import('./environment-service')
+    expect(
+      service.buildAgentInput({
+        name: '  Helper  ',
+        description: '',
+        instructions: 'Be helpful.',
+        agentType: 'overlay',
+        harnessLabel: 'Codex',
+        adapterId: 'codex',
+        modelId: 'openrouter/free',
+        visibility: 'workspace'
+      })
+    ).toEqual({
+      name: 'Helper',
+      description: undefined,
+      instructions: 'Be helpful.',
+      harness: 'overlay',
+      modelId: 'openrouter/free',
+      visibility: 'workspace'
+    })
+    expect(
+      service.buildAgentInput({
+        name: 'Coder',
+        description: 'Codes.',
+        instructions: 'ignored',
+        agentType: 'byo',
+        harnessLabel: 'Codex',
+        adapterId: 'codex',
+        modelId: '',
+        visibility: 'creator'
+      })
+    ).toMatchObject({ harness: 'overlay', modelId: 'byo/codex' })
+    expect(
+      service.isAgentEditorValid({
+        name: '  ',
+        instructions: 'x',
+        modelId: 'm',
+        agentType: 'overlay',
+        bindingValid: false
+      })
+    ).toBe(false)
+    expect(
+      service.isAgentEditorValid({
+        name: 'Coder',
+        instructions: '',
+        modelId: '',
+        agentType: 'byo',
+        bindingValid: true
+      })
+    ).toBe(true)
+
+    bridgeJsonResponse({ agent: { id: 'agent-9', name: 'Helper' } })
+    await expect(
+      service.createAgent({
+        name: 'Helper',
+        instructions: 'Be helpful.',
+        harness: 'overlay',
+        modelId: 'openrouter/free',
+        visibility: 'creator'
+      })
+    ).resolves.toMatchObject({ id: 'agent-9' })
+    const createCall = bridgeState.request.mock.calls[0] as unknown as [
+      { path: string; method: string }
+    ]
+    expect(createCall[0].path).toBe('/api/v1/agents')
+    expect(createCall[0].method).toBe('POST')
+
+    bridgeJsonResponse({ agent: { id: 'agent-9', name: 'Helper v2' } })
+    await service.updateAgent('agent-9', {
+      name: 'Helper v2',
+      instructions: 'Be helpful.',
+      harness: 'overlay',
+      modelId: 'openrouter/free',
+      visibility: 'creator'
+    })
+    const updateCall = bridgeState.request.mock.calls[1] as unknown as [
+      { path: string; method: string }
+    ]
+    expect(updateCall[0].path).toBe('/api/v1/agents/agent-9')
+    expect(updateCall[0].method).toBe('PATCH')
+
+    bridgeJsonResponse({})
+    await service.upsertBinding({
+      agentId: 'agent-9',
+      environmentId: 'environment-1',
+      adapterId: 'codex',
+      workingDirectory: '/repo'
+    })
+    const bindingCall = bridgeState.request.mock.calls[2] as unknown as [
+      { path: string; method: string; body: string }
+    ]
+    expect(bindingCall[0].path).toBe('/api/v1/agent-bindings')
+    expect(bindingCall[0].method).toBe('PUT')
+    expect(JSON.parse(bindingCall[0].body)).toMatchObject({ agentId: 'agent-9' })
+
+    await service.disableBindings('agent-9')
+    const disableCall = bridgeState.request.mock.calls[3] as unknown as [
+      { path: string; method: string }
+    ]
+    expect(disableCall[0].path).toBe('/api/v1/agent-bindings?agentId=agent-9')
+    expect(disableCall[0].method).toBe('DELETE')
+
+    await service.archiveAgent('agent-9')
+    const archiveCall = bridgeState.request.mock.calls[4] as unknown as [
+      { path: string; method: string }
+    ]
+    expect(archiveCall[0].path).toBe('/api/v1/agents/agent-9')
+    expect(archiveCall[0].method).toBe('DELETE')
+  })
+
   it('creates an enrollment session and approves with a filesystem grant', async () => {
     const service = await import('./environment-service')
     bridgeJsonResponse({

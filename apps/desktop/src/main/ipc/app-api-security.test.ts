@@ -25,12 +25,27 @@ describe('desktop app API security', () => {
     ).toThrow('Unsupported app API stream path')
   })
 
-  it('allows read-only environment, binding, and agent lists', () => {
+  it('allows environment, binding, and agent lists with scoped mutations', () => {
     for (const path of ['/api/v1/agent-environments', '/api/v1/agent-bindings', '/api/v1/agents']) {
       expect(normalizeAppApiInput({ path, method: 'GET' }).path).toBe(path)
-      expect(() => normalizeAppApiInput({ path, method: 'POST' })).toThrow(
-        'Unsupported app API route'
-      )
+    }
+    // Creation and binding mutations are allowlisted; unrelated methods are not.
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agents', method: 'POST' }).path
+    ).toBe('/api/v1/agents')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agent-bindings', method: 'PUT' }).path
+    ).toBe('/api/v1/agent-bindings')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agent-bindings', method: 'DELETE' }).path
+    ).toBe('/api/v1/agent-bindings')
+    for (const input of [
+      { path: '/api/v1/agent-environments', method: 'POST' },
+      { path: '/api/v1/agent-environments', method: 'DELETE' },
+      { path: '/api/v1/agent-bindings', method: 'POST' },
+      { path: '/api/v1/agents', method: 'PATCH' }
+    ]) {
+      expect(() => normalizeAppApiInput(input)).toThrow('Unsupported app API route')
     }
   })
 
@@ -76,13 +91,18 @@ describe('desktop app API security', () => {
     ).toThrow('Unsupported app API route')
   })
 
-  it('allows reading a single agent by id', () => {
+  it('allows reading, saving, and archiving a single agent by id', () => {
     expect(normalizeAppApiInput({ path: '/api/v1/agents/agent_123', method: 'GET' }).path).toBe(
       '/api/v1/agents/agent_123'
     )
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agents/agent_123', method: 'PATCH' }).path
+    ).toBe('/api/v1/agents/agent_123')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/agents/agent_123', method: 'DELETE' }).path
+    ).toBe('/api/v1/agents/agent_123')
     for (const input of [
       { path: '/api/v1/agents/agent_123', method: 'POST' },
-      { path: '/api/v1/agents/agent_123', method: 'DELETE' },
       { path: '/api/v1/agents/../admin', method: 'GET' }
     ]) {
       expect(() => normalizeAppApiInput(input)).toThrow('Unsupported app API route')

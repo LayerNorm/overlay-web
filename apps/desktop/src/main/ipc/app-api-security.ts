@@ -32,8 +32,8 @@ const APP_API_ROUTE_METHODS = new Map<string, ReadonlySet<string>>([
   ['/api/v1/workspaces/active', new Set(['POST'])],
   ['/api/v1/agent-environments', new Set(['GET'])],
   ['/api/v1/agent-environments/enrollment-sessions', new Set(['POST'])],
-  ['/api/v1/agent-bindings', new Set(['GET'])],
-  ['/api/v1/agents', new Set(['GET'])],
+  ['/api/v1/agent-bindings', new Set(['GET', 'PUT', 'DELETE'])],
+  ['/api/v1/agents', new Set(['GET', 'POST'])],
   ['/api/subscription/settings', new Set(['GET', 'PATCH'])]
 ])
 const ENVIRONMENT_SUBRESOURCE_METHODS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
@@ -55,7 +55,7 @@ const AGENT_DETAIL_PATTERN = /^\/api\/v1\/agents\/[A-Za-z0-9_-]{1,128}$/
 
 function agentDetailMethods(pathname: string): ReadonlySet<string> | undefined {
   if (!AGENT_DETAIL_PATTERN.test(pathname)) return undefined
-  return new Set(['GET'])
+  return new Set(['GET', 'PATCH', 'DELETE'])
 }
 
 const STREAM_APP_API_ROUTES = new Set([

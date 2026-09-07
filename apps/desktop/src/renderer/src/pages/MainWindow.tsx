@@ -24,6 +24,7 @@ import { UpdateNotification } from '../components/ui/UpdateNotification'
 import { ChatsListPage } from './ChatsListPage'
 import { AgentsDirectoryPage } from './AgentsDirectoryPage'
 import { AgentDetailPage } from './AgentDetailPage'
+import { AgentEditorPanel } from './AgentEditorPanel'
 import { TranscriptionListPage } from './TranscriptionListPage'
 import { ProjectsListPage } from './ProjectsListPage'
 import { FilesListPage } from './FilesListPage'
@@ -326,6 +327,15 @@ export function MainWindow({
   const handleSelectAgent = useCallback((agentId: string): void => {
     setAgentEditorOpen(null)
     setSelectedAgentId(agentId)
+  }, [])
+
+  const handleAgentSaved = useCallback((agentId: string): void => {
+    setAgentEditorOpen(null)
+    setSelectedAgentId(agentId)
+  }, [])
+
+  const handleCloseAgentEditor = useCallback((): void => {
+    setAgentEditorOpen(null)
   }, [])
 
   const handleNewNote = useCallback(async (): Promise<void> => {
@@ -631,7 +641,7 @@ export function MainWindow({
   const headerActions = getHeaderActions()
   const shouldStretchContent =
     (activeTool === 'chat' && selectedChatId) ||
-    (activeTool === 'agents' && selectedAgentId && !agentEditorOpen) ||
+    (activeTool === 'agents' && (selectedAgentId || agentEditorOpen)) ||
     (activeTool === 'automations' && selectedAutomationChatId) ||
     (activeTool === 'files' && selectedNoteId) ||
     (activeTool === 'files' && selectedOutputId) ||
@@ -1218,6 +1228,38 @@ export function MainWindow({
                   theme={theme}
                   agentId={selectedAgentId}
                   headerLeftSlot={expandButton}
+                  onEditAgent={() => setAgentEditorOpen('edit')}
+                />
+              </div>
+            )}
+
+            {activeTool === 'agents' && agentEditorOpen === 'new' && (
+              <div
+                key="agent-new"
+                style={{ width: '100%', height: '100%', animation: 'mainFadeIn 0.15s ease-out' }}
+              >
+                <AgentEditorPanel
+                  theme={theme}
+                  mode="new"
+                  headerLeftSlot={expandButton}
+                  onClose={handleCloseAgentEditor}
+                  onSaved={handleAgentSaved}
+                />
+              </div>
+            )}
+
+            {activeTool === 'agents' && agentEditorOpen === 'edit' && selectedAgentId && (
+              <div
+                key={`agent-edit-${selectedAgentId}`}
+                style={{ width: '100%', height: '100%', animation: 'mainFadeIn 0.15s ease-out' }}
+              >
+                <AgentEditorPanel
+                  theme={theme}
+                  mode="edit"
+                  agentId={selectedAgentId}
+                  headerLeftSlot={expandButton}
+                  onClose={handleCloseAgentEditor}
+                  onSaved={handleAgentSaved}
                 />
               </div>
             )}
@@ -1332,7 +1374,7 @@ export function MainWindow({
 
             {activeTool !== 'home' &&
               !(activeTool === 'chat' && selectedChatId) &&
-              !(activeTool === 'agents' && selectedAgentId && !agentEditorOpen) &&
+              !(activeTool === 'agents' && (selectedAgentId || agentEditorOpen)) &&
               !(activeTool === 'automations' && selectedAutomationChatId) &&
               !(activeTool === 'files' && selectedNoteId) &&
               !(activeTool === 'files' && selectedOutputId) &&
