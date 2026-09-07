@@ -50,34 +50,59 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
   const [canCreateAgents, setCanCreateAgents] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const statusRef = useRef<EnvironmentStatus>('idle')
 
   const refresh = useCallback(async (): Promise<void> => {
     if (getAuthReadyState() !== true) return
     if (inFlight.current) return
     inFlight.current = true
-    setStatus((prev) => (prev === 'ready' ? prev : 'loading'))
+    if (statusRef.current !== 'ready') {
+      statusRef.current = 'loading'
+      setStatus('loading')
+    }
     try {
       const [environmentList, bindingList, directory] = await Promise.all([
         listEnvironments(),
         listBindings(),
         fetchAgentDirectory()
       ])
+      if (retryTimer.current) {
+        clearTimeout(retryTimer.current)
+        retryTimer.current = null
+      }
       setEnvironments(environmentList)
       setBindings(bindingList)
       setAgents(directory.agents)
       setCanCreateAgents(directory.canCreate)
       setError(null)
+      statusRef.current = 'ready'
       setStatus('ready')
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError))
-      setStatus((prev) => (prev === 'ready' ? prev : 'error'))
+      if (statusRef.current === 'ready') return
+      statusRef.current = 'error'
+      setStatus('error')
+      // Startup bursts across windows can trip the IPC concurrency limit;
+      // retry once shortly after instead of parking in an error state.
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+      retryTimer.current = setTimeout(() => {
+        retryTimer.current = null
+        inFlight.current = false
+        void refresh()
+      }, 1_500)
     } finally {
       inFlight.current = false
     }
   }, [])
 
   const clear = useCallback(() => {
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current)
+      retryTimer.current = null
+    }
     inFlight.current = false
+    statusRef.current = 'idle'
     setStatus('idle')
     setEnvironments([])
     setBindings([])

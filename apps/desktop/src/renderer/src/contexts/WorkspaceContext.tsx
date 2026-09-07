@@ -21,6 +21,20 @@ import { clearActiveWorkspaceId, getActiveWorkspaceId } from '../services/worksp
 
 type WorkspaceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+/**
+ * Panel windows (chat, notebook, browser) mount the same provider tree but
+ * never render workspace UI. They skip eager loading to avoid N× fan-out
+ * against the main-process IPC concurrency limit at startup; the workspace
+ * header they need comes from the persisted store, not this context.
+ */
+function isMainAppWindow(): boolean {
+  try {
+    return (new URLSearchParams(window.location.search).get('window') || 'overlay') === 'main'
+  } catch {
+    return true
+  }
+}
+
 interface WorkspaceContextValue {
   status: WorkspaceStatus
   workspaces: readonly DesktopWorkspaceSummary[]
@@ -43,12 +57,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
   const [error, setError] = useState<string | null>(null)
   const [switchingWorkspaceId, setSwitchingWorkspaceId] = useState<string | null>(null)
   const inFlight = useRef(false)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const statusRef = useRef<WorkspaceStatus>('idle')
+
+  const clearRetry = useCallback(() => {
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current)
+      retryTimer.current = null
+    }
+  }, [])
+
+  const setStatusTracked = useCallback((next: WorkspaceStatus) => {
+    statusRef.current = next
+    setStatus(next)
+  }, [])
 
   const refresh = useCallback(async (): Promise<void> => {
     if (getAuthReadyState() !== true) return
     if (inFlight.current) return
     inFlight.current = true
-    setStatus((prev) => (prev === 'ready' ? prev : 'loading'))
+    if (statusRef.current !== 'ready') setStatusTracked('loading')
     setError(null)
     try {
       const response = await listWorkspaces()
@@ -65,20 +93,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
           })
         )
       }
+      clearRetry()
       setWorkspaces(response.workspaces)
       setActiveWorkspaceId(resolvedId)
-      setStatus('ready')
+      setStatusTracked('ready')
     } catch (refreshError) {
       const message =
         refreshError instanceof Error ? refreshError.message : String(refreshError)
       // Keep a previously resolved workspace instead of signing the shell out;
       // scoped fetches still fail closed per-request on 401.
       setError(message)
-      setStatus((prev) => (prev === 'ready' ? prev : 'error'))
+      if (statusRef.current === 'ready') return
+      setStatusTracked('error')
+      // Startup bursts across windows can trip the IPC concurrency limit;
+      // retry once shortly after instead of parking in an error state.
+      clearRetry()
+      retryTimer.current = setTimeout(() => {
+        retryTimer.current = null
+        inFlight.current = false
+        void refresh()
+      }, 1_500)
     } finally {
       inFlight.current = false
     }
-  }, [])
+  }, [clearRetry, setStatusTracked])
 
   const switchWorkspace = useCallback(
     async (workspaceId: string): Promise<void> => {
@@ -106,10 +144,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
       const authed =
         (event as CustomEvent<{ authed?: boolean }>).detail?.authed === true
       if (authed) {
-        void refresh()
+        if (isMainAppWindow()) void refresh()
       } else {
+        clearRetry()
         inFlight.current = false
-        setStatus('idle')
+        setStatusTracked('idle')
         setWorkspaces([])
         setActiveWorkspaceId(null)
         setError(null)
@@ -119,9 +158,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }): React.
       }
     }
     window.addEventListener('overlay:auth-ready', handleAuthReady)
-    if (getAuthReadyState() === true) void refresh()
-    return () => window.removeEventListener('overlay:auth-ready', handleAuthReady)
-  }, [refresh])
+    if (getAuthReadyState() === true && isMainAppWindow()) void refresh()
+    return () => {
+      window.removeEventListener('overlay:auth-ready', handleAuthReady)
+      clearRetry()
+    }
+  }, [refresh, clearRetry, setStatusTracked])
 
   const value = useMemo<WorkspaceContextValue>(() => {
     const activeWorkspace =
