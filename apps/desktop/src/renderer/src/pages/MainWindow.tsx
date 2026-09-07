@@ -3,6 +3,7 @@ import { useSettings } from '../hooks/useSettings'
 import { SettingsIcon } from '../components/icons'
 import {
   MessageSquare,
+  Bot,
   BookOpen,
   Globe,
   Mic,
@@ -21,6 +22,8 @@ import { getTheme } from '../utils/theme'
 import { getPanelTheme } from '../hooks/usePanelTheme'
 import { UpdateNotification } from '../components/ui/UpdateNotification'
 import { ChatsListPage } from './ChatsListPage'
+import { AgentsDirectoryPage } from './AgentsDirectoryPage'
+import { AgentDetailPage } from './AgentDetailPage'
 import { TranscriptionListPage } from './TranscriptionListPage'
 import { ProjectsListPage } from './ProjectsListPage'
 import { FilesListPage } from './FilesListPage'
@@ -57,6 +60,7 @@ type ActiveTool =
   | 'home'
   | 'projects'
   | 'chat'
+  | 'agents'
   | 'files'
   | 'extensions'
   | 'automations'
@@ -82,6 +86,7 @@ const SIDEBAR_TOOLS: {
   label: string
 }[] = [
   { id: 'chat', icon: MessageSquare, label: 'chats' },
+  { id: 'agents', icon: Bot, label: 'agents' },
   { id: 'files', icon: FileText, label: 'files' },
   { id: 'extensions', icon: Puzzle, label: 'extensions' },
   { id: 'projects', icon: FolderOpen, label: 'projects' },
@@ -93,6 +98,7 @@ const SIDEBAR_TOOLS: {
 const PANEL_TITLES: Partial<Record<ActiveTool, string>> = {
   projects: 'projects',
   chat: 'chats',
+  agents: 'agents',
   files: 'files',
   extensions: 'extensions',
   automations: 'automations',
@@ -132,6 +138,8 @@ export function MainWindow({
   const [activeTool, setActiveTool] = useState<ActiveTool>('home')
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' })
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
+  const [agentEditorOpen, setAgentEditorOpen] = useState<'new' | 'edit' | null>(null)
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(null)
   const [selectedAutomationChatId, setSelectedAutomationChatId] = useState<string | null>(null)
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
@@ -154,6 +162,7 @@ export function MainWindow({
       return {
         projects: parsed.projects ?? false,
         chat: parsed.chat ?? false,
+        agents: parsed.agents ?? false,
         files: parsed.files ?? false,
         automations: parsed.automations ?? false,
         transcriptions: parsed.transcriptions ?? false,
@@ -164,6 +173,7 @@ export function MainWindow({
       return {
         projects: false,
         chat: false,
+        agents: false,
         files: false,
         automations: false,
         transcriptions: false,
@@ -276,6 +286,8 @@ export function MainWindow({
 
   const resetEmbeddedSelections = useCallback(() => {
     setSelectedChatId(null)
+    setSelectedAgentId(null)
+    setAgentEditorOpen(null)
     setSelectedAutomationId(null)
     setSelectedAutomationChatId(null)
     setSelectedNoteId(null)
@@ -303,6 +315,17 @@ export function MainWindow({
     setLastOpenedChatId(chat.id)
     setActiveTool('chat')
     setSelectedChatId(chat.id)
+  }, [])
+
+  const handleNewAgent = useCallback((): void => {
+    setSelectedAgentId(null)
+    setAgentEditorOpen('new')
+    setActiveTool('agents')
+  }, [])
+
+  const handleSelectAgent = useCallback((agentId: string): void => {
+    setAgentEditorOpen(null)
+    setSelectedAgentId(agentId)
   }, [])
 
   const handleNewNote = useCallback(async (): Promise<void> => {
@@ -529,6 +552,15 @@ export function MainWindow({
           },
           { key: 'new-chat', title: 'New chat', icon: Plus, onClick: handleNewChat }
         ]
+      case 'agents':
+        return [
+          {
+            key: 'new-agent',
+            title: 'New agent',
+            icon: Plus,
+            onClick: handleNewAgent
+          }
+        ]
       case 'files':
         return [
           {
@@ -599,6 +631,7 @@ export function MainWindow({
   const headerActions = getHeaderActions()
   const shouldStretchContent =
     (activeTool === 'chat' && selectedChatId) ||
+    (activeTool === 'agents' && selectedAgentId && !agentEditorOpen) ||
     (activeTool === 'automations' && selectedAutomationChatId) ||
     (activeTool === 'files' && selectedNoteId) ||
     (activeTool === 'files' && selectedOutputId) ||
@@ -937,6 +970,14 @@ export function MainWindow({
                     onSelectModeChange={setChatSelectMode}
                   />
                 )}
+                {activeTool === 'agents' && (
+                  <AgentsDirectoryPage
+                    theme={theme}
+                    selectedAgentId={selectedAgentId}
+                    onSelectAgent={handleSelectAgent}
+                    onNewAgent={handleNewAgent}
+                  />
+                )}
                 {activeTool === 'files' && (
                   <FilesListPage
                     theme={theme}
@@ -1168,6 +1209,19 @@ export function MainWindow({
               </div>
             )}
 
+            {activeTool === 'agents' && selectedAgentId && !agentEditorOpen && (
+              <div
+                key={selectedAgentId}
+                style={{ width: '100%', height: '100%', animation: 'mainFadeIn 0.15s ease-out' }}
+              >
+                <AgentDetailPage
+                  theme={theme}
+                  agentId={selectedAgentId}
+                  headerLeftSlot={expandButton}
+                />
+              </div>
+            )}
+
             {activeTool === 'automations' && selectedAutomationChatId && (
               <div
                 key={selectedAutomationChatId}
@@ -1278,6 +1332,7 @@ export function MainWindow({
 
             {activeTool !== 'home' &&
               !(activeTool === 'chat' && selectedChatId) &&
+              !(activeTool === 'agents' && selectedAgentId && !agentEditorOpen) &&
               !(activeTool === 'automations' && selectedAutomationChatId) &&
               !(activeTool === 'files' && selectedNoteId) &&
               !(activeTool === 'files' && selectedOutputId) &&

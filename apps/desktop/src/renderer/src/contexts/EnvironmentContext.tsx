@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { getAuthReadyState } from '../services/auth-service'
 import {
-  listAgents,
+  fetchAgentDirectory,
   listBindings,
   listEnvironments,
   type DesktopAgentBinding,
@@ -27,8 +27,10 @@ interface EnvironmentContextValue {
   environments: readonly DesktopAgentEnvironment[]
   bindings: readonly DesktopAgentBinding[]
   agents: readonly DesktopAgentDirectoryItem[]
+  canCreateAgents: boolean
   error: string | null
   bindingsByEnvironmentId: ReadonlyMap<string, DesktopAgentBinding[]>
+  bindingByAgentId: ReadonlyMap<string, DesktopAgentBinding>
   refresh(): Promise<void>
 }
 
@@ -45,6 +47,7 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
   const [environments, setEnvironments] = useState<DesktopAgentEnvironment[]>([])
   const [bindings, setBindings] = useState<DesktopAgentBinding[]>([])
   const [agents, setAgents] = useState<DesktopAgentDirectoryItem[]>([])
+  const [canCreateAgents, setCanCreateAgents] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
@@ -54,14 +57,15 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
     inFlight.current = true
     setStatus((prev) => (prev === 'ready' ? prev : 'loading'))
     try {
-      const [environmentList, bindingList, agentList] = await Promise.all([
+      const [environmentList, bindingList, directory] = await Promise.all([
         listEnvironments(),
         listBindings(),
-        listAgents()
+        fetchAgentDirectory()
       ])
       setEnvironments(environmentList)
       setBindings(bindingList)
-      setAgents(agentList)
+      setAgents(directory.agents)
+      setCanCreateAgents(directory.canCreate)
       setError(null)
       setStatus('ready')
     } catch (refreshError) {
@@ -78,6 +82,7 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
     setEnvironments([])
     setBindings([])
     setAgents([])
+    setCanCreateAgents(false)
     setError(null)
   }, [])
 
@@ -108,13 +113,26 @@ export function EnvironmentProvider({ children }: { children: ReactNode }): Reac
 
   const value = useMemo<EnvironmentContextValue>(() => {
     const bindingsByEnvironmentId = new Map<string, DesktopAgentBinding[]>()
+    const bindingByAgentId = new Map<string, DesktopAgentBinding>()
     for (const binding of bindings) {
+      if (!binding.enabled) continue
       const list = bindingsByEnvironmentId.get(binding.environmentId) ?? []
       list.push(binding)
       bindingsByEnvironmentId.set(binding.environmentId, list)
+      if (!bindingByAgentId.has(binding.agentId)) bindingByAgentId.set(binding.agentId, binding)
     }
-    return { status, environments, bindings, agents, error, bindingsByEnvironmentId, refresh }
-  }, [status, environments, bindings, agents, error, refresh])
+    return {
+      status,
+      environments,
+      bindings,
+      agents,
+      canCreateAgents,
+      error,
+      bindingsByEnvironmentId,
+      bindingByAgentId,
+      refresh
+    }
+  }, [status, environments, bindings, agents, canCreateAgents, error, refresh])
 
   return <EnvironmentContext.Provider value={value}>{children}</EnvironmentContext.Provider>
 }

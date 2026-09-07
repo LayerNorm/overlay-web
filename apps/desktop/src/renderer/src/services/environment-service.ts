@@ -37,8 +37,20 @@ export interface DesktopAgentBinding {
 export interface DesktopAgentDirectoryItem {
   id: string
   name: string
-  kind?: string
-  modelId?: string
+  description?: string
+  instructions: string
+  harness: 'overlay' | 'claude-code'
+  modelId: string
+  avatarColor?: string
+  visibility: 'creator' | 'workspace'
+  roomCount: number
+  teamIds: string[]
+  createdByDisplayName?: string
+}
+
+export interface DesktopAgentDirectory {
+  agents: DesktopAgentDirectoryItem[]
+  canCreate: boolean
 }
 
 export type DisplayEnvironmentStatus = EnvironmentStatus
@@ -143,11 +155,23 @@ function normalizeAgentItem(value: unknown): DesktopAgentDirectoryItem | null {
   const id = asString(value.id) ?? asString(value.agentId)
   const name = asString(value.name) ?? asString(value.title)
   if (!id || !name) return null
+  const harness = asString(value.harness)
+  const visibility = asString(value.visibility)
+  const teamIds = Array.isArray(value.teamIds)
+    ? value.teamIds.filter((teamId): teamId is string => typeof teamId === 'string')
+    : []
   return {
     id,
     name,
-    kind: asString(value.kind),
-    modelId: asString(value.modelId)
+    description: asString(value.description),
+    instructions: asString(value.instructions) ?? '',
+    harness: harness === 'claude-code' ? 'claude-code' : 'overlay',
+    modelId: asString(value.modelId) ?? '',
+    avatarColor: asString(value.avatarColor),
+    visibility: visibility === 'workspace' ? 'workspace' : 'creator',
+    roomCount: asNumber(value.roomCount) ?? 0,
+    teamIds,
+    createdByDisplayName: asString(value.createdByDisplayName)
   }
 }
 
@@ -172,13 +196,130 @@ export async function listBindings(agentId?: string): Promise<DesktopAgentBindin
     .filter((binding): binding is DesktopAgentBinding => binding !== null)
 }
 
-export async function listAgents(): Promise<DesktopAgentDirectoryItem[]> {
+export async function fetchAgentDirectory(): Promise<DesktopAgentDirectory> {
   const raw = await desktopAppJson<unknown>('/api/v1/agents')
   const items = arrayField(raw, 'agents')
   const directory = items.length > 0 ? items : arrayField(raw, 'data')
-  return directory
-    .map(normalizeAgentItem)
-    .filter((agent): agent is DesktopAgentDirectoryItem => agent !== null)
+  return {
+    agents: directory
+      .map(normalizeAgentItem)
+      .filter((agent): agent is DesktopAgentDirectoryItem => agent !== null),
+    canCreate: !isRecord(raw) || raw.canCreate !== false
+  }
+}
+
+export async function listAgents(): Promise<DesktopAgentDirectoryItem[]> {
+  return (await fetchAgentDirectory()).agents
+}
+
+export async function getAgent(agentId: string): Promise<DesktopAgentDirectoryItem> {
+  const raw = await desktopAppJson<unknown>(
+    `/api/v1/agents/${encodeURIComponent(agentId)}`
+  )
+  const agent = normalizeAgentItem(isRecord(raw) ? raw.agent ?? raw : null)
+  if (!agent) throw new Error('Agent not found.')
+  return agent
+}
+
+/* BYO harness helpers (ported from the web `byo-agent-setup` lib). */
+
+export interface AcpAdapterCapability {
+  id: string
+  label: string
+}
+
+export interface ByoHarnessOption {
+  id: string
+  label: string
+  description: string
+  connectable: boolean
+}
+
+const HARNESS_DESCRIPTIONS: Record<BuiltInHarnessId, string> = {
+  codex: 'Run OpenAI Codex through the Agent Client Protocol.',
+  'claude-code': 'Run Anthropic Claude Code through the Agent Client Protocol.',
+  hermes: 'Run Hermes 0.20.6 or newer through its official Agent Client Protocol server.'
+}
+
+export function acpAdaptersForEnvironment(
+  environment: Pick<DesktopAgentEnvironment, 'capabilities'>
+): AcpAdapterCapability[] {
+  const adapters = environment.capabilities?.adapters
+  if (!Array.isArray(adapters)) return []
+  return (adapters as Array<Record<string, unknown>>).flatMap((adapter) =>
+    adapter.protocol === 'acp' && typeof adapter.id === 'string'
+      ? [
+          {
+            id: adapter.id,
+            label: typeof adapter.displayName === 'string' ? adapter.displayName : adapter.id
+          }
+        ]
+      : []
+  )
+}
+
+export function availableByoHarnesses(
+  environments: readonly DesktopAgentEnvironment[]
+): ByoHarnessOption[] {
+  const options = new Map<string, ByoHarnessOption>(
+    BUILT_IN_HARNESSES.map((harness) => [
+      harness.id,
+      { id: harness.id, label: harness.label, description: HARNESS_DESCRIPTIONS[harness.id], connectable: true }
+    ])
+  )
+  for (const environment of environments) {
+    for (const adapter of acpAdaptersForEnvironment(environment)) {
+      if (!options.has(adapter.id)) {
+        options.set(adapter.id, {
+          id: adapter.id,
+          label: adapter.label,
+          description: 'Use the ACP-compatible harness advertised by this environment.',
+          connectable: false
+        })
+      }
+    }
+  }
+  return [...options.values()]
+}
+
+export function environmentSupportsHarness(
+  environment: DesktopAgentEnvironment,
+  harnessId: string
+): boolean {
+  return acpAdaptersForEnvironment(environment).some((adapter) => adapter.id === harnessId)
+}
+
+export function defaultWorkingDirectory(
+  environment: DesktopAgentEnvironment | undefined
+): string {
+  if (!environment?.filesystemGrant || environment.filesystemGrant.mode !== 'selected_roots') {
+    return ''
+  }
+  return environment.filesystemGrant.roots[0] ?? ''
+}
+
+export function workspaceHarnessForByo(harnessId: string): 'overlay' | 'claude-code' {
+  return harnessId === 'claude-code' ? 'claude-code' : 'overlay'
+}
+
+export function generatedByoInstructions(harnessLabel: string): string {
+  return `Run delegated work through ${harnessLabel} in the connected environment. Stream user-visible progress and return a concise final result to Overlay.`
+}
+
+export function workspaceAgentUsesByo(
+  agent: Pick<DesktopAgentDirectoryItem, 'harness' | 'modelId'> | null | undefined
+): boolean {
+  return Boolean(agent && (agent.harness !== 'overlay' || agent.modelId.startsWith('byo/')))
+}
+
+const HARNESS_LABELS: Record<string, string> = {
+  codex: 'Codex',
+  'claude-code': 'Claude Code',
+  hermes: 'Hermes'
+}
+
+export function harnessLabel(adapterId: string): string {
+  return HARNESS_LABELS[adapterId] ?? adapterId
 }
 
 export type BuiltInHarnessId = 'codex' | 'claude-code' | 'hermes'

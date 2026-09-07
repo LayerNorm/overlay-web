@@ -76,6 +76,19 @@ describe('desktop app API security', () => {
     ).toThrow('Unsupported app API route')
   })
 
+  it('allows reading a single agent by id', () => {
+    expect(normalizeAppApiInput({ path: '/api/v1/agents/agent_123', method: 'GET' }).path).toBe(
+      '/api/v1/agents/agent_123'
+    )
+    for (const input of [
+      { path: '/api/v1/agents/agent_123', method: 'POST' },
+      { path: '/api/v1/agents/agent_123', method: 'DELETE' },
+      { path: '/api/v1/agents/../admin', method: 'GET' }
+    ]) {
+      expect(() => normalizeAppApiInput(input)).toThrow('Unsupported app API route')
+    }
+  })
+
   it('rejects origins, traversal encodings, backslashes, and protocol-relative paths', () => {
     for (const path of [
       'https://evil.example/api/v1/generate-video',

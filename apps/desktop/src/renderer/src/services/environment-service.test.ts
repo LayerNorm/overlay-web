@@ -86,7 +86,8 @@ describe('environment-service health', () => {
     expect(sent[0].headers['x-overlay-workspace-id']).toBe('workspace-1')
   })
 
-  it('lists bindings and agents with workspace scope', async () => {    const { listBindings, listAgents } = await import('./environment-service')
+  it('lists bindings and agents with workspace scope', async () => {
+    const { listBindings, listAgents } = await import('./environment-service')
     bridgeJsonResponse({
       bindings: [
         {
@@ -105,6 +106,74 @@ describe('environment-service health', () => {
     bridgeJsonResponse({ agents: [{ id: 'agent-1', name: 'Helper' }] })
     expect((await listAgents()).map((agent) => agent.id)).toEqual(['agent-1'])
     expect(bridgeState.request).toHaveBeenCalledTimes(2)
+  })
+
+  it('fetches the agent directory with create permission', async () => {
+    const { fetchAgentDirectory, getAgent } = await import('./environment-service')
+    bridgeJsonResponse({
+      agents: [
+        {
+          id: 'agent-1',
+          name: 'Helper',
+          instructions: 'Help out.',
+          harness: 'overlay',
+          modelId: 'openrouter/free',
+          visibility: 'workspace',
+          roomCount: 2
+        }
+      ],
+      canCreate: true
+    })
+    const directory = await fetchAgentDirectory()
+    expect(directory.canCreate).toBe(true)
+    expect(directory.agents[0]).toMatchObject({
+      id: 'agent-1',
+      name: 'Helper',
+      harness: 'overlay',
+      visibility: 'workspace',
+      roomCount: 2
+    })
+
+    bridgeJsonResponse({ agent: { id: 'agent-1', name: 'Helper' } })
+    await expect(getAgent('agent-1')).resolves.toMatchObject({ id: 'agent-1' })
+    const detailCall = bridgeState.request.mock.calls[1] as unknown as [{ path: string }]
+    expect(detailCall[0].path).toBe('/api/v1/agents/agent-1')
+
+    bridgeJsonResponse({ agents: [] })
+    await expect(getAgent('missing')).rejects.toThrow('Agent not found.')
+  })
+
+  it('derives harness helpers the same way as the web editor', async () => {
+    const service = await import('./environment-service')
+    const online = {
+      id: 'environment-1',
+      workspaceId: 'workspace-1',
+      kind: 'local' as const,
+      name: 'MacBook',
+      status: 'online' as const,
+      capabilities: { adapters: [{ protocol: 'acp', id: 'codex', displayName: 'Codex' }] },
+      filesystemGrant: { mode: 'selected_roots' as const, roots: ['/repo', '/tmp'] },
+      createdAt: 1,
+      updatedAt: 2
+    }
+    expect(service.environmentSupportsHarness(online, 'codex')).toBe(true)
+    expect(service.environmentSupportsHarness(online, 'claude-code')).toBe(false)
+    expect(service.defaultWorkingDirectory(online)).toBe('/repo')
+    expect(service.defaultWorkingDirectory(undefined)).toBe('')
+    expect(service.workspaceHarnessForByo('claude-code')).toBe('claude-code')
+    expect(service.workspaceHarnessForByo('codex')).toBe('overlay')
+    expect(service.generatedByoInstructions('Codex')).toMatch('Codex')
+    expect(
+      service.workspaceAgentUsesByo({ harness: 'overlay', modelId: 'byo/codex' })
+    ).toBe(true)
+    expect(
+      service.workspaceAgentUsesByo({ harness: 'overlay', modelId: 'openrouter/free' })
+    ).toBe(false)
+    expect(service.availableByoHarnesses([online]).map((harness) => harness.id)).toEqual([
+      'codex',
+      'claude-code',
+      'hermes'
+    ])
   })
 
   it('validates roots as absolute paths', async () => {

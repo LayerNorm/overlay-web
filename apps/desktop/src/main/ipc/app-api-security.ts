@@ -36,7 +36,6 @@ const APP_API_ROUTE_METHODS = new Map<string, ReadonlySet<string>>([
   ['/api/v1/agents', new Set(['GET'])],
   ['/api/subscription/settings', new Set(['GET', 'PATCH'])]
 ])
-
 const ENVIRONMENT_SUBRESOURCE_METHODS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['approve', new Set(['POST'])],
   ['roots', new Set(['PATCH'])],
@@ -50,6 +49,13 @@ function environmentSubresourceMethods(pathname: string): ReadonlySet<string> | 
   const match = ENVIRONMENT_SUBRESOURCE_PATTERN.exec(pathname)
   if (!match?.[1]) return undefined
   return ENVIRONMENT_SUBRESOURCE_METHODS.get(match[1])
+}
+
+const AGENT_DETAIL_PATTERN = /^\/api\/v1\/agents\/[A-Za-z0-9_-]{1,128}$/
+
+function agentDetailMethods(pathname: string): ReadonlySet<string> | undefined {
+  if (!AGENT_DETAIL_PATTERN.test(pathname)) return undefined
+  return new Set(['GET'])
 }
 
 const STREAM_APP_API_ROUTES = new Set([
@@ -95,7 +101,8 @@ export function normalizeAppApiInput(
     (/^\/api\/v1\/(?:files|outputs)\/[A-Za-z0-9_-]{1,512}\/content$/.test(pathname)
       ? new Set(['GET'])
       : undefined) ??
-    environmentSubresourceMethods(pathname)
+    environmentSubresourceMethods(pathname) ??
+    agentDetailMethods(pathname)
   if (!allowedMethods?.has(method)) {
     throw new Error(`Unsupported app API route: ${method} ${pathname}`)
   }

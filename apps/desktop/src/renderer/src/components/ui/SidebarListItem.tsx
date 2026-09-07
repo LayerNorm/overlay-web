@@ -28,6 +28,8 @@ export interface SidebarListItemProps {
   iconProps?: { strokeWidth?: number; className?: string }
   /** Main label text. */
   label: string
+  /** Optional secondary line under the label (row grows to two lines). */
+  sublabel?: string
   /** Click handler. In select mode, onBatchToggle is called instead. */
   onClick?: () => void
   /** Whether this item is the currently active/selected one. */
@@ -59,6 +61,7 @@ export function SidebarListItem({
   iconColor,
   iconProps,
   label,
+  sublabel,
   onClick,
   isActive = false,
   isBatchSelected = false,
@@ -100,7 +103,8 @@ export function SidebarListItem({
         padding: ITEM_PADDING,
         paddingLeft: 10 + depth * 16,
         borderRadius: ITEM_RADIUS,
-        height: ITEM_HEIGHT,
+        height: sublabel ? 'auto' : ITEM_HEIGHT,
+        minHeight: ITEM_HEIGHT,
         boxSizing: 'border-box',
         cursor: 'pointer',
         background,
@@ -129,6 +133,7 @@ export function SidebarListItem({
       <span
         style={{
           flex: 1,
+          minWidth: 0,
           fontSize: FONT_SIZE,
           color: foreground,
           whiteSpace: 'nowrap',
@@ -138,6 +143,21 @@ export function SidebarListItem({
         }}
       >
         {label}
+        {sublabel && (
+          <span
+            style={{
+              display: 'block',
+              fontSize: '10px',
+              color: theme.textSecondary,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: '14px'
+            }}
+          >
+            {sublabel}
+          </span>
+        )}
       </span>
       {!isSelectMode && actions && (
         <div
