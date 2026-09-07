@@ -24,6 +24,7 @@ import {
 import { forceDesktopSync, initializeDesktopSync } from './services/desktop-sync-service'
 import { SubscriptionProvider } from './contexts/SubscriptionContext'
 import { ChatProvider } from './contexts/ChatContext'
+import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import { AppBootstrapProvider, useAppBootstrap } from './contexts/AppBootstrapContext'
 import { migrateLocalChatsToCloud } from './utils/chatStorage'
 import { migrateLegacyDesktopKnowledge } from './services/desktop-knowledge-migration'
@@ -435,8 +436,9 @@ export default function App(): ReactElement<any> {
   return (
     <Sentry.ErrorBoundary fallback={<p>An error occurred.</p>}>
       <AppBootstrapProvider>
-        <SubscriptionProvider>
-          <ChatProvider>
+        <WorkspaceProvider>
+          <SubscriptionProvider>
+            <ChatProvider>
             {isPanelWindow ? (
               content
             ) : (
@@ -446,7 +448,8 @@ export default function App(): ReactElement<any> {
             )}
           </ChatProvider>
         </SubscriptionProvider>
-      </AppBootstrapProvider>
+      </WorkspaceProvider>
+    </AppBootstrapProvider>
     </Sentry.ErrorBoundary>
   )
 }

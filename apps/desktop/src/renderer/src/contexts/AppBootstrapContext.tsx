@@ -21,6 +21,7 @@ import { BUILT_IN_MODELS } from '@overlay/llm-gateway'
 import type { ChatModel } from '../components/chat/types'
 import { overlayDesktopAppClient } from '../services/app-api-client'
 import { getAuthReadyState } from '../services/auth-service'
+import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
 import { withDisabledState } from '../utils/chatModels'
 
 interface AppBootstrapContextValue {
@@ -75,8 +76,15 @@ export function AppBootstrapProvider({ children }: { children: ReactNode }): Rea
     }
     window.addEventListener('overlay:auth-ready', refreshWhenAuthenticated)
     if (getAuthReadyState() === true) void refreshBootstrap()
+    // Entitlements and the model catalog can differ per workspace (workspace
+    // wallets, plan gates), so reload them whenever the workspace changes.
+    const refreshWhenWorkspaceChanges = (): void => {
+      void refreshBootstrap()
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, refreshWhenWorkspaceChanges)
     return () => {
       window.removeEventListener('overlay:auth-ready', refreshWhenAuthenticated)
+      window.removeEventListener(WORKSPACE_CHANGED_EVENT, refreshWhenWorkspaceChanges)
     }
   }, [refreshBootstrap])
 

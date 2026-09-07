@@ -51,6 +51,7 @@ import { prehydrateDesktopIntegrations } from '../services/integrations-cache'
 import { createNewChat, setLastOpenedChatId } from '../utils/chatStorage'
 import { PROJECTS_CHANGED_EVENT } from '../utils/projectStorage'
 import { desktopAppJson } from '../services/app-api-client'
+import { subscribeWorkspaceChanged } from '../services/workspace-store'
 
 type ActiveTool =
   | 'home'
@@ -283,6 +284,19 @@ export function MainWindow({
     setSelectedLocalDocumentId(null)
     setSelectedProjectId(null)
   }, [])
+
+  // Selections and list state are workspace-scoped on the server. When the
+  // workspace changes, drop the current selection and reload the lists so a
+  // previous workspace's automations/projects never render as current.
+  useEffect(() => {
+    return subscribeWorkspaceChanged(() => {
+      resetEmbeddedSelections()
+      setAutomationsRefreshToken((prev) => prev + 1)
+      setProjectsRefreshToken((prev) => prev + 1)
+      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+    })
+  }, [resetEmbeddedSelections])
 
   const handleNewChat = useCallback(async (): Promise<void> => {
     const chat = await createNewChat()
