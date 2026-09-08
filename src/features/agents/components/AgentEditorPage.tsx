@@ -6,6 +6,7 @@ import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { Button, Input } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
@@ -78,6 +79,7 @@ export function AgentEditorPage({
   const [instructions, setInstructions] = useState(initial.instructions)
   const [modelId, setModelId] = useState<string>(initial.modelId)
   const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
+  const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>(initial.avatarShape)
   const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
@@ -135,6 +137,7 @@ export function AgentEditorPage({
     setInstructions(agent.instructions)
     setModelId(agent.modelId)
     setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
     setSavedFlash(false)
@@ -176,7 +179,7 @@ export function AgentEditorPage({
     const input: WorkspaceAgentCreateInput = {
       ...buildWorkspaceAgentInput({
         name, description, instructions, agentType, harnessLabel, adapterId,
-        modelId, avatarColor, enabledToolGroups, visibility,
+        modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
       }),
       teamIds: agent?.teamIds ?? [],
     }
@@ -312,7 +315,12 @@ export function AgentEditorPage({
             ) : null}
 
             <div className="mt-5 grid gap-5 sm:grid-cols-[112px_minmax(0,1fr)]">
-              <AgentAvatar color={avatarColor} onChange={(color) => { setAvatarColor(color); setSavedFlash(false) }} />
+              <AgentAvatar
+                color={avatarColor}
+                shape={avatarShape}
+                onChange={(color) => { setAvatarColor(color); setSavedFlash(false) }}
+                onShapeChange={(next) => { setAvatarShape(next); setSavedFlash(false) }}
+              />
               <div className="space-y-4">
                 <label className="block text-xs font-medium">
                   Agent name
@@ -433,6 +441,7 @@ function getInitialEditorState(args: {
     instructions: agent?.instructions ?? '',
     modelId: agent?.modelId ?? DEFAULT_MODEL_ID,
     avatarColor: agent?.avatarColor ?? AVATAR_COLORS[0]!,
+    avatarShape: agent?.avatarShape ?? 'circle',
     visibility: agent?.visibility ?? 'workspace',
   }
 }

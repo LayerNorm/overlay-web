@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -8,8 +8,15 @@ import { Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
-import { clearAgentOpened } from '@/shared/agents/last-agent-by-workspace'
+import {
+  clearAgentOpened,
+  getAgentOpenedAt,
+  getLastOpenedAgentId,
+  rememberAgentOpened,
+  sortAgentsByRecency,
+} from '@/shared/agents/last-agent-by-workspace'
 import { AgentEditorPage } from './AgentEditorPage'
 import { buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 
@@ -23,6 +30,9 @@ export function AgentConversationWorkspace() {
   const conversationId = searchParams?.get('id') ?? null
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
   const [error, setError] = useState<string | null>(null)
+  const [resolving, setResolving] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+  const attemptedAgentRef = useRef<string | null>(null)
 
   const openCreate = useCallback(() => {
     setError(null)
@@ -58,6 +68,76 @@ export function AgentConversationWorkspace() {
     if (agentId) clearAgentOpened(activeWorkspaceId, agentId)
     router.replace(buildAgentsDirectoryHref(activeWorkspaceId))
   }, [activeWorkspaceId, agentId, router])
+
+  // Owns the no-conversation state: load the roster, then open the most
+  // recently used agent directly. The blank page only ever appears when the
+  // workspace genuinely has no agents. The sidebar no longer auto-opens, so
+  // exactly one DM creation runs per landing.
+  const [directoryState, setDirectoryState] = useState<{
+    workspaceId: string | null
+    agents: WorkspaceAgentDirectoryItem[] | null
+    error: string | null
+  }>({ workspaceId: null, agents: null, error: null })
+
+  useEffect(() => {
+    if (conversationId || !activeWorkspaceId) return
+    let cancelled = false
+    overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
+      if (!cancelled) setDirectoryState({ workspaceId: activeWorkspaceId, agents: response.agents, error: null })
+    }).catch(() => {
+      if (!cancelled) {
+        setDirectoryState({
+          workspaceId: activeWorkspaceId,
+          agents: [],
+          error: 'Could not load your agents. Check your connection and retry.',
+        })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId, activeWorkspaceId])
+
+  const directory = directoryState.workspaceId === activeWorkspaceId ? directoryState.agents : null
+  const loadError = directoryState.workspaceId === activeWorkspaceId ? directoryState.error : null
+
+  useEffect(() => {
+    attemptedAgentRef.current = null
+  }, [activeWorkspaceId, conversationId])
+
+  useEffect(() => {
+    if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
+    const lastOpenedId = getLastOpenedAgentId(activeWorkspaceId)
+    const target = (agentId ? directory.find((agent) => agent.id === agentId) : undefined)
+      ?? (lastOpenedId ? directory.find((agent) => agent.id === lastOpenedId) : undefined)
+      ?? sortAgentsByRecency(directory, getAgentOpenedAt(activeWorkspaceId))[0]
+    if (!target || attemptedAgentRef.current === target.id) return
+    attemptedAgentRef.current = target.id
+    rememberAgentOpened(activeWorkspaceId, target.id)
+    void (async () => {
+      setResolving(true)
+      setError(null)
+      try {
+        await startAgentChat({
+          workspaceId: activeWorkspaceId,
+          agentId: target.id,
+          agentPrincipalId: target.principalId,
+          surface: 'agents',
+          push: (href) => router.replace(href),
+        })
+      } catch (chatError) {
+        setError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
+      } finally {
+        setResolving(false)
+      }
+    })()
+  }, [conversationId, activeWorkspaceId, agentId, directory, retryCount, router])
+
+  const retryOpen = useCallback(() => {
+    attemptedAgentRef.current = null
+    setError(null)
+    setRetryCount((count) => count + 1)
+  }, [])
 
   const editor = editorMode ? (
     <AgentEditorPage
@@ -98,6 +178,10 @@ export function AgentConversationWorkspace() {
     )
   }
 
+  const loading = activeWorkspaceId !== null && (directory === null || resolving)
+  const displayError = error ?? loadError
+  const empty = directory !== null && directory.length === 0 && !displayError
+
   return (
     <AppScreenShell
       header={<AppScreenHeader title="Agents" actions={settingsButton} />}
@@ -108,23 +192,40 @@ export function AgentConversationWorkspace() {
       onRightPanelClose={closeEditor}
     >
       <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
-        <div className="max-w-sm text-center">
-          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
-            <Bot size={18} />
-          </span>
-          <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">Your agents work from here</h1>
-          <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
-            Select an agent to open its conversation, or create one for a new outcome.
-          </p>
-          {error ? (
-            <p role="alert" className="mt-3 text-xs text-red-500">
-              {error}
+        {loading ? (
+          <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
+            {[0, 1, 2].map((dot) => (
+              <span
+                key={dot}
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted)]"
+                style={{ animationDelay: `${dot * 150}ms` }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="max-w-sm text-center">
+            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
+              <Bot size={18} />
+            </span>
+            <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">
+              {displayError ? 'Could not open your agent' : 'Your agents work from here'}
+            </h1>
+            <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
+              {displayError ?? (empty
+                ? 'Create one for a new outcome.'
+                : 'Select an agent to open its conversation, or create one for a new outcome.')}
             </p>
-          ) : null}
-          <Button variant="secondary" size="sm" className="mt-4" onClick={openCreate}>
-            Create agent
-          </Button>
-        </div>
+            {displayError ? (
+              <Button variant="secondary" size="sm" className="mt-4" onClick={retryOpen}>
+                Retry
+              </Button>
+            ) : (
+              <Button variant="secondary" size="sm" className="mt-4" onClick={openCreate}>
+                Create agent
+              </Button>
+            )}
+          </div>
+        )}
       </AppScreenBody>
     </AppScreenShell>
   )

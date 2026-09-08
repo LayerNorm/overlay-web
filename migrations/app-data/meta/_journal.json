@@ -519,6 +519,13 @@
       "when": 1788411109000,
       "tag": "0073_agent_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1788839635579,
+      "tag": "0074_agent_avatar_shape",
+      "breakpoints": true
     }
   ]
 }

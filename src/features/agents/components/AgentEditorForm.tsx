@@ -3,7 +3,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
-import { Orb } from '@/components/orb/Orb'
+import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
+import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
@@ -35,21 +36,46 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
   )
 }
 
-export function AgentAvatar({ color, onChange }: { color: string; onChange(color: string): void }) {
+export function AgentAvatar({ color, shape, onChange, onShapeChange }: {
+  color: string
+  shape: WorkspaceAgentCreatureShape
+  onChange(color: string): void
+  onShapeChange(shape: WorkspaceAgentCreatureShape): void
+}) {
   return (
     <div>
-      <Orb variant="glow" color={color} size={112} state="idle" label="Agent orb preview" />
-      <div className="mt-3 grid grid-cols-6 gap-1.5">
+      <div className="flex h-28 w-28 items-center justify-center">
+        <Creature shape={shape} color={color} size={104} label="Agent avatar preview" />
+      </div>
+      <p className="mt-3 text-xs font-medium">Shape</p>
+      <div className="mt-1.5 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Avatar shape">
+        {CREATURE_SHAPES.map((creatureShape) => (
+          <button
+            key={creatureShape}
+            type="button"
+            role="radio"
+            aria-checked={shape === creatureShape}
+            aria-label={`Use ${creatureShape} shape`}
+            onClick={() => onShapeChange(creatureShape)}
+            className={`flex h-12 items-center justify-center rounded-md border transition-colors ${shape === creatureShape ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+          >
+            <Creature shape={creatureShape} color={color} size={30} animated={false} label="" />
+          </button>
+        ))}
+      </div>
+      <p className="mt-3 text-xs font-medium">Color</p>
+      <div className="mt-1.5 grid grid-cols-6 gap-1.5" role="radiogroup" aria-label="Avatar color">
         {AVATAR_COLORS.map((avatarColor) => (
           <button
             key={avatarColor}
             type="button"
+            role="radio"
+            aria-checked={color === avatarColor}
             aria-label={`Use ${avatarColor}`}
-            aria-pressed={color === avatarColor}
             onClick={() => onChange(avatarColor)}
-            className={`flex h-10 items-center justify-center rounded-md border transition-colors ${color === avatarColor ? 'border-[var(--foreground)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+            className={`flex h-9 items-center justify-center rounded-md border transition-colors ${color === avatarColor ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
           >
-            <Orb variant="glow" color={avatarColor} size={24} animated={false} label="" />
+            <Creature shape={shape} color={avatarColor} size={22} animated={false} label="" />
           </button>
         ))}
       </div>

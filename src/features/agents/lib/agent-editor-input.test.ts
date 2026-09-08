@@ -12,6 +12,7 @@ test('overlay input trims fields and maps tool groups', () => {
     adapterId: 'codex',
     modelId: '  test-model  ',
     avatarColor: '#2563eb',
+    avatarShape: 'droplet',
     enabledToolGroups: new Set(['memory']),
     visibility: 'creator',
   })
@@ -21,6 +22,7 @@ test('overlay input trims fields and maps tool groups', () => {
   assert.equal(input.harness, 'overlay')
   assert.equal(input.modelId, 'test-model')
   assert.equal(input.visibility, 'creator')
+  assert.equal(input.avatarShape, 'droplet')
   assert.ok(Array.isArray(input.allowedToolIds))
 })
 
@@ -34,6 +36,7 @@ test('byo input generates instructions, harness, and model from the adapter', ()
     adapterId: 'codex',
     modelId: 'test-model',
     avatarColor: '#059669',
+    avatarShape: 'cloud',
     enabledToolGroups: new Set(['memory']),
     visibility: 'workspace',
   })

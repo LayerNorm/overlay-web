@@ -498,6 +498,23 @@ export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
 export const WORKSPACE_AGENT_VISIBILITIES = ['creator', 'workspace'] as const
 export type WorkspaceAgentVisibility = (typeof WORKSPACE_AGENT_VISIBILITIES)[number]
 
+export const WORKSPACE_AGENT_CREATURE_SHAPES = [
+  'circle',
+  'blob',
+  'squircle',
+  'pill',
+  'triangle',
+  'hexagon',
+  'cloud',
+  'droplet',
+] as const
+export type WorkspaceAgentCreatureShape = (typeof WORKSPACE_AGENT_CREATURE_SHAPES)[number]
+
+export function isWorkspaceAgentCreatureShape(value: unknown): value is WorkspaceAgentCreatureShape {
+  return typeof value === 'string'
+    && (WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(value)
+}
+
 export type WorkspaceAgentDefinition = {
   id: string
   workspaceId: string
@@ -508,6 +525,8 @@ export type WorkspaceAgentDefinition = {
   harness: WorkspaceAgentHarness
   modelId: string
   avatarColor?: string
+  /** Creature body shape for anthropomorphic agent avatars; absent means circle. */
+  avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds: string[]
   invocationPolicy: 'mention'
   visibility: WorkspaceAgentVisibility
@@ -525,6 +544,7 @@ export type WorkspaceAgentCreateInput = {
   harness?: WorkspaceAgentHarness
   modelId: string
   avatarColor?: string
+  avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds?: string[]
   teamIds?: string[]
   isDefault?: boolean

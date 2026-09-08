@@ -173,6 +173,7 @@ export function toRoomMessageView({
   currentPrincipalId,
   authorName,
   authorColor,
+  authorShape,
   mentions = [],
   streaming = false,
 }: {
@@ -180,6 +181,7 @@ export function toRoomMessageView({
   currentPrincipalId: string
   authorName: string
   authorColor?: string
+  authorShape?: string
   mentions?: Array<{ type: string; id: string; name: string }>
   streaming?: boolean
 }): RoomMessageView {
@@ -203,6 +205,7 @@ export function toRoomMessageView({
     authorStatus: message.importedAuthorStatus,
     authorKind: message.authorKind,
     authorColor,
+    authorShape,
     createdAt: message.createdAt,
     eventSequence: message.eventSequence,
     editedAt: message.editedAt,

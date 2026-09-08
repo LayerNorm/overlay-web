@@ -8,7 +8,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ShareDialog } from '@/components/share/ShareDialog'
-import { AgentOrb } from '@/components/orb/Orb'
+import { AgentCreature } from '@/components/orb/Creature'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { getAgentRuntimeLabel, indexActiveAgentBindings } from '../lib/agent-directory-runtime'
@@ -119,7 +119,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                   as="article"
                   className="min-h-52 p-5"
                   leading={(
-                    <AgentOrb agent={agent} size={48} animated={false} glow />
+                    <AgentCreature agent={agent} size={48} />
                   )}
                   topRight={isDefaultMaster || isPrivate ? (
                     <span className="flex items-center gap-1.5">

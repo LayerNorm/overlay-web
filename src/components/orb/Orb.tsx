@@ -1,19 +1,8 @@
 'use client'
 
 /**
- * Parameterized orb renderer: one SVG + CSS sphere language shared by the
- * Overlay chrome mark and every agent avatar. No WebGL, no new dependencies.
- *
- * - `OverlayMark`: the grey metallic Overlay logo at any size. Use it
- *   everywhere app chrome shows the brand (sidebar, marketing, loaders).
- *   Email HTML and favicon/app icons intentionally keep the PNG raster.
- * - `AgentOrb`: an agent as a version of the mark. The Overlay master agent
- *   renders as the metal mark; every other agent tints the same sphere from
- *   its `avatarColor`.
- *
- * Motion is transform/opacity only. Lists should pass `animated={false}`.
- * `volume` is a reserved 0..1 input for future voice reactivity and has no
- * visual effect yet.
+ * Parameterized orb renderer for the Overlay chrome mark. Pure SVG + CSS, no
+ * WebGL, no new dependencies. Agent avatars live in `./Creature`.
  */
 
 import { useId } from 'react'
@@ -169,42 +158,4 @@ export function Orb({
 /** The Overlay chrome mark: grey metallic orb at any size. */
 export function OverlayMark({ size = 20, label = 'Overlay' }: { size?: number; label?: string }) {
   return <Orb variant="metal" size={size} state="idle" animated={false} label={label} />
-}
-
-/** Matches the directory tile heuristic for the built-in master agent. */
-export function isOverlayMasterAgent(agent: { isDefault?: boolean; name: string }): boolean {
-  return Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay')
-}
-
-/**
- * An agent rendered as a version of the Overlay mark: metal for the master
- * agent, the same sphere tinted from `avatarColor` for everything else.
- */
-export function AgentOrb({
-  agent,
-  size = 32,
-  state = 'idle',
-  animated = false,
-  glow = false,
-}: {
-  agent: { isDefault?: boolean; name: string; avatarColor?: string }
-  size?: number
-  state?: OrbState
-  animated?: boolean
-  glow?: boolean
-}) {
-  if (isOverlayMasterAgent(agent)) {
-    return <Orb variant="metal" size={size} state={state} animated={animated} glow={false} label={`${agent.name} (Overlay)`} />
-  }
-  return (
-    <Orb
-      variant="glow"
-      color={agent.avatarColor ?? OVERLAY_ORB_DEFAULT_COLOR}
-      size={size}
-      state={state}
-      animated={animated}
-      glow={glow}
-      label={`${agent.name} orb`}
-    />
-  )
 }

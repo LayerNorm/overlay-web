@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Archive,
@@ -51,7 +51,7 @@ import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/proj
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
-import { AgentOrb } from '@/components/orb/Orb'
+import { AgentCreature } from '@/components/orb/Creature'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   type AgentDirectoryChangedEventDetail,
@@ -425,10 +425,6 @@ export function ProjectsInlinePanel({
 const resourceRowClass =
   'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
-// One initial auto-open plus two silent retries before surfacing the error
-// row; beyond that only an explicit retry attempts again.
-const MAX_AGENT_AUTO_OPEN_ATTEMPTS = 3
-
 export function AgentsInlinePanel({
   workspaceId,
   baseHref = '/app/agents',
@@ -439,15 +435,12 @@ export function AgentsInlinePanel({
   onNavigate?: () => void
 }) {
   const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
-  const autoOpenAttemptRef = useRef<{ agentId: string; attempts: number } | null>(null)
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
-  const activeConversationId = searchParams?.get('id') ?? null
 
   // Most recently used first; agents with no recorded use stay alphabetical.
   const sortedAgents = useMemo(
@@ -475,7 +468,6 @@ export function AgentsInlinePanel({
   useEffect(() => { void loadAgents() }, [loadAgents])
 
   useEffect(() => {
-    autoOpenAttemptRef.current = null
     setOpenError(null)
   }, [workspaceId])
 
@@ -524,7 +516,9 @@ export function AgentsInlinePanel({
   }, [baseHref, onNavigate, openingAgentId, router, workspaceId])
 
   // Remember agents opened through direct links or refreshes so recency
-  // ordering and the default selection cover every entry path.
+  // ordering covers every entry path. Initial conversation selection lives
+  // in AgentConversationWorkspace (single owner); the sidebar only opens on
+  // explicit clicks.
   useEffect(() => {
     if (activeAgentId && sortedAgents.some((agent) => agent.id === activeAgentId)) {
       rememberAgentOpened(workspaceId, activeAgentId)
@@ -542,39 +536,12 @@ export function AgentsInlinePanel({
     }
   }, [openAgent])
 
-  useEffect(() => {
-    if (loading || activeConversationId || openingAgentId) return
-    if (!pathname.endsWith('/agents')) return
-    if (sortedAgents.length === 0) return
-    const lastOpenedId = getLastOpenedAgentId(workspaceId)
-    const targetAgent = (activeAgentId ? sortedAgents.find((agent) => agent.id === activeAgentId) : undefined)
-      ?? (lastOpenedId ? sortedAgents.find((agent) => agent.id === lastOpenedId) : undefined)
-      ?? sortedAgents[0]
-    if (!targetAgent) return
-    const attempt = autoOpenAttemptRef.current
-    if (attempt && attempt.agentId === targetAgent.id && attempt.attempts >= MAX_AGENT_AUTO_OPEN_ATTEMPTS) return
-    autoOpenAttemptRef.current = {
-      agentId: targetAgent.id,
-      attempts: attempt && attempt.agentId === targetAgent.id ? attempt.attempts + 1 : 1,
-    }
-    // Silent retries up to the attempt cap; after that the error row offers
-    // a manual retry, so the main area can never stick on the blank state
-    // without telling the user why.
-    void openAgent(targetAgent, 'replace').catch(() => {
-      const latest = autoOpenAttemptRef.current
-      if (latest && latest.agentId === targetAgent.id && latest.attempts >= MAX_AGENT_AUTO_OPEN_ATTEMPTS) {
-        setOpenError(`Could not open ${targetAgent.name}. Check your connection and retry.`)
-      }
-    })
-  }, [activeAgentId, activeConversationId, sortedAgents, loading, openAgent, openingAgentId, pathname, workspaceId])
-
   const retryOpen = useCallback(() => {
     const lastOpenedId = getLastOpenedAgentId(workspaceId)
     const targetAgent = (activeAgentId ? sortedAgents.find((agent) => agent.id === activeAgentId) : undefined)
       ?? (lastOpenedId ? sortedAgents.find((agent) => agent.id === lastOpenedId) : undefined)
       ?? sortedAgents[0]
     if (!targetAgent) return
-    autoOpenAttemptRef.current = null
     setOpenError(null)
     void openAgentById(targetAgent, 'replace')
   }, [activeAgentId, openAgentById, sortedAgents, workspaceId])
@@ -596,7 +563,7 @@ export function AgentsInlinePanel({
           >
             {openingAgentId === agent.id
               ? <Loader2 size={13} className="shrink-0 animate-spin" />
-              : <AgentOrb agent={agent} size={16} animated={false} />}
+              : <AgentCreature agent={agent} size={16} />}
             <span className="truncate">{agent.name}</span>
           </button>
         ))

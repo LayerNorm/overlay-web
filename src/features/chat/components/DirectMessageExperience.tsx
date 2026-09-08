@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
-import { AgentOrb } from '@/components/orb/Orb'
+import { AgentCreature } from '@/components/orb/Creature'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -709,32 +709,42 @@ export function DirectMessageExperience({
     : otherParticipants.length <= 1
       ? UserRound
       : UsersRound
-  // One-to-one agent DMs resolve the agent's orb (metal for the Overlay
-  // master agent, tinted glow otherwise) from the directory. Falls back to
-  // the neutral orb while loading; chat-list rows keep their Lucide icons
-  // because they carry no agent color data.
+  // Agent identity (creature color + shape) resolves from the directory once
+  // per conversation: the header for one-to-one agent DMs and every agent
+  // message avatar read from the same map. Falls back to neutral while
+  // loading; chat-list rows keep their Lucide icons because they carry no
+  // agent identity data.
   const soloAgentParticipant = conversationType !== 'channel'
     && otherParticipants.length === 1
     && otherParticipants[0]?.principalType === 'agent'
     ? otherParticipants[0]
     : null
-  const soloAgentPrincipalId = soloAgentParticipant?.principalId ?? null
-  const [headerAgent, setHeaderAgent] = useState<{ isDefault?: boolean; name: string; avatarColor?: string } | null>(null)
+  const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, {
+    name: string
+    avatarColor?: string
+    avatarShape?: string
+  }>>(new Map())
   useEffect(() => {
-    if (!soloAgentPrincipalId || !activeWorkspaceId || showcase) {
-      setHeaderAgent(null)
+    if (!activeWorkspaceId || showcase) {
+      setAgentsByPrincipal(new Map())
       return
     }
     let cancelled = false
     overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
       if (cancelled) return
-      const match = response.agents.find((agent) => agent.principalId === soloAgentPrincipalId)
-      if (match) setHeaderAgent({ isDefault: match.isDefault, name: match.name, avatarColor: match.avatarColor })
+      setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
+        name: agent.name,
+        avatarColor: agent.avatarColor,
+        avatarShape: agent.avatarShape,
+      }])))
     }).catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [soloAgentPrincipalId, activeWorkspaceId, showcase])
+  }, [activeWorkspaceId, showcase, conversationId])
+  const headerAgent = soloAgentParticipant
+    ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
+    : null
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
@@ -1284,10 +1294,15 @@ export function DirectMessageExperience({
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
     const authorName = author?.displayName
       ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
+    const authorAgent = message.authorPrincipalId
+      ? agentsByPrincipal.get(message.authorPrincipalId)
+      : undefined
     const view = toRoomMessageView({
       message,
       currentPrincipalId,
       authorName,
+      authorColor: authorAgent?.avatarColor,
+      authorShape: authorAgent?.avatarShape,
       mentions: participantMentions,
       streaming: message.status === 'generating',
     })
@@ -1481,7 +1496,7 @@ export function DirectMessageExperience({
             subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
             leading={(
               soloAgentParticipant
-                ? <AgentOrb agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} animated={false} />
+                ? <AgentCreature agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
                 : (
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
                     <HeaderIcon size={15} />

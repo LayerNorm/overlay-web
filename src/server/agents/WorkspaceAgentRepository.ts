@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type {
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentDefinition,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentHarness,
@@ -17,6 +18,7 @@ export type CreateWorkspaceAgentRecord = {
   harness: WorkspaceAgentHarness
   modelId: string
   avatarColor?: string
+  avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds: string[]
   teamIds: string[]
   visibility: WorkspaceAgentVisibility
@@ -27,7 +29,7 @@ export type CreateWorkspaceAgentRecord = {
 
 export type UpdateWorkspaceAgentRecord = Partial<Pick<
   WorkspaceAgentDefinition,
-  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'avatarColor' | 'allowedToolIds' | 'visibility'
+  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'avatarColor' | 'avatarShape' | 'allowedToolIds' | 'visibility'
 >> & {
   agentId: string
   workspaceId: string

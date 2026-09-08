@@ -12,8 +12,12 @@ The default brand mark is the `OverlayMark` SVG orb component (`src/components/o
 `logoSrc` raster: the sidebar renders the orb whenever `brand.logoSrc` is the default
 `/assets/overlay-logo.png`, and only renders the `next/image` raster when a custom brand overrides it.
 The PNG asset stays on disk for lifecycle emails and favicons, which require raster. Agent avatars
-follow the same renderer through `AgentOrb` (metal for the Overlay master agent, the same sphere
-tinted from each agent's `avatarColor` otherwise).
+are anthropomorphic creatures (`AgentCreature` in `src/components/orb/Creature.tsx`): a solid-color
+body in one of eight shapes (`avatarShape`: circle, blob, squircle, pill, triangle, hexagon, cloud,
+droplet) with Grokbot-style blinking eyes whose dark/light tone derives from the body luminance.
+Both shape and color (`avatarColor`) persist on the workspace agent record — nullable columns with a
+circle default, so existing agents keep working — and are picked in the agent editor's Identity
+section, which previews shapes and colors as live creatures.
 
 ```ts
 import {

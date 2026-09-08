@@ -1892,6 +1892,7 @@ export default defineSchema({
     harness: v.union(v.literal('overlay'), v.literal('claude-code')),
     modelId: v.string(),
     avatarColor: v.optional(v.string()),
+    avatarShape: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
     invocationPolicy: v.literal('mention'),
     visibility: v.optional(v.union(v.literal('creator'), v.literal('workspace'))),

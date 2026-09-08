@@ -16,6 +16,7 @@ const agentValidator = v.object({
   harness,
   modelId: v.string(),
   avatarColor: v.optional(v.string()),
+  avatarShape: v.optional(v.string()),
   allowedToolIds: v.array(v.string()),
   invocationPolicy: v.literal('mention'),
   visibility: agentVisibility,
@@ -32,7 +33,8 @@ export const createByServer = mutation({
   args: {
     serverSecret: v.string(), agentId: v.string(), principalId: v.string(), workspaceId: v.string(),
     name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness,
-    modelId: v.string(), avatarColor: v.optional(v.string()), allowedToolIds: v.array(v.string()),
+    modelId: v.string(), avatarColor: v.optional(v.string()), avatarShape: v.optional(v.string()),
+    allowedToolIds: v.array(v.string()),
     teamIds: v.array(v.string()), visibility: v.optional(agentVisibility),
     createdByPrincipalId: v.string(), now: v.number(),
     isDefault: v.optional(v.boolean()),
@@ -66,7 +68,8 @@ export const createByServer = mutation({
       agentId: args.agentId, workspaceId: args.workspaceId, principalId: args.principalId,
       name: args.name.trim(), description: cleanOptional(args.description),
       instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
-      avatarColor: cleanOptional(args.avatarColor), allowedToolIds: unique(args.allowedToolIds),
+      avatarColor: cleanOptional(args.avatarColor), avatarShape: cleanOptional(args.avatarShape),
+      allowedToolIds: unique(args.allowedToolIds),
       invocationPolicy: 'mention', visibility: args.visibility ?? 'workspace',
       createdByPrincipalId: args.createdByPrincipalId,
       teamIds: unique(args.teamIds), roomCount: 0,
@@ -135,6 +138,7 @@ export const updateByServer = mutation({
     serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(),
     name: v.optional(v.string()), description: v.optional(v.string()), instructions: v.optional(v.string()),
     harness: v.optional(harness), modelId: v.optional(v.string()), avatarColor: v.optional(v.string()),
+    avatarShape: v.optional(v.string()),
     allowedToolIds: v.optional(v.array(v.string())), now: v.number(),
     teamIds: v.optional(v.array(v.string())), visibility: v.optional(agentVisibility),
     updatedByPrincipalId: v.optional(v.string()),
@@ -159,6 +163,7 @@ export const updateByServer = mutation({
       harness?: 'overlay' | 'claude-code'
       modelId?: string
       avatarColor?: string
+      avatarShape?: string
       allowedToolIds?: string[]
       teamIds?: string[]
       visibility?: 'creator' | 'workspace'
@@ -170,6 +175,7 @@ export const updateByServer = mutation({
       ...(args.harness === undefined ? {} : { harness: args.harness }),
       ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
       ...(args.avatarColor === undefined ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
+      ...(args.avatarShape === undefined ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
       ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),
       ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
       updatedAt: args.now,

@@ -23,7 +23,7 @@ import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
-import { Orb } from '@/components/orb/Orb'
+import { AgentCreature } from '@/components/orb/Creature'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -50,6 +50,8 @@ export type RoomMessageView = {
   authorName: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorColor?: string
+  /** Creature body shape for agent authors; absent means circle. */
+  authorShape?: string
   /** Present for messages imported from Slack: shown in the author detail card. */
   authorEmail?: string
   authorStatus?: 'member' | 'invited' | 'not_invited'
@@ -260,13 +262,10 @@ export function RoomMessageItem({
       className="flex h-9 w-9 shrink-0 items-center justify-center"
       aria-hidden
     >
-      <Orb
-        variant="glow"
-        color={message.authorColor}
-        size={36}
-        state={message.streaming ? 'working' : 'idle'}
+      <AgentCreature
+        agent={{ name: message.authorName, avatarColor: message.authorColor, avatarShape: message.authorShape }}
+        size={32}
         animated={message.streaming}
-        label=""
       />
     </span>
   ) : (

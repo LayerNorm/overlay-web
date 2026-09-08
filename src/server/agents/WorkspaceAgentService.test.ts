@@ -104,6 +104,7 @@ function serviceFor(
           harness: input.harness,
           modelId: input.modelId,
           avatarColor: input.avatarColor,
+          avatarShape: input.avatarShape,
           allowedToolIds: input.allowedToolIds,
           visibility: input.visibility,
           teamIds: input.teamIds,
@@ -221,6 +222,36 @@ test('create defaults to workspace visibility and passes creator visibility thro
   })
   assert.equal(privateAgent.visibility, 'creator')
   assert.deepEqual(created.map((input) => input.visibility), ['workspace', 'creator'])
+})
+
+test('create passes a valid creature shape through and rejects unknown shapes', async () => {
+  const { service, created } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [defaultAgentFixture()])
+  const shaped = await service.create({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Shaped', instructions: 'Help everyone.', modelId: 'test-model', avatarShape: 'droplet' },
+  })
+  assert.equal(shaped.avatarShape, 'droplet')
+  assert.equal(created[0]?.avatarShape, 'droplet')
+  const error = await serviceError(service.create({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Bogus', instructions: 'Help everyone.', modelId: 'test-model', avatarShape: 'dragon' as never },
+  }))
+  assert.equal(error.code, 'validation')
+})
+
+test('update passes a creature shape through to the repository', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-shared', visibility: 'workspace' })]
+  const { service, updated } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  const agent = await service.update({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: 'agent-shared',
+    input: { avatarShape: 'cloud' },
+  })
+  assert.equal(agent.avatarShape, 'cloud')
+  assert.equal(updated[0]?.avatarShape, 'cloud')
 })
 
 test('update passes a visibility flip through to the repository', async () => {

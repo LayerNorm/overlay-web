@@ -32,6 +32,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
         harness: body.harness,
         modelId: typeof body.modelId === 'string' ? body.modelId : '',
         avatarColor: typeof body.avatarColor === 'string' ? body.avatarColor : undefined,
+        avatarShape: typeof body.avatarShape === 'string' ? body.avatarShape : undefined,
         allowedToolIds: strings(body.allowedToolIds),
         teamIds: strings(body.teamIds),
         visibility: visibility(body.visibility),

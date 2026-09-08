@@ -3,10 +3,14 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import type {
   WorkspaceAgentCreateInput,
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentUpdateInput,
   WorkspaceAgentVisibility,
   WorkspaceMembershipRole,
+} from '@overlay/workspace-contracts'
+import {
+  WORKSPACE_AGENT_CREATURE_SHAPES,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
@@ -155,6 +159,7 @@ export class WorkspaceAgentService {
         harness,
         modelId,
         avatarColor: color(args.input.avatarColor),
+        avatarShape: shape(args.input.avatarShape),
         allowedToolIds: unique(args.input.allowedToolIds ?? []),
         teamIds,
         visibility: normalizeVisibility(args.input.visibility),
@@ -204,6 +209,7 @@ export class WorkspaceAgentService {
       ...(args.input.modelId === undefined ? {} : { modelId: required(args.input.modelId, 'Model', 200) }),
       ...(args.input.harness === undefined ? {} : { harness: args.input.harness }),
       ...(args.input.avatarColor === undefined ? {} : { avatarColor: color(args.input.avatarColor) }),
+      ...(args.input.avatarShape === undefined ? {} : { avatarShape: shape(args.input.avatarShape) }),
       ...(args.input.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.input.allowedToolIds) }),
       ...(args.input.visibility === undefined ? {} : { visibility: args.input.visibility }),
       ...(teamIds === undefined ? {} : { teamIds }),
@@ -325,6 +331,15 @@ function color(value?: string) {
     throw new WorkspaceAgentServiceError('validation', 'Avatar color must be a six-digit hex color')
   }
   return normalized.toLowerCase()
+}
+
+function shape(value?: string): WorkspaceAgentCreatureShape | undefined {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (!(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(normalized)) {
+    throw new WorkspaceAgentServiceError('validation', 'Avatar shape is not a known creature shape')
+  }
+  return normalized as WorkspaceAgentCreatureShape
 }
 
 function unique(values: string[]) {

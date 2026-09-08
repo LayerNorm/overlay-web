@@ -44,12 +44,13 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
       await tx.execute(sql`
         INSERT INTO workspace_agent_definitions (
           id, workspace_id, principal_id, name, description, instructions, harness,
-          model_id, avatar_color, allowed_tool_ids, invocation_policy, visibility,
+          model_id, avatar_color, avatar_shape, allowed_tool_ids, invocation_policy, visibility,
           created_by_principal_id, created_at, updated_at
         ) VALUES (
           ${input.agentId}, ${input.workspaceId}, ${input.principalId}, ${input.name},
           ${input.description ?? null}, ${input.instructions}, ${input.harness}, ${input.modelId},
-          ${input.avatarColor ?? null}, ${JSON.stringify(input.allowedToolIds)}::jsonb, 'mention',
+          ${input.avatarColor ?? null}, ${input.avatarShape ?? null},
+          ${JSON.stringify(input.allowedToolIds)}::jsonb, 'mention',
           ${input.visibility},
           ${input.createdByPrincipalId}, ${new Date(input.now)}, ${new Date(input.now)}
         )
@@ -125,6 +126,7 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
         harness: input.harness ?? current.harness,
         modelId: input.modelId ?? current.modelId,
         avatarColor: input.avatarColor === undefined ? current.avatarColor : input.avatarColor,
+        avatarShape: input.avatarShape === undefined ? current.avatarShape : input.avatarShape,
         allowedToolIds: input.allowedToolIds ?? current.allowedToolIds,
         visibility: input.visibility ?? current.visibility,
       }
@@ -132,7 +134,7 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
         UPDATE workspace_agent_definitions SET
           name = ${next.name}, description = ${next.description ?? null},
           instructions = ${next.instructions}, harness = ${next.harness}, model_id = ${next.modelId},
-          avatar_color = ${next.avatarColor ?? null},
+          avatar_color = ${next.avatarColor ?? null}, avatar_shape = ${next.avatarShape ?? null},
           allowed_tool_ids = ${JSON.stringify(next.allowedToolIds)}::jsonb,
           visibility = ${next.visibility},
           updated_at = ${new Date(input.now)}
@@ -200,7 +202,7 @@ export class PostgresWorkspaceAgentRepository implements WorkspaceAgentRepositor
 const agentColumns = sql.raw(`
   a.id, a.workspace_id AS "workspaceId", a.principal_id AS "principalId",
   a.name, a.description, a.instructions, a.harness, a.model_id AS "modelId",
-  a.avatar_color AS "avatarColor", a.allowed_tool_ids AS "allowedToolIds",
+  a.avatar_color AS "avatarColor", a.avatar_shape AS "avatarShape", a.allowed_tool_ids AS "allowedToolIds",
   a.invocation_policy AS "invocationPolicy",
   a.visibility AS "visibility",
   a.created_by_principal_id AS "createdByPrincipalId", a.created_at AS "createdAt",
@@ -238,6 +240,7 @@ function agentFromRow(row: AgentRow): WorkspaceAgentDirectoryItem {
     archivedAt: row.archivedAt ? new Date(row.archivedAt).getTime() : undefined,
     description: row.description ?? undefined,
     avatarColor: row.avatarColor ?? undefined,
+    avatarShape: row.avatarShape ?? undefined,
     isDefault: Boolean(row.isDefault || row.name.toLowerCase() === 'overlay'),
   }
 }

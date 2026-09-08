@@ -1,5 +1,6 @@
 import type {
   WorkspaceAgentCreateInput,
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
@@ -15,6 +16,7 @@ export function buildWorkspaceAgentInput(args: {
   adapterId: string
   modelId: string
   avatarColor: string
+  avatarShape: WorkspaceAgentCreatureShape
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
 }): WorkspaceAgentCreateInput {
@@ -26,6 +28,7 @@ export function buildWorkspaceAgentInput(args: {
     harness: byo ? workspaceHarnessForByo(args.adapterId) : 'overlay',
     modelId: byo ? `byo/${args.adapterId}` : args.modelId.trim(),
     avatarColor: args.avatarColor,
+    avatarShape: args.avatarShape,
     allowedToolIds: byo ? [] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
   }

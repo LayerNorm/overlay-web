@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import {
+  WORKSPACE_AGENT_CREATURE_SHAPES,
   WORKSPACE_AGENT_HARNESSES,
   WORKSPACE_AGENT_VISIBILITIES,
+  type WorkspaceAgentCreatureShape,
   type WorkspaceAgentHarness,
   type WorkspaceAgentUpdateInput,
   type WorkspaceAgentVisibility,
@@ -46,6 +48,7 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
   assignString(input, body, 'instructions')
   assignString(input, body, 'modelId')
   assignString(input, body, 'avatarColor')
+  assignShape(input, body)
   assignStrings(input, body, 'allowedToolIds')
   assignStrings(input, body, 'teamIds')
   if (body.harness !== undefined) {
@@ -87,6 +90,14 @@ function isHarness(value: unknown): value is WorkspaceAgentHarness {
 function isVisibility(value: unknown): value is WorkspaceAgentVisibility {
   return typeof value === 'string'
     && (WORKSPACE_AGENT_VISIBILITIES as readonly string[]).includes(value)
+}
+
+function assignShape(input: WorkspaceAgentUpdateInput, body: Record<string, unknown>) {
+  const value = body.avatarShape
+  if (value === undefined) return
+  if (typeof value !== 'string'
+    || !(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(value)) invalid('avatarShape')
+  input.avatarShape = value as WorkspaceAgentCreatureShape
 }
 
 function invalid(field: string): never {
