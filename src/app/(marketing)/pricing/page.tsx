@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import PricingClient from './PricingClient'
+import PricingClient from '@/app/pricing/PricingClient'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 
 export const metadata: Metadata = {
