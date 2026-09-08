@@ -49,8 +49,11 @@ if (!rootPage.includes('<RootEntryResolver />')) {
 }
 
 const rootEntry = read('src/shared/auth/root-entry.ts')
-if (!rootEntry.includes("ROOT_SHOWCASE_DESTINATION = '/app/chat?showcase=1&id=showcase-welcome'")) {
-  violations.push('confirmed signed-out root sessions must enter the real app shell in public showcase mode')
+if (!rootEntry.includes("ROOT_SHOWCASE_DESTINATION = '/app/agents?showcase=1&id=showcase-agent-welcome'")) {
+  violations.push('the demo entry point must open the showcase agent conversation')
+}
+if (!rootEntry.includes("if (resolution === 'unauthenticated') return '/home'")) {
+  violations.push('signed-out root sessions must enter the marketing home, not the demo shell')
 }
 if (!rootEntry.includes("if (resolution === 'transient-error')") && !rootEntry.includes('return null')) {
   violations.push('transient root auth failures must never be classified as showcase guests')
@@ -171,6 +174,14 @@ for (const [path, canonical] of [
 const appLayout = read('src/app/app/layout.tsx')
 if (!appLayout.includes('index: false')) {
   violations.push('non-marketing app and showcase routes must remain out of the search index')
+}
+
+const agentsPage = read('src/app/app/agents/page.tsx')
+if (agentsPage.includes('AgentsDirectory')) {
+  violations.push('showcase agents must open the conversation workspace, not the tile directory')
+}
+if (existsSync(join(root, 'src/features/agents/components/AgentsDirectory.tsx'))) {
+  violations.push('the retired agent tile directory must stay deleted')
 }
 
 if (violations.length > 0) {

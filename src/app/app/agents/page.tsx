@@ -1,5 +1,4 @@
 import { Suspense } from 'react'
-import { AgentsDirectory } from '@/features/agents/components/AgentsDirectory'
 import { AgentConversationWorkspace } from '@/features/agents/components/AgentConversationWorkspace'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 
@@ -22,7 +21,6 @@ async function AgentsPageContent({
 }) {
   const params = await searchParams
   const showcase = Array.isArray(params?.showcase) ? params.showcase[0] === '1' : params?.showcase === '1'
-  if (showcase) return <AgentsDirectory showcase />
 
-  return <AgentConversationWorkspace />
+  return <AgentConversationWorkspace showcase={showcase} />
 }

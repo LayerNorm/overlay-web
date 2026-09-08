@@ -22,7 +22,7 @@ import { buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 
 type EditorMode = 'new' | 'edit' | null
 
-export function AgentConversationWorkspace() {
+export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { activeWorkspaceId } = useWorkspace()
@@ -176,6 +176,11 @@ export function AgentConversationWorkspace() {
         onExternalRightPanelClose={closeEditor}
       />
     )
+  }
+
+  // Logged-out demo: a fixed showcase agent conversation, no backend.
+  if (showcase) {
+    return <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
   }
 
   const loading = activeWorkspaceId !== null && (directory === null || resolving)

@@ -155,6 +155,75 @@ const SHOWCASE_MESSAGES: OptimisticMessage[] = [
   },
 ]
 
+const SHOWCASE_AGENT_CONVERSATION_ID = 'showcase-agent-welcome'
+const SHOWCASE_AGENT_PRINCIPAL_ID = 'showcase-research-principal'
+const SHOWCASE_AGENT_IDENTITY = {
+  name: 'Research partner',
+  avatarColor: '#2563eb',
+  avatarShape: 'droplet',
+} as const
+const SHOWCASE_AGENT_PARTICIPANTS: ConversationParticipant[] = [
+  {
+    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+    workspaceId: SHOWCASE_WORKSPACE_ID,
+    principalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
+    principalType: 'human',
+    displayName: 'Divyansh',
+    role: 'moderator',
+    status: 'active',
+    notificationLevel: 'all',
+    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+  },
+  {
+    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+    workspaceId: SHOWCASE_WORKSPACE_ID,
+    principalId: SHOWCASE_AGENT_PRINCIPAL_ID,
+    principalType: 'agent',
+    displayName: SHOWCASE_AGENT_IDENTITY.name,
+    role: 'member',
+    status: 'active',
+    notificationLevel: 'all',
+    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+  },
+]
+const SHOWCASE_AGENT_PRESENCE: ConversationPresence[] = SHOWCASE_AGENT_PARTICIPANTS.map((participant) => ({
+  workspaceId: SHOWCASE_WORKSPACE_ID,
+  principalId: participant.principalId,
+  conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+  status: 'online',
+  typing: false,
+  lastSeenAt: Date.parse('2026-07-29T18:10:00.000Z'),
+}))
+const SHOWCASE_AGENT_MESSAGES: OptimisticMessage[] = [
+  {
+    id: 'showcase-agent-message-1',
+    turnId: 'showcase-agent-turn-1',
+    authorKind: 'human',
+    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
+    content: 'Can you pull together what customers keep saying about onboarding?',
+    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
+  },
+  {
+    id: 'showcase-agent-message-2',
+    turnId: 'showcase-agent-turn-2',
+    authorKind: 'agent',
+    authorPrincipalId: SHOWCASE_AGENT_PRINCIPAL_ID,
+    content: 'I read through the latest 23 feedback notes. The clearest pattern is the first-run gap — it shows up in 9 of them, mostly around workspace setup. Want me to turn this into a checklist for the team?',
+    createdAt: Date.parse('2026-07-29T18:05:00.000Z'),
+  },
+  {
+    id: 'showcase-agent-message-3',
+    turnId: 'showcase-agent-turn-3',
+    authorKind: 'human',
+    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
+    content: 'Yes — draft it, and flag anything that needs a human decision.',
+    createdAt: Date.parse('2026-07-29T18:08:00.000Z'),
+  },
+]
+
+
 function roomDayKey(timestamp: number): string {
   const date = new Date(timestamp)
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
@@ -242,20 +311,21 @@ export function DirectMessageExperience({
     && appDataCapabilities.supportsRealtime
     && appDataCapabilities.provider === 'postgres'
   const router = useRouter()
+  const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
-    showcase ? SHOWCASE_PARTICIPANTS : [],
+    isAgentShowcase ? SHOWCASE_AGENT_PARTICIPANTS : showcase ? SHOWCASE_PARTICIPANTS : [],
   )
   const [currentPrincipalId, setCurrentPrincipalId] = useState(
     showcase ? SHOWCASE_CURRENT_PRINCIPAL_ID : '',
   )
   const [presence, setPresence] = useState<ConversationPresence[]>(
-    showcase ? SHOWCASE_PRESENCE : [],
+    isAgentShowcase ? SHOWCASE_AGENT_PRESENCE : showcase ? SHOWCASE_PRESENCE : [],
   )
   const applyConvexPresence = useCallback((next: ConversationPresence[]) => {
     setPresence(next)
   }, [])
   const [messages, setMessages] = useState<OptimisticMessage[]>(
-    showcase ? SHOWCASE_MESSAGES : [],
+    isAgentShowcase ? SHOWCASE_AGENT_MESSAGES : showcase ? SHOWCASE_MESSAGES : [],
   )
   const [loading, setLoading] = useState(!showcase)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
@@ -725,7 +795,15 @@ export function DirectMessageExperience({
     avatarShape?: string
   }>>(new Map())
   useEffect(() => {
-    if (!activeWorkspaceId || showcase) {
+    if (showcase) {
+      setAgentsByPrincipal(isAgentShowcase ? new Map([[SHOWCASE_AGENT_PRINCIPAL_ID, {
+        name: SHOWCASE_AGENT_IDENTITY.name,
+        avatarColor: SHOWCASE_AGENT_IDENTITY.avatarColor,
+        avatarShape: SHOWCASE_AGENT_IDENTITY.avatarShape,
+      }]]) : new Map())
+      return
+    }
+    if (!activeWorkspaceId) {
       setAgentsByPrincipal(new Map())
       return
     }
@@ -741,7 +819,7 @@ export function DirectMessageExperience({
     return () => {
       cancelled = true
     }
-  }, [activeWorkspaceId, showcase, conversationId])
+  }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
   const headerAgent = soloAgentParticipant
     ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
     : null

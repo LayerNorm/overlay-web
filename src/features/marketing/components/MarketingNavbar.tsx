@@ -83,7 +83,7 @@ export function MarketingNavbar() {
   // interchangeable opposites — only one is rendered, in the same nav slot
   // next to Docs. The right-side CTA remains "Try Overlay", which already
   // routes authenticated users straight to the app.
-  const authNavHref = isAuthenticated ? "/app/settings?section=account" : "/auth/sign-in?redirect=%2Fapp%2Fchat";
+  const authNavHref = isAuthenticated ? "/app/settings?section=account" : "/auth/sign-in?redirect=%2Fapp%2Fagents";
   const authNavLabel = isAuthenticated ? "Account" : "Sign in";
   const authNavActive = isAuthenticated ? accountIsActive : false;
 
@@ -259,7 +259,7 @@ export function MarketingNavbar() {
                   href={
                     isAuthenticated
                       ? appHref
-                      : "/auth/sign-in?redirect=%2Fapp%2Fchat"
+                      : "/auth/sign-in?redirect=%2Fapp%2Fagents"
                   }
                   onClick={() => setMobileMenuOpen(false)}
                   className={`inline-flex flex-1 items-center justify-center rounded-full border border-[var(--border)] px-4 py-2.5 ${navText} text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]`}

@@ -977,7 +977,7 @@ export default function AppSidebar({
 
   const brandLink = (
     <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+      href={publicShowcase ? ROOT_SHOWCASE_DESTINATION : brandConfig.homeHref}
       className="flex min-w-0 items-center gap-2"
       onClick={closeMobileDrawer}
     >
@@ -1008,7 +1008,7 @@ export default function AppSidebar({
   ) : (
     <>
       <Link
-        href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+        href={publicShowcase ? ROOT_SHOWCASE_DESTINATION : brandConfig.homeHref}
         className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
         aria-label="Home"
         title="Home"
@@ -1039,7 +1039,7 @@ export default function AppSidebar({
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
   const mobileBrandLink = (
     <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+      href={publicShowcase ? ROOT_SHOWCASE_DESTINATION : brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
       onClick={closeMobileDrawer}
     >
