@@ -12,10 +12,12 @@ import {
 import {
   BookOpen,
   File,
-  Image as ImageIcon,
-  FileSpreadsheet,
   FileText,
   Folder,
+  Images,
+  Image as ImageIcon,
+  FileSpreadsheet,
+  LayoutGrid,
   Trash2,
   Video,
   X
@@ -30,6 +32,7 @@ import {
 } from '../services/files-list-cache'
 import type { Theme } from '../utils/theme'
 import { SidebarListItem, SidebarItemAction } from '../components/ui/SidebarListItem'
+import { PanelSubnav } from '../components/ui/PanelSubnav'
 import {
   FILES_RECONCILE_EVENT,
   reconcileLocalNoteItems,
@@ -120,6 +123,7 @@ export function FilesListPage({
   const repositoryAuthority = authority === 'cloud' ? 'cloud' : 'on-this-mac'
   const initialFiles = getCachedDesktopFileList(repositoryAuthority)
   const [files, setFiles] = useState<FileListItem[]>(() => initialFiles ?? [])
+  const [category, setCategory] = useState<'all' | 'notes' | 'files' | 'outputs'>('all')
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(initialFiles === null)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -198,13 +202,23 @@ export function FilesListPage({
   }, [isSelectMode])
 
   const filteredFiles = useMemo(() => {
+    const inCategory =
+      category === 'all'
+        ? files
+        : category === 'notes'
+          ? files.filter((file) => file.type === 'note')
+          : category === 'outputs'
+            ? files.filter((file) => file.kind === 'output')
+            : files.filter(
+                (file) => file.type === 'folder' || (file.type === 'file' && file.kind !== 'output')
+              )
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return files
-    return files.filter(
+    if (!q) return inCategory
+    return inCategory.filter(
       (file) =>
         file.name.toLowerCase().includes(q) || (file.pathLabel ?? '').toLowerCase().includes(q)
     )
-  }, [files, searchQuery])
+  }, [files, searchQuery, category])
 
   const groups = useMemo(() => {
     const sorted = [...filteredFiles].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -341,6 +355,18 @@ export function FilesListPage({
           />
         </div>
       )}
+
+      <PanelSubnav
+        theme={theme}
+        activeId={category}
+        onSelect={(id) => setCategory(id as 'all' | 'notes' | 'files' | 'outputs')}
+        items={[
+          { id: 'all', label: 'All', icon: LayoutGrid },
+          { id: 'notes', label: 'Notes', icon: BookOpen },
+          { id: 'files', label: 'Files', icon: FileText },
+          { id: 'outputs', label: 'Outputs', icon: Images }
+        ]}
+      />
 
       {isSelectMode && selectedFileIds.size > 0 && (
         <div

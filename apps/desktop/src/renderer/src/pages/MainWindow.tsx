@@ -88,8 +88,8 @@ const SIDEBAR_TOOLS: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>
   label: string
 }[] = [
-  { id: 'chat', icon: MessageSquare, label: 'chats' },
   { id: 'agents', icon: Bot, label: 'agents' },
+  { id: 'chat', icon: MessageSquare, label: 'chats' },
   { id: 'files', icon: FileText, label: 'files' },
   { id: 'extensions', icon: Puzzle, label: 'extensions' },
   { id: 'projects', icon: FolderOpen, label: 'projects' },
