@@ -109,6 +109,18 @@ describe('desktop app API security', () => {
     }
   })
 
+  it('allows reading and acknowledging conversation notifications', () => {
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/conversations/notifications', method: 'GET' }).path
+    ).toBe('/api/v1/conversations/notifications')
+    expect(
+      normalizeAppApiInput({ path: '/api/v1/conversations/notifications', method: 'PATCH' }).path
+    ).toBe('/api/v1/conversations/notifications')
+    expect(() =>
+      normalizeAppApiInput({ path: '/api/v1/conversations/notifications', method: 'POST' })
+    ).toThrow('Unsupported app API route')
+  })
+
   it('rejects origins, traversal encodings, backslashes, and protocol-relative paths', () => {
     for (const path of [
       'https://evil.example/api/v1/generate-video',

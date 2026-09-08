@@ -11,6 +11,7 @@ const APP_API_ROUTE_METHODS = new Map<string, ReadonlySet<string>>([
   ['/api/v1/projects', new Set(['GET', 'POST', 'PATCH', 'DELETE'])],
   ['/api/v1/conversations', new Set(['GET', 'POST', 'PATCH', 'DELETE'])],
   ['/api/v1/conversations/message', new Set(['POST', 'PATCH'])],
+  ['/api/v1/conversations/notifications', new Set(['GET', 'PATCH'])],
   ['/api/v1/conversations/act', new Set(['POST'])],
   ['/api/v1/files', new Set(['GET', 'POST', 'PATCH', 'DELETE'])],
   ['/api/v1/files/upload-url', new Set(['POST'])],

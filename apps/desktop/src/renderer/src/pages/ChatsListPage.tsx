@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { MessageSquare, Trash2, X, ExternalLink } from 'lucide-react'
+import { Archive, Bell, Hash, Mail, MessageSquare, Trash2, X, ExternalLink } from 'lucide-react'
 import type { Theme } from '../utils/theme'
 import type { ChatMeta } from '../components/chat'
 import { useChatContext } from '../contexts/ChatContext'
 import { SidebarListItem, SidebarItemAction } from '../components/ui/SidebarListItem'
+import { PanelSubnav } from '../components/ui/PanelSubnav'
+import type { ChatListView } from '../services/chat-list-cache'
+import {
+  fetchNotifications,
+  markNotificationsRead,
+  type DesktopNotification
+} from '../services/activity-service'
 
 interface ChatsListPageProps {
   theme: Theme
@@ -19,6 +26,185 @@ interface ChatsListPageProps {
 const PENDING_CHAT_ID_KEY = 'overlay-pending-chat-id'
 const CHATS_CHANGED_EVENT = 'overlay:chats-changed'
 
+function ActivityList({
+  theme,
+  notifications,
+  isLoading,
+  error,
+  searchQuery,
+  onRetry,
+  onOpen
+}: {
+  theme: Theme
+  notifications: DesktopNotification[]
+  isLoading: boolean
+  error: string | null
+  searchQuery: string
+  onRetry: () => void
+  onOpen: (notification: DesktopNotification) => void
+}): React.ReactElement<any> {
+  const query = searchQuery.trim().toLowerCase()
+  const filtered = query
+    ? notifications.filter(
+        (notification) =>
+          notification.title.toLowerCase().includes(query) ||
+          (notification.body ?? '').toLowerCase().includes(query)
+      )
+    : notifications
+
+  const empty = (
+    icon: React.ReactNode,
+    message: string,
+    detail?: string,
+    retry?: boolean
+  ): React.ReactElement<any> => (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        gap: '10px',
+        color: theme.textSecondary,
+        textAlign: 'center',
+        padding: '0 24px'
+      }}
+    >
+      {icon}
+      <span style={{ fontSize: '12px', opacity: 0.85 }}>{message}</span>
+      {detail && (
+        <span
+          style={{
+            fontSize: '10px',
+            lineHeight: '14px',
+            opacity: 0.55,
+            maxWidth: '240px',
+            wordBreak: 'break-word'
+          }}
+        >
+          {detail}
+        </span>
+      )}
+      {retry && (
+        <button
+          onClick={onRetry}
+          style={{
+            padding: '5px 10px',
+            borderRadius: '6px',
+            border: `1px solid ${theme.border}`,
+            background: 'transparent',
+            color: theme.text,
+            fontSize: '11px',
+            cursor: 'pointer',
+            fontFamily: 'system-ui, -apple-system, sans-serif'
+          }}
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  )
+
+  if (isLoading) {
+    return empty(
+      <Bell size={28} strokeWidth={1} style={{ opacity: 0.35 }} />,
+      'Loading activity...'
+    )
+  }
+  if (error) {
+    return empty(
+      <Bell size={28} strokeWidth={1} style={{ opacity: 0.35 }} />,
+      'Could not load activity',
+      error,
+      true
+    )
+  }
+  if (filtered.length === 0) {
+    return empty(
+      <Bell size={28} strokeWidth={1} style={{ opacity: 0.35 }} />,
+      query ? 'No results' : 'No activity yet'
+    )
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+      {filtered.map((notification) => (
+        <button
+          key={notification.id}
+          type="button"
+          onClick={() => onOpen(notification)}
+          title={notification.title}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 10px',
+            boxSizing: 'border-box',
+            border: 'none',
+            borderRadius: '6px',
+            background: 'transparent',
+            cursor: notification.conversationId ? 'pointer' : 'default',
+            textAlign: 'left',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            transition: 'background 0.1s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = theme.buttonHover
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <span
+            style={{
+              width: '7px',
+              height: '7px',
+              borderRadius: '9999px',
+              marginTop: '5px',
+              flexShrink: 0,
+              background: notification.readAt ? 'transparent' : theme.text,
+              border: notification.readAt ? `1px solid ${theme.border}` : 'none'
+            }}
+          />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span
+              style={{
+                display: 'block',
+                fontSize: '12px',
+                color: theme.text,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {notification.title}
+            </span>
+            {notification.body && (
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  color: theme.textSecondary,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  marginTop: '1px'
+                }}
+              >
+                {notification.body}
+              </span>
+            )}
+            <span style={{ display: 'block', fontSize: '10px', color: theme.textSecondary, opacity: 0.6, marginTop: '1px' }}>
+              {getDateLabel(notification.createdAt)}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function getDateLabel(timestamp: number): string {
   const date = new Date(timestamp)
   const today = new Date()
@@ -28,6 +214,20 @@ function getDateLabel(timestamp: number): string {
   if (date.toDateString() === today.toDateString()) return 'Today'
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+const CHAT_SUBNAV_ITEMS = [
+  { id: 'personal', label: 'Personal', icon: MessageSquare },
+  { id: 'dms', label: 'Direct Messages', icon: Mail },
+  { id: 'channels', label: 'Channels', icon: Hash },
+  { id: 'activity', label: 'Activity', icon: Bell },
+  { id: 'archived', label: 'Archived', icon: Archive },
+] as const
+
+type ChatSubnavId = (typeof CHAT_SUBNAV_ITEMS)[number]['id']
+
+function isChatListViewId(value: string): value is ChatListView {
+  return value === 'personal' || value === 'dms' || value === 'channels' || value === 'archived'
 }
 
 export function ChatsListPage({
@@ -45,11 +245,68 @@ export function ChatsListPage({
     chatContext.getLastOpenedChatId()
   )
   const [selectedChatIds, setSelectedChatIds] = useState<Set<string>>(new Set())
+  const [activityView, setActivityView] = useState(false)
+  const [notifications, setNotifications] = useState<DesktopNotification[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState<string | null>(null)
 
   // Use conversations from Convex via ChatContext
   const chats = useMemo(() => chatContext.conversations || [], [chatContext.conversations])
+  const chatView = chatContext.chatView
   const isLoading = chatContext.isLoading
   const loadError = chatContext.error
+
+  const activeSubnavId: ChatSubnavId = activityView
+    ? 'activity'
+    : chatView === 'all'
+      ? 'personal'
+      : chatView
+
+  const selectSubnav = useCallback(
+    (id: ChatSubnavId) => {
+      if (id === 'activity') {
+        setActivityView(true)
+        return
+      }
+      setActivityView(false)
+      if (isChatListViewId(id)) chatContext.setChatView(id)
+    },
+    [chatContext]
+  )
+
+  useEffect(() => {
+    if (!activityView) return
+    let cancelled = false
+    setActivityLoading(true)
+    setActivityError(null)
+    void fetchNotifications()
+      .then((items) => {
+        if (cancelled) return
+        setNotifications(items)
+        setActivityLoading(false)
+        // Match web: opening Activity marks everything read.
+        if (items.some((item) => !item.readAt)) {
+          void markNotificationsRead()
+            .then(() => {
+              if (!cancelled) {
+                const now = Date.now()
+                setNotifications((prev) =>
+                  prev.map((item) => (item.readAt ? item : { ...item, readAt: now }))
+                )
+              }
+            })
+            .catch(() => undefined)
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setActivityError(error instanceof Error ? error.message : String(error))
+        setActivityLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activityView])
 
   useEffect(() => {
     const handler = (): void => {
@@ -113,6 +370,39 @@ export function ChatsListPage({
       if (!isVisible) await window.bridge.togglePanelWindow('chat', true)
     },
     [chatContext]
+  )
+
+  const handleOpenNotification = useCallback(
+    async (notification: DesktopNotification) => {
+      if (notification.conversationId) {
+        const id = notification.conversationId
+        void markNotificationsRead([notification.id]).catch(() => undefined)
+        setNotifications((prev) =>
+          prev.map((item) =>
+            item.id === notification.id && !item.readAt ? { ...item, readAt: Date.now() } : item
+          )
+        )
+        if (onSelectChat) {
+          chatContext.setLastOpenedChatId(id)
+          setActiveChatId(id)
+          onSelectChat(id)
+          return
+        }
+        localStorage.setItem(PENDING_CHAT_ID_KEY, id)
+        chatContext.setLastOpenedChatId(id)
+        setActiveChatId(id)
+        const { isVisible } = await window.bridge.isPanelVisible('chat')
+        if (!isVisible) await window.bridge.togglePanelWindow('chat', true)
+      } else {
+        void markNotificationsRead([notification.id]).catch(() => undefined)
+        setNotifications((prev) =>
+          prev.map((item) =>
+            item.id === notification.id && !item.readAt ? { ...item, readAt: Date.now() } : item
+          )
+        )
+      }
+    },
+    [onSelectChat, chatContext]
   )
 
   const handleDeleteChat = useCallback(
@@ -193,7 +483,21 @@ export function ChatsListPage({
         </div>
       )}
 
-      {isSelectMode && selectedChatIds.size > 0 && (
+      <PanelSubnav
+        theme={theme}
+        activeId={activeSubnavId}
+        onSelect={(id) => selectSubnav(id as ChatSubnavId)}
+        items={CHAT_SUBNAV_ITEMS.map((item) =>
+          item.id === 'activity'
+            ? {
+                ...item,
+                badgeCount: notifications.filter((notification) => !notification.readAt).length
+              }
+            : item
+        )}
+      />
+
+      {isSelectMode && selectedChatIds.size > 0 && !activityView && (
         <div
           style={{
             display: 'flex',
@@ -247,7 +551,29 @@ export function ChatsListPage({
       )}
 
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px 4px' }}>
-        {isLoading ? (
+        {activityView ? (
+          <ActivityList
+            theme={theme}
+            notifications={notifications}
+            isLoading={activityLoading}
+            error={activityError}
+            searchQuery={searchQuery}
+            onRetry={() => {
+              setActivityError(null)
+              setActivityLoading(true)
+              void fetchNotifications()
+                .then((items) => {
+                  setNotifications(items)
+                  setActivityLoading(false)
+                })
+                .catch((error) => {
+                  setActivityError(error instanceof Error ? error.message : String(error))
+                  setActivityLoading(false)
+                })
+            }}
+            onOpen={handleOpenNotification}
+          />
+        ) : isLoading ? (
           <div
             style={{
               display: 'flex',
@@ -352,11 +678,12 @@ export function ChatsListPage({
                 {items.map((chat) => {
                   const isActive = activeChatId === chat.id || selectedChatId === chat.id
                   const isBatchSelected = selectedChatIds.has(chat.id)
+                  const rowIcon = chatView === 'dms' ? Mail : chatView === 'channels' ? Hash : MessageSquare
 
                   return (
                     <SidebarListItem
                       key={chat.id}
-                      icon={MessageSquare}
+                      icon={rowIcon}
                       label={chat.title}
                       isActive={isActive}
                       isSelectMode={isSelectMode}

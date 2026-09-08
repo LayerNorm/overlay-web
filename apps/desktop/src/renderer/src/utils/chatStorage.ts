@@ -14,7 +14,7 @@ import {
   DesktopApiError,
   overlayDesktopAppClient
 } from '../services/app-api-client'
-import { fetchChatListResult, type CachedChat } from '../services/chat-list-cache'
+import { fetchChatListResult, type CachedChat, type ChatListView } from '../services/chat-list-cache'
 import { getActiveWorkspaceId } from '../services/workspace-store'
 import {
   DESKTOP_GENERATION_DATA_TYPE,
@@ -87,8 +87,10 @@ type ConversationMessagesResponse = { messages: RemoteMessage[] }
 const chatCache = new Map<string, Chat>()
 const chatHydratedAt = new Map<string, number>()
 let metaCache: ChatMeta[] = []
-let refreshPromise: Promise<ChatMeta[]> | null = null
-let lastMetaFetchedAt = 0
+/** Per-view conversation lists (personal/DMs/channels/all/archived). */
+const metaCacheByView = new Map<ChatListView, ChatMeta[]>()
+const metaFetchedAtByView = new Map<ChatListView, number>()
+const refreshPromiseByView = new Map<ChatListView, Promise<ChatMeta[]> | null>()
 const persistedMessageSignatures = new Map<string, string>()
 const inFlightMessagePersists = new Set<string>()
 const messagePersistBlockedUntil = new Map<string, number>()
@@ -105,8 +107,9 @@ export function clearChatStorageCaches(): void {
   chatCache.clear()
   chatHydratedAt.clear()
   metaCache = []
-  refreshPromise = null
-  lastMetaFetchedAt = 0
+  metaCacheByView.clear()
+  metaFetchedAtByView.clear()
+  refreshPromiseByView.clear()
   persistedMessageSignatures.clear()
   inFlightMessagePersists.clear()
   messagePersistBlockedUntil.clear()
@@ -678,14 +681,21 @@ async function fetchMessages(conversationId: string): Promise<Message[]> {
   return restoreCanonicalOutputs(remoteMessagesToLocal(response.messages || []), outputs)
 }
 
-export async function refreshChatsFromCloud(force = false): Promise<ChatMeta[]> {
-  if (!force && metaCache.length > 0 && Date.now() - lastMetaFetchedAt < META_CACHE_TTL_MS) {
-    return metaCache
+export async function refreshChatsFromCloud(
+  force = false,
+  view: ChatListView = 'personal'
+): Promise<ChatMeta[]> {
+  const viewMetas = metaCacheByView.get(view) ?? []
+  const viewFetchedAt = metaFetchedAtByView.get(view) ?? 0
+  if (!force && viewMetas.length > 0 && Date.now() - viewFetchedAt < META_CACHE_TTL_MS) {
+    if (view === 'personal') metaCache = viewMetas
+    return viewMetas
   }
-  if (refreshPromise) return refreshPromise
-  refreshPromise = (async () => {
+  const pending = refreshPromiseByView.get(view)
+  if (pending) return pending
+  const request = (async () => {
     try {
-      const outcome = await fetchChatListResult({ force })
+      const outcome = await fetchChatListResult({ force, view })
       if (outcome.status === 'unauthenticated') {
         throw new DesktopApiError('Not authenticated', 'unauthenticated', 401)
       }
@@ -693,9 +703,12 @@ export async function refreshChatsFromCloud(force = false): Promise<ChatMeta[]> 
         throw new DesktopApiError('Failed to fetch chats', 'server', 500)
       }
       const conversations = outcome.chats
-      metaCache = sortMeta(
+      const metas = sortMeta(
         (conversations || []).filter((c) => !c.deletedAt).map(remoteConversationToMeta)
       )
+      metaCacheByView.set(view, metas)
+      metaFetchedAtByView.set(view, Date.now())
+      if (view === 'personal') metaCache = metas
       for (const conversation of conversations || []) {
         if (conversation.deletedAt) {
           chatCache.delete(conversation._id)
@@ -707,25 +720,26 @@ export async function refreshChatsFromCloud(force = false): Promise<ChatMeta[]> 
           remoteConversationToChat(conversation as RemoteConversation, existing?.messages || [])
         )
       }
-      lastMetaFetchedAt = Date.now()
       emitChatsChanged()
-      return metaCache
+      return metas
     } catch (error) {
       console.warn('[CloudChat] Failed to fetch cloud conversations:', error)
       throw error
     }
   })().finally(() => {
-    refreshPromise = null
+    refreshPromiseByView.set(view, null)
   })
-  return refreshPromise
+  refreshPromiseByView.set(view, request)
+  return request
 }
 
-export function loadChatsMeta(): ChatMeta[] {
-  return metaCache
+export function loadChatsMeta(view: ChatListView = 'personal'): ChatMeta[] {
+  if (view === 'personal') return metaCache
+  return metaCacheByView.get(view) ?? []
 }
 
-export async function listChatsMeta(force = false): Promise<ChatMeta[]> {
-  return refreshChatsFromCloud(force)
+export async function listChatsMeta(force = false, view: ChatListView = 'personal'): Promise<ChatMeta[]> {
+  return refreshChatsFromCloud(force, view)
 }
 
 export function loadChat(id: string): Chat | null {

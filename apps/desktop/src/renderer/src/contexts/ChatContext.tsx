@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CHATS_CHANGED_EVENT,
   appendOrReplaceMessage as appendOrReplaceStoredMessage,
@@ -20,9 +20,12 @@ import { getAuthReadyState } from '../services/auth-service'
 import { isRetryableError, retryAfterMsFromError } from '../services/request-backoff'
 import { isMainAppWindow } from '../services/window-type'
 import { WORKSPACE_CHANGED_EVENT } from '../services/workspace-store'
+import type { ChatListView } from '../services/chat-list-cache'
 
 interface ChatContextValue {
   conversations: ChatMeta[] | undefined
+  chatView: ChatListView
+  setChatView: (view: ChatListView) => void
   currentChat: Chat | null | undefined
   isLoading: boolean
   error: string | null
@@ -53,23 +56,27 @@ export function useChatContext(): ChatContextValue {
 
 export function ChatProvider({ children }: { children: React.ReactNode }): React.ReactElement<any> {
   const [conversations, setConversations] = useState<ChatMeta[]>(() => loadChatsMeta())
+  const [chatView, setChatViewState] = useState<ChatListView>('personal')
+  const chatViewRef = useRef<ChatListView>('personal')
   const [currentChatId, setCurrentChatId] = useState<string | null>(null)
   const [currentChat, setCurrentChat] = useState<Chat | null | undefined>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refreshConversations = useCallback(
-    async (options: { force?: boolean } = {}): Promise<ChatMeta[]> => {
+    async (options: { force?: boolean; view?: ChatListView } = {}): Promise<ChatMeta[]> => {
       if (getAuthReadyState() !== true) return []
-      if (loadChatsMeta().length === 0) setIsLoading(true)
+      const view = options.view ?? chatViewRef.current
+      if (loadChatsMeta(view).length === 0) setIsLoading(true)
       try {
-        const chats = await listChatsMeta(options.force)
-        setConversations(chats)
+        const chats = await listChatsMeta(options.force, view)
+        // A view switch mid-flight must not clobber the newly active view.
+        if (view === chatViewRef.current) setConversations(chats)
         setError(null)
         return chats
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load chats'
-        setError(message)
+        if (view === chatViewRef.current) setError(message)
         throw err
       } finally {
         setIsLoading(false)
@@ -132,11 +139,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
   useEffect(() => {
     const handleWorkspaceChanged = (): void => {
       if (!isMainAppWindow()) return
+      chatViewRef.current = 'personal'
+      setChatViewState('personal')
       setCurrentChatId(null)
       setCurrentChat(null)
       setConversations([])
       setError(null)
-      void refreshConversations({ force: true }).catch((err) => {
+      void refreshConversations({ force: true, view: 'personal' }).catch((err) => {
         console.error('[ChatContext] Failed to reload conversations for workspace:', err)
       })
     }
@@ -148,7 +157,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
 
   useEffect(() => {
     const handler = (): void => {
-      setConversations(loadChatsMeta())
+      setConversations(loadChatsMeta(chatViewRef.current))
       if (currentChatId) {
         const cached = loadStoredChat(currentChatId)
         if (cached) setCurrentChat(cached)
@@ -161,6 +170,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
       window.removeEventListener('storage', handler)
     }
   }, [currentChatId])
+
+  const setChatView = useCallback(
+    (view: ChatListView): void => {
+      if (view === chatViewRef.current) return
+      chatViewRef.current = view
+      setChatViewState(view)
+      setConversations(loadChatsMeta(view))
+      setError(null)
+      void refreshConversations({ view }).catch((err) => {
+        console.error('[ChatContext] Failed to load conversations for view:', err)
+      })
+    },
+    [refreshConversations]
+  )
 
   const contextLoadChatsMeta = useCallback((): ChatMeta[] => loadChatsMeta(), [])
 
@@ -185,9 +208,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
   const createNewChat = useCallback(
     async (modelId?: string, folderId?: string, isAgent?: boolean): Promise<Chat> => {
       const chat = await createStoredNewChat(modelId, folderId, isAgent)
+      // New chats are personal: land the list back on the personal view.
+      chatViewRef.current = 'personal'
+      setChatViewState('personal')
       setCurrentChatId(chat.id)
       setCurrentChat(chat)
-      setConversations(loadChatsMeta())
+      setConversations(loadChatsMeta('personal'))
       return chat
     },
     []
@@ -244,6 +270,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
   const value = useMemo<ChatContextValue>(
     () => ({
       conversations,
+      chatView,
+      setChatView,
       currentChat,
       isLoading,
       error,
@@ -263,6 +291,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
     }),
     [
       appendOrReplaceMessage,
+      chatView,
       contextListChatsMeta,
       contextLoadChatsMeta,
       conversations,
@@ -275,6 +304,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }): React
       isLoading,
       loadChat,
       saveChat,
+      setChatView,
       setLastOpenedChatId,
       updateChatTitle
     ]

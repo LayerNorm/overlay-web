@@ -1,8 +1,19 @@
-import { overlayDesktopAppClient } from './app-api-client'
+import { desktopAppJson, overlayDesktopAppClient } from './app-api-client'
 import type { ConversationSummary } from '@overlay/app-core'
 import type { PaginatedEnvelope } from '@overlay/api-client'
 
 export type CachedChat = ConversationSummary
+
+/** Mirrors the web secondary-panel chat views (backed by server `view` + `archived`). */
+export type ChatListView = 'personal' | 'dms' | 'channels' | 'all' | 'archived'
+
+export const CHAT_LIST_VIEWS: readonly ChatListView[] = [
+  'personal',
+  'dms',
+  'channels',
+  'all',
+  'archived'
+]
 
 export const INITIAL_CHAT_LIST_LIMIT = 24
 
@@ -16,73 +27,121 @@ export type ChatListFetchOutcome =
   | { status: 'unauthenticated' }
   | { status: 'error' }
 
-let cachedChats: CachedChat[] | null = null
-let cachedAt = 0
-let inFlight: Promise<ChatListFetchOutcome> | null = null
-let cachedPageInfo: ChatListPageInfo = { hasMore: false }
+interface ViewCache {
+  chats: CachedChat[] | null
+  at: number
+  pageInfo: ChatListPageInfo
+  inFlight: Promise<ChatListFetchOutcome> | null
+}
 
 const CACHE_TTL_MS = 15_000
 
-export function getCachedChatList(): CachedChat[] | null {
-  return cachedChats
+const viewCaches = new Map<ChatListView, ViewCache>()
+
+function viewCache(view: ChatListView): ViewCache {
+  let cache = viewCaches.get(view)
+  if (!cache) {
+    cache = { chats: null, at: 0, pageInfo: { hasMore: false }, inFlight: null }
+    viewCaches.set(view, cache)
+  }
+  return cache
 }
 
-export function getCachedChatListPageInfo(): ChatListPageInfo {
-  return cachedPageInfo
+export function isChatListView(value: string): value is ChatListView {
+  return (CHAT_LIST_VIEWS as readonly string[]).includes(value)
 }
 
-export function clearChatListCache(): void {
-  cachedChats = null
-  cachedAt = 0
-  cachedPageInfo = { hasMore: false }
-  inFlight = null
+export function getCachedChatList(view: ChatListView = 'personal'): CachedChat[] | null {
+  return viewCache(view).chats
+}
+
+export function getCachedChatListPageInfo(view: ChatListView = 'personal'): ChatListPageInfo {
+  return viewCache(view).pageInfo
+}
+
+export function clearChatListCache(view?: ChatListView): void {
+  if (view) {
+    viewCaches.delete(view)
+    return
+  }
+  viewCaches.clear()
+}
+
+function isEnvelope(value: unknown): value is PaginatedEnvelope<ConversationSummary> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as { data?: unknown }).data)
+  )
 }
 
 export async function fetchChatListResult(
-  options: { force?: boolean } = {}
+  options: { force?: boolean; view?: ChatListView } = {}
 ): Promise<ChatListFetchOutcome> {
+  const view = options.view ?? 'personal'
+  const cache = viewCache(view)
   const now = Date.now()
-  if (!options.force && cachedChats && now - cachedAt < CACHE_TTL_MS) {
-    return { status: 'success', chats: cachedChats }
+  if (!options.force && cache.chats && now - cache.at < CACHE_TTL_MS) {
+    return { status: 'success', chats: cache.chats }
   }
-  if (!options.force && inFlight) return inFlight
+  if (!options.force && cache.inFlight) return cache.inFlight
 
-  inFlight = overlayDesktopAppClient.conversations
-    .getResponse({ limit: INITIAL_CHAT_LIST_LIMIT })
-    .then(async (res): Promise<ChatListFetchOutcome> => {
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
-        return { status: 'error' }
-      }
-      const payload = (await res.json()) as PaginatedEnvelope<ConversationSummary>
-      if (!payload || typeof payload !== 'object' || !Array.isArray(payload.data)) {
-        return { status: 'error' }
-      }
-      const chats = payload.data
-      cachedChats = sortByLastModified(chats)
-      cachedPageInfo = {
-        nextCursor: payload.nextCursor,
-        hasMore: payload.hasMore
-      }
-      cachedAt = Date.now()
-      return { status: 'success', chats }
-    })
-    .catch((): ChatListFetchOutcome => ({ status: 'error' }))
-    .finally(() => {
-      inFlight = null
-    })
+  // The archived view returns a bare array; every other view returns the
+  // paginated envelope (the server only envelopes when limit/view is present,
+  // and we always send a limit).
+  const request =
+    view === 'archived'
+      ? desktopAppJson<unknown>('/api/v1/conversations?archived=true')
+          .then((raw): ChatListFetchOutcome => {
+            const chats = Array.isArray(raw) ? (raw as CachedChat[]) : []
+            cache.chats = sortByLastModified(chats)
+            cache.pageInfo = { hasMore: false }
+            cache.at = Date.now()
+            return { status: 'success', chats }
+          })
+          .catch((): ChatListFetchOutcome => ({ status: 'error' }))
+      : overlayDesktopAppClient.conversations
+          .getResponse({
+            limit: INITIAL_CHAT_LIST_LIMIT,
+            ...(view === 'personal' ? {} : { view })
+          } as { limit: number; view?: string })
+          .then(async (res): Promise<ChatListFetchOutcome> => {
+            if (!res.ok) {
+              if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
+              return { status: 'error' }
+            }
+            const payload = (await res.json()) as unknown
+            if (!isEnvelope(payload)) {
+              return { status: 'error' }
+            }
+            const chats = payload.data
+            cache.chats = sortByLastModified(chats)
+            cache.pageInfo = {
+              nextCursor: payload.nextCursor,
+              hasMore: payload.hasMore
+            }
+            cache.at = Date.now()
+            return { status: 'success', chats }
+          })
+          .catch((): ChatListFetchOutcome => ({ status: 'error' }))
 
-  return inFlight
+  cache.inFlight = request.finally(() => {
+    cache.inFlight = null
+  })
+
+  return cache.inFlight
 }
 
-export async function fetchChatList(options: { force?: boolean } = {}): Promise<CachedChat[]> {
+export async function fetchChatList(
+  options: { force?: boolean; view?: ChatListView } = {}
+): Promise<CachedChat[]> {
   const outcome = await fetchChatListResult(options)
   if (outcome.status === 'success') return outcome.chats
   if (outcome.status === 'unauthenticated') {
-    clearChatListCache()
+    clearChatListCache(options.view)
     return []
   }
-  return cachedChats ?? []
+  return getCachedChatList(options.view) ?? []
 }
 
 function sortByLastModified(chats: CachedChat[]): CachedChat[] {
