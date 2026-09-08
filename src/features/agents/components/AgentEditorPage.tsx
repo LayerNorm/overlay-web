@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, MessageSquare } from 'lucide-react'
-import { Button, Input } from '@overlay/ui/primitives'
+import { AppWindow, ArrowLeft, MessageSquare, PanelRight } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
@@ -25,18 +25,19 @@ import {
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
-import { buildWorkspaceAgentInput, isAgentEditorValid } from '../lib/agent-editor-input'
+import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 import { SHOWCASE_AGENTS } from '../lib/showcase-agents'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import {
   AccessSelector,
   AgentAvatar,
+  AgentBehaviorFields,
   AgentTypeSelector,
   AVATAR_COLORS,
-  ByoAgentFields,
+  CreateAgentFooter,
   DangerZone,
-  OverlayAgentFields,
+  MasterAgentNotice,
   type AgentType,
 } from './AgentEditorForm'
 import { useByoConnection } from './use-byo-connection'
@@ -47,6 +48,8 @@ export function AgentEditorPage({
   agentId,
   showcase = false,
   presentation = 'page',
+  panelMode,
+  onTogglePanelMode,
   onClose,
   onCreated,
   onArchived,
@@ -55,6 +58,8 @@ export function AgentEditorPage({
   agentId?: string
   showcase?: boolean
   presentation?: 'page' | 'panel'
+  panelMode?: 'docked' | 'floating'
+  onTogglePanelMode?: () => void
   onClose?: () => void
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
@@ -138,7 +143,7 @@ export function AgentEditorPage({
       .map((model) => ({ value: model.id, label: model.name }))
   }, [enabledModelIds, revision])
 
-  const isDefaultMaster = Boolean(agent?.isDefault || agent?.name.toLowerCase() === 'overlay')
+  const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
     name, instructions, modelId, agentType, connectedAgentsEnabled, bindingValid,
   })
@@ -289,71 +294,57 @@ export function AgentEditorPage({
               value={agentType}
               onChange={(value) => { setAgentType(value); markDirty() }}
             />
-            {isDefaultMaster ? (
-              <p className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4 text-xs leading-5 text-[var(--muted)]">
-                Master workspace agent with full access to workspace context, memory, and tools (cannot be deleted).
-              </p>
-            ) : null}
+            {isDefaultMaster ? <MasterAgentNotice /> : null}
 
-            <div className="mt-5 grid gap-5 sm:grid-cols-[112px_minmax(0,1fr)]">
+            <div className="mt-5 space-y-5">
               <AgentAvatar
                 color={avatarColor}
                 shape={avatarShape}
+                name={name}
+                description={description}
+                namePlaceholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'}
+                descriptionPlaceholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'}
+                onNameChange={(value) => { setName(value); markDirty() }}
+                onDescriptionChange={(value) => { setDescription(value); markDirty() }}
                 onChange={(color) => { setAvatarColor(color); markDirty() }}
                 onShapeChange={(next) => { setAvatarShape(next); markDirty() }}
               />
               <div className="space-y-4">
-                <label className="block text-xs font-medium">
-                  Agent name
-                  <Input autoFocus className="mt-1.5" value={name} onChange={(event) => { setName(event.target.value); markDirty() }} placeholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'} />
-                </label>
-                <label className="block text-xs font-medium">
-                  Short description <span className="font-normal text-[var(--muted-light)]">optional</span>
-                  <Input className="mt-1.5" value={description} onChange={(event) => { setDescription(event.target.value); markDirty() }} placeholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'} />
-                </label>
-
-                {agentType === 'overlay' ? (
-                  <OverlayAgentFields
-                    instructions={instructions}
-                    onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
-                    modelId={modelId}
-                    onModelChange={(value) => { setModelId(value); markDirty() }}
-                    modelOptions={modelOptions}
-                    enabledToolGroups={enabledToolGroups}
-                    onToggleToolGroup={toggleToolGroup}
-                    advanced={advanced}
-                    onAdvancedChange={setAdvanced}
-                  />
-                ) : connectedAgentsEnabled ? (
-                  <ByoAgentFields
-                    adapterId={adapterId}
-                    harnessOptions={harnessOptions}
-                    onHarnessChange={(value) => { chooseHarness(value); markDirty() }}
-                    choice={environmentChoice}
-                    onChoiceChange={(value) => { setEnvironmentChoice(value); markDirty() }}
-                    compatibleEnvironments={compatibleEnvironments}
-                    environmentsLoading={environmentsLoading}
-                    environmentId={environmentId}
-                    onEnvironmentChange={(value) => { chooseEnvironment(value); markDirty() }}
-                    workingDirectory={workingDirectory}
-                    onWorkingDirectoryChange={(value) => { setWorkingDirectory(value); markDirty() }}
-                    selectedHarnessConnectable={Boolean(selectedHarness?.connectable)}
-                    environmentBusy={environmentBusy}
-                    environmentError={environmentError}
-                    command={command}
-                    copied={copied}
-                    onCopyCommand={copyCommand}
-                    onBeginConnection={beginConnection}
-                    setupEnvironment={setupEnvironment}
-                    setupRoots={setupRoots}
-                    onSetupRootsChange={(value) => { setSetupRoots(value); markDirty() }}
-                    onApproveSetup={approveSetupEnvironment}
-                  />
-                ) : (
-                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
-                    This connected agent is unchanged. Connected-agent editing is not available for this workspace right now.
-                  </div>
-                )}
+                <AgentBehaviorFields
+                  agentType={agentType}
+                  connectedAgentsEnabled={connectedAgentsEnabled}
+                  instructions={instructions}
+                  onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
+                  modelId={modelId}
+                  onModelChange={(value) => { setModelId(value); markDirty() }}
+                  modelOptions={modelOptions}
+                  enabledToolGroups={enabledToolGroups}
+                  onToggleToolGroup={toggleToolGroup}
+                  advanced={advanced}
+                  onAdvancedChange={setAdvanced}
+                  adapterId={adapterId}
+                  harnessOptions={harnessOptions}
+                  onHarnessChange={(value) => { chooseHarness(value); markDirty() }}
+                  environmentChoice={environmentChoice}
+                  onEnvironmentChoiceChange={(value) => { setEnvironmentChoice(value); markDirty() }}
+                  compatibleEnvironments={compatibleEnvironments}
+                  environmentsLoading={environmentsLoading}
+                  environmentId={environmentId}
+                  onEnvironmentChange={(value) => { chooseEnvironment(value); markDirty() }}
+                  workingDirectory={workingDirectory}
+                  onWorkingDirectoryChange={(value) => { setWorkingDirectory(value); markDirty() }}
+                  selectedHarnessConnectable={Boolean(selectedHarness?.connectable)}
+                  environmentBusy={environmentBusy}
+                  environmentError={environmentError}
+                  command={command}
+                  copied={copied}
+                  onCopyCommand={copyCommand}
+                  onBeginConnection={beginConnection}
+                  setupEnvironment={setupEnvironment}
+                  setupRoots={setupRoots}
+                  onSetupRootsChange={(value) => { setSetupRoots(value); markDirty() }}
+                  onApproveSetup={approveSetupEnvironment}
+                />
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
 
@@ -367,15 +358,12 @@ export function AgentEditorPage({
                 />
 
                 {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-                {mode === 'new' ? (
-                  <Button
-                    className="mt-2 w-full"
-                    disabled={busy || !valid}
-                    onClick={() => void persistNew()}
-                  >
-                    {busy ? 'Creating…' : 'Create agent'}
-                  </Button>
-                ) : null}
+                <CreateAgentFooter
+                  mode={mode}
+                  busy={busy}
+                  valid={valid}
+                  onCreate={() => void persistNew()}
+                />
               </div>
             </div>
           </div>
@@ -388,9 +376,24 @@ export function AgentEditorPage({
     return (
       <AppScreenSidePanel
         title={title}
-        actions={savedFlash && mode === 'edit'
-          ? <span role="status" className="text-[11px] text-[var(--muted)]">Saved</span>
-          : undefined}
+        actions={(
+          <>
+            {savedFlash && mode === 'edit'
+              ? <span role="status" className="text-[11px] text-[var(--muted)]">Saved</span>
+              : null}
+            {onTogglePanelMode ? (
+              <button
+                type="button"
+                onClick={onTogglePanelMode}
+                title={panelMode === 'floating' ? 'Dock panel to the side' : 'Show as floating dialog'}
+                aria-label={panelMode === 'floating' ? 'Dock panel to the side' : 'Show as floating dialog'}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              >
+                {panelMode === 'floating' ? <PanelRight size={15} /> : <AppWindow size={15} />}
+              </button>
+            ) : null}
+          </>
+        )}
         onClose={closeEditor}
         closeLabel="Close agent settings"
         bodyClassName="overflow-hidden"

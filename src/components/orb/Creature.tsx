@@ -1,10 +1,11 @@
 'use client'
 
 /**
- * Anthropomorphic agent avatars: solid-color creature bodies with Grokbot-style
+ * Anthropomorphic agent avatars: solid-color creature bodies with straight
  * eyes. Pure SVG, no dependencies. The body shape and color are per-agent
  * identity (`avatarShape` / `avatarColor`); eyes pick dark or light from the
- * body luminance so they read on any colorway.
+ * body luminance, and very dark/light bodies adapt per theme so they read on
+ * any background.
  *
  * Motion is a periodic blink (transform only, staggered per instance).
  * Lists should pass `animated={false}`.
@@ -18,6 +19,7 @@ import {
   creatureEyeColor,
   DEFAULT_CREATURE_SHAPE,
   normalizeCreatureShape,
+  themeCreatureFills,
 } from '@/shared/agents/agent-creature'
 import styles from './Creature.module.css'
 
@@ -33,22 +35,23 @@ export type CreatureProps = {
   label?: string
 }
 
-/** Body geometry per shape in a 0 0 100 100 box. Cloud composites circles. */
-function CreatureBody({ shape, fill }: { shape: CreatureShape; fill: string }) {
+/** Body geometry per shape in a 0 0 100 100 box. Cloud composites circles.
+ *  Bodies use currentColor so the theme-adaptive wrapper fill wins. */
+function CreatureBody({ shape }: { shape: CreatureShape }) {
   switch (shape) {
     case 'blob':
-      return <path d="M50 12 C70 12 90 28 89 55 C88 80 70 93 50 93 C30 93 11 80 12 54 C13 29 30 12 50 12 Z" fill={fill} />;
+      return <path d="M50 12 C70 12 90 28 89 55 C88 80 70 93 50 93 C30 93 11 80 12 54 C13 29 30 12 50 12 Z" fill="currentColor" />;
     case 'squircle':
-      return <rect x="12" y="14" width="76" height="78" rx="24" fill={fill} />;
+      return <rect x="12" y="14" width="76" height="78" rx="24" fill="currentColor" />;
     case 'pill':
-      return <rect x="8" y="30" width="84" height="48" rx="24" fill={fill} />;
+      return <rect x="8" y="30" width="84" height="48" rx="24" fill="currentColor" />;
     case 'triangle':
-      return <path d="M50 16 L86 82 Q89 90 81 90 L19 90 Q11 90 14 82 Z" fill={fill} stroke={fill} strokeWidth="7" strokeLinejoin="round" />;
+      return <path d="M50 16 L86 82 Q89 90 81 90 L19 90 Q11 90 14 82 Z" fill="currentColor" stroke="currentColor" strokeWidth="7" strokeLinejoin="round" />;
     case 'hexagon':
-      return <path d="M50 12 L84 31 L84 71 L50 90 L16 71 L16 31 Z" fill={fill} stroke={fill} strokeWidth="7" strokeLinejoin="round" />;
+      return <path d="M50 12 L84 31 L84 71 L50 90 L16 71 L16 31 Z" fill="currentColor" stroke="currentColor" strokeWidth="7" strokeLinejoin="round" />;
     case 'cloud':
       return (
-        <g fill={fill}>
+        <g fill="currentColor">
           <circle cx="34" cy="61" r="16" />
           <circle cx="50" cy="49" r="20" />
           <circle cx="67" cy="61" r="16" />
@@ -56,18 +59,18 @@ function CreatureBody({ shape, fill }: { shape: CreatureShape; fill: string }) {
         </g>
       );
     case 'droplet':
-      return <path d="M50 10 C50 10 79 45 79 64 A29 29 0 1 1 21 64 C21 45 50 10 50 10 Z" fill={fill} />;
+      return <path d="M50 10 C50 10 79 45 79 64 A29 29 0 1 1 21 64 C21 45 50 10 50 10 Z" fill="currentColor" />;
     case 'circle':
     default:
-      return <circle cx="50" cy="53" r="40" fill={fill} />;
+      return <circle cx="50" cy="53" r="40" fill="currentColor" />;
   }
 }
 
 function CreatureEyes({ color }: { color: string }) {
   return (
     <g className={styles.eyes} fill={color}>
-      <rect x="36" y="45" width="9.5" height="17" rx="4.75" transform="rotate(-11 41 53)" />
-      <rect x="54.5" y="45" width="9.5" height="17" rx="4.75" transform="rotate(11 59 53)" />
+      <rect x="36" y="45" width="9.5" height="17" rx="4.75" />
+      <rect x="54.5" y="45" width="9.5" height="17" rx="4.75" />
     </g>
   )
 }
@@ -80,6 +83,7 @@ export function Creature({
   label = 'Agent',
 }: CreatureProps) {
   const resolved = normalizeCreatureShape(shape)
+  const fills = themeCreatureFills(color)
   return (
     <span
       role="img"
@@ -88,7 +92,12 @@ export function Creature({
       style={{ display: 'inline-flex', width: size, height: size, flexShrink: 0 }}
     >
       <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-        <CreatureBody shape={resolved} fill={color} />
+        <g
+          className={styles.bodyWrap}
+          style={{ '--cwf': fills.light, '--cwf-dark': fills.dark } as React.CSSProperties}
+        >
+          <CreatureBody shape={resolved} />
+        </g>
         <CreatureEyes color={creatureEyeColor(color)} />
       </svg>
     </span>

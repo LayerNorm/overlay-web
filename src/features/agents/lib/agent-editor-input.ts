@@ -34,6 +34,13 @@ export function buildWorkspaceAgentInput(args: {
   }
 }
 
+/** The built-in master agent renders the master notice and skips deletion. */
+export function isDefaultMasterAgent(
+  agent: { isDefault?: boolean; name: string } | null | undefined,
+): boolean {
+  return Boolean(agent && (agent.isDefault || agent.name.toLowerCase() === 'overlay'))
+}
+
 /** Mirrors the editor's save gating: identity plus either overlay behavior or a valid BYO binding. */
 export function isAgentEditorValid(args: {
   name: string

@@ -143,19 +143,38 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
   )
 }
 
-export function AgentAvatar({ color, shape, onChange, onShapeChange }: {
+export function AgentAvatar({ color, shape, name, description, namePlaceholder, descriptionPlaceholder, onNameChange, onDescriptionChange, onChange, onShapeChange }: {
   color: string
   shape: WorkspaceAgentCreatureShape
+  name: string
+  description: string
+  namePlaceholder: string
+  descriptionPlaceholder: string
+  onNameChange(value: string): void
+  onDescriptionChange(value: string): void
   onChange(color: string): void
   onShapeChange(shape: WorkspaceAgentCreatureShape): void
 }) {
   return (
     <div>
-      <div className="flex h-28 w-28 items-center justify-center">
-        <Creature shape={shape} color={color} size={104} label="Agent avatar preview" />
+      <p className="text-xs font-medium">Identity</p>
+      <div className="mt-2 flex items-start gap-3">
+        <div className="flex h-[76px] w-[76px] shrink-0 items-center justify-center">
+          <Creature shape={shape} color={color} size={72} label="Agent avatar preview" />
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <label className="block text-xs font-medium">
+            Agent name
+            <Input autoFocus className="mt-1.5" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />
+          </label>
+          <label className="block text-xs font-medium">
+            Short description <span className="font-normal text-[var(--muted-light)]">optional</span>
+            <Input className="mt-1.5" value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder={descriptionPlaceholder} />
+          </label>
+        </div>
       </div>
-      <p className="mt-3 text-xs font-medium">Shape</p>
-      <div className="mt-1.5 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Avatar shape">
+      <p className="mt-4 text-xs font-medium">Shape</p>
+      <div className="mt-1.5 grid grid-cols-8 gap-1.5" role="radiogroup" aria-label="Avatar shape">
         {CREATURE_SHAPES.map((creatureShape) => (
           <button
             key={creatureShape}
@@ -164,14 +183,14 @@ export function AgentAvatar({ color, shape, onChange, onShapeChange }: {
             aria-checked={shape === creatureShape}
             aria-label={`Use ${creatureShape} shape`}
             onClick={() => onShapeChange(creatureShape)}
-            className={`flex h-12 items-center justify-center rounded-md border transition-colors ${shape === creatureShape ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+            className={`flex h-11 items-center justify-center rounded-md border transition-colors ${shape === creatureShape ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
           >
-            <Creature shape={creatureShape} color={color} size={30} animated={false} label="" />
+            <Creature shape={creatureShape} color={color} size={26} animated={false} label="" />
           </button>
         ))}
       </div>
-      <p className="mt-3 text-xs font-medium">Color</p>
-      <div className="mt-1.5 grid grid-cols-6 gap-1.5" role="radiogroup" aria-label="Avatar color">
+      <p className="mt-4 text-xs font-medium">Color</p>
+      <div className="mt-1.5 flex items-center gap-3" role="radiogroup" aria-label="Avatar color">
         {AVATAR_COLORS.map((avatarColor) => (
           <button
             key={avatarColor}
@@ -180,13 +199,124 @@ export function AgentAvatar({ color, shape, onChange, onShapeChange }: {
             aria-checked={color === avatarColor}
             aria-label={`Use ${avatarColor}`}
             onClick={() => onChange(avatarColor)}
-            className={`flex h-9 items-center justify-center rounded-md border transition-colors ${color === avatarColor ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${color === avatarColor ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
           >
-            <Creature shape={shape} color={avatarColor} size={22} animated={false} label="" />
+            <Creature shape={shape} color={avatarColor} size={24} animated={false} label="" />
           </button>
         ))}
       </div>
     </div>
+  )
+}
+
+export function MasterAgentNotice() {
+  return (
+    <p className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4 text-xs leading-5 text-[var(--muted)]">
+      Master workspace agent with full access to workspace context, memory, and tools (cannot be deleted).
+    </p>
+  )
+}
+
+export function CreateAgentFooter({ mode, busy, valid, onCreate }: {
+  mode: 'new' | 'edit'
+  busy: boolean
+  valid: boolean
+  onCreate(): void
+}) {
+  if (mode !== 'new') return null
+  return (
+    <Button
+      className="mt-2 w-full"
+      disabled={busy || !valid}
+      onClick={onCreate}
+    >
+      {busy ? 'Creating…' : 'Create agent'}
+    </Button>
+  )
+}
+
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+  agentType: AgentType
+  connectedAgentsEnabled: boolean
+  instructions: string
+  onInstructionsChange(value: string): void
+  modelId: string
+  onModelChange(value: string): void
+  modelOptions: Array<{ value: string; label: string }>
+  enabledToolGroups: Set<string>
+  onToggleToolGroup(groupId: string): void
+  advanced: boolean
+  onAdvancedChange(value: boolean): void
+  adapterId: string
+  harnessOptions: Array<{ id: string; label: string; description: string; connectable: boolean }>
+  onHarnessChange(value: string): void
+  environmentChoice: EnvironmentChoice
+  onEnvironmentChoiceChange(value: EnvironmentChoice): void
+  compatibleEnvironments: AgentEnvironmentResource[]
+  environmentsLoading: boolean
+  environmentId: string
+  onEnvironmentChange(value: string): void
+  workingDirectory: string
+  onWorkingDirectoryChange(value: string): void
+  selectedHarnessConnectable: boolean
+  environmentBusy: string | null
+  environmentError: string | null
+  command: string
+  copied: boolean
+  onCopyCommand(): void
+  onBeginConnection(): void
+  setupEnvironment?: AgentEnvironmentResource
+  setupRoots: string
+  onSetupRootsChange(value: string): void
+  onApproveSetup(): void
+}) {
+  if (agentType === 'overlay') {
+    return (
+      <OverlayAgentFields
+        instructions={instructions}
+        onInstructionsChange={onInstructionsChange}
+        modelId={modelId}
+        onModelChange={onModelChange}
+        modelOptions={modelOptions}
+        enabledToolGroups={enabledToolGroups}
+        onToggleToolGroup={onToggleToolGroup}
+        advanced={advanced}
+        onAdvancedChange={onAdvancedChange}
+      />
+    )
+  }
+  if (!connectedAgentsEnabled) {
+    return (
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
+        This connected agent is unchanged. Connected-agent editing is not available for this workspace right now.
+      </div>
+    )
+  }
+  return (
+    <ByoAgentFields
+      adapterId={adapterId}
+      harnessOptions={harnessOptions}
+      onHarnessChange={onHarnessChange}
+      choice={environmentChoice}
+      onChoiceChange={onEnvironmentChoiceChange}
+      compatibleEnvironments={compatibleEnvironments}
+      environmentsLoading={environmentsLoading}
+      environmentId={environmentId}
+      onEnvironmentChange={onEnvironmentChange}
+      workingDirectory={workingDirectory}
+      onWorkingDirectoryChange={onWorkingDirectoryChange}
+      selectedHarnessConnectable={selectedHarnessConnectable}
+      environmentBusy={environmentBusy}
+      environmentError={environmentError}
+      command={command}
+      copied={copied}
+      onCopyCommand={onCopyCommand}
+      onBeginConnection={onBeginConnection}
+      setupEnvironment={setupEnvironment}
+      setupRoots={setupRoots}
+      onSetupRootsChange={onSetupRootsChange}
+      onApproveSetup={onApproveSetup}
+    />
   )
 }
 

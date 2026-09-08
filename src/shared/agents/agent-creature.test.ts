@@ -4,6 +4,7 @@ import {
   creatureEyeColor,
   hexToRgb,
   normalizeCreatureShape,
+  themeCreatureFills,
 } from './agent-creature'
 
 test('parses six- and three-digit hex colors', () => {
@@ -27,4 +28,15 @@ test('normalizes unknown shapes to the circle body', () => {
   assert.equal(normalizeCreatureShape('dragon'), 'circle')
   assert.equal(normalizeCreatureShape(undefined), 'circle')
   assert.equal(normalizeCreatureShape(''), 'circle')
+})
+
+test('adapts extreme bodies per theme and leaves mid-tones alone', () => {
+  assert.deepEqual(themeCreatureFills('#2563eb'), { light: '#2563eb', dark: '#2563eb' })
+  const dark = themeCreatureFills('#18181b')
+  assert.equal(dark.light, '#18181b')
+  assert.notEqual(dark.dark, '#18181b')
+  const light = themeCreatureFills('#e4e4e7')
+  assert.equal(light.dark, '#e4e4e7')
+  assert.notEqual(light.light, '#e4e4e7')
+  assert.deepEqual(themeCreatureFills('bogus'), { light: 'bogus', dark: 'bogus' })
 })

@@ -7,6 +7,15 @@
   animation: creature-blink 5.4s ease-in-out infinite;
 }
 
+/* Theme-adaptive body: the wrapper sets --cwf/--cwf-dark from the agent
+   color and the document theme picks which fill wins. */
+.bodyWrap {
+  color: var(--cwf);
+}
+:root[data-theme='dark'] .bodyWrap {
+  color: var(--cwf-dark);
+}
+
 @keyframes creature-blink {
   0%,
   91% {

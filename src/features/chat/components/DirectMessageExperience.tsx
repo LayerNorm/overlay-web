@@ -282,6 +282,7 @@ export function DirectMessageExperience({
   headerActions,
   externalRightPanel,
   externalRightPanelLabel,
+  externalRightPanelMode,
   onExternalRightPanelClose,
 }: {
   conversationId: string
@@ -292,6 +293,7 @@ export function DirectMessageExperience({
   headerActions?: ReactNode
   externalRightPanel?: ReactNode
   externalRightPanelLabel?: string
+  externalRightPanelMode?: 'docked' | 'floating'
   onExternalRightPanelClose?: () => void
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
@@ -1536,7 +1538,7 @@ export function DirectMessageExperience({
         rightPanel={rightPanel}
         rightPanelOpen={Boolean(rightPanel)}
         rightPanelWidth={shellRightPanel ? shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
-        rightPanelMode={shellRightPanelMode}
+        rightPanelMode={shellRightPanel ? shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
         onRightPanelResize={shellRightPanelResize}
         rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}

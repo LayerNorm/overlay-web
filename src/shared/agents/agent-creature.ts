@@ -31,6 +31,33 @@ export function creatureEyeColor(bodyColor: string): string {
   return luminance(rgb) > 0.5 ? '#1c1917' : '#fafaf9'
 }
 
+function toHex({ r, g, b }: RGB): string {
+  const byte = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')
+  return `#${byte(r)}${byte(g)}${byte(b)}`
+}
+
+function mix(a: RGB, b: RGB, t: number): RGB {
+  return { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t }
+}
+
+const WHITE: RGB = { r: 255, g: 255, b: 255 }
+const BLACK: RGB = { r: 0, g: 0, b: 0 }
+
+/**
+ * Theme-adaptive body fills so creatures read on both themes: very dark
+ * bodies lift toward grey in dark mode, very light bodies deepen in light
+ * mode. Mid-tone colors render identically in both.
+ */
+export function themeCreatureFills(bodyColor: string): { light: string; dark: string } {
+  const rgb = hexToRgb(bodyColor)
+  if (!rgb) return { light: bodyColor, dark: bodyColor }
+  const lum = luminance(rgb)
+  return {
+    light: lum > 0.78 ? toHex(mix(rgb, BLACK, 0.28)) : bodyColor,
+    dark: lum < 0.32 ? toHex(mix(rgb, WHITE, 0.5)) : bodyColor,
+  }
+}
+
 /** Unknown or absent shapes fall back to the circle body. */
 export function normalizeCreatureShape(shape: string | undefined): WorkspaceAgentCreatureShape {
   return (WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(shape ?? '')
