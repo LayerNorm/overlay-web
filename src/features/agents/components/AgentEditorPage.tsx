@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { Button, Input } from '@overlay/ui/primitives'
@@ -35,10 +35,12 @@ import {
   AgentTypeSelector,
   AVATAR_COLORS,
   ByoAgentFields,
+  DangerZone,
   OverlayAgentFields,
   type AgentType,
 } from './AgentEditorForm'
 import { useByoConnection } from './use-byo-connection'
+import { useAgentFormHydration, useAgentPersistence } from './use-agent-persistence'
 
 export function AgentEditorPage({
   mode,
@@ -96,17 +98,6 @@ export function AgentEditorPage({
   } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [savedFlash, setSavedFlash] = useState(false)
-  const [dirtySince, setDirtySince] = useState<number | null>(null)
-  const lastSavedAgentId = useRef<string | null>(null)
-
-  // Edit mode instant-saves: every change marks the form dirty, and the
-  // effect below persists it after a quiet period. There is no save button.
-  const markDirty = useCallback(() => {
-    if (mode !== 'edit' || showcase) return
-    setSavedFlash(false)
-    setDirtySince(Date.now())
-  }, [mode, showcase])
 
   // Load the agent (edit) or the create permission (new).
   useEffect(() => {
@@ -138,25 +129,6 @@ export function AgentEditorPage({
       .catch(() => { if (!cancelled) setConnectedAgentsEnabled(false) })
     return () => { cancelled = true }
   }, [activeWorkspaceId, showcase])
-
-  // Reset the form whenever a different agent loads. The saved indicator
-  // survives saves of the same agent; it clears only on agent switches.
-  useEffect(() => {
-    if (!agent) return
-    if (lastSavedAgentId.current !== agent.id) {
-      lastSavedAgentId.current = agent.id
-      setSavedFlash(false)
-      setDirtySince(null)
-    }
-    setName(agent.name)
-    setDescription(agent.description ?? '')
-    setInstructions(agent.instructions)
-    setModelId(agent.modelId)
-    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
-    setAvatarShape(agent.avatarShape ?? 'circle')
-    setVisibility(agent.visibility)
-    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-  }, [agent])
 
   const modelOptions = useMemo(() => {
     void revision
@@ -196,88 +168,43 @@ export function AgentEditorPage({
   }, [selectedHarness, adapterId, name, description, instructions, agentType, modelId,
     avatarColor, avatarShape, enabledToolGroups, visibility, agent])
 
-  const persistEdit = useCallback(async (input: WorkspaceAgentCreateInput) => {
-    if (showcase || !activeWorkspaceId || !agent) return
-    setBusy(true)
-    setError(null)
-    try {
-      const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, input)
-      if (agentType === 'byo') {
-        try {
-          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
-            agentId: saved.agent.id,
-            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-          })
-        } catch (bindingError) {
-          setAgent(saved.agent)
-          throw bindingError
-        }
-      } else if (agent && workspaceAgentUsesByo(agent)) {
-        // Switched a connected agent back to Overlay: drop its binding once.
-        await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
-          .catch(() => undefined)
-      }
-      dispatchAgentDirectoryChanged(activeWorkspaceId)
-      setAgent(saved.agent)
-      setDirtySince(null)
-      setSavedFlash(true)
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
-    } finally {
-      setBusy(false)
-    }
-  }, [showcase, activeWorkspaceId, agent, agentType, environmentId, adapterId, workingDirectory])
+  const persistence = useAgentPersistence({
+    mode, showcase, loading, agent, activeWorkspaceId, agentType,
+    environmentId, adapterId, workingDirectory, valid, busy, setBusy,
+    setError, buildInput,
+    afterCreate: (saved) => {
+      if (onCreated) onCreated(saved)
+      else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.id)}?hello=1`)
+    },
+    afterEdit: (saved) => setAgent(saved),
+  })
+  const { savedFlash, markDirty } = persistence
 
-  // New mode keeps one explicit step: a single in-flow Create button. Edit
-  // mode has no buttons at all — it instant-saves (see the effect above).
-  const persistNew = async () => {
+  // Reset the form whenever a different agent loads. The persistence hook
+  // owns the saved indicator; it clears only on agent switches, surviving
+  // saves.
+  useAgentFormHydration({
+    agent,
+    onHydrate: (loaded) => {
+      setName(loaded.name)
+      setDescription(loaded.description ?? '')
+      setInstructions(loaded.instructions)
+      setModelId(loaded.modelId)
+      setAvatarColor(loaded.avatarColor ?? AVATAR_COLORS[0]!)
+      setAvatarShape(loaded.avatarShape ?? 'circle')
+      setVisibility(loaded.visibility)
+      setEnabledToolGroups(enabledAgentToolGroupIds(loaded.allowedToolIds))
+    },
+    onAgentSwitch: () => persistence.resetSaveState(),
+  })
+
+  const persistNew = () => {
     if (showcase) {
       router.push(directoryHref)
       return
     }
-    if (!activeWorkspaceId || busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      const input = buildInput()
-      const saved = await overlayAppClient.agents.create(activeWorkspaceId, input)
-      if (agentType === 'byo') {
-        try {
-          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
-            agentId: saved.agent.id,
-            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-          })
-        } catch (bindingError) {
-          // Agent identity may already be durable even if its remote binding
-          // fails. Land on the edit page so a retry never creates a duplicate.
-          setAgent(saved.agent)
-          if (presentation === 'page') {
-            router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
-          }
-          throw bindingError
-        }
-      }
-      dispatchAgentDirectoryChanged(activeWorkspaceId)
-      if (onCreated) onCreated(saved.agent)
-      else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
-    } finally {
-      setBusy(false)
-    }
+    void persistence.persistNew()
   }
-
-  // Instant save: persist a quiet moment after the last edit. Skips while a
-  // save is in flight (the completion re-runs this effect when still dirty)
-  // and while the form is invalid.
-  useEffect(() => {
-    if (mode !== 'edit' || showcase || loading || !agent || dirtySince === null || busy) return
-    if (!valid) return
-    const timer = window.setTimeout(() => {
-      void persistEdit(buildInput())
-    }, 800)
-    return () => window.clearTimeout(timer)
-  }, [mode, showcase, loading, agent, dirtySince, busy, valid, buildInput, persistEdit])
 
   const archiveAgent = async () => {
     if (showcase || !activeWorkspaceId || !agent || busy) return
@@ -357,9 +284,11 @@ export function AgentEditorPage({
           </div>
         ) : (
           <div className="mx-auto w-full max-w-2xl pb-24">
-            {!isDefaultMaster && connectedAgentsEnabled ? (
-              <AgentTypeSelector value={agentType} onChange={(value) => { setAgentType(value); markDirty() }} />
-            ) : null}
+            <AgentTypeSelector
+              hidden={isDefaultMaster || !connectedAgentsEnabled}
+              value={agentType}
+              onChange={(value) => { setAgentType(value); markDirty() }}
+            />
             {isDefaultMaster ? (
               <p className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4 text-xs leading-5 text-[var(--muted)]">
                 Master workspace agent with full access to workspace context, memory, and tools (cannot be deleted).
@@ -428,13 +357,14 @@ export function AgentEditorPage({
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
 
-                {mode === 'edit' && agent && !isDefaultMaster ? (
-                  <section className="rounded-xl border border-red-500/25 p-4">
-                    <p className="text-xs font-medium text-[var(--foreground)]">Danger zone</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Archiving removes the agent from rooms and teams. Its message history remains.</p>
-                    <Button variant="danger" size="sm" className="mt-3" onClick={archiveAgent} disabled={busy}>Archive agent</Button>
-                  </section>
-                ) : null}
+                <DangerZone
+                  mode={mode}
+                  hasAgent={Boolean(agent)}
+                  isDefaultMaster={isDefaultMaster}
+                  busy={busy}
+                  agentName={agent?.name ?? 'this agent'}
+                  onArchive={() => void archiveAgent()}
+                />
 
                 {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
                 {mode === 'new' ? (

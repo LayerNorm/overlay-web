@@ -71,7 +71,12 @@ export function ToggleRow({ checked, onChange, label, description, disabled }: {
   )
 }
 
-export function AgentTypeSelector({ value, onChange }: { value: AgentType; onChange(value: AgentType): void }) {
+export function AgentTypeSelector({ value, onChange, hidden }: {
+  value: AgentType
+  onChange(value: AgentType): void
+  hidden?: boolean
+}) {
+  if (hidden) return null
   return (
     <div role="radiogroup" aria-label="Agent type">
       <p className="text-xs font-medium">Agent type</p>
@@ -92,6 +97,24 @@ export function AgentTypeSelector({ value, onChange }: { value: AgentType; onCha
         />
       </div>
     </div>
+  )
+}
+
+export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, onArchive }: {
+  mode: 'new' | 'edit'
+  hasAgent: boolean
+  isDefaultMaster: boolean
+  busy: boolean
+  agentName: string
+  onArchive(): void
+}) {
+  if (mode !== 'edit' || !hasAgent || isDefaultMaster) return null
+  return (
+    <section className="rounded-xl border border-red-500/25 p-4">
+      <p className="text-xs font-medium text-[var(--foreground)]">Danger zone</p>
+      <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Archiving removes {agentName} from rooms and teams. Its message history remains.</p>
+      <Button variant="danger" size="sm" className="mt-3" onClick={onArchive} disabled={busy}>Archive agent</Button>
+    </section>
   )
 }
 
