@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, ReactElement } from 'react'
-import { FolderOpen, Folder as FolderIcon, ChevronRight, Trash2 } from 'lucide-react'
+import { Archive, Folder, FolderOpen, Folder as FolderIcon, ChevronRight, Trash2 } from 'lucide-react'
 import type { Theme } from '../utils/theme'
 import { desktopAppJson } from '../services/app-api-client'
 import { SidebarListItem, SidebarItemAction } from '../components/ui/SidebarListItem'
+import { PanelSubnav } from '../components/ui/PanelSubnav'
 import {
   loadProjects,
   type Project,
@@ -167,6 +168,7 @@ export function ProjectsListPage({
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loadError, setLoadError] = useState<string | null>(null)
   const [cloudLoaded, setCloudLoaded] = useState(false)
+  const [view, setView] = useState<'all' | 'archived'>('all')
 
   const refresh = useCallback(async () => {
     try {
@@ -179,7 +181,7 @@ export function ProjectsListPage({
           createdAt: number
           updatedAt: number
         }>
-      >('/api/v1/projects')
+      >(view === 'archived' ? '/api/v1/projects?archived=true' : '/api/v1/projects')
       setProjects(
         remoteProjects.map((project) => ({
           id: project._id,
@@ -199,7 +201,7 @@ export function ProjectsListPage({
       console.warn('[ProjectsListPage] Failed to load cloud projects:', error)
       setLoadError(error instanceof Error ? error.message : String(error))
     }
-  }, [])
+  }, [view])
 
   useEffect(() => {
     void refresh()
@@ -269,6 +271,15 @@ export function ProjectsListPage({
       }}
     >
       {/* List */}
+      <PanelSubnav
+        theme={theme}
+        activeId={view}
+        onSelect={(id) => setView(id as 'all' | 'archived')}
+        items={[
+          { id: 'all', label: 'All', icon: Folder },
+          { id: 'archived', label: 'Archived', icon: Archive },
+        ]}
+      />
       <div
         style={{
           flex: 1,
