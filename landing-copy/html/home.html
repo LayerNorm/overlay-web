@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Overlay — The control plane for your AI workforce</title>
+<meta name="description" content="Create or connect agents, give them everything they need to work, and manage them from anywhere." />
+<style>
+  :root {
+    --bg: #fafaf8;
+    --fg: #1a1a18;
+    --muted: #6b6b66;
+    --muted-light: #a3a39e;
+    --border: #e6e4de;
+    --surface: #ffffff;
+    --surface-muted: #f1efe9;
+    --accent: #1a1a18;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  .serif { font-family: "New York", "Charter", "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; }
+  header.nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(250,250,248,0.88);
+    backdrop-filter: blur(12px);
+  }
+  .nav-inner {
+    max-width: 1120px; margin: 0 auto; padding: 0 24px;
+    height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); }
+  .brand-mark { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #000 0%, #444 60%, #999 100%); }
+  .brand-name { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+  .nav-links { display: none; gap: 24px; }
+  @media (min-width: 860px) { .nav-links { display: flex; } }
+  .nav-links a { font-size: 14px; color: var(--muted); text-decoration: none; }
+  .nav-links a:hover { color: var(--fg); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .github-link {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 50%;
+    color: var(--muted); text-decoration: none;
+    transition: color .15s, background .15s;
+  }
+  .github-link:hover { color: var(--fg); background: var(--surface-muted); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 999px; padding: 12px 24px;
+    font-size: 15px; font-weight: 500; text-decoration: none;
+    transition: opacity .15s, background .15s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { opacity: .88; }
+  .btn-secondary { border: 1px solid var(--border); color: var(--fg); background: transparent; }
+  .btn-secondary:hover { background: var(--surface-muted); }
+  .btn-sm { padding: 8px 18px; font-size: 14px; }
+  main section { padding: 88px 24px; }
+  @media (min-width: 768px) { main section { padding: 150px 40px; } }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  .wrap-wide { max-width: 1024px; margin: 0 auto; }
+  .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .28em; color: var(--muted-light); }
+  .display { font-size: clamp(44px, 7vw, 96px); line-height: .98; letter-spacing: -0.03em; text-wrap: balance; }
+  .h2 { font-size: clamp(32px, 4.5vw, 56px); line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; margin-top: 24px; }
+  .body { font-size: 17px; line-height: 32px; color: var(--muted); margin-top: 32px; max-width: 640px; }
+  .hero { text-align: center; }
+  .hero .body { margin-left: auto; margin-right: auto; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 40px; }
+  .micro { margin-top: 20px; font-size: 13px; color: var(--muted-light); letter-spacing: .02em; }
+  /* Contrast strip */
+  .contrast { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; margin-top: 64px; text-align: left; }
+  @media (min-width: 768px) { .contrast { grid-template-columns: 1fr 1fr; } }
+  .contrast-old { background: var(--surface-muted); padding: 32px 28px; }
+  .contrast-new { background: var(--surface); padding: 32px 28px; }
+  .contrast h3 { font-size: 19px; margin-bottom: 10px; }
+  .contrast p { font-size: 14.5px; line-height: 26px; color: var(--muted); }
+  /* Steps */
+  .steps { margin-top: 64px; }
+  .step { display: flex; gap: 24px; padding: 36px 0; border-top: 1px solid var(--border); }
+  .step:last-child { border-bottom: 1px solid var(--border); }
+  .step-num { flex-shrink: 0; padding-top: 4px; font-size: 14px; color: var(--muted-light); font-variant-numeric: tabular-nums; }
+  .step h3 { font-size: 24px; letter-spacing: -0.01em; font-weight: 500; }
+  .step p { margin-top: 10px; font-size: 16px; line-height: 28px; color: var(--muted); max-width: 560px; }
+  /* Agent card */
+  .agent-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    overflow: hidden; margin-top: 56px; text-align: left;
+  }
+  .agent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+  .agent-id { display: flex; align-items: center; gap: 12px; }
+  .agent-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,.15); flex-shrink: 0; }
+  .agent-name { font-weight: 600; font-size: 15px; }
+  .agent-sub { font-size: 13px; color: var(--muted); }
+  .pill { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: var(--surface-muted); color: var(--fg); white-space: nowrap; }
+  .pill.amber { background: #fef3c7; color: #92400e; }
+  .agent-tabs { display: flex; gap: 20px; padding: 14px 24px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); overflow-x: auto; }
+  .agent-tabs span { padding-bottom: 12px; white-space: nowrap; }
+  .agent-tabs span.active { color: var(--fg); font-weight: 600; border-bottom: 2px solid var(--fg); }
+  .agent-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .agent-row:last-child { border-bottom: none; }
+  .agent-row .k { color: var(--muted); }
+  .agent-row .v { font-weight: 500; white-space: nowrap; }
+  .approve-row { background: #fffbeb; }
+  .routine-row { background: #f8fafc; }
+  .roster { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var(--border); }
+  .roster span { font-size: 12.5px; font-weight: 500; background: var(--surface-muted); border-radius: 999px; padding: 6px 12px; }
+  /* Grid */
+  .grid { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; margin-top: 56px; }
+  @media (min-width: 768px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+  .tile { background: var(--surface); padding: 32px 28px; }
+  .tile h3 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+  .tile p { font-size: 14.5px; line-height: 26px; color: var(--muted); }
+  .prove { margin-top: 48px; display: grid; gap: 32px; }
+  @media (min-width: 768px) { .prove { grid-template-columns: 1fr 1fr 1fr; } }
+  .prove h3 { font-size: 19px; margin-bottom: 10px; }
+  .prove p { font-size: 15px; line-height: 27px; color: var(--muted); }
+  .prove code { display: block; margin-top: 12px; font-size: 13px; line-height: 22px; color: var(--fg); background: var(--surface-muted); border-radius: 10px; padding: 12px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .surfaces { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }
+  .surface-chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 500; }
+  .closing { text-align: center; }
+  .closing .body { margin-left: auto; margin-right: auto; }
+  footer { border-top: 1px solid var(--border); padding: 40px 24px; }
+  .foot-inner { max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+  .foot-links a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .foot-links a:hover { color: var(--fg); }
+  .draft-note { text-align: center; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted-light); padding: 12px; border-bottom: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="draft-note">Draft preview — maps to landing-copy/markdown/home.md</div>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#"><span class="brand-mark"></span><span class="brand-name serif">overlay</span></a>
+    <nav class="nav-links serif">
+      <a href="#how">How it works</a>
+      <a href="#control">Control plane</a>
+      <a href="#surfaces">Surfaces</a>
+      <a href="#">Pricing</a>
+      <a href="#">Docs</a>
+    </nav>
+    <div class="nav-right">
+      <a class="github-link" href="https://github.com/LayerNorm/overlay-web" target="_blank" rel="noopener noreferrer" aria-label="Overlay on GitHub" title="Overlay on GitHub">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+      </a>
+      <a class="btn btn-primary btn-sm serif" href="#">Try Overlay</a>
+    </div>
+  </div>
+</header>
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="label">Control plane for your AI workforce</p>
+      <h1 class="display serif" style="margin-top:24px;">The control plane<br />for your AI workforce.</h1>
+      <p class="body">Give real work to agents — not chats. Create or connect an agent, grant it browsers, tools, knowledge, and permissions, and supervise it from anywhere. It finishes the job, shows its evidence, and returns on schedule.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary serif" href="#how">Create your first agent →</a>
+        <a class="btn btn-secondary serif" href="#how">See how it works</a>
+      </div>
+      <p class="micro">Research · Monitoring · Operations — start with one recurring job.</p>
+      <div class="contrast">
+        <div class="contrast-old">
+          <h3 class="serif">In other apps, you get threads.</h3>
+          <p>Endless chat history. Context rebuilt every session. Work that stalls the moment you close the tab.</p>
+        </div>
+        <div class="contrast-new">
+          <h3 class="serif">With Overlay, you get agents that finish work.</h3>
+          <p>Named, persistent, scheduled, accountable. They keep context, ask for approval when it matters, and come back with finished work.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section id="how" style="padding-top:0;">
+    <div class="wrap">
+      <p class="label">How it works</p>
+      <h2 class="h2 serif">Describe the job. Get a verified result. Make it repeatable.</h2>
+      <div class="steps">
+        <div class="step">
+          <span class="step-num serif">01</span>
+          <div><h3 class="serif">Describe the outcome.</h3><p>One sentence is enough. What work should this agent own?</p></div>
+        </div>
+        <div class="step">
+          <span class="step-num serif">02</span>
+          <div><h3 class="serif">Connect its tools.</h3><p>Browsers, terminals, software, APIs, knowledge, credentials — granted per agent, revocable anytime.</p></div>
+        </div>
+        <div class="step">
+          <span class="step-num serif">03</span>
+          <div><h3 class="serif">Review the result.</h3><p>Progress and evidence exposed. It asks instead of guessing when something needs your judgment — then runs on its own next time.</p></div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-head">
+          <div class="agent-id"><span class="agent-dot"></span><div><div class="agent-name">Expense Manager</div><div class="agent-sub">Operations agent · runs Month-end close</div></div></div>
+          <span class="pill amber">Awaiting approval</span>
+        </div>
+        <div class="agent-tabs"><span class="active">Activity</span><span>Threads</span><span>Tools</span><span>Knowledge</span><span>Routines</span><span>Cost</span></div>
+        <div class="roster"><span>Chief</span><span>Inbox Manager</span><span>Research Scout</span><span>Expense Manager</span><span>+</span></div>
+        <div class="agent-row routine-row"><span class="k">Created routine — Month-end close · runs Mon 9am</span><span class="v">View →</span></div>
+        <div class="agent-row approve-row"><span class="k">Needs approval — file report: 9 receipts matched, $2,340</span><span class="v">Approve / Reject →</span></div>
+        <div class="agent-row"><span class="k">Flagged — 1 charge needs judgment: Harbor Hotel, $412 twice</span><span class="v">Review →</span></div>
+      </div>
+      <p class="micro" style="text-align:center;">The agent is the durable unit. Runtimes can change — threads, knowledge, permissions, and history don't.</p>
+    </div>
+  </section>
+
+  <!-- CONTROL PLANE -->
+  <section id="control" style="padding-top:0;">
+    <div class="wrap-wide">
+      <div class="wrap">
+        <p class="label">The control plane</p>
+        <h2 class="h2 serif">Autonomy you can govern.</h2>
+        <p class="body">Chat is a surface. Overlay owns everything around the work — creation, deployment, context, access, scheduling, approvals, observability, cost, audit, and improvement.</p>
+      </div>
+      <div class="grid">
+        <div class="tile"><h3>Deploy anywhere</h3><p>Overlay Cloud, your machine, or another harness. Same agent, same identity.</p></div>
+        <div class="tile"><h3>Context &amp; access</h3><p>Knowledge, credentials, tools, and permissions — granted per agent, revocable anytime.</p></div>
+        <div class="tile"><h3>Schedules &amp; routines</h3><p>Show it once, it runs on its own next time. No re-prompting, no rebuilt context.</p></div>
+        <div class="tile"><h3>Approvals &amp; audit</h3><p>What it did, what it changed, what it costs — and how to stop or correct it.</p></div>
+        <div class="tile"><h3>Observability &amp; cost</h3><p>Runs, exceptions, approval burden, time saved. Optimized for completed outcomes, not messages.</p></div>
+        <div class="tile"><h3>Real capabilities</h3><p>Browsers, terminals, software, APIs, and connected computers for actual knowledge work.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SURFACES -->
+  <section id="surfaces" style="padding-top:0;">
+    <div class="wrap">
+      <p class="label">Surfaces</p>
+      <h2 class="h2 serif">Meet people where they work.</h2>
+      <p class="body">Slack, Teams, and Telegram are distribution surfaces — not migrations. Message agents like teammates; configure and supervise them in Overlay.</p>
+      <div class="surfaces"><span class="surface-chip">Overlay</span><span class="surface-chip">Slack</span><span class="surface-chip">Microsoft Teams</span><span class="surface-chip">Telegram</span></div>
+    </div>
+  </section>
+
+  <!-- PROVING GROUNDS -->
+  <section style="padding-top:0;">
+    <div class="wrap-wide">
+      <div class="wrap">
+        <p class="label">Start here</p>
+        <h2 class="h2 serif">Research, monitoring, and operations first.</h2>
+        <p class="body">Together they test synthesis, persistent observation, and real-world action.</p>
+      </div>
+      <div class="prove" style="max-width:1024px;margin-left:auto;margin-right:auto;">
+        <div><h3 class="serif">Research</h3><p>Synthesis under uncertainty.</p><code>“Watch these 12 sources. Synthesize every Friday. Post the brief with evidence.”</code></div>
+        <div><h3 class="serif">Monitoring</h3><p>Persistent observation.</p><code>“Check these APIs hourly. Alert only on real change. Log every run.”</code></div>
+        <div><h3 class="serif">Operations</h3><p>Action with guardrails.</p><code>“Triage the queue. Draft the action. Wait for approval before it touches prod.”</code></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLOSING -->
+  <section class="closing" style="padding-top:0;">
+    <div class="wrap">
+      <h2 class="h2 serif">Give every recurring job to an agent.</h2>
+      <p class="body">Start with one. Prove the outcome. Make it repeatable with less intervention.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary serif" href="#">Create your first agent →</a>
+        <a class="btn btn-secondary serif" href="#">Deploy privately ⤴</a>
+      </div>
+      <p class="micro">Built by LayerNorm · Open and self-hostable</p>
+    </div>
+  </section>
+</main>
+<footer>
+  <div class="foot-inner">
+    <span class="serif" style="font-size:18px;color:var(--fg);">overlay</span>
+    <nav class="foot-links">
+      <a href="https://github.com/LayerNorm/overlay-web" target="_blank" rel="noopener noreferrer" aria-label="Overlay on GitHub">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        Source code
+      </a>
+      <a href="#">Docs</a><a href="#">Pricing</a><a href="#">Manifesto</a><a href="#">Privacy</a><a href="#">Terms</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>
