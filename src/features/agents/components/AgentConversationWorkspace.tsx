@@ -9,7 +9,7 @@ import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
+import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import {
   clearAgentOpened,
   getAgentOpenedAt,
@@ -18,7 +18,11 @@ import {
   sortAgentsByRecency,
 } from '@/shared/agents/last-agent-by-workspace'
 import { AgentEditorPage } from './AgentEditorPage'
+import { AVATAR_COLORS } from './AgentEditorForm'
 import { buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
+import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
+import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -34,10 +38,64 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [retryCount, setRetryCount] = useState(0)
   const attemptedAgentRef = useRef<string | null>(null)
 
+  const creatingAgentRef = useRef(false)
+
+  // Create-first: "New agent" immediately creates a real agent with defaults,
+  // refreshes the sidebar, opens its conversation, then opens the edit panel
+  // pointed at it. The panel never creates in the context of another agent.
   const openCreate = useCallback(() => {
+    if (showcase) {
+      setError(null)
+      setEditorMode('new')
+      return
+    }
+    if (!activeWorkspaceId || creatingAgentRef.current) return
+    creatingAgentRef.current = true
     setError(null)
-    setEditorMode('new')
-  }, [])
+    setEditorMode(null)
+    void (async () => {
+      try {
+        const directory = await overlayAppClient.agents.list(activeWorkspaceId)
+        if (!directory.canCreate) {
+          setEditorMode('new')
+          return
+        }
+        const taken = new Set(directory.agents.map((agent) => agent.name.toLowerCase()))
+        let name = 'Untitled agent'
+        for (let n = 2; taken.has(name.toLowerCase()) && n < 50; n += 1) name = `Untitled agent ${n}`
+        const created = await overlayAppClient.agents.create(activeWorkspaceId, {
+          ...buildWorkspaceAgentInput({
+            name,
+            description: '',
+            instructions: 'You are a helpful assistant.',
+            agentType: 'overlay',
+            harnessLabel: '',
+            adapterId: '',
+            modelId: DEFAULT_MODEL_ID,
+            avatarColor: AVATAR_COLORS[0]!,
+            avatarShape: 'circle',
+            enabledToolGroups: new Set(DEFAULT_AGENT_TOOL_GROUP_IDS),
+            visibility: 'workspace',
+          }),
+          teamIds: [],
+        })
+        dispatchAgentDirectoryChanged(activeWorkspaceId)
+        rememberAgentOpened(activeWorkspaceId, created.agent.id)
+        await startAgentChat({
+          workspaceId: activeWorkspaceId,
+          agentId: created.agent.id,
+          agentPrincipalId: created.agent.principalId,
+          surface: 'agents',
+          push: (href) => router.push(href),
+        })
+        setEditorMode('edit')
+      } catch (createError) {
+        setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
+      } finally {
+        creatingAgentRef.current = false
+      }
+    })()
+  }, [showcase, activeWorkspaceId, router])
 
   useEffect(() => {
     window.addEventListener(NEW_AGENT_EVENT, openCreate)

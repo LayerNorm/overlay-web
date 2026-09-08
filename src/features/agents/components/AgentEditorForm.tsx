@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
-import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
+import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
@@ -14,11 +14,83 @@ export const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d977
 export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
 
+/**
+ * Single-column stacked option row (radio behavior). One control per row,
+ * everywhere — never a side-by-side card grid.
+ */
+export function OptionRow({ checked, onSelect, label, description, icon, labelledBy, disabled }: {
+  checked: boolean
+  onSelect(): void
+  label: string
+  description?: string
+  icon?: ReactNode
+  labelledBy?: string
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      aria-label={labelledBy ?? label}
+      disabled={disabled}
+      onClick={onSelect}
+      className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-[var(--muted)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+    >
+      <span className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-[var(--foreground)]' : 'border-[var(--muted-light)]'}`}>
+        {checked ? <span className="absolute inset-[3px] rounded-full bg-[var(--foreground)]" /> : null}
+      </span>
+      {icon ? <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span> : null}
+      <span className="min-w-0">
+        <span className="block text-xs font-medium text-[var(--foreground)]">{label}</span>
+        {description ? <span className="mt-0.5 block text-[11px] leading-4 text-[var(--muted)]">{description}</span> : null}
+      </span>
+    </button>
+  )
+}
+
+/**
+ * Settings-style toggle row: title + description on the left, Toggle on the
+ * right. The only on/off control in the app — never a checkbox.
+ */
+export function ToggleRow({ checked, onChange, label, description, disabled }: {
+  checked: boolean
+  onChange(next: boolean): void
+  label: string
+  description?: string
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-[var(--foreground)]">{label}</p>
+        {description ? <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{description}</p> : null}
+      </div>
+      <Toggle checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} />
+    </div>
+  )
+}
+
 export function AgentTypeSelector({ value, onChange }: { value: AgentType; onChange(value: AgentType): void }) {
   return (
-    <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-subtle)] p-1" role="radiogroup" aria-label="Agent type">
-      <button type="button" role="radio" aria-checked={value === 'overlay'} onClick={() => onChange('overlay')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'overlay' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Bot size={16} /> Overlay agent</button>
-      <button type="button" role="radio" aria-checked={value === 'byo'} onClick={() => onChange('byo')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'byo' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Server size={16} /> Bring your own agent</button>
+    <div role="radiogroup" aria-label="Agent type">
+      <p className="text-xs font-medium">Agent type</p>
+      <div className="mt-1.5 space-y-2">
+        <OptionRow
+          checked={value === 'overlay'}
+          onSelect={() => onChange('overlay')}
+          icon={<Bot size={15} />}
+          label="Overlay agent"
+          description="Models, tools, and memory managed by Overlay. Best for research, writing, and operations."
+        />
+        <OptionRow
+          checked={value === 'byo'}
+          onSelect={() => onChange('byo')}
+          icon={<Server size={15} />}
+          label="Bring your own agent"
+          description="Run Codex, Claude Code, or Hermes on your own machines and VPSs."
+        />
+      </div>
     </div>
   )
 }
@@ -27,11 +99,23 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
   return (
     <div>
       <p className="text-xs font-medium">Access</p>
-      <div className="mt-1.5 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-subtle)] p-1" role="radiogroup" aria-label="Agent access">
-        <button type="button" role="radio" aria-checked={value === 'workspace'} onClick={() => onChange('workspace')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'workspace' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Users size={16} /> Everyone</button>
-        <button type="button" role="radio" aria-checked={value === 'creator'} onClick={() => onChange('creator')} className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${value === 'creator' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Lock size={16} /> Only me</button>
+      <div className="mt-1.5 space-y-2" role="radiogroup" aria-label="Agent access">
+        <OptionRow
+          checked={value === 'workspace'}
+          onSelect={() => onChange('workspace')}
+          icon={<Users size={15} />}
+          label="Everyone in this workspace"
+          description="Anyone can see, chat with, or @-mention this agent."
+        />
+        <OptionRow
+          checked={value === 'creator'}
+          onSelect={() => onChange('creator')}
+          icon={<Lock size={15} />}
+          label="Only me"
+          description="Only you can see, chat with, or @-mention this agent."
+        />
       </div>
-      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{value === 'creator' ? 'Only you can see, chat with, or @-mention this agent.' : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}</p>
+      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{value === 'creator' ? 'Hidden from everyone else — reported as not found.' : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}</p>
     </div>
   )
 }
@@ -91,11 +175,16 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
       <div>
         <p className="text-xs font-medium">Tools</p>
         <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Grant this agent the same tools the personal chat can use. It only acts on what you enable here.</p>
-        <div className="mt-2.5 grid gap-1.5 sm:grid-cols-2">
-          {AGENT_TOOL_GROUPS.map((group) => {
-            const active = enabledToolGroups.has(group.id)
-            return <button key={group.id} type="button" role="switch" aria-checked={active} onClick={() => onToggleToolGroup(group.id)} className={`flex items-start gap-2 rounded-lg border p-2.5 text-left transition-colors ${active ? 'border-[var(--muted)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}><span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{active ? <Check size={11} /> : null}</span><span className="min-w-0"><span className="block text-xs font-medium text-[var(--foreground)]">{group.label}</span><span className="mt-0.5 block text-[11px] leading-4 text-[var(--muted)]">{group.description}</span></span></button>
-          })}
+        <div className="mt-1">
+          {AGENT_TOOL_GROUPS.map((group) => (
+            <ToggleRow
+              key={group.id}
+              checked={enabledToolGroups.has(group.id)}
+              onChange={() => onToggleToolGroup(group.id)}
+              label={group.label}
+              description={group.description}
+            />
+          ))}
         </div>
       </div>
       <button type="button" onClick={() => onAdvancedChange(!advanced)} className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]">Advanced <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /></button>
@@ -129,13 +218,23 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
     <div className="space-y-5">
       <section>
         <p className="text-xs font-medium">Harness</p><p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Choose the coding agent Overlay will invoke.</p>
-        <div className="mt-2.5 grid gap-2 sm:grid-cols-2">{harnessOptions.map((harness) => <button key={harness.id} type="button" onClick={() => onHarnessChange(harness.id)} className={`rounded-xl border p-3 text-left transition-colors ${adapterId === harness.id ? 'border-[var(--muted)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}><span className="block text-xs font-medium text-[var(--foreground)]">{harness.label}</span><span className="mt-1 block text-[11px] leading-4 text-[var(--muted)]">{harness.description}</span></button>)}</div>
+        <div className="mt-2 space-y-2" role="radiogroup" aria-label="Harness">
+          {harnessOptions.map((harness) => (
+            <OptionRow
+              key={harness.id}
+              checked={adapterId === harness.id}
+              onSelect={() => onHarnessChange(harness.id)}
+              label={harness.label}
+              description={harness.description}
+            />
+          ))}
+        </div>
       </section>
       <section>
         <p className="text-xs font-medium">Where it runs</p>
-        <div className="mt-2.5 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Agent environment">
-          <EnvironmentChoiceButton active={choice === 'existing'} icon={<Server size={15} />} label="Existing" onClick={() => onChoiceChange('existing')} />
-          <EnvironmentChoiceButton active={choice === 'connect'} icon={<Laptop size={15} />} label="My machine" disabled={!selectedHarnessConnectable} onClick={() => onChoiceChange('connect')} />
+        <div className="mt-2 space-y-2" role="radiogroup" aria-label="Agent environment">
+          <EnvironmentChoiceButton active={choice === 'existing'} icon={<Server size={15} />} label="Existing environment" description="Pick an already-connected computer, VPS, or sandbox." onClick={() => onChoiceChange('existing')} />
+          <EnvironmentChoiceButton active={choice === 'connect'} icon={<Laptop size={15} />} label="Connect a new machine" description="Outbound-only. No inbound port is opened." disabled={!selectedHarnessConnectable} onClick={() => onChoiceChange('connect')} />
         </div>
         <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
           {choice === 'existing' ? environmentsLoading ? <p className="flex items-center gap-2 text-xs text-[var(--muted)]"><Loader2 size={14} className="animate-spin" /> Loading environments…</p> : compatibleEnvironments.length > 0 ? <div className="space-y-3"><label className="block text-xs font-medium">Environment<ListboxSelect className="mt-1.5" aria-label="Connected environment" value={environmentId} options={compatibleEnvironments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))} onChange={onEnvironmentChange} portal /></label><label className="block text-xs font-medium">Default working directory<Input className="mt-1.5" value={workingDirectory} onChange={(event) => onWorkingDirectoryChange(event.target.value)} placeholder="/Users/you/Projects/app" /></label><p className="text-[11px] leading-4 text-[var(--muted)]">This must be inside the environment’s approved roots. The environment may host other agents too.</p></div> : <div className="text-xs text-[var(--muted)]"><p>No connected environment currently advertises this harness.</p>{selectedHarnessConnectable ? <p className="mt-1">Connect a computer, VPS, or sandbox to continue.</p> : null}</div> : null}
@@ -148,8 +247,17 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
   )
 }
 
-function EnvironmentChoiceButton({ active, icon, label, disabled = false, onClick }: { active: boolean; icon: ReactNode; label: string; disabled?: boolean; onClick(): void }) {
-  return <button type="button" role="radio" aria-checked={active} disabled={disabled} onClick={onClick} className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'}`}>{icon}{label}</button>
+function EnvironmentChoiceButton({ active, icon, label, description, disabled = false, onClick }: {
+  active: boolean
+  icon: ReactNode
+  label: string
+  description?: string
+  disabled?: boolean
+  onClick(): void
+}) {
+  return (
+    <OptionRow checked={active} onSelect={onClick} icon={icon} label={label} description={description} disabled={disabled} />
+  )
 }
 
 export function EnvironmentApprovalPanel({ environment, roots, busy, onRootsChange, onApprove }: { environment: AgentEnvironmentResource; roots: string; busy: boolean; onRootsChange(value: string): void; onApprove(): void }) {

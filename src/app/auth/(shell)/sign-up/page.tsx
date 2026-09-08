@@ -17,6 +17,7 @@ import {
   marketingSsoButton,
   marketingSubmitButton,
 } from '@/features/landing/lib/landingPageStyles'
+import { Toggle } from '@overlay/ui/primitives'
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from '@overlay/app-core'
 import { SsoProviderIcon, useAuthUiOptions } from '../../_components/useAuthUiOptions'
 import {
@@ -352,12 +353,11 @@ function SignUpContent() {
               </div>
             )}
 
-            <label className={`mb-6 flex items-start gap-3 text-xs leading-5 ${muted}`}>
-              <input
-                type="checkbox"
+            <div className={`mb-6 flex items-start gap-3 text-xs leading-5 ${muted}`}>
+              <Toggle
                 checked={acceptedLegalTerms}
-                onChange={(event) => setAcceptedLegalTerms(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+                onCheckedChange={setAcceptedLegalTerms}
+                aria-label="Agree to the Terms of Service and Privacy Policy"
               />
               <span>
                 I agree to the{' '}
@@ -370,7 +370,7 @@ function SignUpContent() {
                 </Link>
                 .
               </span>
-            </label>
+            </div>
 
             {/* SSO Buttons */}
             {showSso ? (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { Button, Input } from '@overlay/ui/primitives'
@@ -97,6 +97,16 @@ export function AgentEditorPage({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
+  const [dirtySince, setDirtySince] = useState<number | null>(null)
+  const lastSavedAgentId = useRef<string | null>(null)
+
+  // Edit mode instant-saves: every change marks the form dirty, and the
+  // effect below persists it after a quiet period. There is no save button.
+  const markDirty = useCallback(() => {
+    if (mode !== 'edit' || showcase) return
+    setSavedFlash(false)
+    setDirtySince(Date.now())
+  }, [mode, showcase])
 
   // Load the agent (edit) or the create permission (new).
   useEffect(() => {
@@ -129,9 +139,15 @@ export function AgentEditorPage({
     return () => { cancelled = true }
   }, [activeWorkspaceId, showcase])
 
-  // Reset the form whenever the loaded agent changes (initial load, save).
+  // Reset the form whenever a different agent loads. The saved indicator
+  // survives saves of the same agent; it clears only on agent switches.
   useEffect(() => {
     if (!agent) return
+    if (lastSavedAgentId.current !== agent.id) {
+      lastSavedAgentId.current = agent.id
+      setSavedFlash(false)
+      setDirtySince(null)
+    }
     setName(agent.name)
     setDescription(agent.description ?? '')
     setInstructions(agent.instructions)
@@ -140,7 +156,6 @@ export function AgentEditorPage({
     setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-    setSavedFlash(false)
   }, [agent])
 
   const modelOptions = useMemo(() => {
@@ -157,7 +172,7 @@ export function AgentEditorPage({
   })
 
   const toggleToolGroup = (groupId: string) => {
-    setSavedFlash(false)
+    markDirty()
     setEnabledToolGroups((current) => {
       const next = new Set(current)
       if (next.has(groupId)) next.delete(groupId)
@@ -169,36 +184,68 @@ export function AgentEditorPage({
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
   const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
-  const save = async () => {
-    if (showcase) {
-      router.push(directoryHref)
-      return
-    }
-    if (!activeWorkspaceId) return
+  const buildInput = useCallback((): WorkspaceAgentCreateInput => {
     const harnessLabel = selectedHarness?.label ?? adapterId
-    const input: WorkspaceAgentCreateInput = {
+    return {
       ...buildWorkspaceAgentInput({
         name, description, instructions, agentType, harnessLabel, adapterId,
         modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
       }),
       teamIds: agent?.teamIds ?? [],
     }
-    const binding = agentType === 'byo'
-      ? { environmentId, adapterId, workingDirectory: workingDirectory.trim() }
-      : agent ? null : undefined
+  }, [selectedHarness, adapterId, name, description, instructions, agentType, modelId,
+    avatarColor, avatarShape, enabledToolGroups, visibility, agent])
+
+  const persistEdit = useCallback(async (input: WorkspaceAgentCreateInput) => {
+    if (showcase || !activeWorkspaceId || !agent) return
     setBusy(true)
     setError(null)
-    setSavedFlash(false)
     try {
-      const creating = !agent
-      const saved = agent
-        ? await overlayAppClient.agents.update(activeWorkspaceId, agent.id, input)
-        : await overlayAppClient.agents.create(activeWorkspaceId, input)
-      if (binding) {
+      const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, input)
+      if (agentType === 'byo') {
         try {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
-            ...binding,
+            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
+          })
+        } catch (bindingError) {
+          setAgent(saved.agent)
+          throw bindingError
+        }
+      } else if (agent && workspaceAgentUsesByo(agent)) {
+        // Switched a connected agent back to Overlay: drop its binding once.
+        await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+          .catch(() => undefined)
+      }
+      dispatchAgentDirectoryChanged(activeWorkspaceId)
+      setAgent(saved.agent)
+      setDirtySince(null)
+      setSavedFlash(true)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+    } finally {
+      setBusy(false)
+    }
+  }, [showcase, activeWorkspaceId, agent, agentType, environmentId, adapterId, workingDirectory])
+
+  // New mode keeps one explicit step: a single in-flow Create button. Edit
+  // mode has no buttons at all — it instant-saves (see the effect above).
+  const persistNew = async () => {
+    if (showcase) {
+      router.push(directoryHref)
+      return
+    }
+    if (!activeWorkspaceId || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const input = buildInput()
+      const saved = await overlayAppClient.agents.create(activeWorkspaceId, input)
+      if (agentType === 'byo') {
+        try {
+          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+            agentId: saved.agent.id,
+            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
           })
         } catch (bindingError) {
           // Agent identity may already be durable even if its remote binding
@@ -209,23 +256,28 @@ export function AgentEditorPage({
           }
           throw bindingError
         }
-      } else if (binding === null && agent) {
-        await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
       }
       dispatchAgentDirectoryChanged(activeWorkspaceId)
-      if (creating) {
-        if (onCreated) onCreated(saved.agent)
-        else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
-      } else {
-        setAgent(saved.agent)
-        setSavedFlash(true)
-      }
+      if (onCreated) onCreated(saved.agent)
+      else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
     } finally {
       setBusy(false)
     }
   }
+
+  // Instant save: persist a quiet moment after the last edit. Skips while a
+  // save is in flight (the completion re-runs this effect when still dirty)
+  // and while the form is invalid.
+  useEffect(() => {
+    if (mode !== 'edit' || showcase || loading || !agent || dirtySince === null || busy) return
+    if (!valid) return
+    const timer = window.setTimeout(() => {
+      void persistEdit(buildInput())
+    }, 800)
+    return () => window.clearTimeout(timer)
+  }, [mode, showcase, loading, agent, dirtySince, busy, valid, buildInput, persistEdit])
 
   const archiveAgent = async () => {
     if (showcase || !activeWorkspaceId || !agent || busy) return
@@ -306,7 +358,7 @@ export function AgentEditorPage({
         ) : (
           <div className="mx-auto w-full max-w-2xl pb-24">
             {!isDefaultMaster && connectedAgentsEnabled ? (
-              <AgentTypeSelector value={agentType} onChange={(value) => { setAgentType(value); setSavedFlash(false) }} />
+              <AgentTypeSelector value={agentType} onChange={(value) => { setAgentType(value); markDirty() }} />
             ) : null}
             {isDefaultMaster ? (
               <p className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4 text-xs leading-5 text-[var(--muted)]">
@@ -318,25 +370,25 @@ export function AgentEditorPage({
               <AgentAvatar
                 color={avatarColor}
                 shape={avatarShape}
-                onChange={(color) => { setAvatarColor(color); setSavedFlash(false) }}
-                onShapeChange={(next) => { setAvatarShape(next); setSavedFlash(false) }}
+                onChange={(color) => { setAvatarColor(color); markDirty() }}
+                onShapeChange={(next) => { setAvatarShape(next); markDirty() }}
               />
               <div className="space-y-4">
                 <label className="block text-xs font-medium">
                   Agent name
-                  <Input autoFocus className="mt-1.5" value={name} onChange={(event) => { setName(event.target.value); setSavedFlash(false) }} placeholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'} />
+                  <Input autoFocus className="mt-1.5" value={name} onChange={(event) => { setName(event.target.value); markDirty() }} placeholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'} />
                 </label>
                 <label className="block text-xs font-medium">
                   Short description <span className="font-normal text-[var(--muted-light)]">optional</span>
-                  <Input className="mt-1.5" value={description} onChange={(event) => { setDescription(event.target.value); setSavedFlash(false) }} placeholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'} />
+                  <Input className="mt-1.5" value={description} onChange={(event) => { setDescription(event.target.value); markDirty() }} placeholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'} />
                 </label>
 
                 {agentType === 'overlay' ? (
                   <OverlayAgentFields
                     instructions={instructions}
-                    onInstructionsChange={(value) => { setInstructions(value); setSavedFlash(false) }}
+                    onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
                     modelId={modelId}
-                    onModelChange={(value) => { setModelId(value); setSavedFlash(false) }}
+                    onModelChange={(value) => { setModelId(value); markDirty() }}
                     modelOptions={modelOptions}
                     enabledToolGroups={enabledToolGroups}
                     onToggleToolGroup={toggleToolGroup}
@@ -347,15 +399,15 @@ export function AgentEditorPage({
                   <ByoAgentFields
                     adapterId={adapterId}
                     harnessOptions={harnessOptions}
-                    onHarnessChange={chooseHarness}
+                    onHarnessChange={(value) => { chooseHarness(value); markDirty() }}
                     choice={environmentChoice}
-                    onChoiceChange={setEnvironmentChoice}
+                    onChoiceChange={(value) => { setEnvironmentChoice(value); markDirty() }}
                     compatibleEnvironments={compatibleEnvironments}
                     environmentsLoading={environmentsLoading}
                     environmentId={environmentId}
-                    onEnvironmentChange={chooseEnvironment}
+                    onEnvironmentChange={(value) => { chooseEnvironment(value); markDirty() }}
                     workingDirectory={workingDirectory}
-                    onWorkingDirectoryChange={setWorkingDirectory}
+                    onWorkingDirectoryChange={(value) => { setWorkingDirectory(value); markDirty() }}
                     selectedHarnessConnectable={Boolean(selectedHarness?.connectable)}
                     environmentBusy={environmentBusy}
                     environmentError={environmentError}
@@ -365,7 +417,7 @@ export function AgentEditorPage({
                     onBeginConnection={beginConnection}
                     setupEnvironment={setupEnvironment}
                     setupRoots={setupRoots}
-                    onSetupRootsChange={setSetupRoots}
+                    onSetupRootsChange={(value) => { setSetupRoots(value); markDirty() }}
                     onApproveSetup={approveSetupEnvironment}
                   />
                 ) : (
@@ -374,7 +426,7 @@ export function AgentEditorPage({
                   </div>
                 )}
 
-                <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); setSavedFlash(false) }} />
+                <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
 
                 {mode === 'edit' && agent && !isDefaultMaster ? (
                   <section className="rounded-xl border border-red-500/25 p-4">
@@ -385,14 +437,15 @@ export function AgentEditorPage({
                 ) : null}
 
                 {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-                {savedFlash ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p> : null}
-              </div>
-            </div>
-
-            <div className="sticky bottom-0 mt-8 border-t border-[var(--border)] bg-[var(--background)]/95 py-3 backdrop-blur">
-              <div className="flex items-center gap-2">
-                <span className="flex-1" />
-                <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={closeEditor} onSave={save} />
+                {mode === 'new' ? (
+                  <Button
+                    className="mt-2 w-full"
+                    disabled={busy || !valid}
+                    onClick={() => void persistNew()}
+                  >
+                    {busy ? 'Creating…' : 'Create agent'}
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -405,6 +458,9 @@ export function AgentEditorPage({
     return (
       <AppScreenSidePanel
         title={title}
+        actions={savedFlash && mode === 'edit'
+          ? <span role="status" className="text-[11px] text-[var(--muted)]">Saved</span>
+          : undefined}
         onClose={closeEditor}
         closeLabel="Close agent settings"
         bodyClassName="overflow-hidden"
@@ -455,21 +511,4 @@ function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello }: {
 }) {
   if (mode !== 'edit' || !hasAgent || (!highlight && !showcase)) return null
   return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
-}
-
-function EditorFooter({ mode, busy, valid, onCancel, onSave }: {
-  mode: 'new' | 'edit'
-  busy: boolean
-  valid: boolean
-  onCancel(): void
-  onSave(): void
-}) {
-  return (
-    <>
-      <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button variant="secondary" disabled={busy || !valid} onClick={onSave}>
-        {busy ? 'Saving…' : mode === 'new' ? 'Create agent' : 'Save changes'}
-      </Button>
-    </>
-  )
 }

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, MessageSquare, SlidersHorizontal } from 'lucide-react'
+import { Toggle } from '@overlay/ui/primitives'
 import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
 import { StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
 import { AuthBoundary, useAuth } from '@/contexts/AuthContext'
@@ -441,17 +442,16 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
           </div>
 
           {/* Tier cards */}
-          <label className={`flex items-start gap-3 rounded-xl border border-[var(--border)] p-4 text-sm leading-6 ${theme.body}`}>
-            <input
-              type="checkbox"
+          <div className={`flex items-start gap-3 rounded-xl border border-[var(--border)] p-4 text-sm leading-6 ${theme.body}`}>
+            <Toggle
               checked={acceptedCheckoutTerms}
-              onChange={(event) => setAcceptedCheckoutTerms(event.target.checked)}
-              className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--input-border)]"
+              onCheckedChange={setAcceptedCheckoutTerms}
+              aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms"
             />
             <span>
               I agree to the <Link className="underline" href={LEGAL_DOCUMENTS.terms.href}>Terms of Service (version {LEGAL_DOCUMENTS.terms.version})</Link>, acknowledge the <Link className="underline" href={LEGAL_DOCUMENTS.privacy.href}>Privacy Policy (version {LEGAL_DOCUMENTS.privacy.version})</Link>, and agree to the <Link className="underline" href="/refunds">recurring billing, cancellation, and refund terms</Link>.
             </span>
-          </label>
+          </div>
 
           <Reveal>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -605,22 +605,21 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                   </Link>
                   . Automatic top-ups are off until you opt in.
                 </p>
-                <label
-                  className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4"
+                <div
+                  className="mt-5 flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4"
                 >
-                  <input
-                    type="checkbox"
-                    checked={autoTopUpEnabled}
-                    onChange={(event) => setAutoTopUpEnabled(event.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--input-border)] text-[var(--accent)] focus:ring-[var(--accent)]"
-                  />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className={`text-sm font-medium ${theme.heading}`}>Enable automatic top-ups</p>
                     <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>
                       When enabled, we add $8 when your cumulative budget reaches zero.
                     </p>
                   </div>
-                </label>
+                  <Toggle
+                    checked={autoTopUpEnabled}
+                    onCheckedChange={setAutoTopUpEnabled}
+                    aria-label="Enable automatic top-ups"
+                  />
+                </div>
                 {currentPlanKind === 'paid' ? (
                   <button
                     type="button"

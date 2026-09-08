@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
-import { Button, EmptyState, Select } from '@overlay/ui/primitives'
+import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '../types'
@@ -178,7 +178,7 @@ export function WorkspaceBillingSection({
             </div>
           ) : null}
 
-          {summary.canManage && summary.rollout.checkoutEnabled ? <label className="flex items-start gap-3 text-xs leading-5 text-[var(--muted)]"><input type="checkbox" checked={acceptedCheckoutTerms} onChange={(event) => setAcceptedCheckoutTerms(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--border)]" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></label> : null}
+          {summary.canManage && summary.rollout.checkoutEnabled ? <div className="flex items-start gap-3 text-xs leading-5 text-[var(--muted)]"><Toggle checked={acceptedCheckoutTerms} onCheckedChange={setAcceptedCheckoutTerms} aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></div> : null}
 
           {summary.canManage ? (
             <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspace.id))}>Manage billing</Button></div>

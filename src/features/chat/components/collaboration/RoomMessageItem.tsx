@@ -21,7 +21,7 @@ import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
-import { Textarea } from '@overlay/ui/primitives'
+import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 
@@ -582,26 +582,35 @@ function RemoteRequestControls({ request, onResolve }: {
       <p className="text-xs font-medium text-[var(--foreground)]">{request.kind === 'permission' ? 'Permission requested' : 'Input requested'}</p>
       <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{request.prompt}</p>
       {request.kind === 'elicitation' ? Object.entries(properties).map(([key, property]) => (
-        <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
-          {property.title ?? key}{required.includes(key) ? ' *' : ''}
-          {property.type === 'boolean' ? (
-            <input type="checkbox" checked={values[key] === true}
-              onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.checked }))}
-              className="ml-2 align-middle" />
-          ) : elicitationOptions(property).length > 0 ? (
-            <select value={String(values[key] ?? '')}
-              onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-              className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
-              <option value="">Select…</option>
-              {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          ) : (
-            <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
-              value={String(values[key] ?? '')}
-              onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-              className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
-          )}
-        </label>
+        property.type === 'boolean' ? (
+          <div key={key} className="mt-2 flex items-center gap-3">
+            <span className="flex-1 text-[11px] text-[var(--muted)]">
+              {property.title ?? key}{required.includes(key) ? ' *' : ''}
+            </span>
+            <Toggle
+              checked={values[key] === true}
+              onCheckedChange={(next) => setValues((current) => ({ ...current, [key]: next }))}
+              aria-label={typeof (property.title ?? key) === 'string' ? (property.title ?? key) as string : key}
+            />
+          </div>
+        ) : (
+          <div key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
+            <span>{property.title ?? key}{required.includes(key) ? ' *' : ''}</span>
+            {elicitationOptions(property).length > 0 ? (
+              <select value={String(values[key] ?? '')}
+                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
+                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
+                <option value="">Select…</option>
+                {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            ) : (
+              <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+                value={String(values[key] ?? '')}
+                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
+                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
+            )}
+          </div>
+        )
       )) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {request.kind === 'permission' ? request.options.map((option) => (

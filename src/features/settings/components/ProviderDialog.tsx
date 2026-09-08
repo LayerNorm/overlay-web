@@ -11,7 +11,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react'
-import { DialogFrame } from '@overlay/ui/primitives'
+import { DialogFrame, Toggle } from '@overlay/ui/primitives'
 import {
   BYOK_PROVIDER_PRESETS,
   getByokPreset,
@@ -327,24 +327,23 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                   <div className="mt-2 max-h-40 overflow-y-auto">
                     <p className="mb-1.5 text-[11px] text-[var(--muted)]">Select models to enable:</p>
                     {testResult.models.map((model) => (
-                      <label
+                      <div
                         key={model.id}
-                        className="flex cursor-pointer items-center gap-2 py-1 text-xs text-[var(--foreground)]"
+                        className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
                       >
-                        <input
-                          type="checkbox"
+                        <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
+                        <Toggle
                           checked={enabledModelIds.includes(model.id)}
-                          onChange={() => {
+                          onCheckedChange={() => {
                             setEnabledModelIds((prev) =>
                               prev.includes(model.id)
                                 ? prev.filter((id) => id !== model.id)
                                 : [...prev, model.id],
                             )
                           }}
-                          className="h-3.5 w-3.5 rounded border-[var(--border)]"
+                          aria-label={formatByokModelDisplayName(model.id, model.name)}
                         />
-                        <span className="truncate">{formatByokModelDisplayName(model.id, model.name)}</span>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 ) : null}
@@ -366,24 +365,23 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
             </p>
             <div className="max-h-32 overflow-y-auto">
               {parseDiscoveredModels(existing.discoveredModelsJson).map((model) => (
-                <label
+                <div
                   key={model.id}
-                  className="flex cursor-pointer items-center gap-2 py-1 text-xs text-[var(--foreground)]"
+                  className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
                 >
-                  <input
-                    type="checkbox"
+                  <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
+                  <Toggle
                     checked={enabledModelIds.includes(model.id)}
-                    onChange={() => {
+                    onCheckedChange={() => {
                       setEnabledModelIds((prev) =>
                         prev.includes(model.id)
                           ? prev.filter((id) => id !== model.id)
                           : [...prev, model.id],
                       )
                     }}
-                    className="h-3.5 w-3.5 rounded border-[var(--border)]"
+                    aria-label={formatByokModelDisplayName(model.id, model.name)}
                   />
-                  <span className="truncate">{formatByokModelDisplayName(model.id, model.name)}</span>
-                </label>
+                </div>
               ))}
             </div>
           </div>
