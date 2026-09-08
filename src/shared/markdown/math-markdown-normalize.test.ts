@@ -117,6 +117,48 @@ test('still escapes currency spans without TeX commands', () => {
   )
 })
 
+// Regression: pricing-table currency must survive KaTeX (see the Browserbase
+// comparison — `$20/mo **— $100 …` paired across the row and ate spaces).
+test('escapes slash-unit currency pairs in long table rows', () => {
+  assert.equal(
+    normalizeAssistantMathMarkdown(
+      '| **Entry Paid** | **Developer $20/mo **— $100 browser hours (then $0.12/hr), 25 concurrent |',
+    ),
+    '| **Entry Paid** | **Developer \\$20/mo **— \\$100 browser hours (then $0.12/hr), 25 concurrent |',
+  )
+  assert.equal(
+    normalizeAssistantMathMarkdown('credits from $5, browsers at $0.02/browser-hour'),
+    'credits from \\$5, browsers at \\$0.02/browser-hour',
+  )
+  assert.equal(
+    normalizeAssistantMathMarkdown('Price: $20/mo, $100 upfront.'),
+    'Price: \\$20/mo, \\$100 upfront.',
+  )
+})
+
+test('escapes currency pairs past the legacy 400-char cap and across newlines', () => {
+  const longRow = `| Plan | ${'x'.repeat(420)} $20/mo $100 total |`
+  assert.equal(
+    normalizeAssistantMathMarkdown(longRow),
+    `| Plan | ${'x'.repeat(420)} \\$20/mo \\$100 total |`,
+  )
+  assert.equal(
+    normalizeAssistantMathMarkdown('Total $20 for setup\nplus $100 for support.'),
+    'Total \\$20 for setup\nplus \\$100 for support.',
+  )
+})
+
+test('leaves display math and lone currency dollars alone', () => {
+  assert.equal(normalizeAssistantMathMarkdown('Lift $$C_L$$ is fine.'), 'Lift $C_L$ is fine.')
+  assert.equal(
+    normalizeAssistantMathMarkdown('$$\nCost: $20 and $30\n$$'),
+    '$$\nCost: \\$20 and \\$30\n$$',
+  )
+  assert.equal(normalizeAssistantMathMarkdown('It costs $20 flat.'), 'It costs $20 flat.')
+  assert.equal(normalizeAssistantMathMarkdown('Use $2x + 1 = 5$ next.'), 'Use $2x + 1 = 5$ next.')
+  assert.equal(normalizeAssistantMathMarkdown('Let $x$ vary.'), 'Let $x$ vary.')
+})
+
 // Regression: bare LaTeX in markdown table cells gets promoted.
 test('promotes bare LaTeX inside markdown table cells', () => {
   const input = '| N | Notional | \\frac{110{,}000}{100} = \\$1{,}100$ |'

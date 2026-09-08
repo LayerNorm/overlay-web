@@ -599,11 +599,109 @@ function looksLikeMathVariable(inner: string): boolean {
   return false
 }
 
+/**
+ * Currency-first dollar scan. A `$` immediately followed by a digit is a
+ * currency opener until proven math: find its closer within the same paragraph
+ * (generous budget — pricing-table rows are very long single lines) and escape
+ * both delimiters unless the span carries an explicit TeX hint or compact
+ * operator structure. Unpaired `$20` stays literal either way.
+ *
+ * This runs before the legacy pair heuristic because that heuristic's
+ * slash-division rule (`0/m` in `$20/mo`) misreads currency units as math and
+ * hands the span to KaTeX, which eats the dollars and all spaces. Genuine
+ * digit-led math (`$1.1000 \times …$`, `$2x + 1 = 5$`) is preserved via the
+ * TeX-hint and operator carve-outs below.
+ */
+function escapeCurrencyOpeners(text: string): string {
+  if (!text.includes('$')) return text
+  let out = ''
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    // Already-escaped dollars and display-math fences pass through untouched.
+    if (ch === '\\' && text[i + 1] === '$') {
+      out += '\\$'
+      i += 2
+      continue
+    }
+    if (ch === '$' && text[i + 1] === '$') {
+      const fenceClose = text.indexOf('$$', i + 2)
+      if (fenceClose < 0) {
+        out += '$$'
+        i += 2
+        continue
+      }
+      out += text.slice(i, fenceClose + 2)
+      i = fenceClose + 2
+      continue
+    }
+    if (ch === '$' && /\d/.test(text[i + 1] ?? '')) {
+      const close = findCurrencyClose(text, i + 1)
+      if (close > 0) {
+        const inner = text.slice(i + 1, close)
+        if (!isMathAfterCurrencyOpener(inner)) {
+          out += `\\$${inner}\\$`
+          i = close + 1
+          continue
+        }
+      }
+      out += '$'
+      i += 1
+      continue
+    }
+    out += ch
+    i += 1
+  }
+  return out
+}
+
+/** Next unescaped single `$` in the same paragraph (blank line ends the search). */
+function findCurrencyClose(text: string, from: number): number {
+  let i = from
+  let budget = 2000
+  while (i < text.length && budget > 0) {
+    if (text[i] === '\n' && text[i + 1] === '\n') return -1
+    if (text[i] === '\\' && text[i + 1] === '$') {
+      i += 2
+      budget -= 2
+      continue
+    }
+    if (text[i] === '$' && text[i + 1] !== '$') return i
+    if (text[i] === '$') {
+      i += 2
+      budget -= 2
+      continue
+    }
+    i += 1
+    budget -= 1
+  }
+  return -1
+}
+
+/**
+ * True only for spans with an explicit TeX command/caret/brace structure or a
+ * compact operator equation — deliberately stricter than looksLikeMath, whose
+ * slash rule (`20/mo`) is exactly what currency units trip. Operators require
+ * operands on both sides so markdown bold runs (`**`) never count.
+ */
+function isMathAfterCurrencyOpener(inner: string): boolean {
+  const trimmed = inner.trim()
+  if (trimmed.length === 0) return false
+  if (TEX_COMMAND.test(trimmed) || BIG_O_ATOM.test(trimmed) || /[\^_{}]/.test(trimmed)) return true
+  return trimmed.length < 80 && (
+    /[A-Za-z0-9)\]}]\s*[+*=]\s*[A-Za-z0-9(\[{]/.test(trimmed) ||
+    /[A-Za-z)]\s*-\s*[A-Za-z(]/.test(trimmed) ||
+    /[A-Za-z)]-[A-Za-z(]/.test(trimmed)
+  ) && !/\d,\d{3}/.test(trimmed)
+}
+
 function processProseRegion(text: string): string {
+  // Currency openers first (see escapeCurrencyOpeners), then the legacy
+  // pair heuristic for the remaining `$letter…$`-style spans.
   // Same-line `$...$` (not part of `$$` and not `\$`-escaped) with a bounded body.
   // The 400-char cap prevents pathological cross-paragraph matches when prose contains
   // many stray `$` characters on a single very long line.
-  return text.replace(
+  return escapeCurrencyOpeners(text).replace(
     /(?<![\\$])\$(?!\$)([^$\n]{1,400}?)\$(?!\$)/g,
     (match, inner: string, offset: number, full: string) => {
       // If the span contains any TeX hint, keep it as real math even when it also

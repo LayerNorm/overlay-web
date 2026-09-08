@@ -96,7 +96,9 @@
     "src/server/workspaces/PostgresWorkspaceRepository.ts",
     "src/server/workspaces/WorkspaceService.ts",
     "src/shared/config/overlayConfigSchema.ts",
-    "src/shared/schemas/api-boundary.ts"
+    "src/shared/schemas/api-boundary.ts",
+    "src/shared/markdown/math-markdown-normalize.ts",
+    "packages/overlay-chat-react/src/lib/math-markdown-normalize.ts"
   ],
   "complexFunctionCounts": {
     "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
