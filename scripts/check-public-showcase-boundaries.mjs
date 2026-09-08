@@ -60,8 +60,8 @@ const appSidebar = read('src/components/layout/AppSidebar.tsx')
 if (!appSidebar.includes('publicShowcase')) violations.push('the real app sidebar must own public showcase mode')
 if (!appSidebar.includes('setShowcaseSidebarCollapsed')) violations.push('the real app sidebar must remain expandable in public mode')
 if (!appSidebar.includes('useState(false)')) violations.push('the public showcase sidebar must start expanded')
-for (const route of ['/app/home?showcase=1', '/app/manifesto?showcase=1', '/app/pricing?showcase=1']) {
-  if (!appSidebar.includes(route)) violations.push(`public marketing navigation must remain in the app shell: ${route}`)
+for (const route of ["href: '/home'", "href: '/manifesto'", "href: '/pricing'"]) {
+  if (!appSidebar.includes(route)) violations.push(`public marketing navigation must leave the app shell: ${route}`)
 }
 if (!appSidebar.includes('ROOT_APP_DESTINATION')) {
   violations.push('authenticated showcase users must have an App return link')
@@ -124,26 +124,23 @@ const signInForm = read('src/features/auth/components/SignInForm.tsx')
 if (!signInForm.includes('Loading sign-in options')) violations.push('sign-in prompts must render a loading state while auth options hydrate')
 
 const marketingShell = read('src/features/marketing/components/StaticMarketingShell.tsx')
-if (!marketingShell.includes('pathname.startsWith("/app/")')) {
-  violations.push('marketing bodies must embed inside the production app shell')
+if (!marketingShell.includes('MarketingNavbar')) {
+  violations.push('marketing bodies must render the standalone navbar frame')
 }
-for (const route of ['/home', '/manifesto', '/pricing']) {
-  if (!marketingShell.includes(`pathname === "${route}"`)) {
-    violations.push(`clean marketing route must not render a second shell: ${route}`)
-  }
+if (marketingShell.includes('PublicSiteRail') || marketingShell.includes('embeddedInAppShell')) {
+  violations.push('marketing must not render inside the production app shell')
 }
-
-const publicSiteRail = read('src/components/layout/PublicSiteRail.tsx')
-if (publicSiteRail.includes('label="About"')) {
-  violations.push('the retired About destination must stay out of public navigation')
+if (existsSync(join(root, 'src/components/layout/PublicSiteRail.tsx'))) {
+  violations.push('the retired public site rail must stay deleted')
 }
 
-const home = read('src/app/home/page.tsx')
-if (!home.includes("redirect('/app/home?showcase=1')")) violations.push('/home must redirect to the in-shell public marketing page')
+const home = read('src/app/(marketing)/home/page.tsx')
+if (home.includes('redirect(')) violations.push('/home must render directly, not redirect')
 for (const [path, destination] of [
-  ['src/app/about/page.tsx', '/app/home?showcase=1'],
-  ['src/app/manifesto/page.tsx', '/app/manifesto?showcase=1'],
-  ['src/app/pricing/page.tsx', '/app/pricing?showcase=1'],
+  ['src/app/about/page.tsx', '/home'],
+  ['src/app/app/home/page.tsx', '/home'],
+  ['src/app/app/manifesto/page.tsx', '/manifesto'],
+  ['src/app/app/pricing/page.tsx', '/pricing'],
 ]) {
   if (!read(path).includes(`redirect('${destination}')`)) {
     violations.push(`${path} must redirect to ${destination}`)
@@ -152,7 +149,7 @@ for (const [path, destination] of [
 
 const proxy = read('src/proxy.ts')
 for (const route of ["'/home': '/app/home'", "'/manifesto': '/app/manifesto'", "'/pricing': '/app/pricing'"]) {
-  if (!proxy.includes(route)) violations.push(`clean marketing routes must rewrite into the app shell: ${route}`)
+  if (proxy.includes(route)) violations.push(`clean marketing routes must not rewrite into the app shell: ${route}`)
 }
 
 const marketing = read('src/shared/marketing/marketing.ts')
@@ -161,9 +158,9 @@ if (!marketing.includes('"https://getoverlay.io/docs"')) {
 }
 
 for (const [path, canonical] of [
-  ['src/app/app/home/page.tsx', "canonical: '/home'"],
-  ['src/app/app/manifesto/page.tsx', "canonical: '/manifesto'"],
-  ['src/app/app/pricing/page.tsx', "canonical: '/pricing'"],
+  ['src/app/(marketing)/home/page.tsx', "canonical: '/home'"],
+  ['src/app/(marketing)/manifesto/page.tsx', "canonical: '/manifesto'"],
+  ['src/app/(marketing)/pricing/page.tsx', "canonical: '/pricing'"],
 ]) {
   const source = read(path)
   if (!source.includes(canonical) || !source.includes('index: true')) {
