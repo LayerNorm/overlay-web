@@ -165,6 +165,13 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     </button>
   )
 
+  // Logged-out demo: a fixed showcase agent conversation, no backend.
+  // Checked before the conversation branch because the showcase URL carries
+  // its own demo id, which must not trigger a real fetch.
+  if (showcase) {
+    return <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
+  }
+
   if (conversationId) {
     return (
       <DirectMessageExperience
@@ -176,11 +183,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         onExternalRightPanelClose={closeEditor}
       />
     )
-  }
-
-  // Logged-out demo: a fixed showcase agent conversation, no backend.
-  if (showcase) {
-    return <DirectMessageExperience conversationId="showcase-agent-welcome" showcase />
   }
 
   const loading = activeWorkspaceId !== null && (directory === null || resolving)
