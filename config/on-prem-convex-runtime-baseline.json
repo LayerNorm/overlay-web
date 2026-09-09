@@ -415,7 +415,6 @@
     "convex/imports/slackRunner.ts",
     "convex/knowledge/bases.ts",
     "convex/knowledge/memories.ts",
-    "convex/outputs/outputs.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]
 }
