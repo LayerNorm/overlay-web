@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: Batches 1–2 landed** (`CLEANUP 1`, 8× `CLEANUP 2`). Batches 3+ below are still open.
+> **Status: Batches 1–3 landed** (`CLEANUP 1`, 8× `CLEANUP 2`, 4× `CLEANUP 3`). Batches 4+ below are still open.
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
@@ -78,10 +78,12 @@ All items below were verified with repo-wide import greps (details: file + symbo
 - `src/server/email/email-service.ts` (`sendEmail`/`getEmailProvider`/`isEmailConfigured`; live path is the outbox delivery)
 - `src/server/observability/business-rollup.ts` (never wired to any cron)
 
-**Batch 3 — needs a product call:**
-- `packages/overlay-api-client/src/search/client.ts` (`SearchClient` built but never exported/wired — delete or wire up `/api/v1/search`)
-- `convex/outputs/outputs.ts` (6 functions, 0 callers — check Convex dashboard invocation counts first; dashboard/cron can invoke what grep can't see)
-- `PlatformAgentAccess` class (test-only + re-export; keep if Slack/Teams directories are on the roadmap)
+**Batch 3 — needs a product call (landed with two keeps):**
+- ~~`packages/overlay-api-client/src/search/client.ts`~~ deleted (`CLEANUP 3`).
+- ~~`convex/outputs/outputs.ts`~~ functions deleted (`CLEANUP 3`); the `outputs` table and its direct readers (`chat/conversations`, `auth/users`, `files/*`) stay.
+- `PlatformAgentAccess` class — **KEPT deliberately**: it is the documented seam the Chat SDK bot programs against for Slack/Teams, which matches the agent-first + Slack-delivery direction. Deleting it now would vandalize roadmap-active infrastructure.
+- Billing helpers `inferRefundAllocation` / `legacyUsageTotal` — **KEPT**: migration `0054` exists but backfill completion can't be confirmed from the repo; billing compat code stays until proven migrated.
+- ~~Deprecated aliases `NOTEBOOK_WRITE_MODE_PROMPT` / `NOTEBOOK_ASK_MODE_PROMPT`, `readNewChatModelFieldsFromStorage`~~ deleted (`CLEANUP 3`).
 
 **Dependencies:** uninstall `proxy-from-env` and `picomatch` (direct deps with zero imports — transitive leftovers). Keep `eventsource` until an SSE/MCP staging soak passes. (The `@ai-sdk/*` "unused" claims in the old migration plan are stale — all four are imported; fix the doc, not the deps.)
 
