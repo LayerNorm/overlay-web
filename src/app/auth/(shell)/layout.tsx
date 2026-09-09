@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { connection } from 'next/server'
 
 export const metadata: Metadata = {
   robots: {
@@ -8,11 +9,15 @@ export const metadata: Metadata = {
 }
 
 /**
- * Standalone auth frame. Sign-in, sign-up, and recovery pages bring their own
- * boundary, theme, and chrome (`AuthPageChrome`); this layout only guarantees
- * a full-height surface outside the application shell.
+ * Auth pages must render per request, never statically prerender: the
+ * nonce-based CSP only stamps script nonces during dynamic rendering, and a
+ * static prerender ships nonce-less flight scripts that the browser blocks —
+ * killing hydration and sticking visitors on "Loading..." forever.
+ * (`export const dynamic` is forbidden with `cacheComponents`, so request
+ * time is forced with `connection()` instead.)
  */
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+  await connection()
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       {children}
