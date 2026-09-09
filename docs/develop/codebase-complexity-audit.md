@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: Batches 1–3 landed** (`CLEANUP 1`, 8× `CLEANUP 2`, 4× `CLEANUP 3`). Batches 4+ below are still open.
+> **Status: Batches 1–4 landed** (`CLEANUP 1`, 8× `CLEANUP 2`, 4× `CLEANUP 3`, `CLEANUP 4`). Root reorg (§1) and §2 items below are still open.
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
@@ -91,9 +91,9 @@ All items below were verified with repo-wide import greps (details: file + symbo
 
 ## 4. Duplication: 4 forks to collapse
 
-- **`faviconUrl` / `hostFromUrl` × 3 + tooltip fork.** Canonical: `packages/overlay-chat-core/src/sources.ts:63,72`. Delete the copies in `web-tool-sources.ts` and features `WebSourceTooltip.tsx`; point the live package tooltip at chat-core.
-- **`safeHttpUrl` × 3.** Canonical: `src/shared/security/safe-url.ts` (79-LOC superset). Make the package and chat-core copies delegate to it.
-- **`WebSourceItem` / `webSourceDisplayKey` × 2.** Keep `src/shared/web/web-sources.ts` (isomorphic, Convex-safe); re-export from the package copy.
+- ~~**`faviconUrl` / `hostFromUrl` × 3 + tooltip fork**~~ collapsed (`CLEANUP 4`): the `web-tool-sources.ts` and features-tooltip copies died in Batches 2–3; the live package tooltip now imports both helpers from `@overlay/chat-core/sources`, keeping its own `webSourceDisplayKey` fallback.
+- **`safeHttpUrl` × 3 — kept deliberately.** The package copy (`chat-react/src/lib`) and `chat-core` copy serve published packages that cannot import app `src/`; the `src/shared/security` superset serves Convex-safe app code. Merging across that boundary would violate the package→`src` ban. Revisit only if the URL policy itself changes.
+- **`WebSourceItem` / `webSourceDisplayKey` × 2 — kept deliberately.** Same boundary: the package copy carries UI-only citation affordances, the shared copy stays isomorphic for Convex. The three `WebSourceItem` shapes (package, shared, chat-core types) must stay structurally compatible — note it here rather than merge them.
 - **Intentional, do not touch:** `math-markdown-normalize.ts` package mirror (documented portable copy — though the two-copy arrangement already caused one sync slip; consider generating the copy from source instead of hand-syncing).
 
 ## 5. Complexity hotspots (from the ratchet report)
