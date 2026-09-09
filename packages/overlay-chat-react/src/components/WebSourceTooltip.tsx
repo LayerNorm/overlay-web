@@ -3,27 +3,15 @@ import { createPortal } from 'react-dom'
 import { Brain, FileText } from 'lucide-react'
 import type { WebSourceItem } from '../lib/web-sources'
 import { webSourceDisplayKey } from '../lib/web-sources'
+import { faviconUrl, hostFromUrl } from '@overlay/chat-core'
 import { plainTextSnippet } from '@overlay/chat-core'
 
 const SHOW_DELAY_MS = 200
 const HIDE_GRACE_MS = 120
 const GAP_PX = 6
 
-function faviconUrl(pageUrl: string): string {
-  try {
-    const host = new URL(pageUrl).hostname
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
-  } catch {
-    return ''
-  }
-}
-
 function hostOf(pageUrl: string): string {
-  try {
-    return new URL(pageUrl).hostname.replace(/^www\./i, '')
-  } catch {
-    return webSourceDisplayKey(pageUrl)
-  }
+  return hostFromUrl(pageUrl) || webSourceDisplayKey(pageUrl)
 }
 
 /**
