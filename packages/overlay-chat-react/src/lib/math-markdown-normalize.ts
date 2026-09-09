@@ -49,6 +49,46 @@ function isInsideDoubleDollarBlock(s: string, pos: number): boolean {
 }
 
 /**
+ * True when `open..close` sits inside a single-dollar math span: an unescaped
+ * lone `$` within the same paragraph before `open`, matched by another after
+ * `close`. Bounds keep the scan local so distant currency dollars cannot veto
+ * a genuine bare-TeX repair.
+ */
+function isInsideSingleDollarSpan(s: string, open: number, close: number): boolean {
+  let i = Math.max(0, open - 300)
+  // Same paragraph only.
+  const paraStart = s.lastIndexOf('\n\n', open)
+  if (paraStart >= i) i = paraStart + 2
+  let opener = -1
+  while (i < open) {
+    if (s[i] === '\\' && s[i + 1] === '$') {
+      i += 2
+      continue
+    }
+    if (s[i] === '$' && s[i + 1] !== '$') {
+      opener = i
+    } else if (s[i] === '$') {
+      i += 1
+    }
+    i += 1
+  }
+  if (opener < 0) return false
+  let j = close + 1
+  let end = Math.min(s.length, close + 300)
+  const paraEnd = s.indexOf('\n\n', close)
+  if (paraEnd >= 0 && paraEnd < end) end = paraEnd
+  while (j < end) {
+    if (s[j] === '\\' && s[j + 1] === '$') {
+      j += 2
+      continue
+    }
+    if (s[j] === '$' && s[j + 1] !== '$') return true
+    j += 1
+  }
+  return false
+}
+
+/**
  * `[ \\begin{aligned} ... \\right] ... \\end{aligned} ]` and similar — wrap as `$$...$$` when
  * inner text clearly contains TeX commands.
  */
@@ -120,11 +160,19 @@ export function normalizeParenDelimitedLatex(text: string): string {
       i = open + 1
       continue
     }
-
+    // Skip when the parens sit inside a single-dollar math span: they are
+    // real TeX grouping, not pseudo-delimiters. (Sloppy models wrap display
+    // equations in lone `$` while leaving `\left(`-style grouping intact —
+    // reinterpreting those parens destroys the formula.)
     const close = findMatchingParenEnd(text, open)
     if (close < 0) {
       parts.push(text.slice(open))
       break
+    }
+    if (isInsideSingleDollarSpan(text, open, close)) {
+      parts.push('(')
+      i = open + 1
+      continue
     }
 
     const inner = text.slice(open + 1, close).trim()
@@ -695,6 +743,77 @@ function isMathAfterCurrencyOpener(inner: string): boolean {
   ) && !/\d,\d{3}/.test(trimmed)
 }
 
+/**
+ * Reflow sloppy display-math fences. Models often emit an opening `$$` on its
+ * own line but glue the closing `$$` to the end of the last equation line
+ * (`… × 100$$`), which remark-math cannot close — the fences render literally
+ * and the equation drops to inline. This re-emits the span as clean flow
+ * fences and repairs stray unescaped `$` inside: `$` glued to TeX syntax is
+ * deleted as noise, anything else becomes a literal `\$` (currency in display
+ * math keeps its sign instead of vanishing).
+ */
+export function reflowDisplayMathFences(text: string): string {
+  if (!text.includes('$$')) return text
+  const lines = text.split('\n')
+  const out: string[] = []
+  let i = 0
+  let inFence = false
+  while (i < lines.length) {
+    const line = lines[i]!
+    if (line.trim().startsWith('```')) inFence = !inFence
+    if (!inFence && line.trim() === '$$') {
+      const collected: string[] = []
+      let j = i + 1
+      let closed = false
+      while (j < lines.length && j - i <= 40) {
+        const candidate = lines[j]!
+        if (candidate.trim().startsWith('```')) break
+        if (candidate.trim() === '$$') {
+          closed = true
+          j += 1
+          break
+        }
+        if (candidate.trimEnd().endsWith('$$')) {
+          collected.push(candidate.trimEnd().slice(0, -2))
+          closed = true
+          j += 1
+          break
+        }
+        collected.push(candidate)
+        j += 1
+      }
+      if (closed) {
+        const cleaned = collected
+          .map((content) => repairStrayDisplayDollars(content))
+          .join('\n')
+        out.push('$$', cleaned, '$$')
+        i = j
+        continue
+      }
+    }
+    out.push(line)
+    i += 1
+  }
+  return out.join('\n')
+}
+
+/**
+ * Repairs unescaped `$` inside a fenced display-math span. A `$` glued to TeX
+ * syntax is model noise — delete it. Anything else is kept as a literal `\$`
+ * so currency never vanishes. `\$` escapes pass through. A delimiter command
+ * stuttering against itself (`\left\left`) is never valid TeX, so collapse it.
+ */
+function repairStrayDisplayDollars(content: string): string {
+  return content
+    .replace(/(?<!\\)\$(?!\$)/g, (match, offset: number, full: string) => {
+      const prev = full[offset - 1] ?? ''
+      const next = full[offset + 1] ?? ''
+      const mathy = /[\\{}^_]/.test(prev) || /[\\{}^_]/.test(next)
+      return mathy ? '' : '\\$'
+    })
+    .replace(/\\(left|right)(\s*)\\\1(?![A-Za-z])/g, '\\$1$2')
+}
+
 function processProseRegion(text: string): string {
   // Currency openers first (see escapeCurrencyOpeners), then the legacy
   // pair heuristic for the remaining `$letter…$`-style spans.
@@ -738,7 +857,7 @@ function isLikelyCurrencyProseSpan(match: string, inner: string, offset: number,
 export function normalizeAssistantMathMarkdown(text: string): string {
   return normalizeBareBigONotation(
     escapeProsePseudoMath(
-      normalizeBareLatexLines(normalizeDoubleDollarMath(normalizeLatexDelimiters(text))),
+      reflowDisplayMathFences(normalizeBareLatexLines(reflowDisplayMathFences(normalizeDoubleDollarMath(normalizeLatexDelimiters(text))))),
     ),
   )
 }

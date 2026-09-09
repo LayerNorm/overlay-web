@@ -148,8 +148,7 @@ test('escapes currency pairs past the legacy 400-char cap and across newlines', 
   )
 })
 
-test('leaves display math and lone currency dollars alone', () => {
-  assert.equal(normalizeAssistantMathMarkdown('Lift $$C_L$$ is fine.'), 'Lift $C_L$ is fine.')
+test('leaves display math and lone currency dollars alone', () => {  assert.equal(normalizeAssistantMathMarkdown('Lift $$C_L$$ is fine.'), 'Lift $C_L$ is fine.')
   assert.equal(
     normalizeAssistantMathMarkdown('$$\nCost: $20 and $30\n$$'),
     '$$\nCost: \\$20 and \\$30\n$$',
@@ -171,4 +170,23 @@ test('promotes bare formula line with command after equals', () => {
   const input = '1\\% \\times 110{,}000 = \\$1{,}100$'
   const out = normalizeAssistantMathMarkdown(input)
   assert.equal(out, '\n\$$\n1\\% \\times 110{,}000 = \\$1{,}100\n$$\n')
+})
+
+// Regression: closing $$ glued to the equation line reflows onto its own line.
+test('reflows display fences with glued closers', () => {
+  const input = 'Standards:\n$$\ng = \\frac{a}{b} \\times 100$$\n\nAfter.'
+  assert.equal(
+    normalizeAssistantMathMarkdown(input),
+    'Standards:\n$$\ng = \\frac{a}{b} \\times 100\n$$\n\nAfter.',
+  )
+})
+
+// Regression: stray dollars inside display spans become literal or vanish;
+// TeX grouping parens inside single-dollar spans are preserved.
+test('repairs sloppy display math with stray dollars', () => {
+  const input = 'Note:\n$$\ng_{x} = \\left$\\left(\\frac{a}{b}\\right)^4\n$$\nDone.'
+  const out = normalizeAssistantMathMarkdown(input)
+  assert.ok(!out.includes('$\\left('), `stray opener survives: ${out}`)
+  assert.ok(out.includes('\\left(\\frac{a}{b}\\right)^4'), `grouping lost: ${out}`)
+  assert.ok(out.startsWith('Note:\n$$'), `fences broken: ${out}`)
 })
