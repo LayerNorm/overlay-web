@@ -114,3 +114,26 @@ export function sortAgentsByRecency<T extends { id: string; name: string }>(
     return a.name.localeCompare(b.name)
   })
 }
+
+/**
+ * Picks the agent whose conversation should open: the explicitly requested
+ * one when it exists, else the most recently used, else the recency-ordered
+ * head. Returns undefined for an empty roster.
+ */
+export function pickAgentToOpen<T extends { id: string; name: string }>(
+  agents: readonly T[],
+  workspaceId: string | null | undefined,
+  preferredAgentId?: string | null,
+): T | undefined {
+  if (agents.length === 0) return undefined
+  if (preferredAgentId) {
+    const preferred = agents.find((agent) => agent.id === preferredAgentId)
+    if (preferred) return preferred
+  }
+  const lastOpenedId = getLastOpenedAgentId(workspaceId)
+  if (lastOpenedId) {
+    const lastOpened = agents.find((agent) => agent.id === lastOpenedId)
+    if (lastOpened) return lastOpened
+  }
+  return sortAgentsByRecency(agents, getAgentOpenedAt(workspaceId))[0]
+}

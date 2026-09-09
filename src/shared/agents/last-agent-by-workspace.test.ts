@@ -4,6 +4,7 @@ import {
   clearAgentOpened,
   getAgentOpenedAt,
   getLastOpenedAgentId,
+  pickAgentToOpen,
   rememberAgentOpened,
   sortAgentsByRecency,
 } from './last-agent-by-workspace'
@@ -86,4 +87,20 @@ test('ignores invalid stored values instead of crashing', () => {
   store.set('overlay:last-agent-by-workspace', JSON.stringify({ 'ws-a': { ok: 123, bad: 'nope' } }))
   assert.deepEqual(getAgentOpenedAt('ws-a'), { ok: 123 })
   assert.equal(getLastOpenedAgentId('ws-a'), 'ok')
+})
+
+test('picks the requested agent, else the most recent, else the roster head', () => {
+  const agents = [
+    { id: 'c', name: 'Codex' },
+    { id: 'h', name: 'Hermes' },
+    { id: 'o', name: 'Overlay' },
+  ]
+  assert.equal(pickAgentToOpen([], 'ws-a', null), undefined)
+  assert.equal(pickAgentToOpen(agents, 'ws-a', null)?.id, 'c')
+  assert.equal(pickAgentToOpen(agents, 'ws-a', 'h')?.id, 'h')
+  assert.equal(pickAgentToOpen(agents, 'ws-a', 'gone')?.id, 'c')
+  rememberAgentOpened('ws-a', 'o', 1000)
+  rememberAgentOpened('ws-a', 'h', 2000)
+  assert.equal(pickAgentToOpen(agents, 'ws-a', null)?.id, 'h')
+  assert.equal(pickAgentToOpen(agents, 'ws-a', 'c')?.id, 'c')
 })

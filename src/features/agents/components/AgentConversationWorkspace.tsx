@@ -12,20 +12,157 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import {
   clearAgentOpened,
-  getAgentOpenedAt,
-  getLastOpenedAgentId,
+  pickAgentToOpen,
   rememberAgentOpened,
-  sortAgentsByRecency,
 } from '@/shared/agents/last-agent-by-workspace'
 import { getAgentPanelMode, setAgentPanelMode, type AgentPanelMode } from '@/shared/agents/agent-panel-mode'
 import { AgentEditorPage } from './AgentEditorPage'
-import { AVATAR_COLORS } from './AgentEditorForm'
-import { buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
-import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
-import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { buildAgentsDirectoryHref, createAgentAndOpenChat, startAgentChat } from '../lib/agent-chat'
 
 type EditorMode = 'new' | 'edit' | null
+
+function AgentSettingsButton({ hasAgent, active, onClick }: {
+  hasAgent: boolean
+  active: boolean
+  onClick(): void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={hasAgent ? 'Agent settings' : 'Create agent'}
+      title={hasAgent ? 'Agent settings' : 'Create agent'}
+      onClick={onClick}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+        active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+      }`}
+    >
+      <Settings size={15} />
+    </button>
+  )
+}
+
+/** Post-create/archive/retry navigation. Own budget, kept out of the component. */
+function useAgentWorkspaceActions(args: {
+  activeWorkspaceId: string | null
+  agentId: string | null
+  router: { push(href: string): void; replace(href: string): void }
+  onEditorModeChange(mode: EditorMode): void
+  onError(message: string | null): void
+  onRetry(): void
+}) {
+  const { activeWorkspaceId, agentId, router, onEditorModeChange, onError, onRetry } = args
+
+  const openCreatedAgent = useCallback(
+    (agent: WorkspaceAgentDirectoryItem) => {
+      onEditorModeChange(null)
+      onError(null)
+      void startAgentChat({
+        workspaceId: activeWorkspaceId,
+        agentId: agent.id,
+        agentPrincipalId: agent.principalId,
+        surface: 'agents',
+        push: (href) => router.push(href),
+      }).catch((chatError) => {
+        onError(chatError instanceof Error ? chatError.message : 'Could not open the new agent.')
+      })
+    },
+    [activeWorkspaceId, router, onEditorModeChange, onError],
+  )
+
+  const handleArchived = useCallback(() => {
+    onEditorModeChange(null)
+    if (agentId) clearAgentOpened(activeWorkspaceId, agentId)
+    router.replace(buildAgentsDirectoryHref(activeWorkspaceId))
+  }, [activeWorkspaceId, agentId, router, onEditorModeChange])
+
+  const retryOpen = useCallback(() => {
+    onError(null)
+    onRetry()
+  }, [onError, onRetry])
+
+  return { openCreatedAgent, handleArchived, retryOpen }
+}
+
+type AgentDirectoryState = {
+  workspaceId: string | null
+  agents: WorkspaceAgentDirectoryItem[] | null
+  error: string | null
+}
+
+/** Loads the roster once per landing. Own budget, kept out of the component. */
+function useAgentDirectory(
+  activeWorkspaceId: string | null,
+  conversationId: string | null,
+): { directory: WorkspaceAgentDirectoryItem[] | null; loadError: string | null } {
+  const [state, setState] = useState<AgentDirectoryState>({ workspaceId: null, agents: null, error: null })
+  useEffect(() => {
+    if (conversationId || !activeWorkspaceId) return
+    let cancelled = false
+    overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
+      if (!cancelled) setState({ workspaceId: activeWorkspaceId, agents: response.agents, error: null })
+    }).catch(() => {
+      if (!cancelled) {
+        setState({
+          workspaceId: activeWorkspaceId,
+          agents: [],
+          error: 'Could not load your agents. Check your connection and retry.',
+        })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId, activeWorkspaceId])
+  if (state.workspaceId !== activeWorkspaceId) return { directory: null, loadError: null }
+  return { directory: state.agents, loadError: state.error }
+}
+
+/** Opens the picked agent's conversation. Own budget, kept out of the component. */
+function useAgentAutoOpen(args: {
+  conversationId: string | null
+  activeWorkspaceId: string | null
+  agentId: string | null
+  directory: WorkspaceAgentDirectoryItem[] | null
+  retryCount: number
+  router: { replace(href: string): void }
+  onResolvingChange(next: boolean): void
+  onError(message: string | null): void
+}) {
+  const {
+    conversationId, activeWorkspaceId, agentId, directory, retryCount, router,
+    onResolvingChange, onError,
+  } = args
+  const attemptedAgentRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    attemptedAgentRef.current = null
+  }, [activeWorkspaceId, conversationId])
+
+  useEffect(() => {
+    if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
+    const target = pickAgentToOpen(directory, activeWorkspaceId, agentId)
+    if (!target || attemptedAgentRef.current === target.id) return
+    attemptedAgentRef.current = target.id
+    rememberAgentOpened(activeWorkspaceId, target.id)
+    onResolvingChange(true)
+    onError(null)
+    void (async () => {
+      try {
+        await startAgentChat({
+          workspaceId: activeWorkspaceId,
+          agentId: target.id,
+          agentPrincipalId: target.principalId,
+          surface: 'agents',
+          push: (href) => router.replace(href),
+        })
+      } catch (chatError) {
+        onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
+      } finally {
+        onResolvingChange(false)
+      }
+    })()
+  }, [conversationId, activeWorkspaceId, agentId, directory, retryCount, router, onResolvingChange, onError])
+}
 
 export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
@@ -38,7 +175,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
-  const attemptedAgentRef = useRef<string | null>(null)
 
   const creatingAgentRef = useRef(false)
 
@@ -57,39 +193,16 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     setEditorMode(null)
     void (async () => {
       try {
-        const directory = await overlayAppClient.agents.list(activeWorkspaceId)
-        if (!directory.canCreate) {
+        const result = await createAgentAndOpenChat({
+          workspaceId: activeWorkspaceId,
+          push: (href) => router.push(href),
+          onDirectoryChanged: dispatchAgentDirectoryChanged,
+          onOpened: (agentId) => rememberAgentOpened(activeWorkspaceId, agentId),
+        })
+        if (result.status === 'no-permission') {
           setEditorMode('new')
           return
         }
-        const taken = new Set(directory.agents.map((agent) => agent.name.toLowerCase()))
-        let name = 'Untitled agent'
-        for (let n = 2; taken.has(name.toLowerCase()) && n < 50; n += 1) name = `Untitled agent ${n}`
-        const created = await overlayAppClient.agents.create(activeWorkspaceId, {
-          ...buildWorkspaceAgentInput({
-            name,
-            description: '',
-            instructions: 'You are a helpful assistant.',
-            agentType: 'overlay',
-            harnessLabel: '',
-            adapterId: '',
-            modelId: DEFAULT_MODEL_ID,
-            avatarColor: AVATAR_COLORS[0]!,
-            avatarShape: 'circle',
-            enabledToolGroups: new Set(DEFAULT_AGENT_TOOL_GROUP_IDS),
-            visibility: 'workspace',
-          }),
-          teamIds: [],
-        })
-        dispatchAgentDirectoryChanged(activeWorkspaceId)
-        rememberAgentOpened(activeWorkspaceId, created.agent.id)
-        await startAgentChat({
-          workspaceId: activeWorkspaceId,
-          agentId: created.agent.id,
-          agentPrincipalId: created.agent.principalId,
-          surface: 'agents',
-          push: (href) => router.push(href),
-        })
         setEditorMode('edit')
       } catch (createError) {
         setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
@@ -118,98 +231,32 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
 
   const closeEditor = useCallback(() => setEditorMode(null), [])
 
-  const openCreatedAgent = useCallback(
-    (agent: WorkspaceAgentDirectoryItem) => {
-      setEditorMode(null)
-      setError(null)
-      void startAgentChat({
-        workspaceId: activeWorkspaceId,
-        agentId: agent.id,
-        agentPrincipalId: agent.principalId,
-        surface: 'agents',
-        push: (href) => router.push(href),
-      }).catch((chatError) => {
-        setError(chatError instanceof Error ? chatError.message : 'Could not open the new agent.')
-      })
-    },
-    [activeWorkspaceId, router],
-  )
+  const workspaceActions = useAgentWorkspaceActions({
+    activeWorkspaceId,
+    agentId,
+    router,
+    onEditorModeChange: setEditorMode,
+    onError: setError,
+    onRetry: () => setRetryCount((count) => count + 1),
+  })
+  const { openCreatedAgent, handleArchived, retryOpen } = workspaceActions
 
-  const handleArchived = useCallback(() => {
-    setEditorMode(null)
-    if (agentId) clearAgentOpened(activeWorkspaceId, agentId)
-    router.replace(buildAgentsDirectoryHref(activeWorkspaceId))
-  }, [activeWorkspaceId, agentId, router])
+  // Owns the no-conversation state: load the roster, then open the picked
+  // agent directly. The blank page only ever appears when the workspace
+  // genuinely has no agents. The sidebar no longer auto-opens, so exactly
+  // one DM creation runs per landing.
+  const { directory, loadError } = useAgentDirectory(activeWorkspaceId, conversationId)
 
-  // Owns the no-conversation state: load the roster, then open the most
-  // recently used agent directly. The blank page only ever appears when the
-  // workspace genuinely has no agents. The sidebar no longer auto-opens, so
-  // exactly one DM creation runs per landing.
-  const [directoryState, setDirectoryState] = useState<{
-    workspaceId: string | null
-    agents: WorkspaceAgentDirectoryItem[] | null
-    error: string | null
-  }>({ workspaceId: null, agents: null, error: null })
-
-  useEffect(() => {
-    if (conversationId || !activeWorkspaceId) return
-    let cancelled = false
-    overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-      if (!cancelled) setDirectoryState({ workspaceId: activeWorkspaceId, agents: response.agents, error: null })
-    }).catch(() => {
-      if (!cancelled) {
-        setDirectoryState({
-          workspaceId: activeWorkspaceId,
-          agents: [],
-          error: 'Could not load your agents. Check your connection and retry.',
-        })
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [conversationId, activeWorkspaceId])
-
-  const directory = directoryState.workspaceId === activeWorkspaceId ? directoryState.agents : null
-  const loadError = directoryState.workspaceId === activeWorkspaceId ? directoryState.error : null
-
-  useEffect(() => {
-    attemptedAgentRef.current = null
-  }, [activeWorkspaceId, conversationId])
-
-  useEffect(() => {
-    if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
-    const lastOpenedId = getLastOpenedAgentId(activeWorkspaceId)
-    const target = (agentId ? directory.find((agent) => agent.id === agentId) : undefined)
-      ?? (lastOpenedId ? directory.find((agent) => agent.id === lastOpenedId) : undefined)
-      ?? sortAgentsByRecency(directory, getAgentOpenedAt(activeWorkspaceId))[0]
-    if (!target || attemptedAgentRef.current === target.id) return
-    attemptedAgentRef.current = target.id
-    rememberAgentOpened(activeWorkspaceId, target.id)
-    void (async () => {
-      setResolving(true)
-      setError(null)
-      try {
-        await startAgentChat({
-          workspaceId: activeWorkspaceId,
-          agentId: target.id,
-          agentPrincipalId: target.principalId,
-          surface: 'agents',
-          push: (href) => router.replace(href),
-        })
-      } catch (chatError) {
-        setError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
-      } finally {
-        setResolving(false)
-      }
-    })()
-  }, [conversationId, activeWorkspaceId, agentId, directory, retryCount, router])
-
-  const retryOpen = useCallback(() => {
-    attemptedAgentRef.current = null
-    setError(null)
-    setRetryCount((count) => count + 1)
-  }, [])
+  useAgentAutoOpen({
+    conversationId,
+    activeWorkspaceId,
+    agentId,
+    directory,
+    retryCount,
+    router,
+    onResolvingChange: setResolving,
+    onError: setError,
+  })
 
   const editor = editorMode ? (
     <AgentEditorPage
@@ -226,17 +273,11 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   ) : null
 
   const settingsButton = (
-    <button
-      type="button"
-      aria-label={agentId ? 'Agent settings' : 'Create agent'}
-      title={agentId ? 'Agent settings' : 'Create agent'}
+    <AgentSettingsButton
+      hasAgent={Boolean(agentId)}
+      active={Boolean(editorMode)}
       onClick={() => setEditorMode(agentId ? 'edit' : 'new')}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-        editorMode ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
-      }`}
-    >
-      <Settings size={15} />
-    </button>
+    />
   )
 
   // Logged-out demo: a fixed showcase agent conversation, no backend.
@@ -260,8 +301,13 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     )
   }
 
-  const loading = activeWorkspaceId !== null && (directory === null || resolving)
+  // Loading covers three phases with no gaps: roster fetch, the frame between
+  // roster arrival and the resolve effect firing, and the DM creation itself.
+  // The empty state therefore only ever renders for genuinely agent-less
+  // workspaces — never as a flash while a conversation is about to open.
   const displayError = error ?? loadError
+  const resolvingConversation = directory !== null && directory.length > 0 && !displayError
+  const loading = activeWorkspaceId !== null && (directory === null || resolving || resolvingConversation)
   const empty = directory !== null && directory.length === 0 && !displayError
 
   return (
