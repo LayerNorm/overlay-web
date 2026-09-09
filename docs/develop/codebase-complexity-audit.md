@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: Batch 1 landed** (`CLEANUP 1`). Batches 2+ below are still open.
+> **Status: Batches 1–2 landed** (`CLEANUP 1`, 8× `CLEANUP 2`). Batches 3+ below are still open.
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
