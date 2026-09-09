@@ -67,6 +67,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/compact-api-route-catalog.mdx` | Any change to a web API route's existence or exported HTTP methods. Keep it synchronized with the full route catalog. |
 | `docs/develop/customization.mdx` | Any change to theming, settings panels, or workspace configuration. |
 | `docs/develop/interface-design.md` | Any change to shared UI controls, selection layouts, or editor save patterns. |
+| `docs/develop/codebase-complexity-audit.md` | The 2026-09-09 complexity audit: root reorg plan, dead-code removal batches, and known architecture debt. Consult before refactors; update when batches land. |
 | `docs/develop/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
 | `docs/develop/external-imports.md` | Any change to the external import architecture, canonical import model, adapter interface, or Slack/Teams/Discord/Telegram import implementation. |
 | `docs/develop/automation-durability-and-visual-editor.md` | Any change to the automation graph model, Workflow SDK integration, ReactFlow canvas, or automation run durability. |
