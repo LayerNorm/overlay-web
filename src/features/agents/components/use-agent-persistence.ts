@@ -46,6 +46,11 @@ export function useAgentPersistence(args: {
     setDirtySince(Date.now())
   }, [mode, showcase])
 
+  const resetSaveState = useCallback(() => {
+    setSavedFlash(false)
+    setDirtySince(null)
+  }, [])
+
   const persistEdit = useCallback(async () => {
     if (showcase || !activeWorkspaceId || !agent) return
     setBusy(true)
@@ -122,11 +127,6 @@ export function useAgentPersistence(args: {
   }, [mode, showcase, loading, agent, dirtySince, busy, valid, persistEdit])
 
   return { savedFlash, markDirty, persistNew, resetSaveState }
-
-  function resetSaveState() {
-    setSavedFlash(false)
-    setDirtySince(null)
-  }
 }
 
 /**

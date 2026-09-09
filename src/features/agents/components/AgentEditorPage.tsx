@@ -177,30 +177,34 @@ export function AgentEditorPage({
     mode, showcase, loading, agent, activeWorkspaceId, agentType,
     environmentId, adapterId, workingDirectory, valid, busy, setBusy,
     setError, buildInput,
-    afterCreate: (saved) => {
+    afterCreate: useCallback((saved: WorkspaceAgentDirectoryItem) => {
       if (onCreated) onCreated(saved)
       else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.id)}?hello=1`)
-    },
-    afterEdit: (saved) => setAgent(saved),
+    }, [onCreated, router, activeWorkspaceId]),
+    afterEdit: useCallback((saved: WorkspaceAgentDirectoryItem) => setAgent(saved), []),
   })
-  const { savedFlash, markDirty } = persistence
+  const { savedFlash, markDirty, resetSaveState } = persistence
 
-  // Reset the form whenever a different agent loads. The persistence hook
-  // owns the saved indicator; it clears only on agent switches, surviving
-  // saves.
+  const handleHydrate = useCallback((loaded: WorkspaceAgentDirectoryItem) => {
+    setName(loaded.name)
+    setDescription(loaded.description ?? '')
+    setInstructions(loaded.instructions)
+    setModelId(loaded.modelId)
+    setAvatarColor(loaded.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarShape(loaded.avatarShape ?? 'circle')
+    setVisibility(loaded.visibility)
+    setEnabledToolGroups(enabledAgentToolGroupIds(loaded.allowedToolIds))
+  }, [])
+
+  const handleAgentSwitch = useCallback(() => resetSaveState(), [resetSaveState])
+
+  // Reset the form whenever a different agent loads. Stable callbacks above
+  // keep this effect to agent changes only — inline closures here would
+  // re-hydrate on every keystroke and make typing impossible.
   useAgentFormHydration({
     agent,
-    onHydrate: (loaded) => {
-      setName(loaded.name)
-      setDescription(loaded.description ?? '')
-      setInstructions(loaded.instructions)
-      setModelId(loaded.modelId)
-      setAvatarColor(loaded.avatarColor ?? AVATAR_COLORS[0]!)
-      setAvatarShape(loaded.avatarShape ?? 'circle')
-      setVisibility(loaded.visibility)
-      setEnabledToolGroups(enabledAgentToolGroupIds(loaded.allowedToolIds))
-    },
-    onAgentSwitch: () => persistence.resetSaveState(),
+    onHydrate: handleHydrate,
+    onAgentSwitch: handleAgentSwitch,
   })
 
   const persistNew = () => {
@@ -289,11 +293,6 @@ export function AgentEditorPage({
           </div>
         ) : (
           <div className="mx-auto w-full max-w-2xl pb-24">
-            <AgentTypeSelector
-              hidden={isDefaultMaster || !connectedAgentsEnabled}
-              value={agentType}
-              onChange={(value) => { setAgentType(value); markDirty() }}
-            />
             {isDefaultMaster ? <MasterAgentNotice /> : null}
 
             <div className="mt-5 space-y-5">
@@ -308,6 +307,11 @@ export function AgentEditorPage({
                 onDescriptionChange={(value) => { setDescription(value); markDirty() }}
                 onChange={(color) => { setAvatarColor(color); markDirty() }}
                 onShapeChange={(next) => { setAvatarShape(next); markDirty() }}
+              />
+              <AgentTypeSelector
+                hidden={isDefaultMaster || !connectedAgentsEnabled}
+                value={agentType}
+                onChange={(value) => { setAgentType(value); markDirty() }}
               />
               <div className="space-y-4">
                 <AgentBehaviorFields
