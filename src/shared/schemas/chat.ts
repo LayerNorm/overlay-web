@@ -51,6 +51,12 @@ export const DeleteConversationMessageRequest = z.object({
   turnId: z.string().min(1).optional(),
 }).passthrough()
 
+export const AgentGreetingRequest = z.object({
+  ...AuthFields,
+  conversationId: z.string().min(1),
+  agentId: z.string().min(1),
+}).passthrough()
+
 export const StopConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().min(1),
