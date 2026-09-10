@@ -40,6 +40,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Agent renames now update live across the editor title, DM header and empty state, and sidebar roster while typing, and persist to the agent's existing 1:1 DM title.
+
 - Fixed display-math fences glued to equation lines (`… × 100$$`) reflowing onto their own lines, stray `$` inside display spans repaired, and TeX grouping parens preserved inside single-dollar spans — sloppy model output now degrades to readable math instead of raw code.
 - Fixed currency amounts being eaten by math rendering (`$20/mo **— $100…` tables): dollar signs followed by digits are now classified as currency openers and escaped unless the span carries explicit TeX structure, so prices survive KaTeX. Genuine digit-led math (`$2x + 1 = 5$`, finance examples) still renders.
 

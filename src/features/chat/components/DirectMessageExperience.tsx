@@ -47,6 +47,15 @@ import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { dispatchChatArchived, dispatchChatCreated } from '@/shared/chat/chat-title'
+import {
+  AGENT_IDENTITY_PREVIEW_EVENT,
+  mergeAgentIdentityPreview,
+  type AgentIdentityPreviewDetail,
+} from '@/shared/agents/agent-identity-preview'
+import {
+  AGENT_DIRECTORY_CHANGED_EVENT,
+  type AgentDirectoryChangedEventDetail,
+} from '@/shared/workspace/sidebar-events'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -773,19 +782,6 @@ export function DirectMessageExperience({
   }, [showAttachMenu])
 
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
-  const title = conversationType === 'channel'
-    ? channel?.name ?? draftTitle ?? 'Channel'
-    : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
-  const HeaderIcon = conversationType === 'channel'
-    ? Hash
-    : otherParticipants.length <= 1
-      ? UserRound
-      : UsersRound
-  // Agent identity (creature color + shape) resolves from the directory once
-  // per conversation: the header for one-to-one agent DMs and every agent
-  // message avatar read from the same map. Falls back to neutral while
-  // loading; chat-list rows keep their Lucide icons because they carry no
-  // agent identity data.
   const soloAgentParticipant = conversationType !== 'channel'
     && otherParticipants.length === 1
     && otherParticipants[0]?.principalType === 'agent'
@@ -796,6 +792,45 @@ export function DirectMessageExperience({
     avatarColor?: string
     avatarShape?: string
   }>>(new Map())
+  const [directoryRevision, setDirectoryRevision] = useState(0)
+  const headerAgent = soloAgentParticipant
+    ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
+    : null
+  const title = conversationType === 'channel'
+    ? channel?.name ?? draftTitle ?? 'Channel'
+    : soloAgentParticipant && headerAgent
+      ? headerAgent.name
+      : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
+  const HeaderIcon = conversationType === 'channel'
+    ? Hash
+    : otherParticipants.length <= 1
+      ? UserRound
+      : UsersRound
+  // Agent identity (creature color + shape) resolves from the directory once
+  // per conversation: the header for one-to-one agent DMs and every agent
+  // message avatar read from the same map. Falls back to neutral while
+  // loading; chat-list rows keep their Lucide icons because they carry no
+  // agent identity data.
+  useEffect(() => {
+    if (showcase) return
+    const preview = (event: Event) => {
+      const detail = (event as CustomEvent<AgentIdentityPreviewDetail>).detail
+      if (!detail || detail.workspaceId !== activeWorkspaceId) return
+      setAgentsByPrincipal((current) => mergeAgentIdentityPreview(current, detail))
+    }
+    const directoryChanged = (event: Event) => {
+      const detail = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail
+      if (detail?.workspaceId !== activeWorkspaceId) return
+      setDirectoryRevision((revision) => revision + 1)
+    }
+    window.addEventListener(AGENT_IDENTITY_PREVIEW_EVENT, preview)
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, directoryChanged)
+    return () => {
+      window.removeEventListener(AGENT_IDENTITY_PREVIEW_EVENT, preview)
+      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, directoryChanged)
+    }
+  }, [activeWorkspaceId, showcase])
+
   useEffect(() => {
     if (showcase) {
       setAgentsByPrincipal(isAgentShowcase ? new Map([[SHOWCASE_AGENT_PRINCIPAL_ID, {
@@ -821,10 +856,7 @@ export function DirectMessageExperience({
     return () => {
       cancelled = true
     }
-  }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
-  const headerAgent = soloAgentParticipant
-    ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
-    : null
+  }, [activeWorkspaceId, showcase, conversationId, directoryRevision, isAgentShowcase])
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length

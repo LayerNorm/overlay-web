@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
@@ -24,6 +24,9 @@ import {
   DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
+import {
+  dispatchAgentIdentityPreview,
+} from '@/shared/agents/agent-identity-preview'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
@@ -99,6 +102,42 @@ export function AgentEditorPage({
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const latestAgentRef = useRef(agent)
+  const latestWorkspaceIdRef = useRef(activeWorkspaceId)
+  const latestEditorModeRef = useRef({ mode, showcase })
+
+  useEffect(() => {
+    latestAgentRef.current = agent
+    latestWorkspaceIdRef.current = activeWorkspaceId
+    latestEditorModeRef.current = { mode, showcase }
+  }, [activeWorkspaceId, agent, mode, showcase])
+
+  useEffect(() => {
+    if (mode !== 'edit' || showcase || !agent || !activeWorkspaceId) return
+    dispatchAgentIdentityPreview({
+      workspaceId: activeWorkspaceId,
+      agentId: agent.id,
+      principalId: agent.principalId,
+      name: name.trim() || agent.name,
+      avatarColor,
+      avatarShape,
+    })
+  }, [activeWorkspaceId, agent, avatarColor, avatarShape, mode, name, showcase])
+
+  useEffect(() => () => {
+    const currentAgent = latestAgentRef.current
+    const workspaceId = latestWorkspaceIdRef.current
+    const { mode: currentMode, showcase: isShowcase } = latestEditorModeRef.current
+    if (currentMode !== 'edit' || isShowcase || !currentAgent || !workspaceId) return
+    dispatchAgentIdentityPreview({
+      workspaceId,
+      agentId: currentAgent.id,
+      principalId: currentAgent.principalId,
+      name: currentAgent.name,
+      avatarColor: currentAgent.avatarColor,
+      avatarShape: currentAgent.avatarShape,
+    })
+  }, [])
 
   // Explicit save model: every change marks the form dirty; nothing persists
   // until Save. Cancel discards back to the loaded agent and closes.
@@ -306,8 +345,8 @@ export function AgentEditorPage({
   const title = useMemo(() => {
     if (mode === 'new') return 'New agent'
     if (loading) return 'Agent'
-    return agent?.name ?? 'Agent not found'
-  }, [agent?.name, loading, mode])
+    return agent ? name.trim() || agent.name : 'Agent not found'
+  }, [agent, loading, mode, name])
 
   const editor = (
     <AppScreenShell
