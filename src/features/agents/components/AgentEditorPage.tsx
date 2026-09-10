@@ -40,6 +40,7 @@ import {
   type AgentType,
 } from './AgentEditorForm'
 import { useByoConnection } from './use-byo-connection'
+import { useAgentIdentityPreview } from './use-agent-identity-preview'
 
 export function AgentEditorPage({
   mode,
@@ -99,6 +100,15 @@ export function AgentEditorPage({
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const [dirty, setDirty] = useState(false)
+  useAgentIdentityPreview({
+    mode,
+    showcase,
+    activeWorkspaceId,
+    agent,
+    name,
+    avatarColor,
+    avatarShape,
+  })
 
   // Explicit save model: every change marks the form dirty; nothing persists
   // until Save. Cancel discards back to the loaded agent and closes.
@@ -306,8 +316,8 @@ export function AgentEditorPage({
   const title = useMemo(() => {
     if (mode === 'new') return 'New agent'
     if (loading) return 'Agent'
-    return agent?.name ?? 'Agent not found'
-  }, [agent?.name, loading, mode])
+    return agent ? name.trim() || agent.name : 'Agent not found'
+  }, [agent, loading, mode, name])
 
   const editor = (
     <AppScreenShell

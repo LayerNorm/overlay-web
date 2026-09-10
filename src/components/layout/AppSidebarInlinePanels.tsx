@@ -57,6 +57,11 @@ import {
   type AgentDirectoryChangedEventDetail,
 } from '@/shared/workspace/sidebar-events'
 import {
+  AGENT_IDENTITY_PREVIEW_EVENT,
+  applyAgentIdentityPreview,
+  type AgentIdentityPreviewDetail,
+} from '@/shared/agents/agent-identity-preview'
+import {
   getAgentOpenedAt,
   getLastOpenedAgentId,
   rememberAgentOpened,
@@ -479,6 +484,16 @@ export function AgentsInlinePanel({
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
   }, [loadAgents, workspaceId])
+
+  useEffect(() => {
+    const previewAgent = (event: Event) => {
+      const detail = (event as CustomEvent<AgentIdentityPreviewDetail>).detail
+      if (!detail || detail.workspaceId !== workspaceId) return
+      setAgents((current) => applyAgentIdentityPreview(current, detail))
+    }
+    window.addEventListener(AGENT_IDENTITY_PREVIEW_EVENT, previewAgent)
+    return () => window.removeEventListener(AGENT_IDENTITY_PREVIEW_EVENT, previewAgent)
+  }, [workspaceId])
 
   const openAgent = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,

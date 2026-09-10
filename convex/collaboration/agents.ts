@@ -188,6 +188,22 @@ export const updateByServer = mutation({
       const principal = await ctx.db.query('workspacePrincipals')
         .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
       if (principal) await ctx.db.patch(principal._id, { displayName: patch.name, updatedAt: args.now })
+      const participants = await ctx.db.query('conversationParticipants')
+        .withIndex('by_workspaceId_principalId_status', (q) =>
+          q.eq('workspaceId', args.workspaceId)
+            .eq('principalId', row.principalId)
+            .eq('status', 'active'))
+        .collect()
+      for (const participant of participants) {
+        const conversation = await ctx.db.get(participant.conversationId)
+        if (
+          conversation
+          && conversation.conversationType === 'dm'
+          && conversation.title === row.name
+        ) {
+          await ctx.db.patch(conversation._id, { title: patch.name, updatedAt: args.now })
+        }
+      }
     }
     if (args.teamIds) {
       const existing = await ctx.db.query('workspaceTeamMemberships')
