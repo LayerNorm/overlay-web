@@ -112,6 +112,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'conversation-realtime-and-mutations',
     methods: '*',
     prefixes: [
+      '/api/v1/conversations/agent-greeting',
       '/api/v1/conversations/events',
       '/api/v1/conversations/message',
       '/api/v1/conversations/run',

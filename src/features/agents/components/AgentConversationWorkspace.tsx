@@ -9,15 +9,14 @@ import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import {
   clearAgentOpened,
   pickAgentToOpen,
   rememberAgentOpened,
 } from '@/shared/agents/last-agent-by-workspace'
-import { getAgentPanelMode, setAgentPanelMode, type AgentPanelMode } from '@/shared/agents/agent-panel-mode'
+import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { AgentEditorPage } from './AgentEditorPage'
-import { buildAgentsDirectoryHref, createAgentAndOpenChat, startAgentChat } from '../lib/agent-chat'
+import { buildAgentsDirectoryHref, createAgentAndOpenChat, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -56,15 +55,22 @@ function useAgentWorkspaceActions(args: {
     (agent: WorkspaceAgentDirectoryItem) => {
       onEditorModeChange(null)
       onError(null)
-      void startAgentChat({
-        workspaceId: activeWorkspaceId,
-        agentId: agent.id,
-        agentPrincipalId: agent.principalId,
-        surface: 'agents',
-        push: (href) => router.push(href),
-      }).catch((chatError) => {
-        onError(chatError instanceof Error ? chatError.message : 'Could not open the new agent.')
-      })
+      void (async () => {
+        try {
+          const conversationId = await startAgentChat({
+            workspaceId: activeWorkspaceId,
+            agentId: agent.id,
+            agentPrincipalId: agent.principalId,
+            surface: 'agents',
+            push: (href) => router.push(href),
+          })
+          if (conversationId && activeWorkspaceId) {
+            await sendAgentGreeting({ workspaceId: activeWorkspaceId, conversationId, agentId: agent.id })
+          }
+        } catch (chatError) {
+          onError(chatError instanceof Error ? chatError.message : 'Could not open the new agent.')
+        }
+      })()
     },
     [activeWorkspaceId, router, onEditorModeChange, onError],
   )
@@ -171,7 +177,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
-  const [panelMode, setPanelMode] = useState<AgentPanelMode>('docked')
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
@@ -217,18 +222,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     return () => window.removeEventListener(NEW_AGENT_EVENT, openCreate)
   }, [openCreate])
 
-  useEffect(() => {
-    setPanelMode(getAgentPanelMode(activeWorkspaceId))
-  }, [activeWorkspaceId])
-
-  const togglePanelMode = useCallback(() => {
-    setPanelMode((current) => {
-      const next: AgentPanelMode = current === 'docked' ? 'floating' : 'docked'
-      setAgentPanelMode(activeWorkspaceId, next)
-      return next
-    })
-  }, [activeWorkspaceId])
-
   const closeEditor = useCallback(() => setEditorMode(null), [])
 
   const workspaceActions = useAgentWorkspaceActions({
@@ -264,8 +257,6 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       mode={editorMode}
       agentId={editorMode === 'edit' ? (agentId ?? undefined) : undefined}
       presentation="panel"
-      panelMode={panelMode}
-      onTogglePanelMode={togglePanelMode}
       onClose={closeEditor}
       onCreated={openCreatedAgent}
       onArchived={handleArchived}
@@ -289,15 +280,14 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
 
   if (conversationId) {
     return (
-      <DirectMessageExperience
-        key={conversationId}
-        conversationId={conversationId}
-        headerActions={settingsButton}
-        externalRightPanel={editor}
-        externalRightPanelLabel="Agent settings"
-        externalRightPanelMode={panelMode}
-        onExternalRightPanelClose={closeEditor}
-      />
+      <>
+        <DirectMessageExperience
+          key={conversationId}
+          conversationId={conversationId}
+          headerActions={settingsButton}
+        />
+        {editor}
+      </>
     )
   }
 
@@ -311,15 +301,9 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const empty = directory !== null && directory.length === 0 && !displayError
 
   return (
-    <AppScreenShell
-      header={<AppScreenHeader title="Agents" actions={settingsButton} />}
-      rightPanel={editor}
-      rightPanelOpen={Boolean(editor)}
-      rightPanelWidth="lg"
-      rightPanelOverlayLabel="Agent settings"
-      onRightPanelClose={closeEditor}
-    >
-      <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
+    <>
+      <AppScreenShell header={<AppScreenHeader title="Agents" actions={settingsButton} />}>
+        <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
         {loading ? (
           <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
             {[0, 1, 2].map((dot) => (
@@ -355,6 +339,8 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           </div>
         )}
       </AppScreenBody>
-    </AppScreenShell>
+      </AppScreenShell>
+      {editor}
+    </>
   )
 }

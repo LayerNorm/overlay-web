@@ -74,7 +74,6 @@ import type * as lib_logging from "../lib/logging.js";
 import type * as lib_metrics from "../lib/metrics.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
-import type * as outputs_outputs from "../outputs/outputs.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
 import type * as platform_http from "../platform/http.js";
 import type * as platform_idempotency from "../platform/idempotency.js";
@@ -164,7 +163,6 @@ declare const fullApi: ApiFromModules<{
   "lib/metrics": typeof lib_metrics;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
-  "outputs/outputs": typeof outputs_outputs;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
   "platform/http": typeof platform_http;
   "platform/idempotency": typeof platform_idempotency;

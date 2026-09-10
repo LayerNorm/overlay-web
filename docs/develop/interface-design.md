@@ -32,10 +32,11 @@ Agent type, harness, environment, and access pickers are stacked radio rows
 Swatch grids (avatar shapes, colors, theme presets) are the exception: they
 are value pickers like theme presets, not cards.
 
-## Editors save without a save bar
+## Editors save explicitly — no autosave, no save bar
 
-Settings persist instantly with a quiet "Saved" indicator; the agent editor
-works the same way in edit mode (debounced instant-save, "Saved" in the panel
-header, no buttons). New-object flows keep exactly one explicit step: a single
-in-flow primary button ("Create agent"), with the panel ✕ as cancel. No
-sticky glassmorphic footer bars anywhere.
+The agent editor reverted from instant-save after review: edits persist only
+on an explicit **Save changes** (edit mode) or **Create agent** (new mode),
+with **Cancel** discarding back to the loaded agent and closing. No sticky
+glassmorphic footer bars anywhere — buttons sit in-flow at the end of the
+form. Rationale: agent identity edits are consequential (instructions, tools,
+access) and users want to review the whole form before anything persists.

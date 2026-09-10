@@ -564,6 +564,75 @@ export async function executePauseAutomation(options: OverlayToolsOptions, input
   }
 }
 
+export async function executeCreateAgent(
+  options: OverlayToolsOptions,
+  input: {
+    name: string
+    description?: string
+    instructions: string
+    modelId?: string
+    avatarColor?: string
+    avatarShape?: string
+    visibility?: string
+  },
+) {
+  try {
+    const res = await callInternalApi(
+      '/api/v1/agents',
+      { ...input, ...toolAuthBody(options) },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch((_error) => ({ error: 'Failed to create agent' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Failed to create agent' }
+    }
+    const data = (await res.json()) as { agent?: { id?: string; name?: string } }
+    return { success: true, agentId: data.agent?.id, name: data.agent?.name }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to create agent',
+    }
+  }
+}
+
+export async function executeUpdateAgent(
+  options: OverlayToolsOptions,
+  input: {
+    agentId: string
+    name?: string
+    description?: string
+    instructions?: string
+    modelId?: string
+    avatarColor?: string
+    avatarShape?: string
+    visibility?: string
+  },
+) {
+  try {
+    const { agentId, ...patch } = input
+    const res = await callInternalApi(
+      `/api/v1/agents/${encodeURIComponent(agentId)}`,
+      { ...patch, ...toolAuthBody(options) },
+      options.accessToken,
+      options.baseUrl,
+      { method: 'PATCH', forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch((_error) => ({ error: 'Failed to update agent' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Failed to update agent' }
+    }
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to update agent',
+    }
+  }
+}
+
 export async function executeDeleteAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
     const res = await callInternalApi(

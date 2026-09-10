@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { AppWindow, ArrowLeft, MessageSquare, PanelRight } from 'lucide-react'
-import { Button } from '@overlay/ui/primitives'
+import { ArrowLeft, MessageSquare } from 'lucide-react'
+import { Button, DialogFrame } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
-import { AppScreenBody, AppScreenHeader, AppScreenShell, AppScreenSidePanel } from '@overlay/modules-react/shell'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   getEnabledChatModels,
@@ -35,21 +35,17 @@ import {
   AgentBehaviorFields,
   AgentTypeSelector,
   AVATAR_COLORS,
-  CreateAgentFooter,
   DangerZone,
   MasterAgentNotice,
   type AgentType,
 } from './AgentEditorForm'
 import { useByoConnection } from './use-byo-connection'
-import { useAgentFormHydration, useAgentPersistence } from './use-agent-persistence'
 
 export function AgentEditorPage({
   mode,
   agentId,
   showcase = false,
   presentation = 'page',
-  panelMode,
-  onTogglePanelMode,
   onClose,
   onCreated,
   onArchived,
@@ -58,8 +54,6 @@ export function AgentEditorPage({
   agentId?: string
   showcase?: boolean
   presentation?: 'page' | 'panel'
-  panelMode?: 'docked' | 'floating'
-  onTogglePanelMode?: () => void
   onClose?: () => void
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
@@ -103,6 +97,15 @@ export function AgentEditorPage({
   } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  // Explicit save model: every change marks the form dirty; nothing persists
+  // until Save. Cancel discards back to the loaded agent and closes.
+  const markDirty = useCallback(() => {
+    setSavedFlash(false)
+    setDirty(true)
+  }, [])
 
   // Load the agent (edit) or the create permission (new).
   useEffect(() => {
@@ -173,46 +176,102 @@ export function AgentEditorPage({
   }, [selectedHarness, adapterId, name, description, instructions, agentType, modelId,
     avatarColor, avatarShape, enabledToolGroups, visibility, agent])
 
-  const persistence = useAgentPersistence({
-    mode, showcase, loading, agent, activeWorkspaceId, agentType,
-    environmentId, adapterId, workingDirectory, valid, busy, setBusy,
-    setError, buildInput,
-    afterCreate: useCallback((saved: WorkspaceAgentDirectoryItem) => {
-      if (onCreated) onCreated(saved)
-      else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.id)}?hello=1`)
-    }, [onCreated, router, activeWorkspaceId]),
-    afterEdit: useCallback((saved: WorkspaceAgentDirectoryItem) => setAgent(saved), []),
-  })
-  const { savedFlash, markDirty, resetSaveState } = persistence
-
-  const handleHydrate = useCallback((loaded: WorkspaceAgentDirectoryItem) => {
-    setName(loaded.name)
-    setDescription(loaded.description ?? '')
-    setInstructions(loaded.instructions)
-    setModelId(loaded.modelId)
-    setAvatarColor(loaded.avatarColor ?? AVATAR_COLORS[0]!)
-    setAvatarShape(loaded.avatarShape ?? 'circle')
-    setVisibility(loaded.visibility)
-    setEnabledToolGroups(enabledAgentToolGroupIds(loaded.allowedToolIds))
-  }, [])
-
-  const handleAgentSwitch = useCallback(() => resetSaveState(), [resetSaveState])
-
-  // Reset the form whenever a different agent loads. Stable callbacks above
-  // keep this effect to agent changes only — inline closures here would
-  // re-hydrate on every keystroke and make typing impossible.
-  useAgentFormHydration({
-    agent,
-    onHydrate: handleHydrate,
-    onAgentSwitch: handleAgentSwitch,
-  })
+  // Reset the form whenever a different agent loads.
+  useEffect(() => {
+    if (!agent) return
+    setName(agent.name)
+    setDescription(agent.description ?? '')
+    setInstructions(agent.instructions)
+    setModelId(agent.modelId)
+    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarShape(agent.avatarShape ?? 'circle')
+    setVisibility(agent.visibility)
+    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
+    setDirty(false)
+    setSavedFlash(false)
+  }, [agent])
 
   const persistNew = () => {
     if (showcase) {
       router.push(directoryHref)
       return
     }
-    void persistence.persistNew()
+    if (!activeWorkspaceId || busy) return
+    setBusy(true)
+    setError(null)
+    void (async () => {
+      try {
+        const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
+        if (agentType === 'byo') {
+          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+            agentId: saved.agent.id,
+            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
+          }).catch(async (bindingError) => {
+            // Agent identity may already be durable even if its remote binding
+            // fails. Land on the edit page so a retry never creates a duplicate.
+            setAgent(saved.agent)
+            if (presentation === 'page') {
+              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+            }
+            throw bindingError
+          })
+        }
+        dispatchAgentDirectoryChanged(activeWorkspaceId)
+        if (onCreated) onCreated(saved.agent)
+        else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
+  const saveEdit = () => {
+    if (showcase || !activeWorkspaceId || !agent || busy) return
+    setBusy(true)
+    setError(null)
+    void (async () => {
+      try {
+        const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, buildInput())
+        if (agentType === 'byo') {
+          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+            agentId: saved.agent.id,
+            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
+          })
+        } else if (workspaceAgentUsesByo(agent)) {
+          // Switched a connected agent back to Overlay: drop its binding once.
+          await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+            .catch(() => undefined)
+        }
+        dispatchAgentDirectoryChanged(activeWorkspaceId)
+        setAgent(saved.agent)
+        setDirty(false)
+        setSavedFlash(true)
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
+  const cancelEdit = () => {
+    if (!agent) {
+      closeEditor()
+      return
+    }
+    setName(agent.name)
+    setDescription(agent.description ?? '')
+    setInstructions(agent.instructions)
+    setModelId(agent.modelId)
+    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarShape(agent.avatarShape ?? 'circle')
+    setVisibility(agent.visibility)
+    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
+    setDirty(false)
+    setError(null)
+    closeEditor()
   }
 
   const archiveAgent = async () => {
@@ -362,12 +421,36 @@ export function AgentEditorPage({
                 />
 
                 {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-                <CreateAgentFooter
-                  mode={mode}
-                  busy={busy}
-                  valid={valid}
-                  onCreate={() => void persistNew()}
-                />
+                {savedFlash && mode === 'edit'
+                  ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
+                  : null}
+                {mode === 'new' ? (
+                  <>
+                    <Button
+                      className="mt-2 w-full"
+                      disabled={busy || !valid}
+                      onClick={() => persistNew()}
+                    >
+                      {busy ? 'Creating…' : 'Create agent'}
+                    </Button>
+                    <Button variant="ghost" className="w-full" disabled={busy} onClick={closeEditor}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      className="mt-2 w-full"
+                      disabled={busy || !valid || !dirty}
+                      onClick={() => saveEdit()}
+                    >
+                      {busy ? 'Saving…' : 'Save changes'}
+                    </Button>
+                    <Button variant="ghost" className="w-full" disabled={busy} onClick={cancelEdit}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -378,32 +461,14 @@ export function AgentEditorPage({
 
   if (presentation === 'panel') {
     return (
-      <AppScreenSidePanel
+      <DialogFrame
+        open
+        onOpenChange={(next) => { if (!next) closeEditor() }}
         title={title}
-        actions={(
-          <>
-            {savedFlash && mode === 'edit'
-              ? <span role="status" className="text-[11px] text-[var(--muted)]">Saved</span>
-              : null}
-            {onTogglePanelMode ? (
-              <button
-                type="button"
-                onClick={onTogglePanelMode}
-                title={panelMode === 'floating' ? 'Dock panel to the side' : 'Show as floating dialog'}
-                aria-label={panelMode === 'floating' ? 'Dock panel to the side' : 'Show as floating dialog'}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                {panelMode === 'floating' ? <PanelRight size={15} /> : <AppWindow size={15} />}
-              </button>
-            ) : null}
-          </>
-        )}
-        onClose={closeEditor}
-        closeLabel="Close agent settings"
-        bodyClassName="overflow-hidden"
+        className="max-h-[88vh] w-[min(560px,94vw)] overflow-y-auto"
       >
         {editor}
-      </AppScreenSidePanel>
+      </DialogFrame>
     )
   }
 

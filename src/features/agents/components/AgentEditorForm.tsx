@@ -217,24 +217,6 @@ export function MasterAgentNotice() {
   )
 }
 
-export function CreateAgentFooter({ mode, busy, valid, onCreate }: {
-  mode: 'new' | 'edit'
-  busy: boolean
-  valid: boolean
-  onCreate(): void
-}) {
-  if (mode !== 'new') return null
-  return (
-    <Button
-      className="mt-2 w-full"
-      disabled={busy || !valid}
-      onClick={onCreate}
-    >
-      {busy ? 'Creating…' : 'Create agent'}
-    </Button>
-  )
-}
-
 export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean

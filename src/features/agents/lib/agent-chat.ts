@@ -9,7 +9,7 @@ import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AVATAR_COLORS } from '../components/AgentEditorForm'
 
-/** Opens (or creates) a one-to-one DM with an agent, then navigates to it. */
+/** Opens (or creates) a one-to-one DM with an agent, then navigates to it. Resolves the DM conversation id (null when it cannot be determined). */
 export async function startAgentChat(args: {
   workspaceId: string | null
   agentId?: string
@@ -17,16 +17,16 @@ export async function startAgentChat(args: {
   showcase?: boolean
   surface?: 'agents' | 'chat'
   push(href: string): void
-}): Promise<void> {
+}): Promise<string | null> {
   const surface = args.surface ?? 'chat'
   if (args.showcase) {
     const basePath = surface === 'agents' ? '/app/agents' : '/app/chat'
     const params = new URLSearchParams({ showcase: '1', view: 'dms', id: args.agentPrincipalId })
     if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
     args.push(`${basePath}?${params.toString()}`)
-    return
+    return args.agentPrincipalId
   }
-  if (!args.workspaceId) return
+  if (!args.workspaceId) return null
   const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(args.workspaceId, {
     principalIds: [args.agentPrincipalId],
   })
@@ -42,6 +42,7 @@ export async function startAgentChat(args: {
   const params = new URLSearchParams({ view: 'dms', id: directMessage.conversationId })
   if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
   args.push(`${basePath}?${params.toString()}`)
+  return directMessage.conversationId
 }
 
 /** Canonical workspace-scoped href for the agent editor pages. */
@@ -54,6 +55,31 @@ export function buildAgentEditorHref(workspaceId: string | null, agentId: string
 export function buildAgentsDirectoryHref(workspaceId: string | null, showcase = false): string {
   if (showcase || !workspaceId) return '/app/agents?showcase=1'
   return `/app/w/${encodeURIComponent(workspaceId)}/agents`
+}
+
+/**
+ * Posts the new-agent greeting as the agent itself. Idempotent per
+ * conversation+agent (deterministic nonce), so retries never double-post.
+ * Failures are swallowed — a missing greeting must never break creation.
+ */
+export async function sendAgentGreeting(args: {
+  workspaceId: string
+  conversationId: string
+  agentId: string
+}): Promise<void> {
+  try {
+    await fetch('/api/v1/conversations/agent-greeting', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'content-type': 'application/json',
+        'x-overlay-workspace-id': args.workspaceId,
+      },
+      body: JSON.stringify({ conversationId: args.conversationId, agentId: args.agentId }),
+    })
+  } catch {
+    // Greeting is decorative; creation already succeeded.
+  }
 }
 
 /**
@@ -91,12 +117,15 @@ export async function createAgentAndOpenChat(args: {
   })
   args.onDirectoryChanged(args.workspaceId)
   args.onOpened(created.agent.id)
-  await startAgentChat({
+  const conversationId = await startAgentChat({
     workspaceId: args.workspaceId,
     agentId: created.agent.id,
     agentPrincipalId: created.agent.principalId,
     surface: 'agents',
     push: args.push,
   })
+  if (conversationId) {
+    await sendAgentGreeting({ workspaceId: args.workspaceId, conversationId, agentId: created.agent.id })
+  }
   return { status: 'created', agent: created.agent }
 }
