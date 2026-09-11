@@ -29,10 +29,10 @@ jobs:
         include:
           - image: overlay-web
             context: .
-            dockerfile: Dockerfile.enterprise-runtime
+            dockerfile: docker/Dockerfile.enterprise-runtime
           - image: overlay-installer
-            context: installer
-            dockerfile: deploy/installer/Dockerfile
+            context: deploy/installer
+            dockerfile: Dockerfile
 
     steps:
       - name: Checkout

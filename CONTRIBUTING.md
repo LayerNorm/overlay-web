@@ -7,7 +7,7 @@ Thank you for helping improve Overlay. Small, focused pull requests with clear t
 - Use Node.js 22 or newer and npm 11.11.0.
 - Read the relevant guide under `docs/develop/` before changing an architectural area.
 - Follow `docs/develop/agentic-development.mdx` for worktrees, branch ownership, pull requests, commit history, and integration.
-- Use [`BUILDER_AGENT_PROMPT.md`](BUILDER_AGENT_PROMPT.md) when assigning implementation work and [`INTEGRATION_AGENT_PROMPT.md`](INTEGRATION_AGENT_PROMPT.md) when assigning review, staging QA, and promotion.
+- Use [`BUILDER_AGENT_PROMPT.md`](docs/develop/BUILDER_AGENT_PROMPT.md) when assigning implementation work and [`INTEGRATION_AGENT_PROMPT.md`](docs/develop/INTEGRATION_AGENT_PROMPT.md) when assigning review, staging QA, and promotion.
 - Never include production credentials, customer data, or copied authentication state.
 - Report security issues privately through the process in `SECURITY.md`.
 
@@ -45,7 +45,7 @@ npm run security:audit
 
 ## Licensing
 
-All first-party material stored directly in this repository is `AGPL-3.0-only`. Run `npm run license:check` when dependencies or package boundaries change. See `LICENSE`, `LICENSE.md`, and `NOTICE.md`.
+All first-party material stored directly in this repository is `AGPL-3.0-only`. Run `npm run license:check` when dependencies or package boundaries change. See `LICENSE`, `docs/legal/licensing.mdx`, and `NOTICE.md`.
 
 LayerNorm uses a Contributor License Agreement because accepted contributions may also be distributed under paid commercial licenses. The draft is in `CLA.md`. Outside contributors must sign by commenting `I have read the CLA Document and I hereby sign the CLA` on the pull request; the `CLA Signatures` workflow records identity, CLA version, timestamp, repository, and pull request. A checkbox is not a signature. **Do not merge outside contributions until that check is green.** The CLA text is still a draft until counsel finalizes governing-law and entity-signing terms; founder commits from `DevelopedByDev` are allowlisted.
 

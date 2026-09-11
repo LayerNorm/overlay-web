@@ -28,8 +28,8 @@ discoverable policy live at root** (`package.json`, configs, `README`,
 
 | File | Verdict |
 |---|---|
-| `AGENTS.md`, `BUILDER_AGENT_PROMPT.md`, `INTEGRATION_AGENT_PROMPT.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `README.md` | **Keep** — agent entrypoint + cited contracts |
-| `CLA.md`, `CODE_OF_CONDUCT.md`, `COMMERCIAL_LICENSE.md`, `LICENSE(.md)`, `NOTICE.md`, `COPYRIGHT.md`, `SECURITY.md`, `TRADEMARKS.md`, `PRIVATE_COMPONENTS.md` | **Keep** — legal/GitHub discovery (`PRIVATE_COMPONENTS.md` is machine-checked by `scripts/ci/check-licensing.ts:45`) |
+| `AGENTS.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `README.md` | **Keep** — agent entrypoint + cited contracts | |
+| `CLA.md`, `CODE_OF_CONDUCT.md`, `COMMERCIAL_LICENSE.md`, `LICENSE`, `NOTICE.md`, `COPYRIGHT.md`, `SECURITY.md`, `TRADEMARKS.md`, `PRIVATE_COMPONENTS.md` | **Keep** — legal/GitHub discovery (`PRIVATE_COMPONENTS.md` is machine-checked by `scripts/ci/check-licensing.ts:45`) |
 | `AGENT_PLAN.md`, `AGENT_VISIBILITY_AND_EDITOR_PLAN.md`, `BYO_AGENTS_IMPLEMENTATION_PLAN.md`, `FUTURE.md`, `THESIS.md` | **Move → `docs/plans/`** (new dir). Unreferenced by any code (`grep` clean), two are stale post-land (`AGENT_VISIBILITY…` says "unpushed branch", landed since). `docs/develop/` already hosts plans (`ai-sdk-v7-migration-plan.md`) so this matches precedent |
 | `CONVEX_POSTGRESS_PARITY.md` | **Delete** (untracked, generated 2026-09-02, no generator writes it — point-in-time output, not a doc) |
 
@@ -37,6 +37,7 @@ discoverable policy live at root** (`package.json`, configs, `README`,
 
 - **Kept at root:** `convex/`, `docs/`, `migrations/`, `packages/`, `public/`, `scripts/`, `src/`, `config/`, `examples/`, `.github/`, `.githooks/`, `tests/`, toolchain configs, legal, agent entrypoints.
 - **Done:** `infra/` + `installer/` merged into `deploy/` (`deploy/infra/aws/`, `deploy/installer/`; CI `docker-publish.yml` updated); `workers/` removed (untracked `.wrangler` cache); `landing-copy/` deleted (owner-approved); `fixtures/` → `tests/fixtures/`; `workflows/` → `src/server/workflows/` (new boundary domain, `@/workflows` alias dropped, SDK manifest re-verified via production build); orphaned `app.json`/`eas.json` deleted; `tsconfig.tsbuildinfo` untracked.
+- **`docker/` consolidation landed:** both Dockerfiles + all six compose files moved under `docker/`; `docker-compose.build.yml`/`onprem.build.yml` now use `context: ..` + `dockerfile: docker/Dockerfile`, `env_file` paths became `../.env*`, and `package.json` `app-db:*`/`better-auth:db:*` scripts + `docker-publish.yml` matrix + deploy docs repointed. Also fixed: the publish workflow's installer entry still said `context: installer` — broken since the `deploy/` move; now `context: deploy/installer`, `dockerfile: Dockerfile`.
 - **`scripts/` split landed:** `scripts/ci/` (34 checks/gates/boundary rules), `scripts/qa/` (43 smoke/rehearsal harnesses), `scripts/db/` (17 migrations/backfills/ops), `scripts/lib/` (shared `convex-admin-utils`), root keeps only `dev-setup.sh`, `vercel-ignore-build.sh` (pinned by the Vercel project setting), and `baselines/`. All `package.json`, `.github`, `.githooks`, Dockerfile/compose, and docs references rewritten; moved scripts' `dirname(..)` root resolution and `../src` escapes fixed (`../..` / `@/` aliases).
 - **`docs/plans/` created** for the five strategy docs; `check-docs-health` treats `plans/` as internal (outside-root links allowed + existence-checked; public-facing wording rules exempted).
 - **Left in place per owner decision:** `overlay-chrome/`, `overlay-marketing/`, `overlay-mobile/` sibling checkouts. `overlay-desktop/` stays as a gitlink.

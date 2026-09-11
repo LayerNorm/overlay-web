@@ -1,6 +1,6 @@
 services:
   overlay-web:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:local}

@@ -36,7 +36,6 @@ const rootPackageJsonPath = 'package.json'
 
 const requiredDocs = [
   'LICENSE',
-  'LICENSE.md',
   'COPYRIGHT.md',
   'NOTICE.md',
   'TRADEMARKS.md',

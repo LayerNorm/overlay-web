@@ -51,8 +51,8 @@ For the current end-to-end Postgres and Better Auth procedure, use
 The source checkout is still important even when the first run uses the official image:
 
 - `src/`, `packages/`, and `convex/` for audit and source-level customization.
-- `docker-compose.yml` for the default image-based runtime.
-- `docker-compose.build.yml` for local source builds.
+- `docker/docker-compose.yml` for the default image-based runtime.
+- `docker/docker-compose.build.yml` for local source builds.
 - `.env.enterprise.example` for enterprise runtime variables.
 - `docs/config/*.example.json` for validated deployment profiles.
 - `overlay.config.json` for non-secret runtime config.
@@ -83,7 +83,7 @@ When the IT team edits source files, switch to the build override:
 ```bash
 git checkout -b enterprise/customization
 # edit src/, packages/, convex/, docs/config/, or other source files
-docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up --build -d
 ```
 
 The build override compiles the local checkout and tags the image as `overlay-web:local` by default. Set `OVERLAY_WEB_BUILD_IMAGE` if the team wants another local tag.
@@ -121,7 +121,7 @@ For customized forks:
 git fetch upstream
 git merge upstream/main
 # resolve conflicts and run the relevant checks
-docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up --build -d
 ```
 
 For production custom-image deploys, rebuild and push a new enterprise image tag, update `OVERLAY_WEB_IMAGE`, then run:
