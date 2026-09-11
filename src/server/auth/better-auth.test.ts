@@ -20,7 +20,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '../../..')
 const baseConfig = parseOverlayRuntimeConfig(JSON.parse(
-  readFileSync(path.join(repoRoot, 'fixtures/config/saas-staging.json'), 'utf8'),
+  readFileSync(path.join(repoRoot, 'tests/fixtures/config/saas-staging.json'), 'utf8'),
 ))
 
 function canonicalBetterAuthConfig(): OverlayRuntimeConfig {

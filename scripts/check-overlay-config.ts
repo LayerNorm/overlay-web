@@ -8,7 +8,7 @@ import {
 } from '../src/server/config/loadOverlayConfig.ts'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const fixturesDir = path.join(root, 'fixtures/config')
+const fixturesDir = path.join(root, 'tests/fixtures/config')
 
 async function main() {
   let failed = false
@@ -19,7 +19,7 @@ async function main() {
     .sort()
 
   if (fixtureFiles.length === 0) {
-    console.error('No config fixtures found in fixtures/config')
+    console.error('No config fixtures found in tests/fixtures/config')
     process.exit(1)
   }
 
