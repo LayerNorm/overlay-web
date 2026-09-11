@@ -32,7 +32,7 @@ jobs:
             dockerfile: Dockerfile.enterprise-runtime
           - image: overlay-installer
             context: installer
-            dockerfile: installer/Dockerfile
+            dockerfile: deploy/installer/Dockerfile
 
     steps:
       - name: Checkout
