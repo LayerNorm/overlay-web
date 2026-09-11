@@ -1,4 +1,5 @@
 import 'katex/dist/katex.min.css'
+import { Orb } from '@overlay/ui'
 import { type ReactNode, memo, useMemo } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -327,7 +328,9 @@ function MarkdownMessageImpl({
       ) : null}
 
       {showInlineTypingDots ? (
-        <span className="overlay-stream-marker" aria-hidden />
+        <span className="overlay-stream-marker" aria-hidden>
+          <Orb variant="metal" size={14} animated={false} label="" />
+        </span>
       ) : null}
     </div>
   )

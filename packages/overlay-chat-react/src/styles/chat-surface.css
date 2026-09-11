@@ -473,15 +473,13 @@
 }
 
 :where(.overlay-chat-surface) .overlay-stream-marker {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 0.95em;
   height: 0.95em;
   margin-left: 0.35em;
   vertical-align: -0.12em;
-  background-image: var(--overlay-mark-logo-url, none);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
   animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
   pointer-events: none;
   min-width: 14px;
