@@ -47,6 +47,26 @@ const DEFAULT_BUDGETS = {
 
 const BUDGETS = loadBudgetConfig()
 
+/** Baseline exemptions older than this surface a non-blocking burn-down warning. */
+const EXEMPTION_WARN_AGE_DAYS = 90
+/** A moved file keeps its exemption when its LOC stays within this tolerance. */
+const RENAME_LOC_TOLERANCE = 0.1
+
+/** Baseline path lists accept both legacy string entries and fingerprinted objects. */
+function normalizeBaselinePathList(list) {
+  return (list || []).map((entry) => (typeof entry === 'string' ? { file: entry } : entry))
+}
+
+function isRenameOfGoneBaselineFile(fileRecord, goneBaselineEntries) {
+  if (!fileRecord) return false
+  const base = path.basename(fileRecord.file)
+  return goneBaselineEntries.some((entry) => {
+    if (path.basename(entry.file) !== base) return false
+    if (typeof entry.loc !== 'number') return true
+    return Math.abs(entry.loc - fileRecord.loc.code) <= Math.max(5, entry.loc * RENAME_LOC_TOLERANCE)
+  })
+}
+
 function loadBudgetConfig() {
   if (!fs.existsSync(BUDGET_CONFIG_PATH)) return DEFAULT_BUDGETS
   const parsed = JSON.parse(fs.readFileSync(BUDGET_CONFIG_PATH, 'utf8'))
@@ -502,7 +522,23 @@ function collectMetrics() {
   }
 }
 
-function buildBaseline(metrics) {
+function fingerprintBaselineEntries(files, metrics, previousEntries) {
+  const previousByPath = new Map(previousEntries.map((entry) => [entry.file, entry]))
+  const recordByPath = new Map(metrics.files.map((file) => [file.file, file]))
+  return files.map((file) => {
+    const record = recordByPath.get(file)
+    const previous = previousByPath.get(file)
+    return {
+      file,
+      loc: record?.loc.code,
+      complexity: record?.complexity,
+      // Exemptions keep the date they were first granted across regenerations.
+      recordedAt: previous?.recordedAt ?? metrics.generatedAt,
+    }
+  })
+}
+
+function buildBaseline(metrics, previousBaseline) {
   const functionCounts = {}
   for (const fn of metrics.complexFunctions) {
     functionCounts[fn.key] = (functionCounts[fn.key] || 0) + 1
@@ -511,9 +547,17 @@ function buildBaseline(metrics) {
     generatedAt: metrics.generatedAt,
     budgets: BUDGETS,
     allowedExactDuplicateGroups: BUDGETS.allowedExactDuplicateGroups.map(canonicalGroup),
-    largeProductionFiles: metrics.largeProductionFiles,
+    largeProductionFiles: fingerprintBaselineEntries(
+      metrics.largeProductionFiles,
+      metrics,
+      normalizeBaselinePathList(previousBaseline?.largeProductionFiles),
+    ),
     complexFunctionCounts: functionCounts,
-    routeHandlersOverBudget: metrics.routeHandlersOverBudget,
+    routeHandlersOverBudget: fingerprintBaselineEntries(
+      metrics.routeHandlersOverBudget,
+      metrics,
+      normalizeBaselinePathList(previousBaseline?.routeHandlersOverBudget),
+    ),
     zeroFanInFiles: metrics.zeroFanInFiles,
     totals: metrics.totals,
   }
@@ -521,6 +565,7 @@ function buildBaseline(metrics) {
 
 function compareAgainstBaseline(metrics, baseline) {
   const errors = []
+  const warnings = []
   const allowedDuplicateGroups = new Set([
     ...(baseline?.allowedExactDuplicateGroups || []),
     ...BUDGETS.allowedExactDuplicateGroups.map(canonicalGroup),
@@ -533,18 +578,36 @@ function compareAgainstBaseline(metrics, baseline) {
     }
   }
 
-  const baselineLargeFiles = new Set(baseline?.largeProductionFiles || [])
+  const recordByPath = new Map(metrics.files.map((file) => [file.file, file]))
+
+  // A baseline path that vanished plus a new-path file with the same basename
+  // and similar LOC is a rename/move, not new complexity.
+  const baselineLargeFiles = normalizeBaselinePathList(baseline?.largeProductionFiles)
+  const baselineLargeByPath = new Map(baselineLargeFiles.map((entry) => [entry.file, entry]))
+  const goneBaselineLarge = baselineLargeFiles.filter((entry) => !recordByPath.has(entry.file))
   for (const file of metrics.largeProductionFiles) {
-    if (!baselineLargeFiles.has(file)) {
-      errors.push(`New production file over ${BUDGETS.maxProductionFileLoc} LOC: ${file}`)
-    }
+    if (baselineLargeByPath.has(file)) continue
+    if (isRenameOfGoneBaselineFile(recordByPath.get(file), goneBaselineLarge)) continue
+    errors.push(`New production file over ${BUDGETS.maxProductionFileLoc} LOC: ${file}`)
   }
 
-  const baselineRouteFiles = new Set(baseline?.routeHandlersOverBudget || [])
+  const baselineRouteFiles = normalizeBaselinePathList(baseline?.routeHandlersOverBudget)
+  const baselineRoutesByPath = new Map(baselineRouteFiles.map((entry) => [entry.file, entry]))
+  const goneBaselineRoutes = baselineRouteFiles.filter((entry) => !recordByPath.has(entry.file))
   for (const file of metrics.routeHandlersOverBudget) {
-    if (!baselineRouteFiles.has(file)) {
-      errors.push(`New route handler over ${BUDGETS.maxRouteHandlerLoc} LOC: ${file}`)
-    }
+    if (baselineRoutesByPath.has(file)) continue
+    if (isRenameOfGoneBaselineFile(recordByPath.get(file), goneBaselineRoutes)) continue
+    errors.push(`New route handler over ${BUDGETS.maxRouteHandlerLoc} LOC: ${file}`)
+  }
+
+  const cutoffMs = Date.now() - EXEMPTION_WARN_AGE_DAYS * 24 * 60 * 60 * 1000
+  const stale = [...baselineLargeFiles, ...baselineRouteFiles]
+    .filter((entry) => entry.recordedAt && Date.parse(entry.recordedAt) < cutoffMs)
+  if (stale.length > 0) {
+    const oldest = stale.map((entry) => entry.recordedAt).sort()[0]
+    warnings.push(
+      `${stale.length} baseline exemption(s) older than ${EXEMPTION_WARN_AGE_DAYS} days (oldest granted ${oldest.slice(0, 10)}) — burn down or re-justify`,
+    )
   }
 
   const currentFunctionCounts = {}
@@ -566,7 +629,7 @@ function compareAgainstBaseline(metrics, baseline) {
     }
   }
 
-  return errors
+  return { errors, warnings }
 }
 
 function groupByLayer(metrics) {
@@ -586,7 +649,7 @@ function table(headers, rows, renderRow) {
   return `<table><thead><tr>${headers.map((header) => `<th>${htmlEscape(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(renderRow).join('')}</tbody></table>`
 }
 
-function generateHtml(metrics, checkErrors) {
+function generateHtml(metrics, checkErrors, checkWarnings = []) {
   const layers = groupByLayer(metrics)
   const largestFiles = metrics.files
     .filter((file) => !file.isTest)
@@ -623,6 +686,7 @@ function generateHtml(metrics, checkErrors) {
 <section>
 <h2>Budget Status</h2>
 ${checkErrors.length ? `<div class="callout bad"><strong>${fmt(checkErrors.length)} budget violation(s)</strong><ul>${checkErrors.map((error) => `<li>${htmlEscape(error)}</li>`).join('')}</ul></div>` : '<div class="callout"><strong>No new budget violations.</strong> Current over-budget items are captured by the baseline.</div>'}
+${checkWarnings.length ? `<div class="callout warn"><strong>${fmt(checkWarnings.length)} exemption warning(s)</strong><ul>${checkWarnings.map((warning) => `<li>${htmlEscape(warning)}</li>`).join('')}</ul></div>` : ''}
 <div class="grid">
 <div class="card metric"><div class="num">${fmt(metrics.totals.code)}</div><div class="label">code LOC</div><div class="hint">${fmt(metrics.totals.files)} scoped files</div></div>
 <div class="card metric"><div class="num">${fmt(metrics.totals.productionCode)}</div><div class="label">production LOC</div><div class="hint">${fmt(metrics.totals.testCode)} test/story LOC</div></div>
@@ -692,21 +756,23 @@ ${zeroFanInCandidates.length ? table(['File', 'Layer', 'LOC', 'Class', 'Reason']
 }
 
 const metrics = collectMetrics()
-const baseline = shouldUpdateBaseline ? buildBaseline(metrics) : loadBaseline()
+const baseline = shouldUpdateBaseline ? buildBaseline(metrics, loadBaseline()) : loadBaseline()
 if (shouldUpdateBaseline) {
   fs.mkdirSync(path.dirname(BASELINE_PATH), { recursive: true })
   fs.writeFileSync(BASELINE_PATH, `${JSON.stringify(baseline, null, 2)}\n`)
 }
 
-const checkErrors = shouldCheck ? compareAgainstBaseline(metrics, baseline) : []
+const { errors: checkErrors, warnings: checkWarnings } = shouldCheck
+  ? compareAgainstBaseline(metrics, baseline)
+  : { errors: [], warnings: [] }
 
 if (!shouldSkipHtml) {
   fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true })
-  fs.writeFileSync(REPORT_PATH, generateHtml(metrics, checkErrors))
+  fs.writeFileSync(REPORT_PATH, generateHtml(metrics, checkErrors, checkWarnings))
 }
 
 if (shouldPrintJson) {
-  console.log(JSON.stringify({ metrics, checkErrors }, null, 2))
+  console.log(JSON.stringify({ metrics, checkErrors, checkWarnings }, null, 2))
 } else {
   console.log(`Web complexity report: ${path.relative(ROOT, REPORT_PATH)}`)
   console.log(`Web complexity baseline: ${path.relative(ROOT, BASELINE_PATH)}`)
@@ -716,6 +782,9 @@ if (shouldPrintJson) {
   console.log(`Zero-fan-in review candidates: ${fmt(metrics.zeroFanInFiles.filter((file) => file.classification !== 'keep').length)}`)
 }
 
+if (shouldCheck) {
+  for (const warning of checkWarnings) console.warn(`WARN: ${warning}`)
+}
 if (shouldCheck && checkErrors.length > 0) {
   for (const error of checkErrors) console.error(`- ${error}`)
   process.exit(1)

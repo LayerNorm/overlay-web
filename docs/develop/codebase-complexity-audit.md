@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: Batches 1–4 landed** (`CLEANUP 1`, 8× `CLEANUP 2`, 4× `CLEANUP 3`, `CLEANUP 4`) plus §2 items 1, 4 (showcase↔workspaces half), and 5 (`BOUNDARY REGISTRY`, `REPO EDGE`). Root reorg (§1), the `act` route extraction, and remaining allowlist burn-down are still open.
+> **Status: Batches 1–4 landed** (`CLEANUP 1`, 8× `CLEANUP 2`, 4× `CLEANUP 3`, `CLEANUP 4`) plus §2 items 1, 4 (showcase↔workspaces half), and 5 (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`). Root reorg (§1), the `act` route extraction, and remaining allowlist burn-down are still open.
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
@@ -100,7 +100,7 @@ All items below were verified with repo-wide import greps (details: file + symbo
 
 - 79 functions over complexity 25 (all grandfathered in the baseline). Worst: `PostgresConnectedAgentRepository#callback` (65), `isNimLeakedNarrationLine` (47), `projectRemoteAgentEvents` (43), two `runWorkspaceAgentTurn`s (39 each).
 - Largest files: `ChatExperience.tsx` (2325 LOC, monolith budget 3700), `DirectMessageExperience.tsx` (2025), `convex/collaboration/workspaces.ts` (2391), `PostgresConversationCollaborationRepository.ts` (2263). `features/chat/` is 1.0M — 4× the next domain.
-- The ratchet itself is working as designed (it caught three real issues in the last week), but two gaps: **file LOC exempts via baseline without expiry**, and **new-file-500 rule doesn't see moves** (the PricingClient move tripped it spuriously). Recommend: date-stamp baseline exemptions, and teach the new-file check to ignore pure renames (`git diff --find-renames`).
+- The ratchet itself is working as designed (it caught three real issues in the last week), but two gaps: **file LOC exempts via baseline without expiry**, and **new-file-500 rule doesn't see moves** (the PricingClient move tripped it spuriously). ~~Recommend: date-stamp baseline exemptions, and teach the new-file check to ignore pure renames (`git diff --find-renames`).~~ **Resolved (`RATCHET v2`).** Baseline entries now carry `{file, loc, complexity, recordedAt}` — grant dates survive regenerations, and exemptions older than 90 days emit a non-blocking burn-down warning in `--check` output and the HTML report. Rename detection: a new-path over-budget file is exempt when a vanished baseline path shares its basename and LOC within 10% (verified by moving `extensions.ts` — zero violations). Same treatment for `routeHandlersOverBudget`.
 
 ## 6. Suggested execution order
 

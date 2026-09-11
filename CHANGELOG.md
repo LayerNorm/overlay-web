@@ -27,6 +27,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - File ingestion jobs moved behind a real repository: `FileIngestionJobRepository` (Convex impl, Postgres `unsupportedRepository` sentinel) replaces the inline `lazyConvex` calls in the ingest-jobs routes, so `check-files-route-boundary` is enforced green again. `ActConversationRepository` now exposes a branded `ConversationId` — the BFF no longer imports `convex/_generated` for conversation ids, and the brand propagates through the conversation services and API routes.
 
+- The web-complexity ratchet learned two behaviors: baseline exemptions are date-stamped (`recordedAt` carried across regenerations; exemptions older than 90 days print a non-blocking burn-down warning), and the new-file LOC check no longer fires on pure renames — a moved file keeps its exemption when the basename matches a vanished baseline path and LOC stays within 10%.
+
 - The agent editor can dock to the side panel or float as a centered dialog from a single toggle in its title row, sharing the same form, border, and chrome so switching never remounts state. Saving keeps the editor open (with a brief "Saved" confirmation) while Cancel discards and closes.
 
 - The Agents roster now opens the most recently used agent per workspace and orders the sidebar by recency (unused agents stay alphabetical). A conversation open that fails no longer sticks on the blank state: it retries, then shows an explicit error with a manual Retry.
