@@ -518,7 +518,10 @@ export function ChatInlinePanel({
   function requestArchive(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     setEditingChatId(null)
-    if (chat.conversationType === 'dm' || chat.conversationType === 'channel') {
+    // A one-to-one DM has nobody else to keep it for — archive directly
+    // instead of asking about scope. Channels and group DMs still ask.
+    const soloDm = chat.conversationType === 'dm' && (chat.otherParticipantTypes?.length ?? 0) <= 1
+    if ((chat.conversationType === 'dm' || chat.conversationType === 'channel') && !soloDm) {
       setArchiveError(null)
       setPendingArchiveChat(chat)
       return

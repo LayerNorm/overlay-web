@@ -61,6 +61,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Agent settings on the agents surface now docks as a right side panel (via the shell's `rightPanel` slot) instead of stacking under the conversation; dialog mode remains available as a toggle.
 - Agent DM headers and message avatars now track the agent's live directory name — renames in the editor propagate immediately via `agent-directory-changed` instead of showing the stale "Untitled agent" snapshot stored on the conversation/participant records.
 - Agent DM message rows now match personal chat: hover no longer paints a row background, and the action row reveals beneath the message instead of a floating rail at the top. Channels keep the Slack-style floating rail.
+- Archiving a one-to-one DM no longer asks "for me or for everyone" — there's nobody else to keep it for, so it archives directly from both the conversation menu and the chat list. Channels and group DMs still ask.
 
 - Fixed display-math fences glued to equation lines (`… × 100$$`) reflowing onto their own lines, stray `$` inside display spans repaired, and TeX grouping parens preserved inside single-dollar spans — sloppy model output now degrades to readable math instead of raw code.
 - Fixed currency amounts being eaten by math rendering (`$20/mo **— $100…` tables): dollar signs followed by digits are now classified as currency openers and escaped unless the span carries explicit TeX structure, so prices survive KaTeX. Genuine digit-led math (`$2x + 1 = 5$`, finance examples) still renders.

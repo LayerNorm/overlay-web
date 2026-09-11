@@ -1320,6 +1320,38 @@ export function DirectMessageExperience({
     await loadParticipants()
   }
 
+  async function archiveConversation(scope: 'self' | 'everyone') {
+    if (showcase) {
+      setNotice('Conversation archived')
+      setMenuOpen(false)
+      setPendingArchiveScope(false)
+      return
+    }
+    setScopeDialogBusy(true)
+    setScopeDialogError(null)
+    try {
+      await overlayAppClient.conversations.updateParticipantState(conversationId, {
+        archived: true,
+        archiveScope: scope,
+      })
+      dispatchChatArchived({
+        chat: {
+          _id: conversationId,
+          title,
+          lastModified: Date.now(),
+          conversationType,
+        },
+      })
+      setPendingArchiveScope(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Conversation could not be archived'
+      if (pendingArchiveScope) setScopeDialogError(message)
+      else setNotice(message)
+    } finally {
+      setScopeDialogBusy(false)
+    }
+  }
+
   const renderAttachmentViewer = useCallback(
     ({ preview, headerRight }: { preview: AttachmentPreview; headerRight: React.ReactNode }) => (
       <FileViewerPanel
@@ -1699,6 +1731,12 @@ export function DirectMessageExperience({
                           }).catch(() => undefined)
                           return
                         }
+                        // A one-to-one DM has nobody else to keep it for —
+                        // archive directly instead of asking about scope.
+                        if (otherParticipants.length <= 1) {
+                          void archiveConversation('self')
+                          return
+                        }
                         setScopeDialogError(null)
                         setPendingArchiveScope(true)
                       }}
@@ -1952,29 +1990,7 @@ export function DirectMessageExperience({
         onOpenChange={(open) => {
           if (!open && !scopeDialogBusy) setPendingArchiveScope(false)
         }}
-        onSelect={async (scope) => {
-          setScopeDialogBusy(true)
-          setScopeDialogError(null)
-          try {
-            await overlayAppClient.conversations.updateParticipantState(conversationId, {
-              archived: true,
-              archiveScope: scope,
-            })
-            dispatchChatArchived({
-              chat: {
-                _id: conversationId,
-                title,
-                lastModified: Date.now(),
-                conversationType,
-              },
-            })
-            setPendingArchiveScope(false)
-          } catch (error) {
-            setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be archived')
-          } finally {
-            setScopeDialogBusy(false)
-          }
-        }}
+        onSelect={(scope) => void archiveConversation(scope)}
       />
       <ConversationScopeActionDialog
         open={pendingDeleteScope}
