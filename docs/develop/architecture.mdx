@@ -12,7 +12,9 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `src/shared/**` holds isomorphic contracts and client-safe helpers.
 - `src/contexts/**` holds app-wide client providers (`AuthContext`, `WorkspaceContext`); `src/hooks/**` holds app-wide client hooks (`useWorkspaceChanged`). Both may import `@/shared` only.
 - `src/features/**` holds web feature containers and feature-local helpers. Cross-feature imports are banned; shared primitives belong in `@/shared`, `@/contexts`, or `@/hooks` (e.g. the workspace provider, routing helpers, and types that used to sit inside `features/workspaces`).
+- `src/server/workflows/**` holds Vercel Workflow SDK durable orchestration (`automation-run`, `automation-schedule`, `personal-chat-work`, `workspace-agent-turn`). Workflow bodies bundle for the workflow runtime — keep their imports to `"use step"` functions and `@/` alias modules only.
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
+- `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` and `scripts/vercel-ignore-build.sh` stay at root — the latter is pinned by the Vercel project ignore-build command.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 - `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
@@ -217,9 +219,9 @@ Important code:
 - `convex/billing/stripeSync.ts`
 - `src/shared/billing/usage-reconciliation.ts`
 - `src/server/usage/UsageRepository.ts`
-- `scripts/usage-reconciliation-audit.ts`
-- `scripts/personal-billing-account-backfill.ts`
-- `scripts/stripe-personal-account-verification.ts`
+- `scripts/qa/usage-reconciliation-audit.ts`
+- `scripts/db/personal-billing-account-backfill.ts`
+- `scripts/qa/stripe-personal-account-verification.ts`
 
 ## Storage
 

@@ -517,13 +517,13 @@ Do not cut over until all applicable gates pass:
 
 ## Current source pointers
 
-- [Self-hosting and PostgreSQL runtime](docs/deploy-operate/self-hosting.mdx)
-- [Application architecture](docs/develop/architecture.mdx)
-- [API source of truth](docs/develop/api-source-of-truth.mdx)
-- [Automation durability](docs/develop/automation-durability-and-visual-editor.md)
-- [Workspace agent contracts](packages/overlay-workspace-contracts/src/types.ts)
-- [Agent run state machine](src/shared/agents/agent-run.ts)
-- [Workspace agent invocation](src/server/agents/workspace-agent-invocation.ts)
-- [PostgreSQL event notifier](src/server/conversations/PostgresConversationEventNotifier.ts)
-- [PostgreSQL conversation events](src/server/conversations/PostgresConversationEvents.ts)
-- [Current Daytona sandbox runner](src/server/app-api/v1/daytona/run/sandbox-runner.ts)
+- [Self-hosting and PostgreSQL runtime](../deploy-operate/self-hosting.mdx)
+- [Application architecture](../develop/architecture.mdx)
+- [API source of truth](../develop/api-source-of-truth.mdx)
+- [Automation durability](../develop/automation-durability-and-visual-editor.md)
+- [Workspace agent contracts](../../packages/overlay-workspace-contracts/src/types.ts)
+- [Agent run state machine](../../src/shared/agents/agent-run.ts)
+- [Workspace agent invocation](../../src/server/agents/workspace-agent-invocation.ts)
+- [PostgreSQL event notifier](../../src/server/conversations/PostgresConversationEventNotifier.ts)
+- [PostgreSQL conversation events](../../src/server/conversations/PostgresConversationEvents.ts)
+- [Current Daytona sandbox runner](../../src/server/app-api/v1/daytona/run/sandbox-runner.ts)

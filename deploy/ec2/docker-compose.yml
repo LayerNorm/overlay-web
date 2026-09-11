@@ -48,7 +48,7 @@ services:
       - sh
       - -lc
       - >-
-        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/app-data-migrate.ts &&
-        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/better-auth-migrate.ts
+        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/app-data-migrate.ts &&
+        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/better-auth-migrate.ts
     profiles: ["tools"]
     restart: "no"

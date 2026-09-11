@@ -448,21 +448,21 @@ Keep every pull request deployable behind disabled server-side flags:
 
 ## Current implementation source map
 
-- [Workspace agent contracts](packages/overlay-workspace-contracts/src/types.ts)
-- [Agent run state machine](src/shared/agents/agent-run.ts)
-- [Workspace agent invocation](src/server/agents/workspace-agent-invocation.ts)
-- [Workspace agent durable lifecycle](src/server/agents/workspace-agent-turn-lifecycle.ts)
-- [Application data capabilities](src/server/app-data/capabilities.ts)
-- [Provider parity matrix](src/server/app-data/parity-matrix.ts)
-- [Application data repositories](src/server/app-data/repositories.ts)
-- [PostgreSQL schema](src/server/database/postgres/schema.ts)
-- [Convex schema](convex/schema.ts)
-- [Current Daytona sandbox runner](src/server/app-api/v1/daytona/run/sandbox-runner.ts)
-- [API source of truth](docs/develop/api-source-of-truth.mdx)
-- [Application architecture](docs/develop/architecture.mdx)
-- [Automation durability](docs/develop/automation-durability-and-visual-editor.md)
-- [Local agent conversation formats](docs/develop/traversing-agent-conversations.md)
-- [Worktree and staging QA](docs/develop/worktree-staging-qa.mdx)
+- [Workspace agent contracts](../../packages/overlay-workspace-contracts/src/types.ts)
+- [Agent run state machine](../../src/shared/agents/agent-run.ts)
+- [Workspace agent invocation](../../src/server/agents/workspace-agent-invocation.ts)
+- [Workspace agent durable lifecycle](../../src/server/agents/workspace-agent-turn-lifecycle.ts)
+- [Application data capabilities](../../src/server/app-data/capabilities.ts)
+- [Provider parity matrix](../../src/server/app-data/parity-matrix.ts)
+- [Application data repositories](../../src/server/app-data/repositories.ts)
+- [PostgreSQL schema](../../src/server/database/postgres/schema.ts)
+- [Convex schema](../../convex/schema.ts)
+- [Current Daytona sandbox runner](../../src/server/app-api/v1/daytona/run/sandbox-runner.ts)
+- [API source of truth](../develop/api-source-of-truth.mdx)
+- [Application architecture](../develop/architecture.mdx)
+- [Automation durability](../develop/automation-durability-and-visual-editor.md)
+- [Local agent conversation formats](../develop/traversing-agent-conversations.md)
+- [Worktree and staging QA](../develop/worktree-staging-qa.mdx)
 
 ## External references
 

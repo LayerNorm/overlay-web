@@ -39,7 +39,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
     base="$remote_sha"
   fi
 
-  node scripts/lint-changed.mjs --range "${base}..${local_sha}" || status=1
+  node scripts/ci/lint-changed.mjs --range "${base}..${local_sha}" || status=1
 done
 
 if [ "$status" -ne 0 ]; then

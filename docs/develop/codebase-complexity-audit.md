@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: Batches 1–4 landed** (`CLEANUP 1`, 8× `CLEANUP 2`, 4× `CLEANUP 3`, `CLEANUP 4`) plus §2 items 1, 4 (showcase↔workspaces half), and 5 (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`). Root reorg (§1), the `act` route extraction, and remaining allowlist burn-down are still open.
+> **Status: §1 and §2 items 1–5 landed** (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`, `ROOT REORG`). Root: 98 → 58 entries. Still open: the `act` route extraction (§2.2), `ChatExperience` decomposition (§5), `math-markdown-normalize` direction (§6.5), and allowlist burn-down (§2.4 warns + 250 server cross-domain warnings).
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
@@ -29,20 +29,18 @@ discoverable policy live at root** (`package.json`, configs, `README`,
 | File | Verdict |
 |---|---|
 | `AGENTS.md`, `BUILDER_AGENT_PROMPT.md`, `INTEGRATION_AGENT_PROMPT.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `README.md` | **Keep** — agent entrypoint + cited contracts |
-| `CLA.md`, `CODE_OF_CONDUCT.md`, `COMMERCIAL_LICENSE.md`, `LICENSE(.md)`, `NOTICE.md`, `COPYRIGHT.md`, `SECURITY.md`, `TRADEMARKS.md`, `PRIVATE_COMPONENTS.md` | **Keep** — legal/GitHub discovery (`PRIVATE_COMPONENTS.md` is machine-checked by `scripts/check-licensing.ts:45`) |
+| `CLA.md`, `CODE_OF_CONDUCT.md`, `COMMERCIAL_LICENSE.md`, `LICENSE(.md)`, `NOTICE.md`, `COPYRIGHT.md`, `SECURITY.md`, `TRADEMARKS.md`, `PRIVATE_COMPONENTS.md` | **Keep** — legal/GitHub discovery (`PRIVATE_COMPONENTS.md` is machine-checked by `scripts/ci/check-licensing.ts:45`) |
 | `AGENT_PLAN.md`, `AGENT_VISIBILITY_AND_EDITOR_PLAN.md`, `BYO_AGENTS_IMPLEMENTATION_PLAN.md`, `FUTURE.md`, `THESIS.md` | **Move → `docs/plans/`** (new dir). Unreferenced by any code (`grep` clean), two are stale post-land (`AGENT_VISIBILITY…` says "unpushed branch", landed since). `docs/develop/` already hosts plans (`ai-sdk-v7-migration-plan.md`) so this matches precedent |
 | `CONVEX_POSTGRESS_PARITY.md` | **Delete** (untracked, generated 2026-09-02, no generator writes it — point-in-time output, not a doc) |
 
-### 1b. Directories
+### 1b. Directories — landed (`ROOT REORG`, 98 → 58 entries)
 
-- **Keep at root:** `convex/`, `docs/`, `migrations/`, `packages/`, `public/`, `scripts/`, `src/`, `config/` (operator JSON), `examples/`, `.github/`, `.githooks/`.
-- **Merge the three deploy systems into one `deploy/`:** `infra/` is a single YAML, `installer/` is one Dockerfile + templates, `deploy/` is EC2 compose files. One app, one deploy dir.
-- **Move out of this repo checkout:** `overlay-chrome/`, `overlay-marketing/`, `overlay-mobile/` (0 tracked files each, locally excluded — sibling checkouts squatting in the web repo; note root `app.json` + `eas.json` duplicate mobile config and should go with `overlay-mobile/`). `overlay-desktop/` stays as a gitlink only.
-- **Delete:** `workers/` (only a `.wrangler/` cache inside, otherwise empty), `output/` generated content (untrack `output/reports/web-app-complexity-report.html`, the single tracked file — it's regenerable via `report:web-complexity`).
-- **Consolidate agent skills:** `.agents/skills`, `.claude/skills`, and `agent/skills` hold the same ~25 skills triplicated (all ignored) — keep one source + `skills-lock.json`.
-- **Move:** `landing-copy/` (14 tracked marketing snapshots duplicating `docs/legal/` + `src/app`) → fold into `docs/legal/` sources or delete if `docs/` is canonical; `fixtures/` → `tests/fixtures/` (too generic at root); `workflows/` (8 automation files) → `convex/` or `src/server/automations/`.
-- **`scripts/` (97 entries) split:** `scripts/ci/`, `scripts/qa/`, `scripts/db/` — currently one flat pile of migrations, QA harnesses, and boundary checks.
-- **Do not touch:** `internal-docs/`, `docs/security/`, `.devin/`, `.cursor/`, `.gstack/`, `.workflow-data/`, `.playwright-*` — all gitignored local/editor state.
+- **Kept at root:** `convex/`, `docs/`, `migrations/`, `packages/`, `public/`, `scripts/`, `src/`, `config/`, `examples/`, `.github/`, `.githooks/`, `tests/`, toolchain configs, legal, agent entrypoints.
+- **Done:** `infra/` + `installer/` merged into `deploy/` (`deploy/infra/aws/`, `deploy/installer/`; CI `docker-publish.yml` updated); `workers/` removed (untracked `.wrangler` cache); `landing-copy/` deleted (owner-approved); `fixtures/` → `tests/fixtures/`; `workflows/` → `src/server/workflows/` (new boundary domain, `@/workflows` alias dropped, SDK manifest re-verified via production build); orphaned `app.json`/`eas.json` deleted; `tsconfig.tsbuildinfo` untracked.
+- **`scripts/` split landed:** `scripts/ci/` (34 checks/gates/boundary rules), `scripts/qa/` (43 smoke/rehearsal harnesses), `scripts/db/` (17 migrations/backfills/ops), `scripts/lib/` (shared `convex-admin-utils`), root keeps only `dev-setup.sh`, `vercel-ignore-build.sh` (pinned by the Vercel project setting), and `baselines/`. All `package.json`, `.github`, `.githooks`, Dockerfile/compose, and docs references rewritten; moved scripts' `dirname(..)` root resolution and `../src` escapes fixed (`../..` / `@/` aliases).
+- **`docs/plans/` created** for the five strategy docs; `check-docs-health` treats `plans/` as internal (outside-root links allowed + existence-checked; public-facing wording rules exempted).
+- **Left in place per owner decision:** `overlay-chrome/`, `overlay-marketing/`, `overlay-mobile/` sibling checkouts. `overlay-desktop/` stays as a gitlink.
+- **Remaining:** `.agents/skills` / `.claude/skills` / `agent/skills` triplication is gitignored local state (no tracked change needed); `docs/security/` is gitignored local state and trips `docs:health` locally when present — pre-existing, unchanged.
 
 ### 1c. Biggest single win
 `docs/plans/` + one `deploy/` + deleting the generated/ignored squatters takes root from ~99 entries to ~45 without touching a line of product code.

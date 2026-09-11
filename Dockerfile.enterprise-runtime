@@ -14,7 +14,7 @@ RUN npm ci --include=dev --no-audit --no-fund \
 COPY . .
 RUN touch .env.app-data.local .env.better-auth.local .env.on-prem-contract-tests.local
 RUN npm run build
-RUN npx esbuild scripts/app-data-worker.ts \
+RUN npx esbuild scripts/db/app-data-worker.ts \
   --bundle \
   --platform=node \
   --format=cjs \

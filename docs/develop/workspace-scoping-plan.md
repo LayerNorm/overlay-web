@@ -352,7 +352,7 @@ don't have one, using each user's personal workspace.
 pattern — paginated batch processing with `paginationOptsValidator`, server
 secret auth, and audit before/after.
 
-**Runner script** (`scripts/backfill-workspace-ids.ts`):
+**Runner script** (`scripts/db/backfill-workspace-ids.ts`):
 - Audits all 11 tables (counts missing `workspaceId`)
 - Migrates all 11 tables (patches rows with personal workspace ID)
 - Audits again to verify zero rows missing `workspaceId`
