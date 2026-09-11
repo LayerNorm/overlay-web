@@ -36,7 +36,6 @@
   --tool-line-label: #52525b;
   --tool-line-chevron: #a1a1aa;
   --overlay-brand-serif: var(--font-serif-family);
-  --overlay-mark-logo-url: url("/overlay-logo.png");
 }
 
 @theme inline {

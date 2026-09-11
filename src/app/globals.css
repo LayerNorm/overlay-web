@@ -82,7 +82,6 @@
   /* Assistant tool rows ("2 tools called", browser label) — readable on light bg */
   --tool-line-label: #52525b;
   --tool-line-chevron: #a1a1aa;
-  --overlay-mark-logo-url: url('/assets/overlay-logo.png');
   --button-primary-bg: #0a0a0a;
   --button-primary-text: #ffffff;
   --button-secondary-bg: #ffffff;

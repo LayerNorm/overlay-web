@@ -8,9 +8,12 @@ The web app is the canonical surface for enterprise customization. Self-hosters 
 
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 
-The default brand mark is the `OverlayMark` SVG orb component (`src/components/orb/Orb.tsx`), not the
-`logoSrc` raster: the sidebar renders the orb whenever `brand.logoSrc` is the default
-`/assets/overlay-logo.png`, and only renders the `next/image` raster when a custom brand overrides it.
+The default brand mark is the `OverlayMark` SVG orb component (`@overlay/ui`, re-exported from
+`src/components/orb/Orb.tsx`), not the `logoSrc` raster: the sidebar renders the orb whenever
+`brand.logoSrc` is the default `/assets/overlay-logo.png`, and only renders the `next/image` raster
+when a custom brand overrides it. The same `Orb` component also renders the small marks inside the
+chat surface — tool-call rails, the reasoning ("Thinking"/"Thought") row, the streaming tail marker,
+the exchange loading state, and the notebook agent panel — so no surface falls back to the PNG.
 The PNG asset stays on disk for lifecycle emails and favicons, which require raster. Agent avatars
 are anthropomorphic creatures (`AgentCreature` in `src/components/orb/Creature.tsx`): a solid-color
 body in one of eight shapes (`avatarShape`: circle, blob, squircle, pill, triangle, hexagon, cloud,
