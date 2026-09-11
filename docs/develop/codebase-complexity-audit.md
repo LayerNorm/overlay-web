@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: §1 and §2 items 1–5 landed** (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`, `ROOT REORG`). Root: 98 → 58 entries. Still open: `ChatExperience` decomposition (§5) and allowlist burn-down (§2.4 warns + 250 server cross-domain warnings).
+> **Status: §1 and §2 items 1–5 landed** (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`, `ROOT REORG`). Root: 98 → 58 entries. Still open: remaining `ChatExperience` clusters (§5 — first extraction landed, map recorded) and allowlist burn-down (§2.4 warns + 250 server cross-domain warnings).
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
@@ -97,7 +97,8 @@ All items below were verified with repo-wide import greps (details: file + symbo
 ## 5. Complexity hotspots (from the ratchet report)
 
 - 79 functions over complexity 25 (all grandfathered in the baseline). Worst: `PostgresConnectedAgentRepository#callback` (65), `isNimLeakedNarrationLine` (47), `projectRemoteAgentEvents` (43), two `runWorkspaceAgentTurn`s (39 each).
-- Largest files: `ChatExperience.tsx` (2325 LOC, monolith budget 3700), `DirectMessageExperience.tsx` (2025), `convex/collaboration/workspaces.ts` (2391), `PostgresConversationCollaborationRepository.ts` (2263). `features/chat/` is 1.0M — 4× the next domain.
+- Largest files: `ChatExperience.tsx` (2243 LOC after the first extraction, monolith budget 3700), `DirectMessageExperience.tsx` (2025), `convex/collaboration/workspaces.ts` (2391), `PostgresConversationCollaborationRepository.ts` (2263). `features/chat/` is 1.0M — 4× the next domain.
+  - §5 decomposition map (established by `use-chat-mentions.ts` — extract self-contained hook clusters into `src/features/chat/components/use-*.ts` with `{deps in, state out}` signatures): **landed** — mentions cluster (state + category fetch + person-mention confirm effect). **Remaining seams:** composer state (attach/mode menus, tool ids, memory toggle, notice, replyContext + its callbacks ~L314-430), conversation scroll/visibility (`isConversationBottomVisible`, pending-scroll refs, scrollToConversationBottom ~L534,1157-1253), selected-automation (`selectedAutomation` + `refreshSelectedAutomation` ~L508,1019), runtime sync (`forceLiveSyncRender`, `runtimeHydrationVersion`, `onRuntimeMessagesChanged` ~L257-791), exchange-tab state (`setSelectedTabPerExchange`, `getResponseForExchangeForModel` ~L1267+). The send-hook's ~40-param bag at ~L1548 is the hard dependency knot — extract clusters that feed it last, or split the send hook itself.
 - The ratchet itself is working as designed (it caught three real issues in the last week), but two gaps: **file LOC exempts via baseline without expiry**, and **new-file-500 rule doesn't see moves** (the PricingClient move tripped it spuriously). ~~Recommend: date-stamp baseline exemptions, and teach the new-file check to ignore pure renames (`git diff --find-renames`).~~ **Resolved (`RATCHET v2`).** Baseline entries now carry `{file, loc, complexity, recordedAt}` — grant dates survive regenerations, and exemptions older than 90 days emit a non-blocking burn-down warning in `--check` output and the HTML report. Rename detection: a new-path over-budget file is exempt when a vanished baseline path shares its basename and LOC within 10% (verified by moving `extensions.ts` — zero violations). Same treatment for `routeHandlersOverBudget`.
 
 ## 6. Suggested execution order

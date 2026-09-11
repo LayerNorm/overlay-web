@@ -27,6 +27,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - File ingestion jobs moved behind a real repository: `FileIngestionJobRepository` (Convex impl, Postgres `unsupportedRepository` sentinel) replaces the inline `lazyConvex` calls in the ingest-jobs routes, so `check-files-route-boundary` is enforced green again. `ActConversationRepository` now exposes a branded `ConversationId` — the BFF no longer imports `convex/_generated` for conversation ids, and the brand propagates through the conversation services and API routes.
 
+- `ChatExperience` decomposition started: the mentions cluster (state, workspace category fetch, person-mention confirmation) extracted to `src/features/chat/components/use-chat-mentions.ts` — `useChatMentions({activeWorkspaceId, isPublicShowcase})` returns the state bag. Component drops ~90 LOC; the audit records the remaining extraction seams.
+
 - `math-markdown-normalize` duplicate resolved: the `src/shared/markdown/` mirror was dead code (zero importers, unwired test) — the `packages/overlay-chat-react` copy is now canonical and its test moved alongside it under the package's own test runner.
 
 - The 1,520-line `conversations/act` route is now a 16-line wrapper: the turn orchestration lives in `src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts` (`executeActTurn`), which the route delegates to. Behavior unchanged — this is a relocation, and the route-characterization suite stays green.
