@@ -177,6 +177,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
+  const [panelMode, setPanelMode] = useState<'dialog' | 'side'>('dialog')
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
@@ -257,6 +258,8 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       mode={editorMode}
       agentId={editorMode === 'edit' ? (agentId ?? undefined) : undefined}
       presentation="panel"
+      panelMode={panelMode}
+      onTogglePanelMode={() => setPanelMode((current) => (current === 'dialog' ? 'side' : 'dialog'))}
       onClose={closeEditor}
       onCreated={openCreatedAgent}
       onArchived={handleArchived}

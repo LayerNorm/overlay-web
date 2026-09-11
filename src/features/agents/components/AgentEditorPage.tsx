@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, MessageSquare } from 'lucide-react'
-import { Button, DialogFrame } from '@overlay/ui/primitives'
+import { ArrowLeft } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
@@ -11,7 +11,6 @@ import type {
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   getEnabledChatModels,
   getGatewayCatalogRevision,
@@ -27,7 +26,7 @@ import {
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
-import { SHOWCASE_AGENTS } from '../lib/showcase-agents'
+import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import {
   AccessSelector,
@@ -39,6 +38,11 @@ import {
   MasterAgentNotice,
   type AgentType,
 } from './AgentEditorForm'
+import {
+  AgentEditorDialog,
+  AgentEditorSidePanel,
+  SayHelloButton,
+} from './AgentEditorPresentation'
 import { useByoConnection } from './use-byo-connection'
 
 export function AgentEditorPage({
@@ -46,6 +50,8 @@ export function AgentEditorPage({
   agentId,
   showcase = false,
   presentation = 'page',
+  panelMode,
+  onTogglePanelMode,
   onClose,
   onCreated,
   onArchived,
@@ -54,6 +60,8 @@ export function AgentEditorPage({
   agentId?: string
   showcase?: boolean
   presentation?: 'page' | 'panel'
+  panelMode?: 'dialog' | 'side'
+  onTogglePanelMode?: () => void
   onClose?: () => void
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
@@ -460,57 +468,29 @@ export function AgentEditorPage({
   )
 
   if (presentation === 'panel') {
+    if (panelMode === 'side') {
+      return (
+        <AgentEditorSidePanel
+          title={title}
+          mode={mode}
+          savedFlash={savedFlash}
+          onTogglePanelMode={onTogglePanelMode}
+          onClose={closeEditor}
+        >
+          {editor}
+        </AgentEditorSidePanel>
+      )
+    }
     return (
-      <DialogFrame
-        open
-        onOpenChange={(next) => { if (!next) closeEditor() }}
+      <AgentEditorDialog
         title={title}
-        className="max-h-[88vh] w-[min(560px,94vw)] overflow-y-auto"
+        onTogglePanelMode={onTogglePanelMode}
+        onClose={closeEditor}
       >
         {editor}
-      </DialogFrame>
+      </AgentEditorDialog>
     )
   }
 
   return editor
-}
-
-function getShowcaseAgent(
-  showcase: boolean,
-  mode: 'new' | 'edit',
-  agentId: string | undefined,
-): WorkspaceAgentDirectoryItem | null {
-  if (!showcase || mode !== 'edit') return null
-  return SHOWCASE_AGENTS.find((candidate) => candidate.id === agentId) ?? null
-}
-
-function getInitialEditorState(args: {
-  showcase: boolean
-  mode: 'new' | 'edit'
-  agent: WorkspaceAgentDirectoryItem | null
-}) {
-  const { agent } = args
-  return {
-    agent,
-    loading: !args.showcase,
-    canCreate: args.showcase || args.mode === 'edit',
-    name: agent?.name ?? '',
-    description: agent?.description ?? '',
-    instructions: agent?.instructions ?? '',
-    modelId: agent?.modelId ?? DEFAULT_MODEL_ID,
-    avatarColor: agent?.avatarColor ?? AVATAR_COLORS[0]!,
-    avatarShape: agent?.avatarShape ?? 'circle',
-    visibility: agent?.visibility ?? 'workspace',
-  }
-}
-
-function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello }: {
-  mode: 'new' | 'edit'
-  hasAgent: boolean
-  highlight: boolean
-  showcase: boolean
-  onSayHello(): void
-}) {
-  if (mode !== 'edit' || !hasAgent || (!highlight && !showcase)) return null
-  return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
 }

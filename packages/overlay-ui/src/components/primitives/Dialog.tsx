@@ -7,6 +7,7 @@ export interface DialogFrameProps extends Omit<HTMLAttributes<HTMLDivElement>, '
   title?: ReactNode
   description?: ReactNode
   footer?: ReactNode
+  actions?: ReactNode
   onOpenChange?: (open: boolean) => void
 }
 
@@ -15,6 +16,7 @@ export function DialogFrame({
   title,
   description,
   footer,
+  actions,
   onOpenChange,
   children,
   className,
@@ -43,7 +45,12 @@ export function DialogFrame({
         )}
         {...props}
       >
-        {title ? <h2 className="text-sm font-semibold text-[var(--foreground)]">{title}</h2> : null}
+        {title || actions ? (
+          <div className="flex items-center justify-between gap-3">
+            {title ? <h2 className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">{title}</h2> : <span />}
+            {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+          </div>
+        ) : null}
         {description ? (
           <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">{description}</p>
         ) : null}
