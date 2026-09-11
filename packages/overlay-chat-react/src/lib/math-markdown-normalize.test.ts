@@ -1,14 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const {
+import {
   promoteHeavyInlineMathToFlowBlocks,
   normalizeDoubleDollarMath,
   normalizeEscapedLatexDelimiters,
   normalizeBareBigONotation,
   normalizeBareLatexLines,
   normalizeAssistantMathMarkdown,
-} = (await import(new URL('./math-markdown-normalize.ts', import.meta.url).href)) as typeof import('./math-markdown-normalize')
+} from './math-markdown-normalize'
 
 test('promotes heavy one-line $$…$$ after prose to flow math fences', () => {
   const input = 'So R has the form $$\\begin{bmatrix} a \\end{bmatrix}$$ and more.'

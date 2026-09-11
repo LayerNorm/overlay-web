@@ -5,7 +5,7 @@ description: "2026-09-09 deep audit: clean-architecture adherence, dead code, du
 
 # Codebase complexity audit (2026-09-09)
 
-> **Status: §1 and §2 items 1–5 landed** (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`, `ROOT REORG`). Root: 98 → 58 entries. Still open: `ChatExperience` decomposition (§5), `math-markdown-normalize` direction (§6.5), and allowlist burn-down (§2.4 warns + 250 server cross-domain warnings).
+> **Status: §1 and §2 items 1–5 landed** (`BOUNDARY REGISTRY`, `REPO EDGE`, `RATCHET v2`, `ROOT REORG`). Root: 98 → 58 entries. Still open: `ChatExperience` decomposition (§5) and allowlist burn-down (§2.4 warns + 250 server cross-domain warnings).
 
 Three parallel audits (root sprawl, layer adherence, dead code) plus complexity
 metrics. Every claim carries the file or command that proves it. Items marked
@@ -92,7 +92,7 @@ All items below were verified with repo-wide import greps (details: file + symbo
 - ~~**`faviconUrl` / `hostFromUrl` × 3 + tooltip fork**~~ collapsed (`CLEANUP 4`): the `web-tool-sources.ts` and features-tooltip copies died in Batches 2–3; the live package tooltip now imports both helpers from `@overlay/chat-core/sources`, keeping its own `webSourceDisplayKey` fallback.
 - **`safeHttpUrl` × 3 — kept deliberately.** The package copy (`chat-react/src/lib`) and `chat-core` copy serve published packages that cannot import app `src/`; the `src/shared/security` superset serves Convex-safe app code. Merging across that boundary would violate the package→`src` ban. Revisit only if the URL policy itself changes.
 - **`WebSourceItem` / `webSourceDisplayKey` × 2 — kept deliberately.** Same boundary: the package copy carries UI-only citation affordances, the shared copy stays isomorphic for Convex. The three `WebSourceItem` shapes (package, shared, chat-core types) must stay structurally compatible — note it here rather than merge them.
-- **Intentional, do not touch:** `math-markdown-normalize.ts` package mirror (documented portable copy — though the two-copy arrangement already caused one sync slip; consider generating the copy from source instead of hand-syncing).
+- **Decided (§6.5):** `math-markdown-normalize` is canonical inside `packages/overlay-chat-react/src/lib/` — the package was the only consumer, packages must stay self-contained (no `@/shared` imports), and the `src/shared` mirror was dead code with an unwired test. The test moved next to the source and now runs under `npm --prefix packages/overlay-chat-react test` (wired into `check:chat-transcript-boundaries`).
 
 ## 5. Complexity hotspots (from the ratchet report)
 
@@ -106,4 +106,4 @@ All items below were verified with repo-wide import greps (details: file + symbo
 2. **Next:** Batch 2 deletions (one commit per file, each with its runtime check) + favicon/safe-url dedupes.
 3. **Then:** root reorg (§1) — moves only, no logic changes. Do it in one commit so `git log --follow` stays useful, and update the three docs that reference old paths (`traversing-agent-conversations.md` references `summaries/`; boundary scripts reference `src/` paths — unaffected by root moves except `workflows/`).
 4. **Harder, schedule explicitly:** `features/workspaces` kernel decision (landed), `act` route extraction (landed), file-route Convex leaks (landed), `ChatExperience` decomposition (open). Each is a design task, not cleanup.
-5. **Needs your decision:** `SearchClient` (wire or delete), Convex `outputs/*` (dashboard check), `PlatformAgentAccess` (roadmap check), shared-vs-package `math-markdown-normalize` canonical direction.
+5. **Needs your decision:** `SearchClient` (wire or delete), Convex `outputs/*` (dashboard check), `PlatformAgentAccess` (roadmap check). ~~shared-vs-package `math-markdown-normalize` canonical direction~~ — decided: package copy is canonical.
