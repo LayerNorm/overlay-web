@@ -23,6 +23,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- The agent editor can dock to the side panel or float as a centered dialog from a single toggle in its title row, sharing the same form, border, and chrome so switching never remounts state. Saving keeps the editor open (with a brief "Saved" confirmation) while Cancel discards and closes.
+
 - The Agents roster now opens the most recently used agent per workspace and orders the sidebar by recency (unused agents stay alphabetical). A conversation open that fails no longer sticks on the blank state: it retries, then shows an explicit error with a manual Retry.
 - Made Agents the first primary navigation item and default authenticated home. Selecting an agent now opens its conversation directly, while create and edit controls use the shared right-side panel (and its small-screen dialog presentation) instead of the authenticated directory grid.
 - Released the Agent Host and bridge protocol together at `0.3.5`, which forwards agents' advertised ACP slash commands (`available_commands_update`) to the transcript; production DM slash menus and the composer slash button activate once connected hosts are restarted on `0.3.5`.

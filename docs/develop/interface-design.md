@@ -40,3 +40,16 @@ with **Cancel** discarding back to the loaded agent and closing. No sticky
 glassmorphic footer bars anywhere — buttons sit in-flow at the end of the
 form. Rationale: agent identity edits are consequential (instructions, tools,
 access) and users want to review the whole form before anything persists.
+
+**Save keeps the editor open; Cancel closes it.** Saving is a confirmation
+point, not a dismissal: the side panel shows a brief "Saved" state and the
+form stays mounted so further edits continue in place. Cancel discards and
+closes. New-mode Create also closes (the agent now exists to converse with).
+
+## Editors dock to the side or float as a dialog
+
+The agent editor opens in the shared side panel by default and can be toggled
+between the docked side panel and a centered dialog from a single icon in its
+title row (`PanelRight` to dock, `AppWindow` to float). The two presentations
+share the same body, border, and chrome; only the frame differs, so switching
+never remounts form state.
