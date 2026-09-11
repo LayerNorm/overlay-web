@@ -12,7 +12,7 @@ const capabilities: SandboxCapabilities = {
   commandStreaming: true, files: true, environmentVariables: true, ports: true,
   snapshots: true, persistence: true, networkPolicy: true, credentialBrokering: true,
   networkPolicyUpdates: true,
-  hardTimeout: true, idleStop: true, usage: true,
+  hardTimeout: true, idleStop: true, usage: true, desktop: false,
 }
 
 for (const provider of ['vercel', 'daytona'] as const) {

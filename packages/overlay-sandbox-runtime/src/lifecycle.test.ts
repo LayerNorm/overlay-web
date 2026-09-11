@@ -25,7 +25,7 @@ function lifecycleSandbox(): SandboxInstance {
       commandStreaming: true, files: true, environmentVariables: true, ports: true,
       snapshots: true, persistence: true, networkPolicy: true, credentialBrokering: true,
       networkPolicyUpdates: true,
-      hardTimeout: true, idleStop: false, usage: true,
+      hardTimeout: true, idleStop: false, usage: true, desktop: false,
     },
     status: async () => state,
     workingDirectory: async () => '/workspace',

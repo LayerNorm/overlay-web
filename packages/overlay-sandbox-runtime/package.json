@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./conformance": "./src/conformance.ts",
+    "./box": "./src/box.ts",
     "./daytona": "./src/daytona.ts",
     "./vercel": "./src/vercel.ts"
   },

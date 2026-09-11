@@ -32,6 +32,7 @@ const CAPABILITIES: SandboxCapabilities = {
   hardTimeout: true,
   idleStop: false,
   usage: true,
+  desktop: false,
 }
 
 type VercelCredentials = { token: string; teamId: string; projectId: string }

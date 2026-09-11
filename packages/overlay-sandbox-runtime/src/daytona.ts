@@ -32,6 +32,7 @@ const CAPABILITIES: SandboxCapabilities = {
   hardTimeout: true,
   idleStop: true,
   usage: true,
+  desktop: false,
 }
 
 export type DaytonaSandboxRuntimeOptions = {
