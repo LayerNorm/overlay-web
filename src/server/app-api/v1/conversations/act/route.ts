@@ -107,7 +107,7 @@ import { readProjectSettings } from '@/shared/projects/project-settings'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { start } from 'workflow/api'
-import { personalChatWorkWorkflow } from '@/workflows/personal-chat-work'
+import { personalChatWorkWorkflow } from '@/server/workflows/personal-chat-work'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import {
   calculateProviderCostMicros,

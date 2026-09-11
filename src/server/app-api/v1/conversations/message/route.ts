@@ -12,7 +12,7 @@ import {
   resolveWorkspaceAgentInvocations,
   startRemoteWorkspaceAgentTurn,
 } from '@/server/agents/workspace-agent-invocation'
-import { workspaceAgentTurnWorkflow } from '@/workflows/workspace-agent-turn'
+import { workspaceAgentTurnWorkflow } from '@/server/workflows/workspace-agent-turn'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { agentStartFailureMessage } from './agent-start-failure'

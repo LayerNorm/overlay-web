@@ -38,9 +38,6 @@
       "@/features/*": [
         "./src/features/*"
       ],
-      "@/workflows/*": [
-        "./workflows/*"
-      ],
       "@overlay/api-client": [
         "./packages/overlay-api-client/src/index.ts"
       ],
