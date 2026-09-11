@@ -38,7 +38,7 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
   {
     category: 'shared_conversations_and_agents',
     enforcement: [
-      'src/server/app-api/v1/conversations/act/route.ts',
+      'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts',
       'src/server/agents/workspace-agent-invocation.ts',
       'src/server/billing/billing-runtime.ts',
     ],
@@ -70,7 +70,7 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
     category: 'functions_integrations_and_mcp',
     enforcement: [
       'packages/overlay-tools-core/src/policy.ts#MAX_TOOL_STEPS_ACT',
-      'src/server/app-api/v1/conversations/act/route.ts#isStepCount',
+      'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts#isStepCount',
       'src/server/tools/mcp-tools.ts#MAX_MCP_TOOL_RESULT_CHARS',
     ],
     id: 'tool-calls-per-agent-turn',
@@ -104,7 +104,7 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
       'src/server/agent/run-act-turn.ts#automationId',
       'src/server/billing/automation-workflow-billing.ts#AUTOMATION_WORKFLOW_STEP_PROVIDER_COST_USD',
       'src/server/app-api/bff-context.ts#getBillingProgrammaticSubjectId',
-      'src/server/app-api/v1/conversations/act/route.ts',
+      'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts',
     ],
     id: 'automation-and-api-provider-spend',
     mode: 'metered',

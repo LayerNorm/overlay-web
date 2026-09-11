@@ -288,8 +288,8 @@
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
-      "file": "src/server/app-api/v1/conversations/act/route.ts",
-      "loc": 1443,
+      "file": "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts",
+      "loc": 1522,
       "complexity": 229,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -454,7 +454,6 @@
     "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
     "src/shared/config/overlayConfigSchema.ts#callback": 1,
     "src/features/chat/components/DirectMessageExperience.tsx#DirectMessageExperience": 1,
-    "src/server/app-api/v1/conversations/act/route.ts#POST": 1,
     "src/features/chat/components/ChatExperience.tsx#ChatExperience": 1,
     "src/server/app-api/v1/settings/route.ts#PATCH": 1,
     "packages/overlay-chat-core/src/visual-sequence.ts#buildAssistantVisualSequence": 1,
@@ -509,7 +508,6 @@
     "packages/overlay-modules-react/src/notes/editor.tsx#CanonicalNotebookEditor": 1,
     "src/features/workspaces/components/WorkspaceSettingsPanel.tsx#WorkspaceSettingsPanel": 1,
     "src/server/ai/sandbox/PostgresDaytonaReconciliationService.ts#reconcile": 1,
-    "src/server/app-api/v1/conversations/act/route.ts#authorizeActRequest": 1,
     "src/server/automations/AutomationService.ts#buildAutomationUpdateNote": 1,
     "src/shared/agents/elicitation-schema.ts#matchesPropertySchema": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
@@ -528,7 +526,9 @@
     "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
     "src/app/.well-known/workflow/v1/step/route.js#callback": 1,
     "src/features/chat/components/NewDirectMessageDialog.tsx#NewDirectMessageDialog": 1,
-    "src/server/tools/mcp-tools.ts#execute": 1
+    "src/server/tools/mcp-tools.ts#execute": 1,
+    "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts#executeActTurn": 1,
+    "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts#authorizeActRequest": 1
   },
   "routeHandlersOverBudget": [
     {
@@ -541,12 +541,6 @@
       "file": "src/server/app-api/v1/conversations/act/extension-plan/route.ts",
       "loc": 501,
       "complexity": 30,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
-      "file": "src/server/app-api/v1/conversations/act/route.ts",
-      "loc": 1443,
-      "complexity": 229,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
