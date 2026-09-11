@@ -6,7 +6,7 @@ import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide
 import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
-import type { WorkspaceManagementClient } from '../types'
+import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
 
 const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000] as const
 

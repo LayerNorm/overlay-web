@@ -37,12 +37,12 @@ import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
-import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { isSameChatSurface } from '@/shared/workspaces/routing'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 
 type Conversation = {

@@ -7,7 +7,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   clearAgentOpened,

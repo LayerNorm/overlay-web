@@ -4,6 +4,8 @@
 
 export const FEATURE_DOMAINS = [
   'account',
+  'admin',
+  'agents',
   'auth',
   'automations',
   'billing',
@@ -11,40 +13,80 @@ export const FEATURE_DOMAINS = [
   'files',
   'integrations',
   'knowledge',
+  'knowledge-bases',
   'landing',
   'marketing',
   'notebook',
   'projects',
+  'settings',
   'share',
+  'showcase',
   'tools',
+  'workspaces',
 ]
 
-/** Server domains that must not import sibling domains (infra paths are exempt). */
+/**
+ * Server domains that must not import sibling domains (infra paths are exempt).
+ * Deliberately unlisted: `app`, `app-api`, and `app-data` are composition
+ * layers whose job is to wire domains together; top-level `src/server/*.ts`
+ * files (bootstrap, capabilities) are the same kind of surface.
+ */
 export const SERVER_DOMAINS = [
+  'account',
+  'admin',
   'agent',
+  'agents',
   'ai',
   'auth',
+  'authorization',
+  'automations',
   'billing',
   'chat',
+  'chat-suggestions',
+  'collaboration',
+  'conversations',
+  'email',
+  'extensions',
+  'files',
+  'governance',
+  'imports',
+  'integrations',
+  'jobs',
   'knowledge',
+  'knowledge-bases',
+  'legal',
+  'lifecycle-events',
+  'memory',
+  'notes',
   'observability',
+  'onboarding',
+  'outputs',
+  'projects',
+  'releases',
+  'search',
   'security',
+  'settings',
+  'sharing',
   'storage',
   'tools',
+  'usage',
+  'users',
   'web',
+  'webhooks',
+  'workspaces',
 ]
 
-const SERVER_INFRA_DOMAINS = ['observability']
+const SERVER_INFRA_DOMAINS = ['config', 'database', 'env', 'idempotency', 'observability', 'shared']
 
 const LEGACY_COMPONENT_BOUNDARY_DEBT_FILES = [
   'src/components/layout/PageNavbar.tsx',
-  'src/components/layout/AppSidebarInlinePanels.tsx',
   'src/components/providers/GuestGateProvider.tsx',
   'src/components/providers/OnboardingProvider.tsx',
 ]
 
 const LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN = {
   account: ['src/features/account/components/OnboardingTour.tsx'],
+  agents: ['src/features/agents/components/AgentConversationWorkspace.tsx'],
   chat: [
     'src/features/chat/components/ChatExperience.tsx',
     'src/features/chat/components/MarkdownMessage.tsx',

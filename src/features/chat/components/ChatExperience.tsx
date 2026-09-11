@@ -98,7 +98,7 @@ import type {
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { PersonalMentionConversionPrompt } from './PersonalMentionConversionPrompt'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { ConversationLoadSnapshot } from './chat/chatTransport'

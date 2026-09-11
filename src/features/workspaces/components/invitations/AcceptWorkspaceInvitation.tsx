@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { CircleAlert, Loader2, UsersRound } from 'lucide-react'
 import type { WorkspaceInvitationAcceptResponse } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
-import { buildWorkspaceHref } from '../../lib/workspace-routing'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 
 export function AcceptWorkspaceInvitation({
   invitationId,

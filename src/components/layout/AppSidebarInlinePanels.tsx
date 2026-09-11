@@ -49,7 +49,7 @@ import {
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 import { AgentCreature } from '@/components/orb/Creature'
 import {

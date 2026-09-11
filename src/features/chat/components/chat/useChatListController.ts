@@ -7,7 +7,7 @@ import {
   primeChatList,
   type ChatListPageInfo,
 } from '@/shared/chat/chat-list-cache'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import type { Conversation } from '../chat-interface/types'
 
 export function useChatListController({

@@ -12,17 +12,16 @@ import {
 } from 'react'
 import { usePathname } from 'next/navigation'
 import { setActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
-import { dispatchWorkspaceChanged } from '../lib/workspace-events'
-import { workspaceClient } from '../lib/workspace-client'
-import { readWorkspaceIdFromPath } from '../lib/workspace-routing'
+import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
+import { readWorkspaceIdFromPath } from '@/shared/workspaces/routing'
 import type {
   WorkspaceClient,
   WorkspaceCreateInput,
   WorkspaceLifecycleStatus,
   WorkspaceSummary,
-} from '../types'
+} from '@/shared/workspaces/types'
 
-type WorkspaceContextValue = {
+export type WorkspaceContextValue = {
   status: WorkspaceLifecycleStatus
   workspaces: readonly WorkspaceSummary[]
   activeWorkspace: WorkspaceSummary | null
@@ -39,11 +38,11 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 export function WorkspaceProvider({
   children,
   enabled = true,
-  client = workspaceClient,
+  client,
 }: {
   children: ReactNode
   enabled?: boolean
-  client?: WorkspaceClient
+  client: WorkspaceClient
 }) {
   const pathname = usePathname() ?? ''
   const [status, setStatus] = useState<WorkspaceLifecycleStatus>(enabled ? 'loading' : 'idle')

@@ -11,7 +11,7 @@ import type {
   WorkspaceClient,
   WorkspaceManagementClient,
   WorkspaceSettingsTab,
-} from '@/features/workspaces/types'
+} from '@/shared/workspaces/types'
 
 function toSlug(name: string): string {
   return name

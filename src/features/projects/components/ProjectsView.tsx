@@ -53,7 +53,7 @@ import { FileShareMenu } from '@/features/files/components/FileShareMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 
 type HubChat = ProjectChatSummary
 type ProjectFileRecord = ProjectFileSummary

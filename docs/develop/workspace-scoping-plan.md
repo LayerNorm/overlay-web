@@ -377,7 +377,7 @@ After backfill completes, promote to `v.string()`.
 
 **Added in Phase 7:**
 
-Created `useWorkspaceChanged` hook (`src/features/workspaces/lib/use-workspace-changed.ts`)
+Created `useWorkspaceChanged` hook (`src/hooks/use-workspace-changed.ts`)
 that listens for the `overlay:workspace-changed` window event and calls a callback
 with the event detail. This lets resource list components refetch on workspace switch.
 
@@ -399,7 +399,7 @@ Wired `useWorkspaceChanged` into 11 resource list components:
 
 **Pattern:**
 ```typescript
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 
 // After existing initial-load useEffect:
 useWorkspaceChanged(loadXxx)

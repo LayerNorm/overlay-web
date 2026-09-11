@@ -3,7 +3,7 @@
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
-import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { buildWorkspaceAgentInput } from './agent-editor-input'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'

@@ -23,6 +23,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- The ESLint boundary registry now covers every feature domain — `workspaces`, `agents`, `settings`, `showcase`, `admin`, and `knowledge-bases` are registered — and the workspace primitives all domains share moved out of the feature: `useWorkspace`/`WorkspaceProvider` → `@/contexts/WorkspaceContext`, routing helpers → `@/shared/workspaces/routing`, workspace types → `@/shared/workspaces/types`, and `useWorkspaceChanged` → the new `@/hooks` layer. The `showcase ↔ workspaces` import cycle is gone (the app layer injects the showcase workspace client), and `SERVER_DOMAINS` now covers all server domain directories with `config`/`database`/`env`/`idempotency`/`shared` as leaf infra; existing server cross-wiring is now enumerable warn-only debt.
+
 - The agent editor can dock to the side panel or float as a centered dialog from a single toggle in its title row, sharing the same form, border, and chrome so switching never remounts state. Saving keeps the editor open (with a brief "Saved" confirmation) while Cancel discards and closes.
 
 - The Agents roster now opens the most recently used agent per workspace and orders the sidebar by recency (unused agents stay alphabetical). A conversation open that fails no longer sticks on the blank state: it retries, then shows an explicit error with a manual Retry.

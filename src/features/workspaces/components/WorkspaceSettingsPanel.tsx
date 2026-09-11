@@ -35,12 +35,12 @@ import type {
   WorkspaceRolloutStage,
 } from '@overlay/workspace-contracts'
 import { describeRolloutStage } from '@/shared/workspaces/collaboration-rollout'
-import { useWorkspace } from './WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { workspaceManagementClient } from '../lib/workspace-client'
 import type {
   WorkspaceManagementClient,
   WorkspaceSettingsTab,
-} from '../types'
+} from '@/shared/workspaces/types'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
 import {
   ConfirmWorkspaceActionDialog,

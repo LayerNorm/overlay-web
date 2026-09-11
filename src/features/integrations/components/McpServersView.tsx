@@ -27,7 +27,7 @@ import {
 import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 
 interface DialogState {
   mode: 'create' | 'edit'

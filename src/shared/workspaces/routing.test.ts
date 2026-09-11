@@ -7,7 +7,7 @@ import {
   readWorkspaceIdFromPath,
   resolveChatBasePath,
   resolveWorkspaceSurface,
-} from './workspace-routing'
+} from './routing'
 
 test('workspace routing preserves the current canonical surface', () => {
   assert.equal(resolveWorkspaceSurface('/app/projects'), 'projects')

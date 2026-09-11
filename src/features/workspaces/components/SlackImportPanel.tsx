@@ -17,7 +17,7 @@ import {
 import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
-import { useWorkspace } from './WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 interface SlackChannel {
   id: string

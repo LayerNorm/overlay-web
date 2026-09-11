@@ -18,7 +18,7 @@ import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import {
   buildWorkspaceHref,
   readWorkspaceIdFromPath,
-} from '@/features/workspaces/lib/workspace-routing'
+} from '@/shared/workspaces/routing'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },

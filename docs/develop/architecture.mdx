@@ -10,7 +10,8 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `src/server/app-api/v1/**` holds the route orchestration behind those Next route wrappers.
 - `src/server/**` holds server-only auth, billing, storage, AI, tools, route services, and provider adapters.
 - `src/shared/**` holds isomorphic contracts and client-safe helpers.
-- `src/features/**` holds web feature containers and feature-local helpers.
+- `src/contexts/**` holds app-wide client providers (`AuthContext`, `WorkspaceContext`); `src/hooks/**` holds app-wide client hooks (`useWorkspaceChanged`). Both may import `@/shared` only.
+- `src/features/**` holds web feature containers and feature-local helpers. Cross-feature imports are banned; shared primitives belong in `@/shared`, `@/contexts`, or `@/hooks` (e.g. the workspace provider, routing helpers, and types that used to sit inside `features/workspaces`).
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.

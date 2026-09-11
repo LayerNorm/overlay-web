@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 type Environment = {

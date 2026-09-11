@@ -17,7 +17,7 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   DEFAULT_AGENT_TOOL_GROUP_IDS,

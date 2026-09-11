@@ -18,7 +18,7 @@ import { getAuthorizationEnforcementMode } from '@/server/authorization'
 import { AppConfigurationErrorState } from '@/app/app/_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from '@/app/app/_components/AppRouteSkeletons'
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
-import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
+import { WorkspaceAppBoundaryWithShowcase } from '@/app/_components/WorkspaceAppBoundaryWithShowcase'
 import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components/WorkspaceScopedContentBoundary'
 import { CollaborationRealtimeProvider } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
@@ -76,7 +76,7 @@ async function AppShellContent({
       publicShowcase={publicShowcase}
       requiresConvexClient={appDataCapabilities.requiresConvexClient}
     >
-      <WorkspaceAppBoundary
+      <WorkspaceAppBoundaryWithShowcase
         hasAuthenticatedUser={Boolean(user)}
         publicShowcase={publicShowcase}
       >
@@ -110,7 +110,7 @@ async function AppShellContent({
             </NavigationProgressProvider>
           </AsyncSessionsProvider>
         </div>
-      </WorkspaceAppBoundary>
+      </WorkspaceAppBoundaryWithShowcase>
     </AppClientProviders>
   )
 }
