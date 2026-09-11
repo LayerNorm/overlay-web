@@ -265,6 +265,10 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       onArchived={handleArchived}
     />
   ) : null
+  // Side mode docks through the screen's rightPanel slot; rendering the panel
+  // as a plain sibling stacks it under the content instead of beside it.
+  const sideEditor = panelMode === 'side' ? editor : null
+  const dialogEditor = panelMode === 'dialog' ? editor : null
 
   const settingsButton = (
     <AgentSettingsButton
@@ -288,8 +292,12 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           key={conversationId}
           conversationId={conversationId}
           headerActions={settingsButton}
+          externalRightPanel={sideEditor}
+          externalRightPanelLabel="Agent settings"
+          externalRightPanelMode="docked"
+          onExternalRightPanelClose={closeEditor}
         />
-        {editor}
+        {dialogEditor}
       </>
     )
   }
@@ -305,7 +313,13 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
 
   return (
     <>
-      <AppScreenShell header={<AppScreenHeader title="Agents" actions={settingsButton} />}>
+      <AppScreenShell
+        header={<AppScreenHeader title="Agents" actions={settingsButton} />}
+        rightPanel={sideEditor}
+        rightPanelMode="docked"
+        rightPanelWidth="lg"
+        onRightPanelClose={closeEditor}
+      >
         <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
         {loading ? (
           <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
@@ -343,7 +357,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         )}
       </AppScreenBody>
       </AppScreenShell>
-      {editor}
+      {dialogEditor}
     </>
   )
 }

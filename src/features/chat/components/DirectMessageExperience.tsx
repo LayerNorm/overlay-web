@@ -47,6 +47,7 @@ import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { dispatchChatArchived, dispatchChatCreated } from '@/shared/chat/chat-title'
+import { AGENT_DIRECTORY_CHANGED_EVENT } from '@/shared/workspace/sidebar-events'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -773,9 +774,6 @@ export function DirectMessageExperience({
   }, [showAttachMenu])
 
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
-  const title = conversationType === 'channel'
-    ? channel?.name ?? draftTitle ?? 'Channel'
-    : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
   const HeaderIcon = conversationType === 'channel'
     ? Hash
     : otherParticipants.length <= 1
@@ -810,21 +808,37 @@ export function DirectMessageExperience({
       return
     }
     let cancelled = false
-    overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-      if (cancelled) return
-      setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
-        name: agent.name,
-        avatarColor: agent.avatarColor,
-        avatarShape: agent.avatarShape,
-      }])))
-    }).catch(() => undefined)
+    const load = () => {
+      overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
+        if (cancelled) return
+        setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
+          name: agent.name,
+          avatarColor: agent.avatarColor,
+          avatarShape: agent.avatarShape,
+        }])))
+      }).catch(() => undefined)
+    }
+    load()
+    // Renames and avatar changes save through the editor and dispatch this
+    // event; refetching keeps the header and message identity in sync without
+    // a reload.
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
     return () => {
       cancelled = true
+      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
     }
   }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
   const headerAgent = soloAgentParticipant
     ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
     : null
+  const title = conversationType === 'channel'
+    ? channel?.name ?? draftTitle ?? 'Channel'
+    : soloAgentParticipant
+      // A one-to-one agent DM's title is the agent's name; the stored
+      // conversation title and participant displayName are snapshots from when
+      // the DM was created and go stale on rename, so the directory wins.
+      ? (headerAgent?.name ?? conversationTitle ?? draftTitle ?? 'Direct message')
+      : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
@@ -1372,11 +1386,13 @@ export function DirectMessageExperience({
 
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
-    const authorName = author?.displayName
-      ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
     const authorAgent = message.authorPrincipalId
       ? agentsByPrincipal.get(message.authorPrincipalId)
       : undefined
+    // The directory entry is the live name; participant displayName snapshots
+    // go stale when an agent is renamed.
+    const authorName = authorAgent?.name ?? author?.displayName
+      ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
     const view = toRoomMessageView({
       message,
       currentPrincipalId,
@@ -1389,6 +1405,7 @@ export function DirectMessageExperience({
     const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
     const teaserAuthor = teaserMessage
       ? teaserMessage.importedAuthorName?.trim()
+        ?? (teaserMessage.authorPrincipalId ? agentsByPrincipal.get(teaserMessage.authorPrincipalId)?.name : undefined)
         ?? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
         ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
       : null
@@ -1436,6 +1453,7 @@ export function DirectMessageExperience({
         onResolveRemoteRequest={(request, decision, response) => void resolveRemoteRequest(request, decision, response)}
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
+        personalChatStyle={conversationType !== 'channel'}
       />
     )
   }

@@ -106,6 +106,11 @@ export type RoomMessageItemProps = {
   highlighted?: boolean
   /** Consecutive messages from the same author use a compact transcript row. */
   grouped?: boolean
+  /**
+   * Direct messages match personal chat: no row hover background, and the
+   * action row sits under the message instead of a floating rail on top.
+   */
+  personalChatStyle?: boolean
 }
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
@@ -243,6 +248,7 @@ export function RoomMessageItem({
   onResolveRemoteRequest,
   highlighted = false,
   grouped = false,
+  personalChatStyle = false,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
@@ -296,7 +302,7 @@ export function RoomMessageItem({
       return (
         <div
           {...rootProps}
-          className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+          className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
         >
           <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
@@ -450,7 +456,7 @@ export function RoomMessageItem({
   const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
-      floating
+      floating={!personalChatStyle}
       copyText={message.text}
       canEdit={mine}
       canReport={!mine}
@@ -474,10 +480,10 @@ export function RoomMessageItem({
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
       >
         <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
-          {toolbar}
+          {!personalChatStyle && toolbar}
           {attachments}
           {editing ? editor : message.text ? (
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
@@ -491,6 +497,7 @@ export function RoomMessageItem({
           ) : null}
           {reactionRow}
           {threadEntry}
+          {personalChatStyle && toolbar}
         </div>
       </div>
     )
@@ -500,11 +507,11 @@ export function RoomMessageItem({
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
     >
       {avatarNode}
       <div className="relative min-w-0 flex-1">
-        {toolbar}
+        {!personalChatStyle && toolbar}
         <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <AuthorIdentityPopover
             name={message.authorName}
@@ -563,6 +570,7 @@ export function RoomMessageItem({
         )}
         {reactionRow}
         {threadEntry}
+        {personalChatStyle && toolbar}
       </div>
     </div>
   )
