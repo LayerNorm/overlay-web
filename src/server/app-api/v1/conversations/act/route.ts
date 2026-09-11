@@ -66,6 +66,10 @@ import { ensureActConversationId } from '@/server/conversations/ensure-act-conve
 import { registerToolLoopRun } from '@/server/conversations/tool-loop-run-registry'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
+  asConversationId,
+  type ConversationId,
+} from '@/server/conversations/ActConversationRepository'
+import {
   MAX_ACT_MODEL_ATTEMPTS,
   MAX_ACT_OUTPUT_TOKENS_PER_STEP,
   drainReadableStream,
@@ -231,7 +235,7 @@ export async function POST(
       variantIndex: rawMultiModelSlotIndex,
     })
     const preferredProjectModelId = await resolveProjectPreferredModelId({
-      conversationId: conversationId as Id<'conversations'> | undefined,
+      conversationId: conversationId ? asConversationId(conversationId) : undefined,
       projectId,
       userId: conversationUserId,
     })
@@ -307,7 +311,7 @@ export async function POST(
       attachmentNames,
     })
 
-    let cid = conversationId as Id<'conversations'> | undefined
+    let cid = conversationId ? asConversationId(conversationId) : undefined
     const trimmedClientId = conversationClientId?.trim()
     const parallelCreate = !conversationId && Boolean(trimmedClientId)
     if (!cid && trimmedClientId) {
@@ -1495,7 +1499,7 @@ function safeGatewayModelId(modelId: string): string | null {
 }
 
 async function resolveProjectPreferredModelId(args: {
-  conversationId?: Id<'conversations'>
+  conversationId?: ConversationId
   projectId?: string
   userId: string
 }): Promise<string | undefined> {

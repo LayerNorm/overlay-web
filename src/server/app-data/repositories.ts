@@ -23,6 +23,8 @@ import { PostgresConversationCollaborationRepository } from '@/server/conversati
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
+import { ConvexFileIngestionJobRepository } from '@/server/files/ConvexFileIngestionJobRepository'
+import type { FileIngestionJobRepository } from '@/server/files/FileIngestionJobRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
 import {
@@ -133,6 +135,7 @@ export interface AppDataRepositories {
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
+  fileIngestionJobs: FileIngestionJobRepository
   idempotency: IdempotencyRepository
   modelCatalog: ModelCatalogRepository
   memories: MemoryRepository
@@ -195,6 +198,9 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
+        // Document ingestion runs on the Convex runner only; Postgres mode
+        // keeps the synchronous ingest path and gates this route to 501.
+        fileIngestionJobs: unsupportedRepository<FileIngestionJobRepository>('FileIngestionJobRepository'),
         idempotency: new PostgresIdempotencyRepository(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
         memories: new PostgresMemoryRepository(db),
@@ -236,6 +242,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
+      fileIngestionJobs: new ConvexFileIngestionJobRepository(),
       idempotency: new ConvexIdempotencyRepository(),
       modelCatalog: new ConvexModelCatalogRepository(),
       memories: new ConvexMemoryRepository(),

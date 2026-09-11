@@ -8,8 +8,7 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import type { ActConversationRepository } from './ActConversationRepository'
-import type { Id } from '../../../convex/_generated/dataModel'
+import type { ActConversationRepository, ConversationId } from './ActConversationRepository'
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
@@ -39,7 +38,7 @@ export async function ensureActConversationId(params: {
   actModelId?: string
   workspaceId?: string
   createdByPrincipalId?: string
-}): Promise<Id<'conversations'>> {
+}): Promise<ConversationId> {
   const clientId = params.conversationClientId.trim()
   if (!clientId) {
     throw new Error('conversationClientId required')

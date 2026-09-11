@@ -6,14 +6,14 @@ import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { AgentRunApprovalRequest } from '@/shared/schemas/chat'
-import type { Id } from '../../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await readValidatedJson(request, context, AgentRunApprovalRequest)
     if (!body.ok) return body.response
     const run = await getOverlayServerContext().appData.repositories.conversations.getLatestAgentRun({
-      conversationId: body.data.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(body.data.conversationId),
       userId: getAuthorizedResourceUserId(context),
     })
     if (

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { assertPublicLinkPolicy, publicLinkPolicyResponse } from '@/server/sharing/public-link-policy'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 
 function buildShareUrl(request: NextRequest, token: string): string {
   const origin =
@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.visibility === 'public') await assertPublicLinkPolicy(context)
     const result = await getOverlayServerContext().appData.repositories.conversations.setShare({
-      conversationId: body.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(body.conversationId),
       userId: auth.userId,
       visibility: body.visibility,
     })

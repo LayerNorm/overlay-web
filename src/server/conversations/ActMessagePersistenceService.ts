@@ -18,12 +18,12 @@ import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { AgentRunMetrics } from '@/shared/agents/agent-run'
 import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { UIMessage } from '@/server/ai/sdk'
-import type { ActConversationRepository } from './ActConversationRepository'
+import type { ActConversationRepository, ConversationId } from './ActConversationRepository'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 type ActMessagePersistenceEvents = {
   completed(params: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     modelId: string
     turnId: string
     userId: string
@@ -111,7 +111,7 @@ export class ActMessagePersistenceService {
     billingActorUserId?: string
     billingSpendSubjectId?: string
     billingSpendSubjectKind?: 'member' | 'programmatic'
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     latestUserContent?: string
     latestUserParts?: ActLatestUserPersistence['latestUserParts']
     latestUserText?: string
@@ -166,7 +166,7 @@ export class ActMessagePersistenceService {
   async persistAssistantFinish(args: {
     accessToken?: string
     attemptModelId: string
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     emitWebhook: boolean
     event: ActAssistantFinishEvent
     fallbackNotice?: string

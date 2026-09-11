@@ -9,14 +9,14 @@ import {
 } from '@/shared/agents/agent-run'
 import { buildAgentRunMetricsReport } from '@/shared/agents/agent-run-metrics'
 import type { Id } from '../../../convex/_generated/dataModel'
-import type { ActConversationRepository } from './ActConversationRepository'
+import type { ActConversationRepository, ConversationId } from './ActConversationRepository'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
 
 export class AgentRunService {
   constructor(private readonly repository: ActConversationRepository) {}
 
   async startChat(args: {
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     leaseExpiresAt: number
     modelId: string
     turnId: string
@@ -39,7 +39,7 @@ export class AgentRunService {
   }
 
   async startWork(args: {
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     modelId: string
     turnId: string
     userId: string
@@ -215,7 +215,7 @@ export class AgentRunService {
   }
 
   async recordBrowserEvent(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     event: 'browser_disconnected' | 'browser_reconnected'
     runId: string
     userId: string

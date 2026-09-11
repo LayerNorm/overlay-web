@@ -13,7 +13,7 @@ import {
 } from '@/server/database/postgres/schema'
 import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
-import type { Id } from '../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import {
   computeNextAutomationRunAt,
   DEFAULT_AUTOMATION_SCHEDULE,
@@ -349,7 +349,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
 
   async removeConversation(args: { conversationId: string; userId: string }): Promise<void> {
     await this.conversationRepository.deleteConversation({
-      conversationId: args.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(args.conversationId),
       userId: args.userId,
     })
   }
@@ -363,7 +363,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     await this.conversationRepository.addMessage({
       content: args.content,
       contentType: 'text',
-      conversationId: args.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(args.conversationId),
       mode: 'act',
       parts: [{ type: 'text', text: args.content }],
       role: 'assistant',

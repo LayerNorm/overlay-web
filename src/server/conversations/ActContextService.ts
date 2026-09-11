@@ -25,6 +25,7 @@ import type {
   ActMemoryRow,
   ActPersistedMessage,
   ActSkillRow,
+  ConversationId,
 } from './ActConversationRepository'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -137,7 +138,7 @@ export class ActContextService {
   }) {}
 
   async buildMessagesForModel(params: {
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     historyBaseModelId?: string
     latestTurnId?: string
     latestUserMessage?: UIMessage
@@ -202,7 +203,7 @@ export class ActContextService {
     accessToken?: string
     billingProgrammaticSubjectId?: string
     billingUserId: string
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     indexedAttachments: unknown
     indexedFileNames?: string[]
     latestUserText?: string
@@ -386,7 +387,7 @@ export class ActContextService {
 
   async prepareModelContext(args: {
     accessToken?: string
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     historyBaseModelId?: string
     latestTurnId?: string
     latestUserMessage?: UIMessage
@@ -417,7 +418,7 @@ export class ActContextService {
 
   async prepareExistingMessagesForModel(args: {
     accessToken?: string
-    conversationId?: Id<'conversations'>
+    conversationId?: ConversationId
     generateSummaryText?: (args: {
       prompt: string
       targetSummaryTokens: number

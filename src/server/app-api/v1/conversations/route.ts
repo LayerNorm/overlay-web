@@ -17,7 +17,7 @@ import {
 import type {
   ConversationMessageRow,
 } from '@/server/conversations/ActConversationRepository'
-import type { Id } from '../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     if (conversationId && !includeMessages) {
       const conv = await repository.getConversationById({
-        conversationId: conversationId as Id<'conversations'>,
+        conversationId: asConversationId(conversationId),
         userId: auth.userId,
         workspaceId: context.workspace.workspace.id,
       }) ?? await appData.repositories.conversationCollaboration.getAccessibleConversation({
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     if (conversationId && includeMessages) {
       const conv = await repository.getConversationById({
-        conversationId: conversationId as Id<'conversations'>,
+        conversationId: asConversationId(conversationId),
         userId: auth.userId,
         workspaceId: context.workspace.workspace.id,
       }) ?? await appData.repositories.conversationCollaboration.getAccessibleConversation({
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       } else if (messageLimit) {
         try {
           messages = await repository.getRecentMessages({
-            conversationId: conversationId as Id<'conversations'>,
+            conversationId: asConversationId(conversationId),
             userId: auth.userId,
             limit: messageLimit,
             ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
@@ -126,13 +126,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
             error: error instanceof Error ? error.message : String(error),
           })
           messages = await repository.getConversationMessages({
-            conversationId: conversationId as Id<'conversations'>,
+            conversationId: asConversationId(conversationId),
             userId: auth.userId,
           })
         }
       } else {
         messages = await repository.getConversationMessages({
-          conversationId: conversationId as Id<'conversations'>,
+          conversationId: asConversationId(conversationId),
           userId: auth.userId,
         })
       }
@@ -328,7 +328,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
 
     await repository.updateConversation({
-      conversationId: body.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(body.conversationId),
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       title: body.title,
@@ -338,7 +338,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lastMode: body.lastMode,
     })
     const conversation = await repository.getConversationById({
-      conversationId: body.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(body.conversationId),
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
@@ -409,7 +409,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     }
 
     await repository.deleteConversation({
-      conversationId: conversationId as Id<'conversations'>,
+      conversationId: asConversationId(conversationId),
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })

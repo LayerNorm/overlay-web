@@ -2,18 +2,20 @@ import 'server-only'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type {
-  ActConversationRepository,
-  ActConversationRow,
-  ConversationListRow,
-  ConversationEventRow,
-  ConversationMessageRow,
-  ActMemoryRow,
-  ActPersistedMessage,
-  ActProjectRow,
-  ActSkillRow,
-  ActUsageEvent,
-  SharedConversationRow,
+import {
+  asConversationId,
+  type ActConversationRepository,
+  type ActConversationRow,
+  type ConversationId,
+  type ConversationListRow,
+  type ConversationEventRow,
+  type ConversationMessageRow,
+  type ActMemoryRow,
+  type ActPersistedMessage,
+  type ActProjectRow,
+  type ActSkillRow,
+  type ActUsageEvent,
+  type SharedConversationRow,
 } from './ActConversationRepository'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -42,17 +44,17 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     userId: string
     isAutomation?: boolean
     workspaceId?: string
-  }): Promise<Id<'conversations'>> {
+  }): Promise<ConversationId> {
     const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to create conversation')
-    return id
+    return asConversationId(id)
   }
 
   async getConversationById(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ConversationListRow | null> {
     return await convex.query<ConversationListRow | null>('chat/conversations:get', {
@@ -87,7 +89,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   async getRecentMessages(args: {
     beforeCreatedAt?: number
     compactToolPayloads?: boolean
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     limit: number
     userId: string
   }): Promise<ConversationMessageRow[]> {
@@ -98,7 +100,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getConversationMessages(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ConversationMessageRow[]> {
     return await convex.query<ConversationMessageRow[]>('chat/conversations:getMessages', {
@@ -110,7 +112,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   async updateConversation(args: {
     actModelId?: string
     askModelIds?: string[]
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     lastMode?: 'ask' | 'act'
     projectId?: string | null
     title?: string
@@ -123,7 +125,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async deleteConversation(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<void> {
     await convex.mutation('chat/conversations:remove', {
@@ -151,7 +153,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getMessages(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ActPersistedMessage[]> {
     return await convex.query<ActPersistedMessage[]>('chat/conversations:getMessages', {
@@ -162,7 +164,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getMessagesSince(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
     sinceCreatedAt?: number
     compactToolPayloads?: boolean
@@ -181,7 +183,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     billingActorUserId?: string
     billingSpendSubjectId?: string
     billingSpendSubjectKind?: 'member' | 'programmatic'
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     content: string
     contentType: 'text' | 'image' | 'video'
     mode: 'ask' | 'act'
@@ -237,7 +239,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getConversation(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ActConversationRow | null> {
     return await convex.query<ActConversationRow | null>('chat/conversations:get', {
@@ -259,7 +261,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getContextSummary(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     scope: string
     userId: string
   }): Promise<ContextSummarySnapshot | null> {
@@ -273,7 +275,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
 
   async upsertContextSummary(args: {
     contextWindow: number
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     scope: string
     sourceEstimatedTokens: number
     sourceMessageCount: number
@@ -292,7 +294,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async startAgentRun(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     leaseExpiresAt?: number
     mode: AgentRunMode
     modelId: string
@@ -371,7 +373,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async cancelAgentRuns(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     messageId?: Id<'conversationMessages'>
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
@@ -395,7 +397,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getLatestAgentRun(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null> {
     const run = await convex.query<ConvexAgentRunDoc | null>('chat/conversations:getLatestAgentRun', {
@@ -444,7 +446,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async deleteTurn(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     turnId: string
     userId: string
   }): Promise<{ deletedMessages: number }> {
@@ -456,7 +458,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async updateMessageUiPart(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     messageId: Id<'conversationMessages'>
     partId: string
     data: Record<string, unknown>
@@ -470,7 +472,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async setShare(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
     visibility: 'private' | 'public'
   }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null> {
