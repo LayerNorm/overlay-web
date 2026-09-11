@@ -191,10 +191,15 @@ computer-host) can come later without touching the entity or the UI.
    access rules, quota, per-row provider routing, stream issuance) with 10
    unit tests over fakes. Live smoke coverage:
    `box.live.test.ts` + a `box` row in `live-conformance.test.ts`, gated on
-   `OVERLAY_SANDBOX_LIVE_CONFORMANCE=1` + `BOX_API_KEY`. **Blocker:** the
-   current `BOX_API_KEY` is scoped without `box.create` — a full-scope
-   service key (`box api-key create`, or the dashboard) is required to run
-   the live suite end to end.
+   `OVERLAY_SANDBOX_LIVE_CONFORMANCE=1` + an admin-scoped `BOX_API_KEY`
+   (`box.create/resume/fork/delete` — the `full-box` preset lacks them).
+   **Live-verified end to end:** full conformance (provision, files, env,
+   command streaming + cancel, hosted ports, idle stop → resume → reconnect,
+   named-snapshot save → `from:` restore, delete) plus the desktop surface
+   (webrtc + vnc tickets, token-gated port round-trip, fork carrying disk
+   state, stop/resume persistence, `/home/user` + `/tmp` path boundary).
+   Known flake handled: a box occasionally lands in `error` during
+   provisioning — `create()` deletes it and retries once.
 1. **Foundation**: `computers` entity (repository, Postgres/Convex parity),
    `BoxSandboxRuntime`, capability gate, `/api/v1/computers` routes, Settings
    page — personal computers only (create/open/stop/delete).

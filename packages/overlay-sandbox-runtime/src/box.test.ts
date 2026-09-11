@@ -286,7 +286,7 @@ test('snapshot saves a named snapshot and deleteSnapshot removes it', async () =
   let saved = false
   const { calls, fetch } = recorder((call) => {
     if (call.url.endsWith('/named-snapshots') && call.method === 'POST') { saved = true; return ok({ status: 'saving' }) }
-    if (call.url.includes('/named-snapshots/overlay-')) {
+    if (call.url.includes('/named-snapshots/ov-')) {
       if (call.method === 'DELETE') return ok()
       return ok({ snapshot: { status: saved ? 'ready' : 'saving' } })
     }
@@ -294,7 +294,7 @@ test('snapshot saves a named snapshot and deleteSnapshot removes it', async () =
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const snapshot = await instance.snapshot()
-  assert.match(snapshot.id, /^overlay-bx_1-/)
+  assert.match(snapshot.id, /^ov-bx1-/)
   assert.equal((calls.find((call) => call.url.endsWith('/named-snapshots'))?.body as { boxId: string }).boxId, 'bx_1')
   await runtime(fetch).deleteSnapshot(snapshot.id)
   assert.ok(calls.some((call) => call.method === 'DELETE' && call.url.includes(snapshot.id)))
@@ -309,6 +309,23 @@ test('port returns a token-gated private url', async () => {
   const port = await instance.port(3000)
   assert.equal(port.access, 'private')
   assert.match(port.url, /_token=/)
+})
+
+test('create retries once when a box lands in error during provisioning', async () => {
+  let creates = 0
+  const { calls, fetch } = recorder((call) => {
+    if (call.method === 'POST' && call.url.endsWith('/boxes')) {
+      creates += 1
+      return ok({ box: { id: creates === 1 ? 'bx_bad' : 'bx_good', state: 'ready' } })
+    }
+    if (call.method === 'DELETE') return ok()
+    if (call.url.includes('bx_bad')) return ok({ box: { id: 'bx_bad', state: 'error' } })
+    return ok({ box: { id: 'bx_good', state: 'ready' } })
+  })
+  const instance = await runtime(fetch).create(request('retry'))
+  assert.equal(creates, 2)
+  assert.equal(instance.reference, 'bx_good')
+  assert.ok(calls.some((call) => call.method === 'DELETE' && call.url.includes('bx_bad')))
 })
 
 test('constructor refuses a missing api key', () => {

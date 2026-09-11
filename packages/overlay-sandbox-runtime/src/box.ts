@@ -174,7 +174,16 @@ export class BoxSandboxRuntime implements SandboxRuntime {
       await this.request('PATCH', `/boxes/${id}`, { body: { name: request.name } }).catch(() => undefined)
     }
     const instance = new BoxSandboxInstance(this, id, request.environment)
-    await instance.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
+    try {
+      await instance.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
+    } catch (error) {
+      // Occasional provider-side provisioning flakes land in `error`; delete
+      // the dead box and retry the create once rather than surfacing it.
+      const isBoxError = error instanceof BoxApiError && error.code === 'box_error'
+      await instance.delete().catch(() => undefined)
+      if (!isBoxError) throw error
+      return this.create(request)
+    }
     return instance
   }
 
@@ -404,7 +413,8 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async snapshot(): Promise<SandboxSnapshot> {
-    const name = `overlay-${this.reference}-${Date.now().toString(36)}`
+    // Named-snapshot names are [a-z0-9-]{1,63}; box ids carry underscores.
+    const name = `ov-${this.reference.replace(/[^a-z0-9-]/g, '')}-${Date.now().toString(36)}`
     await this.runtime.request('POST', '/named-snapshots', {
       body: { boxId: this.reference, name },
     })

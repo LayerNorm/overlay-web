@@ -74,7 +74,17 @@ test('box desktop surface: webrtc + vnc tickets, port hosting, fork carries disk
     await new Promise((resolve) => setTimeout(resolve, 2_000))
     const port = await sandbox.port(8080)
     assert.equal(port.access, 'private')
-    const served = await fetch(port.url)
+    // The token gate exchanges `_token` for a session cookie via 302; a bare
+    // request must stay forbidden. Node fetch doesn't persist the cookie
+    // across redirects, so verify the exchange explicitly.
+    const gate = await fetch(port.url, { redirect: 'manual' })
+    assert.equal(gate.status, 302)
+    const cookie = gate.headers.get('set-cookie')?.split(';')[0]
+    assert.ok(cookie, 'token exchange should set a session cookie')
+    const origin = new URL(port.url).origin
+    const bare = await fetch(origin + '/', { redirect: 'manual' })
+    assert.equal(bare.status, 403)
+    const served = await fetch(origin + '/', { headers: { cookie } })
     assert.equal(served.status, 200)
     t.diagnostic('hosted port reachable through token-gated url')
 
