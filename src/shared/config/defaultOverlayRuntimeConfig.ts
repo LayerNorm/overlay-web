@@ -51,6 +51,10 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     remoteAgentRuns: false,
     connectedAgentArtifacts: false,
     overlayCloudEnvironments: false,
+    // Persistent cloud desktops ship dark: the capability also requires a
+    // configured computer provider (BOX_API_KEY for the default `box`
+    // provider), so self-host deployments without credentials report it off.
+    computers: false,
   },
   providers: {
     auth: { provider: 'workos' },

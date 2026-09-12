@@ -21,6 +21,10 @@ import {
   getCapabilityDisabledError,
   getRequiredCapabilityForRoute,
 } from './capabilities-core'
+import {
+  computerProviderFromEnv,
+  computerRuntimeForProvider,
+} from '@/server/computers/computer-runtimes'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export { getRequiredCapabilityForRoute } from './capabilities-core'
@@ -67,6 +71,12 @@ export function withObservabilityProviderCapabilities(
     analytics: capabilities.analytics && analyticsProvider === 'posthog',
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
     connectedAgents: runtimeConfig.features?.connectedAgentControlPlane === true,
+    // Flag = hosted rollout control; a resolvable provider runtime = the
+    // deployment actually has computer credentials (BOX_API_KEY for `box`).
+    // Both are required, so self-host deployments without keys report the
+    // capability absent instead of surfacing 503s in the UI.
+    computers: runtimeConfig.features?.computers === true
+      && computerRuntimeForProvider(computerProviderFromEnv()) !== undefined,
   }
 }
 

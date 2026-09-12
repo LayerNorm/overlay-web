@@ -89,6 +89,7 @@ const OverlayFeatureFlagsSchema = z
     remoteAgentRuns: z.boolean().optional(),
     connectedAgentArtifacts: z.boolean().optional(),
     overlayCloudEnvironments: z.boolean().optional(),
+    computers: z.boolean().optional(),
   })
   .strict()
 

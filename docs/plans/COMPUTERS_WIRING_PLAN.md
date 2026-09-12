@@ -406,6 +406,21 @@ map `ComputerServiceError` statuses; `overlayAppClient.computers` compiles.
 
 ## Phase 3 — provider registry + `computers` capability
 
+**Status: done.** `src/server/computers/computer-runtimes.ts` ships
+`computerProviderFromEnv` (`OVERLAY_COMPUTER_PROVIDER`, default `box`),
+`computerRuntimeFromEnv`, and a cached `createComputerRuntimeResolver` — the
+`computerRuntimeForProvider` singleton is wired as `runtimeFor` in bootstrap.
+The capability is `features.computers === true && resolver resolves` (the
+registry check replaces the draft's raw `BOX_API_KEY` test — same gate for
+`box`, correct for future providers). `computers` added to
+`OverlayFeatureFlagsSchema` (strict — required for the flag to survive
+parsing), `defaultOverlayRuntimeConfig` (`false`), `env-overrides`
+(`OVERLAY_FEATURE_COMPUTERS`), and `.env.example`. `capabilities.test.ts`
+needed no change — partial `capabilities` inputs and the `DEFAULT` spread
+already cover the new key. Pre-existing package-level `tsc` failures in
+`overlay-app-core/src/automations.test.ts` are unrelated (reproduced with
+changes stashed).
+
 Goal: `runtimeFor('box')` resolves a real `BoxSandboxRuntime` when configured;
 deployments without box credentials report the capability absent.
 

@@ -105,8 +105,8 @@ Adding provider "acme" is then:
 1. `packages/overlay-sandbox-runtime/src/acme.ts` implementing `SandboxRuntime`
    + `DesktopSandbox` (vendor SDK wrapped in a thin `@overlay/<vendor>` client
    package — the vendor API never leaks past the adapter).
-2. Register in `computerRuntimeFromEnv()` (`COMPUTER_PROVIDER=box|acme` selects
-   the default for *new* computers).
+2. Register in `computerRuntimeFromEnv()` (`OVERLAY_COMPUTER_PROVIDER=box|acme`
+   selects which provider *new* computers land on).
 3. Pass the shared conformance suite (`conformance.ts`) plus its desktop
    extension — desktop URL issuance, fork producing a new reference,
    stop→resume preserving files.
@@ -213,9 +213,12 @@ File-by-file implementation sequence for phases 1–2 lives in
    registered in `AppDataRepositories` + parity matrix (`computers` domain,
    P7). The authenticated `/api/v1/computers` surface landed too — seven BFF
    routes, `computerService` in the server context, `computers` capability key,
-   and the typed `ComputersClient` — all capability-gated off until the
-   provider registry lands. Still open here: `features.computers` +
-   `BOX_API_KEY` derivation, Settings page — personal computers only
+   and the typed `ComputersClient`. The provider registry and capability
+   derivation landed too (wiring Phase 3): `OVERLAY_COMPUTER_PROVIDER=box` +
+   admin-scoped `BOX_API_KEY` resolve a cached `BoxSandboxRuntime`, and the
+   `computers` capability reports on only when `features.computers` is set
+   AND the configured provider resolves — self-host without keys reports it
+   absent. Still open here: Settings page — personal computers only
    (create/open/stop/delete).
 2. **Agent binding**: `computer` editor section (Overlay agents), DM status
    chip + Watch, headless `computer_*` tools.

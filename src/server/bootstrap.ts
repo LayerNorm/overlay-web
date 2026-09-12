@@ -71,6 +71,7 @@ import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRe
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
+import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
@@ -302,10 +303,7 @@ export function createOverlayServerContext(
   }
   const computerService = new ComputerService({
     repository: appData.repositories.computers,
-    // Phase 3 wires the provider registry (OVERLAY_COMPUTER_PROVIDER /
-    // BOX_API_KEY); until then every provider lookup fails closed as
-    // provider_unavailable (503).
-    runtimeFor: () => undefined,
+    runtimeFor: computerRuntimeForProvider,
     agentOwner: async (workspaceId, agentId) => {
       const agent = await workspaceAgentRepository.get({ agentId, workspaceId })
       return agent
