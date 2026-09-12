@@ -48,7 +48,16 @@ Open decision points are marked **[decide]** with a recommended default.
 
 ## Phase 1 — `computers` entity + storage parity
 
-**Status: done.** Types live in `packages/overlay-workspace-contracts/src/computers.ts`;
+**Status: done.** Verified live on both backends: the Postgres contract suite
+ran against the remote Neon `overlay_app_data_staging` DB (22/22, incl. the
+computers block + all four `computers_*` constraints), and the Convex contract
+suite ran against a real local Convex deployment
+(`npx convex dev --dev-deployment local`, isolated — 15/15, incl. the computers
+block over the wire through `ConvexComputerRepository` → `lazyConvex` →
+handlers). Local-deploy note: `convex dev` generates `convex/tsconfig.json`
+without `paths` — the `@/shared/*` imports then fail to bundle; add the root
+tsconfig `paths` block (scoped to `convex/`, `../src/*`) to push locally.
+Types live in `packages/overlay-workspace-contracts/src/computers.ts`;
 `ComputerRepository` is extracted to `src/server/computers/ComputerRepository.ts`;
 Postgres (migration `0075_computers` + `PostgresComputerRepository`) and Convex
 (`convex/computers/computers.ts` + `ConvexComputerRepository`) both implement it
