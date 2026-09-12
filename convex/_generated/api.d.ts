@@ -44,6 +44,7 @@ import type * as collaboration_directMessages from "../collaboration/directMessa
 import type * as collaboration_events from "../collaboration/events.js";
 import type * as collaboration_sharing from "../collaboration/sharing.js";
 import type * as collaboration_workspaces from "../collaboration/workspaces.js";
+import type * as computers_computers from "../computers/computers.js";
 import type * as crons from "../crons.js";
 import type * as email_deliveryRunner from "../email/deliveryRunner.js";
 import type * as email_outbox from "../email/outbox.js";
@@ -133,6 +134,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/events": typeof collaboration_events;
   "collaboration/sharing": typeof collaboration_sharing;
   "collaboration/workspaces": typeof collaboration_workspaces;
+  "computers/computers": typeof computers_computers;
   crons: typeof crons;
   "email/deliveryRunner": typeof email_deliveryRunner;
   "email/outbox": typeof email_outbox;

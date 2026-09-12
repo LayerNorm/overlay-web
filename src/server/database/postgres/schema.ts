@@ -539,6 +539,30 @@ export const projects = pgTable('projects', {
   check('projects_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
 ])
 
+export const computers = pgTable('computers', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  ownerType: text('owner_type').notNull(),
+  ownerId: text('owner_id').notNull(),
+  provider: text('provider').notNull(),
+  providerRef: text('provider_ref'),
+  size: text('size').notNull(),
+  status: text('status').notNull(),
+  name: text('name'),
+  createdBy: text('created_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('computers_workspace_owner_idx').on(table.workspaceId, table.ownerType, table.ownerId),
+  index('computers_workspace_id_idx').on(table.workspaceId),
+  check('computers_owner_type_check', sql`${table.ownerType} IN ('agent', 'user')`),
+  check('computers_size_check', sql`${table.size} IN ('small', 'default', 'large')`),
+  check('computers_status_check', sql`${table.status} IN ('provisioning', 'ready', 'stopped', 'error')`),
+])
+
 export const skills = pgTable('skills', {
   id: text('id').primaryKey(),
   userId: text('user_id')

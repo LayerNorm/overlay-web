@@ -6,6 +6,15 @@ import {
   type SandboxResources,
   type SandboxRuntime,
 } from '@overlay/sandbox-runtime'
+import type {
+  Computer,
+  ComputerOwnerType,
+  ComputerSize,
+} from '@overlay/workspace-contracts'
+import type { ComputerRepository } from './ComputerRepository'
+
+export type { Computer, ComputerOwnerType, ComputerSize, ComputerStatus } from '@overlay/workspace-contracts'
+export type { ComputerRepository } from './ComputerRepository'
 
 /**
  * Computer domain service — owns the lifecycle of persistent cloud desktops.
@@ -16,38 +25,10 @@ import {
  * row's `provider`, never from global config, so mixed-provider workspaces
  * work by construction.
  */
-export type ComputerSize = 'small' | 'default' | 'large'
-export type ComputerStatus = 'provisioning' | 'ready' | 'stopped' | 'error'
-export type ComputerOwnerType = 'agent' | 'user'
-
-export type Computer = {
-  id: string
-  workspaceId: string
-  ownerType: ComputerOwnerType
-  ownerId: string
-  provider: string
-  /** Provider-side machine reference (e.g. a box id). */
-  providerRef: string | null
-  size: ComputerSize
-  status: ComputerStatus
-  name: string | null
-  createdBy: string
-  createdAt: number
-  updatedAt: number
-  lastActiveAt: number | null
-}
-
-export interface ComputerRepository {
-  create(row: Computer): Promise<Computer>
-  get(id: string): Promise<Computer | null>
-  findByOwner(workspaceId: string, ownerType: ComputerOwnerType, ownerId: string): Promise<Computer | null>
-  listByWorkspace(workspaceId: string): Promise<Computer[]>
-  update(id: string, patch: Partial<Computer>): Promise<Computer>
-  delete(id: string): Promise<void>
-}
-
 export type ComputerActor = {
   userId: string
+  /** Caller's workspace principal id — required for creator-only agent access checks. */
+  principalId?: string
   workspaceRole?: 'owner' | 'member'
 }
 
@@ -59,7 +40,7 @@ export type ComputerLimits = {
 
 export type ComputerOwnerAccess =
   | { ownerType: 'user' }
-  | { ownerType: 'agent'; visibility: 'workspace' | 'creator'; createdBy: string }
+  | { ownerType: 'agent'; visibility: 'workspace' | 'creator'; createdByPrincipalId: string }
 
 export class ComputerServiceError extends Error {
   constructor(
@@ -88,8 +69,8 @@ export class ComputerService {
     repository: ComputerRepository
     /** Resolve the runtime a computer row lives on — keyed by row.provider. */
     runtimeFor(provider: string): SandboxRuntime | undefined
-    /** Resolve an agent owner's visibility for access checks. */
-    agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdBy: string } | null>
+    /** Resolve an agent owner's visibility and creator principal for access checks. */
+    agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string } | null>
     limits?: (input: { workspaceId: string; ownerType: ComputerOwnerType }) => Promise<ComputerLimits | undefined> | ComputerLimits | undefined
     now?: () => number
     newId?: () => string
@@ -271,7 +252,7 @@ export class ComputerService {
     if (ownerType === 'user') return ownerId === actor.userId
     if (!ownerAccess || ownerAccess.ownerType !== 'agent') return false
     if (ownerAccess.visibility === 'workspace') return true
-    return ownerAccess.createdBy === actor.userId || actor.workspaceRole === 'owner'
+    return ownerAccess.createdByPrincipalId === actor.principalId || actor.workspaceRole === 'owner'
   }
 
   private runtimeFor(provider: string): SandboxRuntime {

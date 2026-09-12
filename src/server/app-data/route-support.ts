@@ -79,6 +79,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'connected-agent-control-plane',
   },
   {
+    id: 'computers',
+    methods: '*',
+    prefixes: ['/api/v1/computers'],
+    status: 'supported',
+    feature: 'computers',
+  },
+  {
     id: 'slack-imports-convex-only',
     methods: '*',
     prefixes: ['/api/v1/imports/slack'],

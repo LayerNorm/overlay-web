@@ -218,6 +218,14 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     exitGate: 'Role grants, revocation, authorization denials, budget controls, and redacted audit records pass shared Convex/Postgres contracts and browser QA.',
   },
   {
+    id: 'computers',
+    name: 'Computers',
+    targetPhase: 'P7',
+    capabilities: [],
+    routeRuleIds: ['computers'],
+    exitGate: 'Owner-keyed computer rows pass the shared contract suite on both backends; lifecycle and stream issuance stay behind the capability flag.',
+  },
+  {
     id: 'background-runtime',
     name: 'Background runtime and production safety',
     targetPhase: 'P1',

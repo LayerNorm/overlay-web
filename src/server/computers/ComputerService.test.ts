@@ -7,16 +7,17 @@ import type {
   SandboxRuntime,
 } from '@overlay/sandbox-runtime'
 
+import type { Computer } from '@overlay/workspace-contracts'
+
 import {
   ComputerService,
   ComputerServiceError,
-  type Computer,
-  type ComputerRepository,
 } from './ComputerService'
+import type { ComputerRepository } from './ComputerRepository'
 
-const member = { userId: 'user-1', workspaceRole: 'member' as const }
-const otherMember = { userId: 'user-2', workspaceRole: 'member' as const }
-const owner = { userId: 'user-9', workspaceRole: 'owner' as const }
+const member = { userId: 'user-1', principalId: 'principal-1', workspaceRole: 'member' as const }
+const otherMember = { userId: 'user-2', principalId: 'principal-2', workspaceRole: 'member' as const }
+const owner = { userId: 'user-9', principalId: 'principal-9', workspaceRole: 'owner' as const }
 
 class MemoryRepository implements ComputerRepository {
   rows = new Map<string, Computer>()
@@ -87,7 +88,7 @@ class FakeRuntime implements SandboxRuntime {
 function service(overrides: {
   repository?: MemoryRepository
   runtimes?: Record<string, FakeRuntime>
-  agents?: Record<string, { visibility: 'workspace' | 'creator'; createdBy: string }>
+  agents?: Record<string, { visibility: 'workspace' | 'creator'; createdByPrincipalId: string }>
   limits?: { maxPerWorkspace?: number; maxPersonalPerUser?: number; allowedSizes?: readonly ('small' | 'default' | 'large')[] }
 } = {}) {
   const repository = overrides.repository ?? new MemoryRepository()
@@ -150,8 +151,8 @@ test('nobody can create or open another member’s personal computer', async () 
 
 test('workspace agents’ computers open to every member; creator-only opens to creator and owner', async () => {
   const agents = {
-    'agent-shared': { visibility: 'workspace' as const, createdBy: 'user-1' },
-    'agent-private': { visibility: 'creator' as const, createdBy: 'user-1' },
+    'agent-shared': { visibility: 'workspace' as const, createdByPrincipalId: 'principal-1' },
+    'agent-private': { visibility: 'creator' as const, createdByPrincipalId: 'principal-1' },
   }
   const { svc } = service({ agents })
 
@@ -233,7 +234,7 @@ test('missing provider configuration fails closed', async () => {
 })
 
 test('listForWorkspace only returns computers the actor may see', async () => {
-  const agents = { 'agent-private': { visibility: 'creator' as const, createdBy: 'user-1' } }
+  const agents = { 'agent-private': { visibility: 'creator' as const, createdByPrincipalId: 'principal-1' } }
   const { svc } = service({ agents })
   await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
   await svc.provision({ actor: otherMember, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-2' })

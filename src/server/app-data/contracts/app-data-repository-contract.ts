@@ -20,12 +20,14 @@ import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWork
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { MemoryRepository } from '@/server/memory'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
+import type { ComputerRepository } from '@/server/computers/ComputerRepository'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 
 export interface AppDataRepositoryContractBackend {
   accountDeletionRepository?: AccountDataDeletionRepository
   authProvider: UserAuthProvider
   chatSuggestions: ChatSuggestionRepository
+  computers: ComputerRepository
   conversations: ActConversationRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
@@ -972,6 +974,109 @@ export async function runAppDataRepositoryContractSuite(
           userId: memoryOwnerId,
           workspaceId,
         })
+      }
+    })
+
+    await t.test(`${backend.name}: computers persist owner-keyed bindings and provider-neutral CRUD`, async () => {
+      const computers = backend.computers
+      const workspaceId = `contract_computers_ws_${randomUUID()}`
+      const otherWorkspaceId = `contract_computers_other_${randomUUID()}`
+      const now = Date.now()
+      const createdIds: string[] = []
+      try {
+        const computer = await computers.create({
+          id: `computer_${randomUUID()}`,
+          workspaceId,
+          ownerType: 'user',
+          ownerId: userId,
+          provider: 'box',
+          providerRef: null,
+          size: 'default',
+          status: 'provisioning',
+          name: null,
+          createdBy: userId,
+          createdAt: now,
+          updatedAt: now,
+          lastActiveAt: null,
+        })
+        createdIds.push(computer.id)
+
+        assert.equal((await computers.get(computer.id))?.workspaceId, workspaceId)
+        assert.equal(await computers.get(`computer_${randomUUID()}`), null)
+        assert.equal((await computers.findByOwner(workspaceId, 'user', userId))?.id, computer.id)
+        assert.equal(await computers.findByOwner(workspaceId, 'agent', 'missing-agent'), null)
+
+        // The (workspace, ownerType, ownerId) binding is unique on both
+        // backends: a second create returns the existing row.
+        const duplicate = await computers.create({
+          id: `computer_${randomUUID()}`,
+          workspaceId,
+          ownerType: 'user',
+          ownerId: userId,
+          provider: 'box',
+          providerRef: null,
+          size: 'large',
+          status: 'provisioning',
+          name: null,
+          createdBy: userId,
+          createdAt: now + 1,
+          updatedAt: now + 1,
+          lastActiveAt: null,
+        })
+        assert.equal(duplicate.id, computer.id)
+
+        const updated = await computers.update(computer.id, {
+          providerRef: 'bx_contract',
+          status: 'ready',
+          lastActiveAt: now + 2,
+          updatedAt: now + 2,
+        })
+        assert.equal(updated.status, 'ready')
+        assert.equal(updated.providerRef, 'bx_contract')
+        assert.equal(updated.lastActiveAt, now + 2)
+
+        // Workspace scoping and agent-owner rows share the same table.
+        const otherWorkspace = await computers.create({
+          id: `computer_${randomUUID()}`,
+          workspaceId: otherWorkspaceId,
+          ownerType: 'user',
+          ownerId: userId,
+          provider: 'box',
+          providerRef: null,
+          size: 'small',
+          status: 'provisioning',
+          name: null,
+          createdBy: userId,
+          createdAt: now + 3,
+          updatedAt: now + 3,
+          lastActiveAt: null,
+        })
+        createdIds.push(otherWorkspace.id)
+        const agentComputer = await computers.create({
+          id: `computer_${randomUUID()}`,
+          workspaceId,
+          ownerType: 'agent',
+          ownerId: `contract_agent_${randomUUID()}`,
+          provider: 'box',
+          providerRef: null,
+          size: 'small',
+          status: 'provisioning',
+          name: 'Research desk',
+          createdBy: userId,
+          createdAt: now + 4,
+          updatedAt: now + 4,
+          lastActiveAt: null,
+        })
+        createdIds.push(agentComputer.id)
+
+        const rows = await computers.listByWorkspace(workspaceId)
+        assert.deepEqual(rows.map((row) => row.id).sort(), [computer.id, agentComputer.id].sort())
+        assert.equal(rows.find((row) => row.id === agentComputer.id)?.name, 'Research desk')
+      } finally {
+        for (const id of createdIds) {
+          await computers.delete(id).catch((_error) => {})
+        }
+        assert.equal(await computers.get(createdIds[0] ?? ''), null)
       }
     })
 

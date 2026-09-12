@@ -622,6 +622,31 @@ export default defineSchema({
   })
     .index('by_tokenHash', ['tokenHash']),
 
+  computers: defineTable({
+    // Caller-generated entity id; Convex _id stays an internal detail.
+    id: v.string(),
+    workspaceId: v.string(),
+    ownerType: v.union(v.literal('agent'), v.literal('user')),
+    ownerId: v.string(),
+    provider: v.string(),
+    providerRef: v.optional(v.string()),
+    size: v.union(v.literal('small'), v.literal('default'), v.literal('large')),
+    status: v.union(
+      v.literal('provisioning'),
+      v.literal('ready'),
+      v.literal('stopped'),
+      v.literal('error'),
+    ),
+    name: v.optional(v.string()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastActiveAt: v.optional(v.number()),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
+
   projects: defineTable({
     workspaceId: v.optional(v.string()),
     userId: v.string(),

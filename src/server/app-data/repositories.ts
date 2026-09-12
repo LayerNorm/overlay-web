@@ -118,6 +118,9 @@ import {
   PostgresProviderConnectionRepository,
   type ProviderConnectionRepository,
 } from '@/server/ai/provider-connections'
+import type { ComputerRepository } from '@/server/computers/ComputerRepository'
+import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
+import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -130,6 +133,7 @@ export interface AppDataRepositories {
   billingEvents: BillingProviderEventRepository
   billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
+  computers: ComputerRepository
   conversationCollaboration: ConversationCollaborationRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
@@ -193,6 +197,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         billingEvents: new PostgresBillingProviderEventRepository(db),
         billingWebhooks: billing,
         chatSuggestions: new PostgresChatSuggestionRepository(db),
+        computers: new PostgresComputerRepository(db),
         conversationCollaboration: new PostgresConversationCollaborationRepository(db),
         conversations,
         durableJobs: new PostgresDurableJobRepository(db),
@@ -237,6 +242,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       billingEvents: new ConvexBillingProviderEventRepository(),
       billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
+      computers: new ConvexComputerRepository(),
       conversationCollaboration: new ConvexConversationCollaborationRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),

@@ -1,7 +1,8 @@
 # Computers: persistent cloud desktops for agents and members
 
-Status: in progress — provider adapter + domain service landed and tested;
-web wiring pending live smoke verification. Decisions marked **[decided]**
+Status: in progress — provider adapter, domain service, and the entity/storage
+parity layer (wiring Phase 1) landed and verified; API routes, capability gate,
+and Settings UI remain (wiring phases 2–4). Decisions marked **[decided]**
 are settled; the rest are implementation defaults open to revision.
 
 ## Context
@@ -184,6 +185,9 @@ computer-host) can come later without touching the entity or the UI.
 
 ## Phasing
 
+File-by-file implementation sequence for phases 1–2 lives in
+[`COMPUTERS_WIRING_PLAN.md`](./COMPUTERS_WIRING_PLAN.md).
+
 0. **Logic layer (done)**: `DesktopSandboxInstance` port + `desktop`
    capability in `contracts.ts`; `BoxSandboxRuntime` in
    `packages/overlay-sandbox-runtime/src/box.ts` with 17 unit tests over a
@@ -200,8 +204,14 @@ computer-host) can come later without touching the entity or the UI.
    state, stop/resume persistence, `/home/user` + `/tmp` path boundary).
    Known flake handled: a box occasionally lands in `error` during
    provisioning — `create()` deletes it and retries once.
-1. **Foundation**: `computers` entity (repository, Postgres/Convex parity),
-   `BoxSandboxRuntime`, capability gate, `/api/v1/computers` routes, Settings
+1. **Foundation** *(storage/entity half done — wiring Phase 1)*: shared
+   `Computer` types in `@overlay/workspace-contracts`, `ComputerRepository`
+   port, `PostgresComputerRepository` (migration `0075_computers`, unique
+   `(workspace_id, owner_type, owner_id)` binding) and
+   `ConvexComputerRepository` (`convex/computers/computers.ts`,
+   `by_workspaceId_owner` index) both pass the shared contract suite;
+   registered in `AppDataRepositories` + parity matrix (`computers` domain,
+   P7). Still open here: capability gate, `/api/v1/computers` routes, Settings
    page — personal computers only (create/open/stop/delete).
 2. **Agent binding**: `computer` editor section (Overlay agents), DM status
    chip + Watch, headless `computer_*` tools.
