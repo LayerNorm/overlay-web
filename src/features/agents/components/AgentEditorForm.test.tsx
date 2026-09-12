@@ -95,34 +95,27 @@ const agentComputer: Computer = {
   lastActiveAt: null,
 }
 
+const computerSectionProps = {
+  size: 'default' as const,
+  onSizeChange: () => undefined,
+  openBusy: false,
+  lifecycleBusy: null,
+  onOpenDesktop: () => undefined,
+  onTogglePower: () => undefined,
+  onDelete: () => undefined,
+}
+
 test('computer section keeps the size picker hidden until enabled', () => {
   const markup = renderToStaticMarkup(
-    <AgentComputerSection
-      enabled={false}
-      onEnabledChange={() => undefined}
-      size="default"
-      onSizeChange={() => undefined}
-      computer={null}
-      openBusy={false}
-      onOpenDesktop={() => undefined}
-    />,
+    <AgentComputerSection enabled={false} computer={null} {...computerSectionProps} />,
   )
-  assert.match(markup, /Give this agent a computer/)
   assert.doesNotMatch(markup, /Computer size/)
   assert.doesNotMatch(markup, /Open desktop/)
 })
 
 test('computer section offers sizes and explains save-time provisioning', () => {
   const markup = renderToStaticMarkup(
-    <AgentComputerSection
-      enabled
-      onEnabledChange={() => undefined}
-      size="default"
-      onSizeChange={() => undefined}
-      computer={null}
-      openBusy={false}
-      onOpenDesktop={() => undefined}
-    />,
+    <AgentComputerSection enabled computer={null} {...computerSectionProps} />,
   )
   assert.match(markup, /aria-label="Computer size"/)
   assert.match(markup, /Created when you save/)
@@ -130,15 +123,7 @@ test('computer section offers sizes and explains save-time provisioning', () => 
 
 test('computer section shows the provisioned desktop and locks the size', () => {
   const markup = renderToStaticMarkup(
-    <AgentComputerSection
-      enabled
-      onEnabledChange={() => undefined}
-      size="default"
-      onSizeChange={() => undefined}
-      computer={agentComputer}
-      openBusy={false}
-      onOpenDesktop={() => undefined}
-    />,
+    <AgentComputerSection enabled computer={agentComputer} {...computerSectionProps} />,
   )
   assert.match(markup, /Scout computer/)
   assert.match(markup, /ready · large/)
@@ -148,15 +133,28 @@ test('computer section shows the provisioned desktop and locks the size', () => 
 
 test('computer section warns that disabling a provisioned computer deletes it', () => {
   const markup = renderToStaticMarkup(
-    <AgentComputerSection
-      enabled={false}
-      onEnabledChange={() => undefined}
-      size="default"
-      onSizeChange={() => undefined}
-      computer={agentComputer}
-      openBusy={false}
-      onOpenDesktop={() => undefined}
-    />,
+    <AgentComputerSection enabled={false} computer={agentComputer} {...computerSectionProps} />,
   )
   assert.match(markup, /Saving deletes this computer/)
+})
+
+test('overlay fields render the computer accessory under its tool row', () => {
+  const markup = renderToStaticMarkup(
+    <OverlayAgentFields
+      instructions="Find evidence."
+      onInstructionsChange={() => undefined}
+      modelId="test-model"
+      onModelChange={() => undefined}
+      modelOptions={[{ value: 'test-model', label: 'Test model' }]}
+      enabledToolGroups={new Set(['computer'])}
+      onToggleToolGroup={() => undefined}
+      advanced={false}
+      onAdvancedChange={() => undefined}
+      computer={{ computer: agentComputer, ...computerSectionProps }}
+    />,
+  )
+  // The merged control: one row toggles the grant and the machine together.
+  assert.match(markup, /persistent cloud desktop/)
+  assert.match(markup, /Scout computer/)
+  assert.match(markup, /Open desktop/)
 })

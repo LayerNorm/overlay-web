@@ -23,6 +23,7 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
+  COMPUTER_TOOL_IDS,
   DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
@@ -30,12 +31,11 @@ import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
+import { dispatchAgentDirectoryChanged, dispatchAgentDraftPreview } from '@/shared/workspace/sidebar-events'
 import {
   AccessSelector,
   AgentAvatar,
   AgentBehaviorFields,
-  AgentComputerSection,
   AgentTypeSelector,
   AVATAR_COLORS,
   DangerZone,
@@ -59,6 +59,7 @@ export function AgentEditorPage({
   onClose,
   onCreated,
   onArchived,
+  onSaved,
 }: {
   mode: 'new' | 'edit'
   agentId?: string
@@ -69,6 +70,7 @@ export function AgentEditorPage({
   onClose?: () => void
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
+  onSaved?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -112,7 +114,6 @@ export function AgentEditorPage({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
-  const [computerEnabled, setComputerEnabled] = useState(false)
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
   const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | null>(null)
@@ -158,6 +159,8 @@ export function AgentEditorPage({
   }, [activeWorkspaceId, showcase])
 
   // Load this agent's computer (edit mode, Overlay agents, capability on).
+  // A bound machine implies the Computer tool group: force it on so the merged
+  // toggle never shows "off" above a live machine.
   useEffect(() => {
     if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
     let cancelled = false
@@ -168,13 +171,18 @@ export function AgentEditorPage({
           (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
         ) ?? null
         setAgentComputer(existing)
-        setComputerEnabled(existing !== null)
-        if (existing) setComputerSize(existing.size)
+        if (existing) {
+          setComputerSize(existing.size)
+          if (!enabledAgentToolGroupIds(agent.allowedToolIds).has('computer')) {
+            setEnabledToolGroups((current) => new Set(current).add('computer'))
+            markDirty()
+          }
+        }
       },
       () => undefined,
     )
     return () => { cancelled = true }
-  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType])
+  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, markDirty])
 
   const modelOptions = useMemo(() => {
     void revision
@@ -229,6 +237,30 @@ export function AgentEditorPage({
     setSavedFlash(false)
   }, [agent])
 
+  // Stream unsaved identity drafts so the sidebar roster and the conversation
+  // header update while typing; a clean form or an unmounted editor clears the
+  // override.
+  useEffect(() => {
+    if (showcase || !agent || !activeWorkspaceId) return
+    dispatchAgentDraftPreview({
+      workspaceId: activeWorkspaceId,
+      agentId: agent.id,
+      principalId: agent.principalId,
+      patch: dirty
+        ? { name: name.trim() || 'Untitled agent', description, avatarColor, avatarShape }
+        : null,
+    })
+  }, [showcase, agent, activeWorkspaceId, dirty, name, description, avatarColor, avatarShape])
+
+  useEffect(() => {
+    if (!agent || !activeWorkspaceId) return
+    const { id: agentIdForCleanup, principalId } = agent
+    const workspaceId = activeWorkspaceId
+    return () => {
+      dispatchAgentDraftPreview({ workspaceId, agentId: agentIdForCleanup, principalId, patch: null })
+    }
+  }, [agent, activeWorkspaceId])
+
   const persistNew = () => {
     if (showcase) {
       router.push(directoryHref)
@@ -254,7 +286,7 @@ export function AgentEditorPage({
             throw bindingError
           })
         }
-        if (agentType === 'overlay' && computersAvailable && computerEnabled) {
+        if (agentType === 'overlay' && computersAvailable && enabledToolGroups.has('computer')) {
           await overlayAppClient.computers.provision(activeWorkspaceId, {
             ownerType: 'agent',
             ownerId: saved.agent.id,
@@ -284,7 +316,7 @@ export function AgentEditorPage({
   const saveEdit = () => {
     if (showcase || !activeWorkspaceId || !agent || busy) return
     if (
-      agentType === 'overlay' && agentComputer && !computerEnabled
+      agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer')
       && !window.confirm(`Delete ${agent.name}'s computer? Its disk state is destroyed permanently.`)
     ) return
     setBusy(true)
@@ -303,7 +335,7 @@ export function AgentEditorPage({
             .catch(() => undefined)
         }
         if (agentType === 'overlay' && computersAvailable) {
-          if (computerEnabled && !agentComputer) {
+          if (enabledToolGroups.has('computer') && !agentComputer) {
             const provisioned = await overlayAppClient.computers.provision(activeWorkspaceId, {
               ownerType: 'agent',
               ownerId: saved.agent.id,
@@ -311,7 +343,7 @@ export function AgentEditorPage({
               name: `${saved.agent.name} computer`,
             })
             setAgentComputer(provisioned.computer)
-          } else if (!computerEnabled && agentComputer) {
+          } else if (!enabledToolGroups.has('computer') && agentComputer) {
             await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
             setAgentComputer(null)
           }
@@ -320,6 +352,7 @@ export function AgentEditorPage({
         setAgent(saved.agent)
         setDirty(false)
         setSavedFlash(true)
+        if (onSaved) onSaved()
       } catch (saveError) {
         setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
       } finally {
@@ -395,14 +428,23 @@ export function AgentEditorPage({
   }
 
   const deleteAgentComputer = async () => {
-    if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy) return
+    if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy || !agent) return
     if (!window.confirm(`Delete ${agentComputer.name ?? "this agent's computer"}? Its disk state is destroyed permanently.`)) return
     setComputerLifecycleBusy('delete')
     setError(null)
     try {
       await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
+      // The machine is already gone, so persist the merged toggle off right
+      // away — otherwise the saved grant would keep offering computer tools
+      // the agent can no longer use. Strip computer ids from the *stored*
+      // grant so the user's other unsaved edits stay unsaved.
+      const nextGroups = new Set(enabledToolGroups)
+      nextGroups.delete('computer')
+      setEnabledToolGroups(nextGroups)
+      await overlayAppClient.agents.update(activeWorkspaceId, agent.id, {
+        allowedToolIds: agent.allowedToolIds.filter((id) => !(COMPUTER_TOOL_IDS as readonly string[]).includes(id)),
+      })
       setAgentComputer(null)
-      setComputerEnabled(false)
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the computer.')
     } finally {
@@ -425,11 +467,18 @@ export function AgentEditorPage({
   const title = useMemo(() => {
     if (mode === 'new') return 'New agent'
     if (loading) return 'Agent'
-    return agent?.name ?? 'Agent not found'
-  }, [agent?.name, loading, mode])
+    if (agent) return name.trim() || agent.name
+    return 'Agent not found'
+  }, [agent, loading, mode, name])
+
+  // In panel presentation the editor lives inside an elevated surface (dialog
+  // card or docked side panel), so the shell/body stay transparent instead of
+  // painting a second, darker background inside the panel frame.
+  const inPanel = presentation === 'panel'
 
   const editor = (
     <AppScreenShell
+      style={inPanel ? { background: 'transparent' } : undefined}
       header={presentation === 'page' ? (
         <AppScreenHeader
           title={title}
@@ -450,7 +499,7 @@ export function AgentEditorPage({
         />
       ) : undefined}
     >
-      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
+      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full" style={inPanel ? { background: 'transparent' } : undefined}>
         {loading ? (
           <div className="mx-auto w-full max-w-2xl space-y-4" aria-label="Loading agent">
             <div className="h-9 w-48 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
@@ -527,25 +576,20 @@ export function AgentEditorPage({
                   setupRoots={setupRoots}
                   onSetupRootsChange={(value) => { setSetupRoots(value); markDirty() }}
                   onApproveSetup={approveSetupEnvironment}
+                  computer={agentType === 'overlay' && computersAvailable ? {
+                    size: computerSize,
+                    onSizeChange: (next: ComputerSize) => { setComputerSize(next); markDirty() },
+                    computer: agentComputer,
+                    openBusy: computerOpenBusy,
+                    lifecycleBusy: computerLifecycleBusy,
+                    onOpenDesktop: () => void openAgentComputer(),
+                    onTogglePower: () => void toggleAgentComputerPower(),
+                    onDelete: () => void deleteAgentComputer(),
+                    disabled: showcase,
+                  } : undefined}
                 />
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
-
-                {agentType === 'overlay' && computersAvailable ? (
-                  <AgentComputerSection
-                    enabled={computerEnabled}
-                    onEnabledChange={(next) => { setComputerEnabled(next); markDirty() }}
-                    size={computerSize}
-                    onSizeChange={(next) => { setComputerSize(next); markDirty() }}
-                    computer={agentComputer}
-                    openBusy={computerOpenBusy}
-                    lifecycleBusy={computerLifecycleBusy}
-                    onOpenDesktop={() => void openAgentComputer()}
-                    onTogglePower={() => void toggleAgentComputerPower()}
-                    onDelete={() => void deleteAgentComputer()}
-                    disabled={showcase}
-                  />
-                ) : null}
 
                 <DangerZone
                   mode={mode}

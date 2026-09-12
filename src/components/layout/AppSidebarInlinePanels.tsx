@@ -54,7 +54,10 @@ import { SidebarResourceList } from '@overlay/ui/primitives'
 import { AgentCreature } from '@/components/orb/Creature'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
+  AGENT_DRAFT_PREVIEW_EVENT,
   type AgentDirectoryChangedEventDetail,
+  type AgentDraftPreviewEventDetail,
+  type AgentDraftPreviewPatch,
 } from '@/shared/workspace/sidebar-events'
 import {
   getAgentOpenedAt,
@@ -437,15 +440,26 @@ export function AgentsInlinePanel({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
+  const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
   const [loading, setLoading] = useState(true)
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
 
+  // Unsaved editor drafts overlay the fetched directory so the row renames and
+  // re-skins while the user types; the override clears on save/cancel/close.
+  const previewedAgents = useMemo(
+    () => agents.map((agent) => {
+      const patch = draftPreviews[agent.id]
+      return patch ? { ...agent, ...patch } : agent
+    }),
+    [agents, draftPreviews],
+  )
+
   // Most recently used first; agents with no recorded use stay alphabetical.
   const sortedAgents = useMemo(
-    () => sortAgentsByRecency(agents, getAgentOpenedAt(workspaceId)),
-    [agents, workspaceId],
+    () => sortAgentsByRecency(previewedAgents, getAgentOpenedAt(workspaceId)),
+    [previewedAgents, workspaceId],
   )
 
   const loadAgents = useCallback(async (showLoading = true) => {
@@ -479,6 +493,22 @@ export function AgentsInlinePanel({
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
   }, [loadAgents, workspaceId])
+
+  useEffect(() => {
+    setDraftPreviews({})
+    const onDraftPreview = (event: Event) => {
+      const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
+      if (!detail || detail.workspaceId !== workspaceId) return
+      setDraftPreviews((current) => {
+        const next = { ...current }
+        if (detail.patch) next[detail.agentId] = detail.patch
+        else delete next[detail.agentId]
+        return next
+      })
+    }
+    window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
+    return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
+  }, [workspaceId])
 
   const openAgent = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,

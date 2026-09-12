@@ -93,7 +93,7 @@ export async function createAgentAndOpenChat(args: {
   push(href: string): void
   onDirectoryChanged(workspaceId: string): void
   onOpened(agentId: string): void
-}): Promise<{ status: 'created' | 'no-permission'; agent?: WorkspaceAgentDirectoryItem }> {
+}): Promise<{ status: 'created' | 'no-permission'; agent?: WorkspaceAgentDirectoryItem; conversationId?: string }> {
   const directory = await overlayAppClient.agents.list(args.workspaceId)
   if (!directory.canCreate) return { status: 'no-permission' }
   const taken = new Set(directory.agents.map((agent) => agent.name.toLowerCase()))
@@ -127,5 +127,5 @@ export async function createAgentAndOpenChat(args: {
   if (conversationId) {
     await sendAgentGreeting({ workspaceId: args.workspaceId, conversationId, agentId: created.agent.id })
   }
-  return { status: 'created', agent: created.agent }
+  return { status: 'created', agent: created.agent, conversationId: conversationId ?? undefined }
 }
