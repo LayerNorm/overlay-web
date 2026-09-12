@@ -71,7 +71,7 @@ export class ComputerService {
     runtimeFor(provider: string): SandboxRuntime | undefined
     /** Resolve an agent owner's visibility and creator principal for access checks. */
     agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string } | null>
-    limits?: (input: { workspaceId: string; ownerType: ComputerOwnerType }) => Promise<ComputerLimits | undefined> | ComputerLimits | undefined
+    limits?: ((input: { workspaceId: string; ownerType: ComputerOwnerType }) => Promise<ComputerLimits | undefined> | ComputerLimits | undefined) | ComputerLimits
     now?: () => number
     newId?: () => string
     sleep?: (ms: number) => Promise<void>
@@ -200,6 +200,17 @@ export class ComputerService {
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
     await instance.delete().catch((_error) => undefined)
     await this.dependencies.repository.delete(computer.id)
+  }
+
+  /** Read one computer for an authorized actor — no provider reconnect. */
+  async getForActor(args: { actor: ComputerActor; computerId: string }): Promise<Computer> {
+    const computer = await this.dependencies.repository.get(args.computerId)
+    if (!computer) throw new ComputerServiceError('not_found', 'Computer not found', 404)
+    const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
+    if (!this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) {
+      throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
+    }
+    return computer
   }
 
   async listForWorkspace(args: { actor: ComputerActor; workspaceId: string }): Promise<Computer[]> {

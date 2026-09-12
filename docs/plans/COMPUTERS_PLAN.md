@@ -204,15 +204,19 @@ File-by-file implementation sequence for phases 1–2 lives in
    state, stop/resume persistence, `/home/user` + `/tmp` path boundary).
    Known flake handled: a box occasionally lands in `error` during
    provisioning — `create()` deletes it and retries once.
-1. **Foundation** *(storage/entity half done — wiring Phase 1)*: shared
+1. **Foundation** *(wiring phases 1–2 done)*: shared
    `Computer` types in `@overlay/workspace-contracts`, `ComputerRepository`
    port, `PostgresComputerRepository` (migration `0075_computers`, unique
    `(workspace_id, owner_type, owner_id)` binding) and
    `ConvexComputerRepository` (`convex/computers/computers.ts`,
    `by_workspaceId_owner` index) both pass the shared contract suite;
    registered in `AppDataRepositories` + parity matrix (`computers` domain,
-   P7). Still open here: capability gate, `/api/v1/computers` routes, Settings
-   page — personal computers only (create/open/stop/delete).
+   P7). The authenticated `/api/v1/computers` surface landed too — seven BFF
+   routes, `computerService` in the server context, `computers` capability key,
+   and the typed `ComputersClient` — all capability-gated off until the
+   provider registry lands. Still open here: `features.computers` +
+   `BOX_API_KEY` derivation, Settings page — personal computers only
+   (create/open/stop/delete).
 2. **Agent binding**: `computer` editor section (Overlay agents), DM status
    chip + Watch, headless `computer_*` tools.
 3. **GUI + lifecycle policy**: desktop driver tools, idle auto-stop,

@@ -63,6 +63,7 @@ class FakeRuntime implements SandboxRuntime {
   readonly capabilities = { desktop: true } as never
   creates: SandboxCreateRequest[] = []
   instances: FakeInstance[] = []
+  reconnects = 0
   fail = false
   async create(request: SandboxCreateRequest) {
     this.creates.push(request)
@@ -72,6 +73,7 @@ class FakeRuntime implements SandboxRuntime {
     return instance as unknown as SandboxInstance
   }
   async reconnect(reference: string) {
+    this.reconnects += 1
     return this.instances.find((instance) => instance.reference === reference) as unknown as SandboxInstance
   }
   async restore() { throw new Error('not implemented') }
@@ -231,6 +233,32 @@ test('missing provider configuration fails closed', async () => {
     svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
     (error) => error instanceof ComputerServiceError && error.code === 'provider_unavailable',
   )
+})
+
+test('getForActor reads a row without reconnecting and enforces access', async () => {
+  const agents = { 'agent-private': { visibility: 'creator' as const, createdByPrincipalId: 'principal-1' } }
+  const { svc, repository, runtimes } = service({ agents })
+  const mine = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  const private_ = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-private' })
+
+  assert.equal((await svc.getForActor({ actor: member, computerId: mine.id })).id, mine.id)
+  assert.equal((await svc.getForActor({ actor: member, computerId: private_.id })).id, private_.id)
+  // getForActor must not touch the provider — reconnect is never invoked.
+  assert.equal(runtimes.box.reconnects, 0)
+
+  await assert.rejects(
+    svc.getForActor({ actor: otherMember, computerId: mine.id }),
+    (error) => error instanceof ComputerServiceError && error.code === 'forbidden',
+  )
+  await assert.rejects(
+    svc.getForActor({ actor: otherMember, computerId: private_.id }),
+    (error) => error instanceof ComputerServiceError && error.code === 'forbidden',
+  )
+  await assert.rejects(
+    svc.getForActor({ actor: member, computerId: 'missing' }),
+    (error) => error instanceof ComputerServiceError && error.code === 'not_found',
+  )
+  assert.equal(repository.rows.size, 2)
 })
 
 test('listForWorkspace only returns computers the actor may see', async () => {

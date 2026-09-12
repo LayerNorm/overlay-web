@@ -10,6 +10,7 @@ import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
+import { ComputersClient } from './computers/client'
 import { ConversationsClient } from './chat/conversations-client'
 import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
@@ -63,6 +64,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),
+    computers: new ComputersClient(http),
   }
 }
 

@@ -249,6 +249,22 @@ binding holds on both; `repositories.computers` resolves in both branches.
 
 ## Phase 2 — API surface
 
+**Status: done.** All seven routes exist (shells + domain handlers),
+`computerService` is on `OverlayServerContext` with the `agentOwner` resolver
+backed by `workspaceAgentRepository.get` and static v1 limits (25/workspace,
+1/user, all sizes). `CapabilityCheck.computers` + label + route mapping landed
+here (pulled forward from Phase 3 — `CAPABILITY_LABELS` is exhaustive, so the
+label cannot compile without the union member); default `false` means every
+route answers `capability_disabled` until Phase 3's feature-flag + `BOX_API_KEY`
+derivation. `runtimeFor` is a stub returning `undefined`, so provision fails
+closed as `provider_unavailable` (503) — correct per this phase's goal. Two
+deviations from the draft: the actor snippet now carries `principalId`
+(`context.workspace.principal.id`), required by the creator-only agent access
+check; and `ComputerDesktopTicket` is redeclared in the api-client because the
+package does not depend on `@overlay/sandbox-runtime`. API-key scope for
+computer routes falls through to `admin` — revisit if scoped keys should reach
+computers. `OWNER_FUNDED_OPERATIONS` intentionally untouched until metering.
+
 Goal: authenticated, capability-gated `/api/v1/computers` routes plus the
 typed client. Ships returning `provider_unavailable` (503) until Phase 3 lands
 — that is the correct behavior.
@@ -300,9 +316,13 @@ nested paths), `import * as domainService from '@/server/app-api/v1/computers/..
 ```ts
 const actor = {
   userId: context.auth.userId,
+  principalId: context.workspace.principal.id,
   workspaceRole: context.workspace.membership.role === 'owner' ? 'owner' as const : 'member' as const,
 }
 ```
+
+(`principalId` is required — the creator-only agent access check compares it
+against the agent's `createdByPrincipalId`.)
 
 (membership roles include `guest` — anything non-owner maps to `member`.)
 
