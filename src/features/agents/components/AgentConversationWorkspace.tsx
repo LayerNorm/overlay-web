@@ -14,6 +14,10 @@ import {
   pickAgentToOpen,
   rememberAgentOpened,
 } from '@/shared/agents/last-agent-by-workspace'
+import {
+  getAgentEditorPanelMode,
+  setAgentEditorPanelMode,
+} from '@/shared/agents/agent-editor-presentation'
 import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { AgentEditorPage } from './AgentEditorPage'
 import { buildAgentsDirectoryHref, createAgentAndOpenChat, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
@@ -177,7 +181,11 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
-  const [panelMode, setPanelMode] = useState<'dialog' | 'side'>('dialog')
+  const [panelMode, setPanelModeState] = useState<'dialog' | 'side'>(() => getAgentEditorPanelMode())
+  const setPanelMode = useCallback((next: 'dialog' | 'side') => {
+    setAgentEditorPanelMode(next)
+    setPanelModeState(next)
+  }, [])
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
@@ -259,7 +267,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       agentId={editorMode === 'edit' ? (agentId ?? undefined) : undefined}
       presentation="panel"
       panelMode={panelMode}
-      onTogglePanelMode={() => setPanelMode((current) => (current === 'dialog' ? 'side' : 'dialog'))}
+      onTogglePanelMode={() => setPanelMode(panelMode === 'dialog' ? 'side' : 'dialog')}
       onClose={closeEditor}
       onCreated={openCreatedAgent}
       onArchived={handleArchived}

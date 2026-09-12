@@ -131,7 +131,7 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'computer',
     label: 'Computer',
     description:
-      'Run commands, read and write files, and open URLs on the agent\'s persistent cloud desktop.',
+      'Give this agent a persistent cloud desktop — it keeps files, signed-in apps, and a live screen between sessions.',
     toolIds: COMPUTER_TOOL_IDS,
   },
   {

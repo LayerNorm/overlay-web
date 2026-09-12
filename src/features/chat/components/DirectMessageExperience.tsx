@@ -47,7 +47,11 @@ import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { dispatchChatArchived, dispatchChatCreated } from '@/shared/chat/chat-title'
-import { AGENT_DIRECTORY_CHANGED_EVENT } from '@/shared/workspace/sidebar-events'
+import {
+  AGENT_DIRECTORY_CHANGED_EVENT,
+  AGENT_DRAFT_PREVIEW_EVENT,
+  type AgentDraftPreviewEventDetail,
+} from '@/shared/workspace/sidebar-events'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -794,6 +798,26 @@ export function DirectMessageExperience({
     avatarColor?: string
     avatarShape?: string
   }>>(new Map())
+  // Unsaved editor drafts overlay the fetched directory so the header renames
+  // and re-skins while the user types; cleared by a null patch on save/cancel.
+  const [agentDrafts, setAgentDrafts] = useState<ReadonlyMap<string, {
+    name: string
+    avatarColor?: string
+    avatarShape?: string
+  }>>(new Map())
+  const directoryAgentsByPrincipal = useMemo(() => {
+    if (agentDrafts.size === 0) return agentsByPrincipal
+    const merged = new Map(agentsByPrincipal)
+    for (const [principalId, draft] of agentDrafts) {
+      const existing = merged.get(principalId)
+      merged.set(principalId, {
+        name: draft.name,
+        avatarColor: draft.avatarColor ?? existing?.avatarColor,
+        avatarShape: draft.avatarShape ?? existing?.avatarShape,
+      })
+    }
+    return merged
+  }, [agentsByPrincipal, agentDrafts])
   useEffect(() => {
     if (showcase) {
       setAgentsByPrincipal(isAgentShowcase ? new Map([[SHOWCASE_AGENT_PRINCIPAL_ID, {
@@ -805,6 +829,7 @@ export function DirectMessageExperience({
     }
     if (!activeWorkspaceId) {
       setAgentsByPrincipal(new Map())
+      setAgentDrafts(new Map())
       return
     }
     let cancelled = false
@@ -823,13 +848,25 @@ export function DirectMessageExperience({
     // event; refetching keeps the header and message identity in sync without
     // a reload.
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    const onDraftPreview = (event: Event) => {
+      const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
+      if (!detail?.principalId || detail.workspaceId !== activeWorkspaceId) return
+      setAgentDrafts((current) => {
+        const next = new Map(current)
+        if (detail.patch) next.set(detail.principalId!, detail.patch)
+        else next.delete(detail.principalId!)
+        return next
+      })
+    }
+    window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
     return () => {
       cancelled = true
       window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+      window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
     }
   }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
   const headerAgent = soloAgentParticipant
-    ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
+    ? (directoryAgentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
     : null
   const title = conversationType === 'channel'
     ? channel?.name ?? draftTitle ?? 'Channel'
@@ -1419,7 +1456,7 @@ export function DirectMessageExperience({
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
     const authorAgent = message.authorPrincipalId
-      ? agentsByPrincipal.get(message.authorPrincipalId)
+      ? directoryAgentsByPrincipal.get(message.authorPrincipalId)
       : undefined
     // The directory entry is the live name; participant displayName snapshots
     // go stale when an agent is renamed.
@@ -1437,7 +1474,7 @@ export function DirectMessageExperience({
     const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
     const teaserAuthor = teaserMessage
       ? teaserMessage.importedAuthorName?.trim()
-        ?? (teaserMessage.authorPrincipalId ? agentsByPrincipal.get(teaserMessage.authorPrincipalId)?.name : undefined)
+        ?? (teaserMessage.authorPrincipalId ? directoryAgentsByPrincipal.get(teaserMessage.authorPrincipalId)?.name : undefined)
         ?? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
         ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
       : null

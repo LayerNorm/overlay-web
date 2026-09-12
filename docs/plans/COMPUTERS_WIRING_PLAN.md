@@ -602,6 +602,18 @@ Wiring notes:
   provisioned row; `OverlayAgentFields` hides the `computer` toggle when the
   capability is off.
 
+**Merged toggle (follow-up).** The standalone "Give this agent a computer"
+toggle was folded into the Computer tool-group row: `computerEnabled` is now
+just `enabledToolGroups.has('computer')`, so the single toggle grants the
+tools *and* provisions the machine. `AgentComputerSection` no longer renders
+its own toggle — it is the accessory under the group row (size picker while
+unprovisioned, machine card with lifecycle controls once bound, "saving
+deletes" warning when toggled off with a machine present). A bound machine
+force-adds `computer` to the draft groups on load so the toggle never shows
+off above a live computer, and deleting the machine persists the grant
+removal immediately (otherwise the saved grant would keep offering computer
+tools with nothing bound — the Stan Lee loop).
+
 ## Phase 6 — automation wiring (optional, defer)
 
 Scheduled agent runs could wake the agent's computer and attach a desktop at
