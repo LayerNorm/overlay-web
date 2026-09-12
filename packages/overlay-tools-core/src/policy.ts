@@ -10,6 +10,19 @@ export const GENERATION_TOOL_IDS = [
   'edit_video',
 ] as const
 
+/**
+ * Persistent-computer tool ids, also listed in src/shared/agents/tool-groups.ts
+ * for the agent Computer group — this package cannot import app code, so the
+ * two lists must stay in sync.
+ */
+export const COMPUTER_TOOL_IDS = [
+  'computer_exec',
+  'computer_read_file',
+  'computer_write_file',
+  'computer_list_files',
+  'computer_open_url',
+] as const
+
 export const OVERLAY_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
@@ -34,6 +47,9 @@ export const OVERLAY_TOOL_IDS = [
   'update_automation',
   'pause_automation',
   'delete_automation',
+  'create_agent',
+  'update_agent',
+  ...COMPUTER_TOOL_IDS,
   ...GENERATION_TOOL_IDS,
 ] as const
 

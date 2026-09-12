@@ -12,6 +12,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Agent identity edits now preview live: typing a name or picking a shape/color updates the sidebar roster row, the conversation header, and the editor's own title before saving; cancelling or closing clears the preview.
 
 - Cancelling the agent editor on a never-saved agent now abandons creation — the agent is archived, its greeting DM is removed, and the view returns to the most recently used agent (or the agents index). Saving or explicitly archiving clears the abandon marker first, so a saved agent is never deleted by a later close.
+- Saving the agent editor now closes the dialog and docked panel instead of leaving it open on a saved flash; the standalone editor page still stays open.
+- New agents now default to every tool group except **Computer** — agents are fully capable out of the box, while the computer group stays opt-in because enabling it provisions a persistent paid machine on save.
+- Generating agent responses in DMs now show a stop button to the left of the reaction control — it cancels just that run (`POST /api/v1/conversations/stop` with the message id), finalizes the partial reply with an interrupted marker, and disappears once the message settles.
 
 - Computer agent tools (wiring phase 5.5): a new opt-in **Computer** tool group lets agents drive their bound persistent desktop — `computer_exec` (shell commands, 5m cap), `computer_read_file`/`computer_write_file`/`computer_list_files`, and `computer_open_url` (opens in the machine's real browser; the desktop stream ticket never enters the transcript — users watch via Open desktop). Tools resolve the executing owner's bound computer through `ComputerService` — never a model-supplied id — resume stopped machines, and are withheld when the `computers` capability is off. The agent editor's provisioned computer row also gained inline Stop/Start and Delete (confirm) controls, and the Computer tool toggle hides when the capability is off.
 
@@ -81,6 +84,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Agent computer and agent-management tools no longer fail with `[tools] Tool not allowed` — `computer_exec`/`computer_read_file`/`computer_write_file`/`computer_list_files`/`computer_open_url` and `create_agent`/`update_agent` were exposed by `build.ts` but missing from the global `OVERLAY_TOOL_IDS` registry, so the defense-in-depth assert rejected every call. `COMPUTER_TOOL_IDS` now lives in `@overlay/tools-core` (re-exported by `tool-groups.ts`) so the registry and the agent group share one list, and a test pins every asserted id.
 - Agent settings on the agents surface now docks as a right side panel (via the shell's `rightPanel` slot) instead of stacking under the conversation; dialog mode remains available as a toggle.
 - Agent DM headers and message avatars now track the agent's live directory name — renames in the editor propagate immediately via `agent-directory-changed` instead of showing the stale "Untitled agent" snapshot stored on the conversation/participant records.
 - Agent DM message rows now match personal chat: hover no longer paints a row background, and the action row reveals beneath the message instead of a floating rail at the top. Channels keep the Slack-style floating rail.

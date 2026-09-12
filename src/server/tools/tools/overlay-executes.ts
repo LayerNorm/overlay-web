@@ -954,6 +954,16 @@ async function computerInstanceFor(
     })
     return { ok: true, computer, instance }
   } catch (err) {
+    // An unbound owner is terminal — every computer tool hits it, so tell the
+    // model to stop retrying and ask the user to bind one instead of looping.
+    if (err instanceof ComputerServiceError && err.code === 'not_found') {
+      return {
+        ok: false,
+        error:
+          'No computer is bound to this owner — do not retry other computer tools. ' +
+          'Ask the user to enable a computer for this agent in the agent editor (Computer toggle).',
+      }
+    }
     return { ok: false, error: computerErrorResult(err, 'Computer unavailable').error ?? 'Computer unavailable' }
   }
 }

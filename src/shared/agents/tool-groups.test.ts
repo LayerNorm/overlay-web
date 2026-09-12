@@ -92,6 +92,14 @@ test('the computer group is opt-in — never in the default grant', () => {
   assert.equal(enabledAgentToolGroupIds(grant).has('computer'), false)
 })
 
+test('new agents default to every group except computer', () => {
+  const expected = AGENT_TOOL_GROUPS.map((group) => group.id).filter((id) => id !== 'computer')
+  assert.deepEqual([...DEFAULT_AGENT_TOOL_GROUP_IDS].sort(), expected.sort())
+  const grant = toolIdsForEnabledGroups(new Set(DEFAULT_AGENT_TOOL_GROUP_IDS))
+  const enabled = enabledAgentToolGroupIds(grant)
+  for (const id of expected) assert.ok(enabled.has(id), `default grant missing ${id}`)
+})
+
 test('the computer group needs every computer tool id to count as enabled', () => {
   const computer = AGENT_TOOL_GROUPS.find((g) => g.id === 'computer')!
   assert.equal(

@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { z } from 'zod'
 import {
+  COMPUTER_TOOL_IDS,
   allowedOverlayToolIdsForTurn,
   assertOverlayToolAllowed,
   jsonSchemaToZod,
+  overlayToolIdSet,
   shouldPersistToolInvocation,
   toolCostBucketForId,
 } from './index'
@@ -29,6 +31,15 @@ describe('@overlay/tools-core', () => {
     assert.doesNotThrow(() => assertOverlayToolAllowed('search_knowledge', ['search_knowledge']))
     assert.throws(() => assertOverlayToolAllowed('search_knowledge', ['list_notes']), /not exposed/)
     assert.throws(() => assertOverlayToolAllowed('unknown_tool'), /not allowed/)
+  })
+
+  it('registers the agent-management and computer tools that build.ts asserts', () => {
+    // Every assertToolAllowed id in build.ts must exist here or the execute
+    // throws "not allowed" regardless of the turn allow-list.
+    const registry = overlayToolIdSet()
+    for (const id of ['create_agent', 'update_agent', ...COMPUTER_TOOL_IDS]) {
+      assert.ok(registry.has(id), `${id} missing from OVERLAY_TOOL_IDS`)
+    }
   })
 
   it('converts JSON schema objects into zod validators', () => {
