@@ -1,12 +1,11 @@
 /**
- * System-prompt text for models: the chat UI uses remark-math + KaTeX. Inline math
- * should use `$...$`; display math should use standalone `$$` fences.
+ * System-prompt text for models: the chat UI uses remark-math + KaTeX. Three
+ * hard rules, no exceptions — the renderer repairs currency and stray fences,
+ * but only well-formed delimiters render reliably.
  */
 export const MATH_FORMAT_INSTRUCTION = [
-  'Formatting requirements for mathematical notation:',
-  '- Use standard Markdown math only: inline math as $...$ and display equations as standalone $$ blocks.',
-  '- For display math, put the opening $$ and closing $$ on their own lines.',
-  '- Do not use $$...$$ inline inside a sentence; use $...$ for short expressions like $O(n^2)$ or $\\Sigma$.',
-  '- Forbidden: wrapping math in square brackets [ ... ] or only in parentheses ( ... ); bare \\[...\\] or \\(...\\); or leaving TeX commands (e.g. \\frac, \\sum, \\Re) undelimited in prose.',
-  '- Keep normal explanatory sentences outside math delimiters.',
+  'Mathematical notation — three hard rules, no exceptions:',
+  '1. Inline math lives inside a sentence: $x^2 + y^2 = r^2$.',
+  '2. Display math is always three parts: a line containing only $$, then the equation lines, then a line containing only $$. Never put $$ at the end of an equation line.',
+  '3. Never emit a $ character inside an equation or anywhere outside these two forms.',
 ].join('\n')

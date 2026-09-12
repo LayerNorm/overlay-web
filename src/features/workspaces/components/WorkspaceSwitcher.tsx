@@ -2,8 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useWorkspace } from './WorkspaceProvider'
-import { buildWorkspaceHref } from '../lib/workspace-routing'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { WorkspaceSwitcherView, type WorkspaceSwitcherMenuPosition } from './WorkspaceSwitcherView'
 
 export function WorkspaceSwitcher({

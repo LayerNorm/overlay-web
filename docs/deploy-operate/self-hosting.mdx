@@ -454,7 +454,7 @@ With OIDC instead of WorkOS:
 
 ## Docker Compose
 
-Use this path when an enterprise operator wants a source checkout with a plain Compose install. The default Compose file pulls a prebuilt `ghcr.io/layernorm/overlay-web` image; local source builds are opt-in through `docker-compose.build.yml`.
+Use this path when an enterprise operator wants a source checkout with a plain Compose install. The default Compose file pulls a prebuilt `ghcr.io/layernorm/overlay-web` image; local source builds are opt-in through `docker/docker-compose.build.yml`.
 
 This is a minimal on-prem shape for the app container. It assumes the customer
 already operates the selected database, auth database, object storage, Redis,
@@ -469,7 +469,7 @@ docker compose pull
 docker compose up -d
 ```
 
-`docker-compose.yml` mounts `overlay.config.json` into the container. The compose file intentionally does not run object storage, auth, database, browser automation, or sandbox services; those are enterprise-owned providers selected through config.
+`docker/docker-compose.yml` mounts `overlay.config.json` into the container. The compose file intentionally does not run object storage, auth, database, browser automation, or sandbox services; those are enterprise-owned providers selected through config.
 
 ```yaml
 services:
@@ -491,10 +491,10 @@ services:
 After editing source code, build locally with the override file:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up --build -d
 ```
 
-Existing `docker-compose.onprem.yml` and `.env.onprem.example` files are retained as compatibility aliases for older operator instructions.
+Existing `docker/docker-compose.onprem.yml` and `.env.onprem.example` files are retained as compatibility aliases for older operator instructions.
 
 ## Secrets Placement
 

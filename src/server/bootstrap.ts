@@ -70,6 +70,8 @@ import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspa
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
+import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
@@ -147,6 +149,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
+  computerService: ComputerService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
@@ -291,6 +294,24 @@ export function createOverlayServerContext(
     ? new PostgresWorkspaceAgentRepository(postgresDb)
     : new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  // v1 static quotas — entitlement-derived limits arrive with the quota +
+  // metering phase of the computers plan.
+  const computerLimits: ComputerLimits = {
+    maxPerWorkspace: 25,
+    maxPersonalPerUser: 1,
+    allowedSizes: ['small', 'default', 'large'],
+  }
+  const computerService = new ComputerService({
+    repository: appData.repositories.computers,
+    runtimeFor: computerRuntimeForProvider,
+    agentOwner: async (workspaceId, agentId) => {
+      const agent = await workspaceAgentRepository.get({ agentId, workspaceId })
+      return agent
+        ? { visibility: agent.visibility, createdByPrincipalId: agent.createdByPrincipalId }
+        : null
+    },
+    limits: computerLimits,
+  })
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,
     repository: appData.repositories.connectedAgents,
@@ -467,6 +488,7 @@ export function createOverlayServerContext(
     workspaceGovernanceService,
     workspaceAgentService,
     connectedAgentControlPlane,
+    computerService,
     workspaceSharingService,
     workspaceSearchService,
     knowledgeSourceIngestionService,

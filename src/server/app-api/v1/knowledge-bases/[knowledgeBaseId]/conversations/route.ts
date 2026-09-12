@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
-import type { Id } from '../../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
 
 export async function GET(_request: NextRequest, context: AppApiRouteContext) {
@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
     })
     const conversations = (await Promise.all(attachments.map(({ conversationId }) => (
       server.appData.repositories.conversations.getConversationById({
-        conversationId: conversationId as Id<'conversations'>,
+        conversationId: asConversationId(conversationId),
         userId: getAuthorizedResourceUserId(context),
       })
     )))).filter(Boolean)

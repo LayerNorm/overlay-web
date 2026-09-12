@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { OverlayMark } from "@/components/orb/Orb";
 import type { ReactNode } from "react";
 import {
   ArrowRight,
@@ -148,13 +149,7 @@ const demoNavItems = [
 function DemoBrandMark() {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5">
-      <Image
-        src="/assets/overlay-logo.png"
-        alt=""
-        width={MARKETING_LOGO_SIZE}
-        height={MARKETING_LOGO_SIZE}
-        className="shrink-0"
-      />
+      <OverlayMark size={MARKETING_LOGO_SIZE} label="" />
       <span className="text-sm font-medium tracking-tight" style={marketingSerifStyle()}>
         overlay
       </span>

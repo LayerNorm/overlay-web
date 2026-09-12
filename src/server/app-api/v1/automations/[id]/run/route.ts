@@ -6,7 +6,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationService } from '@/server/automations/http'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
-import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, buildApprovalToken } from '@/workflows/automation-schedule'
+import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, buildApprovalToken } from '@/server/workflows/automation-schedule'
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/automations/{id}/run

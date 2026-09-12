@@ -169,65 +169,6 @@ test('Postgres governance repository scopes policy, identity, and exports per wo
       }), null)
     })
 
-    await t.test('platform installs upsert per team and resolve team-first', async () => {
-      const installation = await repository.upsertPlatformInstallation({
-        installationId: `${scope}_team`,
-        workspaceId: orgWorkspaceId,
-        directory: 'slack',
-        externalTeamId: `${scope}_team`,
-        teamName: 'Acme',
-        botUserId: 'Ubot',
-        botTokenCipher: 'cipher-1',
-        installedByPrincipalId: ownerPrincipalId,
-        now: 8_000,
-      })
-      assert.equal(installation.botTokenCipher, 'cipher-1')
-      const relinked = await repository.upsertPlatformInstallation({
-        installationId: `${scope}_team`,
-        workspaceId: orgWorkspaceId,
-        directory: 'slack',
-        externalTeamId: `${scope}_team`,
-        botTokenCipher: 'cipher-2',
-        installedByPrincipalId: ownerPrincipalId,
-        now: 8_100,
-      })
-      assert.equal(relinked.id, installation.id)
-      assert.equal(
-        (await repository.getPlatformInstallationByTeam({ directory: 'slack', externalTeamId: `${scope}_team` }))?.botTokenCipher,
-        'cipher-2',
-      )
-      assert.equal(
-        (await repository.listPlatformInstallations({ workspaceId: orgWorkspaceId })).length,
-        1,
-      )
-      assert.equal(await repository.claimPlatformEvent({
-        workspaceId: orgWorkspaceId,
-        directory: 'slack',
-        externalTeamId: `${scope}_team`,
-        eventId: `${scope}_event`,
-        now: 8_200,
-      }), true)
-      assert.equal(await repository.claimPlatformEvent({
-        workspaceId: orgWorkspaceId,
-        directory: 'slack',
-        externalTeamId: `${scope}_team`,
-        eventId: `${scope}_event`,
-        now: 8_201,
-      }), false)
-      assert.equal(
-        await repository.deletePlatformInstallation({
-          workspaceId: orgWorkspaceId,
-          directory: 'slack',
-          externalTeamId: `${scope}_team`,
-        }),
-        true,
-      )
-      assert.equal(
-        await repository.getPlatformInstallationByTeam({ directory: 'slack', externalTeamId: `${scope}_team` }),
-        null,
-      )
-    })
-
     await t.test('audit export history is append-only per workspace', async () => {
       await repository.recordAuditExport({
         id: `${scope}_export_1`,

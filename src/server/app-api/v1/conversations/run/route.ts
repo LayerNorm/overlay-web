@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'conversationId is required' }, { status: 400 })
     }
     const run = await getOverlayServerContext().appData.repositories.conversations.getLatestAgentRun({
-      conversationId: conversationId as Id<'conversations'>,
+      conversationId: asConversationId(conversationId),
       userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({ run })

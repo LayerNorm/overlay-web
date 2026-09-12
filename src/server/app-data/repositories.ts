@@ -23,6 +23,8 @@ import { PostgresConversationCollaborationRepository } from '@/server/conversati
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
+import { ConvexFileIngestionJobRepository } from '@/server/files/ConvexFileIngestionJobRepository'
+import type { FileIngestionJobRepository } from '@/server/files/FileIngestionJobRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
 import {
@@ -116,6 +118,9 @@ import {
   PostgresProviderConnectionRepository,
   type ProviderConnectionRepository,
 } from '@/server/ai/provider-connections'
+import type { ComputerRepository } from '@/server/computers/ComputerRepository'
+import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
+import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -128,11 +133,13 @@ export interface AppDataRepositories {
   billingEvents: BillingProviderEventRepository
   billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
+  computers: ComputerRepository
   conversationCollaboration: ConversationCollaborationRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
+  fileIngestionJobs: FileIngestionJobRepository
   idempotency: IdempotencyRepository
   modelCatalog: ModelCatalogRepository
   memories: MemoryRepository
@@ -190,11 +197,15 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         billingEvents: new PostgresBillingProviderEventRepository(db),
         billingWebhooks: billing,
         chatSuggestions: new PostgresChatSuggestionRepository(db),
+        computers: new PostgresComputerRepository(db),
         conversationCollaboration: new PostgresConversationCollaborationRepository(db),
         conversations,
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
+        // Document ingestion runs on the Convex runner only; Postgres mode
+        // keeps the synchronous ingest path and gates this route to 501.
+        fileIngestionJobs: unsupportedRepository<FileIngestionJobRepository>('FileIngestionJobRepository'),
         idempotency: new PostgresIdempotencyRepository(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
         memories: new PostgresMemoryRepository(db),
@@ -231,11 +242,13 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       billingEvents: new ConvexBillingProviderEventRepository(),
       billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
+      computers: new ConvexComputerRepository(),
       conversationCollaboration: new ConvexConversationCollaborationRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
+      fileIngestionJobs: new ConvexFileIngestionJobRepository(),
       idempotency: new ConvexIdempotencyRepository(),
       modelCatalog: new ConvexModelCatalogRepository(),
       memories: new ConvexMemoryRepository(),

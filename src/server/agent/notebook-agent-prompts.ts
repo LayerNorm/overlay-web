@@ -34,9 +34,3 @@ Analyze the user's request to decide if they want:
 - Use LaTeX for math: $inline$ and $$display$$ with NO spaces between $ and content
 - Use markdown table syntax: | Header1 | Header2 | with |---| separator row
 - Use --- on its own line for horizontal rules`
-
-/** @deprecated Use NOTEBOOK_AGENT_PROMPT instead */
-export const NOTEBOOK_WRITE_MODE_PROMPT = NOTEBOOK_AGENT_PROMPT
-
-/** @deprecated Use NOTEBOOK_AGENT_PROMPT instead */
-export const NOTEBOOK_ASK_MODE_PROMPT = NOTEBOOK_AGENT_PROMPT

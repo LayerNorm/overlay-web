@@ -3,11 +3,11 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { WORKSPACE_CHANGED_EVENT, type WorkspaceChangedEventDetail } from '@/shared/workspaces/events'
-import { useWorkspace } from './WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import {
   isWorkspaceNavigationPending,
   readWorkspaceIdFromPath,
-} from '../lib/workspace-routing'
+} from '@/shared/workspaces/routing'
 
 /**
  * Keeps route content isolated from the workspace that produced it.

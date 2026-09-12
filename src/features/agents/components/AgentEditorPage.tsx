@@ -1,59 +1,81 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, MessageSquare } from 'lucide-react'
-import { Button, Input } from '@overlay/ui/primitives'
+import { ArrowLeft } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type {
+  Computer,
+  ComputerSize,
   WorkspaceAgentCreateInput,
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
-  WorkspaceAgentPlatform,
   WorkspaceAgentVisibility,
-  WorkspacePlatformInstallationSummary,
 } from '@overlay/workspace-contracts'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   getEnabledChatModels,
   getGatewayCatalogRevision,
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
-import { buildWorkspaceAgentInput, isAgentEditorValid } from '../lib/agent-editor-input'
+import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
-import { SHOWCASE_AGENTS } from '../lib/showcase-agents'
+import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import {
   AccessSelector,
   AgentAvatar,
+  AgentBehaviorFields,
+  AgentComputerSection,
   AgentTypeSelector,
   AVATAR_COLORS,
-  ByoAgentFields,
-  OverlayAgentFields,
-  PlatformAccessFields,
+  DangerZone,
+  MasterAgentNotice,
   type AgentType,
 } from './AgentEditorForm'
+import {
+  AgentEditorDialog,
+  AgentEditorSidePanel,
+  SayHelloButton,
+} from './AgentEditorPresentation'
 import { useByoConnection } from './use-byo-connection'
 
-export function AgentEditorPage({ mode, agentId, showcase = false }: {
+export function AgentEditorPage({
+  mode,
+  agentId,
+  showcase = false,
+  presentation = 'page',
+  panelMode,
+  onTogglePanelMode,
+  onClose,
+  onCreated,
+  onArchived,
+}: {
   mode: 'new' | 'edit'
   agentId?: string
   showcase?: boolean
+  presentation?: 'page' | 'panel'
+  panelMode?: 'dialog' | 'side'
+  onTogglePanelMode?: () => void
+  onClose?: () => void
+  onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
+  onArchived?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const showHello = searchParams?.get('hello') === '1'
-  // Tab-aware creation default: the Personal tab links here with
-  // ?scope=creator so new agents start Personal.
-  const scopeDefault = searchParams?.get('scope') === 'creator' ? 'creator' : 'workspace'
   const { activeWorkspaceId } = useWorkspace()
+  const { capabilities } = useOverlayCapabilities()
+  const computersAvailable = capabilities.computers === true
   const { revision } = useGatewayModelCatalog({ enabled: true })
   const { settings } = useAppSettings()
   const enabledModelIds = settings.enabledChatModelIds
@@ -72,20 +94,8 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   const [instructions, setInstructions] = useState(initial.instructions)
   const [modelId, setModelId] = useState<string>(initial.modelId)
   const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
-  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(
-    mode === 'new' ? scopeDefault : initial.visibility,
-  )
-  const [platforms, setPlatforms] = useState<WorkspaceAgentPlatform[]>(() => (
-    mode === 'new'
-      ? (scopeDefault === 'workspace' ? ['slack', 'msteams'] : [])
-      : (agent?.platforms ?? ['slack', 'msteams'])
-  ))
-  const [installs, setInstalls] = useState<WorkspacePlatformInstallationSummary[]>([])
-  const [installsLoading, setInstallsLoading] = useState(false)
-  const [platformsError, setPlatformsError] = useState<string | null>(null)
-  const [platformsBusy, setPlatformsBusy] = useState(false)
-  const [slackLinkId, setSlackLinkId] = useState('')
-  const [slackSelfId, setSlackSelfId] = useState<string | null>(null)
+  const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>(initial.avatarShape)
+  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
     : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
@@ -101,7 +111,19 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
+  const [computerEnabled, setComputerEnabled] = useState(false)
+  const [computerSize, setComputerSize] = useState<ComputerSize>('default')
+  const [computerOpenBusy, setComputerOpenBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  // Explicit save model: every change marks the form dirty; nothing persists
+  // until Save. Cancel discards back to the loaded agent and closes.
+  const markDirty = useCallback(() => {
+    setSavedFlash(false)
+    setDirty(true)
+  }, [])
 
   // Load the agent (edit) or the create permission (new).
   useEffect(() => {
@@ -134,19 +156,24 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     return () => { cancelled = true }
   }, [activeWorkspaceId, showcase])
 
-  // Reset the form whenever the loaded agent changes (initial load, save).
+  // Load this agent's computer (edit mode, Overlay agents, capability on).
   useEffect(() => {
-    if (!agent) return
-    setName(agent.name)
-    setDescription(agent.description ?? '')
-    setInstructions(agent.instructions)
-    setModelId(agent.modelId)
-    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
-    setVisibility(agent.visibility)
-    setPlatforms(agent.platforms ?? ['slack', 'msteams'])
-    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-    setSavedFlash(false)
-  }, [agent])
+    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
+    let cancelled = false
+    void overlayAppClient.computers.list(activeWorkspaceId).then(
+      (result) => {
+        if (cancelled) return
+        const existing = result.computers.find(
+          (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
+        ) ?? null
+        setAgentComputer(existing)
+        setComputerEnabled(existing !== null)
+        if (existing) setComputerSize(existing.size)
+      },
+      () => undefined,
+    )
+    return () => { cancelled = true }
+  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType])
 
   const modelOptions = useMemo(() => {
     void revision
@@ -156,13 +183,13 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
       .map((model) => ({ value: model.id, label: model.name }))
   }, [enabledModelIds, revision])
 
-  const isDefaultMaster = Boolean(agent?.isDefault || agent?.name.toLowerCase() === 'overlay')
+  const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
     name, instructions, modelId, agentType, connectedAgentsEnabled, bindingValid,
   })
 
   const toggleToolGroup = (groupId: string) => {
-    setSavedFlash(false)
+    markDirty()
     setEnabledToolGroups((current) => {
       const next = new Set(current)
       if (next.has(groupId)) next.delete(groupId)
@@ -172,126 +199,150 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
   }
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
+  const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
-  const togglePlatform = (platform: WorkspaceAgentPlatform) => {
-    setSavedFlash(false)
-    setPlatforms((current) => current.includes(platform)
-      ? current.filter((entry) => entry !== platform)
-      : [...current, platform])
-  }
+  const buildInput = useCallback((): WorkspaceAgentCreateInput => {
+    const harnessLabel = selectedHarness?.label ?? adapterId
+    return {
+      ...buildWorkspaceAgentInput({
+        name, description, instructions, agentType, harnessLabel, adapterId,
+        modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
+      }),
+      teamIds: agent?.teamIds ?? [],
+    }
+  }, [selectedHarness, adapterId, name, description, instructions, agentType, modelId,
+    avatarColor, avatarShape, enabledToolGroups, visibility, agent])
 
-  // Install inventory for the "Add your agent to" step. Member-readable;
-  // tokens never leave the server.
+  // Reset the form whenever a different agent loads.
   useEffect(() => {
-    if (showcase || !activeWorkspaceId) return
-    let cancelled = false
-    setInstallsLoading(true)
-    void overlayAppClient.slack.listInstallations(activeWorkspaceId, { cache: 'no-store' })
-      .then((result) => { if (!cancelled) setInstalls(result.installations) })
-      .catch(() => { if (!cancelled) setInstalls([]) })
-      .finally(() => { if (!cancelled) setInstallsLoading(false) })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, showcase])
+    if (!agent) return
+    setName(agent.name)
+    setDescription(agent.description ?? '')
+    setInstructions(agent.instructions)
+    setModelId(agent.modelId)
+    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarShape(agent.avatarShape ?? 'circle')
+    setVisibility(agent.visibility)
+    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
+    setDirty(false)
+    setSavedFlash(false)
+  }, [agent])
 
-  const connectSlack = async () => {
-    if (!activeWorkspaceId) return
-    setPlatformsBusy(true)
-    setPlatformsError(null)
-    try {
-      const { authorizeUrl } = await overlayAppClient.slack.startInstall(activeWorkspaceId)
-      window.location.href = authorizeUrl
-    } catch (connectError) {
-      setPlatformsError(connectError instanceof Error ? connectError.message : 'Could not start the Slack install.')
-      setPlatformsBusy(false)
-    }
-  }
-
-  const linkSlackSelf = async () => {
-    if (!activeWorkspaceId || !slackLinkId.trim()) return
-    setPlatformsBusy(true)
-    setPlatformsError(null)
-    try {
-      await overlayAppClient.slack.linkOwnIdentity(activeWorkspaceId, {
-        directory: 'slack',
-        externalId: slackLinkId.trim(),
-      })
-      setSlackSelfId(slackLinkId.trim())
-      setSlackLinkId('')
-    } catch (linkError) {
-      setPlatformsError(linkError instanceof Error ? linkError.message : 'Could not link your Slack account.')
-    } finally {
-      setPlatformsBusy(false)
-    }
-  }
-
-  const unlinkSlackSelf = async () => {
-    if (!activeWorkspaceId || !slackSelfId) return
-    setPlatformsBusy(true)
-    setPlatformsError(null)
-    try {
-      await overlayAppClient.slack.unlinkOwnIdentity(activeWorkspaceId, {
-        directory: 'slack',
-        externalId: slackSelfId,
-      })
-      setSlackSelfId(null)
-    } catch (unlinkError) {
-      setPlatformsError(unlinkError instanceof Error ? unlinkError.message : 'Could not unlink your Slack account.')
-    } finally {
-      setPlatformsBusy(false)
-    }
-  }
-
-  const save = async () => {
+  const persistNew = () => {
     if (showcase) {
       router.push(directoryHref)
       return
     }
-    if (!activeWorkspaceId) return
-    const harnessLabel = selectedHarness?.label ?? adapterId
-    const input: WorkspaceAgentCreateInput = {
-      ...buildWorkspaceAgentInput({
-        name, description, instructions, agentType, harnessLabel, adapterId,
-        modelId, avatarColor, enabledToolGroups, visibility, platforms,
-      }),
-      teamIds: agent?.teamIds ?? [],
-    }
-    const binding = agentType === 'byo'
-      ? { environmentId, adapterId, workingDirectory: workingDirectory.trim() }
-      : agent ? null : undefined
+    if (!activeWorkspaceId || busy) return
     setBusy(true)
     setError(null)
-    setSavedFlash(false)
-    try {
-      const saved = agent
-        ? await overlayAppClient.agents.update(activeWorkspaceId, agent.id, input)
-        : await overlayAppClient.agents.create(activeWorkspaceId, input)
-      if (binding) {
-        try {
+    void (async () => {
+      try {
+        const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
+        if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
-            ...binding,
+            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
+          }).catch(async (bindingError) => {
+            // Agent identity may already be durable even if its remote binding
+            // fails. Land on the edit page so a retry never creates a duplicate.
+            setAgent(saved.agent)
+            if (presentation === 'page') {
+              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+            }
+            throw bindingError
           })
-        } catch (bindingError) {
-          // Agent identity may already be durable even if its remote binding
-          // fails. Land on the edit page so a retry never creates a duplicate.
-          router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
-          throw bindingError
         }
-      } else if (binding === null && agent) {
-        await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+        if (agentType === 'overlay' && computersAvailable && computerEnabled) {
+          await overlayAppClient.computers.provision(activeWorkspaceId, {
+            ownerType: 'agent',
+            ownerId: saved.agent.id,
+            size: computerSize,
+            name: `${saved.agent.name} computer`,
+          }).catch(async (computerError) => {
+            // The agent is durable even if its computer fails to provision —
+            // land on the edit page so a retry never creates a duplicate agent.
+            setAgent(saved.agent)
+            if (presentation === 'page') {
+              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+            }
+            throw computerError
+          })
+        }
+        dispatchAgentDirectoryChanged(activeWorkspaceId)
+        if (onCreated) onCreated(saved.agent)
+        else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+      } finally {
+        setBusy(false)
       }
-      dispatchAgentDirectoryChanged(activeWorkspaceId)
-      if (!agent) {
-        router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
-      } else {
+    })()
+  }
+
+  const saveEdit = () => {
+    if (showcase || !activeWorkspaceId || !agent || busy) return
+    if (
+      agentType === 'overlay' && agentComputer && !computerEnabled
+      && !window.confirm(`Delete ${agent.name}'s computer? Its disk state is destroyed permanently.`)
+    ) return
+    setBusy(true)
+    setError(null)
+    void (async () => {
+      try {
+        const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, buildInput())
+        if (agentType === 'byo') {
+          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+            agentId: saved.agent.id,
+            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
+          })
+        } else if (workspaceAgentUsesByo(agent)) {
+          // Switched a connected agent back to Overlay: drop its binding once.
+          await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+            .catch(() => undefined)
+        }
+        if (agentType === 'overlay' && computersAvailable) {
+          if (computerEnabled && !agentComputer) {
+            const provisioned = await overlayAppClient.computers.provision(activeWorkspaceId, {
+              ownerType: 'agent',
+              ownerId: saved.agent.id,
+              size: computerSize,
+              name: `${saved.agent.name} computer`,
+            })
+            setAgentComputer(provisioned.computer)
+          } else if (!computerEnabled && agentComputer) {
+            await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
+            setAgentComputer(null)
+          }
+        }
+        dispatchAgentDirectoryChanged(activeWorkspaceId)
         setAgent(saved.agent)
+        setDirty(false)
         setSavedFlash(true)
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
+      } finally {
+        setBusy(false)
       }
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
-    } finally {
-      setBusy(false)
+    })()
+  }
+
+  const cancelEdit = () => {
+    if (!agent) {
+      closeEditor()
+      return
     }
+    setName(agent.name)
+    setDescription(agent.description ?? '')
+    setInstructions(agent.instructions)
+    setModelId(agent.modelId)
+    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarShape(agent.avatarShape ?? 'circle')
+    setVisibility(agent.visibility)
+    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
+    setDirty(false)
+    setError(null)
+    closeEditor()
   }
 
   const archiveAgent = async () => {
@@ -302,11 +353,26 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     try {
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
       dispatchAgentDirectoryChanged(activeWorkspaceId)
-      router.push(directoryHref)
+      if (onArchived) onArchived()
+      else router.push(directoryHref)
     } catch (archiveError) {
       setError(archiveError instanceof Error ? archiveError.message : 'Could not archive agent.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const openAgentComputer = async () => {
+    if (!activeWorkspaceId || !agentComputer) return
+    setComputerOpenBusy(true)
+    setError(null)
+    try {
+      const ticket = await overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
+      window.open(ticket.url, '_blank', 'noopener,noreferrer')
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : 'Could not open the desktop.')
+    } finally {
+      setComputerOpenBusy(false)
     }
   }
 
@@ -328,13 +394,13 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
     return agent?.name ?? 'Agent not found'
   }, [agent?.name, loading, mode])
 
-  return (
+  const editor = (
     <AppScreenShell
-      header={(
+      header={presentation === 'page' ? (
         <AppScreenHeader
           title={title}
           leading={(
-            <Button variant="ghost" size="sm" onClick={() => router.push(directoryHref)} aria-label="Back to agents">
+            <Button variant="ghost" size="sm" onClick={closeEditor} aria-label="Back to agents">
               <ArrowLeft size={14} /> Agents
             </Button>
           )}
@@ -348,7 +414,7 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
             />
           )}
         />
-      )}
+      ) : undefined}
     >
       <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
         {loading ? (
@@ -361,176 +427,160 @@ export function AgentEditorPage({ mode, agentId, showcase = false }: {
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
             <p className="text-sm font-medium text-[var(--foreground)]">Agent not found</p>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">It may have been archived, or you may not have access to it.</p>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push(directoryHref)}>Back to agents</Button>
+            <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : mode === 'new' && !canCreate ? (
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
             <p className="text-sm font-medium text-[var(--foreground)]">You cannot create agents in this workspace</p>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Guests can chat with agents but cannot create new ones.</p>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push(directoryHref)}>Back to agents</Button>
+            <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-2xl pb-24">
-            {!isDefaultMaster && connectedAgentsEnabled ? (
-              <AgentTypeSelector value={agentType} onChange={(value) => { setAgentType(value); setSavedFlash(false) }} />
-            ) : null}
-            {isDefaultMaster ? (
-              <p className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4 text-xs leading-5 text-[var(--muted)]">
-                Master workspace agent with full access to workspace context, memory, and tools (cannot be deleted).
-              </p>
-            ) : null}
+            {isDefaultMaster ? <MasterAgentNotice /> : null}
 
-            <div className="mt-5 grid gap-5 sm:grid-cols-[112px_minmax(0,1fr)]">
-              <AgentAvatar color={avatarColor} onChange={(color) => { setAvatarColor(color); setSavedFlash(false) }} />
+            <div className="mt-5 space-y-5">
+              <AgentAvatar
+                color={avatarColor}
+                shape={avatarShape}
+                name={name}
+                description={description}
+                namePlaceholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'}
+                descriptionPlaceholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'}
+                onNameChange={(value) => { setName(value); markDirty() }}
+                onDescriptionChange={(value) => { setDescription(value); markDirty() }}
+                onChange={(color) => { setAvatarColor(color); markDirty() }}
+                onShapeChange={(next) => { setAvatarShape(next); markDirty() }}
+              />
+              <AgentTypeSelector
+                hidden={isDefaultMaster || !connectedAgentsEnabled}
+                value={agentType}
+                onChange={(value) => { setAgentType(value); markDirty() }}
+              />
               <div className="space-y-4">
-                <label className="block text-xs font-medium">
-                  Agent name
-                  <Input autoFocus className="mt-1.5" value={name} onChange={(event) => { setName(event.target.value); setSavedFlash(false) }} placeholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'} />
-                </label>
-                <label className="block text-xs font-medium">
-                  Short description <span className="font-normal text-[var(--muted-light)]">optional</span>
-                  <Input className="mt-1.5" value={description} onChange={(event) => { setDescription(event.target.value); setSavedFlash(false) }} placeholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'} />
-                </label>
+                <AgentBehaviorFields
+                  agentType={agentType}
+                  connectedAgentsEnabled={connectedAgentsEnabled}
+                  instructions={instructions}
+                  onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
+                  modelId={modelId}
+                  onModelChange={(value) => { setModelId(value); markDirty() }}
+                  modelOptions={modelOptions}
+                  enabledToolGroups={enabledToolGroups}
+                  onToggleToolGroup={toggleToolGroup}
+                  advanced={advanced}
+                  onAdvancedChange={setAdvanced}
+                  adapterId={adapterId}
+                  harnessOptions={harnessOptions}
+                  onHarnessChange={(value) => { chooseHarness(value); markDirty() }}
+                  environmentChoice={environmentChoice}
+                  onEnvironmentChoiceChange={(value) => { setEnvironmentChoice(value); markDirty() }}
+                  compatibleEnvironments={compatibleEnvironments}
+                  environmentsLoading={environmentsLoading}
+                  environmentId={environmentId}
+                  onEnvironmentChange={(value) => { chooseEnvironment(value); markDirty() }}
+                  workingDirectory={workingDirectory}
+                  onWorkingDirectoryChange={(value) => { setWorkingDirectory(value); markDirty() }}
+                  selectedHarnessConnectable={Boolean(selectedHarness?.connectable)}
+                  environmentBusy={environmentBusy}
+                  environmentError={environmentError}
+                  command={command}
+                  copied={copied}
+                  onCopyCommand={copyCommand}
+                  onBeginConnection={beginConnection}
+                  setupEnvironment={setupEnvironment}
+                  setupRoots={setupRoots}
+                  onSetupRootsChange={(value) => { setSetupRoots(value); markDirty() }}
+                  onApproveSetup={approveSetupEnvironment}
+                />
 
-                {agentType === 'overlay' ? (
-                  <OverlayAgentFields
-                    instructions={instructions}
-                    onInstructionsChange={(value) => { setInstructions(value); setSavedFlash(false) }}
-                    modelId={modelId}
-                    onModelChange={(value) => { setModelId(value); setSavedFlash(false) }}
-                    modelOptions={modelOptions}
-                    enabledToolGroups={enabledToolGroups}
-                    onToggleToolGroup={toggleToolGroup}
-                    advanced={advanced}
-                    onAdvancedChange={setAdvanced}
-                  />
-                ) : connectedAgentsEnabled ? (
-                  <ByoAgentFields
-                    adapterId={adapterId}
-                    harnessOptions={harnessOptions}
-                    onHarnessChange={chooseHarness}
-                    choice={environmentChoice}
-                    onChoiceChange={setEnvironmentChoice}
-                    compatibleEnvironments={compatibleEnvironments}
-                    environmentsLoading={environmentsLoading}
-                    environmentId={environmentId}
-                    onEnvironmentChange={chooseEnvironment}
-                    workingDirectory={workingDirectory}
-                    onWorkingDirectoryChange={setWorkingDirectory}
-                    selectedHarnessConnectable={Boolean(selectedHarness?.connectable)}
-                    environmentBusy={environmentBusy}
-                    environmentError={environmentError}
-                    command={command}
-                    copied={copied}
-                    onCopyCommand={copyCommand}
-                    onBeginConnection={beginConnection}
-                    setupEnvironment={setupEnvironment}
-                    setupRoots={setupRoots}
-                    onSetupRootsChange={setSetupRoots}
-                    onApproveSetup={approveSetupEnvironment}
-                  />
-                ) : (
-                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
-                    This connected agent is unchanged. Connected-agent editing is not available for this workspace right now.
-                  </div>
-                )}
+                <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
 
-                <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); setSavedFlash(false) }} />
-                {!showcase ? (
-                  <PlatformAccessFields
-                    platforms={platforms}
-                    onTogglePlatform={togglePlatform}
-                    slack={{
-                      installed: installs.some((install) => install.directory === 'slack'),
-                      loading: installsLoading,
-                      selfId: slackSelfId,
-                    }}
-                    teamsNote="coming soon"
-                    busy={platformsBusy}
-                    error={platformsError}
-                    linkId={slackLinkId}
-                    onLinkIdChange={setSlackLinkId}
-                    onConnectSlack={() => void connectSlack()}
-                    onLinkSlack={() => void linkSlackSelf()}
-                    onUnlinkSlack={() => void unlinkSlackSelf()}
+                {agentType === 'overlay' && computersAvailable ? (
+                  <AgentComputerSection
+                    enabled={computerEnabled}
+                    onEnabledChange={(next) => { setComputerEnabled(next); markDirty() }}
+                    size={computerSize}
+                    onSizeChange={(next) => { setComputerSize(next); markDirty() }}
+                    computer={agentComputer}
+                    openBusy={computerOpenBusy}
+                    onOpenDesktop={() => void openAgentComputer()}
+                    disabled={showcase}
                   />
                 ) : null}
 
-                {mode === 'edit' && agent && !isDefaultMaster ? (
-                  <section className="rounded-xl border border-red-500/25 p-4">
-                    <p className="text-xs font-medium text-[var(--foreground)]">Danger zone</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Archiving removes the agent from rooms and teams. Its message history remains.</p>
-                    <Button variant="danger" size="sm" className="mt-3" onClick={archiveAgent} disabled={busy}>Archive agent</Button>
-                  </section>
-                ) : null}
+                <DangerZone
+                  mode={mode}
+                  hasAgent={Boolean(agent)}
+                  isDefaultMaster={isDefaultMaster}
+                  busy={busy}
+                  agentName={agent?.name ?? 'this agent'}
+                  onArchive={() => void archiveAgent()}
+                />
 
                 {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-                {savedFlash ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p> : null}
+                {savedFlash && mode === 'edit'
+                  ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
+                  : null}
+                {mode === 'new' ? (
+                  <>
+                    <Button
+                      className="mt-2 w-full"
+                      disabled={busy || !valid}
+                      onClick={() => persistNew()}
+                    >
+                      {busy ? 'Creating…' : 'Create agent'}
+                    </Button>
+                    <Button variant="ghost" className="w-full" disabled={busy} onClick={closeEditor}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      className="mt-2 w-full"
+                      disabled={busy || !valid || !dirty}
+                      onClick={() => saveEdit()}
+                    >
+                      {busy ? 'Saving…' : 'Save changes'}
+                    </Button>
+                    <Button variant="ghost" className="w-full" disabled={busy} onClick={cancelEdit}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
               </div>
-            </div>
-
-            <div className="mt-8 flex items-center justify-end gap-2 border-t border-[var(--border)] pt-5">
-              <EditorFooter mode={mode} busy={busy} valid={valid} onCancel={() => router.push(directoryHref)} onSave={save} />
             </div>
           </div>
         )}
       </AppScreenBody>
     </AppScreenShell>
   )
-}
 
-function getShowcaseAgent(
-  showcase: boolean,
-  mode: 'new' | 'edit',
-  agentId: string | undefined,
-): WorkspaceAgentDirectoryItem | null {
-  if (!showcase || mode !== 'edit') return null
-  return SHOWCASE_AGENTS.find((candidate) => candidate.id === agentId) ?? null
-}
-
-function getInitialEditorState(args: {
-  showcase: boolean
-  mode: 'new' | 'edit'
-  agent: WorkspaceAgentDirectoryItem | null
-}) {
-  const { agent } = args
-  return {
-    agent,
-    loading: !args.showcase,
-    canCreate: args.showcase || args.mode === 'edit',
-    name: agent?.name ?? '',
-    description: agent?.description ?? '',
-    instructions: agent?.instructions ?? '',
-    modelId: agent?.modelId ?? DEFAULT_MODEL_ID,
-    avatarColor: agent?.avatarColor ?? AVATAR_COLORS[0]!,
-    visibility: agent?.visibility ?? 'workspace',
+  if (presentation === 'panel') {
+    if (panelMode === 'side') {
+      return (
+        <AgentEditorSidePanel
+          title={title}
+          mode={mode}
+          savedFlash={savedFlash}
+          onTogglePanelMode={onTogglePanelMode}
+          onClose={closeEditor}
+        >
+          {editor}
+        </AgentEditorSidePanel>
+      )
+    }
+    return (
+      <AgentEditorDialog
+        title={title}
+        onTogglePanelMode={onTogglePanelMode}
+        onClose={closeEditor}
+      >
+        {editor}
+      </AgentEditorDialog>
+    )
   }
-}
 
-function SayHelloButton({ mode, hasAgent, highlight, showcase, onSayHello }: {
-  mode: 'new' | 'edit'
-  hasAgent: boolean
-  highlight: boolean
-  showcase: boolean
-  onSayHello(): void
-}) {
-  if (mode !== 'edit' || !hasAgent || (!highlight && !showcase)) return null
-  return <Button variant="secondary" size="sm" onClick={onSayHello}><MessageSquare size={13} /> Say hello</Button>
-}
-
-function EditorFooter({ mode, busy, valid, onCancel, onSave }: {
-  mode: 'new' | 'edit'
-  busy: boolean
-  valid: boolean
-  onCancel(): void
-  onSave(): void
-}) {
-  return (
-    <>
-      <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button variant="secondary" disabled={busy || !valid} onClick={onSave}>
-        {busy ? 'Saving…' : mode === 'new' ? 'Create agent' : 'Save changes'}
-      </Button>
-    </>
-  )
+  return editor
 }

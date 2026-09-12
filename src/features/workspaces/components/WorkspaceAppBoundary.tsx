@@ -1,13 +1,12 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CircleAlert, Loader2 } from 'lucide-react'
-import { createShowcaseWorkspaceClient } from '@/features/showcase/showcase-workspace-client'
-import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
+import type { WorkspaceClient } from '@/shared/workspaces/types'
 import { workspaceClient } from '../lib/workspace-client'
 import { useAuth } from '@/contexts/AuthContext'
-import { WorkspaceProvider, useWorkspace } from './WorkspaceProvider'
+import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext'
 
 function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   const { status, error, refresh } = useWorkspace()
@@ -52,18 +51,17 @@ export function WorkspaceAppBoundary({
   children,
   hasAuthenticatedUser,
   publicShowcase: forcedPublicShowcase = false,
+  showcaseClient,
 }: {
   children: ReactNode
   hasAuthenticatedUser: boolean
   publicShowcase?: boolean
+  /** Composed by the app layer so this feature never imports showcase. */
+  showcaseClient?: WorkspaceClient
 }) {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
-  const showcaseClient = useMemo(
-    () => createShowcaseWorkspaceClient(SHOWCASE_WORKSPACES),
-    [],
-  )
   // Cache Components can first paint this layout without a session. The client
   // auth check still finds the cookie, so enable workspaces from that too.
   const enabled = hasAuthenticatedUser || publicShowcase || Boolean(user)
@@ -71,7 +69,7 @@ export function WorkspaceAppBoundary({
   return (
     <WorkspaceProvider
       enabled={enabled}
-      client={publicShowcase ? showcaseClient : workspaceClient}
+      client={publicShowcase && showcaseClient ? showcaseClient : workspaceClient}
     >
       <WorkspaceHydrationBoundary>{children}</WorkspaceHydrationBoundary>
     </WorkspaceProvider>

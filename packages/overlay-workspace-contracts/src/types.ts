@@ -498,8 +498,22 @@ export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
 export const WORKSPACE_AGENT_VISIBILITIES = ['creator', 'workspace'] as const
 export type WorkspaceAgentVisibility = (typeof WORKSPACE_AGENT_VISIBILITIES)[number]
 
-export const WORKSPACE_AGENT_PLATFORMS = ['slack', 'msteams'] as const
-export type WorkspaceAgentPlatform = (typeof WORKSPACE_AGENT_PLATFORMS)[number]
+export const WORKSPACE_AGENT_CREATURE_SHAPES = [
+  'circle',
+  'blob',
+  'squircle',
+  'pill',
+  'triangle',
+  'hexagon',
+  'cloud',
+  'droplet',
+] as const
+export type WorkspaceAgentCreatureShape = (typeof WORKSPACE_AGENT_CREATURE_SHAPES)[number]
+
+export function isWorkspaceAgentCreatureShape(value: unknown): value is WorkspaceAgentCreatureShape {
+  return typeof value === 'string'
+    && (WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(value)
+}
 
 export type WorkspaceAgentDefinition = {
   id: string
@@ -511,10 +525,11 @@ export type WorkspaceAgentDefinition = {
   harness: WorkspaceAgentHarness
   modelId: string
   avatarColor?: string
+  /** Creature body shape for anthropomorphic agent avatars; absent means circle. */
+  avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds: string[]
   invocationPolicy: 'mention'
   visibility: WorkspaceAgentVisibility
-  platforms: WorkspaceAgentPlatform[]
   createdByPrincipalId: string
   createdAt: number
   updatedAt: number
@@ -529,11 +544,11 @@ export type WorkspaceAgentCreateInput = {
   harness?: WorkspaceAgentHarness
   modelId: string
   avatarColor?: string
+  avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds?: string[]
   teamIds?: string[]
   isDefault?: boolean
   visibility?: WorkspaceAgentVisibility
-  platforms?: WorkspaceAgentPlatform[]
 }
 
 export type WorkspaceAgentUpdateInput = Partial<WorkspaceAgentCreateInput>
@@ -666,53 +681,6 @@ export type WorkspaceIdentityMapping = {
   createdAt: number
   updatedAt: number
   deprovisionedAt?: number
-}
-
-/**
- * A linked chat-platform identity as shown in workspace settings. Display
- * names are best-effort enrichment and may be absent (no install token, or
- * the platform lookup failed) — the directory/externalId pair is the source
- * of truth.
- */
-export type WorkspacePlatformIdentity = {
-  directory: string
-  externalId: string
-  principalId: string
-  principalDisplayName?: string
-  status: 'active' | 'deprovisioned'
-  platformDisplayName?: string
-  platformAvatarUrl?: string
-}
-
-/** A linked platform workspace install as shown in settings (never includes tokens). */
-export type WorkspacePlatformInstallationSummary = {
-  directory: string
-  externalTeamId: string
-  teamName?: string
-  installedByPrincipalId: string
-  createdAt: number
-  updatedAt: number
-}
-
-/**
- * A chat-platform workspace linked to an Overlay workspace for bot surfaces
- * (Slack teams, Teams tenants, …). The bot token itself never appears in this
- * contract: repositories return it only through the server-side installation
- * record, encrypted at rest.
- */
-export type WorkspacePlatformInstallation = {
-  /** Storage key: the external team id, or the enterprise id for org-wide installs. */
-  id: string
-  workspaceId: string
-  directory: string
-  externalTeamId: string
-  enterpriseId?: string
-  isEnterpriseInstall: boolean
-  teamName?: string
-  botUserId?: string
-  installedByPrincipalId: string
-  createdAt: number
-  updatedAt: number
 }
 
 export type WorkspaceAuditExportRecord = {

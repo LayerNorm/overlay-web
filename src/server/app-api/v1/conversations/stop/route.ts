@@ -6,6 +6,7 @@ import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { abortToolLoopRunIds } from '@/server/conversations/tool-loop-run-registry'
 import { agentRunService } from '@/server/conversations/http'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { getRun } from 'workflow/api'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const repository = getOverlayServerContext().appData.repositories.conversations
     const resourceUserId = getAuthorizedResourceUserId(context)
     const cancelled = await repository.cancelAgentRuns({
-      conversationId: conversationId as Id<'conversations'>,
+      conversationId: asConversationId(conversationId),
       ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
       ...(body.partialContent !== undefined ? { partialContent: body.partialContent } : {}),
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),

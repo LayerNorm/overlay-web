@@ -12,9 +12,9 @@ test('overlay input trims fields and maps tool groups', () => {
     adapterId: 'codex',
     modelId: '  test-model  ',
     avatarColor: '#2563eb',
+    avatarShape: 'droplet',
     enabledToolGroups: new Set(['memory']),
     visibility: 'creator',
-    platforms: ['slack'],
   })
   assert.equal(input.name, 'Scout')
   assert.equal(input.description, undefined)
@@ -22,7 +22,7 @@ test('overlay input trims fields and maps tool groups', () => {
   assert.equal(input.harness, 'overlay')
   assert.equal(input.modelId, 'test-model')
   assert.equal(input.visibility, 'creator')
-  assert.deepEqual(input.platforms, ['slack'])
+  assert.equal(input.avatarShape, 'droplet')
   assert.ok(Array.isArray(input.allowedToolIds))
 })
 
@@ -36,15 +36,14 @@ test('byo input generates instructions, harness, and model from the adapter', ()
     adapterId: 'codex',
     modelId: 'test-model',
     avatarColor: '#059669',
+    avatarShape: 'cloud',
     enabledToolGroups: new Set(['memory']),
     visibility: 'workspace',
-    platforms: ['slack', 'msteams'],
   })
   assert.match(input.instructions, /Codex/)
   assert.equal(input.harness, 'overlay')
   assert.equal(input.modelId, 'byo/codex')
   assert.deepEqual(input.allowedToolIds, [])
-  assert.deepEqual(input.platforms, ['slack', 'msteams'])
   assert.equal(input.description, 'Works locally')
 })
 

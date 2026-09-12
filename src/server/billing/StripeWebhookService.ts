@@ -3,7 +3,7 @@ import 'server-only'
 import type Stripe from 'stripe'
 import { createHash } from 'node:crypto'
 import { quantityToPlanAmountCents } from '@/shared/billing/billing-pricing'
-import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
+import type { BillingRepository } from './BillingRepository'
 import type {
   BillingProviderEventRepository,
   BillingWebhookRepository,
@@ -114,7 +114,6 @@ export class StripeWebhookService {
     }
 
     if (metadata.kind === 'paid_plan') {
-      if (session.payment_status !== 'paid') return false
       const subscriptionUpdate = {
         email: metadata.email ?? session.customer_details?.email ?? undefined,
         stripeCustomerId: idValue(session.customer),
@@ -128,7 +127,6 @@ export class StripeWebhookService {
         autoTopUpEnabled: metadata.autoTopUpEnabled === 'true',
         autoTopUpAmountCents: positiveInteger(metadata.topUpAmountCents) ?? 0,
         offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
-        cancelAtPeriodEnd: false,
         status: 'active',
       }
       if (payer.scope === 'workspace') {
@@ -176,37 +174,20 @@ export class StripeWebhookService {
     const quantity = item?.quantity ?? positiveInteger(metadata.stripeQuantity) ?? 1
     const periodStart = unixSecondsToMillis(item?.current_period_start)
     const periodEnd = unixSecondsToMillis(item?.current_period_end)
-    const status = deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status)
-    const grantsPaidAccess = status === 'active' || status === 'trialing'
-    const existing = grantsPaidAccess || deleted
-      ? null
-      : payer.scope === 'workspace'
-        ? await this.deps.billing.getBillingAccountSubscriptionByServer({
-            billingAccountId: payer.billingAccountId,
-          })
-        : await this.deps.billing.getSubscriptionByUserIdByServer({ userId: payer.userId })
-    const entitlement = subscriptionEntitlementProjection({
-      existing,
-      grantsPaidAccess,
-      metadata,
-      quantity,
-      status,
-    })
     const subscriptionUpdate = {
       email: metadata.email,
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: item?.price.id,
-      stripeQuantity: entitlement.stripeQuantity,
-      tier: entitlement.planKind === 'paid' ? existing?.tier ?? 'pro' : 'free',
-      planKind: entitlement.planKind,
+      stripeQuantity: quantity,
+      tier: deleted ? 'free' : 'pro',
+      planKind: deleted ? 'free' : 'paid',
       planVersion: metadata.planVersion ?? 'variable_v2',
-      planAmountCents: entitlement.planAmountCents,
-      autoTopUpEnabled: entitlement.autoTopUpEnabled,
-      autoTopUpAmountCents: entitlement.autoTopUpAmountCents,
-      offSessionConsentAt: entitlement.offSessionConsentAt,
-      cancelAtPeriodEnd: deleted ? false : Boolean(subscription.cancel_at_period_end),
-      status,
+      planAmountCents: positiveInteger(metadata.planAmountCents) ?? quantityToPlanAmountCents(quantity),
+      autoTopUpEnabled: metadata.autoTopUpEnabled === 'true',
+      autoTopUpAmountCents: positiveInteger(metadata.topUpAmountCents) ?? 0,
+      offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
+      status: deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status),
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
       providerEventCreatedAt: unixSecondsToMillis(eventCreatedSeconds),
@@ -222,9 +203,9 @@ export class StripeWebhookService {
     await this.publishLifecycleEvent({
       attributes: {
         changeSource: 'provider_webhook',
-        planKind: entitlement.planKind,
+        planKind: deleted ? 'free' : 'paid',
         provider: 'stripe',
-        status,
+        status: deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status),
       },
       idempotencyKey: `subscription.changed:stripe:${eventId}`,
       name: 'subscription.changed',
@@ -408,45 +389,7 @@ function normalizeSubscriptionStatus(
   status: Stripe.Subscription.Status,
 ): 'active' | 'canceled' | 'past_due' | 'trialing' {
   if (status === 'canceled') return 'canceled'
-  if (status === 'active') return 'active'
+  if (status === 'past_due' || status === 'unpaid' || status === 'incomplete' || status === 'incomplete_expired') return 'past_due'
   if (status === 'trialing') return 'trialing'
-  return 'past_due'
-}
-
-function subscriptionEntitlementProjection(args: {
-  existing: BillingSubscriptionRecord | null
-  grantsPaidAccess: boolean
-  metadata: Stripe.Metadata
-  quantity: number
-  status: 'active' | 'canceled' | 'past_due' | 'trialing'
-}) {
-  const preservesExistingPaidAccess = args.status === 'past_due' && args.existing?.planKind === 'paid'
-  if (args.grantsPaidAccess) {
-    return {
-      autoTopUpAmountCents: positiveInteger(args.metadata.topUpAmountCents) ?? 0,
-      autoTopUpEnabled: args.metadata.autoTopUpEnabled === 'true',
-      offSessionConsentAt: positiveInteger(args.metadata.offSessionConsentAt),
-      planAmountCents: positiveInteger(args.metadata.planAmountCents) ?? quantityToPlanAmountCents(args.quantity),
-      planKind: 'paid' as const,
-      stripeQuantity: args.quantity,
-    }
-  }
-  if (preservesExistingPaidAccess) {
-    return {
-      autoTopUpAmountCents: args.existing?.autoTopUpAmountCents ?? 0,
-      autoTopUpEnabled: args.existing?.autoTopUpEnabled ?? false,
-      offSessionConsentAt: args.existing?.offSessionConsentAt,
-      planAmountCents: positiveInteger(args.existing?.planAmountCents) ?? 0,
-      planKind: 'paid' as const,
-      stripeQuantity: positiveInteger(args.existing?.stripeQuantity) ?? args.quantity,
-    }
-  }
-  return {
-    autoTopUpAmountCents: 0,
-    autoTopUpEnabled: false,
-    offSessionConsentAt: undefined,
-    planAmountCents: 0,
-    planKind: 'free' as const,
-    stripeQuantity: args.quantity,
-  }
+  return 'active'
 }

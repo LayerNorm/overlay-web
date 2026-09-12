@@ -38,9 +38,6 @@
       "@/features/*": [
         "./src/features/*"
       ],
-      "@/workflows/*": [
-        "./workflows/*"
-      ],
       "@overlay/api-client": [
         "./packages/overlay-api-client/src/index.ts"
       ],
@@ -82,12 +79,6 @@
       ],
       "@overlay/authz-contracts/*": [
         "./packages/overlay-authz-contracts/src/*"
-      ],
-      "@overlay/billing": [
-        "./packages/overlay-billing/src/index.ts"
-      ],
-      "@overlay/billing/*": [
-        "./packages/overlay-billing/src/*"
       ],
       "@overlay/chat-core": [
         "./packages/overlay-chat-core/src/index.ts"

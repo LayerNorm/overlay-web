@@ -7,7 +7,7 @@ import type {
   WorkspaceListResponse,
   WorkspaceManagementClient,
   WorkspaceManagementLoader,
-} from '../types'
+} from '@/shared/workspaces/types'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 async function readJson<T>(response: Response): Promise<T> {

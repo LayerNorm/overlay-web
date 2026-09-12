@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   ROOT_APP_DESTINATION,
-  ROOT_SHOWCASE_DESTINATION,
   classifyRootSessionResponse,
   resolveRootEntryDestination,
 } from './root-entry'
 
 test('authenticated root sessions enter the real app', () => {
+  assert.equal(ROOT_APP_DESTINATION, '/app/agents')
   assert.equal(
     resolveRootEntryDestination(classifyRootSessionResponse({
       ok: true,
@@ -18,14 +18,14 @@ test('authenticated root sessions enter the real app', () => {
   )
 })
 
-test('confirmed signed-out root sessions enter the public showcase', () => {
+test('confirmed signed-out root sessions enter the marketing home', () => {
   assert.equal(
     resolveRootEntryDestination(classifyRootSessionResponse({
       ok: true,
       authenticated: false,
       hasUser: false,
     })),
-    ROOT_SHOWCASE_DESTINATION,
+    '/home',
   )
 })
 

@@ -19,7 +19,7 @@ for (const key of Object.keys(patchedReactHooks)) {
 
 const nextVitals = (await import("eslint-config-next/core-web-vitals")).default;
 const nextTs = (await import("eslint-config-next/typescript")).default;
-const { createArchitectureBoundaryConfigs } = await import("./scripts/eslint-boundary-rules.mjs");
+const { createArchitectureBoundaryConfigs } = await import("./scripts/ci/eslint-boundary-rules.mjs");
 
 const sharedIsomorphicRules = {
   files: ["src/shared/**/*.ts", "src/shared/**/*.tsx"],

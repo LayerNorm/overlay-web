@@ -8,5 +8,5 @@ export const MARKETING_DOCS_URL = "https://getoverlay.io/docs";
 export const MARKETING_DEPLOY_URL = MARKETING_SALES_URL;
 
 export function getMarketingAppHref(isAuthenticated: boolean) {
-  return isAuthenticated ? "/app/chat" : "/auth/sign-in?redirect=%2Fapp%2Fchat";
+  return isAuthenticated ? "/app/agents" : "/auth/sign-in?redirect=%2Fapp%2Fagents";
 }

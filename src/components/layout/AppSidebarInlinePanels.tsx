@@ -8,7 +8,6 @@ import {
   Archive,
   Bell,
   BookOpen,
-  Bot,
   Brain,
   Folder,
   Hash,
@@ -19,8 +18,6 @@ import {
   Plug,
   Server,
   Sparkles,
-  UserRound,
-  UsersRound,
 } from 'lucide-react'
 import type { KnowledgeBase } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -52,12 +49,20 @@ import {
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
+import { AgentCreature } from '@/components/orb/Creature'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   type AgentDirectoryChangedEventDetail,
 } from '@/shared/workspace/sidebar-events'
+import {
+  getAgentOpenedAt,
+  getLastOpenedAgentId,
+  rememberAgentOpened,
+  sortAgentsByRecency,
+} from '@/shared/agents/last-agent-by-workspace'
+import { dispatchChatCreated } from '@/shared/chat/chat-title'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
@@ -433,7 +438,15 @@ export function AgentsInlinePanel({
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
   const [loading, setLoading] = useState(true)
-  const activeAgentId = searchParams?.get('agent') ?? null
+  const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
+  const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
+
+  // Most recently used first; agents with no recorded use stay alphabetical.
+  const sortedAgents = useMemo(
+    () => sortAgentsByRecency(agents, getAgentOpenedAt(workspaceId)),
+    [agents, workspaceId],
+  )
 
   const loadAgents = useCallback(async (showLoading = true) => {
     if (!workspaceId) {
@@ -455,6 +468,10 @@ export function AgentsInlinePanel({
   useEffect(() => { void loadAgents() }, [loadAgents])
 
   useEffect(() => {
+    setOpenError(null)
+  }, [workspaceId])
+
+  useEffect(() => {
     const refreshAgents = (event: Event) => {
       const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
       if (!changedWorkspaceId || changedWorkspaceId === workspaceId) void loadAgents(false)
@@ -463,30 +480,108 @@ export function AgentsInlinePanel({
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
   }, [loadAgents, workspaceId])
 
+  const openAgent = useCallback(async (
+    agent: WorkspaceAgentDirectoryItem,
+    navigation: 'push' | 'replace' = 'push',
+  ) => {
+    if (openingAgentId) return
+    setOpeningAgentId(agent.id)
+    try {
+      if (!workspaceId) return
+      const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
+        principalIds: [agent.principalId],
+      })
+      rememberAgentOpened(workspaceId, agent.id)
+      setOpenError(null)
+      dispatchChatCreated({
+        chat: {
+          _id: directMessage.conversationId,
+          title: directMessage.title,
+          lastModified: Date.now(),
+          conversationType: 'dm',
+        },
+      })
+      const params = new URLSearchParams({
+        agent: agent.id,
+        view: 'dms',
+        id: directMessage.conversationId,
+      })
+      const href = `${baseHref}?${params.toString()}`
+      if (navigation === 'replace') router.replace(href)
+      else router.push(href)
+      if (navigation === 'push') onNavigate?.()
+    } finally {
+      setOpeningAgentId(null)
+    }
+  }, [baseHref, onNavigate, openingAgentId, router, workspaceId])
+
+  // Remember agents opened through direct links or refreshes so recency
+  // ordering covers every entry path. Initial conversation selection lives
+  // in AgentConversationWorkspace (single owner); the sidebar only opens on
+  // explicit clicks.
+  useEffect(() => {
+    if (activeAgentId && sortedAgents.some((agent) => agent.id === activeAgentId)) {
+      rememberAgentOpened(workspaceId, activeAgentId)
+    }
+  }, [activeAgentId, sortedAgents, workspaceId])
+
+  const openAgentById = useCallback(async (
+    agent: WorkspaceAgentDirectoryItem,
+    navigation: 'push' | 'replace' = 'push',
+  ) => {
+    try {
+      await openAgent(agent, navigation)
+    } catch {
+      setOpenError(`Could not open ${agent.name}. Check your connection and retry.`)
+    }
+  }, [openAgent])
+
+  const retryOpen = useCallback(() => {
+    const lastOpenedId = getLastOpenedAgentId(workspaceId)
+    const targetAgent = (activeAgentId ? sortedAgents.find((agent) => agent.id === activeAgentId) : undefined)
+      ?? (lastOpenedId ? sortedAgents.find((agent) => agent.id === lastOpenedId) : undefined)
+      ?? sortedAgents[0]
+    if (!targetAgent) return
+    setOpenError(null)
+    void openAgentById(targetAgent, 'replace')
+  }, [activeAgentId, openAgentById, sortedAgents, workspaceId])
+
   return (
     <SidebarResourceList>
       {loading ? (
         <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
           <Loader2 size={13} className="animate-spin" /> Loading agents...
         </div>
-      ) : agents.length ? (
-        agents.map((agent) => (
+      ) : sortedAgents.length ? (
+        sortedAgents.map((agent) => (
           <button
             key={agent.id}
             type="button"
+            disabled={Boolean(openingAgentId)}
             className={`${resourceRowClass} ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-            onClick={() => {
-              router.push(`${baseHref}?agent=${encodeURIComponent(agent.id)}`)
-              onNavigate?.()
-            }}
+            onClick={() => void openAgentById(agent)}
           >
-            <Bot size={13} className="shrink-0" />
+            {openingAgentId === agent.id
+              ? <Loader2 size={13} className="shrink-0 animate-spin" />
+              : <AgentCreature agent={agent} size={16} />}
             <span className="truncate">{agent.name}</span>
           </button>
         ))
       ) : (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No agents yet</p>
       )}
+      {openError ? (
+        <div className="px-2.5 py-2">
+          <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
+          <button
+            type="button"
+            onClick={retryOpen}
+            className="mt-1.5 rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
     </SidebarResourceList>
   )
 }
@@ -560,12 +655,6 @@ export const chatsInlineItems = [
 
 export const projectsInlineItems = [
   { id: 'all', label: 'All', icon: Folder },
-  { id: 'archived', label: 'Archived', icon: Archive },
-] as const
-
-export const agentsInlineItems = [
-  { id: 'personal', label: 'Personal', icon: UserRound },
-  { id: 'workspace', label: 'Workspace', icon: UsersRound },
   { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
 

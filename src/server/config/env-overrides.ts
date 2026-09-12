@@ -414,6 +414,7 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     remoteAgentRuns: readFeatureBool(env, 'REMOTE_AGENT_RUNS'),
     connectedAgentArtifacts: readFeatureBool(env, 'CONNECTED_AGENT_ARTIFACTS'),
     overlayCloudEnvironments: readFeatureBool(env, 'OVERLAY_CLOUD_ENVIRONMENTS'),
+    computers: readFeatureBool(env, 'COMPUTERS'),
   })
 }
 

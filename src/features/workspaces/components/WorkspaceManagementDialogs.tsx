@@ -12,6 +12,7 @@ import {
   Input,
   Select,
   Textarea,
+  Toggle,
 } from '@overlay/ui/primitives'
 
 export function InviteWorkspaceDialog({
@@ -273,27 +274,26 @@ export function TeamMembersDialog({
           const checked = memberIds.has(principalId)
           const busy = busyPrincipalId === principalId
           return (
-            <label
+            <div
               key={candidate.id}
-              className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-[var(--surface-subtle)]"
+              className="flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--surface-subtle)]"
             >
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={Boolean(busyPrincipalId)}
-                onChange={() => void onToggle(principalId, !checked)}
-                className="h-3.5 w-3.5 accent-[var(--foreground)]"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium text-[var(--foreground)]">
+              <div className="min-w-0 flex-1">
+                <p className="block truncate text-xs font-medium text-[var(--foreground)]">
                   {candidate.name}
-                </span>
-                <span className="block truncate text-[10px] capitalize text-[var(--muted-light)]">
+                </p>
+                <p className="block truncate text-[10px] capitalize text-[var(--muted-light)]">
                   {candidate.principalType}
-                </span>
-              </span>
+                </p>
+              </div>
               {busy ? <Loader2 size={13} className="animate-spin text-[var(--muted)]" /> : null}
-            </label>
+              <Toggle
+                checked={checked}
+                onCheckedChange={() => void onToggle(principalId, !checked)}
+                disabled={Boolean(busyPrincipalId)}
+                aria-label={candidate.name}
+              />
+            </div>
           )
         })}
       </div>

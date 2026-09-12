@@ -148,7 +148,7 @@ Overlay keeps provider adapters behind a common gateway so the collaboration mod
 ├── scripts/                 # Sanity scripts and one-off checks
 ├── docs/                    # Product, setup, testing, marketing, and implementation docs
 ├── AGENTS.md                # Local agent workspace notes
-├── LICENSE.md               # License terms
+├── LICENSE                  # AGPL-3.0 license text
 └── SECURITY.md              # Security policy and reporting guidance
 ```
 
@@ -216,7 +216,7 @@ Overlay is under active development. The hosted product and the open-source repo
 All first-party material stored directly in this repository is licensed under `AGPL-3.0-only`. Paid commercial licenses are available separately from LayerNorm Inc. Third-party material and separate submodules retain their own licenses.
 - Overlay branding is governed by the trademark policy.
 
-See [`LICENSE.md`](LICENSE.md), [`docs/legal/licensing.mdx`](docs/legal/licensing.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).
+See [`LICENSE`](LICENSE), [`docs/legal/licensing.mdx`](docs/legal/licensing.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).
 
 ---
 

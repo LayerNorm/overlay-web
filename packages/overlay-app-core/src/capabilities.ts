@@ -21,6 +21,7 @@ export interface CapabilityCheck {
   automations: boolean
   multiTenant: boolean
   connectedAgents: boolean
+  computers: boolean
 }
 
 export type OverlayCapability = keyof CapabilityCheck
@@ -48,6 +49,7 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   automations: true,
   multiTenant: false,
   connectedAgents: false,
+  computers: false,
 }
 
 export function deriveOverlayCapabilities(

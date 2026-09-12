@@ -14,10 +14,10 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { Button, EmptyState } from '@overlay/ui/primitives'
+import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
-import { useWorkspace } from './WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 interface SlackChannel {
   id: string
@@ -672,18 +672,17 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
               {users.map((u) => {
                 const isSelected = selectedUserIds.has(u.id)
                 return (
-                  <label
+                  <div
                     key={u.id}
-                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-colors ${
+                    className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors ${
                       isSelected
                         ? 'border-[var(--foreground)]/30 bg-[var(--surface-subtle)]'
                         : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]/50'
                     }`}
                   >
-                    <input
-                      type="checkbox"
+                    <Toggle
                       checked={isSelected}
-                      onChange={() => {
+                      onCheckedChange={() => {
                         setSelectedUserIds((prev) => {
                           const next = new Set(prev)
                           if (next.has(u.id)) next.delete(u.id)
@@ -692,7 +691,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
                         })
                       }}
                       disabled={u.status !== 'new'}
-                      className="h-4 w-4 rounded border-[var(--border)] accent-[var(--foreground)]"
+                      aria-label={u.displayName}
                     />
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[10px] text-[var(--muted)]">
                       {u.displayName.slice(0, 2).toUpperCase()}
@@ -712,7 +711,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
                     >
                       {u.status === 'member' ? 'In workspace' : u.status === 'invited' ? 'Invited' : 'New'}
                     </span>
-                  </label>
+                  </div>
                 )
               })}
             </div>
@@ -862,19 +861,18 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
               const displayName = ch.type === 'public_channel' ? ch.name.replace(/^#+/, '') : ch.name
               const isSelected = selectedChannelIds.has(ch.id)
               return (
-                <label
+                <div
                   key={ch.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-colors ${
+                  className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors ${
                     isSelected
                       ? 'border-[var(--foreground)]/30 bg-[var(--surface-subtle)]'
                       : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]/50'
                   }`}
                 >
-                  <input
-                    type="checkbox"
+                  <Toggle
                     checked={isSelected}
-                    onChange={() => toggleChannel(ch.id)}
-                    className="h-4 w-4 rounded border-[var(--border)] accent-[var(--foreground)]"
+                    onCheckedChange={() => toggleChannel(ch.id)}
+                    aria-label={displayName}
                   />
                   <Icon size={14} className="shrink-0 text-[var(--muted)]" />
                   <span className="min-w-0 flex-1">
@@ -886,7 +884,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
                       {ch.memberCount > 0 ? ` · ${ch.memberCount} members` : ''}
                     </span>
                   </span>
-                </label>
+                </div>
               )
             })}
           </div>

@@ -193,7 +193,7 @@ aws ecr get-login-password --region "$AWS_REGION" | \
 
 docker buildx build \
   --platform linux/amd64 \
-  --file Dockerfile.enterprise-runtime \
+  --file docker/Dockerfile.enterprise-runtime \
   --tag "$IMAGE" \
   --push .
 
@@ -224,8 +224,8 @@ All task definitions use the same image digest and configuration family:
 Migration command:
 
 ```bash
-NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/app-data-migrate.ts && \
-NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/better-auth-migrate.ts
+NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/app-data-migrate.ts && \
+NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/better-auth-migrate.ts
 ```
 
 Configure health checks, log groups, CPU/memory, graceful stop time, read-only

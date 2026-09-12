@@ -16,11 +16,11 @@ import {
   PublicShowcaseProjectsInlinePanel,
 } from '@/features/showcase/PublicShowcaseSidebarPanels'
 import { WorkspaceSwitcher } from '@/features/workspaces/components/WorkspaceSwitcher'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import {
   buildWorkspaceHref,
   resolveWorkspaceSurface,
-} from '@/features/workspaces/lib/workspace-routing'
+} from '@/shared/workspaces/routing'
 import { useCollaborationRealtime } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 
 export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }: { publicShowcase?: boolean }) {

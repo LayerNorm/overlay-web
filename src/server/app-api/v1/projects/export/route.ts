@@ -9,7 +9,7 @@ import { readValidatedQuery } from '@/server/app-api/validated-input'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { FileRecord } from '@/server/files/FileRepository'
 import { ProjectExportQuery } from '@/shared/schemas/projects'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 
 const FILE_EXPORT_FIELDS = [
   '_id',
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const conversations = await Promise.all(conversationRows.map(async (conversation) => ({
       ...conversation,
       messages: await server.appData.repositories.conversations.getConversationMessages({
-        conversationId: conversation._id as Id<'conversations'>,
+        conversationId: asConversationId(conversation._id),
         userId,
       }),
     })))

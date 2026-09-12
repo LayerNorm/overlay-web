@@ -6,7 +6,6 @@ import { requireServerSecret } from '../lib/auth'
 
 const harness = v.union(v.literal('overlay'), v.literal('claude-code'))
 const agentVisibility = v.union(v.literal('creator'), v.literal('workspace'))
-const agentPlatform = v.union(v.literal('slack'), v.literal('msteams'))
 const agentValidator = v.object({
   agentId: v.string(),
   workspaceId: v.string(),
@@ -17,10 +16,10 @@ const agentValidator = v.object({
   harness,
   modelId: v.string(),
   avatarColor: v.optional(v.string()),
+  avatarShape: v.optional(v.string()),
   allowedToolIds: v.array(v.string()),
   invocationPolicy: v.literal('mention'),
   visibility: agentVisibility,
-  platforms: v.array(agentPlatform),
   createdByPrincipalId: v.string(),
   createdAt: v.number(),
   updatedAt: v.number(),
@@ -34,9 +33,9 @@ export const createByServer = mutation({
   args: {
     serverSecret: v.string(), agentId: v.string(), principalId: v.string(), workspaceId: v.string(),
     name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness,
-    modelId: v.string(), avatarColor: v.optional(v.string()), allowedToolIds: v.array(v.string()),
+    modelId: v.string(), avatarColor: v.optional(v.string()), avatarShape: v.optional(v.string()),
+    allowedToolIds: v.array(v.string()),
     teamIds: v.array(v.string()), visibility: v.optional(agentVisibility),
-    platforms: v.optional(v.array(agentPlatform)),
     createdByPrincipalId: v.string(), now: v.number(),
     isDefault: v.optional(v.boolean()),
   },
@@ -69,9 +68,9 @@ export const createByServer = mutation({
       agentId: args.agentId, workspaceId: args.workspaceId, principalId: args.principalId,
       name: args.name.trim(), description: cleanOptional(args.description),
       instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
-      avatarColor: cleanOptional(args.avatarColor), allowedToolIds: unique(args.allowedToolIds),
+      avatarColor: cleanOptional(args.avatarColor), avatarShape: cleanOptional(args.avatarShape),
+      allowedToolIds: unique(args.allowedToolIds),
       invocationPolicy: 'mention', visibility: args.visibility ?? 'workspace',
-      platforms: args.platforms ?? defaultPlatforms(args.visibility),
       createdByPrincipalId: args.createdByPrincipalId,
       teamIds: unique(args.teamIds), roomCount: 0,
       createdAt: args.now, updatedAt: args.now,
@@ -139,9 +138,9 @@ export const updateByServer = mutation({
     serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(),
     name: v.optional(v.string()), description: v.optional(v.string()), instructions: v.optional(v.string()),
     harness: v.optional(harness), modelId: v.optional(v.string()), avatarColor: v.optional(v.string()),
+    avatarShape: v.optional(v.string()),
     allowedToolIds: v.optional(v.array(v.string())), now: v.number(),
     teamIds: v.optional(v.array(v.string())), visibility: v.optional(agentVisibility),
-    platforms: v.optional(v.array(agentPlatform)),
     updatedByPrincipalId: v.optional(v.string()),
   },
   returns: v.union(agentValidator, v.null()),
@@ -164,10 +163,10 @@ export const updateByServer = mutation({
       harness?: 'overlay' | 'claude-code'
       modelId?: string
       avatarColor?: string
+      avatarShape?: string
       allowedToolIds?: string[]
       teamIds?: string[]
       visibility?: 'creator' | 'workspace'
-      platforms?: Array<'slack' | 'msteams'>
       updatedAt: number
     } = {
       ...(args.name === undefined ? {} : { name: args.name.trim() }),
@@ -176,9 +175,9 @@ export const updateByServer = mutation({
       ...(args.harness === undefined ? {} : { harness: args.harness }),
       ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
       ...(args.avatarColor === undefined ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
+      ...(args.avatarShape === undefined ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
       ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),
       ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
-      ...(args.platforms === undefined ? {} : { platforms: uniquePlatforms(args.platforms) }),
       updatedAt: args.now,
     }
     if ('name' in patch && !patch.name || 'instructions' in patch && !patch.instructions || 'modelId' in patch && !patch.modelId) {
@@ -273,12 +272,10 @@ async function directoryValue(
   // projections — this maintains backward compatibility while eliminating
   // N+1 queries for the common case.
   // `visibility` predates the access-mode feature on older rows; absence means
-  // a workspace-visible agent. `platforms` predates platform enablement;
-  // absence means all platforms (grandfathered).
+  // a workspace-visible agent.
   const visibility = row.visibility ?? 'workspace'
-  const platforms = row.platforms ?? ['slack', 'msteams']
   if (row.teamIds !== undefined && row.roomCount !== undefined) {
-    return { ...value, visibility, platforms, teamIds: row.teamIds, roomCount: row.roomCount }
+    return { ...value, visibility, teamIds: row.teamIds, roomCount: row.roomCount }
   }
 
   // Legacy fallback: compute from related tables.
@@ -287,7 +284,7 @@ async function directoryValue(
   const rooms = await ctx.db.query('conversationParticipants')
     .withIndex('by_workspaceId_principalId_status', (q) =>
       q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
-  return { ...value, visibility, platforms, teamIds: teams.map((item) => item.teamId).sort(), roomCount: rooms.length }
+  return { ...value, visibility, teamIds: teams.map((item) => item.teamId).sort(), roomCount: rooms.length }
 }
 
 async function requireActiveWorkspace(ctx: QueryCtx | MutationCtx, workspaceId: string) {
@@ -304,14 +301,6 @@ async function requirePrincipal(ctx: QueryCtx | MutationCtx, workspaceId: string
 
 function unique(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
-}
-
-function defaultPlatforms(visibility?: 'creator' | 'workspace'): Array<'slack' | 'msteams'> {
-  return visibility === 'creator' ? [] : ['slack', 'msteams']
-}
-
-function uniquePlatforms(values: string[]): Array<'slack' | 'msteams'> {
-  return [...new Set(values)].filter((value): value is 'slack' | 'msteams' => value === 'slack' || value === 'msteams')
 }
 
 function cleanOptional(value?: string) {

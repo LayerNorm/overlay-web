@@ -1,9 +1,5 @@
 import type { Metadata } from 'next'
-import { AppShellLayout } from '@/app/_components/AppShellLayout'
-
-// The reusable shell resolves a private session before selecting authenticated
-// or showcase data. Navigations into this route group may wait for that boundary.
-export const instant = false
+import { connection } from 'next/server'
 
 export const metadata: Metadata = {
   robots: {
@@ -12,10 +8,19 @@ export const metadata: Metadata = {
   },
 }
 
-export default function AuthShellLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Auth pages must render per request, never statically prerender: the
+ * nonce-based CSP only stamps script nonces during dynamic rendering, and a
+ * static prerender ships nonce-less flight scripts that the browser blocks —
+ * killing hydration and sticking visitors on "Loading..." forever.
+ * (`export const dynamic` is forbidden with `cacheComponents`, so request
+ * time is forced with `connection()` instead.)
+ */
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+  await connection()
   return (
-    <AppShellLayout publicShowcase suppressGuestPrompts>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       {children}
-    </AppShellLayout>
+    </div>
   )
 }

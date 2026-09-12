@@ -4,7 +4,6 @@ import { unstable_rethrow } from 'next/navigation'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { rateLimitByIp } from '@/server/security/rate-limit'
-import { buildNativeSubscriptionResponse } from '@/server/billing/native-subscription-response'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -43,7 +42,14 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      buildNativeSubscriptionResponse(entitlements),
+      {
+        ...entitlements,
+        creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
+        creditsTotal:
+          entitlements.budgetTotalCents !== undefined
+            ? entitlements.budgetTotalCents / 100
+            : entitlements.creditsTotal,
+      },
       { headers: NO_STORE_HEADERS },
     )
   } catch (error) {

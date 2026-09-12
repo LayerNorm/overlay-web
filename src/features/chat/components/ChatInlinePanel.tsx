@@ -37,12 +37,12 @@ import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
-import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { isSameChatSurface } from '@/shared/workspaces/routing'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 
 type Conversation = {
@@ -518,7 +518,10 @@ export function ChatInlinePanel({
   function requestArchive(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     setEditingChatId(null)
-    if (chat.conversationType === 'dm' || chat.conversationType === 'channel') {
+    // A one-to-one DM has nobody else to keep it for — archive directly
+    // instead of asking about scope. Channels and group DMs still ask.
+    const soloDm = chat.conversationType === 'dm' && (chat.otherParticipantTypes?.length ?? 0) <= 1
+    if ((chat.conversationType === 'dm' || chat.conversationType === 'channel') && !soloDm) {
       setArchiveError(null)
       setPendingArchiveChat(chat)
       return

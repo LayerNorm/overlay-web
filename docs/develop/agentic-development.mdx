@@ -5,13 +5,23 @@ description: "The standard workflow for parallel agent work, pull requests, inte
 
 ## Operating model
 
+**Current mode: direct pushes to `main`.** The owner has authorized direct pushes to `main` as the standard workflow. Work happens on `main` in the canonical checkout; commits are pushed directly without pull-request ceremony, and the staging/Vercel QA lane is skipped unless the owner requests it for a specific change. The Builder/Integration model below remains the reference for any change the owner flags for staged QA, and becomes the default again if this mode is revoked.
+
+Direct-to-main does not relax the safety rules; they become local-verification requirements:
+
+- Run checks proportional to the change before pushing (same evidence table as below).
+- Keep `CHANGELOG.md` and the applicable living docs current in the same commit series.
+- Push only fast-forward updates. The history-integrity ruleset still blocks force-pushes, resets, and branch deletion on `main` and `staging` for every actor including `DevelopedByDev`.
+- Root `vercel.json` must keep `git.deploymentEnabled.main` set to `false`. After each push, verify that no production Vercel deployment was created.
+- Keep commits to one coherent change each; the absence of a PR boundary is not license to mix unrelated work.
+
 Overlay uses two agent roles. A Builder works in one isolated worktree and normally submits a pull request to `staging`. The Integration agent reviews and merges the owner-selected candidate base, tests the required revision, and promotes or deploys it according to the explicit release choice. The canonical checkout stays clean and remains the trusted source for production operations.
 
 GitHub pull requests, checks, and commit history are the authoritative integration record. Do not maintain a second hand-written queue of open pull requests: it will drift. [`CHANGELOG.md`](https://github.com/LayerNorm/overlay-web/blob/main/CHANGELOG.md) is the concise record of changes that actually reached `main`.
 
 ## Reusable role prompts
 
-When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNorm/overlay-web/blob/main/BUILDER_AGENT_PROMPT.md) for implementation and PR submission, or [`INTEGRATION_AGENT_PROMPT.md`](https://github.com/LayerNorm/overlay-web/blob/main/INTEGRATION_AGENT_PROMPT.md) for review, staging QA, promotion, and production verification. These prompts restate the role boundaries below so an agent can execute the workflow without relying on a shortened task description.
+When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/BUILDER_AGENT_PROMPT.md) for implementation and PR submission, or [`INTEGRATION_AGENT_PROMPT.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/INTEGRATION_AGENT_PROMPT.md) for review, staging QA, promotion, and production verification. These prompts restate the role boundaries below so an agent can execute the workflow without relying on a shortened task description.
 
 ## Roles
 

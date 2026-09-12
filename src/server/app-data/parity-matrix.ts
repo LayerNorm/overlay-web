@@ -160,12 +160,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Workspace and collaboration surfaces',
     targetPhase: 'P1',
     capabilities: [],
-    routeRuleIds: [
-      'workspace-collaboration',
-      'workspace-collaboration-gated',
-      'mention-search-convex-only',
-      'slack-workspace-integration',
-    ],
+    routeRuleIds: ['workspace-collaboration', 'workspace-collaboration-gated', 'mention-search-convex-only'],
     exitGate: 'Workspaces, agents, rooms, and connected-agent invocation use provider-neutral repositories; remaining sharing and search surfaces stay explicitly gated and no Postgres browser path calls Convex.',
   },
   {
@@ -221,6 +216,14 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     capabilities: [],
     routeRuleIds: ['administration'],
     exitGate: 'Role grants, revocation, authorization denials, budget controls, and redacted audit records pass shared Convex/Postgres contracts and browser QA.',
+  },
+  {
+    id: 'computers',
+    name: 'Computers',
+    targetPhase: 'P7',
+    capabilities: [],
+    routeRuleIds: ['computers'],
+    exitGate: 'Owner-keyed computer rows pass the shared contract suite on both backends; lifecycle and stream issuance stay behind the capability flag.',
   },
   {
     id: 'background-runtime',

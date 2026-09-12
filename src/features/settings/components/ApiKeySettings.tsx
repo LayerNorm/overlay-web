@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Copy, KeyRound, RefreshCw, RotateCw, Trash2 } from 'lucide-react'
 import type { ApiKeyScope } from '@/shared/auth/api-key-scopes'
+import { Toggle } from '@overlay/ui/primitives'
 
 type ApiKeyRow = {
   id: string
@@ -109,12 +110,16 @@ export function ApiKeySettings() {
         >
           Create key
         </button>
-        <div className="flex flex-wrap gap-x-4 gap-y-2 md:col-span-2">
+        <div className="md:col-span-2">
           {SCOPES.map((scope) => (
-            <label key={scope.id} className="flex items-center gap-2 text-xs text-[var(--muted)]">
-              <input type="checkbox" checked={scopes.includes(scope.id)} onChange={() => toggleScope(scope.id)} />
-              {scope.label}
-            </label>
+            <div key={scope.id} className="flex items-center gap-3 border-b border-[var(--border)] py-2 last:border-b-0">
+              <span className="flex-1 text-xs text-[var(--muted)]">{scope.label}</span>
+              <Toggle
+                checked={scopes.includes(scope.id)}
+                onCheckedChange={() => toggleScope(scope.id)}
+                aria-label={scope.label}
+              />
+            </div>
           ))}
         </div>
       </div>

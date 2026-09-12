@@ -26,7 +26,7 @@ import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-ca
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 
 const LIST_PAGE_SIZE = 8
 

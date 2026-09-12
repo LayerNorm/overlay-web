@@ -35,7 +35,6 @@ import { getOverlayCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { BillingEntitlementsRecord } from '@/server/billing/BillingRepository'
-import { getPersonalPlanPresentation } from '@/shared/billing/billing-pricing'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -64,7 +63,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
-    const rawEntitlementsPromise: Promise<Entitlements | null> = billingPayer.scope === 'workspace'
+    const entitlementsPromise: Promise<Entitlements | null> = billingPayer.scope === 'workspace'
       ? serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
           billingAccountId: billingPayer.billingAccountId,
         }).then((value) => value
@@ -76,11 +75,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           serverSecret,
         })
-    const entitlementsPromise = rawEntitlementsPromise.then((value) =>
-      value && billingPayer.scope === 'personal'
-        ? { ...value, ...getPersonalPlanPresentation(value) }
-        : value,
-    )
 
     const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
       !isPostgresAppData && auth.accessToken
@@ -210,9 +204,6 @@ function toAppEntitlements(value: BillingEntitlementsRecord): Entitlements {
     tier: value.tier,
     planKind: value.planKind,
     planAmountCents: value.planAmountCents,
-    status: value.status,
-    stripeQuantity: value.stripeQuantity,
-    cancelAtPeriodEnd: value.cancelAtPeriodEnd,
     creditsUsed: value.creditsUsed,
     creditsTotal: value.creditsTotal,
     budgetUsedCents: value.budgetUsedCents,

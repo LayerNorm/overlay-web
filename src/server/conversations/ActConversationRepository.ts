@@ -1,5 +1,17 @@
 import 'server-only'
 
+declare const conversationIdBrand: unique symbol
+/**
+ * Provider-neutral conversation identifier. Both app-data providers store
+ * Convex-shaped string ids; the brand keeps the BFF decoupled from
+ * `convex/_generated` while still distinguishing conversation ids from
+ * arbitrary strings. Cast once at trust boundaries via `asConversationId`.
+ */
+export type ConversationId = string & { readonly [conversationIdBrand]: 'conversations' }
+export function asConversationId(id: string): ConversationId {
+  return id as ConversationId
+}
+
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -161,9 +173,9 @@ export interface ActConversationRepository {
     workspaceId?: string
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
-  }): Promise<Id<'conversations'>>
+  }): Promise<ConversationId>
   getConversationById(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
     workspaceId?: string
   }): Promise<ConversationListRow | null>
@@ -183,18 +195,18 @@ export interface ActConversationRepository {
   getRecentMessages(args: {
     beforeCreatedAt?: number
     compactToolPayloads?: boolean
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     limit: number
     userId: string
   }): Promise<ConversationMessageRow[]>
   getConversationMessages(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ConversationMessageRow[]>
   updateConversation(args: {
     actModelId?: string
     askModelIds?: string[]
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     lastMode?: 'ask' | 'act'
     projectId?: string | null
     title?: string
@@ -202,7 +214,7 @@ export interface ActConversationRepository {
     workspaceId?: string
   }): Promise<void>
   deleteConversation(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
     workspaceId?: string
   }): Promise<void>
@@ -213,11 +225,11 @@ export interface ActConversationRepository {
     userId: string
   }): Promise<AppSettings | null>
   getMessages(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ActPersistedMessage[]>
   getMessagesSince(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
     sinceCreatedAt?: number
     compactToolPayloads?: boolean
@@ -227,7 +239,7 @@ export interface ActConversationRepository {
     billingActorUserId?: string
     billingSpendSubjectId?: string
     billingSpendSubjectKind?: 'member' | 'programmatic'
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     content: string
     contentType: 'text' | 'image' | 'video'
     mode: 'ask' | 'act'
@@ -259,7 +271,7 @@ export interface ActConversationRepository {
     userId: string
   }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>>
   getConversation(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<ActConversationRow | null>
   getProject(args: {
@@ -267,13 +279,13 @@ export interface ActConversationRepository {
     userId: string
   }): Promise<ActProjectRow | null>
   getContextSummary(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     scope: string
     userId: string
   }): Promise<ContextSummarySnapshot | null>
   upsertContextSummary(args: {
     contextWindow: number
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     scope: string
     sourceEstimatedTokens: number
     sourceMessageCount: number
@@ -286,7 +298,7 @@ export interface ActConversationRepository {
     userId: string
   }): Promise<void>
   startAgentRun(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     leaseExpiresAt?: number
     mode: AgentRunMode
     modelId: string
@@ -326,7 +338,7 @@ export interface ActConversationRepository {
     metrics?: Partial<AgentRunMetrics>
   }): Promise<AgentRun | null>
   cancelAgentRuns(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     messageId?: Id<'conversationMessages'>
     partialContent?: string
     partialParts?: Array<Record<string, unknown>>
@@ -338,7 +350,7 @@ export interface ActConversationRepository {
     stoppedCount: number
   }>
   getLatestAgentRun(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null>
   /**
@@ -363,19 +375,19 @@ export interface ActConversationRepository {
     userId: string
   }): Promise<AgentRun[]>
   deleteTurn(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     turnId: string
     userId: string
   }): Promise<{ deletedMessages: number }>
   updateMessageUiPart(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     messageId: Id<'conversationMessages'>
     partId: string
     data: Record<string, unknown>
     userId: string
   }): Promise<boolean>
   setShare(args: {
-    conversationId: Id<'conversations'>
+    conversationId: ConversationId
     userId: string
     visibility: 'private' | 'public'
   }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null>

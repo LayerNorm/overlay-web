@@ -75,7 +75,6 @@ export default defineSchema({
       v.literal('past_due'),
       v.literal('trialing'),
     ),
-    cancelAtPeriodEnd: v.optional(v.boolean()),
     autoTopUpEnabled: v.boolean(),
     autoTopUpAmountCents: v.number(),
     offSessionConsentAt: v.optional(v.number()),
@@ -172,7 +171,6 @@ export default defineSchema({
       v.literal('past_due'),
       v.literal('trialing')
     ),
-    cancelAtPeriodEnd: v.optional(v.boolean()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
     // Live credit accumulator for the current billing period (in cents, may
@@ -623,6 +621,31 @@ export default defineSchema({
     expiresAt: v.number(),
   })
     .index('by_tokenHash', ['tokenHash']),
+
+  computers: defineTable({
+    // Caller-generated entity id; Convex _id stays an internal detail.
+    id: v.string(),
+    workspaceId: v.string(),
+    ownerType: v.union(v.literal('agent'), v.literal('user')),
+    ownerId: v.string(),
+    provider: v.string(),
+    providerRef: v.optional(v.string()),
+    size: v.union(v.literal('small'), v.literal('default'), v.literal('large')),
+    status: v.union(
+      v.literal('provisioning'),
+      v.literal('ready'),
+      v.literal('stopped'),
+      v.literal('error'),
+    ),
+    name: v.optional(v.string()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastActiveAt: v.optional(v.number()),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
 
   projects: defineTable({
     workspaceId: v.optional(v.string()),
@@ -1894,10 +1917,10 @@ export default defineSchema({
     harness: v.union(v.literal('overlay'), v.literal('claude-code')),
     modelId: v.string(),
     avatarColor: v.optional(v.string()),
+    avatarShape: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
     invocationPolicy: v.literal('mention'),
     visibility: v.optional(v.union(v.literal('creator'), v.literal('workspace'))),
-    platforms: v.optional(v.array(v.union(v.literal('slack'), v.literal('msteams')))),
     createdByPrincipalId: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1934,34 +1957,6 @@ export default defineSchema({
   })
     .index('by_workspaceId_external', ['workspaceId', 'directory', 'externalId'])
     .index('by_workspaceId_principal', ['workspaceId', 'principalId']),
-
-  workspacePlatformInstallations: defineTable({
-    installationId: v.string(),
-    workspaceId: v.string(),
-    directory: v.string(),
-    externalTeamId: v.string(),
-    enterpriseId: v.optional(v.string()),
-    isEnterpriseInstall: v.boolean(),
-    teamName: v.optional(v.string()),
-    botUserId: v.optional(v.string()),
-    botTokenCipher: v.string(),
-    installedByPrincipalId: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_workspaceId_directory_team', ['workspaceId', 'directory', 'externalTeamId'])
-    .index('by_directory_external', ['directory', 'externalTeamId']),
-
-  workspacePlatformEventReceipts: defineTable({
-    receiptId: v.string(),
-    workspaceId: v.optional(v.string()),
-    directory: v.string(),
-    externalTeamId: v.string(),
-    eventId: v.string(),
-    createdAt: v.number(),
-  })
-    .index('by_receiptId', ['receiptId'])
-    .index('by_createdAt', ['createdAt']),
 
   workspacePresence: defineTable({
     workspaceId: v.string(),

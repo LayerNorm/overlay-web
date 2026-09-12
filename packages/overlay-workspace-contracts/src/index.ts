@@ -82,8 +82,9 @@ export {
   type WorkspaceAgentHarness,
   WORKSPACE_AGENT_VISIBILITIES,
   type WorkspaceAgentVisibility,
-  WORKSPACE_AGENT_PLATFORMS,
-  type WorkspaceAgentPlatform,
+  WORKSPACE_AGENT_CREATURE_SHAPES,
+  type WorkspaceAgentCreatureShape,
+  isWorkspaceAgentCreatureShape,
   type WorkspaceAgentDefinition,
   type WorkspaceAgentCreateInput,
   type WorkspaceAgentUpdateInput,
@@ -109,11 +110,9 @@ export {
   type WorkspaceRolloutStage,
   type WorkspaceSharingPolicyPatch,
   type WorkspaceIdentityMapping,
-  type WorkspacePlatformInstallation,
-  type WorkspacePlatformIdentity,
-  type WorkspacePlatformInstallationSummary,
   type WorkspaceAuditExportRecord,
   type WorkspaceOperationalMetrics,
 } from './types'
 
 export * from './connected-agents'
+export * from './computers'

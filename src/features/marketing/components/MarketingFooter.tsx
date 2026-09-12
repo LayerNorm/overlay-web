@@ -1,7 +1,7 @@
 "use client";
 
 import { MoonStar, SunMedium } from "lucide-react";
-import Image from "next/image";
+import { OverlayMark } from "@/components/orb/Orb";
 import Link from "next/link";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
 import {
@@ -36,13 +36,7 @@ export function MarketingFooter() {
     <footer className="border-t border-[var(--border)] px-6 py-10 md:px-10">
       <div className="mx-auto flex max-w-7xl flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
-          <Image
-            src="/assets/overlay-logo.png"
-            alt="Overlay"
-            width={MARKETING_LOGO_SIZE}
-            height={MARKETING_LOGO_SIZE}
-            className="shrink-0"
-          />
+          <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
           <span
             className="text-lg font-medium tracking-tight text-[var(--foreground)]"
             style={marketingSerifStyle()}

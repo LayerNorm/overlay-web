@@ -5,7 +5,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
   Bookmark,
-  Bot,
   Check,
   FileText,
   Flag,
@@ -22,8 +21,9 @@ import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
-import { Textarea } from '@overlay/ui/primitives'
+import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
+import { AgentCreature } from '@/components/orb/Creature'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -50,6 +50,8 @@ export type RoomMessageView = {
   authorName: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorColor?: string
+  /** Creature body shape for agent authors; absent means circle. */
+  authorShape?: string
   /** Present for messages imported from Slack: shown in the author detail card. */
   authorEmail?: string
   authorStatus?: 'member' | 'invited' | 'not_invited'
@@ -104,6 +106,11 @@ export type RoomMessageItemProps = {
   highlighted?: boolean
   /** Consecutive messages from the same author use a compact transcript row. */
   grouped?: boolean
+  /**
+   * Direct messages match personal chat: no row hover background, and the
+   * action row sits under the message instead of a floating rail on top.
+   */
+  personalChatStyle?: boolean
 }
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
@@ -241,6 +248,7 @@ export function RoomMessageItem({
   onResolveRemoteRequest,
   highlighted = false,
   grouped = false,
+  personalChatStyle = false,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
@@ -257,11 +265,14 @@ export function RoomMessageItem({
 
   const avatarNode = isAgent ? (
     <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
-      style={{ backgroundColor: message.authorColor ?? '#64748b' }}
+      className="flex h-9 w-9 shrink-0 items-center justify-center"
       aria-hidden
     >
-      <Bot size={16} strokeWidth={1.75} />
+      <AgentCreature
+        agent={{ name: message.authorName, avatarColor: message.authorColor, avatarShape: message.authorShape }}
+        size={32}
+        animated={message.streaming}
+      />
     </span>
   ) : (
     <AuthorIdentityPopover
@@ -291,7 +302,7 @@ export function RoomMessageItem({
       return (
         <div
           {...rootProps}
-          className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+          className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
         >
           <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
@@ -445,7 +456,7 @@ export function RoomMessageItem({
   const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
-      floating
+      floating={!personalChatStyle}
       copyText={message.text}
       canEdit={mine}
       canReport={!mine}
@@ -469,10 +480,10 @@ export function RoomMessageItem({
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
       >
         <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
-          {toolbar}
+          {!personalChatStyle && toolbar}
           {attachments}
           {editing ? editor : message.text ? (
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
@@ -486,6 +497,7 @@ export function RoomMessageItem({
           ) : null}
           {reactionRow}
           {threadEntry}
+          {personalChatStyle && toolbar}
         </div>
       </div>
     )
@@ -495,11 +507,11 @@ export function RoomMessageItem({
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
     >
       {avatarNode}
       <div className="relative min-w-0 flex-1">
-        {toolbar}
+        {!personalChatStyle && toolbar}
         <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <AuthorIdentityPopover
             name={message.authorName}
@@ -558,6 +570,7 @@ export function RoomMessageItem({
         )}
         {reactionRow}
         {threadEntry}
+        {personalChatStyle && toolbar}
       </div>
     </div>
   )
@@ -577,26 +590,35 @@ function RemoteRequestControls({ request, onResolve }: {
       <p className="text-xs font-medium text-[var(--foreground)]">{request.kind === 'permission' ? 'Permission requested' : 'Input requested'}</p>
       <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{request.prompt}</p>
       {request.kind === 'elicitation' ? Object.entries(properties).map(([key, property]) => (
-        <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
-          {property.title ?? key}{required.includes(key) ? ' *' : ''}
-          {property.type === 'boolean' ? (
-            <input type="checkbox" checked={values[key] === true}
-              onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.checked }))}
-              className="ml-2 align-middle" />
-          ) : elicitationOptions(property).length > 0 ? (
-            <select value={String(values[key] ?? '')}
-              onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-              className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
-              <option value="">Select…</option>
-              {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          ) : (
-            <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
-              value={String(values[key] ?? '')}
-              onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-              className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
-          )}
-        </label>
+        property.type === 'boolean' ? (
+          <div key={key} className="mt-2 flex items-center gap-3">
+            <span className="flex-1 text-[11px] text-[var(--muted)]">
+              {property.title ?? key}{required.includes(key) ? ' *' : ''}
+            </span>
+            <Toggle
+              checked={values[key] === true}
+              onCheckedChange={(next) => setValues((current) => ({ ...current, [key]: next }))}
+              aria-label={typeof (property.title ?? key) === 'string' ? (property.title ?? key) as string : key}
+            />
+          </div>
+        ) : (
+          <div key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
+            <span>{property.title ?? key}{required.includes(key) ? ' *' : ''}</span>
+            {elicitationOptions(property).length > 0 ? (
+              <select value={String(values[key] ?? '')}
+                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
+                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
+                <option value="">Select…</option>
+                {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            ) : (
+              <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+                value={String(values[key] ?? '')}
+                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
+                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
+            )}
+          </div>
+        )
       )) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {request.kind === 'permission' ? request.options.map((option) => (

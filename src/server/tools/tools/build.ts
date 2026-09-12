@@ -17,6 +17,7 @@ import {
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
   executeDraftSkillFromChat,
+  executeCreateAgent,
   executeDeleteMemory,
   executeGenerateImage,
   executeGenerateVideo,
@@ -31,6 +32,7 @@ import {
   executeSearchKnowledge,
   executeSearchMemory,
   executeUpdateAutomation,
+  executeUpdateAgent,
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
@@ -283,6 +285,47 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('delete_automation')
         return executeDeleteAutomation(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('create_agent')) {
+    tools.create_agent = tool({
+      description:
+        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first.',
+      inputSchema: z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        instructions: z.string().min(1),
+        modelId: z.string().optional(),
+        avatarColor: z.string().optional(),
+        avatarShape: z.string().optional(),
+        visibility: z.enum(['creator', 'workspace']).optional(),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('create_agent')
+        return executeCreateAgent(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('update_agent')) {
+    tools.update_agent = tool({
+      description:
+        'Update an existing workspace agent. Use for changes to name, description, instructions, model, avatar, or access.',
+      inputSchema: z.object({
+        agentId: z.string().min(1),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        instructions: z.string().optional(),
+        modelId: z.string().optional(),
+        avatarColor: z.string().optional(),
+        avatarShape: z.string().optional(),
+        visibility: z.enum(['creator', 'workspace']).optional(),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('update_agent')
+        return executeUpdateAgent(options, input)
       },
     })
   }

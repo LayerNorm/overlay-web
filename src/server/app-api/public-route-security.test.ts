@@ -43,13 +43,10 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/security/csp-report': ['POST'],
   '/api/share/file/[token]': ['GET'],
   '/api/subscription': ['GET'],
-  '/api/subscription/change-plan': ['POST'],
   '/api/subscription/settings': ['GET', 'POST'],
   '/api/topups/checkout': ['POST'],
   '/api/topups/history': ['GET'],
   '/api/topups/verify': ['POST'],
-  '/api/webhooks/slack': ['POST'],
-  '/api/webhooks/slack/oauth': ['GET'],
   '/api/webhooks/stripe': ['POST'],
 }
 

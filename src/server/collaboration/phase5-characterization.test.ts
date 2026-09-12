@@ -12,6 +12,8 @@ test('Phase 5 enables the named Agents product surface', () => {
   assert.equal(flags.get('workspaces'), true)
   assert.equal(flags.get('channels'), true)
   assert.equal(flags.get('agents'), true)
+  assert.equal(overlayAppConfig.brand?.homeHref, '/app/agents')
+  assert.equal(overlayAppConfig.navigation?.[0]?.id, 'agents')
   assert.equal(overlayAppConfig.navigation?.some((item) => item.id === 'agents' && item.href === '/app/agents'), true)
 })
 

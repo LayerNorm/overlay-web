@@ -13,6 +13,7 @@ import { PostgresActConversationRepository } from '@/server/conversations/Postgr
 import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
 import { UnlimitedUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
+import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
 import { PostgresNoteRepository } from '@/server/notes'
 import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUserRepository } from '@/server/users/PostgresUserRepository'
@@ -64,12 +65,20 @@ test('Postgres app-data repository contracts', {
           'files_parent_id_files_id_fk',
           'files_duplicate_of_file_id_files_id_fk',
           'files_parent_not_self_check',
-          'files_duplicate_not_self_check'
+          'files_duplicate_not_self_check',
+          'computers_created_by_users_id_fk',
+          'computers_owner_type_check',
+          'computers_size_check',
+          'computers_status_check'
         )
       `)
       assert.deepEqual(
         result.rows.map((row) => String(row.conname)).sort(),
         [
+          'computers_created_by_users_id_fk',
+          'computers_owner_type_check',
+          'computers_size_check',
+          'computers_status_check',
           'files_duplicate_not_self_check',
           'files_duplicate_of_file_id_files_id_fk',
           'files_parent_id_files_id_fk',
@@ -248,6 +257,7 @@ function testSearchBilling(label: string) {
         db,
         notifier,
       ),
+      computers: new PostgresComputerRepository(db),
       daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
       files: new PostgresFileRepository(db),
       memories: new PostgresMemoryRepository(db),

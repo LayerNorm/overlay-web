@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { fileService } from '@/server/files/http'
 import { downloadBuffer } from '@/server/storage/r2'
@@ -24,18 +24,18 @@ export async function POST(request: NextRequest) {
   }
 
   const { jobId, userId, r2Key, fileName, mimeType, projectId, parentId } = body
+  const ingestionJobs = getOverlayServerContext().appData.repositories.fileIngestionJobs
 
   try {
     // Download the file from R2
     const buffer = await downloadBuffer(r2Key)
 
     if (!buffer) {
-      await convex.mutation('files/ingestion/jobs:updateJobStatus', {
-        jobId: jobId as never,
+      await ingestionJobs.updateJobStatus({
+        jobId,
         userId,
         status: 'failed',
         error: 'File not found in R2',
-        serverSecret: getInternalApiSecret(),
       })
       return NextResponse.json({ error: 'File not found in R2' }, { status: 404 })
     }
@@ -52,24 +52,22 @@ export async function POST(request: NextRequest) {
     })
 
     // Mark job as completed
-    await convex.mutation('files/ingestion/jobs:updateJobStatus', {
-      jobId: jobId as never,
+    await ingestionJobs.updateJobStatus({
+      jobId,
       userId,
       status: 'completed',
       partCount: result.parts,
-      fileIds: (result.ids ?? []).filter(Boolean) as never,
-      serverSecret: getInternalApiSecret(),
+      fileIds: (result.ids ?? []).filter(Boolean),
     })
 
     return NextResponse.json({ success: true, result })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Processing failed'
-    await convex.mutation('files/ingestion/jobs:updateJobStatus', {
-      jobId: jobId as never,
+    await ingestionJobs.updateJobStatus({
+      jobId,
       userId,
       status: 'failed',
       error: message.slice(0, 500),
-      serverSecret: getInternalApiSecret(),
     })
     return NextResponse.json({ error: message }, { status: 500 })
   }

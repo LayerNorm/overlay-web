@@ -1,14 +1,16 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import type {
+  WorkspaceAgentCreateInput,
+  WorkspaceAgentCreatureShape,
+  WorkspaceAgentDirectoryItem,
+  WorkspaceAgentUpdateInput,
+  WorkspaceAgentVisibility,
+  WorkspaceMembershipRole,
+} from '@overlay/workspace-contracts'
 import {
-  WORKSPACE_AGENT_PLATFORMS,
-  type WorkspaceAgentCreateInput,
-  type WorkspaceAgentDirectoryItem,
-  type WorkspaceAgentPlatform,
-  type WorkspaceAgentUpdateInput,
-  type WorkspaceAgentVisibility,
-  type WorkspaceMembershipRole,
+  WORKSPACE_AGENT_CREATURE_SHAPES,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
@@ -32,13 +34,10 @@ export class WorkspaceAgentService {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
+  async list(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
-    const agents = await this.repository.list({
-      workspaceId: access.workspace.id,
-      ...(args.includeArchived ? { includeArchived: true } : {}),
-    })
+    const agents = await this.repository.list({ workspaceId: access.workspace.id })
     const visible = agents.filter((agent) => canSeeAgent(agent, access.principal.id))
     // Attribute tiles to their creator. Resolved best-effort: an unknown
     // principal simply yields no owner line.
@@ -103,7 +102,6 @@ export class WorkspaceAgentService {
         teamIds: [],
         isDefault: true,
         visibility: 'workspace',
-        platforms: ['slack', 'msteams'],
         createdByPrincipalId: args.creatorPrincipalId,
         now: this.now(),
       })
@@ -161,10 +159,10 @@ export class WorkspaceAgentService {
         harness,
         modelId,
         avatarColor: color(args.input.avatarColor),
+        avatarShape: shape(args.input.avatarShape),
         allowedToolIds: unique(args.input.allowedToolIds ?? []),
         teamIds,
         visibility: normalizeVisibility(args.input.visibility),
-        platforms: normalizePlatforms(args.input.platforms, normalizeVisibility(args.input.visibility)),
         createdByPrincipalId: access.principal.id,
         now: this.now(),
       })
@@ -211,9 +209,9 @@ export class WorkspaceAgentService {
       ...(args.input.modelId === undefined ? {} : { modelId: required(args.input.modelId, 'Model', 200) }),
       ...(args.input.harness === undefined ? {} : { harness: args.input.harness }),
       ...(args.input.avatarColor === undefined ? {} : { avatarColor: color(args.input.avatarColor) }),
+      ...(args.input.avatarShape === undefined ? {} : { avatarShape: shape(args.input.avatarShape) }),
       ...(args.input.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.input.allowedToolIds) }),
       ...(args.input.visibility === undefined ? {} : { visibility: args.input.visibility }),
-      ...(args.input.platforms === undefined ? {} : { platforms: normalizePlatforms(args.input.platforms, undefined) }),
       ...(teamIds === undefined ? {} : { teamIds }),
       updatedByPrincipalId: access.principal.id,
       now: this.now(),
@@ -312,33 +310,6 @@ function normalizeVisibility(value: WorkspaceAgentVisibility | undefined): Works
   return value === 'creator' ? 'creator' : 'workspace'
 }
 
-/**
- * Explicit platform list, sanitized against the known set. Absent on create
- * means the visibility default (Workspace: all platforms; Personal: none);
- * absent on update means unchanged.
- */
-function normalizePlatforms(
-  value: WorkspaceAgentPlatform[] | undefined,
-  visibility: WorkspaceAgentVisibility | undefined,
-): WorkspaceAgentPlatform[] {
-  if (value !== undefined) {
-    if (!Array.isArray(value)) return []
-    const known = WORKSPACE_AGENT_PLATFORMS as readonly string[]
-    return value.filter((entry): entry is WorkspaceAgentPlatform => known.includes(entry))
-  }
-  if (visibility === undefined || visibility === 'creator') return []
-  return [...WORKSPACE_AGENT_PLATFORMS]
-}
-
-/** Grandfathered rows (`undefined`) read as all platforms; `[]` means none. */
-export function isAgentOnPlatform(
-  agent: Pick<WorkspaceAgentDirectoryItem, 'platforms'>,
-  platform: WorkspaceAgentPlatform,
-): boolean {
-  const platforms = agent.platforms ?? [...WORKSPACE_AGENT_PLATFORMS]
-  return platforms.includes(platform)
-}
-
 function required(value: string, label: string, max: number) {
   const normalized = value.trim()
   if (!normalized) throw new WorkspaceAgentServiceError('validation', `${label} is required`)
@@ -360,6 +331,15 @@ function color(value?: string) {
     throw new WorkspaceAgentServiceError('validation', 'Avatar color must be a six-digit hex color')
   }
   return normalized.toLowerCase()
+}
+
+function shape(value?: string): WorkspaceAgentCreatureShape | undefined {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (!(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(normalized)) {
+    throw new WorkspaceAgentServiceError('validation', 'Avatar shape is not a known creature shape')
+  }
+  return normalized as WorkspaceAgentCreatureShape
 }
 
 function unique(values: string[]) {

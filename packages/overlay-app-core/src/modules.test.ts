@@ -6,7 +6,6 @@ import {
   buildSettingsRegistrySummary,
   collectProjectDescendantIds,
   filterExtensionCatalog,
-  accountStatusDescription,
   normalizeTopUpDraft,
   noteEditorState,
   resolveSettingsPanel,
@@ -108,14 +107,6 @@ test('normalizeTopUpDraft keeps billing controls stable across response variants
     }),
     { topUpAmountCents: 1200, autoTopUpEnabled: true },
   )
-})
-
-test('account status describes scheduled cancellation instead of renewal', () => {
-  assert.equal(accountStatusDescription({
-    status: 'active',
-    cancelAtPeriodEnd: true,
-    billingPeriodEnd: Date.UTC(2026, 8, 30) / 1000,
-  }), 'Cancels September 30, 2026')
 })
 
 test('settings registry summary sorts extension metadata predictably', () => {

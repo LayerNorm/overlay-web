@@ -8,6 +8,20 @@ The web app is the canonical surface for enterprise customization. Self-hosters 
 
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 
+The default brand mark is the `OverlayMark` SVG orb component (`@overlay/ui`, re-exported from
+`src/components/orb/Orb.tsx`), not the `logoSrc` raster: the sidebar renders the orb whenever
+`brand.logoSrc` is the default `/assets/overlay-logo.png`, and only renders the `next/image` raster
+when a custom brand overrides it. The same `Orb` component also renders the small marks inside the
+chat surface — tool-call rails, the reasoning ("Thinking"/"Thought") row, the streaming tail marker,
+the exchange loading state, and the notebook agent panel — so no surface falls back to the PNG.
+The PNG asset stays on disk for lifecycle emails and favicons, which require raster. Agent avatars
+are anthropomorphic creatures (`AgentCreature` in `src/components/orb/Creature.tsx`): a solid-color
+body in one of eight shapes (`avatarShape`: circle, blob, squircle, pill, triangle, hexagon, cloud,
+droplet) with Grokbot-style blinking eyes whose dark/light tone derives from the body luminance.
+Both shape and color (`avatarColor`) persist on the workspace agent record — nullable columns with a
+circle default, so existing agents keep working — and are picked in the agent editor's Identity
+section, which previews shapes and colors as live creatures.
+
 ```ts
 import {
   DEFAULT_OVERLAY_NAVIGATION,
@@ -19,7 +33,7 @@ export const overlayAppShell = defineOverlayAppConfig({
     name: 'Acme AI',
     shortName: 'Acme',
     logoSrc: '/assets/acme-logo.png',
-    homeHref: '/app/chat',
+    homeHref: '/app/agents',
     supportEmail: 'it@acme.example',
   },
   navigation: [
@@ -41,7 +55,9 @@ export const overlayAppShell = defineOverlayAppConfig({
 
 Registries merge with defaults by `id`. If you provide an item with the same `id`, Overlay replaces that item’s metadata. Unspecified default items remain available.
 
-While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Chats; it should not be inserted at the top of the primary navigation.
+Agents lead the default primary navigation and `/app/agents` is the authenticated home. The authenticated Agents surface uses the contextual sidebar as its roster; selecting an agent opens that agent's direct conversation. The conversation header's settings control composes the existing agent editor inside `AppScreenSidePanel`, which is docked on desktop and presented as an overlay dialog on smaller screens. The full-page `/app/agents/new` and `/app/agents/:id` routes remain compatibility entry points.
+
+While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Agents; it should not be inserted at the top of the primary navigation.
 
 ## Component Keys
 
@@ -116,7 +132,7 @@ pages, and visual fixtures remain standalone. Their minimal surfaces are part of
 the handoff, popup, recipient, or test contract and must not gain workspace
 navigation.
 
-The account panel contains identity, desktop handoff, and deployment-supported billing controls. Personal billing presents the named plan, renewal or payment status, percentage of included allowance remaining, extra top-up balance, and storage as separate indicators. One-time and automatic top-up controls live only in Account; public pricing links to them but never changes the preference. Legacy personal plans are labeled as grandfathered until the customer explicitly confirms a named-plan change. The primary sidebar rail links its compact plan status to this panel. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.
+The account panel contains identity, desktop handoff, and deployment-supported billing controls. Do not expose account-level API-key controls unless the deployment intentionally enables and tests the API-key service; a non-working credential control is worse than no control.
 
 `workspaceWallets` is disabled by default. It requires `OVERLAY_FEATURE_WORKSPACE_WALLETS=1` plus `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE=internal|selected|general`. `internal` enables only `OVERLAY_WORKSPACE_BILLING_INTERNAL_WORKSPACE_IDS`; `selected` adds `OVERLAY_WORKSPACE_BILLING_SELECTED_WORKSPACE_IDS`; `general` enables every organization workspace. Non-selected workspaces preserve personal compatibility. A selected organization workspace requires its own active, funded account and never falls back to a member's personal wallet. Next.js and hosted Convex use the same rollout parser so background indexing cannot diverge from interactive work.
 

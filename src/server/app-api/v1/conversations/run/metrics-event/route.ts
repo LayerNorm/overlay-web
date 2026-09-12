@@ -5,7 +5,7 @@ import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { AgentRunMetricEventRequest } from '@/shared/schemas/chat'
 import { agentRunService } from '@/server/conversations/http'
-import type { Id } from '../../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!body.ok) return body.response
     const userId = getAuthorizedResourceUserId(context)
     const recorded = await agentRunService.recordBrowserEvent({
-      conversationId: body.data.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(body.data.conversationId),
       event: body.data.event,
       runId: body.data.agentRunId,
       userId,

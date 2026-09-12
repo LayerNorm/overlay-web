@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 
-export const instant = false
-
-export default function AppPricingRedirect() {
+/** Legacy demo-shell address. Canonical pricing lives at `/pricing`. */
+export default function AppPricingCompatPage() {
   redirect('/pricing')
 }

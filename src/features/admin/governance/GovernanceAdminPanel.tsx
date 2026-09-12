@@ -19,7 +19,7 @@ import type {
 } from '@overlay/app-core'
 import { Button, IconButton, SegmentedControl } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { Select } from '@overlay/ui/primitives'
+import { Select, Toggle } from '@overlay/ui/primitives'
 
 type GovernanceView = 'policies' | 'reviews'
 
@@ -232,14 +232,14 @@ export function GovernanceAdminPanel({
                     onChange={(event) => setRetentionUntil(event.target.value)}
                   />
                 </label>
-                <label className="flex items-center gap-2 text-xs">
-                  <input
+                <div className="flex items-center gap-3">
+                  <span className="flex-1 text-xs">Legal hold</span>
+                  <Toggle
                     checked={legalHold}
-                    type="checkbox"
-                    onChange={(event) => setLegalHold(event.target.checked)}
+                    onCheckedChange={setLegalHold}
+                    aria-label="Legal hold"
                   />
-                  Legal hold
-                </label>
+                </div>
               </>
             ) : (
               <label className="block text-xs text-[var(--muted)]">

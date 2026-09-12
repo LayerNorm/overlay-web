@@ -11,6 +11,7 @@ import {
   WEBHOOK_EVENT_TYPES,
   type WebhookEventType,
 } from '@/shared/schemas/webhooks'
+import { Toggle } from '@overlay/ui/primitives'
 
 const EVENT_LABELS: Record<WebhookEventType, string> = {
   'automation.failed': 'Automation failed',
@@ -129,16 +130,16 @@ export function WebhookSettings() {
           >
             <Plus size={15} /> Add
           </button>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 md:col-span-3">
+          <div className="md:col-span-3">
             {WEBHOOK_EVENT_TYPES.map((event) => (
-              <label key={event} className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                <input
-                  type="checkbox"
+              <div key={event} className="flex items-center gap-3 border-b border-[var(--border)] py-2 last:border-b-0">
+                <span className="flex-1 text-xs text-[var(--muted)]">{EVENT_LABELS[event]}</span>
+                <Toggle
                   checked={events.includes(event)}
-                  onChange={() => toggleEvent(event)}
+                  onCheckedChange={() => toggleEvent(event)}
+                  aria-label={EVENT_LABELS[event]}
                 />
-                {EVENT_LABELS[event]}
-              </label>
+              </div>
             ))}
           </div>
         </div>

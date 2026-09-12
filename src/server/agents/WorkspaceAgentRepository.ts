@@ -1,10 +1,10 @@
 import 'server-only'
 
 import type {
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentDefinition,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentHarness,
-  WorkspaceAgentPlatform,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 
@@ -18,10 +18,10 @@ export type CreateWorkspaceAgentRecord = {
   harness: WorkspaceAgentHarness
   modelId: string
   avatarColor?: string
+  avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds: string[]
   teamIds: string[]
   visibility: WorkspaceAgentVisibility
-  platforms: WorkspaceAgentPlatform[]
   createdByPrincipalId: string
   now: number
   isDefault?: boolean
@@ -29,7 +29,7 @@ export type CreateWorkspaceAgentRecord = {
 
 export type UpdateWorkspaceAgentRecord = Partial<Pick<
   WorkspaceAgentDefinition,
-  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'avatarColor' | 'allowedToolIds' | 'visibility' | 'platforms'
+  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'avatarColor' | 'avatarShape' | 'allowedToolIds' | 'visibility'
 >> & {
   agentId: string
   workspaceId: string

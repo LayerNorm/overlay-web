@@ -1,6 +1,6 @@
 import type {
   WorkspaceAgentCreateInput,
-  WorkspaceAgentPlatform,
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
@@ -16,9 +16,9 @@ export function buildWorkspaceAgentInput(args: {
   adapterId: string
   modelId: string
   avatarColor: string
+  avatarShape: WorkspaceAgentCreatureShape
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
-  platforms: WorkspaceAgentPlatform[]
 }): WorkspaceAgentCreateInput {
   const byo = args.agentType === 'byo'
   return {
@@ -28,10 +28,17 @@ export function buildWorkspaceAgentInput(args: {
     harness: byo ? workspaceHarnessForByo(args.adapterId) : 'overlay',
     modelId: byo ? `byo/${args.adapterId}` : args.modelId.trim(),
     avatarColor: args.avatarColor,
+    avatarShape: args.avatarShape,
     allowedToolIds: byo ? [] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
-    platforms: args.platforms,
   }
+}
+
+/** The built-in master agent renders the master notice and skips deletion. */
+export function isDefaultMasterAgent(
+  agent: { isDefault?: boolean; name: string } | null | undefined,
+): boolean {
+  return Boolean(agent && (agent.isDefault || agent.name.toLowerCase() === 'overlay'))
 }
 
 /** Mirrors the editor's save gating: identity plus either overlay behavior or a valid BYO binding. */

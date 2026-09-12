@@ -68,6 +68,16 @@ test('connected-agent settings require both the product flag and server capabili
   assert.equal(visible.settingsPanels.some((item) => item.id === 'agent-environments'), true)
 })
 
+test('computers settings follow the computers capability', () => {
+  const hidden = resolveOverlayAppShellConfig()
+  assert.equal(hidden.settingsSections.some((item) => item.id === 'computers'), false)
+  assert.equal(hidden.settingsPanels.some((item) => item.id === 'computers'), false)
+
+  const visible = resolveOverlayAppShellConfig(undefined, { capabilities: { computers: true } })
+  assert.equal(visible.settingsSections.some((item) => item.id === 'computers'), true)
+  assert.equal(visible.settingsPanels.some((item) => item.id === 'computers'), true)
+})
+
 test('resolveOverlayAppShellConfig exposes memory management without vector search', () => {
   const shell = resolveOverlayAppShellConfig(undefined, {
     capabilities: { memory: true, vectorSearch: false },
@@ -118,7 +128,7 @@ test('redacted capability bootstrap payload exposes capabilities without secrets
       canUseExtensions: true,
     },
     navigation: ['chat', 'files', 'extensions', 'projects', 'knowledge'],
-    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'connected-chat', 'contact'],
+    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'contact'],
   })
   assert.equal(JSON.stringify(payload).includes('secret'), false)
 })

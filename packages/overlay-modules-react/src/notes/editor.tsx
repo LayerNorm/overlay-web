@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
+import { Orb } from '@overlay/ui'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -1243,7 +1244,11 @@ export function CanonicalNotebookEditor({
     />
   )
 
-  const overlayLogo = logo ?? <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden />
+  const overlayLogo = logo ?? (
+    <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden>
+      <Orb variant="metal" size={14} animated={false} label="" />
+    </span>
+  )
   const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))
   const notebookHeaderProps: NotebookEditorHeaderRenderProps = {
     activeNote,

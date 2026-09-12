@@ -22,11 +22,6 @@ const PUBLIC_ROUTES = [
   '/api/checkout/verify',
 ]
 
-const PUBLIC_MARKETING_REWRITES: Record<string, string> = {
-  '/home': '/app/home',
-  '/manifesto': '/app/manifesto',
-}
-
 function isDocsProxyRoute(pathname: string): boolean {
   return (
     pathname === '/docs' ||
@@ -272,31 +267,6 @@ export async function proxy(request: NextRequest) {
     destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.redirect(destination),
-      cspHeaderName,
-      cspPolicy,
-    )
-  }
-
-  // Pricing is public and canonical at /pricing; redirect before the app layout
-  // boots so old links do not pay the authenticated shell startup cost.
-  if (pathname === '/app/pricing') {
-    return applyBrowserSecurityHeaders(
-      NextResponse.redirect(new URL('/pricing', request.url)),
-      cspHeaderName,
-      cspPolicy,
-    )
-  }
-
-  const publicMarketingDestination = PUBLIC_MARKETING_REWRITES[pathname]
-  if (publicMarketingDestination) {
-    const destination = new URL(publicMarketingDestination, request.url)
-    destination.searchParams.set('showcase', '1')
-    return applyBrowserSecurityHeaders(
-      NextResponse.rewrite(destination, {
-        request: {
-          headers: requestHeaders,
-        },
-      }),
       cspHeaderName,
       cspPolicy,
     )

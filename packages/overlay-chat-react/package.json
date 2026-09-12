@@ -29,7 +29,7 @@
   "scripts": {
     "check:transcript-boundaries": "node scripts/check-transcript-boundaries.mjs",
     "typecheck": "npm run check:transcript-boundaries && tsc --noEmit",
-    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/**/*.test.tsx"
+    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/**/*.test.tsx src/**/*.test.ts"
   },
   "dependencies": {
     "@overlay/chat-core": "file:../overlay-chat-core",

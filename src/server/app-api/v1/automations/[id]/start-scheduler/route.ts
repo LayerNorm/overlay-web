@@ -9,7 +9,7 @@ import { logger } from '@/server/observability/logger'
 import {
   automationScheduleWorkflow,
   type AutomationScheduleWorkflowInput,
-} from '@/workflows/automation-schedule'
+} from '@/server/workflows/automation-schedule'
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/automations/{id}/start-scheduler

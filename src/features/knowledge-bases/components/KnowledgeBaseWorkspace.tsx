@@ -51,7 +51,7 @@ import {
   type ConnectedKnowledgeSourceRecipe,
 } from '@/shared/knowledge/external-source-ref'
 import { ShareDialog } from '@/components/share/ShareDialog'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { Select } from '@overlay/ui/primitives'
 
 type SourceTab = 'sources' | 'search'

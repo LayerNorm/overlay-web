@@ -52,7 +52,6 @@ export interface StripeSubscription {
   customer?: string | { id?: string } | null
   items?: { data?: StripeSubscriptionItem[] } | null
   status?: string | null
-  cancel_at_period_end?: boolean | null
 }
 
 export interface StripeBillingClient {
@@ -117,7 +116,6 @@ export interface StripeBillingProviderOptions {
     billingAccountId: string
     stripeCustomerId: string
   }) => Promise<void>
-  integrationIdentifier?: () => string
 }
 
 function resolve<T>(value: MaybeGetter<T> | undefined): T | undefined {
@@ -256,7 +254,6 @@ export class StripeBillingProvider implements BillingProvider {
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       kind: 'paid_plan',
       planKind: 'paid',
-      ...(args.planId ? { planId: args.planId } : {}),
       planVersion: 'variable_v2',
       planAmountCents: String(planAmountCents),
       stripeQuantity: String(quantity),
@@ -268,9 +265,6 @@ export class StripeBillingProvider implements BillingProvider {
 
     const customerId = await this.ensureCheckoutCustomer(args)
     const session = await this.options.stripe.checkout.sessions.create({
-      ...(this.options.integrationIdentifier
-        ? { integration_identifier: this.options.integrationIdentifier() }
-        : {}),
       billing_address_collection: 'auto',
       line_items: [{ price: priceId, quantity }],
       mode: 'subscription',
@@ -500,7 +494,6 @@ export class StripeBillingProvider implements BillingProvider {
       offSessionConsentAt,
       currentPeriodStart: period.currentPeriodStart,
       currentPeriodEnd: period.currentPeriodEnd,
-      cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
       metadata: checkoutSession.metadata ?? undefined,
     }
   }

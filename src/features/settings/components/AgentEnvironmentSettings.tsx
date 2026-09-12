@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { Check, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 type Environment = {
@@ -24,6 +24,7 @@ export function AgentEnvironmentSettings() {
   const [editingRoots, setEditingRoots] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return
@@ -94,6 +95,18 @@ export function AgentEnvironmentSettings() {
     }
   }
 
+  async function copyServiceCommand(environment: Environment) {
+    const command = persistentServiceCommand(environment)
+    if (!command) return
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopiedCommandId(environment.id)
+      window.setTimeout(() => setCopiedCommandId((current) => (current === environment.id ? null : current)), 1500)
+    } catch {
+      setError('Could not copy to the clipboard')
+    }
+  }
+
   async function revoke(environmentId: string) {
     setBusy(environmentId)
     setError(null)
@@ -136,6 +149,13 @@ export function AgentEnvironmentSettings() {
                   {environment.platform ?? environment.kind}{environment.hostVersion ? ` · host ${environment.hostVersion}` : ''}
                   {environment.lastSeenAt ? ` · ${lastSeenLabel(environment.lastSeenAt)}` : ''}
                 </p>
+                {environment.status === 'offline' ? (
+                  <OfflineRecoveryHint
+                    environment={environment}
+                    copied={copiedCommandId === environment.id}
+                    onCopy={() => void copyServiceCommand(environment)}
+                  />
+                ) : null}
                 {environment.status === 'pending' ? (
                   <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
                     <div className="flex items-center gap-2 text-sm text-[var(--foreground)]"><ShieldCheck size={16} className="text-[var(--muted)]" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting'}</strong></div>
@@ -183,6 +203,58 @@ export function AgentEnvironmentSettings() {
 
 function parseRoots(value: string) {
   return value.split(/[,\n]/).map((root) => root.trim()).filter(Boolean)
+}
+
+// Keep in sync with OVERLAY_AGENT_HOST_PACKAGE_VERSION in
+// src/server/agents/agent-enrollment-command.ts; enforced by
+// scripts/verify-agent-host-release.mjs.
+const HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.5'
+const DEFAULT_HOST_CONFIG_PATH = '~/.overlay/agent-host/config.json'
+
+/**
+ * One-time command that installs the host as a persistent macOS service so
+ * the environment survives Terminal restarts and logins. Only macOS has a
+ * single-command install; other platforms get the plain-language hint.
+ */
+function persistentServiceCommand(environment: Environment): string | null {
+  if (environment.kind === 'overlay_cloud') return null
+  if (!environment.platform?.startsWith('darwin')) return null
+  return `npx --yes --package node@24 --package ${HOST_PACKAGE_SPEC} overlay-agent-host service install --config ${DEFAULT_HOST_CONFIG_PATH}`
+}
+
+function OfflineRecoveryHint({ environment, copied, onCopy }: {
+  environment: Environment
+  copied: boolean
+  onCopy(): void
+}) {
+  const serviceCommand = persistentServiceCommand(environment)
+  return (
+    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+      <p className="text-xs leading-5 text-[var(--foreground)]">
+        {environment.kind === 'overlay_cloud'
+          ? 'This managed environment is unreachable. Queued work will resume when it recovers.'
+          : 'This machine is offline — it may be asleep, or its connector was closed. Overlay can\u2019t wake it remotely: start the connector on that machine and anything still queued will pick up on its own. Runs that were interrupted can be resumed from the conversation.'}
+      </p>
+      {serviceCommand ? (
+        <div className="mt-2">
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-md bg-[var(--background)] px-2 py-1.5 font-mono text-[11px] text-[var(--muted)]">{serviceCommand}</code>
+            <button
+              type="button"
+              onClick={onCopy}
+              aria-label="Copy persistent service command"
+              className="shrink-0 rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">
+            Run this once on that Mac to keep the connector alive across Terminal restarts and logins (uses the default install location).
+          </p>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function lastSeenLabel(lastSeenAt: number) {

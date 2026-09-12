@@ -26,7 +26,7 @@ const repoRoot = path.resolve(__dirname, '../..')
 
 function fixture(name: string): OverlayRuntimeConfig {
   return parseOverlayRuntimeConfig(
-    JSON.parse(readFileSync(path.join(repoRoot, 'fixtures/config', name), 'utf8')),
+    JSON.parse(readFileSync(path.join(repoRoot, 'tests/fixtures/config', name), 'utf8')),
   )
 }
 

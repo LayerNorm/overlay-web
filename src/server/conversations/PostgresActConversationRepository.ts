@@ -33,6 +33,7 @@ import type {
   ActProjectRow,
   ActSkillRow,
   ActUsageEvent,
+  ConversationId,
   ConversationListRow,
   ConversationEventRow,
   ConversationMessageRow,
@@ -52,7 +53,6 @@ import { emitPostgresConversationEvent as emitConversationEvent } from './Postgr
 import type { PostgresConversationEventNotifier } from './PostgresConversationEventNotifier'
 import { enqueueMemoryExtractionJob } from '@/server/memory/PostgresMemoryExtractionJobs'
 
-type ConversationId = Id<'conversations'>
 type ConversationMessageId = Id<'conversationMessages'>
 
 export class PostgresActConversationRepository implements ActConversationRepository {

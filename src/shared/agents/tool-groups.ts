@@ -114,6 +114,12 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     description: 'Drive an interactive browser session.',
     toolIds: ['interactive_browser_session'],
   },
+  {
+    id: 'agents',
+    label: 'Agents',
+    description: 'Create new agents and update existing ones from conversation.',
+    toolIds: ['create_agent', 'update_agent'],
+  },
 ]
 
 /**

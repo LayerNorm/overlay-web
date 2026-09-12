@@ -29,7 +29,7 @@ type DisabledCapability = 'billing' | 'webhooks' | 'apiKeys' | 'vectorSearch' | 
 
 function fixture(name: string): OverlayRuntimeConfig {
   return parseOverlayRuntimeConfig(
-    JSON.parse(readFileSync(path.join(repoRoot, 'fixtures/config', name), 'utf8')),
+    JSON.parse(readFileSync(path.join(repoRoot, 'tests/fixtures/config', name), 'utf8')),
   )
 }
 

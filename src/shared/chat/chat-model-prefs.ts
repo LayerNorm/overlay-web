@@ -150,15 +150,6 @@ export function resolveNewChatModelFields({
   }
 }
 
-/** @deprecated Use {@link resolveNewChatModelFields} with app settings instead. */
-export function readNewChatModelFieldsFromStorage(): {
-  askModelIds: string[]
-  actModelId: string
-  lastMode: 'act'
-} {
-  return resolveNewChatModelFields({})
-}
-
 /** Read preferred reasoning level from localStorage (browser only). */
 export function readStoredReasoningLevel(): ReasoningLevel | undefined {
   if (typeof window === 'undefined') return undefined

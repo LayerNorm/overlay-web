@@ -1,3 +1,5 @@
+import { OverlayMark } from '@overlay/ui'
+
 export function BrandMark({ pulse = false }: { pulse?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -7,9 +9,11 @@ export function BrandMark({ pulse = false }: { pulse?: boolean }) {
             className="overlay-stream-marker overlay-stream-marker--standalone"
             aria-hidden
             title=""
-          />
+          >
+            <OverlayMark size={20} label="" />
+          </span>
         ) : (
-          <img src="/overlay-logo.png" alt="" className="h-full w-full object-cover" />
+          <OverlayMark size={32} label="" />
         )}
       </span>
       <div className="min-w-0">

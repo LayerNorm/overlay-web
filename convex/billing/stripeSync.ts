@@ -134,7 +134,6 @@ export const syncPaidSubscriptionsFromStripe = internalAction({
           planKind: plan.planKind,
           planVersion: plan.planVersion,
           planAmountCents: plan.planAmountCents,
-          cancelAtPeriodEnd: subscription.cancel_at_period_end,
           status: mapSubscriptionStatus(subscription.status),
           currentPeriodStart,
           currentPeriodEnd,

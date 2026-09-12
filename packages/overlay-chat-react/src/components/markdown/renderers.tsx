@@ -1,4 +1,5 @@
 import { Code2, Copy, PanelRightOpen, Play } from 'lucide-react'
+import { Orb } from '@overlay/ui'
 import { lazy, Suspense, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type {
   AttachmentPreview,
@@ -252,6 +253,21 @@ export const baseMdComponents = {
       )
     }
     return <code className={className}>{children}</code>
+  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  span({ className, children }: any) {
+    const classes = typeof className === 'string' ? className.split(/\s+/) : []
+    // The injected streaming tail arrives as raw HTML; render the orb
+    // component inside it instead of a background image.
+    if (classes.includes('overlay-stream-marker')) {
+      const standalone = classes.includes('overlay-stream-marker--standalone')
+      return (
+        <span className={className} aria-hidden="true">
+          <Orb variant="metal" size={standalone ? 20 : 14} animated={false} label="" />
+        </span>
+      )
+    }
+    return <span className={className}>{children}</span>
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table({ children }: any) {

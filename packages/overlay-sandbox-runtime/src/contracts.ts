@@ -1,6 +1,6 @@
 /** Provider-neutral sandbox primitives owned by Overlay. Provider SDK types must not cross this boundary. */
 
-export type SandboxProviderId = 'vercel' | 'daytona'
+export type SandboxProviderId = 'vercel' | 'daytona' | 'box'
 export type SandboxLifecycleState =
   | 'provisioning'
   | 'running'
@@ -135,6 +135,8 @@ export type SandboxCapabilities = {
   hardTimeout: boolean
   idleStop: boolean
   usage: boolean
+  /** The machine has a real display that can be streamed to a browser. */
+  desktop: boolean
 }
 
 export interface SandboxInstance {
@@ -167,6 +169,45 @@ export interface SandboxRuntime {
   reconnect(reference: string): Promise<SandboxInstance>
   restore(snapshotId: string, request: Omit<SandboxCreateRequest, 'snapshotId'>): Promise<SandboxInstance>
   deleteSnapshot(snapshotId: string): Promise<void>
+}
+
+export type DesktopStreamMode = 'webrtc' | 'vnc' | 'other'
+
+/**
+ * A bearer-secret ticket for a live desktop stream. The URL is the credential:
+ * never log it, never persist it unredacted, and treat `expiresAt` as absent
+ * rather than infinite.
+ */
+export type DesktopStreamTicket =
+  | { ready: true; url: string; mode: DesktopStreamMode; expiresAt?: number }
+  | { ready: false }
+
+/**
+ * The GUI surface of a sandbox provider — present only when
+ * `capabilities.desktop` is true. This is the port "computers" (persistent
+ * cloud desktops) are built on; headless providers never implement it.
+ */
+export interface DesktopSandboxInstance extends SandboxInstance {
+  /**
+   * Issue a short-lived desktop stream URL. `ready: false` means the stream
+   * is still being prepared — poll again; it is not an error.
+   */
+  desktop(options?: {
+    mode?: Exclude<DesktopStreamMode, 'other'>
+    theme?: 'light' | 'dark'
+    publicAccess?: boolean
+  }): Promise<DesktopStreamTicket>
+  /** Provision a new machine cloned from this one's current snapshot. */
+  fork(request?: {
+    name?: string
+    environment?: Record<string, string>
+    resources?: SandboxResources
+    hardTimeoutMs?: number
+  }): Promise<SandboxInstance>
+}
+
+export function isDesktopSandboxInstance(value: SandboxInstance): value is DesktopSandboxInstance {
+  return value.capabilities.desktop === true
 }
 
 export const OVERLAY_AGENT_HOST_STATE_DIRECTORY = '/var/lib/overlay-agent-host'

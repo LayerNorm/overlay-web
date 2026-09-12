@@ -46,6 +46,7 @@ export type {
 
 export { ConversationsClient } from './chat/conversations-client'
 export { AgentEnvironmentsClient, type AgentEnvironmentResource } from './agent-environments/client'
+export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'
@@ -70,7 +71,6 @@ export {
   type WebhookDelivery,
   type WebhookSubscription,
 } from './webhooks/client'
-export { SlackClient } from './slack/client'
 export { createHttpContext, type HttpContext } from './shared/http'
 export { createIdempotencyKey, toRequestInit, type MutationRequestInit } from './shared/mutation'
 export * from '../../../src/shared/schemas'

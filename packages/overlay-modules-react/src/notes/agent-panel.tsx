@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
+import { Orb } from '@overlay/ui'
 import { Send } from 'lucide-react'
 import { AppScreenSidePanel } from '../shell'
 
@@ -52,7 +53,9 @@ export function NotebookAgentPanel({
                   className="overlay-stream-marker overlay-stream-marker--standalone h-4 w-4"
                   aria-label={item.text}
                   role="img"
-                />
+                >
+                  <Orb variant="metal" size={16} animated={false} label="" />
+                </span>
               </div>
             )
           }

@@ -7,12 +7,12 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import {
   Archive,
   Bell,
   BellOff,
-  Bot,
   Hash,
   MoreHorizontal,
   Paperclip,
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { AgentCreature } from '@/components/orb/Creature'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -46,8 +47,9 @@ import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { dispatchChatArchived, dispatchChatCreated } from '@/shared/chat/chat-title'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
-import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
+import { AGENT_DIRECTORY_CHANGED_EVENT } from '@/shared/workspace/sidebar-events'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useAuth } from '@/contexts/AuthContext'
@@ -154,6 +156,75 @@ const SHOWCASE_MESSAGES: OptimisticMessage[] = [
   },
 ]
 
+const SHOWCASE_AGENT_CONVERSATION_ID = 'showcase-agent-welcome'
+const SHOWCASE_AGENT_PRINCIPAL_ID = 'showcase-research-principal'
+const SHOWCASE_AGENT_IDENTITY = {
+  name: 'Research partner',
+  avatarColor: '#2563eb',
+  avatarShape: 'droplet',
+} as const
+const SHOWCASE_AGENT_PARTICIPANTS: ConversationParticipant[] = [
+  {
+    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+    workspaceId: SHOWCASE_WORKSPACE_ID,
+    principalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
+    principalType: 'human',
+    displayName: 'Divyansh',
+    role: 'moderator',
+    status: 'active',
+    notificationLevel: 'all',
+    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+  },
+  {
+    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+    workspaceId: SHOWCASE_WORKSPACE_ID,
+    principalId: SHOWCASE_AGENT_PRINCIPAL_ID,
+    principalType: 'agent',
+    displayName: SHOWCASE_AGENT_IDENTITY.name,
+    role: 'member',
+    status: 'active',
+    notificationLevel: 'all',
+    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+  },
+]
+const SHOWCASE_AGENT_PRESENCE: ConversationPresence[] = SHOWCASE_AGENT_PARTICIPANTS.map((participant) => ({
+  workspaceId: SHOWCASE_WORKSPACE_ID,
+  principalId: participant.principalId,
+  conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+  status: 'online',
+  typing: false,
+  lastSeenAt: Date.parse('2026-07-29T18:10:00.000Z'),
+}))
+const SHOWCASE_AGENT_MESSAGES: OptimisticMessage[] = [
+  {
+    id: 'showcase-agent-message-1',
+    turnId: 'showcase-agent-turn-1',
+    authorKind: 'human',
+    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
+    content: 'Can you pull together what customers keep saying about onboarding?',
+    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
+  },
+  {
+    id: 'showcase-agent-message-2',
+    turnId: 'showcase-agent-turn-2',
+    authorKind: 'agent',
+    authorPrincipalId: SHOWCASE_AGENT_PRINCIPAL_ID,
+    content: 'I read through the latest 23 feedback notes. The clearest pattern is the first-run gap — it shows up in 9 of them, mostly around workspace setup. Want me to turn this into a checklist for the team?',
+    createdAt: Date.parse('2026-07-29T18:05:00.000Z'),
+  },
+  {
+    id: 'showcase-agent-message-3',
+    turnId: 'showcase-agent-turn-3',
+    authorKind: 'human',
+    authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
+    content: 'Yes — draft it, and flag anything that needs a human decision.',
+    createdAt: Date.parse('2026-07-29T18:08:00.000Z'),
+  },
+]
+
+
 function roomDayKey(timestamp: number): string {
   const date = new Date(timestamp)
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
@@ -209,12 +280,22 @@ export function DirectMessageExperience({
   conversationType = 'dm',
   draft = false,
   draftTitle,
+  headerActions,
+  externalRightPanel,
+  externalRightPanelLabel,
+  externalRightPanelMode,
+  onExternalRightPanelClose,
 }: {
   conversationId: string
   showcase?: boolean
   conversationType?: 'dm' | 'channel'
   draft?: boolean
   draftTitle?: string
+  headerActions?: ReactNode
+  externalRightPanel?: ReactNode
+  externalRightPanelLabel?: string
+  externalRightPanelMode?: 'docked' | 'floating'
+  onExternalRightPanelClose?: () => void
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
@@ -233,20 +314,21 @@ export function DirectMessageExperience({
     && appDataCapabilities.supportsRealtime
     && appDataCapabilities.provider === 'postgres'
   const router = useRouter()
+  const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
-    showcase ? SHOWCASE_PARTICIPANTS : [],
+    isAgentShowcase ? SHOWCASE_AGENT_PARTICIPANTS : showcase ? SHOWCASE_PARTICIPANTS : [],
   )
   const [currentPrincipalId, setCurrentPrincipalId] = useState(
     showcase ? SHOWCASE_CURRENT_PRINCIPAL_ID : '',
   )
   const [presence, setPresence] = useState<ConversationPresence[]>(
-    showcase ? SHOWCASE_PRESENCE : [],
+    isAgentShowcase ? SHOWCASE_AGENT_PRESENCE : showcase ? SHOWCASE_PRESENCE : [],
   )
   const applyConvexPresence = useCallback((next: ConversationPresence[]) => {
     setPresence(next)
   }, [])
   const [messages, setMessages] = useState<OptimisticMessage[]>(
-    showcase ? SHOWCASE_MESSAGES : [],
+    isAgentShowcase ? SHOWCASE_AGENT_MESSAGES : showcase ? SHOWCASE_MESSAGES : [],
   )
   const [loading, setLoading] = useState(!showcase)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
@@ -692,16 +774,71 @@ export function DirectMessageExperience({
   }, [showAttachMenu])
 
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
-  const title = conversationType === 'channel'
-    ? channel?.name ?? draftTitle ?? 'Channel'
-    : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
   const HeaderIcon = conversationType === 'channel'
     ? Hash
-    : otherParticipants.length === 1 && otherParticipants[0]?.principalType === 'agent'
-      ? Bot
-      : otherParticipants.length <= 1
-        ? UserRound
-        : UsersRound
+    : otherParticipants.length <= 1
+      ? UserRound
+      : UsersRound
+  // Agent identity (creature color + shape) resolves from the directory once
+  // per conversation: the header for one-to-one agent DMs and every agent
+  // message avatar read from the same map. Falls back to neutral while
+  // loading; chat-list rows keep their Lucide icons because they carry no
+  // agent identity data.
+  const soloAgentParticipant = conversationType !== 'channel'
+    && otherParticipants.length === 1
+    && otherParticipants[0]?.principalType === 'agent'
+    ? otherParticipants[0]
+    : null
+  const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, {
+    name: string
+    avatarColor?: string
+    avatarShape?: string
+  }>>(new Map())
+  useEffect(() => {
+    if (showcase) {
+      setAgentsByPrincipal(isAgentShowcase ? new Map([[SHOWCASE_AGENT_PRINCIPAL_ID, {
+        name: SHOWCASE_AGENT_IDENTITY.name,
+        avatarColor: SHOWCASE_AGENT_IDENTITY.avatarColor,
+        avatarShape: SHOWCASE_AGENT_IDENTITY.avatarShape,
+      }]]) : new Map())
+      return
+    }
+    if (!activeWorkspaceId) {
+      setAgentsByPrincipal(new Map())
+      return
+    }
+    let cancelled = false
+    const load = () => {
+      overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
+        if (cancelled) return
+        setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
+          name: agent.name,
+          avatarColor: agent.avatarColor,
+          avatarShape: agent.avatarShape,
+        }])))
+      }).catch(() => undefined)
+    }
+    load()
+    // Renames and avatar changes save through the editor and dispatch this
+    // event; refetching keeps the header and message identity in sync without
+    // a reload.
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    return () => {
+      cancelled = true
+      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    }
+  }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
+  const headerAgent = soloAgentParticipant
+    ? (agentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
+    : null
+  const title = conversationType === 'channel'
+    ? channel?.name ?? draftTitle ?? 'Channel'
+    : soloAgentParticipant
+      // A one-to-one agent DM's title is the agent's name; the stored
+      // conversation title and participant displayName are snapshots from when
+      // the DM was created and go stale on rename, so the directory wins.
+      ? (headerAgent?.name ?? conversationTitle ?? draftTitle ?? 'Direct message')
+      : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
   const online = presence.filter((row) => (
     row.principalId !== currentPrincipalId && row.status === 'online'
   )).length
@@ -1183,6 +1320,38 @@ export function DirectMessageExperience({
     await loadParticipants()
   }
 
+  async function archiveConversation(scope: 'self' | 'everyone') {
+    if (showcase) {
+      setNotice('Conversation archived')
+      setMenuOpen(false)
+      setPendingArchiveScope(false)
+      return
+    }
+    setScopeDialogBusy(true)
+    setScopeDialogError(null)
+    try {
+      await overlayAppClient.conversations.updateParticipantState(conversationId, {
+        archived: true,
+        archiveScope: scope,
+      })
+      dispatchChatArchived({
+        chat: {
+          _id: conversationId,
+          title,
+          lastModified: Date.now(),
+          conversationType,
+        },
+      })
+      setPendingArchiveScope(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Conversation could not be archived'
+      if (pendingArchiveScope) setScopeDialogError(message)
+      else setNotice(message)
+    } finally {
+      setScopeDialogBusy(false)
+    }
+  }
+
   const renderAttachmentViewer = useCallback(
     ({ preview, headerRight }: { preview: AttachmentPreview; headerRight: React.ReactNode }) => (
       <FileViewerPanel
@@ -1249,18 +1418,26 @@ export function DirectMessageExperience({
 
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
-    const authorName = author?.displayName
+    const authorAgent = message.authorPrincipalId
+      ? agentsByPrincipal.get(message.authorPrincipalId)
+      : undefined
+    // The directory entry is the live name; participant displayName snapshots
+    // go stale when an agent is renamed.
+    const authorName = authorAgent?.name ?? author?.displayName
       ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
     const view = toRoomMessageView({
       message,
       currentPrincipalId,
       authorName,
+      authorColor: authorAgent?.avatarColor,
+      authorShape: authorAgent?.avatarShape,
       mentions: participantMentions,
       streaming: message.status === 'generating',
     })
     const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
     const teaserAuthor = teaserMessage
       ? teaserMessage.importedAuthorName?.trim()
+        ?? (teaserMessage.authorPrincipalId ? agentsByPrincipal.get(teaserMessage.authorPrincipalId)?.name : undefined)
         ?? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
         ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
       : null
@@ -1308,6 +1485,7 @@ export function DirectMessageExperience({
         onResolveRemoteRequest={(request, decision, response) => void resolveRemoteRequest(request, decision, response)}
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
+        personalChatStyle={conversationType !== 'channel'}
       />
     )
   }
@@ -1368,15 +1546,17 @@ export function DirectMessageExperience({
 
   // The attachment preview wins the slot while it is open; otherwise the room's
   // own panels share the shell surface the sources sidebar already uses.
-  const rightPanel = shellRightPanel ?? roomPanelContent
+  const rightPanel = shellRightPanel ?? externalRightPanel ?? roomPanelContent
   const rightPanelClose = shellRightPanel
     ? shellRightPanelClose
-    : roomPanelContent
-      ? () => {
-        setRoomPanel(null)
-        setThreadRootId(null)
-      }
-      : undefined
+    : externalRightPanel
+      ? onExternalRightPanelClose
+      : roomPanelContent
+        ? () => {
+          setRoomPanel(null)
+          setThreadRootId(null)
+        }
+        : undefined
 
   return (
     <>
@@ -1407,10 +1587,11 @@ export function DirectMessageExperience({
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
         rightPanelOpen={Boolean(rightPanel)}
-        rightPanelWidth={shellRightPanel ? shellRightPanelWidth : 380}
-        rightPanelMode={shellRightPanelMode}
+        rightPanelWidth={shellRightPanel ? shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
+        rightPanelMode={shellRightPanel ? shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
         onRightPanelResize={shellRightPanelResize}
+        rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
       >
         <div
           className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col"
@@ -1444,12 +1625,17 @@ export function DirectMessageExperience({
             title={title}
             subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
             leading={(
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                <HeaderIcon size={15} />
-              </span>
+              soloAgentParticipant
+                ? <AgentCreature agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
+                : (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+                    <HeaderIcon size={15} />
+                  </span>
+                )
             )}
             actions={(
               <div className="relative flex items-center gap-1">
+                {headerActions}
                 {pins.length > 0 ? (
                   <button
                     type="button"
@@ -1543,6 +1729,12 @@ export function DirectMessageExperience({
                               : '/app/chat'
                             router.push(`${chatBase}?${new URLSearchParams({ view, id: conversationId }).toString()}`)
                           }).catch(() => undefined)
+                          return
+                        }
+                        // A one-to-one DM has nobody else to keep it for —
+                        // archive directly instead of asking about scope.
+                        if (otherParticipants.length <= 1) {
+                          void archiveConversation('self')
                           return
                         }
                         setScopeDialogError(null)
@@ -1798,29 +1990,7 @@ export function DirectMessageExperience({
         onOpenChange={(open) => {
           if (!open && !scopeDialogBusy) setPendingArchiveScope(false)
         }}
-        onSelect={async (scope) => {
-          setScopeDialogBusy(true)
-          setScopeDialogError(null)
-          try {
-            await overlayAppClient.conversations.updateParticipantState(conversationId, {
-              archived: true,
-              archiveScope: scope,
-            })
-            dispatchChatArchived({
-              chat: {
-                _id: conversationId,
-                title,
-                lastModified: Date.now(),
-                conversationType,
-              },
-            })
-            setPendingArchiveScope(false)
-          } catch (error) {
-            setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be archived')
-          } finally {
-            setScopeDialogBusy(false)
-          }
-        }}
+        onSelect={(scope) => void archiveConversation(scope)}
       />
       <ConversationScopeActionDialog
         open={pendingDeleteScope}

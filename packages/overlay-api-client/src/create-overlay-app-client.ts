@@ -10,6 +10,7 @@ import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
+import { ComputersClient } from './computers/client'
 import { ConversationsClient } from './chat/conversations-client'
 import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
@@ -24,7 +25,6 @@ import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
-import { SlackClient } from './slack/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkspacesClient } from './workspaces/client'
 import { createHttpContext } from './shared/http'
@@ -46,7 +46,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     projects: new ProjectsClient(http),
     integrations: new IntegrationsClient(http),
     skills: new SkillsClient(http),
-    slack: new SlackClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),
     settings: new SettingsClient(http),
@@ -65,6 +64,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),
+    computers: new ComputersClient(http),
   }
 }
 

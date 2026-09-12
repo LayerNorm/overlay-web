@@ -30,7 +30,6 @@ import {
   FilesInlinePanel,
   KnowledgeInlinePanel,
   ProjectsInlinePanel,
-  agentsInlineItems,
   chatsInlineItems,
   projectsInlineItems,
   toolsInlineItems,
@@ -46,6 +45,7 @@ import {
   getSidebarActionAuthorizationRequirement,
 } from '@/shared/authorization/client-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { OverlayMark } from '@/components/orb/Orb'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
@@ -68,7 +68,7 @@ import {
 import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
-import { SidebarPlanStatus, type SidebarEntitlements } from './sidebar/SidebarUsageMeters'
+import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
 import {
   AppSidebarPrimaryRail,
   type PrimaryRailItem,
@@ -134,6 +134,29 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'knowledge',
   'automations',
 ])
+
+/** Default brand mark path. Custom brand configs keep rendering their image. */
+const DEFAULT_BRAND_LOGO_SRC = '/assets/overlay-logo.png'
+
+/**
+ * Brand mark: the SVG Overlay orb by default, the configured raster image
+ * only when a custom brand overrides the logo (white-label seam).
+ */
+function BrandMark({ logoSrc, logoAlt, size, className }: {
+  logoSrc: string
+  logoAlt?: string
+  size: number
+  className?: string
+}) {
+  if (logoSrc !== DEFAULT_BRAND_LOGO_SRC) {
+    return <Image src={logoSrc} alt={logoAlt ?? ''} width={size} height={size} className={className} />
+  }
+  return (
+    <span className={className} style={{ display: 'inline-flex' }}>
+      <OverlayMark size={size} label={logoAlt || 'Overlay'} />
+    </span>
+  )
+}
 
 export default function AppSidebar({
   collaborationNotifications = [],
@@ -337,11 +360,6 @@ export default function AppSidebar({
     if (current === 'installed') return 'installed'
     return 'connectors'
   })()
-  const agentsView = (() => {
-    const current = currentSearchParams.get('tab')
-    if (current === 'personal' || current === 'archived') return current
-    return 'workspace'
-  })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
   const projectsView = currentSearchParams.get('archived') === '1' ? 'archived' : 'all'
   const chatViewParam = currentSearchParams.get('view')
@@ -425,12 +443,6 @@ export default function AppSidebar({
       // ignore
     }
   }, [activeWorkspaceId, authLoading, authUserId, billingEnabled, setEntitlements])
-
-  useEffect(() => {
-    const reloadBilling = () => void loadEntitlements()
-    window.addEventListener('overlay:billing-updated', reloadBilling)
-    return () => window.removeEventListener('overlay:billing-updated', reloadBilling)
-  }, [loadEntitlements])
 
   useEffect(() => {
     document.documentElement.toggleAttribute('data-temporary-chat-ui', hideTemporaryChatChrome)
@@ -863,26 +875,6 @@ export default function AppSidebar({
         },
       }
     }
-    if (panelKind === 'agents') {
-      return {
-        items: agentsInlineItems,
-        activeId: agentsView,
-        pendingId: effectivePendingSecondaryNavId,
-        onSelect: (next) => {
-          closeMobileDrawer()
-          if (next === agentsView) return
-          beginSecondaryNavigation(next)
-          const params = new URLSearchParams(currentSearchParams.toString())
-          if (publicShowcase) params.set('showcase', '1')
-          params.set('tab', next)
-          const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
-            ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')
-            : '/app/agents'
-          const query = params.toString()
-          router.push(query ? `${agentsHref}?${query}` : agentsHref)
-        },
-      }
-    }
     if (panelKind === 'projects') {
       return {
         items: projectsInlineItems,
@@ -926,8 +918,8 @@ export default function AppSidebar({
   const showcasePrimaryLinks = publicShowcase
     ? [
       { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
-      { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
-      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
+      { id: 'home', label: 'Home', icon: House, href: '/home' },
+      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/manifesto' },
       { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/pricing' },
       { id: 'docs', label: 'Docs', icon: FileText, href: MARKETING_DOCS_URL },
     ]
@@ -985,11 +977,11 @@ export default function AppSidebar({
 
   const brandLink = (
     <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+      href={publicShowcase ? ROOT_SHOWCASE_DESTINATION : brandConfig.homeHref}
       className="flex min-w-0 items-center gap-2"
       onClick={closeMobileDrawer}
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0" />
       <span
         className="truncate text-xl font-medium tracking-tight"
         style={{ fontFamily: 'var(--font-serif)' }}
@@ -1010,24 +1002,18 @@ export default function AppSidebar({
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
-      <Image
-        src={brandConfig.logoSrc}
-        alt={brandConfig.logoAlt ?? ''}
-        width={10}
-        height={10}
-        className="shrink-0 group-hover:hidden"
-      />
+      <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
     <>
       <Link
-        href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+        href={publicShowcase ? ROOT_SHOWCASE_DESTINATION : brandConfig.homeHref}
         className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
         aria-label="Home"
         title="Home"
       >
-        <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+        <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0" />
         <span
           className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
           style={{ fontFamily: 'var(--font-serif)' }}
@@ -1053,11 +1039,11 @@ export default function AppSidebar({
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
   const mobileBrandLink = (
     <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+      href={publicShowcase ? ROOT_SHOWCASE_DESTINATION : brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
       onClick={closeMobileDrawer}
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <BrandMark logoSrc={brandConfig.logoSrc} logoAlt={brandConfig.logoAlt} size={10} className="shrink-0" />
       <span
         className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}
@@ -1171,10 +1157,7 @@ export default function AppSidebar({
   ) : null
 
   const desktopAccountSlot = (
-    <div ref={menuRef} className="relative space-y-1.5">
-      {billingEnabled && !isGuestConfirmed ? (
-        <SidebarPlanStatus entitlements={entitlements} expanded={railExpanded} />
-      ) : null}
+    <div ref={menuRef} className="relative">
       {!isGuestConfirmed && workspace ? (
         workspace.renderSwitcher?.({
           compact: !railExpanded,
@@ -1324,9 +1307,6 @@ export default function AppSidebar({
         </SidebarNav>
 
         <SidebarSection className="space-y-3 px-3">
-          {billingEnabled && !isGuestConfirmed ? (
-            <SidebarPlanStatus entitlements={entitlements} expanded onClick={closeMobileDrawer} />
-          ) : null}
           <div ref={mobileMenuRef} className="relative">
             {!isGuestConfirmed && workspace ? (
               workspace.renderSwitcher?.({

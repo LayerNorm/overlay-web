@@ -2,7 +2,7 @@
 
 Overlay is copyright (c) 2026 LayerNorm Inc.
 
-First-party material owned by LayerNorm Inc. and contained in this repository is licensed under `AGPL-3.0-only` unless a more specific file-level notice says otherwise. The full license text is in `LICENSE`, and the repository licensing policy is in `LICENSE.md`.
+First-party material owned by LayerNorm Inc. and contained in this repository is licensed under `AGPL-3.0-only` unless a more specific file-level notice says otherwise. The full license text is in `LICENSE`, and the repository licensing policy is in `docs/legal/licensing.mdx`.
 
 Third-party dependencies and assets retain their own copyrights and licenses. Package manager lockfiles, package metadata, source headers, and bundled notice files identify those materials. Nothing in the Overlay license expands the rights granted by a third party.
 

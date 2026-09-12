@@ -2,7 +2,7 @@ services:
   web:
     build: &overlay-build
       context: ../..
-      dockerfile: Dockerfile.enterprise-runtime
+      dockerfile: docker/Dockerfile.enterprise-runtime
     image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
 
   worker:

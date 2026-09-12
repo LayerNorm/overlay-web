@@ -1,4 +1,5 @@
 import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-core'
+import { Orb } from '@overlay/ui'
 import React from 'react'
 import { ToolLineLogo } from '../exchange/tool-rail'
 
@@ -65,7 +66,9 @@ export function ExchangeLoadingState({
         <span
           className="overlay-stream-marker overlay-stream-marker--standalone scale-75 opacity-80"
           aria-hidden="true"
-        />
+        >
+          <Orb variant="metal" size={20} animated={false} label="" />
+        </span>
       ) : (
         <>
           <span className="overlay-loading-tool-logo" aria-hidden="true">

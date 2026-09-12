@@ -16,11 +16,11 @@ import {
 import {
   buildWorkspaceHref,
   readWorkspaceIdFromPath,
-} from '@/features/workspaces/lib/workspace-routing'
+} from '@/shared/workspaces/routing'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 /**
  * Sidebar lists for the Chats subviews that are not conversation list.

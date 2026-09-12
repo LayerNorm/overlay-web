@@ -14,7 +14,7 @@ import {
 test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   const shell = resolveOverlayAppShellConfig({
     navigation: [
-      { ...DEFAULT_OVERLAY_NAVIGATION[0]!, label: 'Assistant' },
+      { ...DEFAULT_OVERLAY_NAVIGATION.find((item) => item.id === 'chat')!, label: 'Assistant' },
       { id: 'admin', href: '/app/admin', label: 'Admin', icon: 'shield-check' },
     ],
     settingsPanels: [
@@ -37,6 +37,14 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   assert.equal(shell.featureModules.find((item) => item.id === 'files-knowledge')?.componentKey, 'enterprise.filesKnowledge')
   assert.equal(shell.sidebarActions.find((item) => item.id === 'chat.create')?.label, 'Start chat')
   assert.equal(shell.sidebarActions.find((item) => item.id === 'admin.invite')?.routePatterns[0], '/app/admin')
+})
+
+test('agents are the default home and lead the primary navigation', () => {
+  const shell = resolveOverlayAppShellConfig()
+
+  assert.equal(shell.brand.homeHref, '/app/agents')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'agents')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'chat')
 })
 
 test('resolveOverlayAppShellConfig filters disabled feature registries', () => {

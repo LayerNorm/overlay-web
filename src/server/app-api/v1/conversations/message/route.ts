@@ -12,8 +12,9 @@ import {
   resolveWorkspaceAgentInvocations,
   startRemoteWorkspaceAgentTurn,
 } from '@/server/agents/workspace-agent-invocation'
-import { workspaceAgentTurnWorkflow } from '@/workflows/workspace-agent-turn'
+import { workspaceAgentTurnWorkflow } from '@/server/workflows/workspace-agent-turn'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { agentStartFailureMessage } from './agent-start-failure'
 
 /**
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       scope: { workspaceId, principalId: context.workspace.principal.id, conversationId: body.conversationId },
     })
     const conversation = await server.appData.repositories.conversations.getConversationById({
-      conversationId: body.conversationId as Id<'conversations'>,
+      conversationId: asConversationId(body.conversationId),
       userId: auth.userId,
       workspaceId,
     }) ?? await server.appData.repositories.conversationCollaboration.getAccessibleConversation({
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             : {}),
         })
       : await server.appData.repositories.conversations.addMessage({
-          conversationId: body.conversationId as Id<'conversations'>,
+          conversationId: asConversationId(body.conversationId),
           userId: auth.userId,
           workspaceId,
           turnId,
@@ -323,7 +324,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
 
     try {
       await getOverlayServerContext().appData.repositories.conversations.deleteTurn({
-        conversationId: conversationId as Id<'conversations'>,
+        conversationId: asConversationId(conversationId),
         userId: auth.userId,
         turnId,
       })
@@ -367,7 +368,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     try {
       const updated = await getOverlayServerContext().appData.repositories.conversations.updateMessageUiPart({
-        conversationId: conversationId as Id<'conversations'>,
+        conversationId: asConversationId(conversationId),
         messageId: messageId as Id<'conversationMessages'>,
         userId: auth.userId,
         partId,

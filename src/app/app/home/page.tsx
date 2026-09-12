@@ -1,24 +1,6 @@
-import type { Metadata } from 'next'
-import HomeMarketingPage from '@/features/marketing/pages/MarketingOverviewPage'
-import { PublicMarketingPageFrame } from '@/features/showcase/PublicMarketingPageFrame'
+import { redirect } from 'next/navigation'
 
-export const metadata: Metadata = {
-  title: 'Overlay — Own the interface to intelligence',
-  description:
-    'One private, open workspace for AI models, knowledge, tools, agents, and automations.',
-  alternates: {
-    canonical: '/home',
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
-}
-
-export default function PublicHomePage() {
-  return (
-    <PublicMarketingPageFrame title="Home">
-      <HomeMarketingPage />
-    </PublicMarketingPageFrame>
-  )
+/** Legacy demo-shell address. The canonical home page lives at `/home`. */
+export default function AppHomeCompatPage() {
+  redirect('/home')
 }

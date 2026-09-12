@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import {
+  WORKSPACE_AGENT_CREATURE_SHAPES,
   WORKSPACE_AGENT_HARNESSES,
-  WORKSPACE_AGENT_PLATFORMS,
   WORKSPACE_AGENT_VISIBILITIES,
+  type WorkspaceAgentCreatureShape,
   type WorkspaceAgentHarness,
-  type WorkspaceAgentPlatform,
   type WorkspaceAgentUpdateInput,
   type WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
@@ -48,6 +48,7 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
   assignString(input, body, 'instructions')
   assignString(input, body, 'modelId')
   assignString(input, body, 'avatarColor')
+  assignShape(input, body)
   assignStrings(input, body, 'allowedToolIds')
   assignStrings(input, body, 'teamIds')
   if (body.harness !== undefined) {
@@ -58,19 +59,7 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
     if (!isVisibility(body.visibility)) invalid('visibility')
     input.visibility = body.visibility
   }
-  if (body.platforms !== undefined) {
-    input.platforms = platforms(body.platforms)
-  }
   return input
-}
-
-function platforms(value: unknown): WorkspaceAgentPlatform[] {
-  if (!Array.isArray(value)) invalid('platforms')
-  const known = WORKSPACE_AGENT_PLATFORMS as readonly string[]
-  const filtered = value.filter((entry): entry is WorkspaceAgentPlatform =>
-    typeof entry === 'string' && known.includes(entry))
-  if (filtered.length !== value.length) invalid('platforms')
-  return filtered
 }
 
 function assignString<
@@ -101,6 +90,14 @@ function isHarness(value: unknown): value is WorkspaceAgentHarness {
 function isVisibility(value: unknown): value is WorkspaceAgentVisibility {
   return typeof value === 'string'
     && (WORKSPACE_AGENT_VISIBILITIES as readonly string[]).includes(value)
+}
+
+function assignShape(input: WorkspaceAgentUpdateInput, body: Record<string, unknown>) {
+  const value = body.avatarShape
+  if (value === undefined) return
+  if (typeof value !== 'string'
+    || !(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(value)) invalid('avatarShape')
+  input.avatarShape = value as WorkspaceAgentCreatureShape
 }
 
 function invalid(field: string): never {

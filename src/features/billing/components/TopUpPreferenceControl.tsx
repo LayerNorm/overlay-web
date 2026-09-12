@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Toggle } from "@overlay/ui/primitives";
 
 type TopUpPreferenceControlProps = {
   variant: "marketing" | "app";
@@ -100,18 +101,17 @@ export function TopUpPreferenceControl({
         </div>
       </div>
 
-      <label className={palette.checkboxRow}>
-        <input
-          type="checkbox"
-          checked={autoTopUpEnabled}
-          onChange={(event) => onAutoTopUpEnabledChange(event.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500"
-        />
-        <div className="min-w-0">
+      <div className={palette.checkboxRow}>
+        <div className="min-w-0 flex-1">
           <p className={palette.checkboxTitle}>{checkboxLabel}</p>
           {checkboxDescription ? <p className={palette.checkboxBody}>{checkboxDescription}</p> : null}
         </div>
-      </label>
+        <Toggle
+          checked={autoTopUpEnabled}
+          onCheckedChange={onAutoTopUpEnabledChange}
+          aria-label={checkboxLabel}
+        />
+      </div>
 
       {note ? <div className={palette.note}>{note}</div> : null}
       {footer ? <div className="mt-4 flex flex-col gap-3 sm:flex-row">{footer}</div> : null}

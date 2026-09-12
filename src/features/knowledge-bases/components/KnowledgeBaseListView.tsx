@@ -10,8 +10,8 @@ import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
 import { NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
-import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 
 export function KnowledgeBaseListView({
   initialKnowledgeBases,

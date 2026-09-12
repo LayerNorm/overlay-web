@@ -79,19 +79,19 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'connected-agent-control-plane',
   },
   {
+    id: 'computers',
+    methods: '*',
+    prefixes: ['/api/v1/computers'],
+    status: 'supported',
+    feature: 'computers',
+  },
+  {
     id: 'slack-imports-convex-only',
     methods: '*',
     prefixes: ['/api/v1/imports/slack'],
     status: 'unsupported',
     feature: 'external-imports',
     reason: 'Slack import job state and its worker bridge still use Convex.',
-  },
-  {
-    id: 'slack-workspace-integration',
-    methods: '*',
-    prefixes: ['/api/v1/slack'],
-    status: 'supported',
-    feature: 'workspace-collaboration',
   },
   {
     id: 'mention-search-convex-only',
@@ -119,6 +119,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'conversation-realtime-and-mutations',
     methods: '*',
     prefixes: [
+      '/api/v1/conversations/agent-greeting',
       '/api/v1/conversations/events',
       '/api/v1/conversations/message',
       '/api/v1/conversations/run',

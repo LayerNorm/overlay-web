@@ -9,8 +9,6 @@ export const TOOL_UI_DONE_STATES = new Set([
   'completed',
 ])
 
-export const OVERLAY_LOGO_SRC = '/assets/overlay-logo.png'
-
 export const INTEGRATION_SERVICE_NAMES: Record<string, string> = {
   GMAIL: 'Gmail',
   GOOGLE_CALENDAR: 'Google Calendar',

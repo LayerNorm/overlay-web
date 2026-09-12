@@ -13,7 +13,7 @@ import { Archive, Check, Plus, RefreshCw, Shield, Trash2, UserPlus, Users } from
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { authorizationDescription, groupCapabilityDefinitions, groupIsEditable, roleIsEditable } from './authorization-ui'
-import { Select } from '@overlay/ui/primitives'
+import { Select, Toggle } from '@overlay/ui/primitives'
 
 type AuthorizationView = 'roles' | 'groups'
 type AuthorizationUserSummary = { userId: string; email?: string }
@@ -290,14 +290,14 @@ function CapabilityPicker({
             <legend className="mb-2 text-xs font-medium text-[var(--muted)]">{section.label}</legend>
             <div className="space-y-2">
               {section.capabilities.map((capability) => (
-                <label key={capability.key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                <div key={capability.key} className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0">
+                  <span className="flex-1 text-sm">{capability.label}</span>
+                  <Toggle
                     checked={selectedSet.has(capability.key)}
-                    onChange={(event) => onChange(event.target.checked ? [...selected, capability.key] : selected.filter((value) => value !== capability.key))}
+                    onCheckedChange={(next) => onChange(next ? [...selected, capability.key] : selected.filter((value) => value !== capability.key))}
+                    aria-label={capability.label}
                   />
-                  {capability.label}
-                </label>
+                </div>
               ))}
             </div>
           </fieldset>

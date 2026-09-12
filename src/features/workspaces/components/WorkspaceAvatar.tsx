@@ -1,5 +1,5 @@
 import { Building2, UserRound } from 'lucide-react'
-import type { WorkspaceSummary } from '../types'
+import type { WorkspaceSummary } from '@/shared/workspaces/types'
 
 function initials(name: string): string {
   return name

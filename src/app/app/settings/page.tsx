@@ -33,7 +33,7 @@ import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
-import { ConnectedChatSettings } from '@/features/settings/components/ConnectedChatSettings'
+import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { isWorkspaceSettingsTab, WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
@@ -62,7 +62,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'models',
   'webhooks',
   'agent-environments',
-  'connected-chat',
+  'computers',
   'contact',
 ])
 
@@ -306,8 +306,7 @@ export default function SettingsPage() {
           {!isLoading && section === 'webhooks' && <WebhookSettings />}
 
           {!isLoading && section === 'agent-environments' && <AgentEnvironmentSettings />}
-
-          {!isLoading && section === 'connected-chat' && <ConnectedChatSettings />}
+          {!isLoading && section === 'computers' && <ComputerSettings />}
 
           {!isLoading && section === 'contact' && (
             <SettingsCard title="Contact">

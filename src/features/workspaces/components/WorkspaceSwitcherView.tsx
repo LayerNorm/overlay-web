@@ -12,7 +12,7 @@ import {
 import { CollapsibleSection, MenuItem, MenuSurface } from '@overlay/ui/primitives'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
-import type { WorkspaceLifecycleStatus, WorkspaceSummary } from '../types'
+import type { WorkspaceLifecycleStatus, WorkspaceSummary } from '@/shared/workspaces/types'
 
 export type WorkspaceSwitcherMenuPosition = {
   left: number

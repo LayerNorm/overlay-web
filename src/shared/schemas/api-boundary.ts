@@ -25,6 +25,7 @@ import {
   AdminPrincipalRequest,
   AdminUsageAdjustRequest,
   AdminUsageListQuery,
+  AgentGreetingRequest,
   AutomationListQuery,
   BrowserTaskRequest,
   BootstrapQuery,
@@ -345,6 +346,13 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/act/extension-plan',
     schema: { json: ActConversationRequest },
     summary: 'Plan extension actions for an Act turn',
+    tag: 'Conversations',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/agent-greeting',
+    schema: { json: AgentGreetingRequest },
+    summary: 'Post the new-agent greeting as the agent itself',
     tag: 'Conversations',
   },
   {

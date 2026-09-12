@@ -1,5 +1,5 @@
-export const ROOT_APP_DESTINATION = '/app/chat'
-export const ROOT_SHOWCASE_DESTINATION = '/app/chat?showcase=1&id=showcase-welcome'
+export const ROOT_APP_DESTINATION = '/app/agents'
+export const ROOT_SHOWCASE_DESTINATION = '/app/agents?showcase=1&id=showcase-agent-welcome'
 
 export type RootSessionResolution =
   | 'authenticated'
@@ -10,7 +10,7 @@ export function resolveRootEntryDestination(
   resolution: RootSessionResolution,
 ): string | null {
   if (resolution === 'authenticated') return ROOT_APP_DESTINATION
-  if (resolution === 'unauthenticated') return ROOT_SHOWCASE_DESTINATION
+  if (resolution === 'unauthenticated') return '/home'
   return null
 }
 

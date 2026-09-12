@@ -32,7 +32,7 @@ export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
   shortName: 'overlay',
   logoSrc: '/assets/overlay-logo.png',
   logoAlt: '',
-  homeHref: '/app/chat',
+  homeHref: '/app/agents',
   supportEmail: 'divyansh@layernorm.co',
   organizationName: 'Overlay',
 }
@@ -106,19 +106,19 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
   {
+    id: 'agents',
+    href: '/app/agents',
+    label: 'Agents',
+    icon: 'bot',
+    featureFlagId: 'agents',
+  },
+  {
     id: 'chat',
     href: '/app/chat',
     label: 'Chats',
     icon: 'message-square',
     requiredCapabilities: ['chat'],
     subviews: ['personal', 'dms', 'channels', 'activity', 'all'],
-  },
-  {
-    id: 'agents',
-    href: '/app/agents',
-    label: 'Agents',
-    icon: 'bot',
-    featureFlagId: 'agents',
   },
   { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files'] },
   {
@@ -167,7 +167,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
   { id: 'webhooks', label: 'Webhooks', requiredCapabilities: ['webhooks'] },
   { id: 'agent-environments', label: 'Environments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },
-  { id: 'connected-chat', label: 'Connected chat' },
+  { id: 'computers', label: 'Computers', requiredCapabilities: ['computers'] },
   { id: 'contact', label: 'Contact' },
 ] as const
 
@@ -288,7 +288,7 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', requiredCapabilities: ['modelRouting'], order: 50 },
   { id: 'webhooks', sectionId: 'webhooks', label: 'Webhooks', componentKey: 'overlay.settings.webhooks', requiredCapabilities: ['webhooks'], order: 60 },
   { id: 'agent-environments', sectionId: 'agent-environments', label: 'Environments', componentKey: 'overlay.settings.agentEnvironments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'], order: 65 },
-  { id: 'connected-chat', sectionId: 'connected-chat', label: 'Connected chat', componentKey: 'overlay.settings.connectedChat', order: 66 },
+  { id: 'computers', sectionId: 'computers', label: 'Computers', componentKey: 'overlay.settings.computers', requiredCapabilities: ['computers'], order: 66 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 70 },
 ] as const
 

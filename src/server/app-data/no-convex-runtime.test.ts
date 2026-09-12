@@ -31,7 +31,7 @@ const convexEnvironmentKeys = [
 
 function postgresRuntimeConfig(): OverlayRuntimeConfig {
   const base = parseOverlayRuntimeConfig(
-    JSON.parse(readFileSync(path.join(repoRoot, 'fixtures/config/saas-staging.json'), 'utf8')),
+    JSON.parse(readFileSync(path.join(repoRoot, 'tests/fixtures/config/saas-staging.json'), 'utf8')),
   )
 
   return parseOverlayRuntimeConfig({
