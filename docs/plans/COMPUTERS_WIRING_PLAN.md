@@ -472,6 +472,19 @@ absent and every route 403s — the self-host story from the plan doc.
 
 ## Phase 4 — Settings → Computers UI
 
+**Status: done.** `computers` settings section + panel registered in
+`DEFAULT_OVERLAY_SETTINGS_SECTIONS`/`PANELS` (order 66, between Environments
+and Contact, `requiredCapabilities: ['computers']` — no `featureFlagId`, the
+capability already encodes flag+key). `ComputerSettings.tsx` lists
+caller-visible computers with owner labels (agent names resolved via
+`agents.list`), status chips, size, relative last-active; actions: Open
+(ticket → `window.open` top-level), Stop/Start, Delete (confirm notes disk
+loss), New computer (personal provision, hidden once one exists). Polls at
+3s while any row is `provisioning`, else 15s. Wired into
+`IMPLEMENTED_SECTION_IDS` + the settings page render. Capability-gating test
+added to `capabilities.test.ts`. Visual check: nav entry + breadcrumb render
+confirmed; authenticated panel content pending a signed-in browser pass.
+
 Goal: members can see and manage workspace computers.
 
 - `packages/overlay-app-core/src/app-shell.ts`:

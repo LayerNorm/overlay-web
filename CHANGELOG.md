@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Computers settings UI (wiring phase 4): Settings → Computers lists every computer the caller can see — personal computers, workspace agents' machines, and creator-only agents' machines for their creator — with status, size, and last-active; actions cover create (personal), open-desktop (ticket → new tab), stop/start, and delete. The section only appears when the `computers` capability is on.
+
 - Computers provider registry (wiring phase 3): `OVERLAY_COMPUTER_PROVIDER` (default `box`) + an admin-scoped `BOX_API_KEY` now resolve a cached `BoxSandboxRuntime` per computer row, and `features.computers` / `OVERLAY_FEATURE_COMPUTERS` gates the `computers` capability. The capability reports on only when the flag is set AND the configured provider resolves, so self-host deployments without credentials keep the routes hidden (403 `capability_disabled`); provisioning now reaches the provider when both are configured. Still no UI — the Settings section lands in phase 4.
 
 - Computers API surface (wiring phase 2): seven authenticated `/api/v1/computers` routes — list, provision (idempotent per owner), get, destroy, desktop-ticket (bearer-secret response excluded from idempotency persistence), stop, start — plus `computerService` on the server context and a typed `ComputersClient` in `@overlay/api-client`. All routes are gated behind the new `computers` capability, which stays off until the provider-registry phase wires `features.computers` + `BOX_API_KEY`; provision then fails closed as `provider_unavailable` until a runtime is configured.

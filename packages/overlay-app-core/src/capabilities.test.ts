@@ -68,6 +68,16 @@ test('connected-agent settings require both the product flag and server capabili
   assert.equal(visible.settingsPanels.some((item) => item.id === 'agent-environments'), true)
 })
 
+test('computers settings follow the computers capability', () => {
+  const hidden = resolveOverlayAppShellConfig()
+  assert.equal(hidden.settingsSections.some((item) => item.id === 'computers'), false)
+  assert.equal(hidden.settingsPanels.some((item) => item.id === 'computers'), false)
+
+  const visible = resolveOverlayAppShellConfig(undefined, { capabilities: { computers: true } })
+  assert.equal(visible.settingsSections.some((item) => item.id === 'computers'), true)
+  assert.equal(visible.settingsPanels.some((item) => item.id === 'computers'), true)
+})
+
 test('resolveOverlayAppShellConfig exposes memory management without vector search', () => {
   const shell = resolveOverlayAppShellConfig(undefined, {
     capabilities: { memory: true, vectorSearch: false },

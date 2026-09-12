@@ -218,8 +218,9 @@ File-by-file implementation sequence for phases 1–2 lives in
    admin-scoped `BOX_API_KEY` resolve a cached `BoxSandboxRuntime`, and the
    `computers` capability reports on only when `features.computers` is set
    AND the configured provider resolves — self-host without keys reports it
-   absent. Still open here: Settings page — personal computers only
-   (create/open/stop/delete).
+   absent. Settings → Computers (wiring Phase 4) lets members list, create
+   (personal), open, stop/start, and delete computers. Plan-doc Phase 1 is
+   complete; remaining work starts at agent binding (Phase 2 below).
 2. **Agent binding**: `computer` editor section (Overlay agents), DM status
    chip + Watch, headless `computer_*` tools.
 3. **GUI + lifecycle policy**: desktop driver tools, idle auto-stop,
