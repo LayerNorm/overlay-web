@@ -566,6 +566,42 @@ Computers; open-desktop issues a ticket; disable destroys it.
 
 ---
 
+## Phase 5.5 — `computer_*` agent tools + editor lifecycle controls
+
+**Status: done.** New `computer` group in `AGENT_TOOL_GROUPS`
+(`src/shared/agents/tool-groups.ts`) — opt-in, excluded from
+`DEFAULT_AGENT_TOOL_GROUP_IDS`, and withheld by `applyRuntimeToolGates` when the
+deployment's `computers` capability is off. Five tools ship:
+
+- `computer_exec` — shell command on the bound machine (60s default, 5m max,
+  ~40k-char output truncation)
+- `computer_read_file` / `computer_write_file` / `computer_list_files`
+- `computer_open_url` — `xdg-open` on the machine's real desktop with
+  `DISPLAY=:0` (`runCommand` executes outside the desktop session — without it
+  xdg-open exits 4). The desktop stream ticket is deliberately **not** returned
+  in tool output (bearer secrets must not persist in transcripts); the model is
+  told the user can watch via Open desktop.
+
+`computer_desktop` / `computer_screenshot` are not yet tractable — the runtime's
+desktop surface is stream-ticket issuance only; GUI automation needs the in-box
+driver (plan Phase 3+).
+
+Wiring notes:
+
+- `ComputerService.instanceForOwner` resolves the *owner's* bound computer —
+  never a model-supplied id — applies the existing owner/agent-creator access
+  rules, resumes a stopped machine, and stamps last-active.
+- `computerInstanceFor` in `overlay-executes.ts` builds the `ComputerActor`
+  from the acting user's workspace membership (`workspaceService.listForUser`)
+  so creator-only agent computers resolve correctly under the delegate model.
+- `withAgentGrantToolIds` in `act/tooling.ts`: on an agent turn the grant
+  unions into the intent-gated base set — keyword gating exists for personal
+  chat; an agent's grant is its whole surface. The account-policy intersect
+  still narrows back to the grant, and deployment/project gates apply on top.
+- Editor: `AgentComputerSection` gained Stop/Start + Delete (confirm) on the
+  provisioned row; `OverlayAgentFields` hides the `computer` toggle when the
+  capability is off.
+
 ## Phase 6 — automation wiring (optional, defer)
 
 Scheduled agent runs could wake the agent's computer and attach a desktop at

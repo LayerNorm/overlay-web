@@ -44,6 +44,7 @@ import {
 } from '@/shared/security/safe-log'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 
 type ActMode = 'chat' | 'automate'
 type MediaToolIntent = 'image' | 'video' | null
@@ -163,17 +164,23 @@ export async function prepareActTooling(params: {
   // Account and project policies are applied after deployment gates and only
   // ever narrow, so neither can reintroduce a tool the deployment withheld.
   // Project policy remains last so it can further constrain account access.
+  const intentToolIds = withRequestedOverlayToolIds(
+    allowedOverlayToolIdsForTurn({
+      latestUserText: params.latestUserText ?? '',
+      automationMode: params.automationMode === true || params.mode === 'automate',
+      automationExecution: params.automationExecution === true,
+      mediaToolIntent: params.mediaToolIntent,
+    }),
+    params.requestedToolIds ?? [],
+    memoryEnabled,
+  )
+  const baseToolIds = withAgentGrantToolIds(
+    intentToolIds,
+    params.accountAllowedToolIds,
+    params.agentId !== undefined,
+  )
   const accountScopedToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
-    withRequestedOverlayToolIds(
-      allowedOverlayToolIdsForTurn({
-        latestUserText: params.latestUserText ?? '',
-        automationMode: params.automationMode === true || params.mode === 'automate',
-        automationExecution: params.automationExecution === true,
-        mediaToolIntent: params.mediaToolIntent,
-      }),
-      params.requestedToolIds ?? [],
-      memoryEnabled,
-    ),
+    baseToolIds,
     capabilities,
   ), params.accountAllowedToolIds)
   // Project policy is applied last and only ever narrows, so a project can never
@@ -286,6 +293,22 @@ export async function prepareActTooling(params: {
     ...tooling,
     tools: compatible.tools,
   }
+}
+
+/**
+ * On an agent turn the grant is the agent's whole tool surface, so it joins
+ * the intent-gated base set — keyword gating exists to bound personal chat,
+ * where every user implicitly holds every tool. The account-policy intersect
+ * still narrows back to exactly the grant, and deployment/project gates apply
+ * on top, so this can never widen past existing policy.
+ */
+export function withAgentGrantToolIds(
+  intentToolIds: readonly string[],
+  accountAllowedToolIds: readonly string[] | undefined,
+  isAgentTurn: boolean,
+): string[] {
+  if (!isAgentTurn || accountAllowedToolIds === undefined) return [...intentToolIds]
+  return [...new Set([...intentToolIds, ...accountAllowedToolIds])]
 }
 
 export function applyAccountToolPolicy(
@@ -428,7 +451,7 @@ function withRequestedOverlayToolIds(
   return Array.from(allowed)
 }
 
-function applyRuntimeToolGates(
+export function applyRuntimeToolGates(
   toolIds: string[],
   capabilities: CapabilityCheck,
 ): string[] {
@@ -449,6 +472,9 @@ function applyRuntimeToolGates(
   }
   if (!capabilities.sandboxes) {
     allowed.delete('run_daytona_sandbox')
+  }
+  if (!capabilities.computers) {
+    for (const toolId of COMPUTER_TOOL_IDS) allowed.delete(toolId)
   }
   if (!capabilities.automations) {
     allowed.delete('schedule_automation')

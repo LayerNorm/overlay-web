@@ -277,3 +277,46 @@ test('listForWorkspace only returns computers the actor may see', async () => {
   const owners = await svc.listForWorkspace({ actor: owner, workspaceId: 'ws-1' })
   assert.equal(owners.length, 1)
 })
+
+test('instanceForOwner resolves the bound computer and resumes a stopped machine', async () => {
+  const { svc, runtimes } = service()
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  await svc.stop({ actor: member, computerId: computer.id })
+
+  const resolved = await svc.instanceForOwner({
+    actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
+  })
+  assert.equal(resolved.computer.id, computer.id)
+  assert.equal(runtimes.box.instances[0]!.resumes, 1)
+  assert.equal(resolved.instance.capabilities.desktop, true)
+})
+
+test('instanceForOwner rejects an owner with no computer and a stranger', async () => {
+  const { svc } = service()
+  await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+
+  await assert.rejects(
+    svc.instanceForOwner({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-x' }),
+    (error) => error instanceof ComputerServiceError && error.code === 'not_found',
+  )
+  await assert.rejects(
+    svc.instanceForOwner({ actor: otherMember, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
+    (error) => error instanceof ComputerServiceError && error.code === 'forbidden',
+  )
+})
+
+test('instanceForOwner lets the creator drive a creator-only agent computer', async () => {
+  const { svc } = service({
+    agents: { 'agent-1': { visibility: 'creator', createdByPrincipalId: 'principal-1' } },
+  })
+  await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' })
+
+  const resolved = await svc.instanceForOwner({
+    actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1',
+  })
+  assert.equal(resolved.computer.ownerId, 'agent-1')
+  await assert.rejects(
+    svc.instanceForOwner({ actor: otherMember, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' }),
+    (error) => error instanceof ComputerServiceError && error.code === 'forbidden',
+  )
+})

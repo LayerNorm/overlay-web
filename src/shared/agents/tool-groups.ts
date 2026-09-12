@@ -15,6 +15,19 @@
  */
 export type AgentToolCapability = 'web_search' | 'integrations' | 'mcp'
 
+/**
+ * The computer group's tool ids, named separately so server gates can withhold
+ * them when the deployment's `computers` capability is off without re-deriving
+ * them from the group list.
+ */
+export const COMPUTER_TOOL_IDS = [
+  'computer_exec',
+  'computer_read_file',
+  'computer_write_file',
+  'computer_list_files',
+  'computer_open_url',
+] as const
+
 export interface AgentToolGroup {
   id: string
   label: string
@@ -113,6 +126,13 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     label: 'Browser',
     description: 'Drive an interactive browser session.',
     toolIds: ['interactive_browser_session'],
+  },
+  {
+    id: 'computer',
+    label: 'Computer',
+    description:
+      'Run commands, read and write files, and open URLs on the agent\'s persistent cloud desktop.',
+    toolIds: COMPUTER_TOOL_IDS,
   },
   {
     id: 'agents',

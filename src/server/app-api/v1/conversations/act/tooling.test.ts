@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolSet } from '@/server/ai/sdk'
-import { buildActTooling } from './tooling'
+import { applyRuntimeToolGates, buildActTooling, withAgentGrantToolIds } from './tooling'
+import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core'
 
 const toolSet = (tools: Record<string, object>): ToolSet => tools as unknown as ToolSet
 
@@ -67,4 +68,39 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
   assert.equal('call_mcp_tool' in compareSlot.tools, false)
   assert.equal('save_memory' in compareSlot.tools, true)
   assert.equal('perplexity_search' in compareSlot.tools, true)
+})
+
+test('agent turns union the grant into the tool surface; human turns keep intent gating', () => {
+  const intent = ['search_knowledge', 'save_memory']
+  const grant = ['computer_exec', 'computer_read_file', 'save_memory']
+
+  // An agent granted computer tools sees them even when no keyword matched.
+  const agentBase = withAgentGrantToolIds(intent, grant, true)
+  assert.equal(agentBase.includes('computer_exec'), true)
+  assert.equal(agentBase.includes('computer_read_file'), true)
+  assert.equal(agentBase.includes('search_knowledge'), true)
+
+  // A human turn with the same account policy list never inherits it.
+  const humanBase = withAgentGrantToolIds(intent, grant, false)
+  assert.deepEqual(humanBase, intent)
+
+  // No grant → identical set either way.
+  assert.deepEqual(withAgentGrantToolIds(intent, undefined, true), intent)
+})
+
+test('computer tools are withheld when the deployment capability is off', () => {
+  const on = applyRuntimeToolGates(
+    ['computer_exec', 'computer_read_file', 'save_memory'],
+    { ...DEFAULT_OVERLAY_CAPABILITIES, computers: true },
+  )
+  assert.equal(on.includes('computer_exec'), true)
+  assert.equal(on.includes('computer_read_file'), true)
+
+  const off = applyRuntimeToolGates(
+    ['computer_exec', 'computer_read_file', 'save_memory'],
+    { ...DEFAULT_OVERLAY_CAPABILITIES, computers: false },
+  )
+  assert.equal(off.includes('computer_exec'), false)
+  assert.equal(off.includes('computer_read_file'), false)
+  assert.equal(off.includes('save_memory'), true)
 })

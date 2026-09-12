@@ -168,12 +168,14 @@ never let vendor shapes reach the entity:
 ## Agent tools
 
 New `computer` group in `AGENT_TOOL_GROUPS` (grant-filter pattern, opt-in,
-cannot exceed workspace policy):
+cannot exceed workspace policy). **Shipped:** `computer_exec`,
+`computer_read_file`, `computer_write_file`, `computer_list_files`,
+`computer_open_url` (opens on the real desktop via `xdg-open`; the stream
+ticket never enters tool output — the user watches via Open desktop).
 
-- `computer_exec`, `computer_read_file`, `computer_write_file` — headless
-  subset; can ship before GUI.
-- `computer_desktop` — GUI automation via the in-box driver.
-- `computer_screenshot`, `computer_open_url` — return live stream links.
+- `computer_desktop` — GUI automation via the in-box driver. Not yet tractable:
+  the runtime's desktop surface is stream-ticket issuance only.
+- `computer_screenshot` — same dependency on an in-box driver.
 
 ## Self-host parity
 

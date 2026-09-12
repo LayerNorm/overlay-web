@@ -184,6 +184,11 @@ export function getDescriptiveToolLabel(
     generate_image: 'Generating an image',
     generate_video: 'Generating a video',
     run_daytona_sandbox: 'Running your workspace',
+    computer_exec: 'Running a command on the computer',
+    computer_read_file: 'Reading a file on the computer',
+    computer_write_file: 'Writing a file on the computer',
+    computer_list_files: 'Listing files on the computer',
+    computer_open_url: 'Opening a URL on the computer',
   }
   if (map[toolName]) return map[toolName]!
 

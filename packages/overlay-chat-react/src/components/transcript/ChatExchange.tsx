@@ -1,14 +1,13 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { lazy, Suspense, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
-import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
+import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSegments,
   computeToolChainFlags,
-  getDraftFromToolBlock,
-  isOverlayGatedToolOutput,
   isUsageExhaustedError,
+  planAssistantWorkCollapse,
 } from '@overlay/chat-core'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
@@ -20,16 +19,7 @@ import type {
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
-import {
-  BrowserToolBlock,
-  DraftSuggestionCard,
-  GatedPaidFeatureCallout,
-  MemoryToolBlock,
-  ReasoningBlock,
-  SingleToolCallRow,
-  ToolCallsCollapsedGroup,
-  WebSearchToolBlock,
-} from '../exchange'
+import { WorkedForGroup } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
@@ -37,10 +27,11 @@ import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoa
 import { UserMessageActions } from './UserMessageActions'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 import { useChatExchangeSources } from './chat-exchange-sources'
-
-const GeneratedUiCard = lazy(() =>
-  import('../GeneratedUiCard').then((mod) => ({ default: mod.GeneratedUiCard })),
-)
+import {
+  AssistantSegmentItem,
+  assistantSegmentKey,
+  type AssistantSegmentRenderContext,
+} from './AssistantSegmentItem'
 
 export type UserImageAttachment = {
   url: string
@@ -140,6 +131,54 @@ export function ChatExchange({
     )
     const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
     const responseSettled = !loadingPresentation.active
+
+    // Turn duration measured on the streaming→settled edge; nothing persisted
+    // exists on the wire today, so reloaded messages fall back to "Worked".
+    const streamStartedAtRef = useRef<number | null>(null)
+    const [measuredWorkMs, setMeasuredWorkMs] = useState<number | null>(null)
+    useEffect(() => {
+      if (isStreaming) {
+        if (streamStartedAtRef.current == null) streamStartedAtRef.current = Date.now()
+        return
+      }
+      if (streamStartedAtRef.current != null && measuredWorkMs == null) {
+        setMeasuredWorkMs(Math.max(0, Date.now() - streamStartedAtRef.current))
+      }
+    }, [isStreaming, measuredWorkMs])
+
+    const collapsePlan = useMemo(
+      () => isStreaming
+        ? { collapsedSegmentIndexes: [] as number[], collapsedRowIndex: null }
+        : planAssistantWorkCollapse(assistantSegments),
+      [assistantSegments, isStreaming],
+    )
+    const collapsedSet = useMemo(
+      () => new Set(collapsePlan.collapsedSegmentIndexes),
+      [collapsePlan],
+    )
+    const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
+      keyPrefix: exchIdx,
+      markdownKeyPrefix: `${userMsgId}-${responseModelId}`,
+      blockCount: assistantVisualBlocks.length,
+      lastTextBlockIndex,
+      isStreaming,
+      isTextStreaming,
+      sourceCitations: effectiveSourceCitations,
+      webSources,
+      suppressTypingIndicator: !loadingPresentation.inlineTextMarker,
+      onOpenDraft,
+      onCreateAutomationDraft,
+      onOpenAttachmentPreview,
+      generatedUiConnectorActions,
+      onGeneratedUiChange,
+    }), [
+      exchIdx, userMsgId, responseModelId, assistantVisualBlocks.length,
+      lastTextBlockIndex, isStreaming, isTextStreaming, effectiveSourceCitations,
+      webSources, loadingPresentation.inlineTextMarker, onOpenDraft,
+      onCreateAutomationDraft, onOpenAttachmentPreview,
+      generatedUiConnectorActions, onGeneratedUiChange,
+    ])
+    const workedMs = measuredWorkMs
     const copyPlainText =
       interrupted && !errorMessage
         ? assistantPlainText.trim()
@@ -261,181 +300,34 @@ export function ChatExchange({
         )}
 
         {assistantSegments.map((seg, segIdx) => {
+          if (collapsedSet.has(segIdx)) {
+            if (segIdx !== collapsePlan.collapsedRowIndex) return null
+            return (
+              <WorkedForGroup key={`${exchIdx}-worked`} durationMs={workedMs}>
+                {collapsePlan.collapsedSegmentIndexes.map((collapsedIdx, itemIdx) => {
+                  const collapsedSeg = assistantSegments[collapsedIdx]!
+                  return (
+                    <AssistantSegmentItem
+                      key={assistantSegmentKey(`${exchIdx}-worked`, collapsedSeg, isStreaming)}
+                      seg={collapsedSeg}
+                      chainTop={itemIdx > 0}
+                      chainBottom={itemIdx < collapsePlan.collapsedSegmentIndexes.length - 1}
+                      ctx={segmentCtx}
+                    />
+                  )
+                })}
+              </WorkedForGroup>
+            )
+          }
           const chain = toolChainFlags[segIdx]!
-          if (seg.kind === 'reasoning') {
-            // Actively streaming = still emitting reasoning deltas (or message-level stream and
-            // this part has not been explicitly marked `done`). Everything else collapses.
-            const active =
-              (isStreaming && seg.block.state === 'streaming') ||
-              (isStreaming && seg.block.state !== 'done' && seg.originIndex === assistantVisualBlocks.length - 1)
-            return (
-              <ReasoningBlock
-                key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`}
-                text={seg.block.text}
-                streaming={active}
-                connectTop={chain.chainTop}
-                connectBottom={chain.chainBottom}
-              />
-            )
-          }
-          if (seg.kind === 'browser') {
-            return (
-              <BrowserToolBlock
-                key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.key}`}
-                block={seg.block}
-                connectTop={chain.chainTop}
-                connectBottom={chain.chainBottom}
-              />
-            )
-          }
-          if (seg.kind === 'tools') {
-            const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
-            if (onlyTools && seg.items.length === 1) {
-              const t = seg.items[0] as ToolVisualBlock
-              // See AssistantVisualBlocks: hold the draft card back until the turn
-              // finishes so it does not flicker in and collapse as tool calls regroup.
-              const draft = isStreaming ? null : getDraftFromToolBlock(t)
-              if (draft) {
-                const isAutomationDraft = draft.kind === 'automation'
-                return (
-                  <DraftSuggestionCard
-                    key={`${exchIdx}-draft-${seg.originIndex}-${t.key}`}
-                    title={draft.draft.name}
-                    description={draft.draft.description}
-                    badge={isAutomationDraft ? 'Automation Draft' : 'Skill Draft'}
-                    reason={draft.draft.reason}
-                    primaryLabel="Review draft"
-                    secondaryLabel={isAutomationDraft ? 'Create automation' : 'Save skill'}
-                    onPrimary={() => onOpenDraft(draft)}
-                    onSecondary={() => {
-                      if (draft.kind === 'automation') {
-                        void onCreateAutomationDraft(draft)
-                      } else {
-                        onOpenDraft(draft)
-                      }
-                    }}
-                  />
-                )
-              }
-              if (isOverlayGatedToolOutput(t.toolOutput)) {
-                return (
-                  <GatedPaidFeatureCallout
-                    key={`${exchIdx}-gated-${seg.originIndex}-${t.key}`}
-                    block={t}
-                    connectTop={chain.chainTop}
-                    connectBottom={chain.chainBottom}
-                  />
-                )
-              }
-              if (t.name === 'perplexity_search' || t.name === 'parallel_search') {
-                return (
-                  <WebSearchToolBlock
-                    key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
-                    block={t}
-                    connectTop={chain.chainTop}
-                    connectBottom={chain.chainBottom}
-                  />
-                )
-              }
-              if (t.name === 'save_memory' || t.name === 'save_memory_batch' || t.name === 'update_memory') {
-                return (
-                  <MemoryToolBlock
-                    key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
-                    block={t}
-                    connectTop={chain.chainTop}
-                    connectBottom={chain.chainBottom}
-                  />
-                )
-              }
-              return (
-                <SingleToolCallRow
-                  key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
-                  block={t}
-                  connectTop={chain.chainTop}
-                  connectBottom={chain.chainBottom}
-                />
-              )
-            }
-            return (
-              <ToolCallsCollapsedGroup
-                key={`${exchIdx}-seq-tools-${seg.originIndex}`}
-                items={seg.items}
-                connectTop={chain.chainTop}
-                connectBottom={chain.chainBottom}
-              />
-            )
-          }
-          if (seg.kind === 'file') {
-            const block = seg.block
-            const isImg = (block.mediaType?.startsWith('image/') ?? true)
-            const isVideo = block.mediaType?.startsWith('video/') ?? false
-            if (!isImg && !isVideo) return null
-            const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
-            return (
-              <div key={`${exchIdx}-seq-${seg.originIndex}-file`} className="w-full px-1 py-1">
-                {isImg ? (
-                  <button
-                    type="button"
-                    onClick={() => onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
-                    className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-                    title="Open attachment"
-                  >
-                    <img
-                      src={block.url}
-                      alt="Generated"
-                      className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
-                    />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
-                    className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-                    title="Open attachment"
-                  >
-                    <video
-                      src={block.url}
-                      controls
-                      preload="metadata"
-                      playsInline
-                      className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
-                    />
-                  </button>
-                )}
-              </div>
-            )
-          }
-          if (seg.kind === 'generated-ui') {
-            return (
-              <Suspense
-                key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.part.id}`}
-                fallback={<div className="ui-skeleton-line min-h-24 w-full rounded-lg" aria-busy="true" />}
-              >
-                <GeneratedUiCard
-                  part={seg.block.part}
-                  connectorActions={generatedUiConnectorActions}
-                  onDataChange={onGeneratedUiChange}
-                />
-              </Suspense>
-            )
-          }
-          const block = seg.block
-          const isLastText = seg.originIndex === lastTextBlockIndex
           return (
-            <div
-              key={`${exchIdx}-seq-${seg.originIndex}-text`}
-              className="w-full px-1 py-1 text-sm leading-relaxed text-[var(--foreground)]"
-            >
-              <MarkdownMessage
-                key={`md-${userMsgId}-${responseModelId}-${seg.originIndex}`}
-                text={block.text}
-                isStreaming={isTextStreaming && isLastText}
-                sourceCitations={isLastText ? effectiveSourceCitations : undefined}
-                webSources={isLastText && webSources.length > 0 ? webSources : undefined}
-                suppressTypingIndicator={!loadingPresentation.inlineTextMarker}
-                onOpenAttachmentPreview={onOpenAttachmentPreview}
-              />
-            </div>
+            <AssistantSegmentItem
+              key={assistantSegmentKey(exchIdx, seg, isStreaming)}
+              seg={seg}
+              chainTop={chain.chainTop}
+              chainBottom={chain.chainBottom}
+              ctx={segmentCtx}
+            />
           )
         })}
 
