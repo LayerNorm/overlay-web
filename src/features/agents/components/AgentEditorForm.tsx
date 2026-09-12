@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Monitor, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
+import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Monitor, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
 import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
@@ -149,14 +149,17 @@ const COMPUTER_SIZE_OPTIONS = [
   { value: 'large', label: 'Large · 8 vCPU, 16 GB' },
 ] as const
 
-export function AgentComputerSection({ enabled, onEnabledChange, size, onSizeChange, computer, openBusy, onOpenDesktop, disabled }: {
+export function AgentComputerSection({ enabled, onEnabledChange, size, onSizeChange, computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete, disabled }: {
   enabled: boolean
   onEnabledChange(next: boolean): void
   size: ComputerSize
   onSizeChange(next: ComputerSize): void
   computer: Computer | null
   openBusy: boolean
+  lifecycleBusy: 'start' | 'stop' | 'delete' | null
   onOpenDesktop(): void
+  onTogglePower(): void
+  onDelete(): void
   disabled?: boolean
 }) {
   return (
@@ -192,15 +195,27 @@ export function AgentComputerSection({ enabled, onEnabledChange, size, onSizeCha
               <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground)]"><Monitor size={13} className="shrink-0 text-[var(--muted)]" />{computer.name ?? 'Computer'}</p>
               <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{computer.status} · {computer.size} · size is fixed once provisioned</p>
             </div>
-            {computer.status === 'ready' || computer.status === 'stopped' ? (
-              <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy}>
-                {openBusy ? 'Opening…' : 'Open desktop'}
-              </Button>
-            ) : null}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {computer.status === 'ready' ? (
+                <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy || lifecycleBusy !== null}>
+                  {openBusy ? 'Opening…' : 'Open desktop'}
+                </Button>
+              ) : null}
+              {computer.status === 'ready' || computer.status === 'stopped' ? (
+                <Button variant="secondary" size="sm" onClick={onTogglePower} disabled={lifecycleBusy !== null || openBusy}>
+                  {lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop' : 'Start'}
+                </Button>
+              ) : null}
+              {computer.status === 'ready' || computer.status === 'stopped' || computer.status === 'error' ? (
+                <Button variant="secondary" size="sm" onClick={onDelete} disabled={lifecycleBusy !== null || openBusy} aria-label="Delete computer">
+                  {lifecycleBusy === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                </Button>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {enabled && !computer ? (
-          <p className="text-[11px] leading-4 text-[var(--muted)]">Created when you save. Turning it off later deletes the computer and its disk. Also managed under Settings → Computers.</p>
+          <p className="text-[11px] leading-4 text-[var(--muted)]">Created when you save. Grant the Computer tool group above so the agent can use it. Also managed under Settings → Computers.</p>
         ) : null}
         {!enabled && computer ? (
           <p className="text-[11px] leading-4 text-[var(--muted)]">Saving deletes this computer and its disk permanently.</p>
@@ -284,9 +299,10 @@ export function MasterAgentNotice() {
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
+  computersAvailable: boolean
   instructions: string
   onInstructionsChange(value: string): void
   modelId: string
@@ -331,6 +347,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, instruc
         onToggleToolGroup={onToggleToolGroup}
         advanced={advanced}
         onAdvancedChange={onAdvancedChange}
+        computersAvailable={computersAvailable}
       />
     )
   }
@@ -369,7 +386,8 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, instruc
   )
 }
 
-export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelOptions: Array<{ value: string; label: string }>; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void }) {
+export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, computersAvailable = true }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelOptions: Array<{ value: string; label: string }>; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void; computersAvailable?: boolean }) {
+  const toolGroups = computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')
   return (
     <>
       <label className="block text-xs font-medium">Agent instructions<textarea value={instructions} onChange={(event) => onInstructionsChange(event.target.value)} placeholder="Describe what this agent should do, how it should respond, and when it should stop." className="mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]" /></label>
@@ -378,7 +396,7 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
         <p className="text-xs font-medium">Tools</p>
         <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Grant this agent the same tools the personal chat can use. It only acts on what you enable here.</p>
         <div className="mt-1">
-          {AGENT_TOOL_GROUPS.map((group) => (
+          {toolGroups.map((group) => (
             <ToggleRow
               key={group.id}
               checked={enabledToolGroups.has(group.id)}

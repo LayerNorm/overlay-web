@@ -3,6 +3,7 @@ import 'server-only'
 import {
   isDesktopSandboxInstance,
   type DesktopStreamTicket,
+  type SandboxInstance,
   type SandboxResources,
   type SandboxRuntime,
 } from '@overlay/sandbox-runtime'
@@ -200,6 +201,40 @@ export class ComputerService {
     const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
     await instance.delete().catch((_error) => undefined)
     await this.dependencies.repository.delete(computer.id)
+  }
+
+  /**
+   * Resolve an owner's bound computer to a live instance for tool execution:
+   * resumes a stopped machine and stamps last-active. Provisioning stays
+   * explicit — owners without a bound computer get `not_found`, not a machine.
+   */
+  async instanceForOwner(args: {
+    actor: ComputerActor
+    workspaceId: string
+    ownerType: ComputerOwnerType
+    ownerId: string
+  }): Promise<{ computer: Computer; instance: SandboxInstance }> {
+    const computer = await this.dependencies.repository.findByOwner(
+      args.workspaceId,
+      args.ownerType,
+      args.ownerId,
+    )
+    if (!computer) {
+      throw new ComputerServiceError('not_found', 'No computer is bound to this owner', 404)
+    }
+    const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
+    if (!this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) {
+      throw new ComputerServiceError('forbidden', 'You cannot use this computer', 403)
+    }
+    if (computer.status === 'error' || !computer.providerRef) {
+      throw new ComputerServiceError('provider_error', 'The computer is still provisioning or failed to provision', 409)
+    }
+    const instance = await this.runtimeFor(computer.provider).reconnect(computer.providerRef)
+    if (await instance.status() === 'stopped') {
+      await instance.resume()
+    }
+    await this.touch(computer)
+    return { computer, instance }
   }
 
   /** Read one computer for an authorized actor — no provider reconnect. */

@@ -115,6 +115,7 @@ export function AgentEditorPage({
   const [computerEnabled, setComputerEnabled] = useState(false)
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
+  const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -376,6 +377,39 @@ export function AgentEditorPage({
     }
   }
 
+  const toggleAgentComputerPower = async () => {
+    if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy) return
+    const action = agentComputer.status === 'ready' ? 'stop' : 'start'
+    setComputerLifecycleBusy(action)
+    setError(null)
+    try {
+      const result = action === 'stop'
+        ? await overlayAppClient.computers.stop(activeWorkspaceId, agentComputer.id)
+        : await overlayAppClient.computers.start(activeWorkspaceId, agentComputer.id)
+      setAgentComputer(result.computer)
+    } catch (powerError) {
+      setError(powerError instanceof Error ? powerError.message : `Could not ${action} the computer.`)
+    } finally {
+      setComputerLifecycleBusy(null)
+    }
+  }
+
+  const deleteAgentComputer = async () => {
+    if (!activeWorkspaceId || !agentComputer || computerLifecycleBusy) return
+    if (!window.confirm(`Delete ${agentComputer.name ?? "this agent's computer"}? Its disk state is destroyed permanently.`)) return
+    setComputerLifecycleBusy('delete')
+    setError(null)
+    try {
+      await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
+      setAgentComputer(null)
+      setComputerEnabled(false)
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the computer.')
+    } finally {
+      setComputerLifecycleBusy(null)
+    }
+  }
+
   const sayHello = () => {
     if (!agent) return
     void startAgentChat({
@@ -461,6 +495,7 @@ export function AgentEditorPage({
                 <AgentBehaviorFields
                   agentType={agentType}
                   connectedAgentsEnabled={connectedAgentsEnabled}
+                  computersAvailable={computersAvailable}
                   instructions={instructions}
                   onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
                   modelId={modelId}
@@ -504,7 +539,10 @@ export function AgentEditorPage({
                     onSizeChange={(next) => { setComputerSize(next); markDirty() }}
                     computer={agentComputer}
                     openBusy={computerOpenBusy}
+                    lifecycleBusy={computerLifecycleBusy}
                     onOpenDesktop={() => void openAgentComputer()}
+                    onTogglePower={() => void toggleAgentComputerPower()}
+                    onDelete={() => void deleteAgentComputer()}
                     disabled={showcase}
                   />
                 ) : null}

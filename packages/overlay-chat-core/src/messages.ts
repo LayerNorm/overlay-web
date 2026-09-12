@@ -21,6 +21,7 @@ import {
   generatedUiDataToPlainText,
   isGeneratedUiPart,
 } from './generated-ui'
+import { isOverlayGatedToolOutput } from './gating'
 
 export function getMessageText(msg: {
   parts?: Array<{ type: string; text?: string }>
@@ -141,6 +142,49 @@ function buildAssistantVisualSegmentsRaw(blocks: AssistantVisualBlock[]): Assist
 
 export function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): AssistantVisualSegment[] {
   return buildAssistantVisualSegmentsRaw(blocks)
+}
+
+/**
+ * Which segments a settled assistant message folds into the single
+ * "Worked for N" row: every tool call, reasoning beat, and interstitial text
+ * before the final answer text. Segments that are themselves the deliverable —
+ * draft cards, gated-plan callouts, generated files, generated UI — stay
+ * inline so the settled transcript keeps every artifact visible.
+ */
+export function planAssistantWorkCollapse(segments: AssistantVisualSegment[]): {
+  /** Segment indexes that render inside the collapsed row, in order. */
+  collapsedSegmentIndexes: number[]
+  /** Where the collapsed row renders — the first collapsed index — or null. */
+  collapsedRowIndex: number | null
+} {
+  let lastTextIdx = -1
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i]!.kind === 'text') lastTextIdx = i
+  }
+  const limit = lastTextIdx === -1 ? segments.length : lastTextIdx
+  const collapsed: number[] = []
+  for (let i = 0; i < limit; i++) {
+    const seg = segments[i]!
+    if (seg.kind === 'reasoning' || seg.kind === 'browser' || seg.kind === 'text') {
+      collapsed.push(i)
+      continue
+    }
+    if (seg.kind === 'tools') {
+      const onlyTools = seg.items.every((item) => item.kind === 'tool')
+      if (onlyTools && seg.items.length === 1) {
+        const tool = seg.items[0] as ToolVisualBlock
+        if (getDraftFromToolBlock(tool) || isOverlayGatedToolOutput(tool.toolOutput)) {
+          continue
+        }
+      }
+      collapsed.push(i)
+    }
+  }
+  const hasWork = collapsed.some((i) => segments[i]!.kind !== 'text')
+  if (!hasWork) {
+    return { collapsedSegmentIndexes: [], collapsedRowIndex: null }
+  }
+  return { collapsedSegmentIndexes: collapsed, collapsedRowIndex: collapsed[0] ?? null }
 }
 
 function isToolChainSegment(segment: AssistantVisualSegment): boolean {

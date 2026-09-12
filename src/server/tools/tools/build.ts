@@ -13,6 +13,11 @@ import {
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
 import {
+  executeComputerExec,
+  executeComputerListFiles,
+  executeComputerOpenUrl,
+  executeComputerReadFile,
+  executeComputerWriteFile,
   executeCreateAutomation,
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
@@ -573,6 +578,85 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('run_daytona_sandbox')
         return executeRunDaytonaSandbox(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_exec')) {
+      tools.computer_exec = tool({
+      description:
+        'Run a shell command on the bound Overlay Computer — a persistent cloud desktop whose files, apps, and signed-in state survive across conversations. ' +
+        'Use for anything that needs a real machine: builds, scripts, package installs, or driving desktop apps via CLI. ' +
+        'Output is truncated to ~40k characters; prefer targeted commands over dumps.',
+      inputSchema: z.object({
+        command: z.string().describe('Full shell command to run on the computer, e.g. "ls -la /home/user" or "python3 script.py"'),
+        cwd: z.string().optional().describe('Working directory for the command'),
+        timeoutMs: z
+          .number()
+          .min(5_000)
+          .max(300_000)
+          .optional()
+          .describe('Max run time in ms (default 60s, max 5m)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_exec')
+        return executeComputerExec(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_read_file')) {
+      tools.computer_read_file = tool({
+      description: 'Read a text file from the bound computer’s filesystem (up to 256KB).',
+      inputSchema: z.object({
+        path: z.string().describe('Absolute path of the file to read'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_read_file')
+        return executeComputerReadFile(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_write_file')) {
+      tools.computer_write_file = tool({
+      description: 'Write text contents to a file on the bound computer’s filesystem, creating or overwriting it.',
+      inputSchema: z.object({
+        path: z.string().describe('Absolute path of the file to write'),
+        contents: z.string().describe('Full text contents to write'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_write_file')
+        return executeComputerWriteFile(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_list_files')) {
+      tools.computer_list_files = tool({
+      description: 'List directory entries on the bound computer’s filesystem.',
+      inputSchema: z.object({
+        path: z.string().optional().describe('Directory to list (default: the user home directory)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_list_files')
+        return executeComputerListFiles(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_open_url')) {
+      tools.computer_open_url = tool({
+      description:
+        'Open a URL in the browser on the bound computer’s graphical desktop, ' +
+        'so signed-in sessions and web apps the user has set up there can be used. ' +
+        'The user can watch the desktop live via Open desktop.',
+      inputSchema: z.object({
+        url: z.string().url().describe('The URL to open in the computer’s browser'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_open_url')
+        return executeComputerOpenUrl(options, input)
       },
     })
     }

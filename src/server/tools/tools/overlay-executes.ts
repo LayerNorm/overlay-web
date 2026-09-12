@@ -1,5 +1,12 @@
 import 'server-only'
 
+import type { SandboxInstance } from '@overlay/sandbox-runtime'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import {
+  ComputerServiceError,
+  type ComputerActor,
+} from '@/server/computers/ComputerService'
+import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/computers'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
@@ -889,5 +896,206 @@ export async function executeDraftSkillFromChat(
       success: false,
       error: err instanceof Error ? err.message : 'Failed to draft skill',
     }
+  }
+}
+
+
+/**
+ * Computer tools resolve the executing owner's bound computer through
+ * `ComputerService` — never a model-supplied computer id — and let the
+ * service apply its owner/agent-creator access rules.
+ */
+const COMPUTER_EXEC_MAX_OUTPUT_CHARS = 40_000
+const COMPUTER_READ_MAX_BYTES = 256 * 1024
+const COMPUTER_EXEC_TIMEOUT_DEFAULT_MS = 60_000
+const COMPUTER_EXEC_TIMEOUT_MAX_MS = 300_000
+
+function truncateOutput(value: string): { text: string; truncated: boolean } {
+  if (value.length <= COMPUTER_EXEC_MAX_OUTPUT_CHARS) {
+    return { text: value, truncated: false }
+  }
+  return { text: value.slice(0, COMPUTER_EXEC_MAX_OUTPUT_CHARS), truncated: true }
+}
+
+function computerErrorResult(err: unknown, fallback: string) {
+  if (err instanceof ComputerServiceError) {
+    return { success: false, error: err.message, code: err.code }
+  }
+  return { success: false, error: err instanceof Error ? err.message : fallback }
+}
+
+async function computerInstanceFor(
+  options: OverlayToolsOptions,
+): Promise<
+  | { ok: true; computer: Computer; instance: SandboxInstance }
+  | { ok: false; error: string }
+> {
+  if (!options.workspaceId) {
+    return { ok: false, error: 'Computers need a workspace context.' }
+  }
+  const ownerType: ComputerOwnerType = options.agentId ? 'agent' : 'user'
+  const ownerId = options.agentId ?? options.userId
+  try {
+    const { computerService, workspaceService } = getOverlayServerContext()
+    // Resolve the delegating human's principal so agent-owned computers apply
+    // the creator-only access rule rather than failing closed.
+    const access = (await workspaceService.listForUser(options.userId))
+      .find((entry) => entry.workspace.id === options.workspaceId)
+    const actor: ComputerActor = {
+      userId: options.userId,
+      principalId: access?.principal.id,
+      workspaceRole: access?.membership.role === 'owner' ? 'owner' : 'member',
+    }
+    const { computer, instance } = await computerService.instanceForOwner({
+      actor,
+      workspaceId: options.workspaceId,
+      ownerType,
+      ownerId,
+    })
+    return { ok: true, computer, instance }
+  } catch (err) {
+    return { ok: false, error: computerErrorResult(err, 'Computer unavailable').error ?? 'Computer unavailable' }
+  }
+}
+
+export async function executeComputerExec(
+  options: OverlayToolsOptions,
+  input: { command: string; cwd?: string; timeoutMs?: number },
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  try {
+    const timeoutMs = Math.min(
+      Math.max(input.timeoutMs ?? COMPUTER_EXEC_TIMEOUT_DEFAULT_MS, 5_000),
+      COMPUTER_EXEC_TIMEOUT_MAX_MS,
+    )
+    const handle = await resolved.instance.runCommand({
+      command: input.command,
+      cwd: input.cwd,
+      timeoutMs,
+    })
+    const result = await handle.wait()
+    const stdout = truncateOutput(result.stdout)
+    const stderr = truncateOutput(result.stderr)
+    return {
+      success: result.exitCode === 0,
+      exitCode: result.exitCode,
+      stdout: stdout.text,
+      stderr: stderr.text,
+      truncated: stdout.truncated || stderr.truncated,
+      durationMs: result.endedAt - result.startedAt,
+      computerId: resolved.computer.id,
+      computerName: resolved.computer.name,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer command failed')
+  }
+}
+
+export async function executeComputerReadFile(
+  options: OverlayToolsOptions,
+  input: { path: string },
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  try {
+    const bytes = await resolved.instance.readFile(input.path)
+    if (bytes === null) {
+      return { success: false, error: `No file at ${input.path}` }
+    }
+    const sliced = bytes.length > COMPUTER_READ_MAX_BYTES
+      ? bytes.subarray(0, COMPUTER_READ_MAX_BYTES)
+      : bytes
+    return {
+      success: true,
+      path: input.path,
+      contents: new TextDecoder().decode(sliced),
+      bytes: bytes.length,
+      truncated: bytes.length > COMPUTER_READ_MAX_BYTES,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer file read failed')
+  }
+}
+
+export async function executeComputerWriteFile(
+  options: OverlayToolsOptions,
+  input: { path: string; contents: string },
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  try {
+    const bytes = new TextEncoder().encode(input.contents)
+    await resolved.instance.writeFiles([{ path: input.path, contents: bytes }])
+    return {
+      success: true,
+      path: input.path,
+      bytes: bytes.length,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer file write failed')
+  }
+}
+
+export async function executeComputerListFiles(
+  options: OverlayToolsOptions,
+  input: { path?: string },
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  try {
+    const path = input.path ?? '/home/user'
+    const entries = await resolved.instance.listFiles(path)
+    return {
+      success: true,
+      path,
+      entries: entries.map((entry) => ({
+        path: entry.path,
+        kind: entry.kind,
+        size: entry.size,
+      })),
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer file listing failed')
+  }
+}
+
+export async function executeComputerOpenUrl(
+  options: OverlayToolsOptions,
+  input: { url: string },
+) {
+  const resolved = await computerInstanceFor(options)
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  if (!resolved.instance.capabilities.desktop) {
+    return { success: false, error: 'This computer has no desktop to open URLs on.' }
+  }
+  try {
+    // The bearer ticket is never returned to the transcript — the user can
+    // watch through their own "Open desktop" surface. runCommand executes
+    // outside the desktop session, so DISPLAY is set explicitly.
+    const handle = await resolved.instance.runCommand({
+      command: 'xdg-open',
+      args: [input.url],
+      environment: { DISPLAY: ':0' },
+      timeoutMs: 15_000,
+    })
+    const result = await handle.wait()
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        error: `xdg-open failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim() || 'no output'}`,
+      }
+    }
+    return {
+      success: true,
+      opened: input.url,
+      note: 'The URL opened on the computer’s desktop. The user can watch it live via Open desktop in Settings or the agent editor.',
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Failed to open the URL on the computer')
   }
 }
