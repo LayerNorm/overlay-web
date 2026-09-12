@@ -13,6 +13,7 @@ import {
   Pencil,
   Pin,
   SmilePlus,
+  Square,
   Trash2,
   X,
 } from 'lucide-react'
@@ -102,6 +103,8 @@ export type RoomMessageItemProps = {
   onCopyPermalink: () => void
   onControlRemoteQueue?: (runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') => void
   onResolveRemoteRequest?: (request: NonNullable<RoomMessageView['remoteRequest']>, decision: string, response?: Record<string, unknown>) => void
+  /** Present only while an agent response is generating — stops that run. */
+  onStopResponse?: () => void
   /** Briefly outlines the message after a jump from the pinned or thread list. */
   highlighted?: boolean
   /** Consecutive messages from the same author use a compact transcript row. */
@@ -246,6 +249,7 @@ export function RoomMessageItem({
   onCopyPermalink,
   onControlRemoteQueue,
   onResolveRemoteRequest,
+  onStopResponse,
   highlighted = false,
   grouped = false,
   personalChatStyle = false,
@@ -463,6 +467,7 @@ export function RoomMessageItem({
       pinned={pinned}
       saved={saved}
       disabled={Boolean(message.delivery)}
+      onStop={message.streaming ? onStopResponse : undefined}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
@@ -709,6 +714,7 @@ function RoomMessageToolbar({
   pinned,
   saved,
   disabled,
+  onStop,
   onStartEdit,
   onDelete,
   onReport,
@@ -727,6 +733,7 @@ function RoomMessageToolbar({
   pinned: boolean
   saved: boolean
   disabled: boolean
+  onStop?: () => void
   onStartEdit: () => void
   onDelete: () => void
   onReport: () => void
@@ -751,6 +758,18 @@ function RoomMessageToolbar({
 
   return (
     <div className={railClass}>
+      {onStop ? (
+        <button
+          type="button"
+          onClick={onStop}
+          disabled={disabled}
+          className={buttonClass}
+          aria-label="Stop response"
+          title="Stop response"
+        >
+          <Square size={13} strokeWidth={1.75} className="fill-current" />
+        </button>
+      ) : null}
       <EmojiPickerButton
         alignEnd={alignEnd || floating}
         disabled={disabled}

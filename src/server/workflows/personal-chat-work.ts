@@ -42,14 +42,16 @@ export type PersonalChatWorkWorkflowInput = {
 }
 
 const toolContextSchema = jsonSchema<PersonalChatWorkToolingContext & {
-  agentRunId: string
+  agentRunId?: string
+  automationRunId?: string
   toolName: string
 }>({
   type: 'object',
   additionalProperties: true,
-  required: ['agentRunId', 'toolName'],
+  required: ['toolName'],
   properties: {
     agentRunId: { type: 'string' },
+    automationRunId: { type: 'string' },
     toolName: { type: 'string' },
   },
 })

@@ -1453,6 +1453,15 @@ export function DirectMessageExperience({
     }
   }
 
+  async function stopAgentResponse(messageId: string) {
+    try {
+      await overlayAppClient.conversations.stopResponse({ conversationId, messageId })
+    } catch {
+      // The run may have already finished; the live row refresh settles either way.
+    }
+    await loadMessages().catch(() => undefined)
+  }
+
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
     const authorAgent = message.authorPrincipalId
@@ -1518,6 +1527,11 @@ export function DirectMessageExperience({
         onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
         onOpenAttachmentPreview={openAttachmentPreview}
         onCopyPermalink={() => void copyMessagePermalink(message.id)}
+        onStopResponse={
+          message.status === 'generating' && !message.id.startsWith('optimistic_')
+            ? () => void stopAgentResponse(message.id)
+            : undefined
+        }
         onControlRemoteQueue={(runId, action) => void controlRemoteQueue(runId, action)}
         onResolveRemoteRequest={(request, decision, response) => void resolveRemoteRequest(request, decision, response)}
         highlighted={highlightedMessageId === message.id}

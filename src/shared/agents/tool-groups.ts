@@ -13,20 +13,17 @@
  * policy are applied first, so a group can never hand an agent a tool the
  * workspace itself has withheld.
  */
+import { COMPUTER_TOOL_IDS } from '@overlay/tools-core/policy'
+
 export type AgentToolCapability = 'web_search' | 'integrations' | 'mcp'
 
 /**
- * The computer group's tool ids, named separately so server gates can withhold
- * them when the deployment's `computers` capability is off without re-deriving
- * them from the group list.
+ * The computer group's tool ids — canonical list lives in
+ * `@overlay/tools-core/policy` so the global tool registry and this group
+ * cannot drift apart; named separately so server gates can withhold them when
+ * the deployment's `computers` capability is off.
  */
-export const COMPUTER_TOOL_IDS = [
-  'computer_exec',
-  'computer_read_file',
-  'computer_write_file',
-  'computer_list_files',
-  'computer_open_url',
-] as const
+export { COMPUTER_TOOL_IDS }
 
 export interface AgentToolGroup {
   id: string
@@ -216,19 +213,14 @@ export function overlayToolIdsFromGrant(allowedToolIds: readonly string[]): stri
 }
 
 /**
- * What a newly created agent is granted by default.
- *
- * An agent that starts with nothing checked reads as broken: it answers every
- * question from the model alone and cannot look anything up. These are the
- * groups that make an agent useful without letting it spend money, run code,
- * or reach outside the workspace on its first turn — the rest stay opt-in.
+ * What a newly created agent is granted by default: every group except
+ * `computer`. Agents should be fully capable out of the box — the computer
+ * group stays opt-in because toggling it on provisions a persistent paid
+ * machine on save, not just a tool grant.
  */
-export const DEFAULT_AGENT_TOOL_GROUP_IDS: readonly string[] = [
-  'memory',
-  'knowledge',
-  'notes',
-  'skills',
-]
+export const DEFAULT_AGENT_TOOL_GROUP_IDS: readonly string[] = AGENT_TOOL_GROUPS
+  .map((group) => group.id)
+  .filter((id) => id !== 'computer')
 
 /** Every overlay tool id and capability grant an agent can hold. */
 export function allAgentToolGrantIds(): string[] {

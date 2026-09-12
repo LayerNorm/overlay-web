@@ -353,6 +353,10 @@ export function AgentEditorPage({
         setDirty(false)
         setSavedFlash(true)
         if (onSaved) onSaved()
+        // Panel presentations close on save — the saved flash only matters on
+        // the standalone editor page. onSaved must run first: it clears the
+        // workspace's never-saved marker before closeEditor can act on it.
+        if (presentation === 'panel') closeEditor()
       } catch (saveError) {
         setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
       } finally {
