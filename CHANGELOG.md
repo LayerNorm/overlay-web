@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Automation runs now execute their agent loop as a durable in-workflow `WorkflowAgent` (`workflows/automation-agent-turn.ts` + `automations/automation-turn-runner.ts`) instead of the durable workflow shelling out to `/api/v1/conversations/act` over self-HTTP. Model calls, tool calls, message persistence, and billing run as individually durable and retryable workflow steps, so a process restart resumes at the failing step rather than losing the entire turn. Entitlement gating, catalog authorization, workflow-step metering, usage reservations, and run-status settlement are all re-evaluated inside steps under service auth; approval-gated tools are auto-denied with an explicit reason since unattended runs have no approval surface. BYOK/OpenRouter/NVIDIA-served models fail fast with a clear error because only AI Gateway models resolve inside workflow steps.
+
 - Computer agent tools (wiring phase 5.5): a new opt-in **Computer** tool group lets agents drive their bound persistent desktop — `computer_exec` (shell commands, 5m cap), `computer_read_file`/`computer_write_file`/`computer_list_files`, and `computer_open_url` (opens in the machine's real browser; the desktop stream ticket never enters the transcript — users watch via Open desktop). Tools resolve the executing owner's bound computer through `ComputerService` — never a model-supplied id — resume stopped machines, and are withheld when the `computers` capability is off. The agent editor's provisioned computer row also gained inline Stop/Start and Delete (confirm) controls, and the Computer tool toggle hides when the capability is off.
 
 - Settled assistant turns now fold all pre-answer activity — tool calls, reasoning, and interstitial narration — into one expandable **"Worked for {duration}"** row, with the final answer rendered after it; expanding reveals the original ordered activity. Deliverables (draft cards, gated callouts, generated files/UI) stay inline, and streaming still shows every step live in order. Implemented via a shared `AssistantSegmentItem` renderer + `planAssistantWorkCollapse`, deduplicating the transcript/room render paths.
@@ -73,6 +75,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Added an owner-only direct-push fast path for `DevelopedByDev` on `main` and `staging`, while keeping force-pushes and branch deletion blocked for every account.
 
 ### Fixed
+
+- Personal Chat Work mode no longer dies on tool schemas carrying JSON Schema `format` annotations: the workflow step that compiles tool schemas runs Ajv in strict mode and threw `unknown format "uri"` on tools like `computer_open_url`, failing every Work run that surfaced them. `format` keywords are now stripped when tool schemas are serialized for durable execution (they are advisory and do not constrain model input), and the chat banner now renders the run's real `terminalError` message instead of the generic "The run could not be completed".
 
 - Agent settings on the agents surface now docks as a right side panel (via the shell's `rightPanel` slot) instead of stacking under the conversation; dialog mode remains available as a toggle.
 - Agent DM headers and message avatars now track the agent's live directory name — renames in the editor propagate immediately via `agent-directory-changed` instead of showing the stale "Untitled agent" snapshot stored on the conversation/participant records.

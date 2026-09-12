@@ -8,6 +8,12 @@ export type PersonalChatWorkToolDefinition = {
   needsApproval: boolean
 }
 
+/**
+ * Serializable tooling context for durable agent turns. Shared by the
+ * personal-chat Work workflow and the automation agent workflow — the extra
+ * automation fields let the same step-side tool reconstruction run an
+ * automation execution turn (automation-management tools stay withheld).
+ */
 export type PersonalChatWorkToolingContext = {
   accountAllowedConnectorIds?: string[]
   accountAllowedToolIds?: string[]
@@ -19,7 +25,10 @@ export type PersonalChatWorkToolingContext = {
   effectiveModelId: string
   entitlements: Entitlements
   latestUserText?: string
+  mediaToolIntent?: 'image' | 'video' | null
   memoryEnabled: boolean
+  /** Conversation-mode hint for tool gating; automation turns leave it unset. */
+  mode?: 'chat' | 'automate'
   paid: boolean
   projectSettings?: ProjectSettings
   requestFingerprint: string
@@ -27,4 +36,7 @@ export type PersonalChatWorkToolingContext = {
   turnId: string
   userId: string
   workspaceId: string
+  /** Marks the turn as an automation execution (withholds automation tools). */
+  automationExecution?: boolean
+  automationId?: string
 }
