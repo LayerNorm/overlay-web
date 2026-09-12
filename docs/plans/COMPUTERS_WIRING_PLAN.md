@@ -519,6 +519,20 @@ deletes; section hidden when `capabilities.computers` is false.
 
 ## Phase 5 — Agent editor → Computer section
 
+**Status: done.** `AgentComputerSection` lives in `AgentEditorForm.tsx` beside
+`AccessSelector`; `AgentEditorPage.tsx` renders it between `AccessSelector` and
+`DangerZone` only when `agentType === 'overlay'` and `capabilities.computers`.
+Edit mode loads the existing binding via `computers.list` filtered to
+`ownerType: 'agent', ownerId: agent.id`. Create flow provisions after
+`agents.create` with the BYO post-create partial-failure pattern (agent durable,
+lands on the edit page, computer retryable). Edit flow: enable → `provision`,
+disable → `destroy` behind `window.confirm` with disk-destruction copy, plus an
+inline "saving deletes" hint while the toggle is off. Open desktop allowed for
+`ready` and `stopped` (the service resumes stopped machines), matching the
+Settings surface. Known edge: switching an Overlay agent with a computer to BYO
+keeps the computer (orphaned binding stays manageable under Settings →
+Computers); revisit if that proves confusing.
+
 Goal: an Overlay agent can own a computer, managed from its editor.
 
 - `src/features/agents/components/AgentEditorPage.tsx`: render

@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import type {
+  Computer,
+  ComputerSize,
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
@@ -17,6 +19,7 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
@@ -32,6 +35,7 @@ import {
   AccessSelector,
   AgentAvatar,
   AgentBehaviorFields,
+  AgentComputerSection,
   AgentTypeSelector,
   AVATAR_COLORS,
   DangerZone,
@@ -70,6 +74,8 @@ export function AgentEditorPage({
   const searchParams = useSearchParams()
   const showHello = searchParams?.get('hello') === '1'
   const { activeWorkspaceId } = useWorkspace()
+  const { capabilities } = useOverlayCapabilities()
+  const computersAvailable = capabilities.computers === true
   const { revision } = useGatewayModelCatalog({ enabled: true })
   const { settings } = useAppSettings()
   const enabledModelIds = settings.enabledChatModelIds
@@ -105,6 +111,10 @@ export function AgentEditorPage({
   } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
+  const [computerEnabled, setComputerEnabled] = useState(false)
+  const [computerSize, setComputerSize] = useState<ComputerSize>('default')
+  const [computerOpenBusy, setComputerOpenBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -145,6 +155,25 @@ export function AgentEditorPage({
       .catch(() => { if (!cancelled) setConnectedAgentsEnabled(false) })
     return () => { cancelled = true }
   }, [activeWorkspaceId, showcase])
+
+  // Load this agent's computer (edit mode, Overlay agents, capability on).
+  useEffect(() => {
+    if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
+    let cancelled = false
+    void overlayAppClient.computers.list(activeWorkspaceId).then(
+      (result) => {
+        if (cancelled) return
+        const existing = result.computers.find(
+          (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
+        ) ?? null
+        setAgentComputer(existing)
+        setComputerEnabled(existing !== null)
+        if (existing) setComputerSize(existing.size)
+      },
+      () => undefined,
+    )
+    return () => { cancelled = true }
+  }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType])
 
   const modelOptions = useMemo(() => {
     void revision
@@ -224,6 +253,22 @@ export function AgentEditorPage({
             throw bindingError
           })
         }
+        if (agentType === 'overlay' && computersAvailable && computerEnabled) {
+          await overlayAppClient.computers.provision(activeWorkspaceId, {
+            ownerType: 'agent',
+            ownerId: saved.agent.id,
+            size: computerSize,
+            name: `${saved.agent.name} computer`,
+          }).catch(async (computerError) => {
+            // The agent is durable even if its computer fails to provision —
+            // land on the edit page so a retry never creates a duplicate agent.
+            setAgent(saved.agent)
+            if (presentation === 'page') {
+              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+            }
+            throw computerError
+          })
+        }
         dispatchAgentDirectoryChanged(activeWorkspaceId)
         if (onCreated) onCreated(saved.agent)
         else router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
@@ -237,6 +282,10 @@ export function AgentEditorPage({
 
   const saveEdit = () => {
     if (showcase || !activeWorkspaceId || !agent || busy) return
+    if (
+      agentType === 'overlay' && agentComputer && !computerEnabled
+      && !window.confirm(`Delete ${agent.name}'s computer? Its disk state is destroyed permanently.`)
+    ) return
     setBusy(true)
     setError(null)
     void (async () => {
@@ -251,6 +300,20 @@ export function AgentEditorPage({
           // Switched a connected agent back to Overlay: drop its binding once.
           await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
             .catch(() => undefined)
+        }
+        if (agentType === 'overlay' && computersAvailable) {
+          if (computerEnabled && !agentComputer) {
+            const provisioned = await overlayAppClient.computers.provision(activeWorkspaceId, {
+              ownerType: 'agent',
+              ownerId: saved.agent.id,
+              size: computerSize,
+              name: `${saved.agent.name} computer`,
+            })
+            setAgentComputer(provisioned.computer)
+          } else if (!computerEnabled && agentComputer) {
+            await overlayAppClient.computers.destroy(activeWorkspaceId, agentComputer.id)
+            setAgentComputer(null)
+          }
         }
         dispatchAgentDirectoryChanged(activeWorkspaceId)
         setAgent(saved.agent)
@@ -296,6 +359,20 @@ export function AgentEditorPage({
       setError(archiveError instanceof Error ? archiveError.message : 'Could not archive agent.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const openAgentComputer = async () => {
+    if (!activeWorkspaceId || !agentComputer) return
+    setComputerOpenBusy(true)
+    setError(null)
+    try {
+      const ticket = await overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
+      window.open(ticket.url, '_blank', 'noopener,noreferrer')
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : 'Could not open the desktop.')
+    } finally {
+      setComputerOpenBusy(false)
     }
   }
 
@@ -418,6 +495,19 @@ export function AgentEditorPage({
                 />
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
+
+                {agentType === 'overlay' && computersAvailable ? (
+                  <AgentComputerSection
+                    enabled={computerEnabled}
+                    onEnabledChange={(next) => { setComputerEnabled(next); markDirty() }}
+                    size={computerSize}
+                    onSizeChange={(next) => { setComputerSize(next); markDirty() }}
+                    computer={agentComputer}
+                    openBusy={computerOpenBusy}
+                    onOpenDesktop={() => void openAgentComputer()}
+                    disabled={showcase}
+                  />
+                ) : null}
 
                 <DangerZone
                   mode={mode}

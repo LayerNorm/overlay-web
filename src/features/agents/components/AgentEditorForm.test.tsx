@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { Computer } from '@overlay/workspace-contracts'
 import {
   AccessSelector,
+  AgentComputerSection,
   AgentTypeSelector,
   ByoAgentFields,
   OverlayAgentFields,
@@ -75,4 +77,86 @@ test('byo fields render the harness picker and the empty-environment state', () 
   )
   assert.match(markup, /Choose the coding agent Overlay will invoke/)
   assert.match(markup, /No connected environment currently advertises this harness/)
+})
+
+const agentComputer: Computer = {
+  id: 'cmp_1',
+  workspaceId: 'ws_1',
+  ownerType: 'agent',
+  ownerId: 'agent_1',
+  provider: 'box',
+  providerRef: 'box_1',
+  size: 'large',
+  status: 'ready',
+  name: 'Scout computer',
+  createdBy: 'user_1',
+  createdAt: 1,
+  updatedAt: 1,
+  lastActiveAt: null,
+}
+
+test('computer section keeps the size picker hidden until enabled', () => {
+  const markup = renderToStaticMarkup(
+    <AgentComputerSection
+      enabled={false}
+      onEnabledChange={() => undefined}
+      size="default"
+      onSizeChange={() => undefined}
+      computer={null}
+      openBusy={false}
+      onOpenDesktop={() => undefined}
+    />,
+  )
+  assert.match(markup, /Give this agent a computer/)
+  assert.doesNotMatch(markup, /Computer size/)
+  assert.doesNotMatch(markup, /Open desktop/)
+})
+
+test('computer section offers sizes and explains save-time provisioning', () => {
+  const markup = renderToStaticMarkup(
+    <AgentComputerSection
+      enabled
+      onEnabledChange={() => undefined}
+      size="default"
+      onSizeChange={() => undefined}
+      computer={null}
+      openBusy={false}
+      onOpenDesktop={() => undefined}
+    />,
+  )
+  assert.match(markup, /aria-label="Computer size"/)
+  assert.match(markup, /Created when you save/)
+})
+
+test('computer section shows the provisioned desktop and locks the size', () => {
+  const markup = renderToStaticMarkup(
+    <AgentComputerSection
+      enabled
+      onEnabledChange={() => undefined}
+      size="default"
+      onSizeChange={() => undefined}
+      computer={agentComputer}
+      openBusy={false}
+      onOpenDesktop={() => undefined}
+    />,
+  )
+  assert.match(markup, /Scout computer/)
+  assert.match(markup, /ready · large/)
+  assert.match(markup, /Open desktop/)
+  assert.doesNotMatch(markup, /aria-label="Computer size"/)
+})
+
+test('computer section warns that disabling a provisioned computer deletes it', () => {
+  const markup = renderToStaticMarkup(
+    <AgentComputerSection
+      enabled={false}
+      onEnabledChange={() => undefined}
+      size="default"
+      onSizeChange={() => undefined}
+      computer={agentComputer}
+      openBusy={false}
+      onOpenDesktop={() => undefined}
+    />,
+  )
+  assert.match(markup, /Saving deletes this computer/)
 })

@@ -1,9 +1,9 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
+import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Monitor, Server, ShieldCheck, Sparkles, Terminal, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
-import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
+import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
@@ -139,6 +139,73 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
         />
       </div>
       <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{value === 'creator' ? 'Hidden from everyone else — reported as not found.' : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}</p>
+    </div>
+  )
+}
+
+const COMPUTER_SIZE_OPTIONS = [
+  { value: 'small', label: 'Small · 2 vCPU, 4 GB' },
+  { value: 'default', label: 'Default · 4 vCPU, 8 GB' },
+  { value: 'large', label: 'Large · 8 vCPU, 16 GB' },
+] as const
+
+export function AgentComputerSection({ enabled, onEnabledChange, size, onSizeChange, computer, openBusy, onOpenDesktop, disabled }: {
+  enabled: boolean
+  onEnabledChange(next: boolean): void
+  size: ComputerSize
+  onSizeChange(next: ComputerSize): void
+  computer: Computer | null
+  openBusy: boolean
+  onOpenDesktop(): void
+  disabled?: boolean
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium">Computer</p>
+      <div className="mt-1.5 space-y-3">
+        <div className="rounded-xl border border-[var(--border)] px-3">
+          <ToggleRow
+            checked={enabled}
+            onChange={onEnabledChange}
+            disabled={disabled}
+            label="Give this agent a computer"
+            description="A persistent cloud desktop it keeps between sessions — files, signed-in apps, and a live screen you can watch."
+          />
+        </div>
+        {enabled && !computer ? (
+          <label className="block text-xs font-medium">
+            Size
+            <ListboxSelect
+              className="mt-1.5"
+              aria-label="Computer size"
+              value={size}
+              options={[...COMPUTER_SIZE_OPTIONS]}
+              onChange={(value) => onSizeChange(value as ComputerSize)}
+              disabled={disabled}
+              portal
+            />
+          </label>
+        ) : null}
+        {computer ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] p-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground)]"><Monitor size={13} className="shrink-0 text-[var(--muted)]" />{computer.name ?? 'Computer'}</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{computer.status} · {computer.size} · size is fixed once provisioned</p>
+            </div>
+            {computer.status === 'ready' || computer.status === 'stopped' ? (
+              <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy}>
+                {openBusy ? 'Opening…' : 'Open desktop'}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {enabled && !computer ? (
+          <p className="text-[11px] leading-4 text-[var(--muted)]">Created when you save. Turning it off later deletes the computer and its disk. Also managed under Settings → Computers.</p>
+        ) : null}
+        {!enabled && computer ? (
+          <p className="text-[11px] leading-4 text-[var(--muted)]">Saving deletes this computer and its disk permanently.</p>
+        ) : null}
+      </div>
     </div>
   )
 }

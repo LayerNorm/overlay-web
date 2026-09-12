@@ -219,9 +219,15 @@ File-by-file implementation sequence for phases 1–2 lives in
    `computers` capability reports on only when `features.computers` is set
    AND the configured provider resolves — self-host without keys reports it
    absent. Settings → Computers (wiring Phase 4) lets members list, create
-   (personal), open, stop/start, and delete computers. Plan-doc Phase 1 is
-   complete; remaining work starts at agent binding (Phase 2 below).
-2. **Agent binding**: `computer` editor section (Overlay agents), DM status
+   (personal), open, stop/start, and delete computers. The agent-editor
+   Computer section (wiring Phase 5) lets an Overlay agent own a computer:
+   enable toggle + size picker, provisioned after `agents.create`, destroy on
+   disable behind a confirm, Open desktop for ready/stopped machines.
+   Plan-doc Phase 1 is complete and Phase 2's editor surface landed;
+   remaining Phase 2 work is the DM status chip + Watch and `computer_*`
+   tools.
+2. **Agent binding**: `computer` editor section (Overlay agents) *(done —
+   wiring Phase 5)*, DM status
    chip + Watch, headless `computer_*` tools.
 3. **GUI + lifecycle policy**: desktop driver tools, idle auto-stop,
    workspace quota + size caps, machine-time metering into usage/billing.

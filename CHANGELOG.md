@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Agent editor Computer section (wiring phase 5): Overlay agents can now own a persistent cloud desktop from their editor — an enable toggle plus size picker (small/default/large) provisions the computer right after the agent is created, edit mode shows the bound machine with an Open desktop action (ready and stopped computers), and turning the toggle off deletes the computer behind a disk-destruction confirm. The section only appears for Overlay agents when the `computers` capability is on; agent machines remain manageable under Settings → Computers.
+
 - Computers settings UI (wiring phase 4): Settings → Computers lists every computer the caller can see — personal computers, workspace agents' machines, and creator-only agents' machines for their creator — with status, size, and last-active; actions cover create (personal), open-desktop (ticket → new tab), stop/start, and delete. The section only appears when the `computers` capability is on.
 
 - Computers provider registry (wiring phase 3): `OVERLAY_COMPUTER_PROVIDER` (default `box`) + an admin-scoped `BOX_API_KEY` now resolve a cached `BoxSandboxRuntime` per computer row, and `features.computers` / `OVERLAY_FEATURE_COMPUTERS` gates the `computers` capability. The capability reports on only when the flag is set AND the configured provider resolves, so self-host deployments without credentials keep the routes hidden (403 `capability_disabled`); provisioning now reaches the provider when both are configured. Still no UI — the Settings section lands in phase 4.
