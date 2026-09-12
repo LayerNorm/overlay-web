@@ -13,15 +13,28 @@
  *   - No polling overhead — each automation has its own workflow run
  *   - Cancellation is trivial: stop the workflow run
  *
+ * The agent turn itself runs as an in-workflow `WorkflowAgent`
+ * (see ./automation-agent-turn) — model calls, tool calls, persistence, and
+ * billing are all durable steps rather than a self-HTTP call into the act
+ * route that died with its request.
+ *
  * Trigger: POST /api/v1/automations/{id}/run (when durableAutomations is enabled)
  * Cancel:  workflow run is stopped when automation is disabled or deleted
  * Inspect: npx workflow web
  */
 
-import { sleep, RetryableError, FatalError, createHook } from "workflow"
+import { sleep, FatalError, createHook } from "workflow"
 import type { AutomationSchedule } from "@/shared/automations/schedule"
 import { msUntilNextRun } from "@/shared/automations/schedule"
-import { freshAutomationServiceAuth } from './automation-service-auth'
+import {
+  checkAutomationEnabled,
+  runAutomationAgentTurn,
+} from './automation-agent-turn'
+
+export {
+  buildAutomationUserMessage,
+  buildAutomationSystemPrompt,
+} from '@/shared/automations/automation-prompts'
 
 export type AutomationScheduleWorkflowInput = {
   automationId: string
@@ -77,7 +90,10 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
     // This catches cases where the automation was disabled or deleted while
     // the workflow was sleeping, but the scheduler workflow wasn't cancelled
     // (e.g. after a deployment restart, or if the cancel call failed).
-    const status = await checkAutomationStatus(input)
+    const status = await checkAutomationEnabled({
+      automationId: input.automationId,
+      userId: input.userId,
+    })
     if (!status.enabled || status.deleted) {
       return { automationId: input.automationId, completed: true, cancelled: true }
     }
@@ -133,212 +149,32 @@ async function waitForApproval(input: AutomationScheduleWorkflowInput): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Execution step — calls the automation run endpoint to execute the turn
+// Execution — the agent turn runs as durable workflow steps (WorkflowAgent).
 // ---------------------------------------------------------------------------
 
-async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Promise<{ ok: true }> {
-  "use step"
-
-  const executePath = '/api/v1/automations/execute'
-  const turnId = `automation-${input.automationId}-${Date.now()}`
-
-  // Mark the run as started in the automation_runs table
-  if (input.runId) {
-    try {
-      const auth = await freshAutomationServiceAuth(input.userId, 'POST', executePath)
-      await fetch(`${input.baseUrl}${executePath}`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          [auth.header]: auth.token,
-        },
-        body: JSON.stringify({
-          action: 'mark-started',
-          runId: input.runId,
-          userId: input.userId,
-          turnId,
-          ...(input.conversationId ? { conversationId: input.conversationId } : {}),
-        }),
-      })
-    } catch (_error) {
-      // Non-fatal — the run will still execute, just with a stale status
-    }
-  }
-
-  let response: Response
-  try {
-    const auth = await freshAutomationServiceAuth(
-      input.userId,
-      'POST',
-      '/api/v1/conversations/act',
-    )
-    response = await fetch(`${input.baseUrl}/api/v1/conversations/act`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'Idempotency-Key': `automation:${input.automationId}:${turnId}`,
-        [auth.header]: auth.token,
-        ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
-      },
-      body: JSON.stringify({
-        messages: [{
-          id: turnId,
-          role: 'user',
-          parts: [{ type: 'text', text: buildAutomationUserMessage(input) }],
-        }],
-        systemPrompt: buildAutomationSystemPrompt(input),
-        conversationId: input.conversationId,
-        turnId,
-        modelId: input.modelId,
-        userId: input.userId,
-        automationExecution: true,
-        automationId: input.automationId,
-        actAbortTimeoutMs: 720_000,
-      }),
-    })
-  } catch (actError) {
-    // Mark the run as failed if the act call itself threw
-    if (input.runId) {
-      await markRunFinalized(input, 'failed', actError instanceof Error ? actError.message : 'Act request failed')
-    }
-    throw actError
-  }
-
-  if (!response.ok) {
-    const text = await response.text().catch((_error) => '')
-    if (input.runId) {
-      await markRunFinalized(input, 'failed', `Act route returned ${response.status}: ${text || 'error'}`)
-    }
-    if (response.status >= 400 && response.status < 500) {
-      throw new FatalError(
-        `Act route returned ${response.status}: ${text || 'Client error'}`,
-      )
-    }
-    throw new RetryableError(
-      `Act route returned ${response.status}: ${text || 'Server error'}`,
-    )
-  }
-
-  // Drain the response body so the act route can finish and persist
-  if (response.body) {
-    const reader = response.body.getReader()
-    try {
-      while (!(await reader.read()).done) {
-        // Consume the UI stream
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
-  // Mark the run as succeeded
-  if (input.runId) {
-    await markRunFinalized(input, 'succeeded')
-  }
-
-  return { ok: true }
+// Date.now() inside 'use workflow' is pinned to the run's fixed replay
+// timestamp, so a per-iteration turn id has to come from a step's real clock.
+async function generateTurnId(automationId: string): Promise<string> {
+  'use step'
+  return `automation-${automationId}-${Date.now()}`
 }
 
-/**
- * Mark the automation run as succeeded or failed via the execute endpoint.
- * Mints a fresh PATCH credential immediately before the request.
- */
-async function markRunFinalized(
-  input: AutomationScheduleWorkflowInput,
-  runStatus: 'succeeded' | 'failed',
-  errorMessage?: string,
-): Promise<void> {
-  const executePath = '/api/v1/automations/execute'
-  try {
-    const auth = await freshAutomationServiceAuth(input.userId, 'PATCH', executePath)
-    await fetch(`${input.baseUrl}${executePath}`, {
-      method: 'PATCH',
-      headers: {
-        'content-type': 'application/json',
-        [auth.header]: auth.token,
-      },
-      body: JSON.stringify({
-        runId: input.runId,
-        runStatus,
-        userId: input.userId,
-        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
-        ...(errorMessage ? { error: errorMessage } : {}),
-      }),
-    })
-  } catch (_error) {
-    // Non-fatal — the run already completed, status sync is best-effort
-  }
-}
-
-/**
- * Safety net: check if the automation is still enabled and not deleted.
- * Called before each iteration of the scheduling loop. If the automation
- * is disabled or deleted, the workflow exits gracefully.
- */
-async function checkAutomationStatus(
-  input: AutomationScheduleWorkflowInput,
-): Promise<{ enabled: boolean; deleted: boolean }> {
-  "use step"
-
-  const executePath = '/api/v1/automations/execute'
-  try {
-    const auth = await freshAutomationServiceAuth(input.userId, 'POST', executePath)
-    const response = await fetch(`${input.baseUrl}${executePath}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [auth.header]: auth.token,
-      },
-      body: JSON.stringify({
-        action: 'check-status',
-        automationId: input.automationId,
-        userId: input.userId,
-      }),
-    })
-    if (!response.ok) {
-      // If the check fails, assume the automation is still active (fail open)
-      return { enabled: true, deleted: false }
-    }
-    const data = await response.json() as { enabled?: boolean; deleted?: boolean }
-    return {
-      enabled: data.enabled !== false,
-      deleted: data.deleted === true,
-    }
-  } catch (_error) {
-    // Network errors — fail open, let the workflow continue
-    return { enabled: true, deleted: false }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers — build user message and system prompt for the automation run
-// ---------------------------------------------------------------------------
-
-export function buildAutomationUserMessage(input: AutomationScheduleWorkflowInput): string {
-  const scheduledAt = new Date().toISOString()
-  return [
-    `Execute saved automation now: ${input.name}`,
-    input.description ? `Description: ${input.description}` : '',
-    `Scheduled for: ${scheduledAt}`,
-    `Automation ID: ${input.automationId}`,
-    '',
-    'Current saved instructions to execute:',
-    input.instructions,
-  ].filter(Boolean).join('\n')
-}
-
-export function buildAutomationSystemPrompt(input: AutomationScheduleWorkflowInput): string {
-  return [
-    'You are running a scheduled automation for the user.',
-    'Execute the stored automation instructions without asking clarifying questions.',
-    'Do not create, draft, update, pause, delete, or propose a new automation. This run is already attached to an existing saved automation.',
-    'If required auth, context, or tool access is missing, stop and write a concise failure summary.',
-    'Only use tools that are clearly authorized by the stored automation and connected for this user.',
-    'End with a concise summary of what was completed and what still needs attention.',
-    '',
-    `Automation name: ${input.name}`,
-    input.description ? `Automation description: ${input.description}` : '',
-  ].filter(Boolean).join('\n')
+async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Promise<void> {
+  const now = Date.now()
+  await runAutomationAgentTurn({
+    automationId: input.automationId,
+    runId: input.runId,
+    userId: input.userId,
+    name: input.name,
+    description: input.description,
+    instructions: input.instructions,
+    projectId: input.projectId,
+    modelId: input.modelId,
+    conversationId: input.conversationId,
+    turnId: await generateTurnId(input.automationId),
+    scheduledFor: now,
+    workspaceId: input.workspaceId,
+  })
 }
 
 /**

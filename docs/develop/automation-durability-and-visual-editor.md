@@ -191,12 +191,14 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - ✅ Debug `console.log` removed from run route
 
 **Implementation notes:**
-- The workflow calls existing API endpoints via HTTP fetch with service auth tokens, preserving the existing act route logic unchanged.
-- `prepareExecution` is idempotent: if `conversationId` is already set (from a previous completed step), it reuses it.
-- `finalizeRun` is idempotent: 404/409 responses are treated as success (turn already settled).
+- The agent turn now runs **in-workflow as a `WorkflowAgent`** (`workflows/automation-agent-turn.ts` + `src/server/automations/automation-turn-runner.ts`), replacing the earlier shape where the workflow fetched `/api/v1/conversations/act` over self-HTTP. Model calls and tool calls are durable steps, so a process restart resumes at the failing step instead of losing a whole 12-minute turn.
+- The turn runner replicates the act preamble inside `'use step'` functions: entitlement gating, workflow-step metering (`meterAutomationWorkflowRun`), catalog authorization re-evaluated under service auth, user-message persistence, context assembly (history/memory/mentions/skills/project instructions), `prepareActTooling`, and the turn usage reservation. Act-route helpers `authorizeActRequest` / `resolveProjectPreferredModelId` are extracted to `act/turn-authorization.ts` and shared.
+- Only AI Gateway models can run durably (`gateway.languageModel(<id>)` resolves inside the step). BYOK/OpenRouter/NVIDIA models fail fast with `model_not_supported_for_durable_run`.
+- Approval-gated tools are auto-denied with an explicit reason in the agent loop (no human surface exists for unattended runs); the loop continues with `tool-approval-response` parts for up to 8 cycles.
+- `scheduledFor`/turn IDs must come from `'use step'` functions — `Date.now()` inside `'use workflow'` is pinned to the deterministic replay timestamp.
+- `finalize`/`fail` steps are idempotent: assistant persistence dedupes on `(turnId, role, variantIndex, modelId)` and run-row updates are status transitions.
+- The synchronous `/automations/test` preview and the Postgres on-prem job runtime (`run-act-turn.ts`) intentionally keep the ephemeral act path — they are request-bound executions where durability does not apply.
 - The trigger route (`POST /api/v1/automations/{id}/run`) checks the feature flag and falls back to `automationService.runAutomation()` when disabled.
-- Path-specific service tokens are generated for `/api/v1/automations/execute` (POST + PATCH) and `/api/v1/conversations/act` (POST).
-- Workspace ID is resolved and passed through the workflow to the act route via `x-overlay-workspace-id` header.
 - Convex repository does not implement `updateRunWorkflowRunId` (optional per interface) — Convex deployments track runs via automation run records, not workflow run IDs.
 
 **Gate:** Routes live on staging (403 with capability disabled, as expected). Interactive chat unaffected. Full end-to-end workflow execution requires enabling the `automations` capability + `OVERLAY_FEATURE_DURABLE_AUTOMATIONS=1`. Manual E2E testing confirmed: durable run completes, fallback path works, interactive chat unaffected.
