@@ -59,6 +59,7 @@ export function AgentEditorPage({
   onClose,
   onCreated,
   onArchived,
+  onSaved,
 }: {
   mode: 'new' | 'edit'
   agentId?: string
@@ -69,6 +70,7 @@ export function AgentEditorPage({
   onClose?: () => void
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
   onArchived?: () => void
+  onSaved?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -350,6 +352,7 @@ export function AgentEditorPage({
         setAgent(saved.agent)
         setDirty(false)
         setSavedFlash(true)
+        if (onSaved) onSaved()
       } catch (saveError) {
         setError(saveError instanceof Error ? saveError.message : 'Could not save agent.')
       } finally {

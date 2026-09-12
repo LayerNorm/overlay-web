@@ -189,6 +189,10 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+  // The agent created by the current editor session that has never been
+  // saved. Cancelling the editor archives it; a successful save (onSaved)
+  // or explicit archive (onArchived) clears the marker.
+  const [freshAgent, setFreshAgent] = useState<{ agentId: string; conversationId: string | null } | null>(null)
 
   const creatingAgentRef = useRef(false)
 
@@ -217,6 +221,9 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           setEditorMode('new')
           return
         }
+        if (result.agent) {
+          setFreshAgent({ agentId: result.agent.id, conversationId: result.conversationId ?? null })
+        }
         setEditorMode('edit')
       } catch (createError) {
         setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
@@ -231,7 +238,44 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     return () => window.removeEventListener(NEW_AGENT_EVENT, openCreate)
   }, [openCreate])
 
-  const closeEditor = useCallback(() => setEditorMode(null), [])
+  const closeEditor = useCallback(() => {
+    setEditorMode(null)
+    // Cancelling while a never-saved agent is open abandons creation:
+    // archive the agent, drop its greeting DM, and land on the previous
+    // agent (or the agents index when nothing else exists).
+    const abandoned = freshAgent && agentId === freshAgent.agentId ? freshAgent : null
+    if (!abandoned) return
+    setFreshAgent(null)
+    if (!activeWorkspaceId) return
+    const workspaceId = activeWorkspaceId
+    clearAgentOpened(workspaceId, abandoned.agentId)
+    void (async () => {
+      await overlayAppClient.agents.archive(workspaceId, abandoned.agentId).catch(() => undefined)
+      if (abandoned.conversationId) {
+        await overlayAppClient.conversations
+          .deleteResponse({ conversationId: abandoned.conversationId, scope: 'self' })
+          .catch(() => undefined)
+      }
+      dispatchAgentDirectoryChanged(workspaceId)
+      const remaining = await overlayAppClient.agents
+        .list(workspaceId)
+        .then((response) => response.agents.filter((agent) => agent.id !== abandoned.agentId))
+        .catch(() => [])
+      const target = pickAgentToOpen(remaining, workspaceId)
+      if (!target) {
+        router.replace(buildAgentsDirectoryHref(workspaceId))
+        return
+      }
+      rememberAgentOpened(workspaceId, target.id)
+      await startAgentChat({
+        workspaceId,
+        agentId: target.id,
+        agentPrincipalId: target.principalId,
+        surface: 'agents',
+        push: (href) => router.push(href),
+      }).catch(() => router.replace(buildAgentsDirectoryHref(workspaceId)))
+    })()
+  }, [freshAgent, agentId, activeWorkspaceId, router])
 
   const workspaceActions = useAgentWorkspaceActions({
     activeWorkspaceId,
@@ -270,7 +314,11 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       onTogglePanelMode={() => setPanelMode(panelMode === 'dialog' ? 'side' : 'dialog')}
       onClose={closeEditor}
       onCreated={openCreatedAgent}
-      onArchived={handleArchived}
+      onArchived={() => {
+        setFreshAgent(null)
+        handleArchived()
+      }}
+      onSaved={() => setFreshAgent(null)}
     />
   ) : null
   // Side mode docks through the screen's rightPanel slot; rendering the panel
