@@ -14,6 +14,7 @@ import {
   Bell,
   BellOff,
   Hash,
+  Monitor,
   MoreHorizontal,
   Paperclip,
   Pin,
@@ -30,6 +31,7 @@ import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
 import type {
   ChannelSummary,
+  Computer,
   ConversationPin,
   ConversationParticipant,
   ConversationPresence,
@@ -794,6 +796,7 @@ export function DirectMessageExperience({
     ? otherParticipants[0]
     : null
   const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, {
+    id?: string
     name: string
     avatarColor?: string
     avatarShape?: string
@@ -811,6 +814,7 @@ export function DirectMessageExperience({
     for (const [principalId, draft] of agentDrafts) {
       const existing = merged.get(principalId)
       merged.set(principalId, {
+        id: existing?.id,
         name: draft.name,
         avatarColor: draft.avatarColor ?? existing?.avatarColor,
         avatarShape: draft.avatarShape ?? existing?.avatarShape,
@@ -837,6 +841,7 @@ export function DirectMessageExperience({
       overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
         if (cancelled) return
         setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
+          id: agent.id,
           name: agent.name,
           avatarColor: agent.avatarColor,
           avatarShape: agent.avatarShape,
@@ -868,6 +873,35 @@ export function DirectMessageExperience({
   const headerAgent = soloAgentParticipant
     ? (directoryAgentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
     : null
+  // The bound computer behind a one-to-one agent DM — surfaced as a subtle
+  // "Desktop" affordance in the header (Grokbot-style) when one is usable.
+  const headerAgentId = headerAgent?.id
+  const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
+  const [desktopOpenBusy, setDesktopOpenBusy] = useState(false)
+  useEffect(() => {
+    if (showcase || !capabilities.computers || !activeWorkspaceId || !headerAgentId) {
+      setAgentComputer(null)
+      return
+    }
+    let cancelled = false
+    void overlayAppClient.computers.list(activeWorkspaceId).then((result) => {
+      if (cancelled) return
+      setAgentComputer(result.computers.find(
+        (computer) => computer.ownerType === 'agent' && computer.ownerId === headerAgentId,
+      ) ?? null)
+    }, () => undefined)
+    return () => { cancelled = true }
+  }, [showcase, capabilities.computers, activeWorkspaceId, headerAgentId])
+  const openAgentDesktop = useCallback(() => {
+    if (!activeWorkspaceId || !agentComputer || desktopOpenBusy) return
+    setDesktopOpenBusy(true)
+    void overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
+      .then((ticket) => {
+        if (ticket.url) window.open(ticket.url, '_blank', 'noopener')
+      })
+      .catch(() => undefined)
+      .finally(() => setDesktopOpenBusy(false))
+  }, [activeWorkspaceId, agentComputer, desktopOpenBusy])
   const title = conversationType === 'channel'
     ? channel?.name ?? draftTitle ?? 'Channel'
     : soloAgentParticipant
@@ -1686,6 +1720,25 @@ export function DirectMessageExperience({
             )}
             actions={(
               <div className="relative flex items-center gap-1">
+                {agentComputer && (agentComputer.status === 'ready' || agentComputer.status === 'stopped') ? (
+                  <button
+                    type="button"
+                    onClick={openAgentDesktop}
+                    disabled={desktopOpenBusy}
+                    title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-60"
+                  >
+                    <span className="relative">
+                      <Monitor size={14} />
+                      <span
+                        className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
+                          agentComputer.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500'
+                        }`}
+                      />
+                    </span>
+                    <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
+                  </button>
+                ) : null}
                 {headerActions}
                 {pins.length > 0 ? (
                   <button

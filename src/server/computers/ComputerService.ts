@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import {
   isDesktopSandboxInstance,
   type DesktopStreamTicket,
@@ -64,6 +65,8 @@ const SIZE_RESOURCES: Record<ComputerSize, SandboxResources> = {
 const DESKTOP_TICKET_POLL_MS = 3_000
 const DESKTOP_TICKET_DEADLINE_MS = 45_000
 const DEFAULT_HARD_TIMEOUT_MS = 2 * 60 * 60_000
+/** A `provisioning` row untouched this long means the create call died mid-flight — reclaim it. */
+const PROVISIONING_STALE_MS = 5 * 60_000
 
 export class ComputerService {
   constructor(private readonly dependencies: {
@@ -95,7 +98,16 @@ export class ComputerService {
       throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
     }
     const existing = await this.dependencies.repository.findByOwner(args.workspaceId, args.ownerType, args.ownerId)
-    if (existing && existing.status !== 'error') return existing
+    if (existing) {
+      const staleProvisioning = existing.status === 'provisioning'
+        && existing.updatedAt <= this.now() - PROVISIONING_STALE_MS
+      // Healthy or in-flight rows satisfy the provision call. Dead rows —
+      // `error`, or `provisioning` left behind by a crashed create — are
+      // reclaimed so the retry below starts clean instead of producing a
+      // second bound row (or tripping the Postgres unique binding).
+      if (existing.status !== 'error' && !staleProvisioning) return existing
+      await this.deleteRowAndMachine(existing)
+    }
 
     const limitsOption = this.dependencies.limits
     const limits = typeof limitsOption === 'function'
@@ -134,22 +146,15 @@ export class ComputerService {
       lastActiveAt: null,
     })
     try {
-      const instance = await runtime.create({
-        name: computer.name ?? `computer-${computer.id}`,
-        persistent: true,
-        environment: {
-          OVERLAY_WORKSPACE_ID: computer.workspaceId,
-          OVERLAY_COMPUTER_ID: computer.id,
-          OVERLAY_OWNER_TYPE: computer.ownerType,
-          OVERLAY_OWNER_ID: computer.ownerId,
-        },
-        networkPolicy: { mode: 'allow_all' },
-        idleTimeoutMs: 0,
-        hardTimeoutMs: DEFAULT_HARD_TIMEOUT_MS,
-        resources: SIZE_RESOURCES[size],
+      const instance = await this.createMachine(runtime, computer, size)
+      // Stamp the provider ref before the status flip: if the ready-update
+      // dies, the ref still lands on the row so a later reclaim can delete
+      // the live machine instead of orphaning it.
+      await this.dependencies.repository.update(computer.id, {
+        providerRef: instance.reference,
+        updatedAt: this.now(),
       })
       return await this.dependencies.repository.update(computer.id, {
-        providerRef: instance.reference,
         status: 'ready',
         updatedAt: this.now(),
         lastActiveAt: this.now(),
@@ -157,6 +162,38 @@ export class ComputerService {
     } catch (error) {
       await this.dependencies.repository.update(computer.id, { status: 'error', updatedAt: this.now() })
       throw new ComputerServiceError('provider_error', 'The computer could not be provisioned', 502, { cause: error })
+    }
+  }
+
+  /**
+   * Provider create with one retry. Box provisioning flakes intermittently
+   * (capacity, rate limits); the adapter cleans up its own half-created
+   * machine on failure, so a second attempt is always safe.
+   */
+  private async createMachine(
+    runtime: SandboxRuntime,
+    computer: Computer,
+    size: ComputerSize,
+  ): Promise<SandboxInstance> {
+    const request = {
+      name: computer.name ?? `computer-${computer.id}`,
+      persistent: true,
+      environment: {
+        OVERLAY_WORKSPACE_ID: computer.workspaceId,
+        OVERLAY_COMPUTER_ID: computer.id,
+        OVERLAY_OWNER_TYPE: computer.ownerType,
+        OVERLAY_OWNER_ID: computer.ownerId,
+      },
+      networkPolicy: { mode: 'allow_all' as const },
+      idleTimeoutMs: 0,
+      hardTimeoutMs: DEFAULT_HARD_TIMEOUT_MS,
+      resources: SIZE_RESOURCES[size],
+    }
+    try {
+      return await runtime.create(request)
+    } catch (firstError) {
+      logger.warn('[computers] provider create failed; retrying once', firstError)
+      return await runtime.create(request)
     }
   }
 
@@ -198,8 +235,45 @@ export class ComputerService {
   }
 
   async destroy(args: { actor: ComputerActor; computerId: string }): Promise<void> {
-    const { computer, instance } = await this.accessibleInstance(args.actor, args.computerId)
-    await instance.delete().catch((_error) => undefined)
+    const computer = await this.dependencies.repository.get(args.computerId)
+    if (!computer) throw new ComputerServiceError('not_found', 'Computer not found', 404)
+    const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
+    if (!this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) {
+      throw new ComputerServiceError('forbidden', 'You cannot manage this computer', 403)
+    }
+    await this.deleteRowAndMachine(computer)
+  }
+
+  /** Destroy the computer bound to an owner, if any. No-op when unbound. */
+  async destroyForOwner(args: {
+    actor: ComputerActor
+    workspaceId: string
+    ownerType: ComputerOwnerType
+    ownerId: string
+  }): Promise<void> {
+    const computer = await this.dependencies.repository.findByOwner(
+      args.workspaceId,
+      args.ownerType,
+      args.ownerId,
+    )
+    if (!computer) return
+    await this.destroy({ actor: args.actor, computerId: computer.id })
+  }
+
+  /**
+   * Delete the row and, when one was recorded, the provider machine. Provider
+   * cleanup is best-effort — a dead machine or missing provider config must
+   * never block deleting the row, or errored computers become undeletable.
+   */
+  private async deleteRowAndMachine(computer: Computer): Promise<void> {
+    if (computer.providerRef) {
+      try {
+        const instance = await this.runtimeFor(computer.provider).reconnect(computer.providerRef)
+        await instance.delete()
+      } catch (_error) {
+        // best-effort — the row delete below proceeds regardless
+      }
+    }
     await this.dependencies.repository.delete(computer.id)
   }
 
@@ -288,7 +362,9 @@ export class ComputerService {
 
   /** Access rules: personal computers are owner-only; workspace-visible agents'
    * computers are open to the whole workspace; creator-only agents' computers
-   * are creator + workspace owner. */
+   * are creator + workspace owner. A computer whose owner agent no longer
+   * resolves (archived/deleted) falls to the workspace owner so the machine
+   * can still be stopped or destroyed instead of billing forever. */
   private canAccess(
     actor: ComputerActor,
     ownerType: ComputerOwnerType,
@@ -296,7 +372,7 @@ export class ComputerService {
     ownerAccess: ComputerOwnerAccess | null,
   ): boolean {
     if (ownerType === 'user') return ownerId === actor.userId
-    if (!ownerAccess || ownerAccess.ownerType !== 'agent') return false
+    if (!ownerAccess || ownerAccess.ownerType !== 'agent') return actor.workspaceRole === 'owner'
     if (ownerAccess.visibility === 'workspace') return true
     return ownerAccess.createdByPrincipalId === actor.principalId || actor.workspaceRole === 'owner'
   }

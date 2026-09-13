@@ -65,9 +65,10 @@ class FakeRuntime implements SandboxRuntime {
   instances: FakeInstance[] = []
   reconnects = 0
   fail = false
+  failuresLeft = 0
   async create(request: SandboxCreateRequest) {
     this.creates.push(request)
-    if (this.fail) throw new Error('provider down')
+    if (this.fail || this.failuresLeft-- > 0) throw new Error('provider down')
     const instance = new FakeInstance(this.creates, this.creates.length)
     this.instances.push(instance)
     return instance as unknown as SandboxInstance
@@ -225,6 +226,93 @@ test('a failed provider marks the row error instead of leaving it stuck provisio
   const row = [...repository.rows.values()][0]
   assert.equal(row.status, 'error')
   assert.equal(row.providerRef, null)
+})
+
+test('a transient provider failure is retried once before the row errors', async () => {
+  const runtime = new FakeRuntime()
+  runtime.failuresLeft = 1
+  const { svc, repository } = service({ runtimes: { box: runtime } })
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  assert.equal(runtime.creates.length, 2)
+  assert.equal(computer.status, 'ready')
+  assert.equal(repository.rows.size, 1)
+})
+
+test('provision reclaims a dead error row instead of creating a duplicate', async () => {
+  const runtime = new FakeRuntime()
+  runtime.fail = true
+  const { svc, repository } = service({ runtimes: { box: runtime } })
+  await assert.rejects(svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }))
+
+  runtime.fail = false
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  assert.equal(computer.status, 'ready')
+  assert.equal(repository.rows.size, 1)
+  assert.equal([...repository.rows.values()][0].id, computer.id)
+})
+
+test('provision reclaims a stale provisioning row but returns an in-flight one', async () => {
+  const { svc, repository, runtimes } = service()
+  const seed = (ownerId: string, updatedAt: number) => repository.create({
+    id: `seed-${ownerId}`, workspaceId: 'ws-1', ownerType: 'user', ownerId,
+    provider: 'box', providerRef: null, size: 'default', status: 'provisioning',
+    name: null, createdBy: ownerId, createdAt: updatedAt, updatedAt, lastActiveAt: null,
+  })
+
+  // Stale: the create that wrote this row died mid-flight — reclaim it.
+  await seed('user-1', 0)
+  const reclaimed = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  assert.equal(reclaimed.status, 'ready')
+  assert.equal(repository.rows.size, 1)
+
+  // Fresh: a concurrent provision is still in flight — return its row.
+  await seed('user-2', Date.now())
+  const inflight = await svc.provision({ actor: otherMember, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-2' })
+  assert.equal(inflight.status, 'provisioning')
+  assert.equal(runtimes.box.creates.length, 1)
+})
+
+test('destroy removes an error row without a provider machine', async () => {
+  const runtime = new FakeRuntime()
+  runtime.fail = true
+  const { svc, repository } = service({ runtimes: { box: runtime } })
+  await assert.rejects(svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }))
+  const row = [...repository.rows.values()][0]
+
+  await svc.destroy({ actor: member, computerId: row.id })
+  assert.equal(repository.rows.size, 0)
+})
+
+test('a computer bound to a deleted agent is owner-manageable, not orphaned', async () => {
+  const { svc, repository, runtimes } = service()
+  const computer = await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' })
+  // Simulate a leftover agent-owned row whose owner no longer resolves.
+  await repository.update(computer.id, { ownerType: 'agent', ownerId: 'agent-gone' })
+
+  // Members still cannot touch it; the workspace owner can list and destroy it.
+  await assert.rejects(
+    svc.destroy({ actor: otherMember, computerId: computer.id }),
+    (error) => error instanceof ComputerServiceError && error.code === 'forbidden',
+  )
+  const visible = await svc.listForWorkspace({ actor: owner, workspaceId: 'ws-1' })
+  assert.equal(visible.length, 1)
+  await svc.destroy({ actor: owner, computerId: computer.id })
+  assert.equal(repository.rows.size, 0)
+  assert.equal((runtimes.box.instances[0] as unknown as FakeInstance).deletes, 1)
+})
+
+test('destroyForOwner removes the bound computer and its machine', async () => {
+  const { svc, repository, runtimes } = service({
+    agents: { 'agent-1': { visibility: 'workspace', createdByPrincipalId: 'principal-9' } },
+  })
+  await svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' })
+
+  await svc.destroyForOwner({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' })
+  assert.equal(repository.rows.size, 0)
+  assert.equal((runtimes.box.instances[0] as unknown as FakeInstance).deletes, 1)
+
+  // No bound computer → no-op, no throw.
+  await svc.destroyForOwner({ actor: member, workspaceId: 'ws-1', ownerType: 'agent', ownerId: 'agent-1' })
 })
 
 test('missing provider configuration fails closed', async () => {

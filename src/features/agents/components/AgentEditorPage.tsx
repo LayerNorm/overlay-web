@@ -335,7 +335,9 @@ export function AgentEditorPage({
             .catch(() => undefined)
         }
         if (agentType === 'overlay' && computersAvailable) {
-          if (enabledToolGroups.has('computer') && !agentComputer) {
+          // An `error`-status computer is a dead row from a failed provision —
+          // saving retries the provision; the service reclaims the dead row.
+          if (enabledToolGroups.has('computer') && (!agentComputer || agentComputer.status === 'error')) {
             const provisioned = await overlayAppClient.computers.provision(activeWorkspaceId, {
               ownerType: 'agent',
               ownerId: saved.agent.id,
