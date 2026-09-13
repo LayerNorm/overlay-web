@@ -148,18 +148,15 @@ export function ChatExchange({
 
     const collapsePlan = useMemo(
       () => isStreaming
-        ? { collapsedRuns: [] as number[][] }
+        ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
         : planAssistantWorkCollapse(assistantSegments),
       [assistantSegments, isStreaming],
     )
     const collapsedSet = useMemo(
-      () => new Set(collapsePlan.collapsedRuns.flat()),
+      () => new Set(collapsePlan.collapsedIndexes),
       [collapsePlan],
     )
-    const runByStartIndex = useMemo(
-      () => new Map(collapsePlan.collapsedRuns.map((run) => [run[0]!, run])),
-      [collapsePlan],
-    )
+    const [workExpanded, setWorkExpanded] = useState(false)
     const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
       keyPrefix: exchIdx,
       markdownKeyPrefix: `${userMsgId}-${responseModelId}`,
@@ -303,32 +300,16 @@ export function ChatExchange({
           </div>
         )}
 
+        {collapsePlan.collapsedIndexes.length > 0 && (
+          <WorkedForGroup
+            durationMs={workedMs}
+            toolCallCount={collapsePlan.collapsedToolCallCount}
+            expanded={workExpanded}
+            onToggle={() => setWorkExpanded((v) => !v)}
+          />
+        )}
         {assistantSegments.map((seg, segIdx) => {
-          const run = runByStartIndex.get(segIdx)
-          if (run) {
-            return (
-              <WorkedForGroup
-                key={`${exchIdx}-worked-${segIdx}`}
-                // Turn time only means something when one run covers all the
-                // work — interleaved runs share it, so they read "Worked".
-                durationMs={collapsePlan.collapsedRuns.length === 1 ? workedMs : null}
-              >
-                {run.map((collapsedIdx, itemIdx) => {
-                  const collapsedSeg = assistantSegments[collapsedIdx]!
-                  return (
-                    <AssistantSegmentItem
-                      key={assistantSegmentKey(`${exchIdx}-worked-${segIdx}`, collapsedSeg, isStreaming)}
-                      seg={collapsedSeg}
-                      chainTop={itemIdx > 0}
-                      chainBottom={itemIdx < run.length - 1}
-                      ctx={segmentCtx}
-                    />
-                  )
-                })}
-              </WorkedForGroup>
-            )
-          }
-          if (collapsedSet.has(segIdx)) return null
+          if (!workExpanded && collapsedSet.has(segIdx)) return null
           const chain = toolChainFlags[segIdx]!
           return (
             <AssistantSegmentItem
