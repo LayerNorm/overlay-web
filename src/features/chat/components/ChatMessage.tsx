@@ -207,6 +207,13 @@ function TextChatMessage(props: TextChatMessageProps) {
   const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
     ? (responseMsg as { id: string }).id
     : null
+  // Persisted turn time: the assistant row is written with status 'generating'
+  // at turn start and patched through settle, so createdAt→updatedAt spans it.
+  const responseTimestamps = responseMsg as { createdAt?: number; updatedAt?: number } | null
+  const workedDurationMs = responseTimestamps?.updatedAt && responseTimestamps.createdAt
+    && responseTimestamps.updatedAt > responseTimestamps.createdAt
+    ? responseTimestamps.updatedAt - responseTimestamps.createdAt
+    : null
   const normalizedAssistant = (() => {
     if (persistedStatus === 'error' && looksLikeStoredGenerationError(responseText)) {
       return { blocks: [], sources: [] }
@@ -267,6 +274,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       responseSources={normalizedAssistant.sources}
       isStreaming={isStreaming}
       isTextStreaming={isTextStreaming}
+      workedDurationMs={workedDurationMs}
       errorMessage={errLabelForTurn}
       exchModelList={modelList}
       selectedTab={selectedTab}

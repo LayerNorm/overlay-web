@@ -42,4 +42,12 @@ test('BYOK gateway rejects unknown providers, missing keys, and endpoint overrid
     apiKey: 'secret',
     fetch: async () => new Response(),
   }))
+
+  // Custom endpoints may be keyless (free / IP-authed gateways) — no
+  // Authorization header is sent when no key is configured.
+  assert.doesNotThrow(() => new ByokGateway({
+    connection: { providerId: 'custom-openai-compatible', endpoint: 'https://models.example.com/v1' },
+    apiKey: null,
+    fetch: async () => new Response(),
+  }))
 })

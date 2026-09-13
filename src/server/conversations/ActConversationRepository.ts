@@ -99,6 +99,7 @@ export type ConversationMessageRow = {
   tokens?: { input: number; output: number }
   variantIndex?: number
   createdAt: number
+  updatedAt?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string

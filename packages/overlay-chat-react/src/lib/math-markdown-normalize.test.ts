@@ -190,3 +190,30 @@ test('repairs sloppy display math with stray dollars', () => {
   assert.ok(out.includes('\\left(\\frac{a}{b}\\right)^4'), `grouping lost: ${out}`)
   assert.ok(out.startsWith('Note:\n$$'), `fences broken: ${out}`)
 })
+
+// Regression: hyphenated English words inside currency spans must not trip the
+// subtraction heuristic — `pre-seed` and `18-month` are prose hyphens, and the
+// span must escape instead of letting KaTeX eat the clause (including the
+// closing `**`) as italic math.
+test('escapes currency spans containing hyphenated words', () => {
+  const input =
+    '**How we justify $1M (not $500K / $1.4M):** Investors will call the mismatch. For SV pre-seed, frame $1M as 18-month runway to:'
+  assert.equal(
+    normalizeAssistantMathMarkdown(input),
+    '**How we justify \\$1M (not \\$500K / \\$1.4M):** Investors will call the mismatch. For SV pre-seed, frame \\$1M as 18-month runway to:',
+  )
+  assert.equal(
+    normalizeAssistantMathMarkdown('Priced at $5 per-seat vs $10 for enterprise.'),
+    'Priced at \\$5 per-seat vs \\$10 for enterprise.',
+  )
+  assert.equal(
+    normalizeAssistantMathMarkdown('Range $5-10 per user-month, up to $100 total.'),
+    'Range \\$5-10 per user-month, up to \\$100 total.',
+  )
+})
+
+// Real subtraction still counts as math: spaced minus and single-char operands.
+test('keeps genuine minus expressions as math', () => {
+  assert.equal(normalizeAssistantMathMarkdown('The equation $x - 1 = 0$ holds.'), 'The equation $x - 1 = 0$ holds.')
+  assert.equal(normalizeAssistantMathMarkdown('Compute $a-b$ here.'), 'Compute $a-b$ here.')
+})

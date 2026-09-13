@@ -74,6 +74,15 @@ export function ProviderConnectionRow({
   onDelete: () => void
 }) {
   const preset = getByokPreset(connection.providerId)
+  // For custom-endpoint connections the preset label ("Custom
+  // OpenAI-compatible") is identical across rows — the host distinguishes them.
+  const endpointHost = useMemo(() => {
+    try {
+      return new URL(connection.endpoint).hostname.replace(/^www\./, '')
+    } catch {
+      return ''
+    }
+  }, [connection.endpoint])
   const discoveredCount = getDiscoveredModelCount(connection)
   const hasError = connection.status === 'error'
   const defaultGateway = isDefaultGatewayConnection(connection)
@@ -227,7 +236,11 @@ export function ProviderConnectionRow({
             ) : null}
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-[var(--muted)]">
-            <span className="truncate">{preset?.label ?? connection.providerId}</span>
+            <span className="truncate">
+              {preset?.allowsCustomEndpoint && endpointHost
+                ? `${preset.label} · ${endpointHost}`
+                : (preset?.label ?? connection.providerId)}
+            </span>
             <span>·</span>
             <span className="shrink-0">
               {enabledCount} enabled

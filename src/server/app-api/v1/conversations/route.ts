@@ -443,6 +443,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     contentType: message.contentType,
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
+    ...(message.updatedAt ? { updatedAt: message.updatedAt } : {}),
     role: message.role,
     parts: visibleParts,
     model: message.modelId,

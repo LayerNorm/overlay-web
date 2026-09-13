@@ -405,6 +405,14 @@ function isHeavyMath(s: string): boolean {
   return /\\begin\{/.test(s) || backslashRuns.length >= 2 || s.length > 96
 }
 
+/**
+ * A `-` reads as subtraction only between single-char or bracketed operands
+ * (`x - 1`, `a-b`, `(a+b) - c`). Between multi-char words (`pre-seed`,
+ * `18-month`, `cost-based`) it is English hyphenation and must not promote a
+ * prose span — especially currency prose — to math.
+ */
+const MATH_MINUS = /(?:\b[A-Za-z0-9]\b|[)\]}])\s*-\s*(?:\b[A-Za-z0-9]\b|[(\[{])/
+
 function looksLikeMath(s: string): boolean {
   if (
     TEX_COMMAND.test(s) ||
@@ -418,8 +426,7 @@ function looksLikeMath(s: string): boolean {
   // prose like `$0.25 / seat` or `$2-4` is not mistaken for math.
   const hasEquation =
     /[A-Za-z0-9)]\s*[=+×*]\s*[A-Za-z0-9(]/.test(s) ||
-    /[A-Za-z)]\s*[-]\s*[A-Za-z(]/.test(s) ||
-    /[A-Za-z)]-[A-Za-z(]/.test(s) ||
+    MATH_MINUS.test(s) ||
     /[A-Za-z0-9)]\/[A-Za-z0-9(]/.test(s)
   return hasEquation
 }
@@ -738,8 +745,7 @@ function isMathAfterCurrencyOpener(inner: string): boolean {
   if (TEX_COMMAND.test(trimmed) || BIG_O_ATOM.test(trimmed) || /[\^_{}]/.test(trimmed)) return true
   return trimmed.length < 80 && (
     /[A-Za-z0-9)\]}]\s*[+*=]\s*[A-Za-z0-9(\[{]/.test(trimmed) ||
-    /[A-Za-z)]\s*-\s*[A-Za-z(]/.test(trimmed) ||
-    /[A-Za-z)]-[A-Za-z(]/.test(trimmed)
+    MATH_MINUS.test(trimmed)
   ) && !/\d,\d{3}/.test(trimmed)
 }
 

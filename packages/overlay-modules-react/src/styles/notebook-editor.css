@@ -222,8 +222,10 @@
 .app-note-editor .katex-display {
   margin: 0.45em 0 1em;
   overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 0.1rem;
+  overflow-y: auto;
+  /* Padding absorbs subscript/descender ink that overflows the last line box;
+     the scroll container would otherwise clip it mid-glyph. */
+  padding-bottom: 0.7em;
 }
 
 .app-note-editor img {

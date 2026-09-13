@@ -57,6 +57,8 @@ export interface ChatExchangeProps {
   responseSources?: readonly ChatTranscriptSourceView[]
   isStreaming: boolean
   isTextStreaming: boolean
+  /** Persisted turn time (assistant row createdAt→updatedAt); falls back to the live measure. */
+  workedDurationMs?: number | null
   errorMessage: string | null
   exchModelList: string[]
   selectedTab: number
@@ -99,7 +101,7 @@ export interface ChatExchangeProps {
 }
 
 export function ChatExchange({
-  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
@@ -132,8 +134,8 @@ export function ChatExchange({
     const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
     const responseSettled = !loadingPresentation.active
 
-    // Turn duration measured on the streaming→settled edge; nothing persisted
-    // exists on the wire today, so reloaded messages fall back to "Worked".
+    // Turn duration: the persisted createdAt→updatedAt span wins when present;
+    // live turns still measure on the streaming→settled edge.
     const streamStartedAtRef = useRef<number | null>(null)
     const [measuredWorkMs, setMeasuredWorkMs] = useState<number | null>(null)
     useEffect(() => {
@@ -145,6 +147,7 @@ export function ChatExchange({
         setMeasuredWorkMs(Math.max(0, Date.now() - streamStartedAtRef.current))
       }
     }, [isStreaming, measuredWorkMs])
+    const workedMs = workedDurationMs ?? measuredWorkMs
 
     const collapsePlan = useMemo(
       () => isStreaming
@@ -179,7 +182,6 @@ export function ChatExchange({
       onCreateAutomationDraft, onOpenAttachmentPreview,
       generatedUiConnectorActions, onGeneratedUiChange,
     ])
-    const workedMs = measuredWorkMs
     const copyPlainText =
       interrupted && !errorMessage
         ? assistantPlainText.trim()

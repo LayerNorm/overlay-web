@@ -352,9 +352,11 @@
 :where(.overlay-chat-surface) .markdown-content .katex-display {
   display: block;
   margin: 0.85em auto 1.1em;
-  padding: 0.35em 0 0.5rem;
+  /* Bottom padding absorbs subscript/descender ink that overflows the last line
+     box; the scroll container would otherwise clip it mid-glyph. */
+  padding: 0.35em 0 0.9em;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   text-align: center;
   font-size: 1.12em;
 }
@@ -552,7 +554,8 @@
 :where(.overlay-chat-surface) .markdown-content--streaming h5,
 :where(.overlay-chat-surface) .markdown-content--streaming h6,
 :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-:where(.overlay-chat-surface) .markdown-content--streaming pre {
+:where(.overlay-chat-surface) .markdown-content--streaming pre,
+:where(.overlay-chat-surface) .markdown-content--streaming .code-block-wrapper {
   animation: overlayChatStreamBlockSoften 260ms ease-out both;
   will-change: opacity;
 }
@@ -767,7 +770,10 @@
   :where(.overlay-chat-surface) .markdown-content--streaming h5,
   :where(.overlay-chat-surface) .markdown-content--streaming h6,
   :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-  :where(.overlay-chat-surface) .markdown-content--streaming pre {
+  :where(.overlay-chat-surface) .markdown-content--streaming pre,
+  :where(.overlay-chat-surface)
+    .markdown-content--streaming
+    .code-block-wrapper {
     animation: none;
   }
 }
