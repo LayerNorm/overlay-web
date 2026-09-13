@@ -10,7 +10,6 @@ import type {
 } from '@overlay/app-core'
 import { MIN_AUTOMATION_INTERVAL_MINUTES, WEEKDAY_LABELS } from '@overlay/app-core/automations'
 import { SettingsCard, SettingsToggle } from '@overlay/modules-react/settings'
-import { AutomationGraphPreview } from './graph-canvas'
 import { Select } from '@overlay/ui/primitives'
 
 const AutomationGraphCanvas = lazy(() =>
@@ -33,7 +32,6 @@ export interface AutomationEditorFormProps {
   time: string
   dayOfWeek: number
   dayOfMonth: number
-  graphSource: string
   graph?: AutomationGraph
   modelId: string
   timeZoneOptions: readonly AutomationTimeZoneOption[]
@@ -52,7 +50,6 @@ export interface AutomationEditorFormProps {
   onTimeChange: (value: string) => void
   onDayOfWeekChange: (value: number) => void
   onDayOfMonthChange: (value: number) => void
-  onGraphSourceChange?: (value: string) => void
   onModelIdChange: (value: string) => void
   onSave: () => void
   onTest: () => void
@@ -76,7 +73,6 @@ export function AutomationEditorForm({
   time,
   dayOfWeek,
   dayOfMonth,
-  graphSource,
   graph,
   modelId,
   timeZoneOptions,
@@ -259,19 +255,22 @@ export function AutomationEditorForm({
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Flow">
-          {renderFlow ? renderFlow() : graph && graph.nodes.length > 0 ? (
-            <Suspense
-              fallback={
-                <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
-              }
-            >
-              <AutomationGraphCanvas graph={graph} onGraphChange={onGraphChange} />
-            </Suspense>
-          ) : (
-            <AutomationGraphPreview source={graphSource} />
-          )}
-        </SettingsCard>
+        {/* Text instructions are the authoring surface. The flow section only
+            renders for grandfathered automations whose graph was hand-edited in
+            the canvas (`manuallyEdited`) — auto-derived graphs never show it. */}
+        {(renderFlow || graph?.manuallyEdited) && (
+          <SettingsCard title="Flow">
+            {renderFlow ? renderFlow() : (
+              <Suspense
+                fallback={
+                  <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
+                }
+              >
+                <AutomationGraphCanvas graph={graph!} onGraphChange={onGraphChange} />
+              </Suspense>
+            )}
+          </SettingsCard>
+        )}
 
         <SettingsCard title="Test">
           <div className="flex flex-wrap items-start justify-between gap-3">

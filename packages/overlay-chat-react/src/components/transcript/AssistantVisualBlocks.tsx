@@ -52,10 +52,11 @@ export interface AssistantVisualBlocksProps {
  * transcript and multi-participant rooms so both surfaces read identically.
  *
  * While streaming, every segment renders live in original order. Once the turn
- * settles, each contiguous run of work — tool calls, reasoning, browser
- * sessions — folds into an expandable "Worked for N" row at its position;
- * text always stays visible, and deliverables (draft cards, gated callouts,
- * generated files/UI) stay inline.
+ * settles, all work — tool calls, reasoning, browser sessions — folds behind a
+ * single expandable "Worked for N" row at the top so the reply reads as plain
+ * text; expanding the row switches the message to the raw timeline with every
+ * work segment back at its true position. Deliverables (draft cards, gated
+ * callouts, generated files/UI) stay inline in both modes.
  */
 export function AssistantVisualBlocks({
   blocks,
@@ -100,18 +101,15 @@ export function AssistantVisualBlocks({
 
   const collapsePlan = useMemo(
     () => isStreaming
-      ? { collapsedRuns: [] as number[][] }
+      ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
       : planAssistantWorkCollapse(segments),
     [segments, isStreaming],
   )
   const collapsedSet = useMemo(
-    () => new Set(collapsePlan.collapsedRuns.flat()),
+    () => new Set(collapsePlan.collapsedIndexes),
     [collapsePlan],
   )
-  const runByStartIndex = useMemo(
-    () => new Map(collapsePlan.collapsedRuns.map((run) => [run[0]!, run])),
-    [collapsePlan],
-  )
+  const [workExpanded, setWorkExpanded] = useState(false)
 
   const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
     keyPrefix: blockKeyPrefix,
@@ -137,32 +135,16 @@ export function AssistantVisualBlocks({
 
   return (
     <>
+      {collapsePlan.collapsedIndexes.length > 0 && (
+        <WorkedForGroup
+          durationMs={workedMs}
+          toolCallCount={collapsePlan.collapsedToolCallCount}
+          expanded={workExpanded}
+          onToggle={() => setWorkExpanded((v) => !v)}
+        />
+      )}
       {segments.map((seg, segIdx) => {
-        const run = runByStartIndex.get(segIdx)
-        if (run) {
-          return (
-            <WorkedForGroup
-              key={`${blockKeyPrefix}-worked-${segIdx}`}
-              // The measured turn time is only truthful when one run covers all
-              // the work — interleaved runs share it, so they read "Worked".
-              durationMs={collapsePlan.collapsedRuns.length === 1 ? workedMs : null}
-            >
-              {run.map((collapsedIdx, itemIdx) => {
-                const collapsedSeg = segments[collapsedIdx]!
-                return (
-                  <AssistantSegmentItem
-                    key={assistantSegmentKey(`${blockKeyPrefix}-worked-${segIdx}`, collapsedSeg, isStreaming)}
-                    seg={collapsedSeg}
-                    chainTop={itemIdx > 0}
-                    chainBottom={itemIdx < run.length - 1}
-                    ctx={segmentCtx}
-                  />
-                )
-              })}
-            </WorkedForGroup>
-          )
-        }
-        if (collapsedSet.has(segIdx)) return null
+        if (!workExpanded && collapsedSet.has(segIdx)) return null
         const chain = toolChainFlags[segIdx]!
         return (
           <AssistantSegmentItem

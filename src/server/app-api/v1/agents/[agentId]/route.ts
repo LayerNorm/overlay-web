@@ -12,6 +12,8 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceAgentServiceError } from '@/server/agents'
 import { agentErrorResponse } from '../shared'
+import { actorFrom } from '../../computers/shared'
+import { logger } from '@/server/observability/logger'
 
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
@@ -106,11 +108,21 @@ function invalid(field: string): never {
 
 export async function DELETE(_request: Request, context: AppApiRouteContext) {
   try {
-    await getOverlayServerContext().workspaceAgentService.archive({
+    const agentId = requiredAgentId(await context.params)
+    const server = getOverlayServerContext()
+    await server.workspaceAgentService.archive({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
-      agentId: requiredAgentId(await context.params),
+      agentId,
     })
+    // An archived agent must not keep a live computer — it bills while it
+    // runs. Best-effort: archive still succeeds if cleanup fails.
+    await server.computerService.destroyForOwner({
+      actor: actorFrom(context),
+      workspaceId: context.workspace.workspace.id,
+      ownerType: 'agent',
+      ownerId: agentId,
+    }).catch((error) => logger.warn('[agents] bound computer cleanup failed', error))
     return NextResponse.json({ archived: true })
   } catch (error) {
     return agentErrorResponse(error)

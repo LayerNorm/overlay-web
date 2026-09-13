@@ -58,6 +58,8 @@ export type AutomationScheduleWorkflowInput = {
   workspaceId?: string
   /** The automation_runs record ID — used to sync run status back to the database. */
   runId?: string
+  /** The scheduled due time for claimed runs — manual runs leave this unset. */
+  scheduledFor?: number
 }
 
 /**
@@ -160,7 +162,9 @@ async function generateTurnId(automationId: string): Promise<string> {
 }
 
 async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Promise<void> {
-  const now = Date.now()
+  // Claimed scheduler runs carry their real due time; manual/loop runs fall
+  // back to the pinned replay clock.
+  const now = input.scheduledFor ?? Date.now()
   await runAutomationAgentTurn({
     automationId: input.automationId,
     runId: input.runId,

@@ -693,11 +693,11 @@ test('automations create/update/test/run preserve validation and auth error shap
   assert.equal(runResponse.status, 401)
   assert.deepEqual(await readJson(runResponse), { error: 'Unauthorized' })
 
-  t.mock.method(automationService, 'runAutomation', async (args: Parameters<typeof automationService.runAutomation>[0]) => {
+  t.mock.method(automationService, 'startDurableScheduledRun', async (args: Parameters<typeof automationService.startDurableScheduledRun>[0]) => {
     assert.equal(args.runId, 'run_1')
     assert.equal(args.serviceUserId, 'service_user_1')
     assert.equal(args.baseUrl, 'https://getoverlay.io')
-    return { success: true, conversationId: 'conversation_1' as never }
+    return { ok: true as const, durable: true as const, runId: 'run_1', workflowRunId: 'wf_run_1' }
   })
   const serviceContext = context()
   serviceContext.auth = {
@@ -711,8 +711,10 @@ test('automations create/update/test/run preserve validation and auth error shap
   )
   assert.equal(serviceRunResponse.status, 200)
   assert.deepEqual(await readJson(serviceRunResponse), {
-    success: true,
-    conversationId: 'conversation_1',
+    ok: true,
+    durable: true,
+    runId: 'run_1',
+    workflowRunId: 'wf_run_1',
   })
 })
 

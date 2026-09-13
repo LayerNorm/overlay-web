@@ -145,29 +145,28 @@ export function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): As
 }
 
 /**
- * Which segments a settled assistant message folds into expandable "Worked"
- * rows: each maximal contiguous run of work — tool calls, reasoning beats,
- * browser sessions — collapses at its own position, so a tool call that ran
- * mid-answer sits between the texts it separated rather than dragging the
- * earlier text into the collapse. Text is always part of the visible reply
- * and never collapses. Segments that are themselves the deliverable — draft
- * cards, gated-plan callouts, generated files, generated UI — stay inline so
- * the settled transcript keeps every artifact visible.
+ * Which segments a settled assistant message folds behind the single
+ * "Worked" row at the top of the reply: every work segment — tool calls,
+ * reasoning beats, browser sessions — collapses, so the collapsed reply is
+ * just the text in order plus one summary row. Expanding the row switches
+ * the message to the raw timeline, with each work segment back at its true
+ * position between the texts. Text never collapses, and segments that are
+ * themselves the deliverable — draft cards, gated-plan callouts, generated
+ * files, generated UI — stay inline so the transcript keeps every artifact
+ * visible in both modes.
  */
 export function planAssistantWorkCollapse(segments: AssistantVisualSegment[]): {
-  /** Maximal runs of work segment indexes; each run renders one collapsed row. */
-  collapsedRuns: number[][]
+  /** Work segment indexes folded behind the top "Worked" row, in original order. */
+  collapsedIndexes: number[]
+  /** Tool calls inside the collapsed set — drives the row's "— N tool calls" suffix. */
+  collapsedToolCallCount: number
 } {
-  const runs: number[][] = []
-  let current: number[] = []
-  const flush = () => {
-    if (current.length > 0) runs.push(current)
-    current = []
-  }
+  const collapsedIndexes: number[] = []
+  let collapsedToolCallCount = 0
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!
     if (seg.kind === 'reasoning' || seg.kind === 'browser') {
-      current.push(i)
+      collapsedIndexes.push(i)
       continue
     }
     if (seg.kind === 'tools') {
@@ -175,17 +174,15 @@ export function planAssistantWorkCollapse(segments: AssistantVisualSegment[]): {
       if (onlyTools && seg.items.length === 1) {
         const tool = seg.items[0] as ToolVisualBlock
         if (getDraftFromToolBlock(tool) || isOverlayGatedToolOutput(tool.toolOutput)) {
-          flush()
           continue
         }
       }
-      current.push(i)
+      collapsedIndexes.push(i)
+      collapsedToolCallCount += seg.items.filter((item) => item.kind === 'tool').length
       continue
     }
-    flush()
   }
-  flush()
-  return { collapsedRuns: runs }
+  return { collapsedIndexes, collapsedToolCallCount }
 }
 
 function isToolChainSegment(segment: AssistantVisualSegment): boolean {

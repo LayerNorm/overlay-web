@@ -6,6 +6,11 @@ import { logger } from '@/server/observability/logger'
 
 export function computerErrorResponse(error: unknown) {
   if (error instanceof ComputerServiceError) {
+    // 5xx errors carry the provider failure in `cause` — log it or Box
+    // provisioning flakes are undebuggable. Client errors (4xx) stay quiet.
+    if (error.status >= 500) {
+      logger.error(`[computers] ${error.code}: ${error.message}`, error.cause ?? error)
+    }
     return NextResponse.json({ error: error.message, code: error.code }, {
       status: error.status,
       headers: { 'Cache-Control': 'no-store' },

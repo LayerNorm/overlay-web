@@ -10,10 +10,16 @@ crons.interval(
   internal.ai.sandbox.daytonaReconcile.runMinuteTick,
 )
 
-// NOTE: The legacy automation scheduler cron has been removed.
-// Durable automations are now always enabled and use the sleep()-based
-// workflow (workflows/automation-schedule.ts) for scheduling. The
-// OVERLAY_FEATURE_DURABLE_AUTOMATIONS feature flag has been removed.
+// Claims due automation runs every minute and dispatches each to the BFF,
+// which executes it as a durable one-shot automation workflow. Sleep()-based
+// per-automation scheduling workflows could not survive in the current
+// deployment (no durable workflow world is configured), so dispatch lives
+// here while execution stays durable.
+crons.interval(
+  'automation scheduler',
+  { minutes: 1 },
+  internal.automations.automationRunner.runMinuteTick,
+)
 
 crons.interval(
   'tool loop agent run lease cleanup',
