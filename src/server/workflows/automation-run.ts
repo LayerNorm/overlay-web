@@ -2,7 +2,7 @@
  * Automation Run Workflow — durable execution of automation turns via the
  * Vercel Workflow SDK.
  *
- * The agent turn runs in-workflow as a `WorkflowAgent` (see
+ * The agent turn runs in-workflow as a durable agent loop (see
  * ./automation-agent-turn): conversation creation, context assembly, model
  * calls, tool calls, message persistence, usage accounting, and run-record
  * settlement are all durable steps. If the process dies during any step, the

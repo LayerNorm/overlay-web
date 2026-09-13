@@ -13,7 +13,7 @@
  *   - No polling overhead — each automation has its own workflow run
  *   - Cancellation is trivial: stop the workflow run
  *
- * The agent turn itself runs as an in-workflow `WorkflowAgent`
+ * The agent turn itself runs as a durable in-workflow agent loop
  * (see ./automation-agent-turn) — model calls, tool calls, persistence, and
  * billing are all durable steps rather than a self-HTTP call into the act
  * route that died with its request.
