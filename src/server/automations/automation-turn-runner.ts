@@ -1,15 +1,14 @@
 import 'server-only'
 
-import type { ModelMessage, StepResult, ToolSet, UIMessage } from 'ai'
+import { jsonSchema, tool, type ModelMessage, type StepResult, type ToolSet, type UIMessage } from 'ai'
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { convertToModelMessages, generateText } from '@/server/ai/sdk'
-import { getGatewayModelId, getLanguageModel } from '@/server/ai/model-runtime'
-import { getModel } from '@/shared/ai/gateway/model-data'
-import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { getLanguageModel } from '@/server/ai/model-runtime'
+import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -102,20 +101,36 @@ export type AutomationAgentTurnInput = {
 
 /**
  * The serializable plan produced by `prepareAutomationAgentTurn`. It carries
- * everything the in-workflow `WorkflowAgent` needs so no request-scoped state
- * has to leak across the durable boundary.
+ * everything the durable agent loop needs so no request-scoped state has to
+ * leak across the workflow step boundary.
  */
 export type AutomationAgentTurnPlan = {
   conversationId: string
   effectiveModelId: string
-  gatewayModelId: string
   instructions: string
   messages: ModelMessage[]
   paid: boolean
+  providerOptions?: Record<string, Record<string, unknown>>
   reservationId: string | null
   sourceCitations?: SourceCitationMap
   toolDefinitions: PersonalChatWorkToolDefinition[]
   toolingContext: PersonalChatWorkToolingContext
+}
+
+/**
+ * Serializable result of one durable model call. A `LanguageModel` cannot
+ * cross the step boundary (methods + captured credentials do not serialize),
+ * so the step rebuilds it via `getLanguageModel` and returns only data.
+ */
+export type AutomationModelCallResult = {
+  finishReason: string
+  reasoning?: unknown[]
+  reasoningText?: string
+  responseMessages: ModelMessage[]
+  routedModelId?: string
+  text: string
+  toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>
+  usage: { inputTokens?: number; outputTokens?: number }
 }
 
 /**
@@ -135,36 +150,65 @@ export class AutomationTurnError extends Error {
 }
 
 /**
- * Durable agent turns can only call models the AI Gateway can serve — the
- * workflow step resolves `gateway.languageModel(<id>)` and there is no way to
- * smuggle a constructed LanguageModel (BYOK, OpenRouter, NVIDIA NIM) across
- * the step boundary. Fail fast with an actionable message instead of a
- * cryptic gateway 404 mid-run.
+ * One model call of the durable agent loop, executed inside a `'use step'`.
+ *
+ * This is the piece `WorkflowAgent` cannot provide: its internal model step
+ * resolves `gateway.languageModel(<id>)`, so BYOK / OpenRouter / NVIDIA NIM
+ * models could never run durably. Here the model is rebuilt inside the step
+ * via `getLanguageModel` — the same resolution the act route uses — so every
+ * provider the app supports works, and user credentials are fetched at call
+ * time instead of being persisted in the workflow event log.
+ *
+ * Tools are reconstructed from their serializable definitions *without*
+ * `execute` — the model emits `toolCalls` only; execution happens in the
+ * caller's tool steps so each call is independently durable and retryable.
  */
-function assertDurableAutomationModel(modelId: string): void {
-  if (isByokModelId(modelId)) {
-    throw new AutomationTurnError(
-      `Model ${modelId} uses a personal provider key, which cannot run inside a durable automation. Pick a hosted model in the automation settings.`,
-      400,
-      { error: 'model_not_supported_for_durable_run' },
-    )
-  }
-  const catalogModel = getModel(modelId)
-  if (catalogModel && (catalogModel.provider === 'openrouter' || catalogModel.provider === 'nvidia')) {
-    throw new AutomationTurnError(
-      `Model ${modelId} is served by ${catalogModel.provider}, which durable automation runs cannot reach. Pick an AI Gateway model in the automation settings.`,
-      400,
-      { error: 'model_not_supported_for_durable_run' },
-    )
-  }
-  try {
-    getGatewayModelId(modelId)
-  } catch (_error) {
-    throw new AutomationTurnError(
-      `Model ${modelId} is not a known AI Gateway model. Pick a different model in the automation settings.`,
-      400,
-      { error: 'model_not_supported_for_durable_run' },
-    )
+export async function callDurableAutomationModel(args: {
+  instructions: string
+  maxOutputTokens: number
+  messages: ModelMessage[]
+  modelId: string
+  providerOptions?: Record<string, Record<string, unknown>>
+  reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  toolDefinitions: PersonalChatWorkToolDefinition[]
+  userId: string
+}): Promise<AutomationModelCallResult> {
+  const model = await getLanguageModel(args.modelId, undefined, args.userId)
+  const tools = Object.fromEntries(args.toolDefinitions.map((definition) => [
+    definition.name,
+    tool({
+      description: definition.description,
+      inputSchema: jsonSchema(definition.inputSchema),
+    }),
+  ]))
+  const result = await generateText({
+    model,
+    system: args.instructions,
+    messages: args.messages,
+    tools,
+    maxOutputTokens: args.maxOutputTokens,
+    // The workflow step itself retries on throw — in-step SDK retries would
+    // multiply attempts on transient provider errors.
+    maxRetries: 0,
+    ...(args.providerOptions ? { providerOptions: args.providerOptions as never } : {}),
+    ...(args.reasoning ? { reasoning: args.reasoning } : {}),
+  })
+  return {
+    finishReason: result.finishReason,
+    reasoning: result.reasoning as unknown[] | undefined,
+    reasoningText: result.reasoningText,
+    responseMessages: result.response.messages,
+    routedModelId: result.response.modelId ?? undefined,
+    text: result.text,
+    toolCalls: result.toolCalls.map((call) => ({
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      input: call.input,
+    })),
+    usage: {
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+    },
   }
 }
 
@@ -226,7 +270,6 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
   const effectiveModelId = resolveEffectiveActModelId(input.modelId ?? preferredProjectModelId)
-  assertDurableAutomationModel(effectiveModelId)
 
   const billingProgrammaticSubjectId = `automation:${input.automationId ?? input.runId ?? input.turnId}`
   const requestIdempotencyKey = `automation:${input.runId ?? input.automationId ?? 'turn'}:${input.turnId}`
@@ -633,10 +676,12 @@ export async function prepareAutomationAgentTurn(
   return {
     conversationId: String(cid),
     effectiveModelId,
-    gatewayModelId: getGatewayModelId(effectiveModelId),
     instructions,
     messages: modelMessages,
     paid,
+    ...(modelSupportsZeroDataRetention(effectiveModelId)
+      ? { providerOptions: { gateway: { zeroDataRetention: true } } }
+      : {}),
     reservationId: reservation.reservationId,
     sourceCitations: sourceCitationMap,
     toolDefinitions,
@@ -661,6 +706,8 @@ export async function finalizeAutomationAgentTurn(args: {
   plan: AutomationAgentTurnPlan
   steps: StepResult<ToolSet>[]
   text: string
+  /** Serializable — a Map would not survive the step boundary. */
+  toolFailures?: Array<{ toolCallId: string; toolName: string; error: string }>
   workflowRunId?: string
 }): Promise<void> {
   const { input, plan } = args
@@ -709,7 +756,12 @@ export async function finalizeAutomationAgentTurn(args: {
     sourceCitations: plan.sourceCitations,
     timedOut: false,
     timeoutMs: 0,
-    toolFailuresByCallId: new Map(),
+    toolFailuresByCallId: new Map(
+      (args.toolFailures ?? []).map((failure) => [
+        failure.toolCallId,
+        { toolName: failure.toolName, error: failure.error },
+      ]),
+    ),
     turnId: input.turnId,
     userId: input.userId,
     throwOnError: true,
@@ -734,6 +786,7 @@ export async function failAutomationAgentTurn(args: {
   steps?: StepResult<ToolSet>[]
   /** Failure message — the step boundary serializes inputs, so pass a string. */
   error: string
+  toolFailures?: Array<{ toolCallId: string; toolName: string; error: string }>
   workflowRunId?: string
 }): Promise<void> {
   const { input } = args
@@ -769,7 +822,12 @@ export async function failAutomationAgentTurn(args: {
         multiModelTotal: 1,
         timedOut: false,
         timeoutMs: 0,
-        toolFailuresByCallId: new Map(),
+        toolFailuresByCallId: new Map(
+          (args.toolFailures ?? []).map((failure) => [
+            failure.toolCallId,
+            { toolName: failure.toolName, error: failure.error },
+          ]),
+        ),
         turnId: input.turnId,
         userId: input.userId,
       })
