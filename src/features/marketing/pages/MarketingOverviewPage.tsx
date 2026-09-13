@@ -6,7 +6,7 @@ import { AuthBoundary, useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
 import { MarketingButton } from "@/features/marketing/components/MarketingButton";
 import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
-import { ProductWorkspaceDemo } from "@/features/marketing/components/MarketingShowcase";
+import { ProductAgentsDemo } from "@/features/marketing/components/MarketingShowcase";
 import { Reveal } from "@/features/marketing/components/Reveal";
 import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 import {
@@ -25,14 +25,35 @@ import {
   getMarketingAppHref,
 } from "@/shared/marketing/marketing";
 
-const CAPABILITIES = [
-  "Any model — hosted, private, local, or your own keys",
-  "Your knowledge — files, resources, and memory in one place",
-  "Governed tools — agents act through approved, audited tools",
-  "Workflows — turn repeated work into reusable AI flows",
-  "Your infrastructure — cloud, private, or on-premises",
-  "Your data — storage, retention, and access you control",
+const AGENT_LOOP = [
+  {
+    step: "01",
+    title: "Create",
+    body: "Describe the agent, pick its model, attach tools and knowledge. A working agent in seconds — no ceremony.",
+  },
+  {
+    step: "02",
+    title: "Deploy",
+    body: "Run agents on Overlay's cloud or machines you own. They stay online and reachable from anywhere.",
+  },
+  {
+    step: "03",
+    title: "Manage",
+    body: "Permissions, memory, run history, and spend — one roster for every agent you operate.",
+  },
 ];
+
+const BYO_AGENTS = ["Codex", "Claude Code", "Hermes", "OpenClaw", "Any ACP agent"];
+
+const PLATFORMS = ["Slack", "Telegram", "iMessage", "Discord", "The web"];
+
+function Chip({ children }: { children: string }) {
+  return (
+    <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-sm text-[var(--foreground)]">
+      {children}
+    </span>
+  );
+}
 
 function HomeLandingContent() {
   const { isAuthenticated } = useAuth();
@@ -46,11 +67,12 @@ function HomeLandingContent() {
           <div className="mx-auto max-w-4xl text-center">
             <Reveal>
               <h1 className={minimalDisplay()} style={minimalSerif()}>
-                Own the interface to intelligence.
+                The control panel for your AI workforce.
               </h1>
               <p className={`mx-auto mt-8 max-w-2xl ${minimalBody()}`}>
-                One private workspace for models, knowledge, tools, and
-                agents — without locking you into a single vendor.
+                Create, deploy, and manage your agents in one workspace — or
+                bring the ones you already trust. Then put them to work on any
+                platform.
               </p>
               <div className="mt-10 flex flex-wrap justify-center gap-3">
                 <MarketingButton
@@ -77,10 +99,10 @@ function HomeLandingContent() {
         </section>
 
         {/* 2. Product demo */}
-        <section className={minimalSectionSm()}>
+        <section id="product" className={`${minimalSectionSm()} scroll-mt-16`}>
           <div className={minimalContainer()}>
             <Reveal>
-              <ProductWorkspaceDemo title="What are we working on?" />
+              <ProductAgentsDemo />
               <div className="mt-8 text-center">
                 <Link href="/" className={minimalTextLink()}>
                   Open the live showcase
@@ -91,38 +113,119 @@ function HomeLandingContent() {
           </div>
         </section>
 
-        {/* 3. What it is */}
-        <section className={minimalSection()}>
+        {/* 3. The loop: create, deploy, manage */}
+        <section id="agents" className={`${minimalSection()} scroll-mt-16`}>
           <div className="mx-auto max-w-4xl">
             <Reveal>
-              <p className={minimalLabel()}>The interface</p>
+              <p className={minimalLabel()}>The command center</p>
               <h2
                 className="mt-6 text-3xl leading-[1.1] tracking-tight md:text-5xl"
                 style={minimalSerif()}
               >
-                Control the layer between people and intelligence.
+                Agents are a workforce. Run them like one.
               </h2>
               <p className={`mt-8 max-w-2xl ${minimalBody()}`}>
-                The interface determines how people access models, knowledge,
-                tools, and agents. Overlay gives you control over that layer —
-                and everything it connects.
+                Overlay is where agents are created, deployed, and managed —
+                every one of them under one roof, on infrastructure you
+                control.
               </p>
-              <div className="mt-12 grid gap-x-12 gap-y-5 sm:grid-cols-2">
-                {CAPABILITIES.map((item) => (
-                  <p
-                    key={item}
-                    className="text-sm leading-7 text-[var(--foreground)]"
-                  >
-                    {item}
-                  </p>
+              <div className="mt-14 grid gap-10 sm:grid-cols-3">
+                {AGENT_LOOP.map((item) => (
+                  <div key={item.step}>
+                    <span
+                      className="text-sm tabular-nums text-[var(--muted-light)]"
+                      style={minimalSerif()}
+                    >
+                      {item.step}
+                    </span>
+                    <h3 className="mt-3 text-lg font-medium tracking-tight">
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-7 text-[var(--muted)]">
+                      {item.body}
+                    </p>
+                  </div>
                 ))}
               </div>
             </Reveal>
           </div>
         </section>
 
-        {/* 4. Who it's for */}
+        {/* 4. Bring your own agents */}
         <section className={minimalSection()}>
+          <div className="mx-auto max-w-4xl">
+            <Reveal>
+              <p className={minimalLabel()}>Bring your own</p>
+              <h2
+                className="mt-6 text-3xl leading-[1.1] tracking-tight md:text-5xl"
+                style={minimalSerif()}
+              >
+                Your agents. Not a subscription to someone else&apos;s.
+              </h2>
+              <p className={`mt-8 max-w-2xl ${minimalBody()}`}>
+                Already running agents you trust? Connect them and manage them
+                under the same roof — alongside anything you build in Overlay.
+              </p>
+              <div className="mt-10 flex flex-wrap gap-2">
+                {BYO_AGENTS.map((agent) => (
+                  <Chip key={agent}>{agent}</Chip>
+                ))}
+              </div>
+              <p className="mt-6 text-sm leading-7 text-[var(--muted)]">
+                Anything that speaks the Agent Client Protocol can plug in.
+              </p>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* 5. Connect anywhere */}
+        <section id="platforms" className={`${minimalSection()} scroll-mt-16`}>
+          <div className="mx-auto max-w-4xl">
+            <Reveal>
+              <p className={minimalLabel()}>Connect anywhere</p>
+              <h2
+                className="mt-6 text-3xl leading-[1.1] tracking-tight md:text-5xl"
+                style={minimalSerif()}
+              >
+                Put your agents where work already happens.
+              </h2>
+              <p className={`mt-8 max-w-2xl ${minimalBody()}`}>
+                Overlay doesn&apos;t compete with the platforms people love —
+                it&apos;s amplified by them. Deploy the same agents to the
+                places your team already talks, and keep one workspace as the
+                source of truth.
+              </p>
+              <div className="mt-10 flex flex-wrap gap-2">
+                {PLATFORMS.map((platform) => (
+                  <Chip key={platform}>{platform}</Chip>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* 6. Personal by default, multiplayer optional */}
+        <section className={minimalSection()}>
+          <div className="mx-auto max-w-3xl text-center">
+            <Reveal>
+              <h2
+                className="text-3xl leading-[1.1] tracking-tight md:text-5xl"
+                style={minimalSerif()}
+              >
+                Complete alone. Better together.
+              </h2>
+              <p className={`mx-auto mt-8 max-w-2xl ${minimalBody()}`}>
+                Overlay is a full single-player experience — your agents, your
+                workspace, your rules. When you want company, invite people in
+                and build agents on shared ground. Multiplayer is optional,
+                never required.
+              </p>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* 7. Who it's for */}
+        <section id="organizations" className={`${minimalSection()} scroll-mt-16`}>
           <div className="mx-auto max-w-4xl">
             <Reveal>
               <div className="grid gap-16 md:grid-cols-2">
@@ -132,11 +235,12 @@ function HomeLandingContent() {
                     className="mt-6 text-2xl tracking-tight md:text-3xl"
                     style={minimalSerif()}
                   >
-                    Stop rebuilding context.
+                    A roster of your own.
                   </h3>
                   <p className={`mt-5 ${minimalBody()}`}>
-                    Models, files, memory, and generated work in one workspace
-                    you can understand, customize, and take with you.
+                    Every agent you create or bring lives in a workspace you
+                    own — understandable, customizable, and yours to take with
+                    you.
                   </p>
                   <div className="mt-6">
                     <a href={webAppHref} className={minimalTextLink()}>
@@ -151,12 +255,11 @@ function HomeLandingContent() {
                     className="mt-6 text-2xl tracking-tight md:text-3xl"
                     style={minimalSerif()}
                   >
-                    Your own AI environment.
+                    A shared command center.
                   </h3>
                   <p className={`mt-5 ${minimalBody()}`}>
-                    Deploy on infrastructure you control. Choose models,
-                    connect private knowledge, set permissions, and keep
-                    ownership of the resulting intelligence.
+                    Invite the team, share the agent roster, govern spend and
+                    access — and deploy on infrastructure you control.
                   </p>
                   <div className="mt-6">
                     <a
@@ -175,7 +278,7 @@ function HomeLandingContent() {
           </div>
         </section>
 
-        {/* 5. Closing */}
+        {/* 8. Closing */}
         <section className={minimalSection()}>
           <div className="mx-auto max-w-3xl text-center">
             <Reveal>
@@ -183,10 +286,11 @@ function HomeLandingContent() {
                 className="text-3xl leading-[1.1] tracking-tight md:text-5xl"
                 style={minimalSerif()}
               >
-                Every organization should own its intelligence.
+                Own your agents. Own the work they do.
               </h2>
               <p className={`mx-auto mt-6 max-w-xl ${minimalBody()}`}>
-                Start with the interface. Built by LayerNorm.
+                One workspace for the workforce you&apos;re building. Built by
+                LayerNorm.
               </p>
               <div className="mt-10 flex flex-wrap justify-center gap-3">
                 <MarketingButton

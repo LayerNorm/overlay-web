@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import HomeMarketingPage from '@/features/marketing/pages/MarketingOverviewPage'
 
 export const metadata: Metadata = {
-  title: 'Overlay — Own the interface to intelligence',
+  title: 'Overlay — The control panel for your AI workforce',
   description:
-    'One private, open workspace for AI models, knowledge, tools, agents, and automations.',
+    'Create, deploy, and manage agents in one workspace. Bring your own agents — Codex, Claude Code, Hermes — and put them to work on any platform.',
   alternates: {
     canonical: '/home',
   },
