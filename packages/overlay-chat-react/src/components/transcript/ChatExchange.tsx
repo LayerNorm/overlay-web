@@ -148,12 +148,16 @@ export function ChatExchange({
 
     const collapsePlan = useMemo(
       () => isStreaming
-        ? { collapsedSegmentIndexes: [] as number[], collapsedRowIndex: null }
+        ? { collapsedRuns: [] as number[][] }
         : planAssistantWorkCollapse(assistantSegments),
       [assistantSegments, isStreaming],
     )
     const collapsedSet = useMemo(
-      () => new Set(collapsePlan.collapsedSegmentIndexes),
+      () => new Set(collapsePlan.collapsedRuns.flat()),
+      [collapsePlan],
+    )
+    const runByStartIndex = useMemo(
+      () => new Map(collapsePlan.collapsedRuns.map((run) => [run[0]!, run])),
       [collapsePlan],
     )
     const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
@@ -300,18 +304,23 @@ export function ChatExchange({
         )}
 
         {assistantSegments.map((seg, segIdx) => {
-          if (collapsedSet.has(segIdx)) {
-            if (segIdx !== collapsePlan.collapsedRowIndex) return null
+          const run = runByStartIndex.get(segIdx)
+          if (run) {
             return (
-              <WorkedForGroup key={`${exchIdx}-worked`} durationMs={workedMs}>
-                {collapsePlan.collapsedSegmentIndexes.map((collapsedIdx, itemIdx) => {
+              <WorkedForGroup
+                key={`${exchIdx}-worked-${segIdx}`}
+                // Turn time only means something when one run covers all the
+                // work — interleaved runs share it, so they read "Worked".
+                durationMs={collapsePlan.collapsedRuns.length === 1 ? workedMs : null}
+              >
+                {run.map((collapsedIdx, itemIdx) => {
                   const collapsedSeg = assistantSegments[collapsedIdx]!
                   return (
                     <AssistantSegmentItem
-                      key={assistantSegmentKey(`${exchIdx}-worked`, collapsedSeg, isStreaming)}
+                      key={assistantSegmentKey(`${exchIdx}-worked-${segIdx}`, collapsedSeg, isStreaming)}
                       seg={collapsedSeg}
                       chainTop={itemIdx > 0}
-                      chainBottom={itemIdx < collapsePlan.collapsedSegmentIndexes.length - 1}
+                      chainBottom={itemIdx < run.length - 1}
                       ctx={segmentCtx}
                     />
                   )
@@ -319,6 +328,7 @@ export function ChatExchange({
               </WorkedForGroup>
             )
           }
+          if (collapsedSet.has(segIdx)) return null
           const chain = toolChainFlags[segIdx]!
           return (
             <AssistantSegmentItem

@@ -14,9 +14,10 @@ export function formatWorkDuration(ms: number): string {
 }
 
 /**
- * The single collapsed row a settled assistant turn shows for everything that
- * happened before its final answer — tool calls, reasoning beats, and
- * interstitial text — expanded on click to reveal them in original order.
+ * The collapsed row a settled assistant turn shows for one contiguous run of
+ * work — tool calls and reasoning beats — expanded on click to reveal them in
+ * original order. A turn with work interleaved between texts renders one row
+ * per run, at the position where the work happened.
  */
 export function WorkedForGroup({
   durationMs,

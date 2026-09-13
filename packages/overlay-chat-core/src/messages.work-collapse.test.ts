@@ -19,7 +19,7 @@ const reasoning = (text: string): AssistantVisualBlock => ({
 })
 const text = (value: string): AssistantVisualBlock => ({ kind: 'text', text: value })
 
-test('collapses tools, reasoning, and interstitial text before the final answer', () => {
+test('collapses each work run at its position; every text stays visible', () => {
   const segments = buildAssistantVisualSegments([
     reasoning('thinking'),
     tool('search_knowledge'),
@@ -28,9 +28,10 @@ test('collapses tools, reasoning, and interstitial text before the final answer'
     text('Final answer.'),
   ])
   const plan = planAssistantWorkCollapse(segments)
-  // reasoning / tool / interim text / tool all collapse; the final text stays.
-  assert.deepEqual(plan.collapsedSegmentIndexes, [0, 1, 2, 3])
-  assert.equal(plan.collapsedRowIndex, 0)
+  // reasoning+tool run before the interim text, the second tool gets its own
+  // row between the texts — and neither text collapses.
+  assert.deepEqual(plan.collapsedRuns, [[0, 1], [3]])
+  assert.equal(segments[2]!.kind, 'text')
   assert.equal(segments[4]!.kind, 'text')
 })
 
@@ -43,7 +44,7 @@ test('keeps deliverable segments inline while work around them collapses', () =>
   ])
   const plan = planAssistantWorkCollapse(segments)
   // Only the leading tool collapses; the file and draft card stay visible.
-  assert.deepEqual(plan.collapsedSegmentIndexes, [0])
+  assert.deepEqual(plan.collapsedRuns, [[0]])
 })
 
 test('a gated plan callout stays inline rather than hiding in the row', () => {
@@ -59,7 +60,7 @@ test('a gated plan callout stays inline rather than hiding in the row', () => {
   ])
   const plan = planAssistantWorkCollapse(segments)
   // save_memory collapses; the file and the gated callout stay inline.
-  assert.deepEqual(plan.collapsedSegmentIndexes, [0])
+  assert.deepEqual(plan.collapsedRuns, [[0]])
   assert.equal(segments[2]!.kind, 'tools')
 })
 
@@ -68,33 +69,37 @@ test('a pure-text message produces no collapse row', () => {
     text('First'), text('Second'),
   ])
   const plan = planAssistantWorkCollapse(segments)
-  assert.deepEqual(plan.collapsedSegmentIndexes, [])
-  assert.equal(plan.collapsedRowIndex, null)
+  assert.deepEqual(plan.collapsedRuns, [])
 })
 
-test('interstitial text alone before the answer is not "work" and stays inline', () => {
-  const segments = buildAssistantVisualSegments([text('note'), text('answer')])
-  const plan = planAssistantWorkCollapse(segments)
-  assert.deepEqual(plan.collapsedSegmentIndexes, [])
-})
-
-test('with no final text the whole run still collapses', () => {
+test('with no text the whole run still collapses', () => {
   const segments = buildAssistantVisualSegments([
     reasoning('thinking'),
     tool('search_knowledge'),
     tool('list_notes'),
   ])
   const plan = planAssistantWorkCollapse(segments)
-  assert.deepEqual(plan.collapsedSegmentIndexes, [0, 1])
-  assert.equal(plan.collapsedRowIndex, 0)
+  assert.deepEqual(plan.collapsedRuns, [[0, 1]])
 })
 
-test('segments after the final answer text never collapse', () => {
+test('work after the final text collapses into its own row at the end', () => {
   const segments = buildAssistantVisualSegments([
     tool('search_knowledge'),
     text('answer'),
     tool('save_memory'),
   ])
   const plan = planAssistantWorkCollapse(segments)
-  assert.deepEqual(plan.collapsedSegmentIndexes, [0])
+  assert.deepEqual(plan.collapsedRuns, [[0], [2]])
+})
+
+test('a full answer before a trailing tool call is not hidden by the close-out text', () => {
+  // The reported bug: text → tool → short text used to fold the answer into
+  // the collapse and only the last line rendered.
+  const segments = buildAssistantVisualSegments([
+    text('The complete fundraising answer.'),
+    tool('save_memory'),
+    text('Answered above — happy to go deeper.'),
+  ])
+  const plan = planAssistantWorkCollapse(segments)
+  assert.deepEqual(plan.collapsedRuns, [[1]])
 })
