@@ -78,6 +78,7 @@ export type RoomMessageRecord = {
   content: string
   parts?: RoomMessagePart[]
   createdAt: number
+  updatedAt?: number
   eventSequence?: number
   editedAt?: number
   editHistory?: Array<{ content: string; editedAt: number }>
@@ -220,6 +221,11 @@ export function toRoomMessageView({
     remoteQueue: remoteQueueStatus(message.parts),
     remoteRequest: remoteRequest(message.parts),
     remoteRun: remoteRunStatus(message.parts),
+    // Assistant rows are inserted with status 'generating' at turn start and
+    // patched through settle, so createdAt→updatedAt brackets the run.
+    workedDurationMs: isAgent && message.updatedAt && message.updatedAt > message.createdAt
+      ? message.updatedAt - message.createdAt
+      : undefined,
     streaming: streaming || message.status === 'generating',
   }
 }

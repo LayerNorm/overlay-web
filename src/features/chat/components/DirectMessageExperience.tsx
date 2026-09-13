@@ -497,6 +497,7 @@ export function DirectMessageExperience({
         content?: string
         parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
         createdAt: number
+        updatedAt?: number
         eventSequence?: number
         editedAt?: number
         deletedAt?: number
@@ -523,6 +524,7 @@ export function DirectMessageExperience({
             content?: string
             parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
             createdAt: number
+            updatedAt?: number
             eventSequence?: number
             editedAt?: number
             deletedAt?: number
@@ -568,6 +570,7 @@ export function DirectMessageExperience({
           content?: string
           parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
           createdAt: number
+          updatedAt?: number
           eventSequence?: number
           editedAt?: number
           deletedAt?: number

@@ -1602,14 +1602,18 @@ async function fanOutMessageNotifications(
     const conversation = await ctx.db.get(args.conversationId)
     const hasChannelMention = conversation?.conversationType === 'channel' && /(^|\s)@channel(?=\s|$)/i.test(args.body ?? '')
     const hasHereMention = conversation?.conversationType === 'channel' && /(^|\s)@here(?=\s|$)/i.test(args.body ?? '')
+    const presence = await ctx.db.query('workspacePresence')
+      .withIndex('by_workspaceId_principalId_updatedAt', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
     const activeHere = new Set<string>()
-    if (hasHereMention) {
-      const presence = await ctx.db.query('workspacePresence')
-        .withIndex('by_workspaceId_principalId_updatedAt', (q) => q.eq('workspaceId', args.workspaceId))
-        .collect()
-      for (const row of presence) {
-        if (row.status === 'online' && now - row.lastSeenAt <= 120_000) activeHere.add(row.principalId)
-      }
+    // Principals with a live presence session parked on this conversation are
+    // watching it render in real time — the activity row would be for a message
+    // they already saw arrive.
+    const viewingConversation = new Set<string>()
+    for (const row of presence) {
+      if (row.status !== 'online' || now - row.lastSeenAt > 120_000) continue
+      if (hasHereMention) activeHere.add(row.principalId)
+      if (row.conversationId === args.conversationId) viewingConversation.add(row.principalId)
     }
     const followers = args.threadRootMessageId
       ? await ctx.db.query('conversationThreadFollows')
@@ -1629,6 +1633,7 @@ async function fanOutMessageNotifications(
     for (const participant of participants) {
       const mentioned = mentions.has(participant.principalId)
       if (participant.principalId === args.actorPrincipalId) continue
+      if (viewingConversation.has(participant.principalId)) continue
       const broadcast = hasChannelMention || (hasHereMention && activeHere.has(participant.principalId))
       const followedThread = Boolean(args.threadRootMessageId && followerIds.has(participant.principalId))
       const preferences = await ctx.db.query('workspaceNotificationPreferences')

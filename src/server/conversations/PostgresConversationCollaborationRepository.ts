@@ -1424,13 +1424,16 @@ implements ConversationCollaborationRepository {
     const mentions = new Set(args.mentionedPrincipalIds ?? [])
     const hasChannelMention = conversation?.conversationType === 'channel' && /(^|\s)@channel(?=\s|$)/i.test(args.body ?? '')
     const hasHereMention = conversation?.conversationType === 'channel' && /(^|\s)@here(?=\s|$)/i.test(args.body ?? '')
-    const presenceRows = hasHereMention
-      ? await this.db.select({ principalId: workspacePresence.principalId, lastSeenAt: workspacePresence.lastSeenAt, status: workspacePresence.status })
-        .from(workspacePresence)
-        .where(and(eq(workspacePresence.workspaceId, args.workspaceId), eq(workspacePresence.status, 'online')))
-      : []
-    const activeHere = new Set(presenceRows
-      .filter((row) => now.getTime() - row.lastSeenAt.getTime() <= 120_000)
+    const presenceRows = await this.db.select({ principalId: workspacePresence.principalId, conversationId: workspacePresence.conversationId, lastSeenAt: workspacePresence.lastSeenAt, status: workspacePresence.status })
+      .from(workspacePresence)
+      .where(and(eq(workspacePresence.workspaceId, args.workspaceId), eq(workspacePresence.status, 'online')))
+    const freshPresence = presenceRows.filter((row) => now.getTime() - row.lastSeenAt.getTime() <= 120_000)
+    const activeHere = new Set(freshPresence.map((row) => row.principalId))
+    // Principals with a live presence session parked on this conversation are
+    // watching it render in real time — the activity row would be for a message
+    // they already saw arrive.
+    const viewingConversation = new Set(freshPresence
+      .filter((row) => row.conversationId === args.conversationId)
       .map((row) => row.principalId))
     const followers = args.threadRootMessageId
       ? await this.db.select({ principalId: conversationThreadFollows.principalId }).from(conversationThreadFollows).where(and(
@@ -1453,7 +1456,7 @@ implements ConversationCollaborationRepository {
       type: 'message' | 'mention' | 'thread'
       mentionScope?: 'direct' | 'channel' | 'here'
     }
-    const recipients = participants.filter((participant) => participant.principalId !== actor.id).map((participant): NotificationRecipient | null => {
+    const recipients = participants.filter((participant) => participant.principalId !== actor.id && !viewingConversation.has(participant.principalId)).map((participant): NotificationRecipient | null => {
       const directMention = mentions.has(participant.principalId)
       const broadcastMention = hasChannelMention || (hasHereMention && activeHere.has(participant.principalId))
       const followedThread = Boolean(args.threadRootMessageId && followerIds.has(participant.principalId))
@@ -2136,6 +2139,7 @@ function mapCollaborationMessage(
     tokens: row.tokens ?? undefined,
     variantIndex: row.variantIndex ?? undefined,
     createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt?.getTime(),
     replyToTurnId: row.replyToTurnId ?? undefined,
     replySnippet: row.replySnippet ?? undefined,
     routedModelId: row.routedModelId ?? undefined,

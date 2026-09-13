@@ -75,6 +75,8 @@ export type RoomMessageView = {
   remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
   remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
+  /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
+  workedDurationMs?: number
 }
 
 export type RoomMessageItemProps = {
@@ -543,6 +545,7 @@ export function RoomMessageItem({
               blocks={message.blocks}
               blockKeyPrefix={message.id}
               markdownKeyPrefix={message.id}
+              workedDurationMs={message.workedDurationMs}
               isStreaming={Boolean(message.streaming)}
               isTextStreaming={Boolean(message.streaming)}
               onOpenDraft={NOOP_DRAFT}

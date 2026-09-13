@@ -22,6 +22,8 @@ export type RawConversationMessage = {
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
   variantIndex?: number
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface ConversationMetaSnapshot {

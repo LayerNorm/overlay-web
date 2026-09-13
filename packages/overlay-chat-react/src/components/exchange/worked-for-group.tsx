@@ -34,7 +34,7 @@ export function WorkedForGroup({
 }) {
   const label =
     (durationMs != null ? `Worked for ${formatWorkDuration(durationMs)}` : 'Worked') +
-    (toolCallCount > 0 ? ` — ${toolCallCount} tool call${toolCallCount === 1 ? '' : 's'}` : '')
+    (toolCallCount > 0 ? `, called ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : '')
 
   return (
     <div className="w-full px-1 py-0.5">
