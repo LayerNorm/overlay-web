@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   Check,
@@ -58,12 +58,26 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
     }
   }, [preset, endpoint])
 
-  // Pre-fill display name from preset label
-  useEffect(() => {
-    if (!displayName && preset && !isEdit) {
-      setDisplayName(preset.label)
+  // The name users see in the providers list and model picker. Pre-filled from
+  // the preset label, or derived from the endpoint host for custom providers —
+  // never overwrites a name the user typed.
+  const derivedNameRef = useRef('')
+  const endpointHost = useMemo(() => {
+    try {
+      return new URL(endpoint.trim()).hostname.replace(/^www\./, '')
+    } catch {
+      return ''
     }
-  }, [preset, displayName, isEdit])
+  }, [endpoint])
+  useEffect(() => {
+    if (!preset || isEdit) return
+    setDisplayName((current) => {
+      if (current && current !== preset.label && current !== derivedNameRef.current) return current
+      const next = preset.allowsCustomEndpoint && endpointHost ? endpointHost : preset.label
+      derivedNameRef.current = preset.allowsCustomEndpoint ? endpointHost : ''
+      return next
+    })
+  }, [preset, endpointHost, isEdit])
 
   const handleTest = useCallback(async () => {
     setTesting(true)
@@ -252,6 +266,18 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
           </div>
         ) : null}
 
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider name</label>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            maxLength={80}
+            placeholder={preset?.allowsCustomEndpoint ? 'e.g. OpenCode Zen' : 'e.g. Personal OpenRouter key'}
+            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+          />
+        </div>
+
         {preset?.allowsCustomEndpoint ? (
           <div>
             <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
@@ -300,18 +326,6 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
               {showApiKey ? <X size={14} /> : <KeyRound size={14} />}
             </button>
           </div>
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Display name</label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            maxLength={80}
-            placeholder="e.g. Personal OpenRouter key"
-            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-          />
         </div>
 
         {/* Test results */}

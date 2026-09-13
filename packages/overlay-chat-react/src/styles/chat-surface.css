@@ -554,7 +554,8 @@
 :where(.overlay-chat-surface) .markdown-content--streaming h5,
 :where(.overlay-chat-surface) .markdown-content--streaming h6,
 :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-:where(.overlay-chat-surface) .markdown-content--streaming pre {
+:where(.overlay-chat-surface) .markdown-content--streaming pre,
+:where(.overlay-chat-surface) .markdown-content--streaming .code-block-wrapper {
   animation: overlayChatStreamBlockSoften 260ms ease-out both;
   will-change: opacity;
 }
@@ -769,7 +770,10 @@
   :where(.overlay-chat-surface) .markdown-content--streaming h5,
   :where(.overlay-chat-surface) .markdown-content--streaming h6,
   :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
-  :where(.overlay-chat-surface) .markdown-content--streaming pre {
+  :where(.overlay-chat-surface) .markdown-content--streaming pre,
+  :where(.overlay-chat-surface)
+    .markdown-content--streaming
+    .code-block-wrapper {
     animation: none;
   }
 }

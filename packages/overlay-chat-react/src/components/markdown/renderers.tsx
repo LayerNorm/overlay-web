@@ -1,6 +1,6 @@
 import { Code2, Copy, PanelRightOpen, Play } from 'lucide-react'
 import { Orb } from '@overlay/ui'
-import { lazy, Suspense, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { isValidElement, lazy, Suspense, useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
@@ -253,6 +253,14 @@ export const baseMdComponents = {
       )
     }
     return <code className={className}>{children}</code>
+  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pre({ children }: any) {
+    // Fenced blocks render via CodeBlock, which carries its own border, header,
+    // and padding — unwrapping avoids a second padded box around it (and the
+    // invalid div-inside-pre nesting).
+    if (isValidElement(children) && children.type === CodeBlock) return children
+    return <pre>{children}</pre>
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   span({ className, children }: any) {

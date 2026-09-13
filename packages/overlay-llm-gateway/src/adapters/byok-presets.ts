@@ -188,7 +188,9 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
     allowsCustomEndpoint: true,
     discoveryPath: '/models',
     discoveryShape: 'openai',
-    requiresApiKey: true,
+    // Key is optional: OpenAI-compatible endpoints can be keyless (free or
+    // IP-authed gateways). No Authorization header is sent when none is set.
+    requiresApiKey: false,
     isDefault: false,
     isDeletable: true,
     docsURL: 'https://platform.openai.com/docs/api-reference',
