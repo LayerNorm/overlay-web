@@ -175,16 +175,27 @@ export const runAutomation = internalAction({
       })
 
       if (!response.ok) {
+        // 409 means the run is no longer in 'running' — already dispatched
+        // (duplicate action delivery) or already terminal. Either way another
+        // owner exists; do not mark it failed out from under them.
+        if (response.status === 409) return null
         const text = await response.text().catch(() => '')
         throw new Error(text || `Automation runner returned ${response.status}`)
       }
 
-      const result = await response.json().catch(() => ({})) as { conversationId?: Id<'conversations'> }
-      await ctx.runMutation(internal.automations.automations.markRunCompleted, {
-        runId: args.runId,
-        conversationId: result.conversationId ?? existingConversationId,
-        now: Date.now(),
-      })
+      const result = await response.json().catch(() => ({})) as {
+        conversationId?: Id<'conversations'>
+        durable?: boolean
+      }
+      // Durable dispatches settle run status inside the workflow's own steps —
+      // marking completed here would finish the run while the turn still runs.
+      if (!result.durable) {
+        await ctx.runMutation(internal.automations.automations.markRunCompleted, {
+          runId: args.runId,
+          conversationId: result.conversationId ?? existingConversationId,
+          now: Date.now(),
+        })
+      }
     } catch (error) {
       await ctx.runMutation(internal.automations.automations.markRunFailed, {
         runId: args.runId,

@@ -321,7 +321,6 @@ export function AutomationEditorFormStory() {
         time="09:00"
         dayOfWeek={1}
         dayOfMonth={1}
-        graphSource={sampleFlowSource}
         modelId="gpt-4.1"
         timeZoneOptions={[{ value: 'America/Los_Angeles', label: 'Pacific Time', offsetMinutes: -480 }]}
         modelOptions={[{ id: 'gpt-4.1', name: 'GPT-4.1' }]}
@@ -337,7 +336,6 @@ export function AutomationEditorFormStory() {
         onTimeChange={() => undefined}
         onDayOfWeekChange={() => undefined}
         onDayOfMonthChange={() => undefined}
-        onGraphSourceChange={() => undefined}
         onModelIdChange={() => undefined}
         onSave={() => undefined}
         onTest={() => undefined}

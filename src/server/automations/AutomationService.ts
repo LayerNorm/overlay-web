@@ -15,6 +15,7 @@ import {
   AutomationEntitlementError,
   type AutomationEntitlementPolicy,
 } from './AutomationEntitlementPolicy'
+import type { AutomationScheduleWorkflowInput } from '@/server/workflows/automation-schedule'
 
 const MIN_INTERVAL_MINUTES = 15
 
@@ -57,6 +58,9 @@ export type AutomationServiceDeps = {
     projectId: string
     userId: string
   }) => Promise<boolean>
+  automationWorkflowStarter?: (
+    input: AutomationScheduleWorkflowInput,
+  ) => Promise<{ runId: string }>
   clock?: AutomationServiceClock
   events?: AutomationServiceEvents
   entitlementPolicy: AutomationEntitlementPolicy
@@ -658,6 +662,81 @@ export class AutomationService {
   // Durable execution helpers — used by the POST /api/v1/automations/{id}/run
   // route to start a workflow-based automation run.
   // -------------------------------------------------------------------------
+
+  /**
+   * Dispatch a scheduler-claimed run through the durable one-shot automation
+   * workflow. The Convex runner marks the run 'running' before POSTing, so the
+   * run must be in that state and belong to the service-auth user. The
+   * workflow's own steps settle run status — callers must not mark completion
+   * on dispatch.
+   */
+  async startDurableScheduledRun(args: {
+    runId?: string
+    serviceUserId: string
+    baseUrl: string
+  }): Promise<{ ok: true; durable: true; runId: string; workflowRunId: string }> {
+    if (!args.runId) serviceError({ error: 'runId required' }, 400)
+    const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
+    if (!payload || payload.run.status !== 'running') {
+      serviceError({ error: 'Automation run is not executable' }, 409)
+    }
+    const { run, automation } = payload
+    if (automation.userId !== args.serviceUserId) {
+      serviceError({ error: 'Unauthorized' }, 401)
+    }
+    await this.assertProjectAllowsAutomation(automation.projectId, automation.userId)
+
+    // Idempotent replay: Convex scheduled actions are at-least-once, so a
+    // duplicate dispatch must return the existing workflow instead of
+    // starting a second execution for the same run.
+    if (run.workflowRunId) {
+      return { ok: true, durable: true, runId: run._id, workflowRunId: run.workflowRunId }
+    }
+
+    const scheduleInput: AutomationScheduleWorkflowInput = {
+      automationId: automation._id,
+      userId: automation.userId,
+      name: automation.name || automation.title || 'Untitled automation',
+      description: automation.description || '',
+      instructions: automation.instructions || automation.instructionsMarkdown || '',
+      projectId: automation.projectId,
+      modelId: automation.modelId,
+      conversationId:
+        run.conversationId ||
+        automation.sourceConversationId ||
+        automation.conversationId,
+      schedule: automation.schedule ?? { kind: 'interval' as const, intervalMinutes: 60 },
+      oneShot: true,
+      baseUrl: args.baseUrl,
+      runId: run._id,
+      scheduledFor: run.scheduledFor,
+    }
+
+    // Injected rather than imported: AutomationService sits inside the
+    // workflow's own import graph (its steps call this service), so a static
+    // workflow import would be a module cycle.
+    if (!this.deps.automationWorkflowStarter) {
+      serviceError({ error: 'Durable automation dispatch is not configured' }, 503)
+    }
+    let workflowRun: { runId: string }
+    try {
+      workflowRun = await this.deps.automationWorkflowStarter(scheduleInput)
+    } catch (error) {
+      await this.markRunFailed({
+        runId: run._id,
+        userId: automation.userId,
+        error: error instanceof Error ? error.message : 'Failed to start automation workflow',
+      }).catch((_error) => null)
+      throw error
+    }
+
+    await this.updateRunWorkflowRunId({
+      runId: run._id,
+      workflowRunId: workflowRun.runId,
+    })
+
+    return { ok: true, durable: true, runId: run._id, workflowRunId: workflowRun.runId }
+  }
 
   async createManualRunForDurableExecution(args: {
     automationId: string

@@ -36,11 +36,15 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     const body = await request.json() as { runId?: string }
-    const result = await automationService.runAutomation({
+    // Scheduler-claimed runs execute through the same durable one-shot
+    // workflow as manual runs — the workflow steps own run-status settlement,
+    // so the caller must not mark completion on dispatch.
+    const result = await automationService.startDurableScheduledRun({
       runId: body.runId,
       serviceUserId: serviceAuth.userId,
       baseUrl: getInternalApiBaseUrl(request),
     })
+
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {

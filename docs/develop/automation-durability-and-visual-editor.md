@@ -431,6 +431,15 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - The model, search, browser, sandbox, media, and transcription calls made by the automation keep their own measured reservations; Workflow overhead is not folded into model usage.
 - `workspaceWallets` remains off by default. Do not enable it until the owner-funded boundary and billable-feature coverage gates pass for the deployment.
 
+**Scheduling reverted to cron dispatch (2026-10):**
+- The `sleep()`-based per-automation scheduler workflow (Step 5) could not survive deployments — no durable workflow world is configured for the deployment, so a sleeping workflow dies with the lambda. Scheduled automations silently stopped firing.
+- `convex/crons.ts` runs `automationRunner.runMinuteTick` every minute: `claimDueRuns` inserts a `queued` `automationRuns` record and atomically advances `nextRunAt` (one claim per due slot, no double-fire; a run missed during downtime fires once late, not repeatedly).
+- Each claimed run is marked `running` and POSTed to `POST /api/v1/automations/run` with a path- and method-bound service token. `AutomationService.startDurableScheduledRun` validates the claim and dispatches the **durable one-shot** `automationScheduleWorkflow` (`oneShot: true`, real `scheduledFor`) — scheduled and manual runs share one execution path, and the workflow's own steps settle run status.
+- The Convex runner no longer marks a run `completed` at dispatch time — only legacy non-durable responses (`durable !== true`) are settled inline.
+- `POST /api/v1/automations/{id}/start-scheduler` is now a backwards-compatible no-op returning `{ scheduler: 'cron', deprecated: true }`; the editor no longer calls it on enable. `cancelSchedulerWorkflow` remains to clean up any zombie scheduler runs.
+- Postgres deployments are unchanged: `PostgresSchedulerService` enqueues `automation.schedule-due` every minute and `PostgresAutomationRunCoordinator` executes `automation.execute` jobs with its own attempt/settlement lifecycle.
+- Editor simplification shipped in the same change: text instructions are the only authoring surface for new automations. The Flow card renders only for grandfathered automations whose persisted graph carries `manuallyEdited` (set by every canvas mutation since Step 4); auto-derived graphs never show it. Run history stays visible in its own section regardless.
+
 ---
 
 ## Step 8 — Production rollout

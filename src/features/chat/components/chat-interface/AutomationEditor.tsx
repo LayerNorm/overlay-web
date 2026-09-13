@@ -102,10 +102,9 @@ export function AutomationEditorPanel({
       const request = buildAutomationUpdateRequest({ automation, draft })
       const res = await overlayAppClient.automations.updateResponse(request)
       if (!res.ok) throw new Error('Failed to save automation')
-      if (draft.enabled && automation.enabled !== true) {
-        const schedulerRes = await overlayAppClient.automations.startSchedulerResponse(automation._id)
-        if (!schedulerRes.ok) throw new Error('Failed to start automation scheduler')
-      }
+      // Scheduling is owned by the minute cron claiming due runs — enabling
+      // sets nextRunAt on the automation and the next tick picks it up. No
+      // per-automation scheduler workflow is needed (and would double-fire).
       const refreshedRes = await overlayAppClient.automations.getResponse(
         { automationId: automation._id },
         { credentials: 'same-origin', cache: 'no-store' },
@@ -189,7 +188,6 @@ export function AutomationEditorPanel({
       time={draft.time}
       dayOfWeek={draft.dayOfWeek}
       dayOfMonth={draft.dayOfMonth}
-      graphSource={draft.graphSource}
       graph={draft.graph}
       modelId={draft.modelId}
       timeZoneOptions={timeZoneOptions}
@@ -208,11 +206,12 @@ export function AutomationEditorPanel({
       onTimeChange={(time) => updateDraft({ time })}
       onDayOfWeekChange={(dayOfWeek) => updateDraft({ dayOfWeek })}
       onDayOfMonthChange={(dayOfMonth) => updateDraft({ dayOfMonth })}
-      onGraphSourceChange={(graphSource) => updateDraft({ graphSource })}
       onModelIdChange={(modelId) => updateDraft({ modelId })}
       onSave={() => void saveAutomation()}
       onTest={() => void testAutomation()}
-      renderFlow={draft.graph && draft.graph.nodes.length > 0
+      // The flow surface is grandfathered: only automations whose graph was
+      // hand-edited in the canvas get it — auto-derived graphs stay text-only.
+      renderFlow={draft.graph?.manuallyEdited
         ? () => (
           <AutomationRunViewer
             graph={draft.graph!}
