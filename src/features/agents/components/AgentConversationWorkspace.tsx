@@ -191,8 +191,11 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [retryCount, setRetryCount] = useState(0)
   // The agent created by the current editor session that has never been
   // saved. Cancelling the editor archives it; a successful save (onSaved)
-  // or explicit archive (onArchived) clears the marker.
-  const [freshAgent, setFreshAgent] = useState<{ agentId: string; conversationId: string | null } | null>(null)
+  // or explicit archive (onArchived) clears the marker. A ref, not state:
+  // save calls onSaved() then closeEditor() in the same tick, and a state
+  // clear would not be visible to closeEditor's stale closure — the
+  // just-saved agent would be abandoned and archived.
+  const freshAgentRef = useRef<{ agentId: string; conversationId: string | null } | null>(null)
 
   const creatingAgentRef = useRef(false)
 
@@ -222,7 +225,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           return
         }
         if (result.agent) {
-          setFreshAgent({ agentId: result.agent.id, conversationId: result.conversationId ?? null })
+          freshAgentRef.current = { agentId: result.agent.id, conversationId: result.conversationId ?? null }
         }
         setEditorMode('edit')
       } catch (createError) {
@@ -243,9 +246,11 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     // Cancelling while a never-saved agent is open abandons creation:
     // archive the agent, drop its greeting DM, and land on the previous
     // agent (or the agents index when nothing else exists).
-    const abandoned = freshAgent && agentId === freshAgent.agentId ? freshAgent : null
+    const abandoned = freshAgentRef.current && agentId === freshAgentRef.current.agentId
+      ? freshAgentRef.current
+      : null
     if (!abandoned) return
-    setFreshAgent(null)
+    freshAgentRef.current = null
     if (!activeWorkspaceId) return
     const workspaceId = activeWorkspaceId
     clearAgentOpened(workspaceId, abandoned.agentId)
@@ -275,7 +280,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         push: (href) => router.push(href),
       }).catch(() => router.replace(buildAgentsDirectoryHref(workspaceId)))
     })()
-  }, [freshAgent, agentId, activeWorkspaceId, router])
+  }, [agentId, activeWorkspaceId, router])
 
   const workspaceActions = useAgentWorkspaceActions({
     activeWorkspaceId,
@@ -315,10 +320,10 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       onClose={closeEditor}
       onCreated={openCreatedAgent}
       onArchived={() => {
-        setFreshAgent(null)
+        freshAgentRef.current = null
         handleArchived()
       }}
-      onSaved={() => setFreshAgent(null)}
+      onSaved={() => { freshAgentRef.current = null }}
     />
   ) : null
   // Side mode docks through the screen's rightPanel slot; rendering the panel
