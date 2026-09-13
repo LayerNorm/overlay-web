@@ -52,9 +52,10 @@ export interface AssistantVisualBlocksProps {
  * transcript and multi-participant rooms so both surfaces read identically.
  *
  * While streaming, every segment renders live in original order. Once the turn
- * settles, everything before the final answer text — tool calls, reasoning,
- * interstitial narration — folds into one expandable "Worked for N" row;
- * deliverables (draft cards, gated callouts, generated files/UI) stay inline.
+ * settles, each contiguous run of work — tool calls, reasoning, browser
+ * sessions — folds into an expandable "Worked for N" row at its position;
+ * text always stays visible, and deliverables (draft cards, gated callouts,
+ * generated files/UI) stay inline.
  */
 export function AssistantVisualBlocks({
   blocks,
@@ -99,12 +100,16 @@ export function AssistantVisualBlocks({
 
   const collapsePlan = useMemo(
     () => isStreaming
-      ? { collapsedSegmentIndexes: [] as number[], collapsedRowIndex: null }
+      ? { collapsedRuns: [] as number[][] }
       : planAssistantWorkCollapse(segments),
     [segments, isStreaming],
   )
   const collapsedSet = useMemo(
-    () => new Set(collapsePlan.collapsedSegmentIndexes),
+    () => new Set(collapsePlan.collapsedRuns.flat()),
+    [collapsePlan],
+  )
+  const runByStartIndex = useMemo(
+    () => new Map(collapsePlan.collapsedRuns.map((run) => [run[0]!, run])),
     [collapsePlan],
   )
 
@@ -133,18 +138,23 @@ export function AssistantVisualBlocks({
   return (
     <>
       {segments.map((seg, segIdx) => {
-        if (collapsedSet.has(segIdx)) {
-          if (segIdx !== collapsePlan.collapsedRowIndex) return null
+        const run = runByStartIndex.get(segIdx)
+        if (run) {
           return (
-            <WorkedForGroup key={`${blockKeyPrefix}-worked`} durationMs={workedMs}>
-              {collapsePlan.collapsedSegmentIndexes.map((collapsedIdx, itemIdx) => {
+            <WorkedForGroup
+              key={`${blockKeyPrefix}-worked-${segIdx}`}
+              // The measured turn time is only truthful when one run covers all
+              // the work — interleaved runs share it, so they read "Worked".
+              durationMs={collapsePlan.collapsedRuns.length === 1 ? workedMs : null}
+            >
+              {run.map((collapsedIdx, itemIdx) => {
                 const collapsedSeg = segments[collapsedIdx]!
                 return (
                   <AssistantSegmentItem
-                    key={assistantSegmentKey(`${blockKeyPrefix}-worked`, collapsedSeg, isStreaming)}
+                    key={assistantSegmentKey(`${blockKeyPrefix}-worked-${segIdx}`, collapsedSeg, isStreaming)}
                     seg={collapsedSeg}
                     chainTop={itemIdx > 0}
-                    chainBottom={itemIdx < collapsePlan.collapsedSegmentIndexes.length - 1}
+                    chainBottom={itemIdx < run.length - 1}
                     ctx={segmentCtx}
                   />
                 )
@@ -152,6 +162,7 @@ export function AssistantVisualBlocks({
             </WorkedForGroup>
           )
         }
+        if (collapsedSet.has(segIdx)) return null
         const chain = toolChainFlags[segIdx]!
         return (
           <AssistantSegmentItem
