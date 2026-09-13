@@ -7,6 +7,7 @@ import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
+import { UsageStatementPanel } from '@/components/billing/UsageStatementPanel'
 
 const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000] as const
 
@@ -183,6 +184,10 @@ export function WorkspaceBillingSection({
           {summary.canManage ? (
             <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspace.id))}>Manage billing</Button></div>
           ) : <p className="text-xs text-[var(--muted)]">Only workspace owners and admins can add credits or change the subscription.</p>}
+
+          <UsageStatementPanel
+            endpoint={`/api/v1/workspaces/${encodeURIComponent(workspace.id)}/billing/statement`}
+          />
 
           {summary.observability ? <MarginPanel report={summary.observability} /> : null}
         </>

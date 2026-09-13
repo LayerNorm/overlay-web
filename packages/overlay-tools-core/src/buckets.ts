@@ -3,6 +3,10 @@ export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'day
 export type ToolBucket = ToolCostBucket
 
 export const INTERNAL_TOOL_IDS = new Set<string>([
+  // MCP plumbing meta-tools — the wrapped call is recorded by the meta-tool
+  // itself under the real MCP tool name, so persisting these would double-count.
+  'search_mcp_tools',
+  'call_mcp_tool',
   'search_knowledge',
   'search_in_files',
   'search_memory',

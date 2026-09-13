@@ -408,6 +408,38 @@ export default defineSchema({
     .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt']),
 
+  // Itemized per-event ledger for direct (non-reservation) usage charges —
+  // the Convex counterpart of Postgres usage_events. Reservation-backed usage
+  // is itemized on budgetReservations instead and must not also write here.
+  usageEvents: defineTable({
+    userId: v.string(),
+    billingAccountId: v.string(),
+    workspaceId: v.optional(v.string()),
+    operationId: v.string(),
+    kind: v.union(
+      v.literal('ask'),
+      v.literal('write'),
+      v.literal('agent'),
+      v.literal('embedding'),
+      v.literal('transcription'),
+      v.literal('generation'),
+      v.literal('sandbox'),
+    ),
+    modelId: v.optional(v.string()),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    cachedTokens: v.optional(v.number()),
+    durationSeconds: v.optional(v.number()),
+    providerCostMicros: v.optional(v.number()),
+    billableCostMicros: v.number(),
+    metadata: v.optional(v.any()),
+    occurredAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index('by_billingAccountId_occurredAt', ['billingAccountId', 'occurredAt'])
+    .index('by_operationId', ['operationId'])
+    .index('by_userId_occurredAt', ['userId', 'occurredAt']),
+
   administrativePrincipals: defineTable({
     userId: v.string(),
     role: v.union(
@@ -548,6 +580,11 @@ export default defineSchema({
     diskGiB: v.number(),
     costUsd: v.number(),
     costCents: v.number(),
+    // True when the charge was applied directly to the wallet at accrual time;
+    // absent/false rows were either recorded unbilled or settled through a
+    // budget reservation (which the statement already itemizes).
+    billedDirectly: v.optional(v.boolean()),
+    providerCostUsd: v.optional(v.number()),
     reason: v.union(
       v.literal('start'),
       v.literal('task'),

@@ -956,26 +956,25 @@ export async function executeActTurn(
             })
           }
         }
-        if (!isPostgresAppData) {
-          void import('@/server/tools/tools/record-tool-invocation')
-            .then(({ fireAndForgetRecordToolInvocation }) => {
-              fireAndForgetRecordToolInvocation({
-                serverSecret,
-                userId,
-                toolName: toolCall.toolName,
-                mode: 'act',
-                modelId: attemptModelId,
-                conversationId: conversationId ?? undefined,
-                turnId: tid,
-                success,
-                durationMs,
-                error,
-              })
+        void import('@/server/tools/tools/record-tool-invocation')
+          .then(({ fireAndForgetRecordToolInvocation }) => {
+            fireAndForgetRecordToolInvocation({
+              serverSecret,
+              userId,
+              workspaceId: billingWorkspaceId,
+              toolName: toolCall.toolName,
+              mode: 'act',
+              modelId: attemptModelId,
+              conversationId: conversationId ?? undefined,
+              turnId: tid,
+              success,
+              durationMs,
+              error,
             })
-            .catch((importError) => {
-              logger.warn('[conversations/act] Tool invocation recorder unavailable:', summarizeErrorForLog(importError))
-            })
-        }
+          })
+          .catch((importError) => {
+            logger.warn('[conversations/act] Tool invocation recorder unavailable:', summarizeErrorForLog(importError))
+          })
       },
       onEnd: async (event) => {
         try {

@@ -13,6 +13,14 @@ import {
   type UsageBuckets,
 } from '../../src/shared/billing/usage-buckets'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
+import {
+  buildUsageStatement,
+  normalizeUsageStatementLinesLimit,
+  normalizeUsageStatementOffset,
+  usageStatementCategoryForKind,
+  type UsageStatementCategory,
+  type UsageStatementLine,
+} from '../../src/shared/billing/usage-statement'
 import { syncPersonalBillingShadows } from '../billing/accountMigration'
 import { ensurePersonalBillingAccount } from '../billing/accountModel'
 
@@ -642,13 +650,17 @@ export const recordBatch = mutation({
         providerCostUsd: v.optional(v.number()),
         cost: v.number(),
         durationSeconds: v.optional(v.number()),
-        timestamp: v.number()
+        timestamp: v.number(),
+        metadata: v.optional(v.any()),
       })
-    )
+    ),
+    workspaceBilling: v.optional(v.object({
+      billingAccountId: v.string(),
+      workspaceId: v.string(),
+    })),
   },
-  handler: async (ctx, { serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
+  handler: async (ctx, { serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events, workspaceBilling }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const operationId = rawOperationId?.trim()
     if (operationId) {
       const existing = await ctx.db
@@ -660,20 +672,121 @@ export const recordBatch = mutation({
         return { success: true, recorded: 0, idempotent: true }
       }
     }
+
+    const now = Date.now()
+    if (workspaceBilling) {
+      const account = await ctx.db
+        .query('billingAccounts')
+        .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', workspaceBilling.billingAccountId))
+        .unique()
+      if (
+        !account
+        || account.scope !== 'workspace'
+        || account.status !== 'active'
+        || account.workspaceId !== workspaceBilling.workspaceId
+      ) {
+        throw new Error('workspace_billing_account_invalid')
+      }
+      const totalMicros = events.reduce(
+        (total, event) => total + Math.max(0, Math.round(event.cost * 10_000)),
+        0,
+      )
+      if (totalMicros > 0) {
+        await chargeWorkspaceBillingBalance(ctx, {
+          billingAccountId: account.billingAccountId,
+          chargeMicros: totalMicros,
+          strict: true,
+        })
+      }
+      for (const event of events) {
+        await insertUsageEvent(ctx, {
+          billingAccountId: account.billingAccountId,
+          event,
+          operationId: operationId ?? `batch_${now}`,
+          userId,
+          workspaceId: workspaceBilling.workspaceId,
+        })
+      }
+      if (operationId) {
+        await ctx.db.insert('usageOperations', {
+          userId,
+          billingAccountId: account.billingAccountId,
+          operationId,
+          recorded: events.length,
+          createdAt: now,
+        })
+      }
+      return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false }
+    }
+
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     await enforceFreeTierUsageLimits(ctx, userId, events, forceFreeTierLimits === true)
     const result = await applyUsageEvents(ctx, userId, events)
+    for (const event of events) {
+      await insertUsageEvent(ctx, {
+        billingAccountId: billingAccount.billingAccountId,
+        event,
+        operationId: operationId ?? `batch_${now}`,
+        userId,
+      })
+    }
     if (operationId) {
       await ctx.db.insert('usageOperations', {
         userId,
         billingAccountId: billingAccount.billingAccountId,
         operationId,
         recorded: events.length,
-        createdAt: Date.now(),
+        createdAt: now,
       })
     }
     return { ...result, recorded: events.length, idempotent: false }
   }
 })
+
+type RecordedUsageEvent = {
+  type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation' | 'sandbox'
+  modelId?: string
+  inputTokens?: number
+  outputTokens?: number
+  cachedTokens?: number
+  providerCostUsd?: number
+  cost: number
+  durationSeconds?: number
+  timestamp: number
+  metadata?: unknown
+}
+
+async function insertUsageEvent(
+  ctx: MutationCtx,
+  args: {
+    billingAccountId: string
+    event: RecordedUsageEvent
+    operationId: string
+    userId: string
+    workspaceId?: string
+  },
+): Promise<void> {
+  const { event } = args
+  await ctx.db.insert('usageEvents', {
+    userId: args.userId,
+    billingAccountId: args.billingAccountId,
+    workspaceId: args.workspaceId,
+    operationId: args.operationId,
+    kind: event.type,
+    modelId: event.modelId,
+    inputTokens: event.inputTokens,
+    outputTokens: event.outputTokens,
+    cachedTokens: event.cachedTokens,
+    durationSeconds: event.durationSeconds,
+    providerCostMicros: event.providerCostUsd === undefined
+      ? undefined
+      : Math.max(0, Math.round(event.providerCostUsd * 1_000_000)),
+    billableCostMicros: Math.max(0, Math.round(event.cost * 10_000)),
+    metadata: event.metadata === undefined ? undefined : event.metadata,
+    occurredAt: event.timestamp,
+    createdAt: Date.now(),
+  })
+}
 
 export const adjustBudgetByServer = mutation({
   args: {
@@ -1669,6 +1782,197 @@ export const getBillingAccountOperationalReportByServer = query({
   },
 })
 
+const usageStatementCategoryValidator = v.union(
+  v.literal('models'),
+  v.literal('browser'),
+  v.literal('sandbox'),
+  v.literal('generation'),
+  v.literal('transcription'),
+  v.literal('tools'),
+)
+
+async function collectUsageStatementLines(
+  ctx: QueryCtx,
+  args: {
+    billingAccountId: string
+    category?: UsageStatementCategory
+    periodEnd: number
+    periodStart: number
+  },
+): Promise<Map<UsageStatementCategory, UsageStatementLine[]>> {
+  const linesByCategory = new Map<UsageStatementCategory, UsageStatementLine[]>()
+  const push = (category: UsageStatementCategory, line: UsageStatementLine) => {
+    const list = linesByCategory.get(category) ?? []
+    list.push(line)
+    linesByCategory.set(category, list)
+  }
+
+  if (!args.category || args.category !== 'tools') {
+    const reservations = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .eq('status', 'finalized')
+        .gte('createdAt', args.periodStart)
+        .lt('createdAt', args.periodEnd))
+      .collect()
+    for (const row of reservations) {
+      const costCents = row.finalizedCents ?? 0
+      if (costCents <= 0) continue
+      const category = usageStatementCategoryForKind(row.kind, row.modelId)
+      if (args.category && category !== args.category) continue
+      push(category, {
+        id: row.reservationId,
+        occurredAt: row.createdAt,
+        label: row.modelId ?? row.operationId ?? row.kind,
+        ...(row.operationId === undefined ? {} : { detail: row.operationId }),
+        costCents,
+        ...(row.providerCostMicros === undefined
+          ? {}
+          : { providerCostUsd: row.providerCostMicros / 1_000_000 }),
+      })
+    }
+  }
+
+  {
+    const directEvents = await ctx.db
+      .query('usageEvents')
+      .withIndex('by_billingAccountId_occurredAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .gte('occurredAt', args.periodStart)
+        .lt('occurredAt', args.periodEnd))
+      .collect()
+    for (const row of directEvents) {
+      const costCents = row.billableCostMicros / 10_000
+      if (costCents <= 0) continue
+      const metadata = row.metadata as Record<string, unknown> | undefined
+      const toolId = typeof metadata?.toolId === 'string' && metadata.toolId.length > 0
+        ? metadata.toolId
+        : undefined
+      const category: UsageStatementCategory = toolId
+        ? 'tools'
+        : usageStatementCategoryForKind(row.kind, row.modelId)
+      if (args.category && category !== args.category) continue
+      push(category, {
+        id: row._id,
+        occurredAt: row.occurredAt,
+        label: toolId ?? row.modelId ?? row.operationId ?? row.kind,
+        detail: row.operationId,
+        costCents,
+        ...(row.providerCostMicros === undefined
+          ? {}
+          : { providerCostUsd: row.providerCostMicros / 1_000_000 }),
+        ...(typeof metadata?.success === 'boolean' ? { success: metadata.success } : {}),
+      })
+    }
+  }
+
+  if (!args.category || args.category === 'sandbox') {
+    const sandboxAccruals = await ctx.db
+      .query('daytonaUsageLedger')
+      .withIndex('by_billingAccountId_createdAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .gte('createdAt', args.periodStart)
+        .lt('createdAt', args.periodEnd))
+      .collect()
+    for (const row of sandboxAccruals) {
+      if (row.billedDirectly !== true || row.costCents <= 0) continue
+      push('sandbox', {
+        id: row._id,
+        occurredAt: row.createdAt,
+        label: `daytona/${row.sandboxId}`,
+        detail: row.reason,
+        costCents: row.costCents,
+        ...(row.providerCostUsd === undefined ? {} : { providerCostUsd: row.providerCostUsd }),
+      })
+    }
+  }
+
+  if (!args.category || args.category === 'tools') {
+    const invocations = await ctx.db
+      .query('toolInvocations')
+      .withIndex('by_billingAccountId_createdAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .gte('createdAt', args.periodStart)
+        .lt('createdAt', args.periodEnd))
+      .collect()
+    for (const row of invocations) {
+      const costCents = row.billableCostCents ?? 0
+      if (costCents <= 0) continue
+      push('tools', {
+        id: row._id,
+        occurredAt: row.createdAt,
+        label: row.toolId,
+        ...(row.conversationId === undefined ? {} : { detail: row.conversationId }),
+        costCents,
+        ...(row.providerCostCents === undefined
+          ? {}
+          : { providerCostUsd: row.providerCostCents / 100 }),
+        success: row.success,
+      })
+    }
+  }
+
+  return linesByCategory
+}
+
+export const getUsageStatementByServer = query({
+  args: {
+    billingAccountId: v.string(),
+    linesPerCategory: v.optional(v.number()),
+    periodEnd: v.optional(v.number()),
+    periodStart: v.number(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const linesByCategory = await collectUsageStatementLines(ctx, {
+      billingAccountId: args.billingAccountId,
+      periodEnd: args.periodEnd ?? Date.now(),
+      periodStart: args.periodStart,
+    })
+    return buildUsageStatement({
+      billingAccountId: args.billingAccountId,
+      linesByCategory,
+      linesPerCategory: args.linesPerCategory,
+      periodEnd: args.periodEnd,
+      periodStart: args.periodStart,
+    })
+  },
+})
+
+export const listUsageStatementLinesByServer = query({
+  args: {
+    billingAccountId: v.string(),
+    category: usageStatementCategoryValidator,
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+    periodEnd: v.optional(v.number()),
+    periodStart: v.number(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = normalizeUsageStatementLinesLimit(args.limit)
+    const offset = normalizeUsageStatementOffset(args.offset)
+    const linesByCategory = await collectUsageStatementLines(ctx, {
+      billingAccountId: args.billingAccountId,
+      category: args.category,
+      periodEnd: args.periodEnd ?? Date.now(),
+      periodStart: args.periodStart,
+    })
+    const all = (linesByCategory.get(args.category) ?? [])
+      .sort((a, b) => b.occurredAt - a.occurredAt)
+    const lines = all.slice(offset, offset + limit)
+    return {
+      category: args.category,
+      hasMore: offset + lines.length < all.length,
+      lines,
+      nextOffset: offset + lines.length,
+    }
+  },
+})
+
 export const markBudgetReservationStartedByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -1894,7 +2198,7 @@ function getNextWeeklyReset(): string {
   return nextMonday.toISOString()
 }
 
-/** Audit log for individual chat tool calls (Perplexity, generation, Composio, etc.). */
+/** Audit log + per-call billing for individual chat tool calls (Composio, etc.). */
 export const recordToolInvocation = mutation({
   args: {
     accessToken: v.optional(v.string()),
@@ -1905,6 +2209,8 @@ export const recordToolInvocation = mutation({
     modelId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    workspaceBillingAccountId: v.optional(v.string()),
     success: v.boolean(),
     durationMs: v.optional(v.number()),
     costBucket: v.union(
@@ -1927,10 +2233,39 @@ export const recordToolInvocation = mutation({
       accessToken: args.accessToken,
       serverSecret: args.serverSecret,
     })
-    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
+    const billableCents = Math.max(0, args.billableCostCents ?? 0)
+    const workspaceAccount = validateServerSecret(args.serverSecret)
+      && args.workspaceId !== undefined
+      && args.workspaceBillingAccountId !== undefined
+      ? await resolveWorkspaceToolBillingAccount(ctx, {
+          billingAccountId: args.workspaceBillingAccountId,
+          workspaceId: args.workspaceId,
+        })
+      : null
+
+    // The stored billableCostCents is the amount actually debited, so the
+    // statement line always equals the wallet charge.
+    let billingAccountId: string
+    let chargedCents = billableCents
+    if (workspaceAccount) {
+      billingAccountId = workspaceAccount.billingAccountId
+      if (billableCents > 0) {
+        chargedCents = (await chargeWorkspaceBillingBalance(ctx, {
+          billingAccountId,
+          chargeMicros: Math.round(billableCents * 10_000),
+        })) / 10_000
+      }
+    } else {
+      const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
+      billingAccountId = billingAccount.billingAccountId
+      if (billableCents > 0) {
+        chargedCents = await chargePersonalToolInvocation(ctx, args.userId, billableCents)
+      }
+    }
+
     await ctx.db.insert('toolInvocations', {
       userId: args.userId,
-      billingAccountId: billingAccount.billingAccountId,
+      billingAccountId,
       toolId: args.toolId.slice(0, 256),
       mode: args.mode,
       modelId: args.modelId?.slice(0, 256),
@@ -1940,7 +2275,7 @@ export const recordToolInvocation = mutation({
       durationMs: args.durationMs,
       costBucket: args.costBucket,
       providerCostCents: args.providerCostCents,
-      billableCostCents: args.billableCostCents,
+      billableCostCents: chargedCents,
       pricingVersion: args.pricingVersion,
       errorMessage: args.errorMessage?.slice(0, 2000),
       createdAt: Date.now(),
@@ -1948,6 +2283,81 @@ export const recordToolInvocation = mutation({
     return { success: true }
   },
 })
+
+async function resolveWorkspaceToolBillingAccount(
+  ctx: MutationCtx,
+  args: { billingAccountId: string; workspaceId: string },
+): Promise<Doc<'billingAccounts'> | null> {
+  const account = await ctx.db
+    .query('billingAccounts')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
+    .unique()
+  if (!account) return null
+  if (account.scope !== 'workspace' || account.status !== 'active') return null
+  if (account.workspaceId !== args.workspaceId) return null
+  return account
+}
+
+/** Direct (non-reservation) debit against a workspace wallet. Clamps to the
+ * available balance so prepaid accounts can never go negative; with `strict`
+ * the call throws `insufficient_budget` instead of partially charging.
+ * Returns the amount actually debited (micros of a cent). */
+export async function chargeWorkspaceBillingBalance(
+  ctx: MutationCtx,
+  args: { billingAccountId: string; chargeMicros: number; strict?: boolean },
+): Promise<number> {
+  const balance = await ctx.db
+    .query('billingAccountBalances')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
+    .unique()
+  if (!balance) {
+    if (args.strict) throw new Error('insufficient_budget')
+    return 0
+  }
+  const requestedMicros = Math.max(0, Math.round(args.chargeMicros))
+  let chargeMicros = requestedMicros
+  if (balance.mode !== 'unlimited') {
+    const availableMicros = balance.includedMicros
+      + balance.institutionalGrantMicros
+      + balance.topUpPurchasedMicros
+      - balance.usedMicros
+      - balance.reservedMicros
+    chargeMicros = Math.min(chargeMicros, Math.max(0, availableMicros))
+  }
+  if (args.strict && chargeMicros < requestedMicros) throw new Error('insufficient_budget')
+  if (chargeMicros <= 0) return 0
+  const allowanceRemaining = balance.mode === 'unlimited'
+    ? chargeMicros
+    : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros - balance.allowanceUsedMicros)
+  const allowanceCharge = Math.min(chargeMicros, allowanceRemaining)
+  const topUpCharge = Math.min(chargeMicros - allowanceCharge, Math.max(0, balance.topUpBalanceMicros))
+  chargeMicros = allowanceCharge + topUpCharge
+  if (args.strict && chargeMicros < requestedMicros) throw new Error('insufficient_budget')
+  if (chargeMicros <= 0) return 0
+  await ctx.db.patch(balance._id, {
+    allowanceUsedMicros: balance.allowanceUsedMicros + allowanceCharge,
+    topUpBalanceMicros: balance.topUpBalanceMicros - topUpCharge,
+    usedMicros: balance.usedMicros + chargeMicros,
+    version: balance.version + 1,
+    updatedAt: Date.now(),
+  })
+  return chargeMicros
+}
+
+async function chargePersonalToolInvocation(
+  ctx: MutationCtx,
+  userId: string,
+  chargeCents: number,
+): Promise<number> {
+  const budget = await getSubscriptionBudgetState(ctx, userId)
+  const charge = Math.min(chargeCents, budget.budgetRemainingCents)
+  if (charge <= 0) return 0
+  const allocation = allocateUsageCharge(budget.buckets, charge)
+  await persistUsageBuckets(ctx, budget.subscription._id, allocation.buckets)
+  const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
+  await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
+  return charge
+}
 
 export const listToolInvocations = query({
   args: {

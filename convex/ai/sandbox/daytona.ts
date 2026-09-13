@@ -6,7 +6,7 @@ import {
   roundCurrencyAmount,
 } from '../../../src/shared/ai/sandbox/daytona-pricing'
 import { applyMarkupToCents, centsToDollarAmount } from '../../../src/shared/billing/billing-pricing'
-import { applyUsageEvents } from '../../platform/usage'
+import { applyUsageEvents, chargeWorkspaceBillingBalance } from '../../platform/usage'
 import { ensurePersonalBillingAccount } from '../../billing/accountModel'
 
 async function authorizeUserAccess(params: {
@@ -406,6 +406,22 @@ async function accrueUsage(
   const costUsd = centsToDollarAmount(costCents)
 
   if (durationSeconds > 0) {
+    let billedCostCents = costCents
+    if (!args.deferUsageCharge) {
+      if (billingAccount.scope === 'workspace') {
+        billedCostCents = (await chargeWorkspaceBillingBalance(ctx, {
+          billingAccountId: billingAccount.billingAccountId,
+          chargeMicros: Math.round(costCents * 10_000),
+        })) / 10_000
+      } else {
+        await applyUsageEvents(ctx, args.userId, [{
+          type: 'sandbox',
+          cost: costCents,
+          timestamp: args.endedAt,
+        }])
+      }
+    }
+
     await ctx.db.insert('daytonaUsageLedger', {
       userId: args.userId,
       billingAccountId: billingAccount.billingAccountId,
@@ -418,19 +434,15 @@ async function accrueUsage(
       cpu: args.cpu,
       memoryGiB: args.memoryGiB,
       diskGiB: args.diskGiB,
-      costUsd,
-      costCents,
+      // For direct-billed accruals this is the amount actually debited, so the
+      // statement line always equals the wallet charge.
+      costUsd: centsToDollarAmount(billedCostCents),
+      costCents: billedCostCents,
+      billedDirectly: args.deferUsageCharge !== true,
+      providerCostUsd: providerCost.costUsd,
       reason: args.reason,
       createdAt: Date.now(),
     })
-
-    if (!args.deferUsageCharge) {
-      await applyUsageEvents(ctx, args.userId, [{
-        type: 'sandbox',
-        cost: costCents,
-        timestamp: args.endedAt,
-      }])
-    }
 
     const updatedAt = Date.now()
     await ctx.db.patch(workspace._id, {

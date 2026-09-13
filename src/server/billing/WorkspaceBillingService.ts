@@ -12,6 +12,12 @@ import {
 } from '@/shared/billing/billing-pricing'
 import type { BillingRepository } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
+import {
+  buildUsageStatement,
+  type UsageStatement,
+  type UsageStatementCategory,
+  type UsageStatementLinesPage,
+} from '@/shared/billing/usage-statement'
 import type { WorkspaceBillingRolloutDecision } from '@/shared/billing/workspace-billing-rollout'
 import { BillingServiceError } from './BillingCustomerService'
 
@@ -219,6 +225,55 @@ export class WorkspaceBillingService {
       stripePaymentIntentId: verification.paymentIntentId,
     })
     return { success: true, amountCents, kind: args.kind }
+  }
+
+  async statement(args: {
+    actorUserId: string
+    category?: UsageStatementCategory
+    limit?: number
+    offset?: number
+    workspaceId: string
+  }): Promise<UsageStatement | UsageStatementLinesPage> {
+    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    if (access.workspace.kind !== 'organization') this.fail('Organization workspace required.', 400)
+    const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
+      workspaceId: access.workspace.id,
+    })
+    if (!account) {
+      if (args.category) {
+        return {
+          category: args.category,
+          hasMore: false,
+          lines: [],
+          nextOffset: 0,
+        }
+      }
+      return buildUsageStatement({
+        billingAccountId: '',
+        linesByCategory: new Map(),
+        periodStart: Date.now() - 30 * 24 * 60 * 60_000,
+      })
+    }
+    const subscription = await this.deps.repository.getBillingAccountSubscriptionByServer({
+      billingAccountId: account.billingAccountId,
+    })
+    const periodStart = subscription?.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60_000
+    const periodEnd = subscription?.currentPeriodEnd
+    if (args.category) {
+      return await this.deps.usage.listUsageStatementLines({
+        billingAccountId: account.billingAccountId,
+        category: args.category,
+        limit: args.limit,
+        offset: args.offset,
+        periodEnd,
+        periodStart,
+      })
+    }
+    return await this.deps.usage.getUsageStatement({
+      billingAccountId: account.billingAccountId,
+      periodEnd,
+      periodStart,
+    })
   }
 
   private async requireManager(args: { actorUserId: string; workspaceId: string }) {

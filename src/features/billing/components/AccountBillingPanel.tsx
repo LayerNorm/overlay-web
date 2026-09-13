@@ -16,6 +16,7 @@ import type {
   TopUpHistoryItem,
 } from '@overlay/app-core'
 import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
+import { UsageStatementPanel } from '@/components/billing/UsageStatementPanel'
 import { formatBytes } from '@/shared/storage/storage-limits'
 
 export function AccountBillingPanel({
@@ -133,6 +134,13 @@ export function AccountBillingPanel({
                 entitlements={entitlements}
                 storageUsageLabel={`${formatBytes(entitlements.overlayStorageBytesUsed)} / ${formatBytes(entitlements.overlayStorageBytesLimit)}`}
               />
+
+              <section className={panelClass}>
+                <h2 className={`text-xl font-serif ${headingClass}`}>Usage this period</h2>
+                <div className="mt-4">
+                  <UsageStatementPanel endpoint="/api/v1/billing/statement" />
+                </div>
+              </section>
 
               <BillingControlsPanel panelClass={panelClass} headingClass={headingClass} mutedClass={mutedClass}>
                 <div className="mt-5">

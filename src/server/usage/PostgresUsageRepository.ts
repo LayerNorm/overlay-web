@@ -12,6 +12,7 @@ import type {
   UsageRepository,
   UsageReservationResult,
   UsageReservationStatus,
+  UsageSpendKind,
 } from './UsageRepository'
 import {
   allocateUsageCharge,
@@ -28,6 +29,16 @@ import {
   assertBillingSpendSubject,
   type ResolvedBillingPayer,
 } from '@/shared/billing/billing-payer'
+import {
+  buildUsageStatement,
+  normalizeUsageStatementLinesLimit,
+  normalizeUsageStatementOffset,
+  usageStatementCategoryForKind,
+  type UsageStatement,
+  type UsageStatementCategory,
+  type UsageStatementLine,
+  type UsageStatementLinesPage,
+} from '@/shared/billing/usage-statement'
 
 const MICROS_PER_CENT = 10_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
@@ -723,6 +734,25 @@ export class PostgresUsageRepository implements UsageRepository {
         type: 'finalize',
         userId: args.userId,
       })
+      // Reconciled spend never passed through finalize(), so it has no
+      // usage_events rows yet — record one so it appears on the statement.
+      await insertEvents(tx, {
+        billingAccountId: account.billingAccountId,
+        events: [{
+          costCents: normalized.actualCostCents!,
+          kind: reservation.kind as UsageSpendKind,
+          metadata: {
+            reconciliationEvidence: normalized.evidence.reference,
+            reconciliationReason: normalized.evidence.reason,
+            reconciliationSource: normalized.evidence.source,
+          },
+          modelId: reservation.modelId ?? undefined,
+          occurredAt: now.getTime(),
+        }],
+        operationId: args.reservationId,
+        reservationId: args.reservationId,
+        userId: args.userId,
+      })
       if (!workspaceAccount) await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       return {
         finalizedCents: normalized.actualCostCents!,
@@ -737,9 +767,16 @@ export class PostgresUsageRepository implements UsageRepository {
     forceFreeTierLimits?: boolean
     operationId: string
     userId: string
+    workspaceBilling?: { billingAccountId: string; workspaceId: string }
   }): Promise<{ recorded: number }> {
     return await this.db.transaction(async (tx) => {
-      const account = await lockOrCreateAccount(tx, args.userId)
+      const account = args.workspaceBilling
+        ? await lockWorkspaceAccount(
+            tx,
+            args.workspaceBilling.billingAccountId,
+            args.workspaceBilling.workspaceId,
+          )
+        : await lockOrCreateAccount(tx, args.userId)
       const inserted = await insertEvents(tx, {
         ...args,
         billingAccountId: account.billingAccountId,
@@ -752,7 +789,11 @@ export class PostgresUsageRepository implements UsageRepository {
         ) {
           throw new Error('insufficient_budget')
         }
-        await applyDirectSpend(tx, { account, amountMicros: totalMicros, userId: args.userId })
+        if (args.workspaceBilling) {
+          await applyWorkspaceDirectSpend(tx, { account, amountMicros: totalMicros })
+        } else {
+          await applyDirectSpend(tx, { account, amountMicros: totalMicros, userId: args.userId })
+        }
         for (const event of inserted) {
           await insertTransaction(tx, {
             amountMicros: event.billableMicros,
@@ -762,10 +803,95 @@ export class PostgresUsageRepository implements UsageRepository {
             userId: args.userId,
           })
         }
-        await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
+        if (!args.workspaceBilling) await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       }
       return { recorded: inserted.length }
     })
+  }
+
+  async getUsageStatement(args: {
+    billingAccountId: string
+    linesPerCategory?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatement> {
+    const rows = await this.selectStatementRows(args)
+    const linesByCategory = new Map<UsageStatementCategory, UsageStatementLine[]>()
+    for (const row of rows) {
+      const category = statementCategoryForRow(row)
+      const list = linesByCategory.get(category) ?? []
+      list.push(statementLineForRow(row))
+      linesByCategory.set(category, list)
+    }
+    return buildUsageStatement({
+      billingAccountId: args.billingAccountId,
+      linesByCategory,
+      linesPerCategory: args.linesPerCategory,
+      periodEnd: args.periodEnd,
+      periodStart: args.periodStart,
+    })
+  }
+
+  async listUsageStatementLines(args: {
+    billingAccountId: string
+    category: UsageStatementCategory
+    limit?: number
+    offset?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatementLinesPage> {
+    const limit = normalizeUsageStatementLinesLimit(args.limit)
+    const offset = normalizeUsageStatementOffset(args.offset)
+    const rows = await this.selectStatementRows({
+      ...args,
+      limit: limit + 1,
+      offset,
+    })
+    const lines = rows.slice(0, limit).map(statementLineForRow)
+    return {
+      category: args.category,
+      hasMore: rows.length > limit,
+      lines,
+      nextOffset: offset + lines.length,
+    }
+  }
+
+  private async selectStatementRows(args: {
+    billingAccountId: string
+    category?: UsageStatementCategory
+    limit?: number
+    offset?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatementRow[]> {
+    const periodStart = new Date(args.periodStart)
+    const periodEnd = new Date(args.periodEnd ?? Date.now())
+    const categoryFilter = args.category === undefined
+      ? sql``
+      : sql`AND ${statementCategoryFilter(args.category)}`
+    const pagination = args.limit === undefined
+      ? sql``
+      : sql`LIMIT ${args.limit} OFFSET ${args.offset ?? 0}`
+    const result = await this.db.execute<UsageStatementRow>(sql`
+      SELECT
+        id,
+        kind,
+        model_id AS "modelId",
+        provider_cost_micros AS "providerCostMicros",
+        billable_cost_micros AS "billableCostMicros",
+        metadata,
+        operation_id AS "operationId",
+        occurred_at AS "occurredAt"
+      FROM usage_events
+      WHERE billing_account_id = ${args.billingAccountId}
+        AND occurred_at >= ${periodStart}
+        AND occurred_at < ${periodEnd}
+        AND billable_cost_micros > 0
+        ${categoryFilter}
+      ORDER BY occurred_at DESC
+      ${pagination}
+    `)
+    return result.rows
   }
 
   async reconcileExpired(args: {
@@ -1312,6 +1438,77 @@ async function applyDirectSpend(tx: Transaction, args: {
         updated_at = now()
     WHERE user_id = ${args.userId}
   `)
+}
+
+async function applyWorkspaceDirectSpend(tx: Transaction, args: {
+  account: BudgetAccountRow
+  amountMicros: number
+}): Promise<void> {
+  if (args.account.mode === 'unlimited') {
+    await tx.execute(sql`
+      UPDATE billing_account_balances
+      SET used_micros = used_micros + ${args.amountMicros},
+          version = version + 1, updated_at = now()
+      WHERE billing_account_id = ${args.account.billingAccountId}
+    `)
+    return
+  }
+  const next = allocateUsageCharge(bucketsFromAccount(args.account), args.amountMicros)
+  await tx.execute(sql`
+    UPDATE billing_account_balances
+    SET used_micros = used_micros + ${args.amountMicros},
+        allowance_used_micros = ${next.buckets.allowanceUsed},
+        top_up_balance_micros = ${next.buckets.topUpBalance},
+        version = version + 1, updated_at = now()
+    WHERE billing_account_id = ${args.account.billingAccountId}
+  `)
+}
+
+type UsageStatementRow = {
+  id: string
+  kind: string
+  modelId: string | null
+  providerCostMicros: number | string | null
+  billableCostMicros: number | string
+  metadata: Record<string, unknown> | null
+  operationId: string
+  occurredAt: Date | string
+}
+
+function statementCategoryForRow(row: UsageStatementRow): UsageStatementCategory {
+  if (typeof row.metadata?.toolId === 'string' && row.metadata.toolId.length > 0) return 'tools'
+  return usageStatementCategoryForKind(row.kind as Parameters<typeof usageStatementCategoryForKind>[0], row.modelId ?? undefined)
+}
+
+function statementCategoryFilter(category: UsageStatementCategory) {
+  switch (category) {
+    case 'tools':
+      return sql`metadata->>'toolId' IS NOT NULL`
+    case 'models':
+      return sql`kind IN ('ask', 'write', 'agent', 'embedding') AND metadata->>'toolId' IS NULL`
+    case 'browser':
+      return sql`kind = 'generation' AND model_id LIKE 'browser-use/%'`
+    case 'generation':
+      return sql`kind = 'generation' AND (model_id IS NULL OR model_id NOT LIKE 'browser-use/%')`
+    case 'sandbox':
+      return sql`kind = 'sandbox'`
+    case 'transcription':
+      return sql`kind = 'transcription'`
+  }
+}
+
+function statementLineForRow(row: UsageStatementRow): UsageStatementLine {
+  const toolId = typeof row.metadata?.toolId === 'string' ? row.metadata.toolId : undefined
+  const providerCostMicros = row.providerCostMicros === null ? null : Number(row.providerCostMicros)
+  return {
+    id: row.id,
+    occurredAt: databaseTimestampToMillis(row.occurredAt),
+    label: toolId ?? row.modelId ?? row.operationId ?? row.kind,
+    ...(row.operationId ? { detail: row.operationId } : {}),
+    costCents: microsToCents(Number(row.billableCostMicros)),
+    ...(providerCostMicros === null ? {} : { providerCostUsd: providerCostMicros / 1_000_000 }),
+    ...(typeof row.metadata?.success === 'boolean' ? { success: row.metadata.success } : {}),
+  }
 }
 
 function percentageUsed(used: number, total: number): number {

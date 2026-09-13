@@ -205,6 +205,7 @@ export async function prepareActTooling(params: {
           turnId: params.turnId,
           modelId: params.effectiveModelId,
           projectId: params.conversationProjectId,
+          workspaceId: params.workspaceId,
           enabledServerIds: params.projectSettings?.enabledMcpServerIds,
         })
   const [integrationRaw, mcpToolsResult, webToolSet, perplexityTool, parallelTool] = await Promise.all([

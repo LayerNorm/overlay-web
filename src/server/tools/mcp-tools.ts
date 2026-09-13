@@ -102,6 +102,7 @@ export function buildMcpToolsContext(args: {
   conversationId?: string
   turnId?: string
   modelId?: string
+  workspaceId?: string
 }): Record<string, unknown> {
   return {
     call_mcp_tool: {
@@ -109,6 +110,7 @@ export function buildMcpToolsContext(args: {
       ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       ...(args.turnId ? { turnId: args.turnId } : {}),
       ...(args.modelId ? { modelId: args.modelId } : {}),
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     },
   }
 }
@@ -432,6 +434,7 @@ export async function createMcpLazyMetaTools(args: {
   turnId?: string
   modelId?: string
   projectId?: string
+  workspaceId?: string
   enabledServerIds?: readonly string[]
 }): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> {
   const configs = await listRuntimeMcpServers({
@@ -514,11 +517,12 @@ export async function createMcpLazyMetaTools(args: {
       conversationId: z.string().optional(),
       turnId: z.string().optional(),
       modelId: z.string().optional(),
+      workspaceId: z.string().optional(),
     }),
     execute: async ({ serverId, toolName, arguments: toolArgs }, options) => {
       // v7: context is passed via toolsContext at the agent level and made
       // available in options.context. Cast to our expected shape.
-      const context = (options?.context ?? undefined) as { userId?: string; conversationId?: string; turnId?: string; modelId?: string } | undefined
+      const context = (options?.context ?? undefined) as { userId?: string; conversationId?: string; turnId?: string; modelId?: string; workspaceId?: string } | undefined
       const config = configById.get(serverId)
       if (!config) {
         const available = configs.map((entry) => `${entry.name}=${entry._id}`).join(', ')
@@ -560,7 +564,10 @@ export async function createMcpLazyMetaTools(args: {
           errorMessage: result.isError ? 'Tool returned error flag' : undefined,
         })
         void fireAndForgetRecordToolInvocation({
+          accessToken: args.accessToken,
+          serverSecret: args.serverSecret,
           userId: context?.userId ?? args.userId,
+          workspaceId: context?.workspaceId ?? args.workspaceId,
           toolName: toolId,
           mode: 'act',
           modelId: context?.modelId ?? args.modelId,
@@ -583,7 +590,10 @@ export async function createMcpLazyMetaTools(args: {
           errorMessage: err instanceof Error ? err.message : String(err),
         }).catch((_error) => undefined)
         void fireAndForgetRecordToolInvocation({
+          accessToken: args.accessToken,
+          serverSecret: args.serverSecret,
           userId: context?.userId ?? args.userId,
+          workspaceId: context?.workspaceId ?? args.workspaceId,
           toolName: toolId,
           mode: 'act',
           modelId: context?.modelId ?? args.modelId,

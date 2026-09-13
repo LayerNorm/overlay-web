@@ -6,6 +6,11 @@ import type {
   UsageReconciliationResolution,
 } from '@/shared/billing/usage-reconciliation'
 import type { ResolvedBillingPayer } from '@/shared/billing/billing-payer'
+import type {
+  UsageStatement,
+  UsageStatementCategory,
+  UsageStatementLinesPage,
+} from '@/shared/billing/usage-statement'
 
 export type UsageSpendKind =
   | 'ask'
@@ -164,7 +169,22 @@ export interface UsageRepository {
     forceFreeTierLimits?: boolean
     operationId: string
     userId: string
+    workspaceBilling?: { billingAccountId: string; workspaceId: string }
   }): Promise<{ recorded: number }>
+  getUsageStatement(args: {
+    billingAccountId: string
+    linesPerCategory?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatement>
+  listUsageStatementLines(args: {
+    billingAccountId: string
+    category: UsageStatementCategory
+    limit?: number
+    offset?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatementLinesPage>
   reconcileExpired(args?: {
     limit?: number
     now?: number

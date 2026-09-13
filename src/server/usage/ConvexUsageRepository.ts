@@ -13,6 +13,11 @@ import type {
   UsageReservationResult,
   UsageReservationStatus,
 } from './UsageRepository'
+import type {
+  UsageStatement,
+  UsageStatementCategory,
+  UsageStatementLinesPage,
+} from '@/shared/billing/usage-statement'
 
 export class ConvexUsageRepository implements UsageRepository {
   private get serverSecret(): string {
@@ -273,6 +278,7 @@ export class ConvexUsageRepository implements UsageRepository {
     forceFreeTierLimits?: boolean
     operationId: string
     userId: string
+    workspaceBilling?: { billingAccountId: string; workspaceId: string }
   }): Promise<{ recorded: number }> {
     const result = await convex.mutation<{ recorded?: number }>('platform/usage:recordBatch', {
       events: args.events.map(toConvexEvent),
@@ -280,9 +286,42 @@ export class ConvexUsageRepository implements UsageRepository {
       operationId: args.operationId,
       serverSecret: this.serverSecret,
       userId: args.userId,
+      workspaceBilling: args.workspaceBilling,
     }, { throwOnError: true })
     if (!result) throw new Error('Failed to record usage batch')
     return { recorded: result.recorded ?? args.events.length }
+  }
+
+  async getUsageStatement(args: {
+    billingAccountId: string
+    linesPerCategory?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatement> {
+    const result = await convex.query<UsageStatement>(
+      'platform/usage:getUsageStatementByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to load usage statement')
+    return result
+  }
+
+  async listUsageStatementLines(args: {
+    billingAccountId: string
+    category: UsageStatementCategory
+    limit?: number
+    offset?: number
+    periodEnd?: number
+    periodStart: number
+  }): Promise<UsageStatementLinesPage> {
+    const result = await convex.query<UsageStatementLinesPage>(
+      'platform/usage:listUsageStatementLinesByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to load usage statement lines')
+    return result
   }
 
   async reconcileExpired(args: {
@@ -322,6 +361,7 @@ function toConvexEvent(event: UsageEvent) {
     cost: event.costCents,
     durationSeconds: event.durationSeconds,
     inputTokens: event.inputTokens,
+    metadata: event.metadata,
     modelId: event.modelId,
     outputTokens: event.outputTokens,
     providerCostUsd: event.providerCostUsd,

@@ -207,6 +207,30 @@ export async function runWorkspaceBillingProviderContract(
       assert.equal(report.realizedMarginPercent, 20)
       assert.equal(report.costCoveragePercent, 100)
       assert.equal(report.staleReconciliationReservations, 0)
+
+      const statement = await backend.usage.getUsageStatement({
+        billingAccountId: account.billingAccountId,
+        periodStart: Date.now() - 60 * 60_000,
+      })
+      const models = statement.categories.find((entry) => entry.category === 'models')
+      assert.ok(models)
+      assert.equal(models.totalCents, 80)
+      assert.ok(models.lines.length >= 1)
+      assert.equal(statement.totalCents, 80)
+      const linesPage = await backend.usage.listUsageStatementLines({
+        billingAccountId: account.billingAccountId,
+        category: 'models',
+        limit: 1,
+        periodStart: Date.now() - 60 * 60_000,
+      })
+      assert.equal(linesPage.lines.length, 1)
+      const toolsPage = await backend.usage.listUsageStatementLines({
+        billingAccountId: account.billingAccountId,
+        category: 'tools',
+        periodStart: Date.now() - 60 * 60_000,
+      })
+      assert.equal(toolsPage.lines.length, 0)
+      assert.equal(toolsPage.hasMore, false)
     })
   } finally {
     await backend.workspaces.archiveWorkspace({ actorUserId: ownerUserId, workspaceId: workspace.workspace.id }).catch((_error) => undefined)
