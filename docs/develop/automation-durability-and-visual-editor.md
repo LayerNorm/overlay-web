@@ -25,7 +25,7 @@ Two workstreams converge on one shared prerequisite:
 | On-prem parity | Hard requirement from day one | `@workflow/world-postgres` or extend existing durable job system — Step 7 |
 | Graph model scope | Full node kind set from day one, linear execution only in Step 3 | Schema supports branching/parallelism; execution wiring deferred to Step 5 |
 | Personal Chat Chat mode | ToolLoopAgent + AgentRun | Direct SSE while connected; final-only persistence; lease detects process loss |
-| Personal Chat Work mode | WorkflowAgent + AgentRun | Durable execution; streams `ModelCallStreamPart` chunks from the workflow writable to the client through `createModelCallToUIChunkTransform` |
+| Personal Chat Work mode | Manual durable loop + AgentRun | Durable execution; streams `ModelCallStreamPart` chunks from the workflow writable to the client through `createModelCallToUIChunkTransform` |
 
 ## Vercel Workflows Pricing
 
@@ -452,20 +452,26 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 Personal Chat now provides a second, durable execution policy using the same
 Workflow SDK infrastructure without coupling its lifecycle to automations.
-`workflows/personal-chat-work.ts` runs a real `WorkflowAgent`; the interactive
+`workflows/personal-chat-work.ts` runs a manual durable loop; the interactive
 request path supplies the already-authorized Personal Chat context, model,
 tools, and billing reservation as serializable input.
 
 - AgentRun remains the product lifecycle authority; Workflow is the execution
   authority. `workflowRunId` links them.
-- Tool calls execute as imported `"use step"` functions. Each durable side
-  effect receives a stable AgentRun/tool-call idempotency key for Overlay APIs.
+- The loop is manual rather than `WorkflowAgent` for the same reason as the
+  automation loop above: the SDK's internal model step resolves
+  `gateway.languageModel(<id>)`, which only knows AI Gateway model ids. The
+  `callWorkModelStep` step rebuilds the model via `getLanguageModel` inside the
+  step, so BYOK vault keys (read at call time), OpenRouter, and NVIDIA NIM all
+  work durably. Each model iteration is a durable `streamText` step; each tool
+  call is its own durable step with a stable AgentRun/tool-call idempotency
+  key for Overlay APIs.
 - Approval pauses are represented by AgentRun plus a Workflow hook. The client
   approves or denies through `/api/v1/conversations/run/approval`.
-- Work mode exposes the workflow's writable stream. The `WorkflowAgent` writes
-  `ModelCallStreamPart` chunks to the run stream, and the Act route returns them
-  through `createModelCallToUIChunkTransform` as a UI message SSE stream. The
-  client sees tokens, tool calls, and approval requests in real time; final
+- Work mode exposes the workflow's writable stream. The model step forwards
+  `ModelCallStreamPart` chunks to the run stream, and the Act route returns
+  them through `createModelCallToUIChunkTransform` as a UI message SSE stream.
+  The client sees tokens, tool calls, and approval requests in real time; final
   persistence still happens once at completion and through conversation sync on
   reconnect.
 - Work mode is text generation only. Choosing Image or Video changes the next

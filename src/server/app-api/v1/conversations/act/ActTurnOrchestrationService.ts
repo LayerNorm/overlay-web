@@ -751,7 +751,6 @@ export async function executeActTurn(
         billingUserId: userId,
         conversationId: cid,
         emitWebhook: !actWebhookSkip,
-        gatewayModelId: getGatewayModelId(effectiveModelId),
         instructions: actInstructions,
         messages: workMessages,
         modelId: effectiveModelId,
