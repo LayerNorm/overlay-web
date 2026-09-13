@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Lock,
   MessageSquare,
+  Plus,
   Puzzle,
   Search,
   ShieldCheck,
@@ -127,9 +128,10 @@ export function SecondaryMarketingLink({
 }
 
 // Nav items mirror the real app sidebar (DEFAULT_OVERLAY_NAVIGATION in @overlay/app-core):
-// Chat, Files, Extensions, Projects, Automations — same icons, same order.
+// Agents, Chats, Files, Extensions, Projects, Automations — same icons, same order.
 const demoNavItems = [
-  { label: "Chat", icon: MessageSquare },
+  { label: "Agents", icon: Bot },
+  { label: "Chats", icon: MessageSquare },
   { label: "Files", icon: FileText },
   { label: "Extensions", icon: Puzzle },
   { label: "Projects", icon: FolderOpen },
@@ -154,6 +156,39 @@ function DemoBrandMark() {
         overlay
       </span>
     </div>
+  );
+}
+
+/** Shared demo sidebar — active item follows the pane being shown. */
+function DemoSidebar({ active }: { active: string }) {
+  return (
+    <aside className="hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2 md:block">
+      <DemoBrandMark />
+      <div className="mt-4 space-y-0.5">
+        {demoNavItems.map((item) => (
+          <div
+            key={item.label}
+            className={cx(
+              "flex h-9 items-center rounded-md px-3 text-sm transition-colors",
+              item.label === active
+                ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                : "text-[var(--muted)]",
+            )}
+          >
+            <item.icon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+            <span className="ml-2.5">{item.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-2">
+        <div className="text-[11px] text-[var(--muted-light)]">Recent work</div>
+        {["Q1 planning", "Customer analysis", "Worksheet draft"].map((item) => (
+          <div key={item} className="mt-2 truncate text-[11px] text-[var(--muted-light)]">
+            {item}
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -187,33 +222,7 @@ export function ProductWorkspaceDemo({
         )}
       >
         {/* Sidebar — mirrors SidebarShell (w-56, border-r, sidebar-surface) */}
-        <aside className="hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2 md:block">
-          <DemoBrandMark />
-          <div className="mt-4 space-y-0.5">
-            {demoNavItems.map((item, index) => (
-              <div
-                key={item.label}
-                className={cx(
-                  "flex h-9 items-center rounded-md px-3 text-sm transition-colors",
-                  index === 0
-                    ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
-                    : "text-[var(--muted)]",
-                )}
-              >
-                <item.icon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
-                <span className="ml-2.5">{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-2">
-            <div className="text-[11px] text-[var(--muted-light)]">Recent work</div>
-            {["Q1 planning", "Customer analysis", "Worksheet draft"].map((item) => (
-              <div key={item} className="mt-2 truncate text-[11px] text-[var(--muted-light)]">
-                {item}
-              </div>
-            ))}
-          </div>
-        </aside>
+        <DemoSidebar active="Chats" />
 
         {/* Main content */}
         <div className="min-w-0">
@@ -291,6 +300,114 @@ export function ProductWorkspaceDemo({
             </div>
           </aside>
         ) : null}
+      </div>
+    </div>
+  );
+
+  if (tone) {
+    return <div data-theme={tone}>{inner}</div>;
+  }
+  return inner;
+}
+
+
+const demoAgents = [
+  { name: "Scout", detail: "Overlay agent · Cloud", status: "Running", reach: ["Slack", "Telegram"] },
+  { name: "Brief", detail: "Overlay agent · Cloud", status: "Running", reach: ["iMessage"] },
+  { name: "Codex", detail: "Your agent · This Mac", status: "Connected", reach: [] },
+  { name: "Claude Code", detail: "Your agent · This Mac", status: "Connected", reach: [] },
+  { name: "Hermes", detail: "Your agent · Cloud", status: "Idle", reach: [] },
+] as const;
+
+/**
+ * Agents-directory variant of the product mockup: the workspace as a control
+ * panel. Rows mix Overlay agents with bring-your-own harnesses (Codex, Claude
+ * Code, Hermes) and show where each agent is reachable — the "one roof, any
+ * platform" story in miniature. Same token discipline as ProductWorkspaceDemo.
+ */
+export function ProductAgentsDemo({ tone }: { tone?: "light" | "dark" }) {
+  const inner = (
+    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-[0_18px_60px_var(--overlay-scrim)]">
+      <div className="grid min-h-[400px] md:grid-cols-[224px_minmax(0,1fr)_240px]">
+        <DemoSidebar active="Agents" />
+
+        {/* Agent directory */}
+        <div className="min-w-0">
+          <div className="flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium">Agents</span>
+              <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">
+                {demoAgents.length}
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--button-primary-bg)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--button-primary-text)]">
+              <Plus className="h-3 w-3" strokeWidth={2} />
+              New agent
+            </span>
+          </div>
+          <div>
+            {demoAgents.map((agent) => (
+              <div
+                key={agent.name}
+                className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-b-0"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)]">
+                  <Bot className="h-4 w-4 text-[var(--muted)]" strokeWidth={1.7} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{agent.name}</p>
+                  <p className="truncate text-[11px] text-[var(--muted-light)]">{agent.detail}</p>
+                </div>
+                {agent.reach.map((platform) => (
+                  <span
+                    key={platform}
+                    className="hidden rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)] sm:inline-flex"
+                  >
+                    {platform}
+                  </span>
+                ))}
+                <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-[var(--muted)]">
+                  <span
+                    className={cx(
+                      "h-1.5 w-1.5 rounded-full",
+                      agent.status === "Running"
+                        ? "bg-[var(--success)]"
+                        : agent.status === "Connected"
+                          ? "bg-[var(--foreground)]"
+                          : "bg-[var(--muted-light)]",
+                    )}
+                  />
+                  {agent.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right rail — platforms + environments */}
+        <aside className="hidden border-l border-[var(--border)] bg-[var(--sidebar-surface)] p-3 md:block">
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium">Reachable on</p>
+              <span className="text-[10px] text-[var(--muted-light)]">Manage</span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {["Slack", "Telegram", "iMessage"].map((item) => (
+                <span
+                  key={item}
+                  className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-[10px] text-[var(--muted)]"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+          <RailBlock
+            title="Environments"
+            items={["Overlay Cloud", "This Mac", "Team server"]}
+            className="mt-5"
+          />
+        </aside>
       </div>
     </div>
   );

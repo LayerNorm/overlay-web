@@ -21,7 +21,7 @@ import {
 /**
  * Primary nav items rendered before the Use Cases dropdown. Items with `hash`
  * routes scroll to anchored sections on `/home`; `Pricing` is standalone.
- * Full order: Product · Organizations · Use Cases (dropdown) · Open Source ·
+ * Full order: Product · Agents · Platforms · Organizations · Download ·
  * Pricing · Docs.
  */
 const PRIMARY_LINKS_BEFORE: Array<{
@@ -31,8 +31,13 @@ const PRIMARY_LINKS_BEFORE: Array<{
 }> = [
   { href: "/home#product", label: "Product", match: (p) => p === "/home" },
   {
-    href: "/home#organizations",
-    label: "Organizations",
+    href: "/home#agents",
+    label: "Agents",
+    match: (p) => p === "/home",
+  },
+  {
+    href: "/home#platforms",
+    label: "Platforms",
     match: (p) => p === "/home",
   },
 ];
@@ -43,8 +48,8 @@ const PRIMARY_LINKS_AFTER: Array<{
   match: (pathname: string) => boolean;
 }> = [
   {
-    href: "/home#open-source",
-    label: "Open Source",
+    href: "/home#organizations",
+    label: "Organizations",
     match: (p) => p === "/home",
   },
   { href: "/download", label: "Download", match: (p) => p === "/download" },
