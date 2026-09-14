@@ -1,7 +1,9 @@
 # Surfaces: deploy Overlay agents to external chat platforms
 
-Status: planned — nothing implemented. Decisions marked **[decided]** are
-settled; the rest are implementation defaults open to revision.
+Status: in progress — Phase 0 landed (deps, Slack app manifest +
+`docs/develop/surfaces-slack-app.md`, env vars). Decisions marked
+**[decided]** are settled; the rest are implementation defaults open to
+revision.
 
 ## Context
 
@@ -108,16 +110,22 @@ already models external senders (built for Slack import), and the transcript
 renderer already handles them. `conversationType: 'channel'` + `channelSlug`
 fit as-is.
 
-## Phase 0 — Slack app + dependencies
+## Phase 0 — Slack app + dependencies **[landed]**
 
-- Slack app (Overlay workspace, distributed later for customer installs):
-  - Scopes: `app_mentions:read`, `chat:write`, `chat:write.customize`
-    (per-message username/avatar — how Scout posts *as Scout*),
-    `channels:read`, `groups:read` (channel picker), `im:history`, `im:read`,
-    `im:write` (DMs).
-  - Events: `app_mention`, `message.im`. Interactivity deferred (v2 approvals).
-- `npm i chat @chat-adapter/slack` + state adapter (below).
-- Env: `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`.
+- `chat`, `@chat-adapter/slack`, `@chat-adapter/state-pg`,
+  `@chat-adapter/state-memory` at 4.40.0.
+- Slack app manifest + setup steps: `docs/develop/surfaces-slack-app.md`.
+  Uses `agent_view` (Slack's native agent surface — Working indicator, stop
+  button, session titles; new apps can't use the deprecated assistant_view),
+  `chat:write.customize` for per-agent identity, `users:read.email` to feed
+  `importedAuthorEmail`, `channels:join` so the bot self-joins, and
+  `app_uninstalled`/`tokens_revoked` for degradation tracking.
+- Env: `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`,
+  `SLACK_ENCRYPTION_KEY` (encrypts stored bot tokens in the state store),
+  optional `SLACK_REDIRECT_URI`.
+- OAuth callback is `slackAdapter.handleOAuthCallback(request)` — the adapter
+  performs the code exchange and writes the installation into the state store
+  itself; our callback route adds only the `surfaceConnections` upsert.
 - Slack requires a public webhook URL: point the dev app at staging or a
   tunnel during development; production gets the real domain.
 
@@ -126,8 +134,9 @@ fit as-is.
 The SDK needs a state store (thread subscriptions, locks, dedupe marks) AND
 uses it for multi-workspace OAuth token resolution by `team_id`.
 
-- If prod has a live `DATABASE_URL`: use `@chat-adapter/state-postgres`
-  against the existing app-data Postgres. Zero new infra.
+- If prod has a live `OVERLAY_DATABASE_URL`: use `@chat-adapter/state-pg`
+  (`{ url }` passed explicitly) against the existing app-data Postgres.
+  Zero new infra.
 - If prod is Convex-only: write a thin `OverlayStateAdapter` over the app-data
   repository layer (~5 methods: subscription get/set, lock acquire/release,
   dedupe mark). Keeps backend neutrality; do it as the parity follow-up even
