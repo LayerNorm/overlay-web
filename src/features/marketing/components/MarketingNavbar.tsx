@@ -1,10 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, MoonStar, SunMedium, X } from "lucide-react";
+import { Github, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import { OverlayMark } from "@/components/orb/Orb";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
@@ -15,44 +15,28 @@ import {
 } from "@/features/marketing/lib/marketingLayout";
 import {
   MARKETING_DOCS_URL,
+  MARKETING_GITHUB_URL,
   getMarketingAppHref,
 } from "@/shared/marketing/marketing";
 
 /**
- * Primary nav items rendered before the Use Cases dropdown. Items with `hash`
- * routes scroll to anchored sections on `/home`; `Pricing` is standalone.
- * Full order: Product · Agents · Platforms · Organizations · Download ·
- * Pricing · Docs.
+ * Primary nav items — wayfinding to real surfaces, not landing-page anchors
+ * (the page scrolls fine on its own). Order: Product · Docs · Blog · Pricing.
  */
-const PRIMARY_LINKS_BEFORE: Array<{
+const PRIMARY_LINKS: Array<{
   href: string;
   label: string;
   match: (pathname: string) => boolean;
+  external?: boolean;
 }> = [
-  { href: "/home#product", label: "Product", match: (p) => p === "/home" },
+  { href: "/home", label: "Product", match: (p) => p === "/home" || p === "/" },
   {
-    href: "/home#agents",
-    label: "Agents",
-    match: (p) => p === "/home",
+    href: MARKETING_DOCS_URL,
+    label: "Docs",
+    match: () => false,
+    external: true,
   },
-  {
-    href: "/home#platforms",
-    label: "Platforms",
-    match: (p) => p === "/home",
-  },
-];
-
-const PRIMARY_LINKS_AFTER: Array<{
-  href: string;
-  label: string;
-  match: (pathname: string) => boolean;
-}> = [
-  {
-    href: "/home#organizations",
-    label: "Organizations",
-    match: (p) => p === "/home",
-  },
-  { href: "/download", label: "Download", match: (p) => p === "/download" },
+  { href: "/blog", label: "Blog", match: (p) => p === "/blog" },
   { href: "/pricing", label: "Pricing", match: (p) => p === "/pricing" },
 ];
 
@@ -72,25 +56,12 @@ function activeLinkClass(active: boolean) {
  */
 export function MarketingNavbar() {
   const pathname = usePathname() ?? "";
-  const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
   const landing = useLandingThemeOptional();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const appHref = getMarketingAppHref(isAuthenticated);
-  const accountIsActive = pathname === "/account"
-    || (pathname === "/app/settings" && searchParams?.get("section") === "account");
   const serif = marketingSerifStyle();
   const navText = marketingNavText();
-
-  // Auth-aware account/sign-in link. Authenticated users see "Account"
-  // (routes to account settings); unauthenticated users see "Sign in" (routes to the
-  // sign-in page with a sanitized redirect to the app). The two are
-  // interchangeable opposites — only one is rendered, in the same nav slot
-  // next to Docs. The right-side CTA remains "Try Overlay", which already
-  // routes authenticated users straight to the app.
-  const authNavHref = isAuthenticated ? "/app/settings?section=account" : "/auth/sign-in?redirect=%2Fapp%2Fagents";
-  const authNavLabel = isAuthenticated ? "Account" : "Sign in";
-  const authNavActive = isAuthenticated ? accountIsActive : false;
 
   return (
     <header className="sticky top-0 z-50 bg-[color:color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
@@ -111,43 +82,29 @@ export function MarketingNavbar() {
           </Link>
 
           <div className="hidden items-center gap-6 md:flex">
-            {PRIMARY_LINKS_BEFORE.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`${navText} transition-colors ${activeLinkClass(item.match(pathname))}`}
-                style={serif}
-              >
-                {item.label}
-              </Link>
-            ))}
-
-            {PRIMARY_LINKS_AFTER.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`${navText} transition-colors ${activeLinkClass(item.match(pathname))}`}
-                style={serif}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <a
-              href={MARKETING_DOCS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${navText} transition-colors ${mutedLink}`}
-              style={serif}
-            >
-              Docs
-            </a>
-            <Link
-              href={authNavHref}
-              className={`${navText} transition-colors ${activeLinkClass(authNavActive)}`}
-              style={serif}
-            >
-              {authNavLabel}
-            </Link>
+            {PRIMARY_LINKS.map((item) =>
+              item.external ? (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${navText} transition-colors ${mutedLink}`}
+                  style={serif}
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`${navText} transition-colors ${activeLinkClass(item.match(pathname))}`}
+                  style={serif}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
           </div>
 
           <div className="hidden items-center gap-2 md:flex">
@@ -165,12 +122,21 @@ export function MarketingNavbar() {
                 )}
               </button>
             ) : null}
+            <a
+              href={MARKETING_GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="GitHub"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            >
+              <Github className="h-4 w-4" />
+            </a>
             <Link
               href={appHref}
               className={`inline-flex items-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
               style={serif}
             >
-              Try Overlay
+              Get Started
             </Link>
           </div>
 
@@ -202,40 +168,50 @@ export function MarketingNavbar() {
             className="overflow-hidden border-t border-[var(--border)] bg-[var(--sidebar-surface)] px-4 py-3 md:hidden"
           >
             <div className="grid gap-2">
-              {[...PRIMARY_LINKS_BEFORE, ...PRIMARY_LINKS_AFTER].map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
-                    item.match(pathname)
-                      ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
-                      : mutedLink
-                  }`}
-                  style={serif}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {PRIMARY_LINKS.map((item) =>
+                item.external ? (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
+                    style={serif}
+                  >
+                    {item.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
+                      item.match(pathname)
+                        ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                        : mutedLink
+                    }`}
+                    style={serif}
+                  >
+                    {item.label}
+                  </Link>
+                ),
+              )}
               <a
-                href={MARKETING_DOCS_URL}
+                href={MARKETING_GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMobileMenuOpen(false)}
                 className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
                 style={serif}
               >
-                Docs
+                GitHub
               </a>
               {isAuthenticated ? (
                 <Link
                   href="/app/settings?section=account"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
-                    accountIsActive
-                      ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
-                      : mutedLink
-                  }`}
+                  className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
                   style={serif}
                 >
                   Account
@@ -261,24 +237,12 @@ export function MarketingNavbar() {
                   </button>
                 ) : null}
                 <Link
-                  href={
-                    isAuthenticated
-                      ? appHref
-                      : "/auth/sign-in?redirect=%2Fapp%2Fagents"
-                  }
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`inline-flex flex-1 items-center justify-center rounded-full border border-[var(--border)] px-4 py-2.5 ${navText} text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]`}
-                  style={serif}
-                >
-                  Sign in
-                </Link>
-                <Link
                   href={appHref}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`inline-flex flex-1 items-center justify-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2.5 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
                   style={serif}
                 >
-                  Try Overlay
+                  Get Started
                 </Link>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import HomeMarketingPage from '@/features/marketing/pages/MarketingOverviewPage'
+import '@/features/marketing/landing.css'
 
 export const metadata: Metadata = {
   title: 'Overlay — The control panel for your AI workforce',
