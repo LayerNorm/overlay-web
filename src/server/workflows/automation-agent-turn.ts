@@ -162,9 +162,7 @@ export async function checkAutomationEnabled(input: {
 
 export async function runAutomationAgentTurn(
   input: AutomationAgentTurnInput,
-): Promise<{ conversationId: string }> {
-  const { workflowRunId } = getWorkflowMetadata()
-
+): Promise<{ conversationId: string; replyText: string }> {
   const ensured = await ensureConversationStep(input)
   const turnInput = { ...input, conversationId: ensured.conversationId, workspaceId: ensured.workspaceId }
 
@@ -178,6 +176,22 @@ export async function runAutomationAgentTurn(
       turnId: input.turnId,
     })
   }
+
+  return await runDurableAgentTurn(turnInput)
+}
+
+/**
+ * The durable prepare → model/tool loop → finalize sequence, shared by the
+ * automation workflow and the surface (Slack) workflow. Must be invoked from
+ * a `'use workflow'` scope — the steps inside it are what make the turn
+ * durable. Returns the final assistant text so surface callers can relay it
+ * back to the platform.
+ */
+export async function runDurableAgentTurn(
+  turnInput: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
+): Promise<{ conversationId: string; replyText: string }> {
+  const { workflowRunId } = getWorkflowMetadata()
+  const input = turnInput
 
   let plan: AutomationAgentTurnPlan | undefined
   const allSteps: StepResult<ToolSet>[] = []
@@ -329,7 +343,7 @@ export async function runAutomationAgentTurn(
           toolFailures: turnToolFailures,
           workflowRunId,
         })
-        return { conversationId: resolvedPlan.conversationId }
+        return { conversationId: resolvedPlan.conversationId, replyText: call.text }
       }
 
       // response.messages holds only the messages generated this call (the

@@ -86,6 +86,20 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'computers',
   },
   {
+    id: 'surfaces',
+    methods: '*',
+    prefixes: ['/api/v1/surfaces'],
+    status: 'supported',
+    feature: 'surfaces',
+  },
+  {
+    id: 'surface-webhooks',
+    methods: '*',
+    prefixes: ['/api/v1/webhooks/slack'],
+    status: 'supported',
+    feature: 'surfaces',
+  },
+  {
     id: 'slack-imports-convex-only',
     methods: '*',
     prefixes: ['/api/v1/imports/slack'],
