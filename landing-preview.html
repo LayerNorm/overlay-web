@@ -26,6 +26,8 @@
     --serif: 'Libre Baskerville', Georgia, serif;
     --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --hairline: 1px solid var(--border);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   }
   [data-theme="dark"] {
     --background: #09090b;
@@ -45,11 +47,13 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
+  ::selection { background: var(--foreground); color: var(--background); }
   body {
     background: var(--background); color: var(--foreground);
     font-family: var(--sans); font-size: 15px; line-height: 1.6;
     -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
+  section[id] { scroll-margin-top: 72px; }
   .serif { font-family: var(--serif); }
   a { color: inherit; text-decoration: none; }
   button { font-family: var(--sans); }
@@ -68,12 +72,20 @@
   .nav-links a { color: var(--muted); transition: color .15s; }
   .nav-links a:hover { color: var(--foreground); }
   .nav-right { display: flex; align-items: center; gap: 10px; }
-  .nav-right .signin { color: var(--muted); font-size: 13.5px; }
+  .nav-icon {
+    width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 8px; color: var(--muted);
+    transition: transform 140ms var(--ease-out), background 150ms ease, color 150ms ease;
+  }
+  .nav-icon:hover { background: var(--surface-muted); color: var(--foreground); }
+  .nav-icon:active { transform: scale(.94); }
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     border-radius: 999px; font-size: 13.5px; font-weight: 500;
-    padding: 8px 16px; border: none; cursor: pointer; transition: opacity .15s, background .15s, color .15s;
+    padding: 8px 16px; border: none; cursor: pointer;
+    transition: transform 160ms var(--ease-out), opacity 150ms ease, background 150ms ease, color 150ms ease;
   }
+  .btn:active { transform: scale(.97); }
   .btn-primary { background: var(--button-primary-bg); color: var(--button-primary-text); }
   .btn-primary:hover { opacity: .88; }
   .btn-secondary { background: var(--surface-elevated); color: var(--foreground); border: var(--hairline); }
@@ -85,9 +97,22 @@
     background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;
   }
   .theme-toggle:hover { background: var(--surface-muted); color: var(--foreground); }
+  .theme-toggle:active { transform: scale(.94); }
+  .theme-toggle { transition: transform 140ms var(--ease-out), background 150ms ease, color 150ms ease; }
+
+  /* pressable elements all answer with a subtle press */
+  .rail-btn, .panel-row, .panel-subnav-item, .panel-icon-btn, .panel-action-btn,
+  .chip, .desktop-chip, .topbar-icon-btn, .send-btn, .logo-pill, .agent-row,
+  .mini-panel .rowitem, .avatar-dot, .worked-row, .tool-row {
+    transition: transform 140ms var(--ease-out), background 150ms ease, color 150ms ease, opacity 150ms ease, box-shadow 150ms ease;
+  }
+  .rail-btn:active, .panel-row:active, .panel-subnav-item:active, .panel-icon-btn:active,
+  .panel-action-btn:active, .chip:active, .desktop-chip:active, .topbar-icon-btn:active,
+  .send-btn:active, .logo-pill:active, .agent-row:active, .mini-panel .rowitem:active,
+  .avatar-dot:active, .worked-row:active, .tool-row:active { transform: scale(.97); }
 
   /* ---- Hero ---- */
-  .hero { padding: 88px 0 0; }
+  .hero { padding: 88px 0 0; position: relative; }
   .hero-grid { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,0.95fr); gap: 40px; align-items: center; }
   .hero h1 {
     font-family: var(--serif); font-weight: 400;
@@ -102,26 +127,41 @@
     border: var(--hairline); border-radius: 999px; padding: 2px 9px; background: var(--surface-elevated);
   }
   .hero-new:hover { color: var(--foreground); }
+  .hero-assure { margin-top: 14px; font-size: 12px; color: var(--muted-light); }
+
+  /* one orchestrated entrance, transform+opacity only */
+  .rise {
+    opacity: 0; transform: translateY(10px);
+    animation: rise 560ms var(--ease-out) forwards;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  @keyframes rise { to { opacity: 1; transform: translateY(0) } }
+  @media (prefers-reduced-motion: reduce) { .rise { animation: none; opacity: 1; transform: none } }
 
   /* shuffled agent cluster to the right of the hero copy */
   .agent-field { position: relative; height: 420px; user-select: none; }
   .af-card, .af-pill {
     position: absolute; cursor: pointer; border: var(--hairline);
     background: var(--surface-elevated); color: var(--foreground);
-    box-shadow: 0 1px 2px var(--scrim), 0 14px 40px -14px var(--scrim);
+    box-shadow: 0 1px 2px var(--scrim), 0 6px 16px -8px var(--scrim);
     display: flex; align-items: center; text-align: left;
-    transition: translate .2s ease, box-shadow .2s ease;
+    transition: translate 200ms var(--ease-out), box-shadow 200ms ease, transform 140ms var(--ease-out);
   }
   .af-card { border-radius: 12px; padding: 12px 14px; gap: 10px; min-width: 168px; }
-  .af-card .n { font-size: 13px; font-weight: 600; line-height: 1.3; }
+  .af-card .n { font-size: 13px; font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
   .af-card .s { font-size: 10.5px; color: var(--muted-light); white-space: nowrap; }
   .af-pill { border-radius: 999px; padding: 8px 14px; gap: 8px; font-size: 12px; font-weight: 500; }
   .af-pill img { width: 15px; height: 15px; }
-  .af-card:hover, .af-pill:hover {
-    translate: 0 -4px;
-    box-shadow: 0 2px 4px var(--scrim), 0 22px 54px -16px var(--scrim);
-    z-index: 5;
+  .af-card:active, .af-pill:active { transform: scale(.97) rotate(var(--rot, 0deg)); }
+  @media (hover: hover) and (pointer: fine) {
+    .af-card:hover, .af-pill:hover {
+      translate: 0 -4px;
+      box-shadow: 0 2px 4px var(--scrim), 0 12px 28px -10px var(--scrim);
+      z-index: 5;
+    }
   }
+  .af-live { width: 6px; height: 6px; border-radius: 999px; background: var(--success); display: inline-block; animation: pulse-dot 2.2s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
   .af-float { animation: af-float 7s ease-in-out infinite; }
   .af-float.d2 { animation-duration: 9s; animation-delay: -3s; }
   .af-float.d3 { animation-duration: 11s; animation-delay: -6s; }
@@ -133,7 +173,9 @@
   .shot-frame {
     border: var(--hairline); border-radius: 12px;
     background: var(--surface-elevated);
-    box-shadow: 0 1px 2px var(--scrim), 0 24px 80px -24px var(--scrim);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 70%, transparent),
+      0 1px 2px var(--scrim), 0 32px 90px -28px var(--scrim);
     overflow: hidden;
   }
   .appshell {
@@ -218,7 +260,11 @@
   .panel-row .name { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .panel-row .sub { font-size: 10.5px; color: var(--muted-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .panel-row .time { font-size: 10px; color: var(--muted-light); flex-shrink: 0; }
-  .panel-section-label { padding: 12px 10px 5px; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-light); }
+  /* Overlay's own label motif: lowercase serif, not tracked-out caps */
+  .panel-section-label {
+    padding: 12px 10px 5px; font-family: var(--serif); font-size: 12px;
+    letter-spacing: .01em; color: var(--muted-light);
+  }
   .byo-logo {
     width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0;
     display: inline-flex; align-items: center; justify-content: center;
@@ -337,7 +383,7 @@
   .figures { margin-top: 84px; display: grid; grid-template-columns: repeat(3, 1fr); }
   .figure { padding: 0 32px; }
   .figure + .figure { border-left: var(--hairline); }
-  .figure .fig-label { font-size: 10px; letter-spacing: .14em; color: var(--muted-light); font-weight: 600; }
+  .figure .fig-label { font-family: var(--serif); font-size: 12px; letter-spacing: .02em; color: var(--muted-light); }
   .figure .art { height: 200px; display: flex; align-items: center; justify-content: center; }
   .figure h3 { font-size: 14px; font-weight: 600; margin-top: 18px; }
   .figure p { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
@@ -355,7 +401,9 @@
   }
   .card {
     background: var(--surface-elevated); border: var(--hairline); border-radius: 10px;
-    box-shadow: 0 1px 2px var(--scrim), 0 16px 48px -16px var(--scrim);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 70%, transparent),
+      0 1px 2px var(--scrim), 0 16px 48px -16px var(--scrim);
     overflow: hidden;
   }
   .card-head {
@@ -455,10 +503,10 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
     color: var(--muted-light); font-size: 12px; text-align: center; padding: 40px; min-height: 300px;
   }
-  .img-slot .label { font-weight: 600; letter-spacing: .1em; text-transform: uppercase; font-size: 10px; }
+  .img-slot .label { font-family: var(--serif); font-size: 12.5px; letter-spacing: .01em; }
 
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
-  .split .label { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted-light); }
+  .split .label { font-family: var(--serif); font-size: 13px; letter-spacing: .01em; color: var(--muted-light); }
   .split h3 { font-family: var(--serif); font-weight: 400; font-size: 26px; letter-spacing: -0.015em; margin-top: 16px; }
   .split p { margin-top: 14px; font-size: 14.5px; color: var(--muted); line-height: 1.7; }
 
@@ -519,6 +567,7 @@
     <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 11-14h-7l1-6z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21.4 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 18c-4.51 2-5-2-7-2" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   </defs>
 </svg>
 
@@ -557,20 +606,19 @@
       overlay
     </a>
     <nav class="nav-links">
-      <a href="#product">Product</a>
-      <a href="#agents">Agents</a>
-      <a href="#platforms">Platforms</a>
-      <a href="#computers">Computers</a>
-      <a href="#organizations">Organizations</a>
-      <a href="#">Pricing</a>
+      <a href="#">Product</a>
       <a href="#">Docs</a>
+      <a href="#">Blog</a>
+      <a href="#">Pricing</a>
     </nav>
     <div class="nav-right">
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
         <svg width="16" height="16"><use href="#i-moon"/></svg>
       </button>
-      <a class="signin" href="#">Sign in</a>
-      <a class="btn btn-primary" href="#">Try Overlay</a>
+      <a class="nav-icon" href="https://github.com/LayerNorm/overlay-web" aria-label="GitHub">
+        <svg width="16" height="16"><use href="#i-github"/></svg>
+      </a>
+      <a class="btn btn-primary" href="#">Get Started</a>
     </div>
   </div>
 </header>
@@ -581,60 +629,61 @@
     <div class="wrap">
       <div class="hero-grid">
         <div>
-          <h1>The control panel for your AI workforce.</h1>
-          <p class="hero-sub">
+          <h1 class="rise" style="--i:0">The control panel for your AI workforce.</h1>
+          <p class="hero-sub rise" style="--i:1">
             Create, deploy, and manage your agents in one workspace — or bring the
             ones you already trust. Then put them to work on any platform.
           </p>
-          <div class="hero-ctas">
-            <a class="btn btn-primary" href="#">Try Overlay <svg width="14" height="14"><use href="#i-arrow"/></svg></a>
+          <div class="hero-ctas rise" style="--i:2">
+            <a class="btn btn-primary" href="#">Get Started <svg width="14" height="14"><use href="#i-arrow"/></svg></a>
             <a class="btn btn-secondary" href="#">Download for macOS</a>
             <a class="btn btn-ghost" href="#">Deploy privately ↗</a>
           </div>
-          <a class="hero-new" href="#computers"><span class="tag">New</span> Persistent computers for every agent →</a>
+          <p class="hero-assure rise" style="--i:3">Free tier included — no card required.</p>
+          <a class="hero-new rise" style="--i:4" href="#computers"><span class="tag">New</span> Persistent computers for every agent →</a>
         </div>
-        <div class="agent-field" aria-hidden="true">
+        <div class="agent-field rise" style="--i:5" aria-hidden="true">
           <!-- Overlay agents (creatures) -->
-          <button class="af-card af-float" style="left:0;top:36px;transform:rotate(-6deg)" onclick="toast('Scout — Overlay agent')">
+          <button class="af-card af-float" style="left:0;top:36px;transform:rotate(-6deg);--rot:-6deg" onclick="toast('Scout — Overlay agent')">
             <span class="cw" data-creature="blob:#8b5cf6:34"></span>
-            <span><span class="n">Scout</span><br/><span class="s">working on its computer</span></span>
+            <span><span class="n">Scout <span class="af-live"></span></span><br/><span class="s">working on its computer</span></span>
           </button>
-          <button class="af-card af-float d2" style="left:28px;top:196px;transform:rotate(4deg)" onclick="toast('Hermes — your agent, in the cloud')">
+          <button class="af-card af-float d2" style="left:28px;top:196px;transform:rotate(4deg);--rot:4deg" onclick="toast('Hermes — your agent, in the cloud')">
             <span class="cw" data-creature="cloud:#0284c7:34"></span>
             <span><span class="n">Hermes</span><br/><span class="s">idle · reachable on web</span></span>
           </button>
-          <button class="af-card af-float d3" style="left:196px;top:268px;transform:rotate(-5deg)" onclick="toast('Brief — Overlay agent')">
+          <button class="af-card af-float d3" style="left:196px;top:268px;transform:rotate(-5deg);--rot:-5deg" onclick="toast('Brief — Overlay agent')">
             <span class="cw" data-creature="droplet:#d97706:34"></span>
             <span><span class="n">Brief</span><br/><span class="s">drafts your weekly digest</span></span>
           </button>
-          <button class="af-card" style="right:8px;top:128px;transform:rotate(7deg)" onclick="toast('Ledge — Overlay agent')">
+          <button class="af-card" style="right:8px;top:128px;transform:rotate(7deg);--rot:7deg" onclick="toast('Ledge — Overlay agent')">
             <span class="cw" data-creature="hexagon:#0ea5e9:34"></span>
             <span><span class="n">Ledge</span><br/><span class="s">on iMessage</span></span>
           </button>
           <!-- bring-your-own agents (brand logos) -->
-          <button class="af-pill af-float d2" style="right:24px;top:0;transform:rotate(5deg)" onclick="toast('Claude Code — connected from this Mac')">
+          <button class="af-pill af-float d2" style="right:24px;top:0;transform:rotate(5deg);--rot:5deg" onclick="toast('Claude Code — connected from this Mac')">
             <img src="https://svgl.app/library/claude-ai-icon.svg" alt=""/>Claude Code
           </button>
-          <button class="af-pill af-float d3" style="left:184px;top:96px;transform:rotate(3deg)" onclick="toast('Codex — connected from this Mac')">
+          <button class="af-pill af-float d3" style="left:184px;top:96px;transform:rotate(3deg);--rot:3deg" onclick="toast('Codex — connected from this Mac')">
             <img src="https://svgl.app/library/openai.svg" data-lt="https://svgl.app/library/openai.svg" data-dk="https://svgl.app/library/openai_dark.svg" alt=""/>Codex
           </button>
-          <button class="af-pill" style="right:48px;top:236px;transform:rotate(-7deg)" onclick="toast('Cursor — connected')">
+          <button class="af-pill" style="right:48px;top:236px;transform:rotate(-7deg);--rot:-7deg" onclick="toast('Cursor — connected')">
             <img src="https://svgl.app/library/cursor_light.svg" data-lt="https://svgl.app/library/cursor_light.svg" data-dk="https://svgl.app/library/cursor_dark.svg" alt=""/>Cursor
           </button>
-          <button class="af-pill af-float" style="right:150px;top:330px;transform:rotate(-3deg)" onclick="toast('Windsurf — connected')">
+          <button class="af-pill af-float" style="right:150px;top:330px;transform:rotate(-3deg);--rot:-3deg" onclick="toast('Windsurf — connected')">
             <img src="https://svgl.app/library/windsurf-light.svg" data-lt="https://svgl.app/library/windsurf-light.svg" data-dk="https://svgl.app/library/windsurf-dark.svg" alt=""/>Windsurf
           </button>
         </div>
       </div>
     </div>
 
-    <div class="wrap hero-shot" id="product">
+    <div class="wrap hero-shot rise" id="product" style="--i:6">
       <div class="shot-frame">
         <div class="appshell">
           <!-- primary rail -->
           <div class="rail">
             <div class="rail-brand" title="overlay">
-              <svg width="24" height="24" viewBox="0 0 200 200"><g clip-path="url(#orb-clip)"><circle cx="100" cy="100" r="96" fill="url(#orb-metal)"/><use href="#orb-shading"/></g></svg>
+              <svg width="15" height="15" viewBox="0 0 200 200"><g clip-path="url(#orb-clip)"><circle cx="100" cy="100" r="96" fill="url(#orb-metal)"/><use href="#orb-shading"/></g></svg>
             </div>
             <nav class="rail-nav" id="railNav"><!-- rail buttons injected --></nav>
             <div class="rail-foot">
@@ -695,6 +744,7 @@
                 <ellipse cx="0" cy="0" rx="46" ry="20"/><ellipse cx="0" cy="16" rx="58" ry="26"/>
                 <ellipse cx="0" cy="32" rx="70" ry="32"/><ellipse cx="0" cy="48" rx="82" ry="38"/>
                 <ellipse cx="0" cy="64" rx="94" ry="44"/>
+                <circle cx="0" cy="0" r="3" fill="var(--muted-light)" stroke="none"/>
               </g>
             </svg>
           </div>
@@ -735,6 +785,7 @@
                 <rect x="0" y="0" width="60" height="100" rx="3"/><rect x="18" y="8" width="60" height="100" rx="3"/>
                 <rect x="36" y="16" width="60" height="100" rx="3"/><rect x="54" y="24" width="60" height="100" rx="3"/>
                 <rect x="72" y="32" width="60" height="100" rx="3" fill="var(--background)"/>
+                <circle cx="102" cy="82" r="3" fill="var(--muted-light)" stroke="none"/>
               </g>
             </svg>
           </div>
@@ -990,7 +1041,7 @@
             </div>
             <div class="img-slot" style="min-height:230px">
               <svg width="22" height="22"><use href="#i-image"/></svg>
-              <div><div class="label">Screenshot</div>Spend &amp; usage dashboard</div>
+              <div><div class="label">screenshot</div>Spend &amp; usage dashboard</div>
             </div>
           </div>
         </div>
@@ -1003,13 +1054,13 @@
     <div class="wrap">
       <div class="split">
         <div>
-          <div class="label">For individuals</div>
+          <div class="label">for individuals</div>
           <h3>A roster of your own.</h3>
           <p>Every agent you create or bring lives in a workspace you own — understandable, customizable, and yours to take with you. Complete alone; multiplayer is optional, never required.</p>
-          <a class="learn-more" href="#">Try Overlay <svg width="12" height="12"><use href="#i-arrow"/></svg></a>
+          <a class="learn-more" href="#">Get Started <svg width="12" height="12"><use href="#i-arrow"/></svg></a>
         </div>
         <div>
-          <div class="label">For organizations</div>
+          <div class="label">for organizations</div>
           <h3>A shared command center.</h3>
           <p>Invite the team, share the agent roster, govern spend and access — and deploy on infrastructure you control.</p>
           <a class="learn-more" href="#">Talk about private deployment <svg width="12" height="12"><use href="#i-arrow"/></svg></a>
@@ -1024,7 +1075,7 @@
       <h2>Own your agents.<br/>Own the work they do.</h2>
       <p>One workspace for the workforce you're building. Built by LayerNorm.</p>
       <div class="hero-ctas">
-        <a class="btn btn-primary" href="#">Try Overlay <svg width="14" height="14"><use href="#i-arrow"/></svg></a>
+        <a class="btn btn-primary" href="#">Get Started <svg width="14" height="14"><use href="#i-arrow"/></svg></a>
         <a class="btn btn-secondary" href="#">Deploy for your organization ↗</a>
       </div>
     </div>
@@ -1328,10 +1379,10 @@ document.getElementById('themeToggle').addEventListener('click',()=>{
 let toastEl;
 function toast(msg){
   if(!toastEl){toastEl=document.createElement('div');
-    toastEl.style.cssText='position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--foreground);color:var(--background);font-size:12px;padding:8px 14px;border-radius:8px;z-index:99;opacity:0;transition:opacity .15s;pointer-events:none';
+    toastEl.style.cssText='position:fixed;bottom:22px;left:50%;translate:-50% 4px;background:var(--foreground);color:var(--background);font-size:12px;padding:8px 14px;border-radius:8px;z-index:99;opacity:0;transition:opacity 180ms ease,translate 180ms var(--ease-out);pointer-events:none';
     document.body.appendChild(toastEl);}
-  toastEl.textContent=msg;toastEl.style.opacity='1';
-  clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.style.opacity='0',1400);
+  toastEl.textContent=msg;toastEl.style.opacity='1';toastEl.style.translate='-50% 0';
+  clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>{toastEl.style.opacity='0';toastEl.style.translate='-50% 4px'},1400);
 }
 document.querySelectorAll('.plat-card,.rowitem,.logo-pill,.learn-more,.hero-ctas a,.nav-links a[href="#"],.foot-col a').forEach(el=>{
   el.addEventListener('click',e=>{if(el.getAttribute('href')==='#')e.preventDefault()});
