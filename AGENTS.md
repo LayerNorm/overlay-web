@@ -16,6 +16,7 @@
 - For verification, run the smallest check that covers the change. In this repo, targeted ESLint on changed files is acceptable when full `npm run lint` is blocked by unrelated generated or mobile issues.
 - Model dropdowns: order by intelligence/quality (`CHAT_MODEL_QUALITY_PRIORITY`), not provider grouping or alphabetical order; keep free-tier "Auto" at the top. Capability badges are small chips (`inline-flex w-4 h-4 rounded bg-[#f0f0f0]`) with thin Lucide icons (`ScanEye` vision, `Sparkles` reasoning)—only when the model supports the capability. Reveal secondary info (e.g. cost) on row hover via `group/row` + `group-hover/row:hidden` / `hidden group-hover/row:flex`.
 - Streaming text must render in complete, markdown-formatted chunks without per-character diffs that cause visible flickering. Agent loading should use bottom-placed dots, not parallel "Thinking..." text. Tool-call/action UIs should be minimal, collapsed, and sequential by default.
+- For quick UI prototypes, visual mockups, or throwaway demos, create a standalone HTML file in `artifacts/` (gitignored, repo root) and preview it in the browser—don't scaffold app code or routes until the design is approved.
 
 ## Learned Workspace Facts
 

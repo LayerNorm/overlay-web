@@ -110,3 +110,6 @@ optimizations.md
 
 # Local smoke test scripts (not shipped)
 scripts/composio-slack-smoke/
+
+# Quick UI prototypes / mockups (local artifacts, not shipped)
+/artifacts/
