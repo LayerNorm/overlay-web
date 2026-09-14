@@ -12,7 +12,8 @@
 .bodyWrap {
   color: var(--cwf);
 }
-:root[data-theme='dark'] .bodyWrap {
+:root[data-theme='dark'] .bodyWrap,
+[data-landing-theme='dark'] .bodyWrap {
   color: var(--cwf-dark);
 }
 
