@@ -116,3 +116,4 @@ export {
 
 export * from './connected-agents'
 export * from './computers'
+export * from './surfaces'

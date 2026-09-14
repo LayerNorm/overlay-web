@@ -14,6 +14,7 @@ import { PostgresConversationEventNotifier } from '@/server/conversations/Postgr
 import { UnlimitedUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
+import { PostgresSurfaceRepository } from '@/server/surfaces/PostgresSurfaceRepository'
 import { PostgresNoteRepository } from '@/server/notes'
 import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUserRepository } from '@/server/users/PostgresUserRepository'
@@ -69,7 +70,13 @@ test('Postgres app-data repository contracts', {
           'computers_created_by_users_id_fk',
           'computers_owner_type_check',
           'computers_size_check',
-          'computers_status_check'
+          'computers_status_check',
+          'surface_connections_installed_by_users_id_fk',
+          'surface_connections_platform_check',
+          'surface_connections_status_check',
+          'surface_bindings_connection_id_fk',
+          'surface_bindings_created_by_users_id_fk',
+          'surface_bindings_status_check'
         )
       `)
       assert.deepEqual(
@@ -85,6 +92,12 @@ test('Postgres app-data repository contracts', {
           'files_parent_not_self_check',
           'projects_parent_id_projects_id_fk',
           'projects_parent_not_self_check',
+          'surface_bindings_connection_id_fk',
+          'surface_bindings_created_by_users_id_fk',
+          'surface_bindings_status_check',
+          'surface_connections_installed_by_users_id_fk',
+          'surface_connections_platform_check',
+          'surface_connections_status_check',
         ],
       )
       const index = await db.execute<{ indexdef: string }>(sql`
@@ -258,6 +271,7 @@ function testSearchBilling(label: string) {
         notifier,
       ),
       computers: new PostgresComputerRepository(db),
+      surfaces: new PostgresSurfaceRepository(db),
       daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
       files: new PostgresFileRepository(db),
       memories: new PostgresMemoryRepository(db),

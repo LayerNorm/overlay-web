@@ -21,6 +21,7 @@ import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { MemoryRepository } from '@/server/memory'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 import type { ComputerRepository } from '@/server/computers/ComputerRepository'
+import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 
 export interface AppDataRepositoryContractBackend {
@@ -29,6 +30,7 @@ export interface AppDataRepositoryContractBackend {
   chatSuggestions: ChatSuggestionRepository
   computers: ComputerRepository
   conversations: ActConversationRepository
+  surfaces: SurfaceRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
@@ -1078,6 +1080,127 @@ export async function runAppDataRepositoryContractSuite(
         }
         assert.equal(await computers.get(createdIds[0] ?? ''), null)
       }
+    })
+
+    await t.test(`${backend.name}: surfaces persist team-keyed connections and channel bindings`, async () => {
+      const surfaces = backend.surfaces
+      const workspaceId = `contract_surfaces_ws_${randomUUID()}`
+      const now = Date.now()
+      const connection = await surfaces.upsertConnection({
+        id: `surface_connection_${randomUUID()}`,
+        workspaceId,
+        platform: 'slack',
+        externalTeamId: `T${randomUUID()}`,
+        externalTeamName: 'Contract Team',
+        externalEnterpriseId: null,
+        botUserId: 'U_BOT',
+        status: 'active',
+        installedByUserId: userId,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      // (platform, externalTeamId) is globally unique: a second upsert refreshes
+      // the same row instead of duplicating the install.
+      const reinstalled = await surfaces.upsertConnection({
+        id: `surface_connection_${randomUUID()}`,
+        workspaceId,
+        platform: 'slack',
+        externalTeamId: connection.externalTeamId,
+        externalTeamName: 'Contract Team Renamed',
+        externalEnterpriseId: null,
+        botUserId: 'U_BOT_2',
+        status: 'active',
+        installedByUserId: userId,
+        createdAt: now + 1,
+        updatedAt: now + 1,
+      })
+      assert.equal(reinstalled.id, connection.id)
+      assert.equal(reinstalled.externalTeamName, 'Contract Team Renamed')
+      assert.equal(reinstalled.botUserId, 'U_BOT_2')
+
+      assert.equal((await surfaces.getConnection(connection.id))?.workspaceId, workspaceId)
+      assert.equal(await surfaces.getConnection(`surface_connection_${randomUUID()}`), null)
+      assert.equal(
+        (await surfaces.findConnectionByTeam('slack', connection.externalTeamId))?.id,
+        connection.id,
+      )
+      assert.equal(await surfaces.findConnectionByTeam('slack', `T${randomUUID()}`), null)
+      assert.deepEqual(
+        (await surfaces.listConnections(workspaceId)).map((row) => row.id),
+        [connection.id],
+      )
+
+      const degraded = await surfaces.updateConnection(connection.id, {
+        status: 'degraded',
+        updatedAt: now + 2,
+      })
+      assert.equal(degraded.status, 'degraded')
+      await surfaces.updateConnection(connection.id, { status: 'active', updatedAt: now + 3 })
+
+      const binding = await surfaces.createBinding({
+        id: `surface_binding_${randomUUID()}`,
+        connectionId: connection.id,
+        agentId: `contract_agent_${randomUUID()}`,
+        channelId: 'C123',
+        channelName: 'fundraising',
+        status: 'active',
+        createdByUserId: userId,
+        createdAt: now + 4,
+        updatedAt: now + 4,
+      })
+      assert.equal((await surfaces.getBinding(binding.id))?.channelId, 'C123')
+      assert.equal(
+        (await surfaces.findBindingByChannel(connection.id, 'C123'))?.id,
+        binding.id,
+      )
+      assert.deepEqual(
+        (await surfaces.listBindingsByAgent(binding.agentId)).map((row) => row.id),
+        [binding.id],
+      )
+      assert.deepEqual(
+        (await surfaces.listBindingsByConnection(connection.id)).map((row) => row.id),
+        [binding.id],
+      )
+
+      // One binding row per channel: a second create against an active binding
+      // returns it unchanged rather than rebinding the channel.
+      const duplicate = await surfaces.createBinding({
+        id: `surface_binding_${randomUUID()}`,
+        connectionId: connection.id,
+        agentId: `contract_agent_${randomUUID()}`,
+        channelId: 'C123',
+        channelName: null,
+        status: 'active',
+        createdByUserId: userId,
+        createdAt: now + 5,
+        updatedAt: now + 5,
+      })
+      assert.equal(duplicate.id, binding.id)
+      assert.equal(duplicate.agentId, binding.agentId)
+
+      // Removal is non-destructive; re-binding the same channel reactivates the
+      // row onto the new agent.
+      const removed = await surfaces.updateBinding(binding.id, {
+        status: 'removed',
+        updatedAt: now + 6,
+      })
+      assert.equal(removed.status, 'removed')
+      const reboundAgentId = `contract_agent_${randomUUID()}`
+      const rebound = await surfaces.createBinding({
+        id: `surface_binding_${randomUUID()}`,
+        connectionId: connection.id,
+        agentId: reboundAgentId,
+        channelId: 'C123',
+        channelName: 'fundraising',
+        status: 'active',
+        createdByUserId: userId,
+        createdAt: now + 7,
+        updatedAt: now + 7,
+      })
+      assert.equal(rebound.id, binding.id)
+      assert.equal(rebound.status, 'active')
+      assert.equal(rebound.agentId, reboundAgentId)
     })
 
     await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {

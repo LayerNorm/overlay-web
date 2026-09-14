@@ -647,6 +647,47 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
 
+  // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
+  // is metadata for one platform install — the Chat SDK state adapter owns
+  // token resolution keyed on externalTeamId. surfaceBindings maps an agent
+  // onto a platform channel; channel membership is the access policy.
+  surfaceConnections: defineTable({
+    id: v.string(),
+    workspaceId: v.string(),
+    platform: v.union(v.literal('slack')),
+    externalTeamId: v.string(),
+    externalTeamName: v.optional(v.string()),
+    externalEnterpriseId: v.optional(v.string()),
+    botUserId: v.optional(v.string()),
+    status: v.union(
+      v.literal('active'),
+      v.literal('degraded'),
+      v.literal('uninstalled'),
+    ),
+    installedByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_platform_team', ['platform', 'externalTeamId']),
+
+  surfaceBindings: defineTable({
+    id: v.string(),
+    connectionId: v.string(),
+    agentId: v.string(),
+    channelId: v.string(),
+    channelName: v.optional(v.string()),
+    status: v.union(v.literal('active'), v.literal('removed')),
+    createdByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_connectionId', ['connectionId'])
+    .index('by_connectionId_channelId', ['connectionId', 'channelId'])
+    .index('by_agentId', ['agentId']),
+
   projects: defineTable({
     workspaceId: v.optional(v.string()),
     userId: v.string(),

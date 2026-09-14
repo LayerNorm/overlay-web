@@ -1,9 +1,9 @@
 # Surfaces: deploy Overlay agents to external chat platforms
 
 Status: in progress — Phase 0 landed (deps, Slack app manifest +
-`docs/develop/surfaces-slack-app.md`, env vars). Decisions marked
-**[decided]** are settled; the rest are implementation defaults open to
-revision.
+`docs/develop/surfaces-slack-app.md`, env vars); Phase 1 landed (data model +
+OAuth connect flow + bindings API). Decisions marked **[decided]** are settled;
+the rest are implementation defaults open to revision.
 
 ## Context
 
@@ -76,12 +76,15 @@ surfaceConnections                 -- one row per platform install
   id
   workspaceId
   platform: 'slack'                -- 'teams' | 'discord' | ... later
-  externalTeamId                   -- Slack team_id
+  externalTeamId                   -- Slack team_id (enterprise_id for org installs)
   externalTeamName                 -- for UI
+  externalEnterpriseId             -- Grid org id when applicable
+  botUserId                        -- Slack bot user id for the install
   installedByUserId
-  status: 'active' | 'degraded'    -- degraded on tokens_revoked/uninstall
-  createdAt
-  unique (platform, externalTeamId, workspaceId)
+  status: 'active' | 'degraded' | 'uninstalled'
+  createdAt, updatedAt
+  unique (platform, externalTeamId) -- global: one Slack workspace routes to at
+                                    -- most one Overlay workspace **[decided]**
 
 surfaceBindings                    -- agent ↔ channel
   id
@@ -91,7 +94,7 @@ surfaceBindings                    -- agent ↔ channel
   channelName                      -- denormalized for lists
   createdByUserId
   status: 'active' | 'removed'
-  createdAt
+  createdAt, updatedAt
   unique (connectionId, channelId) -- v1: one agent per channel
 ```
 
@@ -149,22 +152,36 @@ name, status, installer) — NOT a parallel token path. No Vercel Connect:
 it would bind a core surface to Vercel's marketplace auth, which cuts against
 the self-host/AGPL story. We own the OAuth flow.
 
-## Phase 1 — connect flow (OAuth)
+## Phase 1 — connect flow (OAuth) **[landed]**
 
-- `GET /api/v1/surfaces/slack/connect?agentId=` — session-gated. Verifies the
-  caller may bind that agent (creator for personal agents, any member for
-  workspace agents). Stashes `{agentId, workspaceId, returnTo}` in a signed
-  state cookie. Redirects to Slack OAuth.
-- `GET /api/v1/surfaces/slack/callback` — exchanges `code`, registers the
-  install into the ChatSDK state adapter (token resolution path), upserts
-  `surfaceConnections`, redirects back to the editor.
-- `GET /api/v1/surfaces/{connectionId}/channels` — server proxies Slack
-  `conversations.list` for the channel picker.
-- `POST /api/v1/surfaces/bindings` `{connectionId, channelId}` → create.
-  `DELETE /api/v1/surfaces/bindings/{id}` → `status:'removed'`
-  (non-destructive; history stays).
-- Binding auth: personal agent → creator only; workspace agent → any member.
-  **[decided]**
+- `GET /api/v1/surfaces/slack/connect?agentId=` — session-gated redirect route
+  (not BFF JSON). Verifies the caller may bind that agent (creator for personal
+  agents, any non-guest member for workspace agents), then 302s to Slack OAuth.
+  The `{agentId, workspaceId, userId, returnTo}` intent travels as the
+  HMAC-signed OAuth `state` param itself — no cookie, no server-side record;
+  the only effect it authorizes is idempotent metadata upsert.
+- `GET /api/v1/surfaces/slack/callback` — verifies the signed state, requires
+  the completing session to match the connecting user, re-checks bind
+  permission, delegates the code exchange to
+  `slackAdapter.handleOAuthCallback` (writes the installation into the state
+  adapter itself), upserts `surfaceConnections`, redirects back to `returnTo`.
+- `GET /api/v1/surfaces/connections/{connectionId}/channels` — proxies Slack
+  `conversations.list` under the installation's bot token via
+  `adapter.withBotToken`.
+- `GET /api/v1/surfaces/connections` — workspace connection list (metadata).
+- `GET /api/v1/surfaces/bindings?agentId=` — binding list for the editor.
+- `POST /api/v1/surfaces/bindings` `{agentId, connectionId, channelId}` →
+  create. `DELETE /api/v1/surfaces/bindings/{id}` → `status:'removed'`
+  (non-destructive; history stays). Re-binding a removed channel reactivates
+  its row onto the new agent.
+- Binding auth: personal agent → creator only; workspace agent → any non-guest
+  member. **[decided]**
+- Repository: `surfaces` in `AppDataRepositories` with both backends —
+  `migrations/app-data/0076_surfaces.sql`, `convex/surfaces/surfaces.ts`,
+  `src/server/surfaces/{SurfaceRepository,PostgresSurfaceRepository,ConvexSurfaceRepository,SurfaceService}.ts`,
+  Chat singleton in `src/server/surfaces/chat.ts` (state-pg on
+  `OVERLAY_DATABASE_URL`, memory otherwise). Parity-matrix + route-support +
+  contract-test entries wired.
 
 ## Phase 2 — webhook → turn → reply
 

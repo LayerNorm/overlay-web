@@ -121,6 +121,9 @@ import {
 import type { ComputerRepository } from '@/server/computers/ComputerRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
 import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
+import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
+import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
+import { PostgresSurfaceRepository } from '@/server/surfaces/PostgresSurfaceRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -151,6 +154,7 @@ export interface AppDataRepositories {
   projects: ProjectRepository
   settings: AppSettingsRepository
   skills: SkillRepository
+  surfaces: SurfaceRepository
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   webhooks: WebhookRepository
@@ -217,6 +221,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         projects: new PostgresProjectRepository(db),
         settings: new PostgresAppSettingsRepository(db),
         skills: new PostgresSkillRepository(db),
+        surfaces: new PostgresSurfaceRepository(db),
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
@@ -260,6 +265,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       projects: new ConvexProjectRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       skills: new ConvexSkillRepository(),
+      surfaces: new ConvexSurfaceRepository(),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
