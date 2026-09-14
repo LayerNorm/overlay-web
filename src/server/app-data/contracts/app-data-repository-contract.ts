@@ -1203,6 +1203,74 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(rebound.agentId, reboundAgentId)
     })
 
+    await t.test(`${backend.name}: surface conversations map threads atomically and persist imported authors`, async () => {
+      const bindingId = `surface_binding_${randomUUID()}`
+      const surface = {
+        actModelId: 'openrouter/free',
+        askModelIds: ['openrouter/free'],
+        conversationType: 'channel' as const,
+        externalChannelId: 'C123',
+        externalPlatform: 'slack',
+        lastMode: 'act' as const,
+        surfaceBindingId: bindingId,
+        userId,
+      }
+      const conversationId = await backend.conversations.ensureSurfaceConversation({
+        ...surface,
+        externalThreadId: '1717171717.000100',
+        title: 'Slack · #fundraising',
+      })
+      assert.ok(conversationId)
+
+      // Retried deliveries of the same platform thread converge on one
+      // conversation; a different thread gets its own.
+      const again = await backend.conversations.ensureSurfaceConversation({
+        ...surface,
+        externalThreadId: '1717171717.000100',
+        title: 'Slack · #fundraising',
+      })
+      assert.equal(again, conversationId)
+      const otherThread = await backend.conversations.ensureSurfaceConversation({
+        ...surface,
+        externalThreadId: '1717171717.000200',
+        title: 'Slack · #fundraising',
+      })
+      assert.ok(otherThread)
+      assert.notEqual(otherThread, conversationId)
+
+      const listed = (await backend.conversations.listConversations({ userId }))
+        .find((row) => row._id === conversationId)
+      assert.equal(listed?.externalPlatform, 'slack')
+      assert.equal(listed?.externalChannelId, 'C123')
+      assert.equal(listed?.externalThreadId, '1717171717.000100')
+      assert.equal(listed?.surfaceBindingId, bindingId)
+
+      const messageId = await backend.conversations.addMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_surface_1',
+        role: 'user',
+        mode: 'act',
+        content: 'hello from slack',
+        contentType: 'text',
+        parts: [{ type: 'text', text: 'hello from slack' }],
+        modelId: 'openrouter/free',
+        skipMemoryExtraction: true,
+        importedAuthorName: 'Ada Lovelace',
+        importedAuthorEmail: 'ada@example.com',
+        importedAuthorStatus: 'member',
+      })
+      assert.ok(messageId)
+      const messages = await backend.conversations.getConversationMessages({
+        conversationId,
+        userId,
+      })
+      const inbound = messages.find((message) => message._id === messageId)
+      assert.equal(inbound?.importedAuthorName, 'Ada Lovelace')
+      assert.equal(inbound?.importedAuthorEmail, 'ada@example.com')
+      assert.equal(inbound?.importedAuthorStatus, 'member')
+    })
+
     await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {
       const result = await deleteAccount(backend, userId)
       accountDeleted = true

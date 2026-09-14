@@ -198,6 +198,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - `scheduledFor`/turn IDs must come from `'use step'` functions — `Date.now()` inside `'use workflow'` is pinned to the deterministic replay timestamp.
 - `finalize`/`fail` steps are idempotent: assistant persistence dedupes on `(turnId, role, variantIndex, modelId)` and run-row updates are status transitions.
 - The synchronous `/automations/test` preview and the Postgres on-prem job runtime (`run-act-turn.ts`) intentionally keep the ephemeral act path — they are request-bound executions where durability does not apply.
+- The prepare → model/tool loop → finalize sequence is factored as `runDurableAgentTurn` in `workflows/automation-agent-turn.ts` and is shared with the surfaces path: `workflows/surface-agent-turn.ts` wraps it for Slack-triggered turns, reusing every step but switching on `input.surface` for prompt framing (`surface-prompts.ts` instead of automation prompts), billing subject (`surface:<platform>:<bindingId>`), tool scoping (the bound agent's `allowedToolIds` grant), and reply delivery (Slack post/edit instead of run-row settlement).
 - The trigger route (`POST /api/v1/automations/{id}/run`) checks the feature flag and falls back to `automationService.runAutomation()` when disabled.
 - Convex repository does not implement `updateRunWorkflowRunId` (optional per interface) — Convex deployments track runs via automation run records, not workflow run IDs.
 

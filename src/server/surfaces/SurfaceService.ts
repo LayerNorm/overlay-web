@@ -5,7 +5,9 @@ import type {
   SurfaceBinding,
   SurfaceConnection,
   SurfacePlatform,
+  WorkspaceAgentDirectoryItem,
   WorkspaceMembershipRole,
+  WorkspacePrincipal,
 } from '@overlay/workspace-contracts'
 import type { WorkspaceAgentRepository } from '@/server/agents/WorkspaceAgentRepository'
 import { canCreateAgent, canSeeAgent } from '@/server/agents/WorkspaceAgentService'
@@ -43,10 +45,24 @@ export type SurfaceChannelLister = (
   connection: SurfaceConnection,
 ) => Promise<SurfaceChannelOption[]>
 
+/**
+ * The result of routing one inbound platform message to its agent: the live
+ * connection + binding, the bound agent, and the creator identity the turn
+ * runs under.
+ */
+export type ResolvedInboundBinding = {
+  connection: SurfaceConnection
+  binding: SurfaceBinding
+  agent: WorkspaceAgentDirectoryItem
+  creatorUserId: string
+  creatorPrincipalId: string
+}
+
 export class SurfaceService {
   private readonly repository: SurfaceRepository
   private readonly agents: WorkspaceAgentRepository
   private readonly channelLister: SurfaceChannelLister
+  private readonly resolvePrincipal: (principalId: string) => Promise<WorkspacePrincipal | null>
   private readonly id: () => string
   private readonly now: () => number
 
@@ -54,12 +70,14 @@ export class SurfaceService {
     repository: SurfaceRepository
     agents: WorkspaceAgentRepository
     channelLister: SurfaceChannelLister
+    resolvePrincipal?: (principalId: string) => Promise<WorkspacePrincipal | null>
     id?: () => string
     now?: () => number
   }) {
     this.repository = options.repository
     this.agents = options.agents
     this.channelLister = options.channelLister
+    this.resolvePrincipal = options.resolvePrincipal ?? (async () => null)
     this.id = options.id ?? randomUUID
     this.now = options.now ?? Date.now
   }
@@ -192,6 +210,40 @@ export class SurfaceService {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     })
+  }
+
+  /**
+   * Webhook routing: platform team + channel → live connection → active
+   * binding → bound agent → creator identity. Returns null for every miss so
+   * inbound handlers can no-op quietly (removed bindings, uninstalled
+   * workspaces, archived agents all behave identically).
+   */
+  async resolveInboundBinding(args: {
+    platform: SurfacePlatform
+    externalTeamId: string
+    channelId: string
+  }): Promise<ResolvedInboundBinding | null> {
+    const connection = await this.repository.findConnectionByTeam(
+      args.platform,
+      args.externalTeamId,
+    )
+    if (!connection || connection.status !== 'active') return null
+    const binding = await this.repository.findBindingByChannel(connection.id, args.channelId)
+    if (!binding || binding.status !== 'active') return null
+    const agent = await this.agents.get({
+      agentId: binding.agentId,
+      workspaceId: connection.workspaceId,
+    })
+    if (!agent || agent.archivedAt) return null
+    const principal = await this.resolvePrincipal(agent.createdByPrincipalId)
+    if (!principal?.userId) return null
+    return {
+      connection,
+      binding,
+      agent,
+      creatorUserId: principal.userId,
+      creatorPrincipalId: principal.id,
+    }
   }
 
   /**

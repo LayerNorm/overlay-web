@@ -2,7 +2,8 @@
 
 Status: in progress — Phase 0 landed (deps, Slack app manifest +
 `docs/develop/surfaces-slack-app.md`, env vars); Phase 1 landed (data model +
-OAuth connect flow + bindings API). Decisions marked **[decided]** are settled;
+OAuth connect flow + bindings API); Phase 2 landed (webhook → durable turn →
+Slack reply). Decisions marked **[decided]** are settled;
 the rest are implementation defaults open to revision.
 
 ## Context
@@ -183,35 +184,52 @@ the self-host/AGPL story. We own the OAuth flow.
   `OVERLAY_DATABASE_URL`, memory otherwise). Parity-matrix + route-support +
   contract-test entries wired.
 
-## Phase 2 — webhook → turn → reply
+## Phase 2 — webhook → turn → reply  *(landed)*
 
-- `src/app/api/v1/webhooks/slack/route.ts`:
-  `export const POST = bot.webhooks.slack`. Adapter acks inside Slack's 3s
-  window; turns run async after ack.
-- `bot` lives in `src/server/surfaces/` (new domain folder per convention):
-  `chat.ts` (singleton `Chat` instance), `binding-resolver.ts`,
-  `surface-conversations.ts`, `surface-turn-runner.ts`.
+- `src/app/api/v1/webhooks/slack/route.ts`: delegates to
+  `chat.webhooks.slack(request, { waitUntil })` — the adapter verifies the
+  signature, dedupes retries, and acks inside Slack's 3s window while
+  handlers run under `after`. 503 when `SLACK_*` env is unset.
+- `src/server/surfaces/` modules: `chat.ts` (Phase 1 singleton),
+  `slack-inbound.ts` (handlers + routing), `slack-reply.ts` (post/edit under
+  the installation token via `getInstallation` + `withBotToken` — works
+  outside webhook request context, which is what durable steps need),
+  `surface-conversations.ts` (thread → conversation mapping),
+  `surface-authors.ts` (sender email → member/invited/not_invited).
 - Trigger rules v1: `onNewMention` in channels → `thread.subscribe()` so
-  follow-ups in that thread don't need re-mention; `onNewMessage` in
-  subscribed threads + DMs always triggers. Guard `bot_id`/own echo.
-- Resolver: `(team_id, channel_id) → connection → binding → agent → creator`.
-  No binding → one-time "I'm not connected here — set me up at getoverlay.io"
-  reply, then silent.
-- `ensureSurfaceConversation(connection, channel, thread_ts)` → find-or-create
-  conversation carrying the external ref fields. Slack thread = Overlay
-  conversation; the agent's reply anchors a thread on the user's message.
-- `surface-turn-runner` mirrors `automation-turn-runner`: same
-  `prepareAutomationAgentTurn` / `finalizeAutomationAgentTurn` steps,
-  `programmaticSubjectId: 'surface:slack:<bindingId>'`, acting user = agent
-  creator. Inbound persisted with `importedAuthor*` fields so the Overlay
-  transcript shows the real Slack sender.
-- Outbound via `bot.getAdapter('slack').webClient.chat.postMessage` with
-  per-message `username: agent.name` and `icon_url` — the native-client
-  escape hatch is how one bot speaks as many agents. Creature-avatar PNG
-  endpoint (`/api/v1/agents/{id}/avatar.png`) is the nice-to-have that makes
-  `icon_url` real; defer if it drags.
-- v1 posts an immediate "working…" placeholder, then the final reply.
-  Post-and-edit streaming (`streamingUpdateIntervalMs`) is a v1.5 toggle.
+  follow-ups in that thread don't need re-mention; `onSubscribedMessage`
+  covers follow-ups. Guard `author.isMe`/`isBot`/`isSystem`. DM bindings are
+  not creatable yet (the channel picker lists channels, not IMs).
+- Resolver: `SurfaceService.resolveInboundBinding` — `(team_id, channel_id)
+  → active connection → active binding → non-archived agent → creator's
+  human principal + userId`. Every miss returns null → silent no-op, except
+  a mention in an unbound channel which gets a one-line "connect me" reply.
+- `ensureSurfaceConversation`: atomic find-or-create on
+  `(surfaceBindingId, externalThreadId)` — Postgres backs it with a partial
+  unique index (`deleted_at IS NULL`), Convex with a mutation + dedicated
+  index. Conversation carries `externalPlatform/externalChannelId/
+  externalThreadId/surfaceBindingId` + `conversationType:'channel'`.
+- Turn pipeline: `surface` provenance on `AutomationAgentTurnInput` reuses
+  the existing prepare → model/tool → finalize loop verbatim
+  (`runDurableAgentTurn`, extracted from `automation-agent-turn.ts` and
+  shared by both workflows). Surface turns: skip automation metering and
+  prompt framing, use `buildSurfaceSystemPrompt` (agent instructions +
+  platform context), bill to `surface:<platform>:<bindingId>`, narrow the
+  tool surface to the bound agent's `allowedToolIds` grant
+  (`resolveAgentGrant` + `applyAgentCapabilityFilter` — same narrowing the
+  workspace-agent invocation path uses), and own the agent's memory
+  (`agentMemoryOwnerId`). Inbound persists with `importedAuthor*` fields;
+  Postgres `conversation_messages` gained those columns for parity.
+- Workflow: `src/server/workflows/surface-agent-turn.ts` —
+  `ensureSurfaceConversation` step → `runDurableAgentTurn` → Slack reply
+  step (edits the "working" placeholder via `chat.update`). Turn failure
+  persists a failure message and posts a concise error to the thread.
+- Outbound: `chat.postMessage` with `username: agent.name`
+  (`chat:write.customize`). `icon_url` (creature avatar endpoint) deferred.
+- v1 posts an immediate "working…" placeholder, then edits it into the
+  final reply — which is also the retry-safe reply path: a retried delivery
+  converges on the same conversation + turn id, and the placeholder edit is
+  idempotent by ts.
 
 ## Phase 3 — agent editor UI
 

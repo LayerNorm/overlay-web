@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { isNull, sql } from 'drizzle-orm'
 import {
   type AnyPgColumn,
   bigint,
@@ -750,6 +750,11 @@ export const conversations = pgTable('conversations', {
   channelSlug: text('channel_slug'),
   channelVisibility: text('channel_visibility'),
   channelTopic: text('channel_topic'),
+  // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
+  externalPlatform: text('external_platform'),
+  externalChannelId: text('external_channel_id'),
+  externalThreadId: text('external_thread_id'),
+  surfaceBindingId: text('surface_binding_id'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
   uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
@@ -762,6 +767,11 @@ export const conversations = pgTable('conversations', {
   index('conversations_workspace_type_last_modified_idx').on(table.workspaceId, table.conversationType, table.lastModified),
   uniqueIndex('conversations_workspace_dm_identity_key_idx').on(table.workspaceId, table.dmIdentityKey),
   uniqueIndex('conversations_workspace_channel_slug_idx').on(table.workspaceId, table.channelSlug),
+  // One live conversation per (binding, platform thread). Partial so deleted
+  // conversations don't block a fresh thread mapping.
+  uniqueIndex('conversations_surface_thread_idx')
+    .on(table.surfaceBindingId, table.externalThreadId)
+    .where(isNull(table.deletedAt)),
 ])
 
 export const conversationMessages = pgTable('conversation_messages', {
@@ -787,6 +797,12 @@ export const conversationMessages = pgTable('conversation_messages', {
   status: messageStatus('status'),
   authorKind: messageAuthorKind('author_kind').notNull(),
   authorPrincipalId: text('author_principal_id'),
+  // Denormalized identity for messages authored on an external surface
+  // (e.g. a Slack sender who is not an Overlay principal).
+  importedAuthorName: text('imported_author_name'),
+  importedAuthorEmail: text('imported_author_email'),
+  importedAuthorStatus: text('imported_author_status')
+    .$type<'member' | 'invited' | 'not_invited'>(),
   clientNonce: text('client_nonce'),
   threadRootMessageId: text('thread_root_message_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

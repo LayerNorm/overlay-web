@@ -12,7 +12,7 @@ import { SurfaceServiceError, type SurfaceChannelOption } from './SurfaceService
 export async function listSlackChannels(
   connection: SurfaceConnection,
 ): Promise<SurfaceChannelOption[]> {
-  const adapter = getSlackAdapter()
+  const adapter = await getSlackAdapter()
   const installation = await adapter.getInstallation(connection.externalTeamId)
   if (!installation?.botToken) {
     throw new SurfaceServiceError(

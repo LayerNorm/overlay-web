@@ -1015,6 +1015,13 @@ export default defineSchema({
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
+    // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
+    // externalThreadId is the platform's thread key (Slack thread_ts); the pair
+    // (surfaceBindingId, externalThreadId) identifies the conversation.
+    externalPlatform: v.optional(v.string()),
+    externalChannelId: v.optional(v.string()),
+    externalThreadId: v.optional(v.string()),
+    surfaceBindingId: v.optional(v.string()),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
@@ -1025,6 +1032,7 @@ export default defineSchema({
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
+    .index('by_surfaceBindingId_externalThreadId', ['surfaceBindingId', 'externalThreadId'])
     .searchIndex('search_title', {
       searchField: 'title',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],

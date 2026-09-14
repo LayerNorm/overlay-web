@@ -230,7 +230,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'External agent surfaces',
     targetPhase: 'P7',
     capabilities: [],
-    routeRuleIds: ['surfaces'],
+    routeRuleIds: ['surfaces', 'surface-webhooks'],
     exitGate: 'Surface connection and binding rows pass the shared contract suite on both backends; Slack tokens resolve through the Chat SDK state adapter, not app-data.',
   },
   {

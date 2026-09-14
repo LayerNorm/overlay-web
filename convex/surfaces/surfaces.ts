@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { recordConversationEvent } from '../collaboration/events'
 
 // Server-only surface: the BFF reaches these through ConvexSurfaceRepository
 // with the internal server secret. Authorization lives in SurfaceService.
@@ -222,6 +223,72 @@ export const listBindingsByConnection = query({
       .query('surfaceBindings')
       .withIndex('by_connectionId', (q) => q.eq('connectionId', args.connectionId))
       .collect()
+  },
+})
+
+/**
+ * Atomic find-or-create for a surface thread's Overlay conversation — a
+ * mutation so the check-then-insert can't race. A deleted conversation stays
+ * deleted; a fresh live row is created for the thread instead.
+ */
+export const ensureSurfaceConversation = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    title: v.string(),
+    projectId: v.optional(v.string()),
+    askModelIds: v.array(v.string()),
+    actModelId: v.string(),
+    lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
+    conversationType: v.optional(v.union(
+      v.literal('personal'),
+      v.literal('dm'),
+      v.literal('channel'),
+    )),
+    createdByPrincipalId: v.optional(v.string()),
+    externalPlatform: v.string(),
+    externalChannelId: v.string(),
+    externalThreadId: v.string(),
+    surfaceBindingId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db
+      .query('conversations')
+      .withIndex('by_surfaceBindingId_externalThreadId', (q) => q
+        .eq('surfaceBindingId', args.surfaceBindingId)
+        .eq('externalThreadId', args.externalThreadId))
+      .collect()
+    const live = existing.find((row) => !row.deletedAt)
+    if (live) return live._id
+    const now = Date.now()
+    const conversationId = await ctx.db.insert('conversations', {
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+      title: args.title,
+      projectId: args.projectId,
+      lastModified: now,
+      createdAt: now,
+      updatedAt: now,
+      lastMode: args.lastMode ?? 'act',
+      askModelIds: args.askModelIds,
+      actModelId: args.actModelId,
+      conversationType: args.conversationType,
+      createdByPrincipalId: args.createdByPrincipalId,
+      isAutomation: false,
+      externalPlatform: args.externalPlatform,
+      externalChannelId: args.externalChannelId,
+      externalThreadId: args.externalThreadId,
+      surfaceBindingId: args.surfaceBindingId,
+    })
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.userId,
+      type: 'conversation.created',
+    })
+    return conversationId
   },
 })
 

@@ -74,6 +74,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
     isAutomation?: boolean
+    externalPlatform?: string
+    externalChannelId?: string
+    externalThreadId?: string
+    surfaceBindingId?: string
   }): Promise<ConversationId> {
     const now = new Date()
     const id = conversationId()
@@ -157,6 +161,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
         createdAt: now,
         updatedAt: now,
         isAutomation: args.isAutomation ?? false,
+        externalPlatform: args.externalPlatform,
+        externalChannelId: args.externalChannelId,
+        externalThreadId: args.externalThreadId,
+        surfaceBindingId: args.surfaceBindingId,
       }
       await assertActivePostgresProject(tx, {
         projectId: values.projectId,
@@ -199,6 +207,50 @@ export class PostgresActConversationRepository implements ActConversationReposit
 
     if (!row?.id) throw new Error('Failed to create conversation')
     return row.id as ConversationId
+  }
+
+  async ensureSurfaceConversation(args: {
+    actModelId: string
+    askModelIds: string[]
+    externalChannelId: string
+    externalPlatform: string
+    externalThreadId: string
+    surfaceBindingId: string
+    title: string
+    userId: string
+    conversationType?: 'personal' | 'dm' | 'channel'
+    createdByPrincipalId?: string
+    lastMode?: 'ask' | 'act'
+    projectId?: string
+    workspaceId?: string
+  }): Promise<ConversationId> {
+    const [existing] = await this.db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(
+        eq(conversations.surfaceBindingId, args.surfaceBindingId),
+        eq(conversations.externalThreadId, args.externalThreadId),
+        isNull(conversations.deletedAt),
+      ))
+      .limit(1)
+    if (existing) return existing.id as ConversationId
+    try {
+      return await this.createConversation(args)
+    } catch (error) {
+      // A concurrent insert can win the partial unique index race — the winner
+      // is the canonical row for the thread.
+      const [winner] = await this.db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.surfaceBindingId, args.surfaceBindingId),
+          eq(conversations.externalThreadId, args.externalThreadId),
+          isNull(conversations.deletedAt),
+        ))
+        .limit(1)
+      if (winner) return winner.id as ConversationId
+      throw error
+    }
   }
 
   async getConversationById(args: {
@@ -498,6 +550,9 @@ export class PostgresActConversationRepository implements ActConversationReposit
     workspaceId?: string
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
+    importedAuthorName?: string
+    importedAuthorEmail?: string
+    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
     clientNonce?: string
     threadRootMessageId?: string
   }): Promise<ConversationMessageId | null> {
@@ -539,10 +594,13 @@ export class PostgresActConversationRepository implements ActConversationReposit
         throw new Error('CONVERSATION_NOT_FOUND')
       }
       const authorKind = args.authorKind ?? (args.role === 'user' ? 'human' : 'model')
-      const authorPrincipalId = authorKind === 'human' || authorKind === 'agent'
+      // Imported authors (a Slack sender, not an Overlay principal) carry their
+      // identity on the imported-author fields and never get a principal id.
+      const isImportedAuthor = Boolean(args.importedAuthorName)
+      const authorPrincipalId = !isImportedAuthor && (authorKind === 'human' || authorKind === 'agent')
         ? args.authorPrincipalId ?? conversation.createdByPrincipalId ?? undefined
-        : undefined
-      if ((authorKind === 'human' || authorKind === 'agent') && !authorPrincipalId) {
+        : args.authorPrincipalId
+      if ((authorKind === 'human' || authorKind === 'agent') && !authorPrincipalId && !isImportedAuthor) {
         throw new Error('MESSAGE_AUTHOR_PRINCIPAL_REQUIRED')
       }
       const inserted = await tx.insert(conversationMessages).values({
@@ -564,6 +622,9 @@ export class PostgresActConversationRepository implements ActConversationReposit
         status: 'completed',
         authorKind,
         authorPrincipalId,
+        importedAuthorName: args.importedAuthorName,
+        importedAuthorEmail: args.importedAuthorEmail,
+        importedAuthorStatus: args.importedAuthorStatus,
         clientNonce: args.clientNonce,
         threadRootMessageId: args.threadRootMessageId,
         createdAt: now,
@@ -1487,6 +1548,10 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     shareVisibility: row.shareVisibility ?? undefined,
     shareToken: row.shareToken,
     isAutomation: row.isAutomation ?? undefined,
+    externalPlatform: row.externalPlatform ?? undefined,
+    externalChannelId: row.externalChannelId ?? undefined,
+    externalThreadId: row.externalThreadId ?? undefined,
+    surfaceBindingId: row.surfaceBindingId ?? undefined,
   }
 }
 
@@ -1509,6 +1574,9 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     status: row.status ?? undefined,
     authorKind: row.authorKind,
     authorPrincipalId: row.authorPrincipalId ?? undefined,
+    importedAuthorName: row.importedAuthorName ?? undefined,
+    importedAuthorEmail: row.importedAuthorEmail ?? undefined,
+    importedAuthorStatus: row.importedAuthorStatus ?? undefined,
     clientNonce: row.clientNonce ?? undefined,
     deletedAt: row.deletedAt ? toMillis(row.deletedAt) : undefined,
     editedAt: row.editedAt ? toMillis(row.editedAt) : undefined,

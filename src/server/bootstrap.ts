@@ -319,6 +319,7 @@ export function createOverlayServerContext(
     repository: appData.repositories.surfaces,
     agents: workspaceAgentRepository,
     channelLister: listSlackChannels,
+    resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
   })
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,

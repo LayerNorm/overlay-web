@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       agentId: state.agentId,
     })
 
-    const result = await getSlackAdapter().handleOAuthCallback(request, {
+    const result = await (await getSlackAdapter()).handleOAuthCallback(request, {
       redirectUri: slackOAuthRedirectUri(getBaseUrl()),
     })
 

@@ -70,7 +70,7 @@ export function resolveAgentGrant(grant: WorkspaceAgentToolGrant): {
  * are the ones assembled by provider paths that carry no stable per-tool id:
  * web search, connected apps, and MCP servers.
  */
-function applyAgentCapabilityFilter(args: {
+export function applyAgentCapabilityFilter(args: {
   capabilities: ReadonlySet<AgentToolCapability>
   integrationToolIds: readonly string[]
   overlayToolIds: readonly string[]
