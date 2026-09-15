@@ -415,3 +415,58 @@ phase; each lists the current mobile behavior and what owner input would change.
   "Manage memories" link into the existing knowledge memories surface.
 - Webhook deliveries redrive only on failed/dead_letter rows (server
   returns 404 otherwise).
+
+## Phase 8 judgments (platform polish)
+
+- Push is groundwork-only until §9.3 lands: `preparePushRegistration` captures
+  the Expo push token (EAS projectId present) with a raw device-token
+  fallback and persists it to `overlay-push-token:<uid>` — the deferred
+  `POST /api/v1/devices` endpoint only needs the upload call. No token is
+  logged. Permission is requested lazily post-auth.
+- Foreground banners: `useNotificationWatcher` polls the unread feed every
+  30s and fires local notifications (`scheduleNotificationAsync`,
+  trigger:null) presented as real in-app banners via the module-level
+  handler. The first poll seeds seen-ids (no banner storm on sign-in) and
+  each cycle caps at 3 banners. The server's per-category 'banner'
+  preference mode decides what fires — 'activity' items stay silent in the
+  feed, matching web semantics; invitation/participant notifications have
+  no pref key and always banner. Settings → "In-app notifications" is the
+  master off switch (new `notificationBannersEnabled` mobile pref).
+- 'message' notifications don't carry the conversation kind, so the watcher
+  resolves dm-vs-channel lazily per conversationId (cached map) to pick
+  dmMessages vs channelMessages pref mode — one extra fetch per new
+  conversation, never per poll.
+- Notification routing is shared: `lib/notificationRouting.ts` is used by
+  both the Activity feed row and banner taps (thread deep-link →
+  /thread/[id], channel → /channel, dm → /dm, else /chat).
+- iPad: `useIsSidebarPermanent` = short edge ≥600pt && width ≥700pt —
+  full-size iPad orientations get a permanent 320pt sidebar column;
+  iPhone landscape and narrow Split View slices keep the modal drawer.
+  `openDrawer` no-ops in permanent mode and TopBarIconButton suppresses
+  icon='menu' globally. Pushed detail routes (/dm, /chat, /thread) stay
+  full-screen on iPad — a true split-view navigator is a larger refactor.
+- Offline read-through: `loadChat` falls back to an LRU snapshot cache
+  (max 20 chats, ~900KB cap per snapshot, oversized transcripts skipped).
+  Snapshots store the mapped Chat render model and rewrite on every
+  successful hydrate/post-send reload; delete prunes. ChatScreen shows an
+  "Offline — showing saved copy" pill and clears it when a reload hits
+  the network. Rooms (/dm, /channel) are not snapshot-cached — different
+  message model; they fail empty offline (documented gap).
+- A11y: TopBarIconButton derives labels from a Feather-glyph map (callers
+  may override); Composer's icon buttons, ListRow, ActionRow, ToggleRow,
+  SearchField clear, and SegmentedControl gained roles/labels/states.
+- Haptics: all calls now route through `lib/haptics.ts` helpers gated on
+  the hapticsEnabled pref — previously ~half the call sites ignored it
+  (RoomScreen, sheets, agents surfaces). ChatScreen's manual gates removed.
+- Deep links verified via simctl openurl: dictate, invitations, share/c
+  (opens the web share page in in-app browser), auth/mcp-callback — no
+  crashes. Universal-link groundwork added: iOS associatedDomains +
+  Android intent filters for /share/, /invitations/, /app/invitations/.
+  The production AASA already exists but only covers
+  /auth/native/callback — it must grow /share/ + /invitations/ paths (and
+  assetlinks.json is empty) before https links activate; both are §9 web
+  work. Filters degrade gracefully (links fall back to browser) meanwhile.
+- expo-notifications plugin added to app.json (default channel, no sounds).
+  A native rebuild (expo prebuild / EAS) is required before the entitlement
+  and Android channel exist in a binary — dev-client smoke tests covered
+  the JS layer only.

@@ -11,6 +11,7 @@ export interface MobilePreferences {
   startDestination: StartDestination
   transcriptionRetentionDays: TranscriptionRetentionDays
   showAdvancedDiagnostics: boolean
+  notificationBannersEnabled: boolean
 }
 
 const MOBILE_PREFERENCES_KEY = 'overlay-mobile-preferences-v1'
@@ -21,6 +22,7 @@ export const DEFAULT_MOBILE_PREFERENCES: MobilePreferences = {
   startDestination: 'last-used',
   transcriptionRetentionDays: 30,
   showAdvancedDiagnostics: false,
+  notificationBannersEnabled: true,
 }
 
 type MobilePreferencesListener = (preferences: MobilePreferences) => void
@@ -67,6 +69,10 @@ function normalizePreferences(value: unknown): MobilePreferences {
       typeof candidate.showAdvancedDiagnostics === 'boolean'
         ? candidate.showAdvancedDiagnostics
         : DEFAULT_MOBILE_PREFERENCES.showAdvancedDiagnostics,
+    notificationBannersEnabled:
+      typeof candidate.notificationBannersEnabled === 'boolean'
+        ? candidate.notificationBannersEnabled
+        : DEFAULT_MOBILE_PREFERENCES.notificationBannersEnabled,
   }
 }
 

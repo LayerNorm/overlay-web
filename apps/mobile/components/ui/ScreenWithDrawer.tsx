@@ -8,10 +8,11 @@ import {
   StyleSheet,
   View,
 } from 'react-native'
-import { useDrawer } from '../../contexts/DrawerContext'
+import { useDrawer, useIsSidebarPermanent } from '../../contexts/DrawerContext'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 export const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.85, 320)
+const SIDEBAR_WIDTH = 320
 const CONTENT_PUSH = DRAWER_WIDTH
 const EDGE_SWIPE_START = 30
 
@@ -23,6 +24,7 @@ export function ScreenWithDrawer({
   drawer: React.ReactNode
 }): React.ReactElement {
   const { drawerVisible, closeDrawer, openDrawer } = useDrawer()
+  const isSidebarPermanent = useIsSidebarPermanent()
   const contentTranslateX = useMemo(() => new Animated.Value(0), [])
   const drawerTranslateX = useMemo(() => new Animated.Value(-DRAWER_WIDTH), [])
   const scrimOpacity = useMemo(() => new Animated.Value(0), [])
@@ -144,6 +146,18 @@ export function ScreenWithDrawer({
     [contentTranslateX, drawerTranslateX, drawerVisible, keyboardVisible, openDrawer, scrimOpacity],
   )
 
+  // iPad / wide layout: the sidebar is a fixed column next to the content —
+  // no overlay, scrim, or edge-swipe. Callers already pass the 'slide'
+  // DrawerSidebar variant, which is exactly the chrome a permanent rail needs.
+  if (isSidebarPermanent) {
+    return (
+      <View style={[styles.container, styles.permanentRow]}>
+        <View style={styles.permanentSidebar}>{drawer}</View>
+        <View style={styles.permanentContent}>{children}</View>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container} {...edgePanResponder.panHandlers}>
       <Animated.View style={[styles.content, { transform: [{ translateX: contentTranslateX }] }]}>
@@ -191,5 +205,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 2,
     overflow: 'hidden',
+  },
+  permanentRow: {
+    flexDirection: 'row',
+  },
+  permanentSidebar: {
+    width: SIDEBAR_WIDTH,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: 'rgba(128, 128, 128, 0.25)',
+  },
+  permanentContent: {
+    flex: 1,
   },
 })

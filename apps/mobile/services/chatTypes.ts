@@ -97,6 +97,8 @@ export interface ChatMeta {
 export interface Chat extends ChatMeta {
   messages: Message[]
   modelId?: string
+  /** Set when hydrated from the local snapshot cache because the server was unreachable. */
+  restoredFromCache?: boolean
 }
 
 export const PROVIDER_COLORS: Record<string, string> = {

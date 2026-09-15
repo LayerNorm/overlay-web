@@ -34,7 +34,7 @@ import {
   markNotificationsRead,
   updateNotificationPreferences,
 } from '../../services/collaborationService'
-import { appJson } from '../../services/appApi'
+import { openNotificationDestination } from '../../lib/notificationRouting'
 import {
   BottomSheet,
   EmptyState,
@@ -197,42 +197,7 @@ export function ActivityScreen(): React.ReactElement {
         setLocallyRead((current) => new Map(current).set(notification.id, Date.now()))
         void markNotificationsRead([notification.id]).catch(() => undefined)
       }
-      if (!notification.conversationId) return
-      if (notification.conversationState === 'archived') {
-        router.push('/(tabs)/archived')
-        return
-      }
-      if (notification.conversationState === 'deleted') return
-      try {
-        const summary = await appJson<{ conversationType?: 'personal' | 'dm' | 'channel' }>(
-          '/api/v1/conversations',
-          { query: { conversationId: notification.conversationId } },
-        )
-        const type = summary.conversationType ?? 'personal'
-        // Thread notifications deep-link into the thread view when the root id
-        // is present; message permalinks land on the room (scroll-to-message is
-        // a documented gap in todos.md).
-        if (notification.threadRootMessageId && type !== 'personal') {
-          router.push({
-            pathname: '/thread/[id]',
-            params: {
-              id: notification.threadRootMessageId,
-              conversation: notification.conversationId,
-              type,
-            },
-          })
-          return
-        }
-        if (type === 'channel') {
-          router.push({ pathname: '/channel/[id]', params: { id: notification.conversationId } })
-        } else if (type === 'dm') {
-          router.push({ pathname: '/dm/[id]', params: { id: notification.conversationId } })
-        } else {
-          router.push({ pathname: '/chat/[id]', params: { id: notification.conversationId } })
-        }
-      } catch {
-        Alert.alert('Could not open the conversation', 'It may have been deleted.')
-      }
+      await openNotificationDestination(router, notification)
     },
     [router, locallyRead],
   )

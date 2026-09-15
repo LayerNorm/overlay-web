@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
-import * as Haptics from 'expo-haptics'
+import { hapticImpact } from '../../lib/haptics'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
@@ -79,7 +79,7 @@ export function AgentsScreen(): React.ReactElement {
   const startChat = useCallback(async (agent: AgentDirectoryItem) => {
     if (chatBusyId) return
     setChatBusyId(agent.id)
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    hapticImpact()
     try {
       const conversationId = await openAgentChat(workspaceId, agent)
       router.push({ pathname: '/dm/[id]', params: { id: conversationId } })

@@ -555,6 +555,13 @@ export default function SettingsScreen(): React.ReactElement {
                 value={preferences.hapticsEnabled}
                 onValueChange={(hapticsEnabled) => { void updatePreferences({ hapticsEnabled }) }}
               />
+              <ToggleRow
+                theme={theme}
+                title="In-app notifications"
+                detail="Show banners for new activity while the app is open."
+                value={preferences.notificationBannersEnabled}
+                onValueChange={(notificationBannersEnabled) => { void updatePreferences({ notificationBannersEnabled }) }}
+              />
               <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Transcription retention</Text>
               <SegmentedControl
                 theme={theme}

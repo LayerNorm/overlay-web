@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
-import * as Haptics from 'expo-haptics'
+import { hapticNotify } from '../../lib/haptics'
 import type { BuiltInUserOwnedAcpAdapterId } from '@overlay/workspace-contracts'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -84,7 +84,7 @@ export function ConnectMachineSheet({
   const copy = useCallback(async () => {
     if (!command) return
     await Clipboard.setStringAsync(command)
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    hapticNotify()
     setCopied(true)
     setTimeout(() => setCopied(false), 1_500)
   }, [command])

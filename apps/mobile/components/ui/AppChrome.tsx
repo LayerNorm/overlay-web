@@ -17,19 +17,75 @@ import MaskedView from '@react-native-masked-view/masked-view'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
+import { useDrawer } from '../../contexts/DrawerContext'
 import { GlassSurface } from './GlassSurface'
+
+/** Default a11y labels for common Feather glyphs used in icon-only buttons. */
+const ICON_A11Y_LABELS: Partial<Record<keyof typeof Feather.glyphMap, string>> = {
+  menu: 'Open navigation menu',
+  plus: 'Create new',
+  search: 'Search',
+  x: 'Close',
+  'x-circle': 'Clear',
+  'chevron-left': 'Back',
+  'chevron-right': 'Forward',
+  'chevron-down': 'Expand',
+  'chevron-up': 'Collapse',
+  'more-horizontal': 'More options',
+  'more-vertical': 'More options',
+  trash: 'Delete',
+  'trash-2': 'Delete',
+  edit: 'Edit',
+  'edit-3': 'Edit',
+  share: 'Share',
+  'share-2': 'Share',
+  download: 'Download',
+  upload: 'Upload',
+  send: 'Send',
+  mic: 'Dictate',
+  paperclip: 'Attach file',
+  image: 'Attach image',
+  camera: 'Take photo',
+  settings: 'Settings',
+  bell: 'Notifications',
+  'bell-off': 'Mute notifications',
+  'map-pin': 'Pinned',
+  bookmark: 'Save',
+  copy: 'Copy',
+  'refresh-cw': 'Refresh',
+  archive: 'Archive',
+  star: 'Star',
+  heart: 'Favorite',
+  link: 'Copy link',
+  'external-link': 'Open externally',
+  play: 'Play',
+  pause: 'Pause',
+  square: 'Stop',
+  check: 'Confirm',
+  filter: 'Filter',
+  sliders: 'Adjust options',
+  'message-circle': 'Comments',
+  'corner-up-left': 'Reply',
+  'corner-down-right': 'Reply in thread',
+}
 
 export function TopBarIconButton({
   theme,
   icon,
   onPress,
   active = false,
+  accessibilityLabel,
 }: {
   theme: Theme
   icon: keyof typeof Feather.glyphMap
   onPress: () => void
   active?: boolean
-}): React.ReactElement {
+  /** Overrides the derived icon label for assistive technologies. */
+  accessibilityLabel?: string
+}): React.ReactElement | null {
+  const { isSidebarPermanent } = useDrawer()
+  // The drawer menu button is dead chrome when the sidebar is permanent.
+  if (isSidebarPermanent && icon === 'menu') return null
   return (
     <GlassSurface
       interactive
@@ -41,7 +97,14 @@ export function TopBarIconButton({
         },
       ]}
     >
-      <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={styles.iconButtonTouch}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.82}
+        style={styles.iconButtonTouch}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? ICON_A11Y_LABELS[icon] ?? icon}
+        accessibilityState={{ selected: active }}
+      >
         <Feather name={icon} size={16} color={active ? theme.text : theme.textSecondary} />
       </TouchableOpacity>
     </GlassSurface>
@@ -206,7 +269,12 @@ export const SearchField = React.forwardRef<
         style={[styles.searchInput, { color: theme.text }]}
       />
       {value ? (
-        <TouchableOpacity onPress={() => onChangeText('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+        <TouchableOpacity
+          onPress={() => onChangeText('')}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+        >
           <Feather name="x" size={15} color={theme.textDisabled} />
         </TouchableOpacity>
       ) : null}
@@ -238,6 +306,9 @@ export function SegmentedControl<T extends string>({
               }
             }}
             activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel={option.label}
+            accessibilityState={{ selected: isActive }}
             style={[
               styles.segment,
               {

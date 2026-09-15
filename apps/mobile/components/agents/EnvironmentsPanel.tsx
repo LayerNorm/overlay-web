@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
-import * as Haptics from 'expo-haptics'
+import { hapticNotify } from '../../lib/haptics'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { BottomSheet, EmptyState } from '../ui/AppChrome'
@@ -112,7 +112,7 @@ export function EnvironmentsPanel({
 
   const copy = useCallback(async (field: string, value: string) => {
     await Clipboard.setStringAsync(value)
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    hapticNotify()
     setCopiedField(field)
     setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1_500)
   }, [])

@@ -64,7 +64,12 @@ export function ToggleRow({
         <Text style={[settingsStyles.rowTitle, { color: theme.text }]}>{title}</Text>
         <Text style={[settingsStyles.rowDetail, { color: theme.textSecondary }]}>{detail}</Text>
       </View>
-      <Switch value={value} disabled={disabled} onValueChange={onValueChange} />
+      <Switch
+        value={value}
+        disabled={disabled}
+        onValueChange={onValueChange}
+        accessibilityLabel={title}
+      />
     </View>
   )
 }
@@ -88,7 +93,15 @@ export function ActionRow({
 }): React.ReactElement {
   const color = destructive ? '#EF4444' : theme.text
   return (
-    <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={[settingsStyles.row, { borderColor: theme.border }]}>
+    <TouchableOpacity
+      activeOpacity={0.82}
+      onPress={onPress}
+      style={[settingsStyles.row, { borderColor: theme.border }]}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityHint={detail}
+      accessibilityState={{ busy }}
+    >
       <Feather name={icon} size={16} color={destructive ? '#EF4444' : theme.textSecondary} />
       <View style={settingsStyles.rowCopy}>
         <Text style={[settingsStyles.rowTitle, { color }]}>{title}</Text>

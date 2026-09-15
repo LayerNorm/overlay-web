@@ -21,7 +21,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import * as Haptics from 'expo-haptics'
+import { hapticSelect } from '../../lib/haptics'
 import type { ChatModel } from '@overlay/app-core'
 import type {
   Computer,
@@ -224,7 +224,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   }, [environments])
 
   const toggleToolGroup = useCallback((groupId: string) => {
-    void Haptics.selectionAsync()
+    hapticSelect()
     setEnabledToolGroups((current) => {
       const next = new Set(current)
       if (next.has(groupId)) next.delete(groupId)

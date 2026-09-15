@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
-import * as Haptics from 'expo-haptics'
+import { hapticNotify } from '../../lib/haptics'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import type { ChatMeta } from '../../services/chatTypes'
@@ -229,7 +229,7 @@ export function ChatActionsSheet({
                   style={[styles.shareActionButton, { backgroundColor: theme.surfaceSubtle }]}
                   onPress={() => {
                     void Clipboard.setStringAsync(shareUrl)
-                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                    hapticNotify()
                   }}
                 >
                   <Feather name="copy" size={14} color={theme.text} />

@@ -97,6 +97,8 @@ export function ListRow({
         pressed && onPress ? { backgroundColor: theme.surfaceSubtle } : null,
       ]}
       accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityHint={subtitle}
       accessibilityState={{ disabled, selected }}
     >
       {icon && iconSfSymbol ? (

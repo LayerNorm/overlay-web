@@ -22,6 +22,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.layernorm.overlay-mobile",
       "buildNumber": "1.0.0.1",
+      "associatedDomains": [
+        "applinks:www.getoverlay.io"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -48,6 +51,31 @@
             "BROWSABLE",
             "DEFAULT"
           ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/share/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/invitations/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/invitations/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "edgeToEdgeEnabled": true,
@@ -62,7 +90,15 @@
       "expo-secure-store",
       "expo-web-browser",
       "react-native-enriched-markdown",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "color": "#0a0a0a",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "router": {},

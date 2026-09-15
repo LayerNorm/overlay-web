@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
-import * as Haptics from 'expo-haptics'
+import { hapticImpact, hapticNotify } from '../../lib/haptics'
 import * as ImagePicker from 'expo-image-picker'
 import type { ChatModel } from '../../services/chatTypes'
 import {
@@ -71,7 +71,6 @@ import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { useAuth } from '../../contexts/AuthContext'
 import * as DocumentPicker from 'expo-document-picker'
-import { useMobilePreferences } from '../../hooks/useMobilePreferences'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -365,7 +364,6 @@ export function ChatScreen({
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels, imageModels, videoModels, uiSettings, capabilities } = useAppSession()
-  const { preferences: mobilePreferences } = useMobilePreferences()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
 
@@ -402,6 +400,7 @@ export function ChatScreen({
   const [currentRun, setCurrentRun] = useState<AgentRunResource | null>(null)
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
   const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
+  const [showingCachedCopy, setShowingCachedCopy] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
@@ -528,6 +527,7 @@ export function ChatScreen({
         setChatTitle(chat.title)
         hasAutoScrolledRef.current = false
         setMessages(chat.messages)
+        setShowingCachedCopy(chat.restoredFromCache === true)
         setInputValue('')
         setImageBase64(null)
         setPendingDocuments([])
@@ -575,6 +575,7 @@ export function ChatScreen({
       setActiveChatId(created.id)
       setChatTitle(created.title)
       setMessages([])
+      setShowingCachedCopy(false)
       setMentions([])
       setReplyContext(null)
       setPendingDocuments([])
@@ -982,9 +983,7 @@ export function ChatScreen({
       }
       if (!inputValue.trim() && !imageBase64) return
 
-      if (mobilePreferences.hapticsEnabled) {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-      }
+      hapticImpact()
       Keyboard.dismiss()
       setIsSending(true)
       setAttachmentError(null)
@@ -1105,6 +1104,7 @@ export function ChatScreen({
           chatRef.current = refreshed
           setChatTitle(refreshed.title)
           setMessages(refreshed.messages)
+          setShowingCachedCopy(refreshed.restoredFromCache === true)
         }
         await refreshHistory()
       }
@@ -1116,7 +1116,6 @@ export function ChatScreen({
       inputValue,
       isSending,
       isTemporary,
-      mobilePreferences.hapticsEnabled,
       refreshHistory,
       replyContext,
       scrollToBottom,
@@ -1144,7 +1143,7 @@ export function ChatScreen({
 
   const handleMessageLongPress = useCallback(
     (message: Message) => {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      hapticImpact()
       const text = message.content?.trim() ?? ''
       const canReply = text.length > 0
       Alert.alert(message.role === 'user' ? 'Your message' : 'Message', undefined, [
@@ -1152,7 +1151,7 @@ export function ChatScreen({
           text: 'Copy',
           onPress: () => {
             void Clipboard.setStringAsync(text)
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+            hapticNotify()
           },
         },
         ...(canReply
@@ -1204,9 +1203,7 @@ export function ChatScreen({
       return
     }
 
-    if (mobilePreferences.hapticsEnabled) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    }
+    hapticImpact()
     textInputRef.current?.blur()
     Keyboard.dismiss()
     abortRef.current = false
@@ -1328,6 +1325,7 @@ export function ChatScreen({
         chatRef.current = refreshed
         setChatTitle(refreshed.title)
         setMessages(refreshed.messages)
+        setShowingCachedCopy(refreshed.restoredFromCache === true)
       } else {
         setMessages((current) =>
           applyStreamChunk(current, assistantId, selectedModel, { type: 'done', content: '' }),
@@ -1354,7 +1352,6 @@ export function ChatScreen({
     memoryEnabled,
     mentions,
     messages,
-    mobilePreferences.hapticsEnabled,
     pendingDocuments,
     projectId,
     refreshHistory,
@@ -1487,7 +1484,7 @@ export function ChatScreen({
                   icon={isTemporary ? 'eye-off' : 'eye'}
                   onPress={() => {
                     setIsTemporary((current) => !current)
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    hapticImpact()
                   }}
                 />
                 <TopBarIconButton
@@ -1521,6 +1518,25 @@ export function ChatScreen({
           />
 
           <View style={styles.threadSurface}>
+            {showingCachedCopy ? (
+              <View
+                style={[
+                  styles.offlineBanner,
+                  {
+                    backgroundColor: theme.surfaceElevated,
+                    borderColor: theme.border,
+                    marginTop: insets.top + 64,
+                  },
+                ]}
+                accessibilityRole="text"
+                accessibilityLabel="You are offline. Showing the last synced copy of this conversation."
+              >
+                <Feather name="wifi-off" size={11} color={theme.textSecondary} />
+                <Text style={[styles.offlineBannerText, { color: theme.textSecondary }]}>
+                  Offline — showing saved copy
+                </Text>
+              </View>
+            ) : null}
             {messages.length === 0 ? (
               <View style={styles.emptySurface}>
                 <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" alt="Overlay logo" />
@@ -1561,7 +1577,7 @@ export function ChatScreen({
                     onQuickSend={sendPresetMessage}
                     onCopy={async (content) => {
                       await Clipboard.setStringAsync(content)
-                      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                      hapticNotify()
                     }}
                   />
                 )}
@@ -2170,6 +2186,22 @@ const styles = StyleSheet.create({
   tempBadgeText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  offlineBanner: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: spacing.xs,
+    zIndex: 5,
+  },
+  offlineBannerText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   suggestionsWrap: {
     marginTop: spacing.lg,

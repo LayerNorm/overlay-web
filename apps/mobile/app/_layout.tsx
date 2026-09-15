@@ -5,9 +5,18 @@ import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
-import { AuthProvider } from '../contexts/AuthContext'
+import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import { AppSessionProvider } from '../contexts/AppSessionContext'
 import { WorkspaceProvider } from '../contexts/WorkspaceContext'
+import { useNotificationWatcher } from '../hooks/useNotificationWatcher'
+import { openNotificationDestination } from '../lib/notificationRouting'
+import {
+  addNotificationResponseListener,
+  initNotificationHandler,
+  preparePushRegistration,
+} from '../services/notificationsService'
+
+initNotificationHandler()
 
 function handleDeepLink(url: string | null | undefined): void {
   if (!url) return
@@ -63,8 +72,36 @@ function useVoiceAuthSync(): void {
 
 function RootLayoutNav(): React.ReactElement {
   const { isDark } = useTheme()
+  const { isAuthenticated, user } = useAuth()
   useDictateDeepLink()
   useVoiceAuthSync()
+  // Foreground banners for newly arrived unread notifications while server
+  // push remains deferred (§9.3).
+  useNotificationWatcher(isAuthenticated)
+
+  // Push registration groundwork: capture + persist the token locally so the
+  // deferred server token store only needs the upload call when it lands.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return
+    void preparePushRegistration(user.id).catch(() => undefined)
+  }, [isAuthenticated, user?.id])
+
+  // Banner taps route to the same destination as the Activity feed row.
+  useEffect(() => {
+    const sub = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data as {
+        kind?: string
+        conversationId?: string
+        threadRootMessageId?: string
+      }
+      if (data?.kind !== 'workspace-notification' || !data.conversationId) return
+      void openNotificationDestination(router, {
+        conversationId: data.conversationId,
+        threadRootMessageId: data.threadRootMessageId,
+      })
+    })
+    return () => sub.remove()
+  }, [])
 
   return (
     <>

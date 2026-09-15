@@ -14,6 +14,66 @@ import {
 } from './chatTypes'
 
 const LAST_CHAT_ID_KEY = 'overlay-last-chat-id'
+const SNAPSHOT_PREFIX = 'overlay-chat-snapshot:'
+const SNAPSHOT_INDEX_KEY = 'overlay-chat-snapshot-index'
+const MAX_SNAPSHOTS = 20
+const MAX_SNAPSHOT_BYTES = 900 * 1024
+
+interface ChatSnapshot {
+  savedAt: number
+  chat: Chat
+}
+
+/**
+ * Read-through snapshot cache: keeps the last N opened conversations readable
+ * offline. Snapshots store the already-mapped `Chat` (render model survives a
+ * round trip) and are evicted LRU-style beyond `MAX_SNAPSHOTS`; oversized
+ * transcripts are skipped so AsyncStorage stays bounded.
+ */
+export async function saveChatSnapshot(chat: Chat): Promise<void> {
+  try {
+    const payload = JSON.stringify({ savedAt: Date.now(), chat } satisfies ChatSnapshot)
+    if (payload.length > MAX_SNAPSHOT_BYTES) return
+    await AsyncStorage.setItem(`${SNAPSHOT_PREFIX}${chat.id}`, payload)
+    const rawIndex = await AsyncStorage.getItem(SNAPSHOT_INDEX_KEY)
+    const index: string[] = rawIndex ? (JSON.parse(rawIndex) as string[]) : []
+    const next = [chat.id, ...index.filter((entry) => entry !== chat.id)]
+    const evicted = next.slice(MAX_SNAPSHOTS)
+    await AsyncStorage.setItem(SNAPSHOT_INDEX_KEY, JSON.stringify(next.slice(0, MAX_SNAPSHOTS)))
+    for (const evictedId of evicted) {
+      await AsyncStorage.removeItem(`${SNAPSHOT_PREFIX}${evictedId}`)
+    }
+  } catch {
+    // Snapshot writes are best-effort — never break a chat load.
+  }
+}
+
+export async function loadChatSnapshot(id: string): Promise<Chat | null> {
+  try {
+    const raw = await AsyncStorage.getItem(`${SNAPSHOT_PREFIX}${id}`)
+    if (!raw) return null
+    const snapshot = JSON.parse(raw) as ChatSnapshot
+    if (!snapshot.chat || snapshot.chat.id !== id || !Array.isArray(snapshot.chat.messages)) {
+      return null
+    }
+    return { ...snapshot.chat, restoredFromCache: true }
+  } catch {
+    return null
+  }
+}
+
+async function removeChatSnapshot(id: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(`${SNAPSHOT_PREFIX}${id}`)
+    const rawIndex = await AsyncStorage.getItem(SNAPSHOT_INDEX_KEY)
+    if (rawIndex) {
+      const index = (JSON.parse(rawIndex) as string[]).filter((entry) => entry !== id)
+      await AsyncStorage.setItem(SNAPSHOT_INDEX_KEY, JSON.stringify(index))
+    }
+  } catch {
+    // best-effort
+  }
+}
 
 function toMessageContent(parts: ConversationMessage['parts']): string {
   return parts
@@ -164,14 +224,17 @@ export async function loadChat(id: string): Promise<Chat | null> {
     ])
 
     const messages = messagesResponse.messages.map(mapConversationMessageToMessage)
-    return {
+    const chat: Chat = {
       ...mapConversationSummary(summary),
       lastMessage: getConversationSummaryLastMessage(summary, messagesResponse.messages),
       modelId: summary.actModelId || summary.askModelIds[0],
       messages,
     }
+    void saveChatSnapshot(chat)
+    return chat
   } catch {
-    return null
+    // Read-through: server unreachable → fall back to the last synced copy.
+    return loadChatSnapshot(id)
   }
 }
 
@@ -185,6 +248,7 @@ export async function deleteChat(id: string): Promise<void> {
   if (lastId === id) {
     await AsyncStorage.removeItem(LAST_CHAT_ID_KEY)
   }
+  void removeChatSnapshot(id)
 }
 
 export async function getLastOpenedChatId(): Promise<string | null> {

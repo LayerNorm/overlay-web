@@ -282,7 +282,12 @@ export function Composer(props: ComposerProps): React.ReactElement {
             <Feather name="image" size={14} color={theme.textSecondary} />
             <Text style={[styles.attachmentText, { color: theme.textSecondary }]}>Image attached</Text>
           </View>
-          <TouchableOpacity onPress={onClearImage} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={onClearImage}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Remove attached image"
+          >
             <Feather name="x" size={16} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
@@ -308,6 +313,8 @@ export function Composer(props: ComposerProps): React.ReactElement {
                 activeOpacity={0.65}
                 onPress={() => onRemoveDocument(doc.clientId)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${doc.name}`}
               >
                 <Feather name="x" size={14} color={theme.textSecondary} />
               </TouchableOpacity>
@@ -335,7 +342,12 @@ export function Composer(props: ComposerProps): React.ReactElement {
               <Text style={[styles.mentionChipText, { color: theme.text }]} numberOfLines={1}>
                 {item.name}
               </Text>
-              <TouchableOpacity onPress={() => onRemoveMention(item)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <TouchableOpacity
+                onPress={() => onRemoveMention(item)}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove mention ${item.name}`}
+              >
                 <Feather name="x" size={12} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -350,7 +362,12 @@ export function Composer(props: ComposerProps): React.ReactElement {
           <Text style={[styles.replyBarText, { color: theme.textSecondary }]} numberOfLines={2}>
             {replyContext.snippet}
           </Text>
-          <TouchableOpacity onPress={onClearReply} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={onClearReply}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel reply"
+          >
             <Feather name="x" size={15} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
@@ -364,7 +381,12 @@ export function Composer(props: ComposerProps): React.ReactElement {
             {generationKind === 'image' ? 'Image' : 'Video'}
             {activeGenerationModel ? ` · ${activeGenerationModel.name}` : ''}
           </Text>
-          <TouchableOpacity onPress={() => onSelectGeneration(null, null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={() => onSelectGeneration(null, null)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear generation mode"
+          >
             <Feather name="x" size={15} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
@@ -401,6 +423,8 @@ export function Composer(props: ComposerProps): React.ReactElement {
                 activeOpacity={0.82}
                 onPress={() => setAttachPickerVisible(true)}
                 style={styles.composerIconButton}
+                accessibilityRole="button"
+                accessibilityLabel="Add attachment"
               >
                 <Feather name="plus" size={22} color={theme.textSecondary} />
               </TouchableOpacity>
@@ -410,6 +434,12 @@ export function Composer(props: ComposerProps): React.ReactElement {
               <TouchableOpacity
                 activeOpacity={0.82}
                 onPress={() => setToolsSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  activeToolCount > 0
+                    ? `Tools and modes, ${activeToolCount} active`
+                    : 'Tools and modes'
+                }
                 style={[
                   styles.toolsButton,
                   {
@@ -431,6 +461,8 @@ export function Composer(props: ComposerProps): React.ReactElement {
               activeOpacity={0.82}
               onPress={() => onChangeInput(`${inputValue}@`)}
               style={[styles.toolsButton, { backgroundColor: theme.surfaceSubtle }]}
+              accessibilityRole="button"
+              accessibilityLabel="Insert mention"
             >
               <Feather name="at-sign" size={15} color={theme.textSecondary} />
             </TouchableOpacity>
@@ -450,6 +482,9 @@ export function Composer(props: ComposerProps): React.ReactElement {
                 disabled={!isSending && !canSend}
                 activeOpacity={0.82}
                 style={[styles.sendButton, (!canSend && !isSending) && { opacity: 0.5 }]}
+                accessibilityRole="button"
+                accessibilityLabel={isSending ? 'Stop generating' : 'Send message'}
+                accessibilityState={{ disabled: !isSending && !canSend }}
               >
                 {isSending ? (
                   <Feather name="square" size={14} color={theme.background} />

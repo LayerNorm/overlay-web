@@ -26,6 +26,7 @@ import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
+import { hapticImpact } from '../../lib/haptics'
 import * as Haptics from 'expo-haptics'
 import type { ConversationParticipant, ConversationPresence } from '@overlay/workspace-contracts'
 import { useTheme } from '../../hooks/useTheme'
@@ -629,7 +630,7 @@ export function RoomScreen({
           setState((prev) => ({ ...prev, reactions: groupReactions(reactions) }))
         })
         .catch(() => undefined)
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined)
+      hapticImpact()
     },
     [conversationId, state.reactions],
   )
@@ -845,7 +846,7 @@ export function RoomScreen({
           onToggleReaction={(emoji) => handleToggleReaction(item.id, emoji)}
           onOpenThread={() => openThread(item.id)}
           onLongPress={(target) => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined)
+            hapticImpact(Haptics.ImpactFeedbackStyle.Medium)
             setActionsMessage(target)
           }}
         />
