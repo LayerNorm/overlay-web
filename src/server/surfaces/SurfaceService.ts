@@ -5,6 +5,7 @@ import type {
   SurfaceBinding,
   SurfaceChannelOption,
   SurfaceConnection,
+  SurfaceConnectionStatus,
   SurfacePlatform,
   WorkspaceAgentDirectoryItem,
   WorkspaceMembershipRole,
@@ -211,6 +212,35 @@ export class SurfaceService {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     })
+  }
+
+  /**
+   * Marks a connection non-active when the platform reports the install is
+   * gone (app_uninstalled → 'uninstalled', bot tokens_revoked → 'degraded')
+   * or an outbound call discovers a revoked token. Tries the team id first,
+   * then the enterprise id — org-level installs store it as externalTeamId.
+   * Idempotent: already non-active connections are left alone. Returns true
+   * when a connection transitioned.
+   */
+  async degradeConnectionByTeam(args: {
+    platform: SurfacePlatform
+    teamId?: string | null
+    enterpriseId?: string | null
+    status: Exclude<SurfaceConnectionStatus, 'active'>
+  }): Promise<boolean> {
+    const connection =
+      (args.teamId
+        ? await this.repository.findConnectionByTeam(args.platform, args.teamId)
+        : null) ??
+      (args.enterpriseId
+        ? await this.repository.findConnectionByTeam(args.platform, args.enterpriseId)
+        : null)
+    if (!connection || connection.status !== 'active') return false
+    await this.repository.updateConnection(connection.id, {
+      status: args.status,
+      updatedAt: this.now(),
+    })
+    return true
   }
 
   /**

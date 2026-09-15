@@ -95,8 +95,15 @@ settings:
 - **`chat:write.customize`** — required for per-agent `username`/`icon_url` on
   `chat.postMessage`; this is how different Overlay agents appear as
   themselves in one workspace.
-- **`app_uninstalled` / `tokens_revoked`** — drive connection `degraded`
-  status (Phase 5 hardening).
+- **`app_uninstalled` / `tokens_revoked`** — handled by the webhook route
+  directly (the Chat SDK doesn't dispatch them). `app_uninstalled` marks the
+  connection `uninstalled`; a `tokens_revoked` carrying bot tokens marks it
+  `degraded` (user OAuth revocations don't affect the bot token). Either way
+  inbound routing no-ops until the workspace reconnects.
+- **`channels:join`** — reserved for a future self-join on bind. Today the
+  bot can only answer in channels it has joined: invite it with
+  `/invite @Overlay` (the channel picker marks unjoined channels
+  "invite needed" and shows this hint).
 - **`interactivity`** — enabled now so native feedback buttons work and
   approval cards are an additive change later.
 

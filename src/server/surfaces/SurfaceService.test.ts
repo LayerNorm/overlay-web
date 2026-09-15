@@ -173,3 +173,76 @@ test('resolveInboundBinding no-ops when the creator principal has no user', asyn
     platform: 'slack', externalTeamId: 'T1', channelId: 'C1',
   }), null)
 })
+
+function serviceWithConnections(connections: SurfaceConnection[]) {
+  const updates: Array<{ id: string; patch: Partial<SurfaceConnection> }> = []
+  const repository = {
+    findConnectionByTeam: async (_platform: string, teamId: string) =>
+      connections.find((row) => row.externalTeamId === teamId) ?? null,
+    updateConnection: async (id: string, patch: Partial<SurfaceConnection>) => {
+      updates.push({ id, patch })
+      const row = connections.find((candidate) => candidate.id === id)
+      if (!row) throw new Error('missing connection')
+      Object.assign(row, patch)
+      return row
+    },
+    findBindingByChannel: async () => null,
+  } as unknown as SurfaceRepository
+  const service = new SurfaceService({
+    repository,
+    agents: { get: async () => null } as unknown as WorkspaceAgentRepository,
+    channelLister: async () => [],
+    now: () => 999,
+  })
+  return { service, updates }
+}
+
+test('degradeConnectionByTeam marks the install non-active and stops routing', async () => {
+  const rows = [connection()]
+  const { service, updates } = serviceWithConnections(rows)
+  // tokens_revoked → degraded.
+  assert.equal(await service.degradeConnectionByTeam({
+    platform: 'slack', teamId: 'T1', status: 'degraded',
+  }), true)
+  assert.deepEqual(updates, [{ id: 'surface_connection_1', patch: { status: 'degraded', updatedAt: 999 } }])
+  assert.equal(rows[0]!.status, 'degraded')
+  // The degraded row no longer routes inbound messages.
+  assert.equal(await service.resolveInboundBinding({
+    platform: 'slack', externalTeamId: 'T1', channelId: 'C1',
+  }), null)
+  // Idempotent — a retried event does not write again.
+  assert.equal(await service.degradeConnectionByTeam({
+    platform: 'slack', teamId: 'T1', status: 'degraded',
+  }), false)
+  assert.equal(updates.length, 1)
+})
+
+test('degradeConnectionByTeam records app_uninstalled as uninstalled', async () => {
+  const { service, updates } = serviceWithConnections([connection()])
+  assert.equal(await service.degradeConnectionByTeam({
+    platform: 'slack', teamId: 'T1', status: 'uninstalled',
+  }), true)
+  assert.equal(updates[0]?.patch.status, 'uninstalled')
+})
+
+test('degradeConnectionByTeam falls back to the enterprise id for org installs', async () => {
+  // Org-level installs store the enterprise id as externalTeamId.
+  const { service, updates } = serviceWithConnections([
+    connection({ externalTeamId: 'E1', externalEnterpriseId: 'E1' }),
+  ])
+  assert.equal(await service.degradeConnectionByTeam({
+    platform: 'slack', teamId: 'T_UNKNOWN', enterpriseId: 'E1', status: 'degraded',
+  }), true)
+  assert.equal(updates.length, 1)
+})
+
+test('degradeConnectionByTeam no-ops for unknown teams and missing ids', async () => {
+  const { service, updates } = serviceWithConnections([connection()])
+  assert.equal(await service.degradeConnectionByTeam({
+    platform: 'slack', teamId: 'T_UNKNOWN', status: 'degraded',
+  }), false)
+  assert.equal(await service.degradeConnectionByTeam({
+    platform: 'slack', status: 'degraded',
+  }), false)
+  assert.equal(updates.length, 0)
+})

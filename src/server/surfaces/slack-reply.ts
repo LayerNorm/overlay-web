@@ -3,6 +3,7 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type { SlackAdapter } from '@chat-adapter/slack'
+import { degradeSlackConnectionByTeam, isSlackTokenRevokedError } from './slack-lifecycle'
 
 // Slack rejects messages over ~40k chars; keep well under with headroom for
 // markdown expansion.
@@ -38,6 +39,11 @@ export async function postSlackAgentMessage(args: {
       teamId: args.teamId,
       channelId: args.channelId,
     })
+    await degradeSlackConnectionByTeam({
+      teamId: args.teamId,
+      status: 'degraded',
+      reason: 'installation_missing',
+    })
     return { posted: false }
   }
   const text = truncateForSlack(args.text)
@@ -63,6 +69,13 @@ export async function postSlackAgentMessage(args: {
         })
         return { ts: result.ts ?? undefined, posted: Boolean(result.ok) }
       } catch (error) {
+        if (isSlackTokenRevokedError(error)) {
+          await degradeSlackConnectionByTeam({
+            teamId: args.teamId,
+            status: 'degraded',
+            reason: 'token_revoked',
+          })
+        }
         logger.warn('[surfaces/slack] reply post failed', {
           teamId: args.teamId,
           channelId: args.channelId,

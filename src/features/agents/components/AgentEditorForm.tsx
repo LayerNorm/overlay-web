@@ -344,16 +344,24 @@ export function AgentSurfacesSection({
                   ) : pickerChannels.length === 0 ? (
                     <p className="text-[11px] leading-4 text-[var(--muted)]">No more channels to add.</p>
                   ) : (
-                    <ListboxSelect
-                      aria-label="Add Slack channel"
-                      value="Select a channel"
-                      options={pickerChannels.map((channel) => ({ value: channel.id, label: `# ${channel.name}` }))}
-                      onChange={(channelId) => {
-                        const channel = pickerChannels.find((option) => option.id === channelId)
-                        if (channel) onSelectChannel(connection.id, channel)
-                      }}
-                      disabled={busyId !== null}
-                    />
+                    <>
+                      <ListboxSelect
+                        aria-label="Add Slack channel"
+                        value="Select a channel"
+                        options={pickerChannels.map((channel) => ({
+                          value: channel.id,
+                          label: `# ${channel.name}${channel.isMember === false ? ' · invite needed' : ''}`,
+                        }))}
+                        onChange={(channelId) => {
+                          const channel = pickerChannels.find((option) => option.id === channelId)
+                          if (channel) onSelectChannel(connection.id, channel)
+                        }}
+                        disabled={busyId !== null}
+                      />
+                      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+                        The bot only answers in channels it has joined — invite it with /invite @Overlay.
+                      </p>
+                    </>
                   )}
                 </div>
               ) : null}

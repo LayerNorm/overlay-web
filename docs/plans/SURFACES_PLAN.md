@@ -3,8 +3,10 @@
 Status: in progress — Phase 0 ✅ landed (deps, Slack app manifest +
 `docs/develop/surfaces-slack-app.md`, env vars); Phase 1 ✅ landed (data model +
 OAuth connect flow + bindings API); Phase 2 ✅ landed (webhook → durable turn →
-Slack reply); Phase 5 partially landed (SDK dedupe + sender guards + unit
-tests; degraded-connection handling still missing). Staging E2E verification
+Slack reply); Phase 3 ✅ landed (agent editor "Reachable on" UI); Phase 4 ✅
+landed (surface conversations in Chats, tagged + read-only); Phase 5 ✅ landed
+(lifecycle events → degraded/uninstalled, revoked-token detection, invite
+docs, joinable-channel markers, unit tests). Staging E2E verification
 in progress — two blocking bugs fixed on staging (`overlay_session`
 SameSite=strict → lax so OAuth callbacks carry the session; `getSlackAdapter`
 now calls `chat.initialize()` so `setInstallation` works outside webhook
@@ -302,15 +304,27 @@ Implementation notes:
   is the known end-state; `externalThreadRef` data makes it a pure reskin
   later. Not v1.
 
-## Phase 5 — hardening *(partially landed)*
+## Phase 5 — hardening *(landed)*
 
-- `app_uninstalled` / `tokens_revoked` → connection `degraded` + editor amber.
+- `app_uninstalled` → connection `uninstalled`; bot `tokens_revoked` →
+  `degraded`. The Chat SDK doesn't dispatch lifecycle events, so the webhook
+  route parses the envelope itself, re-verifies Slack's `v0=` signature on
+  the raw body, and transitions the connection (`degradeConnectionByTeam`,
+  team → enterprise-id fallback, idempotent). `resolveInboundBinding`
+  already no-ops for non-active connections; the editor shows amber.
+- Outbound paths detect dead tokens too: `postSlackAgentMessage` and
+  `listSlackChannels` mark the connection `degraded` on
+  `token_revoked`/`account_inactive`/`invalid_auth`/`not_authed` Slack
+  errors, or when the state adapter's installation is gone.
 - Slack retry storms: adapter acks first; dedupe TTL in state adapter; guard
   `bot_id` and own echoes.
-- Bot must be invited to channels (`/invite @overlay`) — document in the
-  connect UI; `conversations.list` picker can filter to joinable channels.
+- Bot must be invited to channels (`/invite @Overlay`) — documented in the
+  channel picker; `conversations.list` results carry `is_member`, and
+  unjoined channels render an "invite needed" marker (still bindable).
 - Unit tests: binding resolver, thread↔conversation mapping, removed-binding
-  no-op, revoked-token path. Manual e2e: test Slack workspace → staging.
+  no-op, lifecycle-event extraction, signature verification, revoked-token
+  detection, degrade transitions + idempotency. Manual e2e: test Slack
+  workspace → staging *(in progress)*.
 
 ## Explicitly deferred
 

@@ -47,4 +47,13 @@ export type SurfaceBinding = {
 }
 
 /** One bindable channel on a connected platform (Slack conversations.list). */
-export type SurfaceChannelOption = { id: string; name: string }
+export type SurfaceChannelOption = {
+  id: string
+  name: string
+  /**
+   * Whether the platform bot is already in the channel (Slack `is_member`).
+   * Binding is still allowed when false — the bot must be invited before it
+   * can see or answer messages there.
+   */
+  isMember?: boolean
+}
