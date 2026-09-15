@@ -373,3 +373,45 @@ phase; each lists the current mobile behavior and what owner input would change.
   save → sends "Create automation" back into chat via `sendPresetMessage`
   (setInputValue + deferred handleSend through handleSendRef) — the agent
   owns automation creation on web too.
+
+### 40. Settings & account completion (Phase 7)
+- Row/card primitives (SettingsSection, ToggleRow, ActionRow, InfoRow,
+  UsageStat, SegmentedControl, formatCents) moved verbatim to
+  `components/settings/primitives.tsx` so new sections share the chrome;
+  `settings.tsx` imports them. The screen-local `styles` StyleSheet is
+  untouched — ThemePresetPicker/ModelPickerSheet still use it.
+- BYOK presets and DEFAULT_ENABLED_CHAT_MODEL_IDS are mirrored constants
+  (overlay-llm-gateway and src/shared are not mobile deps). Drift risk:
+  when presets or the curated model list change server-side, update
+  services/providersService.ts and services/modelCatalogService.ts.
+- Provider POST sends an `Idempotency-Key` header (server 428s without it).
+  Keys are write-only — blank edit fields never clobber saved credentials.
+  Stored-connection tests pass only `connectionId` so the saved key applies;
+  a successful test PATCHes discoveredModelsJson/enabledModelIds/status.
+- Models section edits membership only (enabledChatModelIds) — the web's
+  explicit `modelOrder` drag ranking stays web-managed. Bootstrap
+  `chatModels` lead in server curated order; gateway-only models append
+  alphabetically. Toggling anything materializes the effective set (empty
+  stored list = curated default).
+- Webhook secret + rotation results are shown once via Alert with a Share
+  fallback (no expo-clipboard dep; share sheet includes Copy).
+- Computers need a workspace id — the section renders only when
+  `activeWorkspaceId` resolves. Desktop open mints a stream ticket and
+  opens it via `openBrowserAsync` (ticket URL is a bearer secret — never
+  logged). Destroy is Alert-confirmed.
+- Account deletion stays a web link: `POST /api/account/delete` hard-requires
+  `authType === 'session'` (interactive browser session); mobile bearer auth
+  gets 403, so in-app deletion cannot work without a web change (Phase 10).
+- Plan & Usage gains read-only top-up history + "checkout stays on web"
+  copy — no checkout/portal in-app (App Store rules).
+- Onboarding gate in `app/index.tsx`: local per-user flag → server
+  `hasSeenOnboarding` → `/onboarding` paged flow; `finishOnboarding` writes
+  the local flag before the server complete (fail-open on both — the flow
+  never blocks entry). auth-flow post-sign-in now routes through `/` so the
+  gate decides. Settings → Advanced → "Replay onboarding" resets server +
+  local flags then pushes `/onboarding`.
+- No review/auto-extract memory prefs exist server-side — web's "memories"
+  settings section is the MemoriesView list itself, so parity = the
+  "Manage memories" link into the existing knowledge memories surface.
+- Webhook deliveries redrive only on failed/dead_letter rows (server
+  returns 404 otherwise).

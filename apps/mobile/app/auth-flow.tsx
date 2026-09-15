@@ -163,7 +163,8 @@ export default function AuthFlowScreen(): React.ReactElement {
 
         const session = await consumeTransferToken(token)
         await completeNativeSignIn(session)
-        router.replace('/(tabs)/chat')
+        // Route through the entry gate so first-run onboarding still applies.
+        router.replace('/')
       } catch (error) {
         setBrowserError(error instanceof Error ? error.message : 'Unable to sign in')
       } finally {
@@ -175,7 +176,7 @@ export default function AuthFlowScreen(): React.ReactElement {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace('/(tabs)/chat')
+      router.replace('/')
     }
   }, [isAuthenticated, router])
 

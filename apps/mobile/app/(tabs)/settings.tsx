@@ -5,7 +5,6 @@ import {
   Linking,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -33,6 +32,19 @@ import { DrawerSidebar } from '../../components/chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../../components/ui/ScreenWithDrawer'
 import { BottomSheet, MainScreenHeader, TopBarIconButton } from '../../components/ui/AppChrome'
 import {
+  ActionRow,
+  InfoRow,
+  SegmentedControl,
+  SettingsSection,
+  ToggleRow,
+  UsageStat,
+  formatCents,
+} from '../../components/settings/primitives'
+import { ModelsSection } from '../../components/settings/ModelsSection'
+import { ProvidersSection } from '../../components/settings/ProvidersSection'
+import { WebhooksSection } from '../../components/settings/WebhooksSection'
+import { ComputersSection } from '../../components/settings/ComputersSection'
+import {
   clearDownloadedFileCache,
   resetMobilePreferences,
   type AppearanceMode,
@@ -57,6 +69,8 @@ import {
   updateBillingSettings,
   type BillingSettings,
 } from '../../services/billingSettingsService'
+import { getTopUpHistory, type TopUpHistoryItem } from '../../services/accountExtrasService'
+import { resetOnboarding, clearOnboardingLocalFlag } from '../../services/onboardingService'
 
 const APPEARANCE_OPTIONS: { label: string; value: AppearanceMode }[] = [
   { label: 'Light', value: 'light' },
@@ -99,6 +113,7 @@ export default function SettingsScreen(): React.ReactElement {
     updateSettings,
     isRefreshing,
     refresh,
+    bootstrap,
     chatModels,
     imageModels,
     videoModels,
@@ -106,11 +121,12 @@ export default function SettingsScreen(): React.ReactElement {
     defaults,
     error: sessionError,
   } = useAppSession()
-  const { activeWorkspace, workspacesEnabled } = useWorkspace()
+  const { activeWorkspace, activeWorkspaceId, workspacesEnabled } = useWorkspace()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
   const [billingLoading, setBillingLoading] = useState(false)
   const [billingSaving, setBillingSaving] = useState(false)
+  const [topUpHistory, setTopUpHistory] = useState<TopUpHistoryItem[]>([])
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [voicePermission, setVoicePermission] = useState<VoicePermission>('undetermined')
   const [voiceHistoryCount, setVoiceHistoryCount] = useState(0)
@@ -130,6 +146,11 @@ export default function SettingsScreen(): React.ReactElement {
       setBillingSettings(null)
     } finally {
       setBillingLoading(false)
+    }
+    try {
+      setTopUpHistory(await getTopUpHistory())
+    } catch {
+      setTopUpHistory([])
     }
   }, [])
 
@@ -285,6 +306,18 @@ export default function SettingsScreen(): React.ReactElement {
     await resetMobilePreferences()
   }
 
+  async function handleReplayOnboarding(): Promise<void> {
+    const userId = user?.id
+    if (!userId) return
+    try {
+      await resetOnboarding()
+    } catch {
+      // Server reset is best-effort; the local flag still re-arms the flow.
+    }
+    await clearOnboardingLocalFlag(userId)
+    router.push('/onboarding')
+  }
+
   const activeChatModel = findById(chatModels, uiSettings.defaultActModelId ?? defaults?.chatModelId)
   const activeImageModel = findById(imageModels, uiSettings.defaultImageModelId ?? defaults?.imageModelId)
   const activeVideoModel = findById(videoModels, uiSettings.defaultVideoModelId ?? defaults?.videoModelId)
@@ -393,6 +426,23 @@ export default function SettingsScreen(): React.ReactElement {
                       Paid entitlements and top-up preferences display here when enabled on your account.
                     </Text>
                   )}
+                  {topUpHistory.length > 0 ? (
+                    <>
+                      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Top-up history</Text>
+                      {topUpHistory.slice(0, 5).map((item) => (
+                        <InfoRow
+                          key={item._id}
+                          theme={theme}
+                          label={new Date(item.createdAt).toLocaleDateString()}
+                          value={`${formatCents(item.amountCents)} · ${item.status}${item.source === 'auto' ? ' · auto' : ''}`}
+                        />
+                      ))}
+                    </>
+                  ) : null}
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>
+                    Checkout and the billing portal stay on the web app — purchases aren't offered
+                    inside the mobile app.
+                  </Text>
                 </>
               ) : (
                 <Text style={[styles.helperText, { color: theme.textSecondary }]}>Subscription state will appear after refresh.</Text>
@@ -482,6 +532,13 @@ export default function SettingsScreen(): React.ReactElement {
               />
             </SettingsSection>
 
+            <ModelsSection
+              theme={theme}
+              chatModels={chatModels}
+              enabledChatModelIds={uiSettings.enabledChatModelIds}
+              onSettingsChange={updateSettings}
+            />
+
             <SettingsSection theme={theme} title="Voice & Keyboard" icon="mic">
               <ToggleRow
                 theme={theme}
@@ -517,6 +574,7 @@ export default function SettingsScreen(): React.ReactElement {
 
             <SettingsSection theme={theme} title="Data & Privacy" icon="shield">
               <ActionRow theme={theme} icon="database" title="Manage knowledge" detail="Files, memories, and outputs." onPress={() => router.push('/(tabs)/knowledge')} />
+              <ActionRow theme={theme} icon="bookmark" title="Manage memories" detail="Review, edit, and delete saved memories." onPress={() => router.push('/(tabs)/knowledge?tab=memories')} />
               <ActionRow theme={theme} icon="trash" title="Clear local caches" detail="Bootstrap, settings cache, and downloaded files." onPress={handleClearCaches} destructive />
               <ActionRow theme={theme} icon="key" title="Clear auth handoff residue" detail="Remove pending PKCE handoff without signing out." onPress={() => { void clearPkceVerifier() }} />
               <ActionRow theme={theme} icon="external-link" title="Privacy policy" detail="Open Overlay privacy policy." onPress={() => { void Linking.openURL('https://www.getoverlay.io/privacy') }} />
@@ -528,6 +586,28 @@ export default function SettingsScreen(): React.ReactElement {
               <ActionRow theme={theme} icon="tool" title="Manage extensions" detail={featureFlags.canUseExtensions ? 'Integrations, skills, and MCPs.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/tools')} />
               <ActionRow theme={theme} icon="folder" title="Manage projects" detail={featureFlags.canUseProjects ? 'Project chats, notes, files, and skills.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/projects')} />
               <ActionRow theme={theme} icon="zap" title="Manage automations" detail={featureFlags.canUseAutomations ? 'Scheduled backend workflows.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/automations')} />
+            </SettingsSection>
+
+            <ProvidersSection theme={theme} />
+
+            <WebhooksSection theme={theme} />
+
+            {activeWorkspaceId ? (
+              <ComputersSection theme={theme} workspaceId={activeWorkspaceId} userId={user?.id ?? null} />
+            ) : null}
+
+            <SettingsSection theme={theme} title="Contact" icon="mail">
+              <ActionRow
+                theme={theme}
+                icon="mail"
+                title="Email the founder"
+                detail={bootstrap?.brand?.supportEmail ?? 'divyansh@layernorm.co'}
+                onPress={() => {
+                  void Linking.openURL(
+                    `mailto:${bootstrap?.brand?.supportEmail ?? 'divyansh@layernorm.co'}`,
+                  )
+                }}
+              />
             </SettingsSection>
 
             <SettingsSection theme={theme} title="Advanced" icon="settings">
@@ -552,6 +632,7 @@ export default function SettingsScreen(): React.ReactElement {
                 </View>
               ) : null}
               <ActionRow theme={theme} icon="rotate-ccw" title="Reset device preferences" detail="Keep account data, reset local-only choices." onPress={() => { void handleResetDevicePreferences() }} />
+              <ActionRow theme={theme} icon="play-circle" title="Replay onboarding" detail="Reset the first-run tour and show it again." onPress={() => { void handleReplayOnboarding() }} />
             </SettingsSection>
           </View>
         </ScrollView>
@@ -573,150 +654,6 @@ export default function SettingsScreen(): React.ReactElement {
         />
       </SafeAreaView>
     </ScreenWithDrawer>
-  )
-}
-
-function SettingsSection({
-  theme,
-  title,
-  icon,
-  accessory,
-  children,
-}: {
-  theme: Theme
-  title: string
-  icon: keyof typeof Feather.glyphMap
-  accessory?: React.ReactNode
-  children: React.ReactNode
-}): React.ReactElement {
-  return (
-    <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-      <View style={styles.cardHeader}>
-        <View style={[styles.cardIcon, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
-          <Feather name={icon} size={18} color={theme.textSecondary} />
-        </View>
-        <Text style={[styles.cardTitle, { color: theme.text }]}>{title}</Text>
-        {accessory ? <View style={styles.sectionAccessory}>{accessory}</View> : null}
-      </View>
-      {children}
-    </View>
-  )
-}
-
-function ToggleRow({
-  theme,
-  title,
-  detail,
-  value,
-  disabled,
-  onValueChange,
-}: {
-  theme: Theme
-  title: string
-  detail: string
-  value: boolean
-  disabled?: boolean
-  onValueChange: (value: boolean) => void
-}): React.ReactElement {
-  return (
-    <View style={[styles.row, { borderColor: theme.border }]}>
-      <View style={styles.rowCopy}>
-        <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
-        <Text style={[styles.rowDetail, { color: theme.textSecondary }]}>{detail}</Text>
-      </View>
-      <Switch value={value} disabled={disabled} onValueChange={onValueChange} />
-    </View>
-  )
-}
-
-function ActionRow({
-  theme,
-  icon,
-  title,
-  detail,
-  onPress,
-  destructive,
-  busy,
-}: {
-  theme: Theme
-  icon: keyof typeof Feather.glyphMap
-  title: string
-  detail: string
-  onPress: () => void
-  destructive?: boolean
-  busy?: boolean
-}): React.ReactElement {
-  const color = destructive ? '#EF4444' : theme.text
-  return (
-    <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={[styles.row, { borderColor: theme.border }]}>
-      <Feather name={icon} size={16} color={destructive ? '#EF4444' : theme.textSecondary} />
-      <View style={styles.rowCopy}>
-        <Text style={[styles.rowTitle, { color }]}>{title}</Text>
-        <Text style={[styles.rowDetail, { color: theme.textSecondary }]}>{detail}</Text>
-      </View>
-      {busy ? <ActivityIndicator size="small" color={theme.textSecondary} /> : <Feather name="chevron-right" size={16} color={theme.textSecondary} />}
-    </TouchableOpacity>
-  )
-}
-
-function InfoRow({ theme, label, value }: { theme: Theme; label: string; value: string }): React.ReactElement {
-  return (
-    <View style={[styles.row, { borderColor: theme.border }]}>
-      <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{label}</Text>
-      <Text selectable numberOfLines={1} style={[styles.infoValue, { color: theme.text }]}>{value}</Text>
-    </View>
-  )
-}
-
-function UsageStat({
-  theme,
-  label,
-  value,
-}: {
-  theme: Theme
-  label: string
-  value: string
-}): React.ReactElement {
-  return (
-    <View style={[styles.usageStat, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
-      <Text style={[styles.usageLabel, { color: theme.textSecondary }]}>{label}</Text>
-      <Text style={[styles.usageValue, { color: theme.text }]} numberOfLines={1}>{value}</Text>
-    </View>
-  )
-}
-
-function SegmentedControl<T extends string>({
-  theme,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  theme: Theme
-  value: T
-  options: { label: string; value: T }[]
-  disabled?: boolean
-  onChange: (value: T) => void
-}): React.ReactElement {
-  return (
-    <View style={[styles.segmented, { borderColor: theme.border, backgroundColor: theme.surfaceSubtle, opacity: disabled ? 0.6 : 1 }]}>
-      {options.map((option) => {
-        const active = value === option.value
-        return (
-          <TouchableOpacity
-            key={option.value}
-            activeOpacity={0.82}
-            disabled={disabled}
-            onPress={() => onChange(option.value)}
-            style={[styles.segment, active && { backgroundColor: theme.foreground }]}
-          >
-            <Text style={[styles.segmentText, { color: active ? theme.background : theme.textSecondary }]} numberOfLines={1}>
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        )
-      })}
-    </View>
   )
 }
 
@@ -885,10 +822,6 @@ function buildTopUpOptions(settings: BillingSettings): number[] {
   }
   if (!options.includes(settings.topUpAmountCents)) options.push(settings.topUpAmountCents)
   return options.sort((a, b) => a - b)
-}
-
-function formatCents(value: number): string {
-  return `$${(value / 100).toFixed(value % 100 === 0 ? 0 : 2)}`
 }
 
 function formatBytes(value: number): string {

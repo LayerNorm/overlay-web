@@ -91,6 +91,14 @@ function RootLayoutNav(): React.ReactElement {
         />
         <Stack.Screen name="auth/transfer" />
         <Stack.Screen
+          name="onboarding"
+          options={{
+            presentation: 'fullScreenModal',
+            animation: 'fade_from_bottom',
+            gestureEnabled: false,
+          }}
+        />
+        <Stack.Screen
           name="chat/[id]"
           options={{
             headerShown: true,
