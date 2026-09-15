@@ -1,14 +1,15 @@
 'use client'
 
 import { Fragment, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
-import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Monitor, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
+import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
-import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
+import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
+import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 export type AgentType = 'overlay' | 'byo'
@@ -215,6 +216,178 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
       {!enabled && computer ? (
         <p className="text-[11px] leading-4 text-[var(--muted)]">Saving deletes this computer and its disk permanently.</p>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * "Reachable on" — external chat surfaces bound to this agent. Slack
+ * connections are workspace installs; bindings map agent ↔ channel and commit
+ * immediately (no Save round-trip). `canBind` comes from the server and hides
+ * every connect/bind control for guests and non-creators of personal agents.
+ */
+export function AgentSurfacesSection({
+  agentName, hasAgent, loading, connections, bindings, canBind, canBindResolved, channelPicker, busyId, error, notice,
+  onConnectSlack, onToggleChannelPicker, onSelectChannel, onRemoveBinding,
+}: {
+  agentName: string
+  hasAgent: boolean
+  loading: boolean
+  connections: SurfaceConnection[]
+  bindings: SurfaceBinding[]
+  canBind: boolean
+  /** True once the server answered the bind gate — keeps the "creator only" hint off showcase/BYO editors. */
+  canBindResolved: boolean
+  channelPicker: SurfaceChannelPicker | null
+  busyId: string | null
+  error: string | null
+  notice: { kind: 'success' | 'error'; message: string } | null
+  onConnectSlack(): void
+  onToggleChannelPicker(connectionId: string): void
+  onSelectChannel(connectionId: string, channel: SurfaceChannelOption): void
+  onRemoveBinding(bindingId: string): void
+}) {
+  const name = agentName.trim() || 'this agent'
+  const slackConnections = connections.filter((connection) => connection.platform === 'slack')
+  const boundChannelKeys = new Set(bindings.map((binding) => `${binding.connectionId}:${binding.channelId}`))
+
+  return (
+    <div>
+      <p className="flex items-center gap-1.5 text-xs font-medium">
+        Reachable on
+        {loading ? <Loader2 size={12} className="animate-spin text-[var(--muted)]" /> : null}
+      </p>
+      {notice ? (
+        <p className={`mt-1 text-[11px] leading-4 ${notice.kind === 'error' ? 'text-red-500' : 'text-[var(--muted)]'}`}>{notice.message}</p>
+      ) : null}
+      <div className="mt-1.5">
+        <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-[var(--foreground)]">Overlay</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">In Chats and rooms.</p>
+          </div>
+          <span className="shrink-0 text-[11px] text-[var(--muted)]">always on</span>
+        </div>
+
+        {slackConnections.length === 0 ? (
+          <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-[var(--foreground)]">Slack</p>
+              {canBind ? (
+                <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">Connect a Slack workspace so people can reach {name} there.</p>
+              ) : null}
+            </div>
+            {canBind ? (
+              <Button variant="secondary" size="sm" onClick={onConnectSlack} disabled={!hasAgent}>Connect</Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {slackConnections.map((connection) => {
+          const connectionBindings = bindings.filter((binding) => binding.connectionId === connection.id)
+          const pickerOpen = channelPicker?.connectionId === connection.id
+          const pickerChannels = (channelPicker?.options ?? []).filter(
+            (channel) => !boundChannelKeys.has(`${connection.id}:${channel.id}`),
+          )
+          return (
+            <Fragment key={connection.id}>
+              <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-[var(--foreground)]">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
+                  {connection.status !== 'active' ? (
+                    <p className="mt-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400">
+                      {connection.status === 'degraded' ? 'Connection degraded — reconnect Slack to resume.' : 'Uninstalled from Slack — reconnect to resume.'}
+                    </p>
+                  ) : null}
+                </div>
+                {canBind ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggleChannelPicker(connection.id)}
+                    disabled={!hasAgent || connection.status !== 'active'}
+                    className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus size={11} />Add channel
+                  </button>
+                ) : null}
+              </div>
+
+              {connectionBindings.map((binding) => (
+                <div key={binding.id} className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+                  <div className="min-w-0 flex-1 pl-5">
+                    <p className="flex items-center gap-1 text-xs font-medium text-[var(--foreground)]">
+                      <Hash size={11} className="shrink-0 text-[var(--muted)]" />{binding.channelName ?? binding.channelId}
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">
+                      Anyone in {binding.channelName ? `#${binding.channelName}` : 'this channel'} can talk to {name}. It acts with your access.
+                    </p>
+                  </div>
+                  {canBind ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveBinding(binding.id)}
+                      disabled={busyId !== null}
+                      className="shrink-0 text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                    >
+                      {busyId === binding.id ? 'Removing…' : 'Remove'}
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+
+              {pickerOpen && channelPicker ? (
+                <div className="border-b border-[var(--border)] py-2.5 pl-5 last:border-b-0">
+                  {channelPicker.loading ? (
+                    <p className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]"><Loader2 size={11} className="animate-spin" />Loading channels…</p>
+                  ) : channelPicker.error ? (
+                    <p className="text-[11px] leading-4 text-red-500">{channelPicker.error}</p>
+                  ) : pickerChannels.length === 0 ? (
+                    <p className="text-[11px] leading-4 text-[var(--muted)]">No more channels to add.</p>
+                  ) : (
+                    <ListboxSelect
+                      aria-label="Add Slack channel"
+                      value="Select a channel"
+                      options={pickerChannels.map((channel) => ({ value: channel.id, label: `# ${channel.name}` }))}
+                      onChange={(channelId) => {
+                        const channel = pickerChannels.find((option) => option.id === channelId)
+                        if (channel) onSelectChannel(connection.id, channel)
+                      }}
+                      disabled={busyId !== null}
+                    />
+                  )}
+                </div>
+              ) : null}
+            </Fragment>
+          )
+        })}
+
+        {canBind && slackConnections.length > 0 ? (
+          <div className="border-b border-[var(--border)] py-2.5 last:border-b-0">
+            <button
+              type="button"
+              onClick={onConnectSlack}
+              disabled={!hasAgent}
+              className="text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              Connect another Slack workspace
+            </button>
+          </div>
+        ) : null}
+
+        {(['Teams', 'Discord'] as const).map((platform) => (
+          <div key={platform} className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 opacity-50 last:border-b-0">
+            <p className="min-w-0 flex-1 text-xs font-medium text-[var(--foreground)]">{platform}</p>
+            <span className="shrink-0 text-[11px] text-[var(--muted)]">coming soon</span>
+          </div>
+        ))}
+      </div>
+      {error ? <p className="mt-1.5 text-[11px] leading-4 text-red-500">{error}</p> : null}
+      {!hasAgent ? (
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Create the agent to connect it to a surface.</p>
+      ) : canBindResolved && !loading && !canBind ? (
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Only this agent&rsquo;s creator can connect surfaces.</p>
+      ) : null}
+      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Threads from connected surfaces appear in Chats.</p>
     </div>
   )
 }

@@ -14,12 +14,14 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
       )
     }
-    const bindings = await getOverlayServerContext().surfaceService.listBindings({
-      actor: surfaceActorFrom(context),
-      workspaceId: context.workspace.workspace.id,
-      agentId,
-    })
-    return NextResponse.json({ bindings }, { headers: { 'Cache-Control': 'no-store' } })
+    const actor = surfaceActorFrom(context)
+    const workspaceId = context.workspace.workspace.id
+    const service = getOverlayServerContext().surfaceService
+    const [bindings, canBind] = await Promise.all([
+      service.listBindings({ actor, workspaceId, agentId }),
+      service.canBindAgent({ actor, workspaceId, agentId }),
+    ])
+    return NextResponse.json({ bindings, canBind }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     return surfaceErrorResponse(error)
   }

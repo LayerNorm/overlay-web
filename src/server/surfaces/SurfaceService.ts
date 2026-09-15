@@ -3,6 +3,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import type {
   SurfaceBinding,
+  SurfaceChannelOption,
   SurfaceConnection,
   SurfacePlatform,
   WorkspaceAgentDirectoryItem,
@@ -34,7 +35,7 @@ export type SurfaceActor = {
   workspaceRole: WorkspaceMembershipRole
 }
 
-export type SurfaceChannelOption = { id: string; name: string }
+export type { SurfaceChannelOption } from '@overlay/workspace-contracts'
 
 /**
  * Platform channel directory — resolves the channels a bound agent can answer
@@ -265,6 +266,24 @@ export class SurfaceService {
         'forbidden',
         'Only the creator can connect a personal agent to a surface',
       )
+    }
+  }
+
+  /**
+   * Non-throwing bind gate for UI affordances — the editor needs to know
+   * whether to render connect/binding controls without turning a permission
+   * miss into a request failure. Invisible agents read as non-bindable.
+   */
+  async canBindAgent(args: {
+    actor: SurfaceActor
+    workspaceId: string
+    agentId: string
+  }): Promise<boolean> {
+    try {
+      await this.requireBindableAgent(args)
+      return true
+    } catch (_error) {
+      return false
     }
   }
 

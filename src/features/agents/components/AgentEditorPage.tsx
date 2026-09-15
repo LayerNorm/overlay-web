@@ -36,6 +36,7 @@ import {
   AccessSelector,
   AgentAvatar,
   AgentBehaviorFields,
+  AgentSurfacesSection,
   AgentTypeSelector,
   AVATAR_COLORS,
   DangerZone,
@@ -48,6 +49,7 @@ import {
   SayHelloButton,
 } from './AgentEditorPresentation'
 import { useByoConnection } from './use-byo-connection'
+import { useAgentSurfaces } from './use-agent-surfaces'
 
 export function AgentEditorPage({
   mode,
@@ -111,6 +113,7 @@ export function AgentEditorPage({
     setupEnvironment, environmentBusy, environmentError, command, copied, setupRoots, setSetupRoots,
     bindingValid, chooseHarness, chooseEnvironment, beginConnection, approveSetupEnvironment, copyCommand,
   } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
+  const surfaces = useAgentSurfaces({ activeWorkspaceId, showcase, agent, agentType })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
@@ -594,6 +597,29 @@ export function AgentEditorPage({
                     disabled: showcase,
                   } : undefined}
                 />
+
+                {agentType === 'overlay' ? (
+                  <AgentSurfacesSection
+                    agentName={name}
+                    hasAgent={Boolean(agent)}
+                    loading={surfaces.loading}
+                    connections={surfaces.connections}
+                    bindings={surfaces.bindings}
+                    canBind={surfaces.canBind}
+                    canBindResolved={surfaces.enabled}
+                    channelPicker={surfaces.channelPicker}
+                    busyId={surfaces.busyBindingId}
+                    error={surfaces.error}
+                    notice={surfaces.notice}
+                    onConnectSlack={surfaces.connectSlack}
+                    onToggleChannelPicker={(connectionId) => {
+                      if (surfaces.channelPicker?.connectionId === connectionId) surfaces.closeChannelPicker()
+                      else void surfaces.openChannelPicker(connectionId)
+                    }}
+                    onSelectChannel={(connectionId, channel) => void surfaces.createBinding(connectionId, channel)}
+                    onRemoveBinding={(bindingId) => void surfaces.removeBinding(bindingId)}
+                  />
+                ) : null}
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
 

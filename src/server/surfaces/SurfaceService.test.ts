@@ -124,6 +124,44 @@ test('resolveInboundBinding no-ops for missing, degraded, or removed routing', a
   }).resolveInboundBinding({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), null)
 })
 
+const memberActor = {
+  userId: 'user_actor',
+  principalId: 'principal_actor',
+  workspaceRole: 'member' as const,
+}
+
+test('canBindAgent is true for members on workspace agents', async () => {
+  const service = serviceWith({ agent: agent() })
+  assert.equal(await service.canBindAgent({
+    actor: memberActor, workspaceId: 'workspace_1', agentId: 'agent_1',
+  }), true)
+})
+
+test('canBindAgent is false for guests and non-creators of personal agents', async () => {
+  const service = serviceWith({ agent: agent() })
+  // Guest — can see the agent but cannot bind it.
+  assert.equal(await service.canBindAgent({
+    actor: { ...memberActor, workspaceRole: 'guest' },
+    workspaceId: 'workspace_1', agentId: 'agent_1',
+  }), false)
+  // Personal agent, actor is not the creator — invisible to them.
+  const personal = serviceWith({
+    agent: agent({ visibility: 'creator', createdByPrincipalId: 'principal_creator_1' }),
+  })
+  assert.equal(await personal.canBindAgent({
+    actor: memberActor, workspaceId: 'workspace_1', agentId: 'agent_1',
+  }), false)
+  // Personal agent, actor IS the creator.
+  assert.equal(await personal.canBindAgent({
+    actor: { ...memberActor, principalId: 'principal_creator_1' },
+    workspaceId: 'workspace_1', agentId: 'agent_1',
+  }), true)
+  // Missing agent — a miss must not turn into a thrown error for the UI.
+  assert.equal(await serviceWith({ agent: null }).canBindAgent({
+    actor: memberActor, workspaceId: 'workspace_1', agentId: 'agent_1',
+  }), false)
+})
+
 test('resolveInboundBinding no-ops when the creator principal has no user', async () => {
   const service = serviceWith({
     connection: connection(),

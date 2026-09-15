@@ -47,6 +47,7 @@ export type {
 export { ConversationsClient } from './chat/conversations-client'
 export { AgentEnvironmentsClient, type AgentEnvironmentResource } from './agent-environments/client'
 export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
+export { SurfacesClient } from './surfaces/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'

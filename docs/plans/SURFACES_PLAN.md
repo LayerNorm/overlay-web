@@ -1,9 +1,14 @@
 # Surfaces: deploy Overlay agents to external chat platforms
 
-Status: in progress — Phase 0 landed (deps, Slack app manifest +
-`docs/develop/surfaces-slack-app.md`, env vars); Phase 1 landed (data model +
-OAuth connect flow + bindings API); Phase 2 landed (webhook → durable turn →
-Slack reply). Decisions marked **[decided]** are settled;
+Status: in progress — Phase 0 ✅ landed (deps, Slack app manifest +
+`docs/develop/surfaces-slack-app.md`, env vars); Phase 1 ✅ landed (data model +
+OAuth connect flow + bindings API); Phase 2 ✅ landed (webhook → durable turn →
+Slack reply); Phase 5 partially landed (SDK dedupe + sender guards + unit
+tests; degraded-connection handling still missing). Staging E2E verification
+in progress — two blocking bugs fixed on staging (`overlay_session`
+SameSite=strict → lax so OAuth callbacks carry the session; `getSlackAdapter`
+now calls `chat.initialize()` so `setInstallation` works outside webhook
+context). Decisions marked **[decided]** are settled;
 the rest are implementation defaults open to revision.
 
 ## Context
@@ -114,7 +119,7 @@ already models external senders (built for Slack import), and the transcript
 renderer already handles them. `conversationType: 'channel'` + `channelSlug`
 fit as-is.
 
-## Phase 0 — Slack app + dependencies **[landed]**
+## Phase 0 — Slack app + dependencies ✅ **[landed]**
 
 - `chat`, `@chat-adapter/slack`, `@chat-adapter/state-pg`,
   `@chat-adapter/state-memory` at 4.40.0.
@@ -153,7 +158,7 @@ name, status, installer) — NOT a parallel token path. No Vercel Connect:
 it would bind a core surface to Vercel's marketplace auth, which cuts against
 the self-host/AGPL story. We own the OAuth flow.
 
-## Phase 1 — connect flow (OAuth) **[landed]**
+## Phase 1 — connect flow (OAuth) ✅ **[landed]**
 
 - `GET /api/v1/surfaces/slack/connect?agentId=` — session-gated redirect route
   (not BFF JSON). Verifies the caller may bind that agent (creator for personal
@@ -184,7 +189,7 @@ the self-host/AGPL story. We own the OAuth flow.
   `OVERLAY_DATABASE_URL`, memory otherwise). Parity-matrix + route-support +
   contract-test entries wired.
 
-## Phase 2 — webhook → turn → reply  *(landed)*
+## Phase 2 — webhook → turn → reply ✅ *(landed)*
 
 - `src/app/api/v1/webhooks/slack/route.ts`: delegates to
   `chat.webhooks.slack(request, { waitUntil })` — the adapter verifies the
@@ -231,7 +236,7 @@ the self-host/AGPL story. We own the OAuth flow.
   converges on the same conversation + turn id, and the placeholder edit is
   idempotent by ts.
 
-## Phase 3 — agent editor UI
+## Phase 3 — agent editor UI ✅ *(landed)*
 
 New "Reachable on" section in `OverlayAgentFields` after the Computer section —
 same bound-resource-card idiom as `AgentComputerSection`:
@@ -256,6 +261,27 @@ same bound-resource-card idiom as `AgentComputerSection`:
 - Degraded connection (revoked token) → amber status on the row.
 - Personal agents: connect controls hidden for non-creators.
 
+Implementation notes:
+
+- `AgentSurfacesSection` in `src/features/agents/components/AgentEditorForm.tsx`
+  renders after `AgentBehaviorFields` (which ends with the Computer section)
+  and before `AccessSelector`; state lives in `use-agent-surfaces.ts` and the
+  page stays presentational.
+- `GET /api/v1/surfaces/bindings` now returns `canBind` — a soft
+  `SurfaceService.canBindAgent` (non-throwing `requireBindableAgent`) so the
+  UI can hide controls without guessing client-side identity. Guests and
+  non-creators of `visibility: 'creator'` agents get `canBind: false`.
+- `SurfacesClient` added to `@overlay/api-client`
+  (`packages/overlay-api-client/src/surfaces/client.ts`, registered as
+  `client.surfaces`): `listConnections`, `listChannels`, `listBindings`,
+  `createBinding`, `removeBinding`.
+- Unsaved agents render the section with a "Create the agent to connect it to
+  a surface." hint — no fetches fire until the agent exists. BYO agents hide
+  the section entirely (BYO surfaces are deferred).
+- Slack is the only real platform row; Teams/Discord render as disabled
+  "coming soon" rows. A second Slack workspace can be connected via "Connect
+  another Slack workspace" once one exists.
+
 ## Phase 4 — surface conversations in the app
 
 - Platform conversations appear in the existing chats list, tagged with the
@@ -265,7 +291,7 @@ same bound-resource-card idiom as `AgentComputerSection`:
   is the known end-state; `externalThreadRef` data makes it a pure reskin
   later. Not v1.
 
-## Phase 5 — hardening
+## Phase 5 — hardening *(partially landed)*
 
 - `app_uninstalled` / `tokens_revoked` → connection `degraded` + editor amber.
 - Slack retry storms: adapter acks first; dedupe TTL in state adapter; guard

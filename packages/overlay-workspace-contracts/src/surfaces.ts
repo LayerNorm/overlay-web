@@ -45,3 +45,6 @@ export type SurfaceBinding = {
   createdAt: number
   updatedAt: number
 }
+
+/** One bindable channel on a connected platform (Slack conversations.list). */
+export type SurfaceChannelOption = { id: string; name: string }
