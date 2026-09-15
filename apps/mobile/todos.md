@@ -3,6 +3,69 @@
 Unresolved judgments from the web↔mobile parity build. None block the current
 phase; each lists the current mobile behavior and what owner input would change.
 
+## Remaining work
+
+### Deferred web-side changes (plan §9 — owner approval required)
+
+These need `overlay-landing` edits and were explicitly held out of every
+mobile phase. Mobile groundwork for each is already committed.
+
+- [ ] **Push token registration endpoint** — `POST /api/v1/devices` (or
+  equivalent) storing Expo push tokens + notification fan-out on
+  mentions/DMs. Mobile persists the token locally under
+  `overlay-push-token:<uid>` (`services/notificationsService.ts`); only the
+  upload call is missing. Until this lands, banners are foreground-only.
+- [ ] **Bootstrap gaps** — add `workspaces` list, active workspace id, unread
+  notification counts, and channel/DM summaries to `/api/v1/bootstrap` to
+  save cold-start calls (drawer currently polls `conversations?view=` +
+  notifications separately).
+- [ ] **`canUseKnowledge` flag leak** — bootstrap may return `true` when the
+  feature is disabled (noted in an earlier session).
+- [ ] **AASA expansion** — `.well-known/apple-app-site-association` currently
+  covers only `/auth/native/callback`; add `/share/*`, `/invitations/*`,
+  `/app/invitations/*` so universal links open the app. iOS
+  `associatedDomains` entitlement is already in `app.json`. Also populate
+  `assetlinks.json` (currently `[]`) so the new Android intent filters
+  verify — until then https links gracefully fall back to the browser.
+- [ ] **Invite email links** — point invitation emails at a path that
+  universal-links into the app (`/invitations/<id>`).
+- [ ] **Mobile billing decision** — decide whether `initializeBilling`/
+  top-up/portal get a mobile-safe response mode or stay web-only
+  deliberately (App Store 3.1.1 read-only stance documented in Phase 7).
+- [ ] **Account deletion** — `POST /api/account/delete` hard-requires an
+  interactive browser session (`authType === 'session'`); needs a
+  mobile-safe path or stays a web link forever.
+
+### Mobile open items (no web dependency)
+
+- [ ] **Native rebuild** — `expo-notifications` entitlement, Android
+  notification channel, and `associatedDomains` require `expo prebuild` /
+  an EAS build before they exist in a binary. Dev-client smoke tests
+  covered the JS layer only.
+- [ ] **Room offline cache** — `/dm`, `/channel`, `/thread` screens fail
+  empty offline; the snapshot cache covers personal `/chat` only (different
+  message model — needs a room-scoped cache or a shared transcript model).
+- [ ] **iPad split-view for pushed routes** — pushed detail screens
+  (`/dm/[id]`, `/chat/[id]`, `/thread/[id]`) remain full-screen on iPad;
+  a true two-column navigator is a larger refactor. Tab screens get the
+  permanent sidebar today.
+- [ ] **Background push delivery** — needs the §9 endpoint plus APNs/FCM
+  credentials in Expo/EAS project config.
+- [ ] **Scroll-to-message permalinks** — thread/message links land on the
+  room, not the exact message (documented since Phase 3).
+- [ ] **Automation SSE lifecycle** — an abandoned `AutomationRunSheet`
+  stream leaves one server-side poll alive until the run terminates (XHR
+  has no abort path on RN).
+- [ ] **Scheduled-run approvals** — `approvalToken` can't be reconstructed
+  by a non-triggering client; same constraint as web.
+- [ ] **KB connector/drive sources** — add-source covers file/paste/URL;
+  connected-resource picker unwired (no web UI calls `knowledge-transfer`
+  either — API-only).
+- [ ] **Optional Phase 9** — admin console inventoried but parked per plan.
+- [ ] **Cross-surface QA matrix** (plan §10) — same-account create-on-web/
+  verify-on-mobile pass, flag-matrix run against a deployment with
+  features toggled off, and light+dark screenshot review of every screen.
+
 ## Phase 1 — Agents
 
 ### 1. New-agent creation is form-first, not create-first
