@@ -56,6 +56,7 @@ export async function createSkill(input: {
   name: string
   description: string
   instructions: string
+  enabled?: boolean
   projectId?: string
 }): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/skills', {
@@ -91,7 +92,7 @@ export async function createMcpServer(input: {
   transport: 'sse' | 'streamable-http'
   url: string
   enabled?: boolean
-  authType?: 'none' | 'bearer' | 'header'
+  authType?: 'none' | 'bearer' | 'header' | 'oauth'
   authConfig?: Record<string, unknown>
   timeoutMs?: number
 }): Promise<{ id: string }> {
@@ -103,7 +104,9 @@ export async function createMcpServer(input: {
 
 export async function updateMcpServer(
   mcpServerId: string,
-  patch: Partial<Omit<McpServerSummary, '_id' | 'createdAt' | 'updatedAt' | 'hasAuth'>>,
+  patch: Partial<Omit<McpServerSummary, '_id' | 'createdAt' | 'updatedAt' | 'hasAuth'>> & {
+    authConfig?: Record<string, unknown> | null
+  },
 ): Promise<void> {
   await appJson('/api/v1/mcps', {
     method: 'PATCH',
@@ -120,12 +123,37 @@ export async function deleteMcpServer(mcpServerId: string): Promise<void> {
 
 export async function testMcpServer(input: {
   url: string
-  transport: 'sse' | 'streamable-http'
-  authType?: 'none' | 'bearer' | 'header'
+  transport?: 'sse' | 'streamable-http'
+  authType?: 'none' | 'bearer' | 'header' | 'oauth'
   authConfig?: Record<string, unknown>
-}): Promise<{ ok: boolean; toolCount?: number; error?: string }> {
+  mcpServerId?: string
+  timeoutMs?: number
+}): Promise<{ ok: boolean; toolCount?: number; error?: string; requiresAuth?: boolean }> {
   return appJson('/api/v1/mcps/test', {
     method: 'POST',
     json: input,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// MCP OAuth — POST /mcps/oauth returns the provider authorization URL. Mobile
+// uses `surface: 'desktop'` so the callback finishes on the overlay:// deep
+// link (same path the desktop app uses) instead of the web settings page.
+// ---------------------------------------------------------------------------
+
+export async function startMcpOAuth(input: {
+  mcpServerId: string
+  scope?: string
+}): Promise<{ redirectUrl?: string; alreadyConnected?: boolean; error?: string }> {
+  return appJson('/api/v1/mcps/oauth', {
+    method: 'POST',
+    json: { mcpServerId: input.mcpServerId, surface: 'desktop', scope: input.scope },
+  })
+}
+
+export async function disconnectMcpOAuth(mcpServerId: string): Promise<void> {
+  await appJson('/api/v1/mcps/oauth', {
+    method: 'DELETE',
+    query: { mcpServerId },
   })
 }

@@ -320,3 +320,56 @@ phase; each lists the current mobile behavior and what owner input would change.
   `projects/knowledge-bases`), Delete.
 - `projects/knowledge-transfer` (promote/copy/save-answer) is NOT wired —
   no web UI calls it either (API-only surface); revisit if web ships UI.
+
+### 37. Automations depth (Phase 6)
+- AutomationsScreen now orchestrates three sheets: detail (status, schedule,
+  timezone, next/last run, description, actions, recent-runs list), editor,
+  and run detail.
+- AutomationEditorSheet: all four schedule kinds via the shared
+  `buildAutomationSchedule` + `localFieldsFromSchedule` helpers (web parity),
+  weekday chips for weekly, day-of-month for monthly, 24h time field, and a
+  searchable `supportedTimeZoneOptions` picker that swaps the sheet's content.
+- AutomationRunSheet: `/automations/[workflowRunId]/stream` polled every 3s
+  plus the `/events` SSE feed over `appXhrStreamSse` (event rows with
+  step-name suffix trimming, attempt counts, error text). Cancel
+  (`PATCH action:'cancel-run'`) / Retry (`'retry-run'`) / Open chat actions.
+- Approval: `POST /automations/[id]/run` returns `approvalToken` only to the
+  triggering client — tokens are stashed by run id and the run sheet shows
+  approve/deny via `/automations/[id]/approve`. Scheduled-run approvals
+  triggered elsewhere can't be reconstructed client-side (same as web).
+- `start-scheduler`/`cancel-scheduler` routes exist but are deprecated
+  server-side (cron scheduler now); pause/resume stays on PATCH enabled.
+
+### 38. Extensions depth (Phase 6)
+- Composio connect: `connectIntegration` redirectUrl opens via
+  `WebBrowser.openAuthSessionAsync`; the hosted flow ends on a web page so
+  the session resolves on dismiss — mobile then polls `listIntegrationItems`
+  a few times so the connected row lands even if the provider link settles
+  late. Integration rows open a detail sheet (provider, auth-state warning,
+  connect/disconnect).
+- MCP editor: authType picker (none/bearer/header/oauth) + credential
+  fields; `authConfig` is write-only (never returned) so existing secrets
+  stay untouched when fields are left blank. Test passes auth fields and
+  surfaces the server's 401 `requiresAuth` hint.
+- McpDetailSheet: oauthStatus/issuer/connected-at, toolCatalogCount +
+  toolCatalogError, Connect/Re-authorize/Disconnect OAuth.
+- MCP OAuth uses `surface: 'desktop'` so the server finishes on
+  `overlay://auth/mcp-callback` after its consent page — captured by
+  `openAuthSessionAsync`; a cold-start deep link also routes to
+  `/(tabs)/tools` in `_layout`.
+- Skill editor: Write/Preview segmented toggle renders instructions through
+  `EnrichedMarkdownText` (markdown parity with web's skill preview).
+- No client-visible per-tool catalog endpoint exists — `toolCatalogCount`
+  and test `toolCount` are the maximum surface (matches web).
+
+### 39. Chat draft suggestions (Phase 6)
+- MessageBubble promotes a lone `draft_skill_from_chat` /
+  `draft_automation_from_chat` tool block to a DraftCard (badge, name,
+  description, reason) via `getDraftFromToolBlock` — same non-streaming-only
+  promotion as web.
+- DraftReviewSheet: instructions, detected-integration chips, schedule +
+  timezone for automations, missing-fields warning, confidence+reason.
+- Skill save → `skills.create` (enabled, projectId when scoped). Automation
+  save → sends "Create automation" back into chat via `sendPresetMessage`
+  (setInputValue + deferred handleSend through handleSendRef) — the agent
+  owns automation creation on web too.

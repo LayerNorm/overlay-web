@@ -53,6 +53,9 @@ import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
 import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
 import { ChatActionsSheet } from './ChatActionsSheet'
+import { DraftReviewSheet } from './DraftReviewSheet'
+import { createSkill } from '../../services/integrationsService'
+import type { DraftModalState } from '@overlay/chat-core'
 import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
@@ -405,6 +408,9 @@ export function ChatScreen({
   const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
   const hasAutoScrolledRef = useRef(false)
+  const handleSendRef = useRef<() => Promise<void>>(async () => {})
+  const [draftModal, setDraftModal] = useState<DraftModalState | null>(null)
+  const [draftSaving, setDraftSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const visibleMessages = useMemo(() => {
@@ -1361,6 +1367,41 @@ export function ChatScreen({
     syncConversationMeta,
   ])
 
+  // Latest-send ref so draft quick actions can fire a message without reading a
+  // stale `inputValue` closure — same setInput-then-send flow as the web.
+  handleSendRef.current = handleSend
+
+  const sendPresetMessage = useCallback((text: string) => {
+    setInputValue(text)
+    setTimeout(() => { void handleSendRef.current() }, 0)
+  }, [])
+
+  const handleSaveDraft = useCallback(async (state: DraftModalState) => {
+    setDraftSaving(true)
+    try {
+      if (state.kind === 'skill') {
+        await createSkill({
+          name: state.draft.name,
+          description: state.draft.description,
+          instructions: state.draft.instructions,
+          enabled: true,
+          ...(projectId ? { projectId } : {}),
+        })
+        setDraftModal(null)
+        Alert.alert('Skill saved', `${state.draft.name} is now available in Extensions.`)
+      } else {
+        // Web parity: the "Create automation" CTA sends the instruction back
+        // into chat — the agent owns automation creation and can follow up.
+        setDraftModal(null)
+        sendPresetMessage('Create automation')
+      }
+    } catch (error) {
+      Alert.alert('Could not save draft', error instanceof Error ? error.message : 'Try again.')
+    } finally {
+      setDraftSaving(false)
+    }
+  }, [projectId, sendPresetMessage])
+
   const sortedModels = useMemo(() => availableModels, [availableModels])
 
   // The upgrade modal is now only shown when a user explicitly taps a locked
@@ -1516,6 +1557,8 @@ export function ChatScreen({
                     message={item}
                     theme={theme}
                     onLongPress={handleMessageLongPress}
+                    onOpenDraft={setDraftModal}
+                    onQuickSend={sendPresetMessage}
                     onCopy={async (content) => {
                       await Clipboard.setStringAsync(content)
                       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -1765,6 +1808,13 @@ export function ChatScreen({
         visible={upgradeVisible}
         theme={theme}
         onClose={() => setUpgradeVisible(false)}
+      />
+
+      <DraftReviewSheet
+        state={draftModal}
+        saving={draftSaving}
+        onClose={() => setDraftModal(null)}
+        onSave={(state) => { void handleSaveDraft(state) }}
       />
 
       <ChatActionsSheet

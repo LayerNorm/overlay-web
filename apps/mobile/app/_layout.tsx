@@ -23,6 +23,11 @@ function handleDeepLink(url: string | null | undefined): void {
   if (inviteMatch) {
     router.push(`/invitations/${inviteMatch[1]}`)
   }
+  // MCP OAuth callback: the auth session normally intercepts this itself, but a
+  // cold-start deep link should still land the user back on Extensions → MCPs.
+  if (url.startsWith('overlay://auth/mcp-callback')) {
+    router.push('/(tabs)/tools')
+  }
 }
 
 function useDictateDeepLink(): void {

@@ -23,9 +23,11 @@ import type { MarkdownStyle as EnrichedMarkdownStyle } from 'react-native-enrich
 import { Feather } from '@expo/vector-icons'
 import {
   buildAssistantVisualSegments,
+  getDraftFromToolBlock,
   type AssistantVisualBlock,
   type AssistantVisualSegment,
   type ChatTranscriptSourceView,
+  type DraftModalState,
 } from '@overlay/chat-core'
 import type { Message, ToolInvocationSummary } from '../../services/chatTypes'
 import type { Theme } from '../../constants/theme'
@@ -482,14 +484,66 @@ function FilePartView({
 
 // ─── Persisted assistant segments — output of `buildAssistantVisualSegments` ──
 
+/** Native mirror of the web transcript's DraftSuggestionCard. */
+function DraftCard({
+  draft,
+  theme,
+  onOpen,
+  onQuickSend,
+}: {
+  draft: DraftModalState
+  theme: Theme
+  onOpen?: () => void
+  onQuickSend?: (text: string) => void
+}) {
+  const isAutomation = draft.kind === 'automation'
+  return (
+    <View style={[styles.draftCard, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
+      <Text style={[styles.draftBadge, { color: theme.textSecondary, borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+        {isAutomation ? 'AUTOMATION DRAFT' : 'SKILL DRAFT'}
+      </Text>
+      <Text style={[styles.draftTitle, { color: theme.text }]}>{draft.draft.name}</Text>
+      {draft.draft.description ? (
+        <Text style={[styles.draftDescription, { color: theme.textSecondary }]} numberOfLines={4}>
+          {draft.draft.description}
+        </Text>
+      ) : null}
+      {draft.draft.reason ? (
+        <Text style={[styles.draftReason, { color: theme.textSecondary }]} numberOfLines={2}>
+          {draft.draft.reason}
+        </Text>
+      ) : null}
+      <View style={styles.draftActions}>
+        {onOpen ? (
+          <TouchableOpacity onPress={onOpen} style={[styles.draftPrimary, { backgroundColor: theme.foreground }]}>
+            <Text style={[styles.draftPrimaryText, { color: theme.background }]}>Review draft</Text>
+          </TouchableOpacity>
+        ) : null}
+        {isAutomation && onQuickSend ? (
+          <TouchableOpacity
+            onPress={() => onQuickSend('Create automation')}
+            style={[styles.draftSecondary, { borderColor: theme.border }]}
+          >
+            <Text style={[styles.draftSecondaryText, { color: theme.text }]}>Create automation</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  )
+}
+
 function AssistantSegmentView({
   segment,
   theme,
   markdownStyles,
+  onOpenDraft,
+  onQuickSend,
 }: {
   segment: AssistantVisualSegment
   theme: Theme
   markdownStyles: MarkdownStyle
+  onOpenDraft?: (state: DraftModalState) => void
+  onQuickSend?: (text: string) => void
 }) {
   switch (segment.kind) {
     case 'text':
@@ -510,12 +564,30 @@ function AssistantSegmentView({
           theme={theme}
         />
       )
-    case 'tools':
+    case 'tools': {
+      // A lone draft_*_from_chat tool block promotes to a reviewable card —
+      // mirrors the web transcript's DraftSuggestionCard.
+      const onlyTools = segment.items.every((item) => item.kind === 'tool')
+      if (onlyTools && segment.items.length === 1) {
+        const tool = segment.items[0]
+        const draft = tool.kind === 'tool' ? getDraftFromToolBlock(tool) : null
+        if (draft) {
+          return (
+            <DraftCard
+              draft={draft}
+              theme={theme}
+              onOpen={onOpenDraft ? () => onOpenDraft(draft) : undefined}
+              onQuickSend={onQuickSend}
+            />
+          )
+        }
+      }
       return (
         <View style={{ marginTop: 8, marginBottom: 8 }}>
           <ToolGroupBlock items={segment.items} theme={theme} />
         </View>
       )
+    }
     case 'browser':
       return (
         <View style={{ marginTop: 8, marginBottom: 8 }}>
@@ -660,6 +732,10 @@ interface MessageBubbleProps {
   onDelete?: (messageId: string) => void
   /** Long-press action — parent presents the message action sheet (Reply/Copy). */
   onLongPress?: (message: Message) => void
+  /** Skill/automation drafts surfaced from draft_*_from_chat tool blocks. */
+  onOpenDraft?: (state: DraftModalState) => void
+  /** Sends a preset user message — web's quick "Create automation" draft action. */
+  onQuickSend?: (text: string) => void
 }
 
 export const MessageBubble = React.memo(function MessageBubble({
@@ -667,6 +743,8 @@ export const MessageBubble = React.memo(function MessageBubble({
   theme,
   onCopy,
   onLongPress,
+  onOpenDraft,
+  onQuickSend,
 }: MessageBubbleProps): React.ReactElement {
   const isUser = message.role === 'user'
 
@@ -891,6 +969,8 @@ export const MessageBubble = React.memo(function MessageBubble({
             segment={segment}
             theme={theme}
             markdownStyles={markdownStyles}
+            onOpenDraft={onOpenDraft}
+            onQuickSend={onQuickSend}
           />
         ))}
 
@@ -1286,5 +1366,69 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
+  },
+
+  // Draft suggestion card
+  draftCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    marginTop: 8,
+    marginBottom: 4,
+    alignSelf: 'stretch',
+    maxWidth: 480,
+    gap: 6,
+  },
+  draftBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    overflow: 'hidden',
+  },
+  draftTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  draftDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 19,
+  },
+  draftReason: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  draftActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  draftPrimary: {
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftPrimaryText: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+  },
+  draftSecondary: {
+    borderRadius: borderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftSecondaryText: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
   },
 })
