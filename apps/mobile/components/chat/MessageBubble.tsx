@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { Image as ExpoImage } from 'expo-image'
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -20,9 +21,16 @@ import Animated, {
 import { EnrichedMarkdownText } from 'react-native-enriched-markdown'
 import type { MarkdownStyle as EnrichedMarkdownStyle } from 'react-native-enriched-markdown'
 import { Feather } from '@expo/vector-icons'
+import {
+  buildAssistantVisualSegments,
+  type AssistantVisualBlock,
+  type AssistantVisualSegment,
+  type ChatTranscriptSourceView,
+} from '@overlay/chat-core'
 import type { Message, ToolInvocationSummary } from '../../services/chatTypes'
 import type { Theme } from '../../constants/theme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
+import { GeneratedUiCard } from './GeneratedUiCard'
 
 type MarkdownStyle = EnrichedMarkdownStyle
 
@@ -95,7 +103,7 @@ function getToolLabel(toolName: string): string {
 // ─── Web source extraction ────────────────────────────────────────────────────
 
 interface WebSource {
-  url: string
+  url?: string
   title?: string
   snippet?: string
 }
@@ -296,7 +304,260 @@ function ToolCallRow({ tool, theme }: { tool: ToolInvocationSummary; theme: Them
   )
 }
 
-// ─── Sources section ──────────────────────────────────────────────────────────
+// ─── Tool group — consecutive tool/reasoning items collapse into a count row ──
+
+function ToolGroupBlock({
+  items,
+  theme,
+}: {
+  items: AssistantVisualBlock[]
+  theme: Theme
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const tools = items.filter(
+    (item): item is Extract<AssistantVisualBlock, { kind: 'tool' }> => item.kind === 'tool',
+  )
+  const anyRunning = tools.some((tool) => !DONE_STATES.has(tool.state ?? ''))
+  const anyError = tools.some(
+    (tool) => tool.state === 'output-error' || tool.state === 'output-denied',
+  )
+
+  // Small groups render inline — collapsing two rows saves nothing.
+  if (tools.length <= 2) {
+    return (
+      <>
+        {items.map((item, index) => {
+          if (item.kind === 'tool') {
+            return (
+              <ToolCallRow
+                key={item.key || `${item.name}-${index}`}
+                tool={{
+                  toolCallId: item.key,
+                  toolName: item.name,
+                  state: item.state,
+                  toolInput: item.toolInput,
+                  toolOutput: item.toolOutput,
+                }}
+                theme={theme}
+              />
+            )
+          }
+          if (item.kind === 'reasoning') {
+            return (
+              <ReasoningBlock
+                key={item.key || `reasoning-${index}`}
+                text={item.text}
+                isStreaming={false}
+                theme={theme}
+              />
+            )
+          }
+          return null
+        })}
+      </>
+    )
+  }
+
+  const label = anyRunning
+    ? `${tools.length} actions…`
+    : anyError
+      ? `${tools.length} actions — some failed`
+      : `${tools.length} actions`
+
+  return (
+    <View>
+      <TouchableOpacity
+        style={styles.toolRow}
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.82}
+      >
+        <View style={styles.logoCol}>
+          <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" alt="Overlay" />
+        </View>
+        <View style={styles.toolContent}>
+          <View style={styles.toolHeaderRow}>
+            <Text
+              style={[styles.toolLabel, { color: anyError ? '#EF4444' : theme.textSecondary }]}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+            <Feather
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={13}
+              color={theme.textSecondary}
+            />
+          </View>
+        </View>
+      </TouchableOpacity>
+      {expanded ? (
+        <View style={styles.toolGroupChildren}>
+          {items.map((item, index) => {
+            if (item.kind === 'tool') {
+              return (
+                <ToolCallRow
+                  key={item.key || `${item.name}-${index}`}
+                  tool={{
+                    toolCallId: item.key,
+                    toolName: item.name,
+                    state: item.state,
+                    toolInput: item.toolInput,
+                    toolOutput: item.toolOutput,
+                  }}
+                  theme={theme}
+                />
+              )
+            }
+            if (item.kind === 'reasoning') {
+              return (
+                <ReasoningBlock
+                  key={item.key || `reasoning-${index}`}
+                  text={item.text}
+                  isStreaming={false}
+                  theme={theme}
+                />
+              )
+            }
+            return null
+          })}
+        </View>
+      ) : null}
+    </View>
+  )
+}
+
+// ─── File part — images preview inline; other files open externally ───────────
+
+function FilePartView({
+  url,
+  mediaType,
+  fileName,
+  theme,
+}: {
+  url: string
+  mediaType?: string
+  fileName?: string
+  theme: Theme
+}) {
+  if (mediaType?.startsWith('image/')) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => void Linking.openURL(url)}
+        style={[styles.imagePreviewWrap, { borderColor: theme.border }]}
+      >
+        <ExpoImage
+          source={{ uri: url }}
+          style={styles.imagePreview}
+          contentFit="cover"
+          transition={120}
+        />
+      </TouchableOpacity>
+    )
+  }
+
+  const label = mediaType?.startsWith('video/')
+    ? 'Generated video'
+    : fileName || 'File'
+  return (
+    <TouchableOpacity
+      onPress={() => void Linking.openURL(url)}
+      activeOpacity={0.82}
+      style={[styles.fileRow, { borderBottomColor: theme.border }]}
+    >
+      <View style={styles.fileRowLeft}>
+        <Feather
+          name={mediaType?.startsWith('video/') ? 'film' : 'link'}
+          size={13}
+          color={theme.textSecondary}
+        />
+        <Text style={[styles.fileLabel, { color: theme.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Feather name="external-link" size={14} color={theme.textSecondary} />
+    </TouchableOpacity>
+  )
+}
+
+// ─── Persisted assistant segments — output of `buildAssistantVisualSegments` ──
+
+function AssistantSegmentView({
+  segment,
+  theme,
+  markdownStyles,
+}: {
+  segment: AssistantVisualSegment
+  theme: Theme
+  markdownStyles: MarkdownStyle
+}) {
+  switch (segment.kind) {
+    case 'text':
+      return (
+        <View style={{ marginTop: 8 }}>
+          <StableMd
+            text={normalizeDisplayText(segment.block.text)}
+            style={markdownStyles}
+            streaming={false}
+          />
+        </View>
+      )
+    case 'reasoning':
+      return (
+        <ReasoningBlock
+          text={segment.block.text}
+          isStreaming={segment.block.state === 'streaming'}
+          theme={theme}
+        />
+      )
+    case 'tools':
+      return (
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
+          <ToolGroupBlock items={segment.items} theme={theme} />
+        </View>
+      )
+    case 'browser':
+      return (
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
+          <ToolCallRow
+            tool={{
+              toolCallId: segment.block.key,
+              toolName: segment.block.name,
+              state: segment.block.state,
+              toolInput: segment.block.toolInput,
+              toolOutput: segment.block.toolOutput,
+            }}
+            theme={theme}
+          />
+        </View>
+      )
+    case 'file':
+      return (
+        <View style={{ marginTop: 8 }}>
+          <FilePartView
+            url={segment.block.url}
+            mediaType={segment.block.mediaType}
+            theme={theme}
+          />
+        </View>
+      )
+    case 'generated-ui':
+      return <GeneratedUiCard part={segment.block.part} theme={theme} />
+    default:
+      return null
+  }
+}
+
+/** Transcript `source` blocks → SourcesSection rows (urls link; documents don't). */
+function transcriptSourcesToWebSources(
+  sources: ChatTranscriptSourceView[] | undefined,
+): WebSource[] {
+  if (!sources?.length) return []
+  return sources.map((source) => ({
+    url: source.url,
+    title: source.title || source.filename || source.url,
+  }))
+}
 
 function SourcesSection({ sources, theme }: { sources: WebSource[]; theme: Theme }) {
   const [expanded, setExpanded] = useState(false)
@@ -325,14 +586,15 @@ function SourcesSection({ sources, theme }: { sources: WebSource[]; theme: Theme
         <View style={[styles.sourcesList, { borderTopColor: theme.border }]}>
           {sources.map((source, i) => (
             <TouchableOpacity
-              key={`${source.url}-${i}`}
+              key={`${source.url ?? source.title ?? i}-${i}`}
               style={[styles.sourceRow, { borderBottomColor: theme.border }]}
-              onPress={() => void Linking.openURL(source.url)}
+              onPress={source.url ? () => void Linking.openURL(source.url!) : undefined}
               activeOpacity={0.82}
+              disabled={!source.url}
             >
               <View style={styles.sourceRowContent}>
                 <Text style={[styles.sourceTitle, { color: theme.text }]} numberOfLines={1}>
-                  {source.title || getSourceHostname(source.url)}
+                  {source.title || (source.url ? getSourceHostname(source.url) : 'Source')}
                 </Text>
                 {source.snippet ? (
                   <Text
@@ -343,7 +605,9 @@ function SourcesSection({ sources, theme }: { sources: WebSource[]; theme: Theme
                   </Text>
                 ) : null}
               </View>
-              <Feather name="external-link" size={12} color={theme.textSecondary} />
+              {source.url ? (
+                <Feather name="external-link" size={12} color={theme.textSecondary} />
+              ) : null}
             </TouchableOpacity>
           ))}
         </View>
@@ -394,12 +658,15 @@ interface MessageBubbleProps {
   theme: Theme
   onCopy?: (content: string) => void
   onDelete?: (messageId: string) => void
+  /** Long-press action — parent presents the message action sheet (Reply/Copy). */
+  onLongPress?: (message: Message) => void
 }
 
 export const MessageBubble = React.memo(function MessageBubble({
   message,
   theme,
   onCopy,
+  onLongPress,
 }: MessageBubbleProps): React.ReactElement {
   const isUser = message.role === 'user'
 
@@ -557,15 +824,41 @@ export const MessageBubble = React.memo(function MessageBubble({
   if (isUser) {
     return (
       <Animated.View entering={FadeIn.duration(150)} style={[styles.container, styles.userContainer]}>
-        <View style={[styles.userBubble, { backgroundColor: theme.surfaceSubtle }]}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onLongPress={onLongPress ? () => onLongPress(message) : undefined}
+          delayLongPress={350}
+          style={[styles.userBubble, { backgroundColor: theme.surfaceSubtle }]}
+        >
+          {message.replySnippet ? (
+            <View style={[styles.replyChip, { borderLeftColor: theme.textDisabled }]}>
+              <Text style={[styles.replyChipText, { color: theme.textSecondary }]} numberOfLines={2}>
+                {message.replySnippet}
+              </Text>
+            </View>
+          ) : null}
           {message.imageData ? (
             <View style={[styles.attachmentTag, { backgroundColor: theme.surfaceMuted }]}>
               <Feather name="image" size={13} color={theme.text} />
               <Text style={[styles.attachmentTagText, { color: theme.text }]}>Image attached</Text>
             </View>
           ) : null}
+          {message.mentions && message.mentions.length > 0 ? (
+            <View style={styles.userMentionsRow}>
+              {message.mentions.map((mention) => (
+                <View
+                  key={`${mention.type}-${mention.id}`}
+                  style={[styles.mentionChip, { backgroundColor: theme.surfaceMuted }]}
+                >
+                  <Text style={[styles.mentionChipText, { color: theme.text }]} numberOfLines={1}>
+                    @{mention.name}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <StableMd text={message.content} style={markdownStyles} streaming={false} />
-        </View>
+        </TouchableOpacity>
       </Animated.View>
     )
   }
@@ -574,9 +867,70 @@ export const MessageBubble = React.memo(function MessageBubble({
   const showInitialCursor =
     isLoading && !displayContent && !hasReasoning && toolInvocations.length === 0
   const isReasoningStreaming = isLoading && !displayContent
+  const responseError = message.responses?.find((r) => r.error)?.error
+
+  // Persisted messages carry the normalized transcript render model — same
+  // blocks/segments the web transcript uses. Streamed messages fall back to the
+  // incremental path until the post-send reload lands.
+  if (message.blocks && !isLoading) {
+    const segments = buildAssistantVisualSegments(message.blocks)
+    const allSources = [
+      ...webSources,
+      ...transcriptSourcesToWebSources(message.transcriptSources),
+    ]
+    return (
+      <TouchableOpacity
+        activeOpacity={1}
+        onLongPress={onLongPress ? () => onLongPress(message) : undefined}
+        delayLongPress={350}
+        style={[styles.container, styles.assistantContainer]}
+      >
+        {segments.map((segment, index) => (
+          <AssistantSegmentView
+            key={`${segment.kind}-${segment.originIndex ?? index}`}
+            segment={segment}
+            theme={theme}
+            markdownStyles={markdownStyles}
+          />
+        ))}
+
+        {allSources.length > 0 ? (
+          <SourcesSection sources={allSources} theme={theme} />
+        ) : null}
+
+        {responseError ? (
+          <View style={[styles.errorBar, { backgroundColor: theme.surfaceSubtle, borderColor: '#fca5a5' }]}>
+            <Feather name="alert-circle" size={13} color="#EF4444" />
+            <Text style={[styles.errorText, { color: '#B91C1C' }]} numberOfLines={3}>
+              {responseError}
+            </Text>
+          </View>
+        ) : null}
+
+        {displayContent ? (
+          <View style={[styles.actions, { marginTop: 12 }]}>
+            <Text style={[styles.metaLabel, { color: theme.textDisabled }]}>
+              {message.responses?.[0]?.modelName || 'Overlay'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => onCopy?.(displayContent)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather name="copy" size={15} color={theme.textDisabled} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    )
+  }
 
   return (
-    <View style={[styles.container, styles.assistantContainer]}>
+    <TouchableOpacity
+      activeOpacity={1}
+      onLongPress={onLongPress ? () => onLongPress(message) : undefined}
+      delayLongPress={350}
+      style={[styles.container, styles.assistantContainer]}
+    >
       {/* Reasoning block */}
       {hasReasoning ? (
         <ReasoningBlock
@@ -633,25 +987,22 @@ export const MessageBubble = React.memo(function MessageBubble({
           ]}
         >
           {generatedFiles.map((file, index) => (
-            <TouchableOpacity
+            <FilePartView
               key={`${file.url}-${index}`}
-              onPress={() => void Linking.openURL(file.url)}
-              activeOpacity={0.82}
-              style={[styles.fileRow, { borderBottomColor: theme.border }]}
-            >
-              <View style={styles.fileRowLeft}>
-                <Feather name="link" size={13} color={theme.textSecondary} />
-                <Text style={[styles.fileLabel, { color: theme.text }]}>
-                  {file.mediaType.startsWith('image/')
-                    ? 'Generated image'
-                    : file.mediaType.startsWith('video/')
-                      ? 'Generated video'
-                      : 'Generated file'}
-                </Text>
-              </View>
-              <Feather name="external-link" size={14} color={theme.textSecondary} />
-            </TouchableOpacity>
+              url={file.url}
+              mediaType={file.mediaType}
+              theme={theme}
+            />
           ))}
+        </View>
+      ) : null}
+
+      {responseError ? (
+        <View style={[styles.errorBar, { backgroundColor: theme.surfaceSubtle, borderColor: '#fca5a5' }]}>
+          <Feather name="alert-circle" size={13} color="#EF4444" />
+          <Text style={[styles.errorText, { color: '#B91C1C' }]} numberOfLines={3}>
+            {responseError}
+          </Text>
         </View>
       ) : null}
 
@@ -669,7 +1020,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           </TouchableOpacity>
         </View>
       ) : null}
-    </View>
+    </TouchableOpacity>
   )
 })
 
@@ -868,5 +1219,72 @@ const styles = StyleSheet.create({
   metaLabel: {
     fontSize: 13,
     fontWeight: '600',
+  },
+
+  // Reply chip (user messages replying to prior content)
+  replyChip: {
+    borderLeftWidth: 2,
+    paddingLeft: 8,
+    marginBottom: 6,
+  },
+  replyChipText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontStyle: 'italic',
+  },
+  userMentionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  mentionChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: 160,
+  },
+  mentionChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  // Collapsed tool group
+  toolGroupChildren: {
+    marginLeft: 18,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(128,128,128,0.2)',
+    paddingLeft: 8,
+  },
+
+  // Inline image preview for generated/image file parts
+  imagePreviewWrap: {
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    maxWidth: 280,
+  },
+  imagePreview: {
+    width: 280,
+    height: 200,
+  },
+
+  // Error surface
+  errorBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    padding: 10,
+    marginTop: 8,
+    alignSelf: 'stretch',
+    maxWidth: 420,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
   },
 })

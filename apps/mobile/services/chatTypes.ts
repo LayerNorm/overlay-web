@@ -3,9 +3,24 @@ import type {
   ConversationMessage,
   ConversationSummary,
 } from '@overlay/app-core'
-import type { ChatMode } from '@overlay/chat-core'
+import type {
+  AssistantVisualBlock,
+  ChatMode,
+  ChatTranscriptSourceView,
+} from '@overlay/chat-core'
 
 export type ChatModel = ServerChatModel
+
+/** Mirrors `MentionItem` in web `src/shared/knowledge/mention-types.ts`. */
+export type ChatMentionType = 'file' | 'knowledge' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat' | 'person' | 'agent'
+
+export interface ChatMentionItem {
+  type: ChatMentionType
+  id: string
+  name: string
+  description?: string
+  logoUrl?: string
+}
 
 export interface Screenshot {
   uri: string
@@ -52,6 +67,16 @@ export interface Message {
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string
+  /**
+   * Persisted assistant render model from `normalizeTranscriptAssistantParts`.
+   * Present on messages loaded from the server; absent on locally-streamed
+   * messages until the post-send reload lands.
+   */
+  blocks?: AssistantVisualBlock[]
+  transcriptSources?: ChatTranscriptSourceView[]
+  mentions?: ChatMentionItem[]
+  /** True while the message is still being generated locally. */
+  isStreaming?: boolean
 }
 
 export interface ChatMeta {
@@ -65,6 +90,8 @@ export interface ChatMeta {
   askModelIds?: string[]
   actModelId?: string
   clientId?: string
+  conversationType?: 'personal' | 'dm' | 'channel'
+  archivedAt?: number
 }
 
 export interface Chat extends ChatMeta {

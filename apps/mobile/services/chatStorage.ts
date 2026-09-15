@@ -3,6 +3,7 @@ import type {
   ConversationMessage,
   ConversationSummary,
 } from '@overlay/app-core'
+import { normalizeTranscriptAssistantParts } from '@overlay/chat-core'
 import { appJson, appRequest } from './appApi'
 import {
   generateChatId,
@@ -43,8 +44,16 @@ function mapConversationMessageToMessage(message: ConversationMessage): Message 
       toolOutput: part.toolInvocation.toolOutput,
     }))
 
+  // Normalized render model — same normalizer the web transcript uses, so
+  // reasoning, grouped tools, sources, and generated-ui survive the round trip.
+  const { blocks, sources } = message.role === 'assistant'
+    ? normalizeTranscriptAssistantParts(message.parts)
+    : { blocks: undefined, sources: undefined }
+
   return {
     id: message.id,
+    blocks,
+    transcriptSources: sources,
     turnId: message.turnId,
     role: message.role,
     content: text,
@@ -72,6 +81,10 @@ function mapConversationMessageToMessage(message: ConversationMessage): Message 
 }
 
 function mapConversationSummary(summary: ConversationSummary): ChatMeta {
+  const runtime = summary as ConversationSummary & {
+    conversationType?: 'personal' | 'dm' | 'channel'
+    archivedAt?: number
+  }
   return {
     id: summary._id,
     title: summary.title,
@@ -83,6 +96,8 @@ function mapConversationSummary(summary: ConversationSummary): ChatMeta {
     askModelIds: summary.askModelIds,
     actModelId: summary.actModelId,
     clientId: summary.clientId,
+    conversationType: runtime.conversationType,
+    archivedAt: runtime.archivedAt,
   }
 }
 
@@ -93,6 +108,16 @@ export async function loadChatsMeta(projectId?: string): Promise<ChatMeta[]> {
   return summaries
     .map(mapConversationSummary)
     .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** Archived conversations — `GET /conversations?archived=true` (web ChatArchivedView). */
+export async function loadArchivedChats(): Promise<ChatMeta[]> {
+  const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations', {
+    query: { archived: true },
+  })
+  return summaries
+    .map(mapConversationSummary)
+    .sort((a, b) => (b.archivedAt ?? b.updatedAt) - (a.archivedAt ?? a.updatedAt))
 }
 
 export async function saveChat(chat: Chat): Promise<void> {
@@ -166,9 +191,9 @@ export async function updateChatMessages(_id: string, _messages: Message[]): Pro
 
 export async function createNewChat(
   modelId?: string,
-  options: { projectId?: string; title?: string } = {},
+  options: { projectId?: string; title?: string; clientId?: string } = {},
 ): Promise<Chat> {
-  const clientId = generateChatId()
+  const clientId = options.clientId ?? generateChatId()
   const response = await appJson<{
     id: string
     conversation: ConversationSummary

@@ -30,6 +30,7 @@ import { WorkspaceSwitcher } from '../workspace/WorkspaceSwitcher'
 import { AppIcon } from '../ui/AppIcon'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 import { GlassSurface } from '../ui/GlassSurface'
+import { ChatActionsSheet } from './ChatActionsSheet'
 
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -89,6 +90,7 @@ export function DrawerSidebar({
   activeNoteId,
   onSelectNote,
   onCreateNote,
+  onChatsChanged,
   variant = 'modal',
 }: {
   theme: Theme
@@ -100,6 +102,8 @@ export function DrawerSidebar({
   activeNoteId?: string | null
   onSelectNote?: (id: string) => void
   onCreateNote?: () => void
+  /** Chat list mutated (rename/archive/delete) — parent refreshes + resets if `removedChatId` was open. */
+  onChatsChanged?: (removedChatId?: string) => void
   variant?: 'modal' | 'slide'
 }): React.ReactElement | null {
   const insets = useSafeAreaInsets()
@@ -201,6 +205,7 @@ export function DrawerSidebar({
           activeNoteId={activeNoteId}
           onSelectNote={onSelectNote}
           onCreateNote={onCreateNote}
+          onChatsChanged={onChatsChanged}
         />
       </View>
     )
@@ -258,6 +263,7 @@ export function DrawerSidebar({
           activeNoteId={activeNoteId}
           onSelectNote={onSelectNote}
           onCreateNote={onCreateNote}
+          onChatsChanged={onChatsChanged}
           isRouteActive={isRouteActive}
           navigate={navigate}
         />
@@ -279,6 +285,7 @@ function DrawerContent({
   activeNoteId,
   onSelectNote,
   onCreateNote,
+  onChatsChanged,
   isRouteActive: externalIsRouteActive,
   navigate: externalNavigate,
 }: {
@@ -294,6 +301,7 @@ function DrawerContent({
   activeNoteId?: string | null
   onSelectNote?: (id: string) => void
   onCreateNote?: () => void
+  onChatsChanged?: (removedChatId?: string) => void
   isRouteActive?: (route: string) => boolean
   navigate?: (route: string) => void
 }) {
@@ -304,6 +312,7 @@ function DrawerContent({
   const { user } = useAuth()
   const { destinations, featureFlags, capabilities, isFeatureEnabled } = useAppSession()
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
+  const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
 
   const navItems = useMemo(
     () => resolveNavDestinations(destinations, { featureFlags, capabilities, isFeatureEnabled }),
@@ -369,16 +378,7 @@ function DrawerContent({
   }, [navigate])
 
   const handleLongPressChat = useCallback((chat: ChatMeta) => {
-    Alert.alert(
-      chat.title || 'Chat',
-      'Choose an action',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => {
-          // TODO: Implement delete
-        }},
-      ]
-    )
+    setActionsChat(chat)
   }, [])
 
   const handleLongPressNote = useCallback((note: NoteMeta) => {
@@ -524,10 +524,17 @@ function DrawerContent({
         </View>
 
         {/* Chat recents — shown only when on chat route */}
-        {isChatActive && chats.length > 0 && (
+        {isChatActive && (
           <View style={[styles.recentsSection, {}]}>
             <View style={styles.recentsHeaderRow}>
               <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
+              <TouchableOpacity
+                activeOpacity={0.65}
+                onPress={() => navigate('/(tabs)/archived')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.archivedLink, { color: theme.muted }]}>Archived</Text>
+              </TouchableOpacity>
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -677,6 +684,16 @@ function DrawerContent({
           </GlassSurface>
         </View>
       </View>
+
+      <ChatActionsSheet
+        theme={theme}
+        visible={actionsChat !== null}
+        chat={actionsChat}
+        onClose={() => setActionsChat(null)}
+        onChanged={() => onChatsChanged?.()}
+        onDeleted={(chatId) => onChatsChanged?.(chatId)}
+        onArchived={(chatId) => onChatsChanged?.(chatId)}
+      />
     </View>
   )
 }
@@ -764,6 +781,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
+  },
+  archivedLink: {
+    fontSize: fontSize.xs,
+    fontWeight: '600',
   },
   newChatButton: {
     flexDirection: 'row',

@@ -27,19 +27,32 @@ import {
   generateTempTitle,
   type Chat,
   type ChatMeta,
+  type ChatMentionItem,
   type Message,
 } from '../../services/chatTypes'
 import {
+  createNewChat,
   getLastOpenedChatId,
   loadChat,
   loadChatsMeta,
   saveChat,
   setLastOpenedChatId,
 } from '../../services/chatStorage'
-import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment } from '../../services/aiService'
+import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
+import {
+  fetchChatSuggestions,
+  fetchCurrentRun,
+  generateImage,
+  generateVideo,
+  submitRunApproval,
+} from '../../services/conversationActionsService'
+import { mentionToRequestBody } from '../../lib/chatMentions'
+import type { AgentRunResource } from '@overlay/api-client'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
+import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
+import { ChatActionsSheet } from './ChatActionsSheet'
 import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
@@ -53,7 +66,6 @@ import { FloatingSearchBar } from '../ui/FloatingSearchBar'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
-import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
 import * as DocumentPicker from 'expo-document-picker'
 import { useMobilePreferences } from '../../hooks/useMobilePreferences'
@@ -349,7 +361,7 @@ export function ChatScreen({
   const router = useRouter()
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
-  const { entitlements, chatModels, uiSettings, capabilities } = useAppSession()
+  const { entitlements, chatModels, imageModels, videoModels, uiSettings, capabilities } = useAppSession()
   const { preferences: mobilePreferences } = useMobilePreferences()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
@@ -367,19 +379,26 @@ export function ChatScreen({
   const [history, setHistory] = useState<ChatMeta[]>([])
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
   const [upgradeVisible, setUpgradeVisible] = useState(false)
-  const [composerFocused, setComposerFocused] = useState(false)
   const [keyboardHeight, setKeyboardHeight] = useState(0)
-  const [attachPickerVisible, setAttachPickerVisible] = useState(false)
-  interface PendingDocument {
-    clientId: string
-    name: string
-    fileIds: string[]
-    status: 'uploading' | 'ready' | 'error'
-    error?: string
-  }
   const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null)
+
+  // ── Phase 2 composer state ────────────────────────────────────────────────
+  const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [selectedToolIds, setSelectedToolIds] = useState<ChatToolRequestId[]>([])
+  const [memoryEnabled, setMemoryEnabled] = useState(true)
+  const [requestMode, setRequestMode] = useState<'chat' | 'automate'>('chat')
+  const [mentions, setMentions] = useState<ChatMentionItem[]>([])
+  const [replyContext, setReplyContext] = useState<ComposerReplyContext | null>(null)
+  const [isTemporary, setIsTemporary] = useState(false)
+  const [generationKind, setGenerationKind] = useState<'image' | 'video' | null>(null)
+  const [selectedImageModelId, setSelectedImageModelId] = useState<string | null>(null)
+  const [selectedVideoModelId, setSelectedVideoModelId] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [currentRun, setCurrentRun] = useState<AgentRunResource | null>(null)
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false)
+  const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
@@ -490,6 +509,7 @@ export function ChatScreen({
         }
 
         chatRef.current = chat
+        setActiveChatId(chat.id)
         setChatTitle(chat.title)
         hasAutoScrolledRef.current = false
         setMessages(chat.messages)
@@ -497,6 +517,10 @@ export function ChatScreen({
         setImageBase64(null)
         setPendingDocuments([])
         setAttachmentError(null)
+        setMentions([])
+        setReplyContext(null)
+        setGenerationKind(null)
+        setCurrentRun(null)
         await setLastOpenedChatId(chat.id)
 
         const preferredModelId = chat.actModelId || chat.askModelIds?.[0] || chat.modelId
@@ -533,8 +557,15 @@ export function ChatScreen({
       const created: Chat = createDraftChat(modelId, projectId)
 
       chatRef.current = created
+      setActiveChatId(created.id)
       setChatTitle(created.title)
       setMessages([])
+      setMentions([])
+      setReplyContext(null)
+      setPendingDocuments([])
+      setAttachmentError(null)
+      setGenerationKind(null)
+      setCurrentRun(null)
       setSelectedModel(
         models.find((model) => model.id === created.modelId) ||
           createSyntheticModel(created.modelId) ||
@@ -625,6 +656,7 @@ export function ChatScreen({
           const preferred = await resolvePreferredModel(models)
           const draft = createDraftChat(preferred?.id ?? models[0]?.id, projectId)
           chatRef.current = draft
+          setActiveChatId(draft.id)
           setChatTitle(draft.title)
           setMessages([])
           setSelectedModel(preferred ?? models[0] ?? createSyntheticModel(draft.modelId))
@@ -705,6 +737,61 @@ export function ChatScreen({
     }, [refreshHistory]),
   )
 
+  // ── Agent run lifecycle ───────────────────────────────────────────────────
+  // The server runs each act turn as an AgentRunResource; `currentRun` is the
+  // source of truth for queued/running/waiting_for_approval/failed state.
+  // Poll fast while a run is active, slow otherwise (web uses a Convex
+  // subscription + adaptive REST fallback; mobile polls REST only — Phase 3
+  // may add realtime).
+  useEffect(() => {
+    if (!activeChatId || isTemporary) {
+      setCurrentRun(null)
+      return
+    }
+    let cancelled = false
+    const poll = async () => {
+      const run = await fetchCurrentRun(activeChatId).catch(() => null)
+      if (!cancelled) setCurrentRun(run)
+    }
+    void poll()
+    const active = currentRun && ['queued', 'running', 'waiting_for_approval'].includes(currentRun.status)
+    const interval = setInterval(() => void poll(), isSending || active ? 2_000 : 15_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [activeChatId, isTemporary, isSending, currentRun?.status])
+
+  // ── Empty-chat suggestions — `/api/v1/chat-suggestions` (4 prompts/day) ────
+  useEffect(() => {
+    if (messages.length === 0 && isAuthenticated && !isTemporary) {
+      void fetchChatSuggestions().then(setSuggestions)
+    }
+  }, [messages.length, isAuthenticated, isTemporary])
+
+  const handleSubmitApproval = useCallback(
+    async (approved: boolean) => {
+      const run = currentRun
+      if (!activeChatId || !run?.approval || run.status !== 'waiting_for_approval') return
+      setApprovalSubmitting(true)
+      try {
+        await submitRunApproval({
+          conversationId: activeChatId,
+          agentRunId: run.id,
+          token: run.approval.token,
+          approved,
+        })
+        const next = await fetchCurrentRun(activeChatId).catch(() => null)
+        setCurrentRun(next)
+      } catch (error) {
+        Alert.alert('Could not submit approval', error instanceof Error ? error.message : 'Try again.')
+      } finally {
+        setApprovalSubmitting(false)
+      }
+    },
+    [activeChatId, currentRun],
+  )
+
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       flatListRef.current?.scrollToEnd({ animated: true })
@@ -746,6 +833,28 @@ export function ChatScreen({
 
     await createConversation(availableModels)
   }, [availableModels, createConversation, projectId, projectName, routeKind, router])
+
+  // Draft chats are client-side only until the first send. Mirrors web's
+  // PENDING_FIRST_CHAT_ID flow: POST /conversations with the draft's id as
+  // clientId so the act turn (which also carries `conversationClientId`)
+  // lands on the same server row, then adopt the real conversation id.
+  const ensureServerConversation = useCallback(
+    async (chat: Chat): Promise<Chat> => {
+      if (!chat.id.startsWith('chat-') || chat.clientId) return chat
+      const created = await createNewChat(selectedModel?.id ?? chat.modelId, {
+        clientId: chat.id,
+        projectId: chat.projectId,
+        title: chat.title,
+      })
+      const next: Chat = { ...chat, id: created.id, clientId: created.clientId ?? chat.id }
+      chatRef.current = next
+      setActiveChatId(next.id)
+      await saveChat(next).catch(() => {})
+      await setLastOpenedChatId(next.id).catch(() => {})
+      return next
+    },
+    [selectedModel?.id],
+  )
 
   const handleStopGeneration = useCallback(async () => {
     abortRef.current = true
@@ -845,6 +954,215 @@ export function ChatScreen({
     [syncConversationMeta],
   )
 
+  const handleMediaSend = useCallback(
+    async (kind: 'image' | 'video') => {
+      const activeChat = chatRef.current
+      if (!activeChat || isSending) return
+      const modelId = kind === 'image'
+        ? (selectedImageModelId ?? imageModels[0]?.id)
+        : (selectedVideoModelId ?? videoModels[0]?.id)
+      if (!modelId) {
+        setAttachmentError(`No ${kind} model is available on this account.`)
+        return
+      }
+      if (!inputValue.trim() && !imageBase64) return
+
+      if (mobilePreferences.hapticsEnabled) {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      }
+      Keyboard.dismiss()
+      setIsSending(true)
+      setAttachmentError(null)
+
+      const turnId = generateMessageId()
+      const promptText = replyContext?.bodyForModel
+        ? `${inputValue.trim()}\n\n---\n[User is replying in thread to prior content]\n${replyContext.bodyForModel}`
+        : inputValue.trim()
+      const userMessage: Message = {
+        id: generateMessageId(),
+        role: 'user',
+        content: inputValue.trim(),
+        timestamp: Date.now(),
+        imageData: imageBase64 || undefined,
+        mode: 'act',
+        replyToTurnId: replyContext?.replyToTurnId,
+        replySnippet: replyContext?.snippet,
+      }
+      const assistantId = generateMessageId()
+      const generating: Message = {
+        id: assistantId,
+        turnId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        responses: [
+          {
+            modelId,
+            modelName: kind === 'image' ? 'Image generation' : 'Video generation',
+            provider: 'overlay',
+            content: '',
+            isLoading: true,
+          },
+        ],
+        mode: 'act',
+      }
+      setMessages((current) => [...current, userMessage, generating])
+      setInputValue('')
+      setImageBase64(null)
+      setReplyContext(null)
+      setGenerationKind(null)
+      scrollToBottom()
+
+      // Generation endpoints need a real conversationId — create the server
+      // row for drafts first (same pending-first-send flow as text sends).
+      let sendChat = activeChat
+      if (!isTemporary) {
+        sendChat = await ensureServerConversation(activeChat).catch(() => activeChat)
+      }
+      const sendConversationId = sendChat.id.startsWith('chat-') ? undefined : sendChat.id
+
+      try {
+        const result = kind === 'image'
+          ? await generateImage({
+              prompt: promptText,
+              modelId,
+              conversationId: isTemporary ? undefined : sendConversationId,
+              temporaryChat: isTemporary || undefined,
+              turnId,
+              imageUrl: imageBase64 ?? undefined,
+            })
+          : await generateVideo({
+              prompt: promptText,
+              modelId,
+              conversationId: isTemporary ? undefined : sendConversationId,
+              temporaryChat: isTemporary || undefined,
+              turnId,
+              imageUrl: imageBase64 ?? undefined,
+            })
+        setMessages((current) =>
+          current.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  generatedFiles: [
+                    ...(m.generatedFiles ?? []),
+                    {
+                      url: result.url ?? '',
+                      mediaType: kind === 'image' ? 'image/png' : 'video/mp4',
+                    },
+                  ],
+                  responses: [{ ...m.responses![0], isLoading: false }],
+                }
+              : m,
+          ),
+        )
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Generation failed'
+        setMessages((current) =>
+          current.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  responses: [
+                    {
+                      ...(m.responses?.[0] ?? {
+                        modelId,
+                        modelName: modelId,
+                        provider: 'overlay',
+                        content: '',
+                        isLoading: false,
+                      }),
+                      isLoading: false,
+                      error: message,
+                    },
+                  ],
+                }
+              : m,
+          ),
+        )
+      } finally {
+        setIsSending(false)
+      }
+
+      if (!isTemporary) {
+        const refreshed = await loadChat(sendChat.id)
+        if (refreshed) {
+          chatRef.current = refreshed
+          setChatTitle(refreshed.title)
+          setMessages(refreshed.messages)
+        }
+        await refreshHistory()
+      }
+    },
+    [
+      ensureServerConversation,
+      imageBase64,
+      imageModels,
+      inputValue,
+      isSending,
+      isTemporary,
+      mobilePreferences.hapticsEnabled,
+      refreshHistory,
+      replyContext,
+      scrollToBottom,
+      selectedImageModelId,
+      selectedModel,
+      selectedVideoModelId,
+      videoModels,
+    ],
+  )
+
+  const handleToggleTool = useCallback((id: ChatToolRequestId) => {
+    setSelectedToolIds((current) =>
+      current.includes(id) ? current.filter((toolId) => toolId !== id) : [...current, id],
+    )
+  }, [])
+
+  const handleSelectGeneration = useCallback(
+    (kind: 'image' | 'video' | null, modelId: string | null) => {
+      setGenerationKind(kind)
+      if (kind === 'image' && modelId) setSelectedImageModelId(modelId)
+      if (kind === 'video' && modelId) setSelectedVideoModelId(modelId)
+    },
+    [],
+  )
+
+  const handleMessageLongPress = useCallback(
+    (message: Message) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      const text = message.content?.trim() ?? ''
+      const canReply = text.length > 0
+      Alert.alert(message.role === 'user' ? 'Your message' : 'Message', undefined, [
+        {
+          text: 'Copy',
+          onPress: () => {
+            void Clipboard.setStringAsync(text)
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+          },
+        },
+        ...(canReply
+          ? [
+              {
+                text: 'Reply',
+                onPress: () => {
+                  // Mirrors web `beginReplyToAssistantText`: snippet ≤160 chars
+                  // for the bar, full text (≤16k) goes to the model.
+                  setReplyContext({
+                    snippet: text.length > 160 ? `${text.slice(0, 160)}…` : text,
+                    bodyForModel: text.slice(0, 16000),
+                    ...(message.turnId ? { replyToTurnId: message.turnId } : {}),
+                  })
+                  textInputRef.current?.focus()
+                },
+              },
+            ]
+          : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ])
+    },
+    [],
+  )
+
   const handleSend = useCallback(async () => {
     if (!isAuthLoading && !isAuthenticated) {
       router.push('/auth-flow?force=true')
@@ -863,6 +1181,11 @@ export function ChatScreen({
     }
     if (pendingDocuments.some((d) => d.status === 'error')) {
       setAttachmentError('Remove failed documents before sending.')
+      return
+    }
+
+    if (generationKind) {
+      await handleMediaSend(generationKind)
       return
     }
 
@@ -891,6 +1214,9 @@ export function ChatScreen({
       timestamp: Date.now(),
       imageData: imageBase64 || undefined,
       mode: 'act',
+      replyToTurnId: replyContext?.replyToTurnId,
+      replySnippet: replyContext?.snippet,
+      mentions: mentions.length > 0 ? mentions : undefined,
     }
 
     const nextTitle = getNextTitle(chatTitle, inputValue.trim() || indexedFileNames[0] || '')
@@ -913,31 +1239,56 @@ export function ChatScreen({
         },
       ],
       mode: 'act',
+      isStreaming: true,
     }
 
     setMessages([...userMessageList, placeholderAssistant])
+    const sentMentions = mentions
+    const sentReply = replyContext
     setInputValue('')
     setImageBase64(null)
     setPendingDocuments([])
+    setMentions([])
+    setReplyContext(null)
 
-    try {
-      await syncConversationMeta({
-        title: nextTitle,
-        modelId: selectedModel.id,
-        askModelIds: [selectedModel.id],
-        actModelId: selectedModel.id,
-        lastMode: 'act',
-      })
-    } catch {
-      // ignore sync errors
+    // Temporary chats never hit the persistence path — no conversationId,
+    // temporaryChat flag only, history untouched.
+    // Draft chats get a server row here (web's pending-first-send flow):
+    // POST /conversations with the draft id as clientId; on failure the act
+    // body still carries `conversationClientId` so the turn creates it lazily.
+    let sendChat = activeChat
+    if (!isTemporary) {
+      sendChat = await ensureServerConversation(activeChat).catch(() => activeChat)
+      try {
+        await syncConversationMeta({
+          title: nextTitle,
+          modelId: selectedModel.id,
+          askModelIds: [selectedModel.id],
+          actModelId: selectedModel.id,
+          lastMode: 'act',
+        })
+      } catch {
+        // ignore sync errors
+      }
     }
+    const stillDraft = sendChat.id.startsWith('chat-')
     scrollToBottom()
 
+    const knowledgeMentions = sentMentions.filter((m) => m.type === 'knowledge')
     try {
-      console.log('[ChatScreen] send: conversationId=%s modelId=%s baseUrl=%s', activeChat.id, selectedModel.id, AUTH_BASE_URL)
+      console.log('[ChatScreen] send: conversationId=%s modelId=%s baseUrl=%s temp=%s', sendChat.id, selectedModel.id, AUTH_BASE_URL, isTemporary)
       for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
-        conversationId: activeChat.id,
+        conversationId: isTemporary || stillDraft ? undefined : sendChat.id,
+        conversationClientId: isTemporary || !stillDraft ? undefined : sendChat.id,
+        projectId: isTemporary ? undefined : projectId,
         turnId: assistantId,
+        temporaryChat: isTemporary || undefined,
+        requestMode,
+        requestedToolIds: selectedToolIds.length > 0 ? selectedToolIds : undefined,
+        memoryEnabled: isTemporary ? false : memoryEnabled,
+        mentions: sentMentions.length > 0 ? sentMentions.map(mentionToRequestBody) : undefined,
+        knowledgeBaseIds: knowledgeMentions.length > 0 ? knowledgeMentions.map((m) => m.id) : undefined,
+        replyContextForModel: sentReply?.bodyForModel,
         indexedFileNames: indexedFileNames.length > 0 ? indexedFileNames : undefined,
         indexedAttachments: indexedAttachments.length > 0 ? indexedAttachments : undefined,
       })) {
@@ -956,32 +1307,48 @@ export function ChatScreen({
       setIsSending(false)
     }
 
-    const refreshed = await loadChat(activeChat.id)
-    if (refreshed) {
-      chatRef.current = refreshed
-      setChatTitle(refreshed.title)
-      setMessages(refreshed.messages)
+    if (!isTemporary) {
+      const refreshed = await loadChat(sendChat.id)
+      if (refreshed) {
+        chatRef.current = refreshed
+        setChatTitle(refreshed.title)
+        setMessages(refreshed.messages)
+      } else {
+        setMessages((current) =>
+          applyStreamChunk(current, assistantId, selectedModel, { type: 'done', content: '' }),
+        )
+      }
+
+      await refreshHistory()
     } else {
       setMessages((current) =>
         applyStreamChunk(current, assistantId, selectedModel, { type: 'done', content: '' }),
       )
     }
-
-    await refreshHistory()
   }, [
     chatTitle,
+    ensureServerConversation,
+    generationKind,
+    handleMediaSend,
     imageBase64,
     inputValue,
     isAuthLoading,
     isAuthenticated,
     isSending,
+    isTemporary,
+    memoryEnabled,
+    mentions,
     messages,
     mobilePreferences.hapticsEnabled,
     pendingDocuments,
+    projectId,
     refreshHistory,
+    replyContext,
+    requestMode,
     router,
     scrollToBottom,
     selectedModel,
+    selectedToolIds,
     syncConversationMeta,
   ])
 
@@ -1017,6 +1384,12 @@ export function ChatScreen({
           onCreateChat={() => {
             void startFreshConversation()
           }}
+          onChatsChanged={(removedChatId) => {
+            void refreshHistory()
+            if (removedChatId && removedChatId === chatRef.current?.id) {
+              void startFreshConversation()
+            }
+          }}
         />
       }
     >
@@ -1035,28 +1408,65 @@ export function ChatScreen({
               )
             }
             centerSlot={
-              <TouchableOpacity
-                activeOpacity={0.82}
-                onPress={() => setModelPickerVisible(true)}
-                style={styles.floatingModelPill}
-              >
-                {isSwitchingChat ? (
-                  <ActivityIndicator size="small" color={theme.textSecondary} />
+              <View style={styles.centerSlotRow}>
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  onPress={() => setModelPickerVisible(true)}
+                  style={styles.floatingModelPill}
+                >
+                  {isSwitchingChat ? (
+                    <ActivityIndicator size="small" color={theme.textSecondary} />
+                  ) : null}
+                  <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
+                    {selectedModel?.name ?? 'Select model'}
+                  </Text>
+                  <Feather name="chevron-down" size={14} color={theme.textSecondary} />
+                </TouchableOpacity>
+                {isTemporary ? (
+                  <View style={[styles.tempBadge, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                    <Feather name="eye-off" size={10} color={theme.textSecondary} />
+                    <Text style={[styles.tempBadgeText, { color: theme.textSecondary }]}>Temp</Text>
+                  </View>
                 ) : null}
-                <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
-                  {selectedModel?.name ?? 'Select model'}
-                </Text>
-                <Feather name="chevron-down" size={14} color={theme.textSecondary} />
-              </TouchableOpacity>
+              </View>
             }
             rightSlot={
-              <TopBarIconButton
-                theme={theme}
-                icon="plus"
-                onPress={() => {
-                  void startFreshConversation()
-                }}
-              />
+              <View style={styles.rightSlotRow}>
+                <TopBarIconButton
+                  theme={theme}
+                  icon={isTemporary ? 'eye-off' : 'eye'}
+                  onPress={() => {
+                    setIsTemporary((current) => !current)
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  }}
+                />
+                <TopBarIconButton
+                  theme={theme}
+                  icon="more-horizontal"
+                  onPress={() => {
+                    const current = chatRef.current
+                    if (!current) return
+                    setActionsChat({
+                      id: current.id,
+                      title: chatTitle,
+                      createdAt: current.createdAt,
+                      updatedAt: current.updatedAt,
+                      lastMode: current.lastMode,
+                      askModelIds: current.askModelIds,
+                      actModelId: current.actModelId,
+                      clientId: current.clientId,
+                      conversationType: current.conversationType,
+                    })
+                  }}
+                />
+                <TopBarIconButton
+                  theme={theme}
+                  icon="plus"
+                  onPress={() => {
+                    void startFreshConversation()
+                  }}
+                />
+              </View>
             }
           />
 
@@ -1067,6 +1477,25 @@ export function ChatScreen({
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>
                   {'How can I help you this ' + getTimeGreeting() + '?'}
                 </Text>
+                {suggestions.length > 0 && !isTemporary ? (
+                  <View style={styles.suggestionsWrap}>
+                    {suggestions.map((prompt) => (
+                      <TouchableOpacity
+                        key={prompt}
+                        activeOpacity={0.75}
+                        style={[styles.suggestionChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+                        onPress={() => {
+                          setInputValue(prompt)
+                          textInputRef.current?.focus()
+                        }}
+                      >
+                        <Text style={[styles.suggestionChipText, { color: theme.text }]} numberOfLines={2}>
+                          {prompt}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             ) : (
               <FlatList
@@ -1077,6 +1506,7 @@ export function ChatScreen({
                   <MessageBubble
                     message={item}
                     theme={theme}
+                    onLongPress={handleMessageLongPress}
                     onCopy={async (content) => {
                       await Clipboard.setStringAsync(content)
                       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -1097,105 +1527,98 @@ export function ChatScreen({
           </View>
 
           <View style={[styles.composerSurface, { paddingBottom: composerBottomPadding }]}>
-            {imageBase64 ? (
-              <View style={[styles.attachmentBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-                <View style={styles.attachmentInfo}>
-                  <Feather name="image" size={14} color={theme.textSecondary} />
-                  <Text style={[styles.attachmentText, { color: theme.textSecondary }]}>Image attached</Text>
+            {currentRun?.status === 'waiting_for_approval' && currentRun.approval ? (
+              <View style={[styles.approvalCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                <View style={styles.approvalHeader}>
+                  <Feather name="shield" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.approvalTitle, { color: theme.text }]}>Approval needed</Text>
+                  <Text style={[styles.approvalCount, { color: theme.textSecondary }]}>
+                    {currentRun.approval.requests.length} tool
+                    {currentRun.approval.requests.length === 1 ? '' : 's'}
+                  </Text>
                 </View>
-                <TopBarIconButton theme={theme} icon="x" onPress={() => setImageBase64(null)} />
-              </View>
-            ) : null}
-            {pendingDocuments.length > 0 ? (
-              <View style={styles.pendingDocsRow}>
-                {pendingDocuments.map((doc) => (
-                  <View
-                    key={doc.clientId}
-                    style={[styles.pendingDocChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-                  >
-                    <View style={styles.pendingDocChipInner}>
-                      <Feather name="file-text" size={13} color={theme.textSecondary} />
-                      <Text style={[styles.pendingDocChipText, { color: theme.text }]} numberOfLines={1}>{doc.name}</Text>
-                      {doc.status === 'uploading' && (
-                        <ActivityIndicator size="small" color={theme.textSecondary} />
-                      )}
-                      {doc.status === 'ready' && (
-                        <Feather name="check" size={12} color="#22c55e" />
-                      )}
-                      {doc.status === 'error' && (
-                        <Feather name="alert-circle" size={12} color="#EF4444" />
-                      )}
+                <View style={styles.approvalChips}>
+                  {currentRun.approval.requests.slice(0, 4).map((tool) => (
+                    <View key={tool.toolCallId} style={[styles.approvalChip, { backgroundColor: theme.surfaceSubtle }]}>
+                      <Feather name="tool" size={10} color={theme.textSecondary} />
+                      <Text style={[styles.approvalChipText, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {tool.toolName}
+                      </Text>
                     </View>
-                    <TouchableOpacity
-                      activeOpacity={0.65}
-                      onPress={() => setPendingDocuments((prev) => prev.filter((d) => d.clientId !== doc.clientId))}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather name="x" size={14} color={theme.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {attachmentError ? (
-              <View style={[styles.attachmentErrorBar, { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }]}>
-                <Feather name="alert-circle" size={14} color="#EF4444" />
-                <Text style={[styles.attachmentErrorText, { color: '#991b1b' }]}>{attachmentError}</Text>
-              </View>
-            ) : null}
-
-            <GlassSurface interactive style={[styles.composerBox, { backgroundColor: theme.glassBg, borderColor: composerFocused ? theme.border : theme.glassBorder }]}>
-              <TextInput
-                ref={textInputRef}
-                value={inputValue}
-                onChangeText={setInputValue}
-                onFocus={() => setComposerFocused(true)}
-                onBlur={() => setComposerFocused(false)}
-                placeholder={
-                  activeModality === 'image'
-                    ? 'Ask about the image'
-                    : 'Chat with Overlay'
-                }
-                placeholderTextColor={theme.textDisabled}
-                multiline
-                maxLength={10000}
-                style={[styles.composerInput, { color: theme.text }]}
-              />
-
-              <View style={styles.composerFooter}>
-                <GlassSurface interactive style={[styles.composerIconButton, { backgroundColor: theme.surfaceSubtle }]}>
+                  ))}
+                  {currentRun.approval.requests.length > 4 ? (
+                    <Text style={[styles.approvalChipText, { color: theme.textSecondary }]}>
+                      +{currentRun.approval.requests.length - 4} more
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={styles.approvalActions}>
                   <TouchableOpacity
-                    activeOpacity={0.82}
-                    onPress={() => setAttachPickerVisible(true)}
-                    style={[styles.composerIconButton]}
+                    activeOpacity={0.8}
+                    disabled={approvalSubmitting}
+                    style={[styles.approvalButton, { backgroundColor: theme.foreground }]}
+                    onPress={() => void handleSubmitApproval(true)}
                   >
-                    <Feather name="plus" size={22} color={theme.textSecondary} />
+                    {approvalSubmitting ? (
+                      <ActivityIndicator size="small" color={theme.background} />
+                    ) : (
+                      <Text style={[styles.approvalButtonTextPrimary, { color: theme.background }]}>Approve</Text>
+                    )}
                   </TouchableOpacity>
-                </GlassSurface>
-
-                <View style={styles.composerRightActions}>
-                  <GlassSurface interactive style={[styles.sendButton, { backgroundColor: theme.foreground }]}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (isSending) {
-                          void handleStopGeneration()
-                        } else {
-                          void handleSend()
-                        }
-                      }}
-                      activeOpacity={0.82}
-                      style={styles.sendButton}
-                    >
-                      {isSending ? (
-                        <Feather name="square" size={14} color={theme.background} />
-                      ) : (
-                        <Feather name="arrow-up" size={18} color={theme.background} />
-                      )}
-                    </TouchableOpacity>
-                  </GlassSurface>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    disabled={approvalSubmitting}
+                    style={[styles.approvalButton, { borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth }]}
+                    onPress={() => void handleSubmitApproval(false)}
+                  >
+                    <Text style={[styles.approvalButtonText, { color: theme.text }]}>Deny</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-            </GlassSurface>
+            ) : null}
+            <Composer
+              theme={theme}
+              inputValue={inputValue}
+              onChangeInput={setInputValue}
+              onSend={() => void handleSend()}
+              onStop={() => void handleStopGeneration()}
+              isSending={isSending}
+              isTemporary={isTemporary}
+              capabilities={capabilities}
+              imageBase64={imageBase64}
+              onClearImage={() => setImageBase64(null)}
+              onPickImage={() => {
+                setActiveModality('image')
+                void pickImage()
+              }}
+              onPickCamera={() => void pickImageFromCamera()}
+              onPickFile={() => void pickFile()}
+              pendingDocuments={pendingDocuments}
+              onRemoveDocument={(clientId) => setPendingDocuments((prev) => prev.filter((d) => d.clientId !== clientId))}
+              attachmentError={attachmentError}
+              mentions={mentions}
+              onAddMention={(item) => setMentions((current) => [...current, item])}
+              onRemoveMention={(item) =>
+                setMentions((current) =>
+                  current.filter((m) => !(m.id === item.id && m.type === item.type)),
+                )
+              }
+              requestMode={requestMode}
+              onChangeRequestMode={setRequestMode}
+              replyContext={replyContext}
+              onClearReply={() => setReplyContext(null)}
+              generationKind={generationKind}
+              selectedImageModelId={selectedImageModelId}
+              selectedVideoModelId={selectedVideoModelId}
+              imageModels={imageModels}
+              videoModels={videoModels}
+              onSelectGeneration={handleSelectGeneration}
+              selectedToolIds={selectedToolIds}
+              onToggleTool={handleToggleTool}
+              memoryEnabled={memoryEnabled}
+              onToggleMemory={() => setMemoryEnabled((v) => !v)}
+              inputRef={textInputRef}
+            />
           </View>
         </View>
 
@@ -1335,49 +1758,28 @@ export function ChatScreen({
         onClose={() => setUpgradeVisible(false)}
       />
 
-      <BottomSheet
+      <ChatActionsSheet
         theme={theme}
-        visible={attachPickerVisible}
-        onClose={() => setAttachPickerVisible(false)}
-        title="Add to Chat"
-      >
-        <View style={styles.attachSheetGrid}>
-          <TouchableOpacity
-            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated }]}
-            activeOpacity={0.82}
-            onPress={() => {
-              setAttachPickerVisible(false)
-              void pickImageFromCamera()
-            }}
-          >
-            <Feather name="camera" size={24} color={theme.text} />
-            <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Camera</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated }]}
-            activeOpacity={0.82}
-            onPress={() => {
-              setAttachPickerVisible(false)
-              setActiveModality('image')
-              void pickImage()
-            }}
-          >
-            <Feather name="image" size={24} color={theme.text} />
-            <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Photos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated }]}
-            activeOpacity={0.82}
-            onPress={() => {
-              setAttachPickerVisible(false)
-              void pickFile()
-            }}
-          >
-            <Feather name="file" size={24} color={theme.text} />
-            <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Files</Text>
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
+        visible={actionsChat !== null}
+        chat={actionsChat}
+        onClose={() => setActionsChat(null)}
+        onChanged={() => {
+          const chatId = actionsChat?.id
+          void refreshHistory().then((next) => {
+            const updated = chatId ? next.find((c) => c.id === chatId) : null
+            if (updated?.title) {
+              setChatTitle(updated.title)
+              if (chatRef.current) chatRef.current = { ...chatRef.current, title: updated.title }
+            }
+          }).catch(() => {})
+        }}
+        onDeleted={() => {
+          void startFreshConversation()
+        }}
+        onArchived={() => {
+          void startFreshConversation()
+        }}
+      />
       <FloatingSearchBar
         theme={theme}
         isDark={isDark}
@@ -1683,5 +2085,106 @@ const styles = StyleSheet.create({
   attributionText: {
     fontSize: fontSize.xs,
     fontWeight: '500',
+  },
+  centerSlotRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
+  rightSlotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tempBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  tempBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  suggestionsWrap: {
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+    alignSelf: 'stretch',
+    paddingHorizontal: spacing.md,
+  },
+  suggestionChip: {
+    borderRadius: borderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  suggestionChipText: {
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+    lineHeight: 19,
+  },
+  approvalCard: {
+    borderRadius: borderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  approvalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  approvalTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    flex: 1,
+  },
+  approvalCount: {
+    fontSize: fontSize.xs,
+    fontWeight: '600',
+  },
+  approvalChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  approvalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: 180,
+  },
+  approvalChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  approvalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  approvalButton: {
+    flex: 1,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+  },
+  approvalButtonTextPrimary: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+  },
+  approvalButtonText: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
   },
 })

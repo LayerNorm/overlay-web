@@ -21,6 +21,16 @@ interface ChatMessage {
   replySnippet?: string
 }
 
+/** Mirrors `ChatToolRequestId` in web `src/shared/chat/tool-requests.ts`. */
+export type ChatToolRequestId = 'web_search' | 'memory' | 'sandbox' | 'browser'
+
+export const CHAT_TOOL_REQUEST_IDS: readonly ChatToolRequestId[] = [
+  'web_search',
+  'memory',
+  'sandbox',
+  'browser',
+]
+
 export interface StreamChunk {
   type:
     | 'text'
@@ -50,10 +60,22 @@ export interface IndexedAttachment {
 
 interface ChatStreamOptions {
   conversationId?: string
+  /** Client-side draft id sent for first-turn persistence (web `conversationClientId`). */
+  conversationClientId?: string
+  projectId?: string
   turnId?: string
   variantIndex?: number
   indexedFileNames?: string[]
   indexedAttachments?: IndexedAttachment[]
+  /** Ephemeral turn — server streams but does not persist the conversation. */
+  temporaryChat?: boolean
+  /** 'chat' = normal; 'automate' runs the automation-capable path. */
+  requestMode?: 'chat' | 'automate'
+  requestedToolIds?: ChatToolRequestId[]
+  memoryEnabled?: boolean
+  mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
+  knowledgeBaseIds?: string[]
+  replyContextForModel?: string
 }
 
 type UiMessageChunk =
@@ -163,16 +185,46 @@ export async function* chatStream(
     )
     let inThinkTag = false
 
+    const requestMode = options.requestMode ?? 'chat'
     const body: Record<string, unknown> = {
       modelId,
-      conversationId: options.conversationId,
       turnId: options.turnId,
       variantIndex: options.variantIndex,
       messages: toUiMessages(messages),
+      mode: requestMode,
+      automationMode: requestMode === 'automate',
+    }
+    if (options.temporaryChat) {
+      body.temporaryChat = true
+    } else {
+      body.conversationId = options.conversationId
+      if (options.conversationClientId) {
+        body.conversationClientId = options.conversationClientId
+        // First-turn create fields — web sends ask/act model ids so the server
+        // creates the conversation with the right models.
+        body.askModelIds = [modelId]
+        body.actModelId = modelId
+      }
+      if (options.projectId) body.projectId = options.projectId
     }
     if (options.indexedFileNames && options.indexedFileNames.length > 0) {
       body.indexedFileNames = options.indexedFileNames
       body.indexedAttachments = options.indexedAttachments ?? []
+    }
+    if (options.requestedToolIds && options.requestedToolIds.length > 0) {
+      body.requestedToolIds = options.requestedToolIds
+    }
+    if (options.memoryEnabled !== undefined) {
+      body.memoryEnabled = options.memoryEnabled
+    }
+    if (options.mentions && options.mentions.length > 0) {
+      body.mentions = options.mentions
+    }
+    if (options.knowledgeBaseIds && options.knowledgeBaseIds.length > 0) {
+      body.knowledgeBaseIds = options.knowledgeBaseIds
+    }
+    if (options.replyContextForModel) {
+      body.replyContextForModel = options.replyContextForModel
     }
 
     for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/v1/conversations/act', {
