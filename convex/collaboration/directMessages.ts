@@ -232,6 +232,10 @@ export const getAccessibleConversation = query({
       conversationType: conversation.conversationType ?? 'personal',
       otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, access.actor.principalId),
       workspaceId: conversation.workspaceId,
+      externalPlatform: conversation.externalPlatform,
+      externalChannelId: conversation.externalChannelId,
+      externalThreadId: conversation.externalThreadId,
+      surfaceBindingId: conversation.surfaceBindingId,
     }
   },
 })
@@ -281,6 +285,10 @@ export const listAccessibleConversations = query({
       conversationType: conversation.conversationType ?? 'personal',
       otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, actor.principalId),
       workspaceId: conversation.workspaceId,
+      externalPlatform: conversation.externalPlatform,
+      externalChannelId: conversation.externalChannelId,
+      externalThreadId: conversation.externalThreadId,
+      surfaceBindingId: conversation.surfaceBindingId,
     })))
   },
 })
@@ -339,6 +347,10 @@ export const listArchivedConversations = query({
         isAutomation: conversation.isAutomation,
         conversationType: conversation.conversationType ?? 'personal',
         workspaceId: conversation.workspaceId,
+        externalPlatform: conversation.externalPlatform,
+        externalChannelId: conversation.externalChannelId,
+        externalThreadId: conversation.externalThreadId,
+        surfaceBindingId: conversation.surfaceBindingId,
         archivedAt: archived.get(String(conversation._id)),
       }))
       .sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
@@ -463,6 +475,9 @@ export const addMessage = mutation({
     const access = await requireConversationAccess(ctx, args)
     if ((access.conversation.conversationType ?? 'personal') === 'personal') {
       throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+    }
+    if (access.conversation.externalPlatform) {
+      throw new Error('SURFACE_CONVERSATION_READ_ONLY')
     }
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)

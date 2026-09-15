@@ -173,7 +173,10 @@ implements ConversationCollaborationRepository {
   }): Promise<string> {
     const actor = await this.requireActor(args)
     if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
-    const [conversation] = await this.db.select({ conversationType: conversations.conversationType })
+    const [conversation] = await this.db.select({
+      conversationType: conversations.conversationType,
+      externalPlatform: conversations.externalPlatform,
+    })
       .from(conversations)
       .where(and(
         eq(conversations.id, args.conversationId),
@@ -182,6 +185,9 @@ implements ConversationCollaborationRepository {
       )).limit(1)
     if (!conversation || conversation.conversationType === 'personal') {
       throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+    }
+    if (conversation.externalPlatform) {
+      throw new Error('SURFACE_CONVERSATION_READ_ONLY')
     }
     if (args.threadRootMessageId) {
       await this.requireConversationMessage({
@@ -2121,6 +2127,10 @@ function mapAccessibleConversation(
     isAutomation: row.isAutomation ?? undefined,
     conversationType: row.conversationType,
     workspaceId: row.workspaceId ?? undefined,
+    externalPlatform: row.externalPlatform ?? undefined,
+    externalChannelId: row.externalChannelId ?? undefined,
+    externalThreadId: row.externalThreadId ?? undefined,
+    surfaceBindingId: row.surfaceBindingId ?? undefined,
   }
 }
 

@@ -197,6 +197,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
+    if (conversation.externalPlatform) {
+      return NextResponse.json(
+        { error: 'Surface conversations are read-only — reply on the connected platform.' },
+        { status: 403 },
+      )
+    }
     const isCollaborationConversation = (conversation.conversationType ?? 'personal') !== 'personal'
     const messageId = isCollaborationConversation
       ? await server.appData.repositories.conversationCollaboration.addMessage({

@@ -20,6 +20,7 @@ import {
   workspaces,
   workspacePrincipals,
   workspaceMemberships,
+  workspaceResourceScopes,
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -220,6 +221,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     userId: string
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
+    agentPrincipalId?: string
     lastMode?: 'ask' | 'act'
     projectId?: string
     workspaceId?: string
@@ -233,24 +235,94 @@ export class PostgresActConversationRepository implements ActConversationReposit
         isNull(conversations.deletedAt),
       ))
       .limit(1)
-    if (existing) return existing.id as ConversationId
-    try {
-      return await this.createConversation(args)
-    } catch (error) {
-      // A concurrent insert can win the partial unique index race — the winner
-      // is the canonical row for the thread.
-      const [winner] = await this.db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(and(
-          eq(conversations.surfaceBindingId, args.surfaceBindingId),
-          eq(conversations.externalThreadId, args.externalThreadId),
-          isNull(conversations.deletedAt),
-        ))
-        .limit(1)
-      if (winner) return winner.id as ConversationId
-      throw error
+    let conversationId: ConversationId
+    if (existing) {
+      conversationId = existing.id as ConversationId
+    } else {
+      try {
+        conversationId = await this.createConversation(args)
+      } catch (error) {
+        // A concurrent insert can win the partial unique index race — the winner
+        // is the canonical row for the thread.
+        const [winner] = await this.db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(and(
+            eq(conversations.surfaceBindingId, args.surfaceBindingId),
+            eq(conversations.externalThreadId, args.externalThreadId),
+            isNull(conversations.deletedAt),
+          ))
+          .limit(1)
+        if (winner) {
+          conversationId = winner.id as ConversationId
+        } else {
+          throw error
+        }
+      }
     }
+    await this.ensureSurfaceConversationRows({
+      conversationId: String(conversationId),
+      workspaceId: args.workspaceId,
+      createdByPrincipalId: args.createdByPrincipalId,
+      agentPrincipalId: args.agentPrincipalId,
+    })
+    return conversationId
+  }
+
+  /**
+   * Surface conversations are collaboration rooms — the binding creator (as
+   * moderator) and the bound agent hold participant rows so the conversation
+   * appears in their accessible lists. Idempotent: runs on every ensure so
+   * rows created before this contract get backfilled on the next inbound
+   * message. A row the creator removed stays removed.
+   */
+  private async ensureSurfaceConversationRows(args: {
+    conversationId: string
+    workspaceId?: string
+    createdByPrincipalId?: string
+    agentPrincipalId?: string
+  }): Promise<void> {
+    if (!args.workspaceId) return
+    const workspaceId = args.workspaceId
+    const candidates = ([
+      { principalId: args.createdByPrincipalId, role: 'moderator' as const },
+      { principalId: args.agentPrincipalId, role: 'member' as const },
+    ] as const).filter((row) => Boolean(row.principalId))
+    if (candidates.length > 0) {
+      const principals = await this.db
+        .select({ id: workspacePrincipals.id, type: workspacePrincipals.type })
+        .from(workspacePrincipals)
+        .where(and(
+          inArray(workspacePrincipals.id, candidates.map((row) => row.principalId as string)),
+          eq(workspacePrincipals.workspaceId, workspaceId),
+          isNull(workspacePrincipals.archivedAt),
+        ))
+      const types = new Map(principals.map((row) => [row.id, row.type]))
+      const rows = candidates
+        .filter((row) => types.has(row.principalId as string))
+        .map((row) => ({
+          conversationId: args.conversationId,
+          workspaceId,
+          principalId: row.principalId as string,
+          principalType: types.get(row.principalId as string)!,
+          role: row.role,
+          status: 'active' as const,
+          notificationLevel: 'all' as const,
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        }))
+      if (rows.length > 0) {
+        await this.db.insert(conversationParticipants).values(rows)
+          .onConflictDoNothing({
+            target: [conversationParticipants.conversationId, conversationParticipants.principalId],
+          })
+      }
+    }
+    await this.db.insert(workspaceResourceScopes).values({
+      workspaceId,
+      resourceType: 'conversation',
+      resourceId: args.conversationId,
+    }).onConflictDoNothing()
   }
 
   async getConversationById(args: {

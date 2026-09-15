@@ -247,6 +247,7 @@ export const ensureSurfaceConversation = mutation({
       v.literal('channel'),
     )),
     createdByPrincipalId: v.optional(v.string()),
+    agentPrincipalId: v.optional(v.string()),
     externalPlatform: v.string(),
     externalChannelId: v.string(),
     externalThreadId: v.string(),
@@ -261,33 +262,82 @@ export const ensureSurfaceConversation = mutation({
         .eq('externalThreadId', args.externalThreadId))
       .collect()
     const live = existing.find((row) => !row.deletedAt)
-    if (live) return live._id
     const now = Date.now()
-    const conversationId = await ctx.db.insert('conversations', {
-      userId: args.userId,
-      workspaceId: args.workspaceId,
-      title: args.title,
-      projectId: args.projectId,
-      lastModified: now,
-      createdAt: now,
-      updatedAt: now,
-      lastMode: args.lastMode ?? 'act',
-      askModelIds: args.askModelIds,
-      actModelId: args.actModelId,
-      conversationType: args.conversationType,
-      createdByPrincipalId: args.createdByPrincipalId,
-      isAutomation: false,
-      externalPlatform: args.externalPlatform,
-      externalChannelId: args.externalChannelId,
-      externalThreadId: args.externalThreadId,
-      surfaceBindingId: args.surfaceBindingId,
-    })
-    await recordConversationEvent(ctx, {
-      conversationId,
-      workspaceId: args.workspaceId,
-      userId: args.userId,
-      type: 'conversation.created',
-    })
+    let conversationId = live?._id
+    if (!conversationId) {
+      conversationId = await ctx.db.insert('conversations', {
+        userId: args.userId,
+        workspaceId: args.workspaceId,
+        title: args.title,
+        projectId: args.projectId,
+        lastModified: now,
+        createdAt: now,
+        updatedAt: now,
+        lastMode: args.lastMode ?? 'act',
+        askModelIds: args.askModelIds,
+        actModelId: args.actModelId,
+        conversationType: args.conversationType,
+        createdByPrincipalId: args.createdByPrincipalId,
+        isAutomation: false,
+        externalPlatform: args.externalPlatform,
+        externalChannelId: args.externalChannelId,
+        externalThreadId: args.externalThreadId,
+        surfaceBindingId: args.surfaceBindingId,
+      })
+      await recordConversationEvent(ctx, {
+        conversationId,
+        workspaceId: args.workspaceId,
+        userId: args.userId,
+        type: 'conversation.created',
+      })
+    }
+    if (args.workspaceId) {
+      // Participant rows make the room visible to the binding creator and the
+      // bound agent; idempotent so conversations created before this contract
+      // get backfilled on the next inbound message.
+      const candidates = [
+        { principalId: args.createdByPrincipalId, role: 'moderator' as const },
+        { principalId: args.agentPrincipalId, role: 'member' as const },
+      ]
+      for (const candidate of candidates) {
+        if (!candidate.principalId) continue
+        const enrolled = await ctx.db.query('conversationParticipants')
+          .withIndex('by_conversationId_principalId', (q) => q
+            .eq('conversationId', conversationId)
+            .eq('principalId', candidate.principalId as string))
+          .unique()
+        if (enrolled) continue
+        const principal = await ctx.db.query('workspacePrincipals')
+          .withIndex('by_principalId', (q) => q.eq('principalId', candidate.principalId as string))
+          .unique()
+        if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt) continue
+        await ctx.db.insert('conversationParticipants', {
+          conversationId,
+          workspaceId: args.workspaceId,
+          principalId: candidate.principalId,
+          principalType: principal.type as 'human' | 'agent',
+          role: candidate.role,
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+        })
+      }
+      const scope = await ctx.db.query('workspaceResourceScopes')
+        .withIndex('by_resource', (q) => q
+          .eq('resourceType', 'conversation')
+          .eq('resourceId', conversationId))
+        .unique()
+      if (!scope) {
+        await ctx.db.insert('workspaceResourceScopes', {
+          workspaceId: args.workspaceId,
+          resourceType: 'conversation',
+          resourceId: conversationId,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+    }
     return conversationId
   },
 })

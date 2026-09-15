@@ -145,6 +145,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         conversationId,
         title: conv.title,
         conversationType: conv.conversationType ?? 'personal',
+        ...(conv.externalPlatform ? {
+          externalPlatform: conv.externalPlatform,
+          externalChannelId: conv.externalChannelId,
+          externalThreadId: conv.externalThreadId,
+          surfaceBindingId: conv.surfaceBindingId,
+        } : {}),
         ...(messageLimit ? {
           limit: messageLimit,
           hasMore: messages.length >= messageLimit,

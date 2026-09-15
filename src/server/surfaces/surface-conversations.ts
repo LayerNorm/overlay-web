@@ -30,6 +30,7 @@ export async function ensureSurfaceConversation(
     lastMode: 'act',
     conversationType: 'channel',
     createdByPrincipalId: surface.creatorPrincipalId,
+    agentPrincipalId: surface.agentPrincipalId,
     externalPlatform: surface.platform,
     externalChannelId: surface.channelId,
     externalThreadId: surface.threadId,

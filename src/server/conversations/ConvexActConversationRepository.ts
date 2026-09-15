@@ -70,6 +70,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     userId: string
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
+    agentPrincipalId?: string
     lastMode?: 'ask' | 'act'
     projectId?: string
     workspaceId?: string

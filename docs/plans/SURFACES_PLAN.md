@@ -282,11 +282,22 @@ Implementation notes:
   "coming soon" rows. A second Slack workspace can be connected via "Connect
   another Slack workspace" once one exists.
 
-## Phase 4 — surface conversations in the app
+## Phase 4 — surface conversations in the app ✅
 
-- Platform conversations appear in the existing chats list, tagged with the
-  platform icon + `#channelName`. **Read-only** — transcript renders, no
-  composer. Replying happens on the platform.
+- Platform conversations appear in the existing chats list (Channels view),
+  tagged with the platform icon + `#channelName` in the title (`Slack ·
+  #channel`). **Read-only** — transcript renders, composer and thread reply
+  box are replaced by a "Mirrored from Slack" notice. Replying happens on the
+  platform.
+- `ensureSurfaceConversation` now writes `conversationParticipants` (creator
+  as moderator, bound agent as member) + a `workspaceResourceScopes` row on
+  both backends, idempotently — pre-Phase-4 conversations are backfilled on
+  the next inbound message. `externalPlatform`/`externalChannelId`/
+  `externalThreadId`/`surfaceBindingId` are mapped through every accessible
+  conversation list/get.
+- `POST /api/v1/conversations/message` returns 403 for surface conversations;
+  `addMessage` on both backends throws `SURFACE_CONVERSATION_READ_ONLY` as a
+  backstop (the turn runner persists via internal services, unaffected).
 - The expandable agent→threads sidebar (agents as contacts, threads beneath)
   is the known end-state; `externalThreadRef` data makes it a pure reskin
   later. Not v1.
