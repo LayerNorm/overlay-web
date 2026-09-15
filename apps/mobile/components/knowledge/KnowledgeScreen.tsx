@@ -14,8 +14,9 @@ import { BottomSheet, MainScreenHeader, TopBarIconButton } from '../ui/AppChrome
 import { MemoriesList } from './MemoriesList'
 import { FilesTree } from './FilesTree'
 import { OutputsGallery } from './OutputsGallery'
+import { KnowledgeBasesList } from './KnowledgeBasesList'
 
-type KnowledgeTab = 'memories' | 'files' | 'outputs'
+type KnowledgeTab = 'memories' | 'files' | 'outputs' | 'bases'
 type KnowledgeHeaderAction =
   | 'new'
   | 'import'
@@ -33,6 +34,7 @@ const TITLES: Record<KnowledgeTab, string> = {
   memories: 'Memories',
   files: 'Files',
   outputs: 'Outputs',
+  bases: 'Knowledge bases',
 }
 
 export function KnowledgeScreen(): React.ReactElement {
@@ -43,7 +45,7 @@ export function KnowledgeScreen(): React.ReactElement {
   const knowledgeEnabled = isFeatureEnabled('knowledge') && featureFlags.canUseKnowledge
   const { tab } = useLocalSearchParams<{ tab?: string }>()
   const routeTab: KnowledgeTab | null =
-    tab === 'memories' || tab === 'files' || tab === 'outputs' ? tab : null
+    tab === 'memories' || tab === 'files' || tab === 'outputs' || tab === 'bases' ? tab : null
   const [storedTab, setStoredTab] = useState<KnowledgeTab>('memories')
   const activeTab = routeTab ?? storedTab
   const [menuOpen, setMenuOpen] = useState(false)
@@ -58,7 +60,12 @@ export function KnowledgeScreen(): React.ReactElement {
 
     void AsyncStorage.getItem('overlay:last-knowledge-view')
       .then((lastView) => {
-        if (lastView === 'memories' || lastView === 'files' || lastView === 'outputs') {
+        if (
+          lastView === 'memories' ||
+          lastView === 'files' ||
+          lastView === 'outputs' ||
+          lastView === 'bases'
+        ) {
           setStoredTab(lastView)
         }
       })
@@ -89,7 +96,9 @@ export function KnowledgeScreen(): React.ReactElement {
             { key: 'uploadFolder', label: 'Upload Folder', icon: 'folder-plus' },
             { key: 'selectFiles', label: 'Select', icon: 'check-square' },
           ]
-        : [
+        : activeTab === 'bases'
+          ? []
+          : [
             { key: 'outputAll', label: 'All', icon: 'grid' },
             { key: 'outputImage', label: 'Image', icon: 'image' },
             { key: 'outputVideo', label: 'Video', icon: 'film' },
@@ -124,7 +133,13 @@ export function KnowledgeScreen(): React.ReactElement {
           centerSlot={
             <Text style={[styles.headerTitle, { color: theme.text }]}>{TITLES[activeTab]}</Text>
           }
-          rightSlot={<TopBarIconButton theme={theme} icon="more-horizontal" onPress={() => setMenuOpen(true)} />}
+          rightSlot={
+            activeTab === 'bases' ? (
+              <View style={styles.headerSpacer} />
+            ) : (
+              <TopBarIconButton theme={theme} icon="more-horizontal" onPress={() => setMenuOpen(true)} />
+            )
+          }
         />
         <View style={styles.screenPadding}>
           <View style={styles.tabContent}>
@@ -137,6 +152,7 @@ export function KnowledgeScreen(): React.ReactElement {
             {activeTab === 'outputs' && (
               <OutputsGallery headerAction={actionRequest} hideInlineToolbar topInset={insets.top + 58} />
             )}
+            {activeTab === 'bases' && <KnowledgeBasesList topInset={insets.top + 58} />}
           </View>
         </View>
         <BottomSheet theme={theme} visible={menuOpen} onClose={() => setMenuOpen(false)} title={TITLES[activeTab]}>
@@ -167,6 +183,10 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 36,
+    height: 36,
   },
   tabContent: {
     flex: 1,

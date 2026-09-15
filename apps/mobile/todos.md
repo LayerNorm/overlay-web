@@ -261,3 +261,62 @@ phase; each lists the current mobile behavior and what owner input would change.
   accept button, 401 → sign-in prompt, success → workspace activated →
   `/(tabs)/chat`. `overlay://invitations/<id>` and pasted web invite paths
   deep-link there via `handleDeepLink`.
+
+## Phase 5 — Knowledge bases & files depth
+
+### 33. KB sharing uses the dedicated grants model, not unified /shares
+- `KnowledgeBaseScreen` mounts `KbShareSheet` (user/group/role principals,
+  viewer|editor roles via `/knowledge-bases/[id]/grants` +
+  `/knowledge-bases/share-directory`). The unified `ShareSheet`
+  (`resourceType: 'knowledge_base'`) was wrong for KBs — web's workspace
+  ShareDialog and the KB grants surface are different APIs. Files/projects
+  keep the unified ShareSheet (same ShareDialog web renders).
+- KB share icon is always visible (authz surface, not workspace-gated);
+  single-tenant deployments get an empty directory, matching web.
+
+### 34. KnowledgeBaseScreen — `knowledge_base` → `/knowledge-base/[id]`
+- Sources tab: include/exclude checkbox + long-press toggle, tap → source
+  detail sheet (extraction preview via `diagnostics?sourceId=`, re-fetch
+  for external kinds, retry for failed, remove). "Add source" offers file
+  upload (RN FormData to `sources/upload`), pasted text, and URL — web's
+  connector/drive sources (Google Drive, Dropbox, Notion, Confluence) are
+  omitted: they need a connected-resource picker that doesn't exist on
+  mobile yet.
+- Search tab: `knowledgeBases.search` chunks with score + snippet + citation
+  footer; tapping a chunk jumps to its source detail.
+- Diagnostics tab: per-source freshness badge, status, chunk/embedded/char
+  counts, embedding identities; "Reindex stale" / "Reindex all" (confirm).
+- Edit sheet: title/description save + destructive delete. Base metadata
+  resolves via `list()` (no single-get endpoint on the client).
+- `ensurePersonal` backs the "Personal knowledge base" row in the bases tab.
+- KnowledgeScreen gains a `bases` tab (drawer "Bases" row under Knowledge);
+  `more` menu hides on it since it has no header actions.
+- Global search `knowledge_base` results now route to the KB workspace
+  instead of the knowledge tab.
+
+### 35. Files depth
+- File detail `…` sheet: Rename (PATCH name), Move to… (folder picker,
+  PATCH parentId, Root = null), Share (unified ShareSheet + managed public
+  link via `files.share`), Delete. Storage-backed/binary files get an
+  inline image preview (`downloadUrl`) or an "Open file" button via
+  `expo-web-browser` instead of a dead editor.
+- FilesTree search now unions client-side name matching with debounced
+  server `files/search-text` (content matches) — same endpoint web's
+  KnowledgeView uses.
+- File-row share icon now opens the same managed-link ShareSheet.
+- `KnowledgeFile` doesn't surface `shareVisibility`/`shareToken` on the
+  mobile contract, so the public-link row initializes as "off" and shows
+  the URL only after enabling (server returns it on PATCH). Verify against
+  the real list payload — if the server does send share state, thread it
+  through to pre-fill.
+
+### 36. Outputs + projects depth
+- Output detail: share icon → ShareSheet with `resource: null` — public
+  link only (`outputs` PATCH), grant sections hidden for null resources.
+- Project detail `…` actions sheet replaces the icon cluster: Share,
+  Edit, Duplicate (auto-names "<name> copy" — web prompts for a name;
+  mobile keeps it one-tap), Export (JSON → `expo-sharing`), Knowledge
+  bases (attach/detach picker over `listKnowledgeBases` +
+  `projects/knowledge-bases`), Delete.
+- `projects/knowledge-transfer` (promote/copy/save-answer) is NOT wired —
+  no web UI calls it either (API-only surface); revisit if web ships UI.

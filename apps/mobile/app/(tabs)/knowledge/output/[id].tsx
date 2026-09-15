@@ -14,7 +14,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../../../constants/theme'
 import { MainScreenHeader, TopBarIconButton } from '../../../../components/ui/AppChrome'
-import { listOutputs } from '../../../../services/knowledgeService'
+import { ShareSheet } from '../../../../components/workspace/ShareSheet'
+import { listOutputs, shareOutput } from '../../../../services/knowledgeService'
 import type { OutputSummary } from '@overlay/app-core'
 
 const { width } = Dimensions.get('window')
@@ -26,6 +27,7 @@ export default function OutputDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets()
   const [output, setOutput] = useState<OutputSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const loadOutput = useCallback(async () => {
     if (!id) return
@@ -78,7 +80,9 @@ export default function OutputDetailScreen(): React.ReactElement {
             Output
           </Text>
         }
-        rightSlot={<View style={{ width: 44 }} />}
+        rightSlot={
+          <TopBarIconButton theme={theme} icon="share-2" onPress={() => setShareOpen(true)} />
+        }
       />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 54 }]}>
@@ -120,6 +124,18 @@ export default function OutputDetailScreen(): React.ReactElement {
           </Text>
         </View>
       </ScrollView>
+
+      <ShareSheet
+        visible={shareOpen}
+        theme={theme}
+        resource={null}
+        resourceTitle={output.fileName || output.prompt || 'Output'}
+        onSetPublicVisibility={async (visibility) => {
+          const response = await shareOutput(output._id, visibility)
+          return response.url
+        }}
+        onClose={() => setShareOpen(false)}
+      />
     </SafeAreaView>
   )
 }

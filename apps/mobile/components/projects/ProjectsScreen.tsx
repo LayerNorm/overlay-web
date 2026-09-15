@@ -12,27 +12,44 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
-import type { ConversationSummary, KnowledgeFile, NoteDoc, ProjectSummary, SkillSummary } from '@overlay/app-core'
+import * as Sharing from 'expo-sharing'
+import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy'
+import type {
+  ConversationSummary,
+  KnowledgeBase,
+  KnowledgeFile,
+  NoteDoc,
+  ProjectSummary,
+  SkillSummary,
+} from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { ShareSheet } from '../workspace/ShareSheet'
+import { ListRow, Section } from '../ui/primitives'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { BottomSheet, EmptyState, MainScreenHeader, SegmentedControl, TopBarIconButton } from '../ui/AppChrome'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
 import {
+  attachProjectKnowledgeBase,
   createProject,
   deleteProject,
+  detachProjectKnowledgeBase,
+  duplicateProject,
+  exportProject,
   listProjectChats,
   listProjectFiles,
+  listProjectKnowledgeBases,
   listProjectNotes,
   listProjectSkills,
   listProjects,
   updateProject,
+  type ProjectKnowledgeBaseLink,
 } from '../../services/projectsService'
+import { listKnowledgeBases } from '../../services/knowledgeBasesService'
 
 type ProjectTab = 'chats' | 'notes' | 'files' | 'skills'
 
@@ -57,6 +74,11 @@ export function ProjectsScreen(): React.ReactElement {
   const [editorOpen, setEditorOpen] = useState(false)
   const [name, setName] = useState('')
   const [instructions, setInstructions] = useState('')
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [kbSheetOpen, setKbSheetOpen] = useState(false)
+  const [projectKbs, setProjectKbs] = useState<ProjectKnowledgeBaseLink[]>([])
+  const [allBases, setAllBases] = useState<KnowledgeBase[]>([])
+  const [kbBusy, setKbBusy] = useState(false)
 
   const loadProjects = useCallback(async () => {
     setLoading(true)
@@ -79,6 +101,7 @@ export function ProjectsScreen(): React.ReactElement {
       setNotes([])
       setFiles([])
       setSkills([])
+      setProjectKbs([])
       return
     }
     setDetailsLoading(true)
@@ -93,6 +116,9 @@ export function ProjectsScreen(): React.ReactElement {
       setNotes(nextNotes)
       setFiles(nextFiles)
       setSkills(nextSkills)
+      void listProjectKnowledgeBases(project._id)
+        .then(setProjectKbs)
+        .catch(() => setProjectKbs([]))
     } catch {
       setChats([])
       setNotes([])
@@ -163,6 +189,75 @@ export function ProjectsScreen(): React.ReactElement {
     ])
   }
 
+  async function handleDuplicate(): Promise<void> {
+    if (!selected) return
+    setActionsOpen(false)
+    try {
+      const { project } = await duplicateProject(selected._id, `${selected.name} copy`)
+      await loadProjects()
+      if (project) setSelected(project)
+    } catch (error) {
+      Alert.alert('Could not duplicate project', error instanceof Error ? error.message : 'Try again.')
+    }
+  }
+
+  async function handleExport(): Promise<void> {
+    if (!selected) return
+    setActionsOpen(false)
+    try {
+      const payload = await exportProject(selected._id)
+      const path = `${cacheDirectory}project-${selected._id}-export.json`
+      await writeAsStringAsync(path, JSON.stringify(payload, null, 2))
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(path, { mimeType: 'application/json' })
+      } else {
+        Alert.alert('Export ready', 'Sharing is not available on this device.')
+      }
+    } catch (error) {
+      Alert.alert('Could not export project', error instanceof Error ? error.message : 'Try again.')
+    }
+  }
+
+  async function openKbSheet(): Promise<void> {
+    setActionsOpen(false)
+    setKbSheetOpen(true)
+    setKbBusy(true)
+    try {
+      const [bases, links] = await Promise.all([
+        listKnowledgeBases(),
+        selected ? listProjectKnowledgeBases(selected._id) : Promise.resolve([]),
+      ])
+      setAllBases(bases)
+      setProjectKbs(links)
+    } catch {
+      setAllBases([])
+    } finally {
+      setKbBusy(false)
+    }
+  }
+
+  async function toggleKbLink(base: KnowledgeBase): Promise<void> {
+    if (!selected || kbBusy) return
+    setKbBusy(true)
+    try {
+      const attached = projectKbs.some((link) => link.knowledgeBaseId === base.id)
+      if (attached) {
+        await detachProjectKnowledgeBase(selected._id, base.id)
+        setProjectKbs((current) => current.filter((link) => link.knowledgeBaseId !== base.id))
+      } else {
+        await attachProjectKnowledgeBase(selected._id, base.id)
+        setProjectKbs((current) => [
+          ...current,
+          { knowledgeBaseId: base.id, projectId: selected._id, createdAt: Date.now() },
+        ])
+      }
+    } catch (error) {
+      Alert.alert('Could not update link', error instanceof Error ? error.message : 'Try again.')
+    } finally {
+      setKbBusy(false)
+    }
+  }
+
   const renderProjectDetails = (): React.ReactNode => {
     if (!selected) return <EmptyState theme={theme} icon="folder" title="No project selected" description="Create or select a project to see its workspace." />
     if (detailsLoading) return <ActivityIndicator color={theme.textSecondary} />
@@ -210,11 +305,13 @@ export function ProjectsScreen(): React.ReactElement {
                   <Text style={[styles.detailTitle, { color: theme.text }]}>{selected.name}</Text>
                   {selected.instructions ? <Text style={[styles.detailCopy, { color: theme.textSecondary }]} numberOfLines={2}>{selected.instructions}</Text> : null}
                 </View>
-                {sharingEnabled ? (
-                  <TouchableOpacity onPress={() => setShareOpen(true)}><Feather name="share-2" size={16} color={theme.textSecondary} /></TouchableOpacity>
-                ) : null}
-                <TouchableOpacity onPress={() => openEdit(selected)}><Feather name="edit-2" size={16} color={theme.textSecondary} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => confirmDelete(selected)}><Feather name="trash-2" size={16} color="#EF4444" /></TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setActionsOpen(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Project actions"
+                >
+                  <Feather name="more-horizontal" size={18} color={theme.textSecondary} />
+                </TouchableOpacity>
               </View>
               <SegmentedControl theme={theme} value={tab} onChange={setTab} options={[{ label: 'Chats', value: 'chats' }, { label: 'Notes', value: 'notes' }, { label: 'Files', value: 'files' }, { label: 'Skills', value: 'skills' }]} />
               <View style={styles.detailRows}>{renderProjectDetails()}</View>
@@ -230,6 +327,103 @@ export function ProjectsScreen(): React.ReactElement {
             </TouchableOpacity>
           </View>
         </BottomSheet>
+        <BottomSheet
+          theme={theme}
+          visible={actionsOpen}
+          onClose={() => setActionsOpen(false)}
+          title={selected?.name ?? 'Project'}
+        >
+          <Section theme={theme}>
+            {sharingEnabled ? (
+              <ListRow
+                theme={theme}
+                icon="share-2"
+                title="Share"
+                subtitle="Workspace members, teams, and rooms"
+                onPress={() => {
+                  setActionsOpen(false)
+                  setShareOpen(true)
+                }}
+              />
+            ) : null}
+            <ListRow
+              theme={theme}
+              icon="edit-2"
+              title="Edit"
+              onPress={() => {
+                setActionsOpen(false)
+                if (selected) openEdit(selected)
+              }}
+            />
+            <ListRow
+              theme={theme}
+              icon="copy"
+              title="Duplicate"
+              subtitle="Clone the project configuration"
+              onPress={() => void handleDuplicate()}
+            />
+            <ListRow
+              theme={theme}
+              icon="download"
+              title="Export"
+              subtitle="Download a portable JSON archive"
+              onPress={() => void handleExport()}
+            />
+            <ListRow
+              theme={theme}
+              icon="database"
+              title="Knowledge bases"
+              subtitle={`${projectKbs.length} attached`}
+              onPress={() => void openKbSheet()}
+            />
+            <ListRow
+              theme={theme}
+              icon="trash-2"
+              title="Delete"
+              destructive
+              onPress={() => {
+                setActionsOpen(false)
+                if (selected) confirmDelete(selected)
+              }}
+            />
+          </Section>
+        </BottomSheet>
+
+        <BottomSheet
+          theme={theme}
+          visible={kbSheetOpen}
+          onClose={() => setKbSheetOpen(false)}
+          title="Knowledge bases"
+        >
+          {kbBusy ? (
+            <ActivityIndicator color={theme.textSecondary} style={{ paddingVertical: spacing.lg }} />
+          ) : allBases.length === 0 ? (
+            <EmptyState
+              theme={theme}
+              icon="database"
+              title="No knowledge bases"
+              description="Create a knowledge base first, then attach it here."
+            />
+          ) : (
+            <Section theme={theme}>
+              {allBases.map((base) => {
+                const attached = projectKbs.some((link) => link.knowledgeBaseId === base.id)
+                return (
+                  <ListRow
+                    key={base.id}
+                    theme={theme}
+                    icon="database"
+                    title={base.title}
+                    subtitle={base.kind === 'organization' ? 'shared' : 'personal'}
+                    selected={attached}
+                    onPress={() => void toggleKbLink(base)}
+                  />
+                )
+              })}
+            </Section>
+          )}
+        </BottomSheet>
+
         <ShareSheet
           visible={shareOpen}
           theme={theme}

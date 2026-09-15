@@ -90,11 +90,42 @@ export async function createKnowledgeFolder(
 
 export async function updateKnowledgeFile(
   fileId: string,
-  patch: { name?: string; content?: string },
+  patch: { name?: string; content?: string; parentId?: string | null },
 ): Promise<void> {
   await appJson('/api/v1/files', {
     method: 'PATCH',
     json: { fileId, ...patch },
+  })
+}
+
+/** Public link visibility — PATCH /api/v1/files/share. Returns the share url. */
+export async function shareKnowledgeFile(
+  fileId: string,
+  visibility: 'private' | 'public',
+): Promise<{ visibility: 'private' | 'public'; token: string | null; url: string | null }> {
+  return appJson('/api/v1/files/share', {
+    method: 'PATCH',
+    json: { fileId, visibility },
+  })
+}
+
+export interface FileTextMatch {
+  fileId: string
+  fileName: string
+  matchIndexInFile: number
+  charStart: number
+  charEnd: number
+  snippet: string
+}
+
+/** Server-side full-text search inside specific files (`/files/search-text`). */
+export async function searchTextInFiles(
+  fileIds: string[],
+  query: string,
+): Promise<{ matches: FileTextMatch[]; truncated: boolean }> {
+  return appJson('/api/v1/files/search-text', {
+    method: 'POST',
+    json: { fileIds, query },
   })
 }
 
@@ -174,4 +205,15 @@ export async function deleteOutput(outputId: string): Promise<void> {
 
 export async function bulkDeleteOutputs(outputIds: string[]): Promise<void> {
   await Promise.all(outputIds.map((id) => deleteOutput(id)))
+}
+
+/** Public link visibility for an output — PATCH /api/v1/outputs. */
+export async function shareOutput(
+  outputId: string,
+  visibility: 'private' | 'public',
+): Promise<{ visibility: 'private' | 'public'; token: string | null; url: string | null }> {
+  return appJson('/api/v1/outputs', {
+    method: 'PATCH',
+    json: { outputId, visibility },
+  })
 }

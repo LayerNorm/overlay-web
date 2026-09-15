@@ -66,6 +66,8 @@ export function ShareSheet({
   resource,
   resourceTitle,
   publicUrl,
+  publicVisibility,
+  onSetPublicVisibility,
   onClose,
 }: {
   visible: boolean
@@ -75,6 +77,15 @@ export function ShareSheet({
   resourceTitle: string
   /** Public link when the resource has one (chat share links, file links). */
   publicUrl?: string | null
+  /**
+   * Managed public-link toggle (files/outputs). When supplied, the public
+   * link row gets an on/off control that calls back to PATCH visibility and
+   * returns the share url (or null when made private).
+   */
+  publicVisibility?: 'private' | 'public'
+  onSetPublicVisibility?: (
+    visibility: 'private' | 'public',
+  ) => Promise<string | null>
   onClose: () => void
 }) {
   const [grants, setGrants] = useState<WorkspaceResourceGrant[]>([])
@@ -90,6 +101,10 @@ export function ShareSheet({
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
   const [role, setRole] = useState<WorkspaceShareAccessRole>('viewer')
   const [inviteEmail, setInviteEmail] = useState('')
+  const [linkUrl, setLinkUrl] = useState<string | null>(publicUrl ?? null)
+  const [linkVisibility, setLinkVisibility] = useState<'private' | 'public'>(
+    publicVisibility ?? 'private',
+  )
 
   const entriesByKey = useMemo(
     () => new Map(directory.map((entry) => [targetKey(entry), entry])),
@@ -139,6 +154,8 @@ export function ShareSheet({
     setQuery('')
     setNotice(null)
     setInviteEmail('')
+    setLinkUrl(publicUrl ?? null)
+    setLinkVisibility(publicVisibility ?? 'private')
     void load()
   }, [visible, load])
 
@@ -291,7 +308,63 @@ export function ShareSheet({
       title={`Share “${resourceTitle}”`}
     >
       <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-        {publicUrl ? (
+        {onSetPublicVisibility ? (
+          <Section theme={theme}>
+            <ListRow
+              theme={theme}
+              icon="link"
+              title="Public link"
+              subtitle={
+                !publicLinksEnabled
+                  ? 'Public links are disabled by workspace policy.'
+                  : linkVisibility === 'public'
+                    ? linkUrl ?? 'Anyone with the link can view (read-only).'
+                    : 'Off — enable to let anyone with the link view (read-only).'
+              }
+              accessory={
+                <View style={styles.grantActions}>
+                  {linkVisibility === 'public' && linkUrl ? (
+                    <TouchableOpacity
+                      onPress={() => void Clipboard.setStringAsync(linkUrl)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="copy" size={16} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    disabled={busyKey !== null || !publicLinksEnabled}
+                    onPress={() => {
+                      const next = linkVisibility === 'public' ? 'private' : 'public'
+                      setBusyKey('public-link')
+                      void onSetPublicVisibility(next)
+                        .then((url) => {
+                          setLinkVisibility(next)
+                          setLinkUrl(url)
+                        })
+                        .catch((toggleError) =>
+                          setNotice(
+                            toggleError instanceof Error
+                              ? toggleError.message
+                              : 'Could not update the public link',
+                          ),
+                        )
+                        .finally(() => setBusyKey(null))
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {busyKey === 'public-link' ? (
+                      <ActivityIndicator size="small" color={theme.textSecondary} />
+                    ) : (
+                      <Text style={[styles.roleLink, { color: theme.text }]}>
+                        {linkVisibility === 'public' ? 'Turn off' : 'Turn on'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              }
+            />
+          </Section>
+        ) : publicUrl ? (
           <Section theme={theme}>
             <ListRow
               theme={theme}
@@ -325,7 +398,7 @@ export function ShareSheet({
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={theme.textSecondary} />
           </View>
-        ) : (
+        ) : !resource ? null : (
           <>
             <Section theme={theme}>
               {grants.length === 0 ? (

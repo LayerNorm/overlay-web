@@ -30,6 +30,8 @@ import {
   getUploadUrl,
   uploadToR2,
   createFileWithStorage,
+  searchTextInFiles,
+  shareKnowledgeFile,
 } from '../../services/knowledgeService'
 import type { KnowledgeFile } from '@overlay/app-core'
 
@@ -41,10 +43,17 @@ interface TreeNode extends KnowledgeFile {
 
 type FileHeaderAction = 'new' | 'selectFiles' | 'uploadFile' | 'uploadFolder'
 
-function buildTree(files: KnowledgeFile[], expandedIds: Set<string>, searchQuery: string): TreeNode[] {
+function buildTree(
+  files: KnowledgeFile[],
+  expandedIds: Set<string>,
+  searchQuery: string,
+  contentMatchIds?: Set<string> | null,
+): TreeNode[] {
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
-    const matches = files.filter((f) => f.name.toLowerCase().includes(q))
+    const matches = files.filter(
+      (f) => f.name.toLowerCase().includes(q) || (contentMatchIds?.has(f._id) ?? false),
+    )
     return matches.map((f) => ({ ...f, depth: 0, isExpanded: false, hasChildren: false }))
   }
 
@@ -100,6 +109,7 @@ export function FilesTree({
   const [files, setFiles] = useState<KnowledgeFile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [contentMatchIds, setContentMatchIds] = useState<Set<string> | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -135,9 +145,38 @@ export function FilesTree({
     requestAnimationFrame(() => searchInputRef.current?.focus())
   }, [searchNonce])
 
+  // Server-side full-text search — debounced; matches union with the
+  // client-side name filter so "search files" covers file contents too
+  // (same endpoint web's KnowledgeView uses).
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (query.length < 2) {
+      setContentMatchIds(null)
+      return
+    }
+    let cancelled = false
+    const handle = setTimeout(() => {
+      const fileIds = files.filter((f) => f.type !== 'folder').map((f) => f._id)
+      if (fileIds.length === 0) return
+      void searchTextInFiles(fileIds, query)
+        .then((response) => {
+          if (!cancelled) {
+            setContentMatchIds(new Set(response.matches.map((match) => match.fileId)))
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setContentMatchIds(null)
+        })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
+  }, [searchQuery, files])
+
   const tree = useMemo(
-    () => buildTree(files, expandedIds, searchQuery),
-    [files, expandedIds, searchQuery],
+    () => buildTree(files, expandedIds, searchQuery, contentMatchIds),
+    [files, expandedIds, searchQuery, contentMatchIds],
   )
 
   function toggleExpand(id: string) {
@@ -529,6 +568,14 @@ export function FilesTree({
             : null
         }
         resourceTitle={shareTarget?.name ?? ''}
+        onSetPublicVisibility={
+          shareTarget
+            ? async (visibility) => {
+                const response = await shareKnowledgeFile(shareTarget._id, visibility)
+                return response.url
+              }
+            : undefined
+        }
         onClose={() => setShareTarget(null)}
       />
     </View>

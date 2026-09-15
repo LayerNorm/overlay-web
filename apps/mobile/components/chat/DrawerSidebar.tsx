@@ -93,6 +93,7 @@ const KNOWLEDGE_SUBITEMS: KnowledgeSubItem[] = [
   { label: 'Memories', icon: 'cpu', route: '/(tabs)/knowledge?tab=memories' },
   { label: 'Files', icon: 'folder', route: '/(tabs)/knowledge?tab=files' },
   { label: 'Outputs', icon: 'file-text', route: '/(tabs)/knowledge?tab=outputs' },
+  { label: 'Bases', icon: 'database', route: '/(tabs)/knowledge?tab=bases' },
 ]
 
 export function DrawerSidebar({

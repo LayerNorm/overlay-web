@@ -68,3 +68,84 @@ export async function listProjectSkills(projectId: string): Promise<SkillSummary
     query: { projectId },
   })
 }
+
+// ── Phase 5: export / duplicate / knowledge-base attachments / transfer ──
+
+export interface ProjectExportPayload {
+  project: unknown
+  files?: unknown[]
+  [key: string]: unknown
+}
+
+/** Portable JSON archive — GET /api/v1/projects/export?projectId=. */
+export async function exportProject(projectId: string): Promise<ProjectExportPayload> {
+  return appJson<ProjectExportPayload>('/api/v1/projects/export', {
+    query: { projectId },
+  })
+}
+
+/** Clones a project's configuration (never its working data). */
+export async function duplicateProject(
+  sourceProjectId: string,
+  name: string,
+): Promise<{ project?: ProjectSummary }> {
+  return appJson<{ project?: ProjectSummary }>('/api/v1/projects/duplicate', {
+    method: 'POST',
+    json: { sourceProjectId, name },
+  })
+}
+
+export interface ProjectKnowledgeBaseLink {
+  knowledgeBaseId: string
+  projectId: string
+  attachedBy?: string
+  createdAt: number
+}
+
+export async function listProjectKnowledgeBases(
+  projectId: string,
+): Promise<ProjectKnowledgeBaseLink[]> {
+  const data = await appJson<{ knowledgeBases: ProjectKnowledgeBaseLink[] }>(
+    '/api/v1/projects/knowledge-bases',
+    { query: { projectId } },
+  )
+  return data.knowledgeBases
+}
+
+export async function attachProjectKnowledgeBase(
+  projectId: string,
+  knowledgeBaseId: string,
+): Promise<void> {
+  await appJson('/api/v1/projects/knowledge-bases', {
+    method: 'POST',
+    json: { projectId, knowledgeBaseId },
+  })
+}
+
+export async function detachProjectKnowledgeBase(
+  projectId: string,
+  knowledgeBaseId: string,
+): Promise<void> {
+  await appJson('/api/v1/projects/knowledge-bases', {
+    method: 'DELETE',
+    json: { projectId, knowledgeBaseId },
+  })
+}
+
+/** Moves material between a project and a knowledge base. */
+export async function transferProjectKnowledge(body: {
+  projectId?: string
+  knowledgeBaseId?: string
+  direction: 'promote' | 'copy' | 'save-answer'
+  fileId?: string
+  sourceId?: string
+  conversationId?: string
+  messageId?: string
+  content?: string
+  title?: string
+}): Promise<Record<string, unknown>> {
+  return appJson<Record<string, unknown>>('/api/v1/projects/knowledge-transfer', {
+    method: 'POST',
+    json: body,
+  })
+}

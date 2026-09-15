@@ -57,7 +57,7 @@ function routeForResult(result: WorkspaceSearchResult): string | null {
     case 'project':
       return '/(tabs)/projects'
     case 'knowledge_base':
-      return '/(tabs)/knowledge'
+      return `/knowledge-base/${result.id}`
     case 'automation':
       return '/(tabs)/automations'
     case 'agent':
