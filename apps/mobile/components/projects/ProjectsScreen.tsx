@@ -16,6 +16,8 @@ import type { ConversationSummary, KnowledgeFile, NoteDoc, ProjectSummary, Skill
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { ShareSheet } from '../workspace/ShareSheet'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { BottomSheet, EmptyState, MainScreenHeader, SegmentedControl, TopBarIconButton } from '../ui/AppChrome'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
@@ -39,6 +41,9 @@ export function ProjectsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
   const { isFeatureEnabled } = useAppSession()
+  const { activeWorkspaceId, workspacesEnabled } = useWorkspace()
+  const sharingEnabled = workspacesEnabled && isFeatureEnabled('resourceSharing') && !!activeWorkspaceId
+  const [shareOpen, setShareOpen] = useState(false)
   const router = useRouter()
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [selected, setSelected] = useState<ProjectSummary | null>(null)
@@ -205,6 +210,9 @@ export function ProjectsScreen(): React.ReactElement {
                   <Text style={[styles.detailTitle, { color: theme.text }]}>{selected.name}</Text>
                   {selected.instructions ? <Text style={[styles.detailCopy, { color: theme.textSecondary }]} numberOfLines={2}>{selected.instructions}</Text> : null}
                 </View>
+                {sharingEnabled ? (
+                  <TouchableOpacity onPress={() => setShareOpen(true)}><Feather name="share-2" size={16} color={theme.textSecondary} /></TouchableOpacity>
+                ) : null}
                 <TouchableOpacity onPress={() => openEdit(selected)}><Feather name="edit-2" size={16} color={theme.textSecondary} /></TouchableOpacity>
                 <TouchableOpacity onPress={() => confirmDelete(selected)}><Feather name="trash-2" size={16} color="#EF4444" /></TouchableOpacity>
               </View>
@@ -222,6 +230,17 @@ export function ProjectsScreen(): React.ReactElement {
             </TouchableOpacity>
           </View>
         </BottomSheet>
+        <ShareSheet
+          visible={shareOpen}
+          theme={theme}
+          resource={
+            selected && activeWorkspaceId
+              ? { workspaceId: activeWorkspaceId, resourceType: 'project', resourceId: selected._id }
+              : null
+          }
+          resourceTitle={selected?.name ?? ''}
+          onClose={() => setShareOpen(false)}
+        />
       </SafeAreaView>
     </ScreenWithDrawer>
   )

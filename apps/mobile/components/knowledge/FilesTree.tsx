@@ -16,6 +16,9 @@ import { useRouter } from 'expo-router'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { SearchField, EmptyState, BottomSheet } from '../ui/AppChrome'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { ShareSheet } from '../workspace/ShareSheet'
 import * as DocumentPicker from 'expo-document-picker'
 import { getInfoAsync, readAsStringAsync, EncodingType } from 'expo-file-system/legacy'
 import {
@@ -88,6 +91,10 @@ export function FilesTree({
   const { theme } = useTheme()
   const router = useRouter()
   const { searchNonce } = useDrawer()
+  const { isFeatureEnabled } = useAppSession()
+  const { activeWorkspaceId, workspacesEnabled } = useWorkspace()
+  const sharingEnabled = workspacesEnabled && isFeatureEnabled('resourceSharing') && !!activeWorkspaceId
+  const [shareTarget, setShareTarget] = useState<KnowledgeFile | null>(null)
   const searchInputRef = useRef<TextInput>(null)
   const flatListRef = useRef<FlatList<TreeNode>>(null)
   const [files, setFiles] = useState<KnowledgeFile[]>([])
@@ -454,12 +461,23 @@ export function FilesTree({
                   </Text>
                 </View>
                 {!selectMode && item.type === 'file' && (
-                  <TouchableOpacity
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    onPress={() => handleDelete(item._id)}
-                  >
-                    <Feather name="trash-2" size={16} color={theme.textSecondary} />
-                  </TouchableOpacity>
+                  <View style={styles.fileRowActions}>
+                    {sharingEnabled ? (
+                      <TouchableOpacity
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        onPress={() => setShareTarget(item)}
+                        accessibilityLabel={`Share ${item.name}`}
+                      >
+                        <Feather name="share-2" size={15} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      onPress={() => handleDelete(item._id)}
+                    >
+                      <Feather name="trash-2" size={16} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
                 )}
               </TouchableOpacity>
             )
@@ -501,6 +519,18 @@ export function FilesTree({
           ]}
         />
       </BottomSheet>
+
+      <ShareSheet
+        visible={shareTarget !== null}
+        theme={theme}
+        resource={
+          shareTarget && activeWorkspaceId
+            ? { workspaceId: activeWorkspaceId, resourceType: 'file', resourceId: shareTarget._id }
+            : null
+        }
+        resourceTitle={shareTarget?.name ?? ''}
+        onClose={() => setShareTarget(null)}
+      />
     </View>
   )
 }
@@ -548,6 +578,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     paddingVertical: 12,
     paddingRight: 12,
+  },
+  fileRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   fileRowInner: {
     flexDirection: 'row',

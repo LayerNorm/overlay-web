@@ -200,3 +200,64 @@ phase; each lists the current mobile behavior and what owner input would change.
   `src/shared/agents/tool-groups.ts` (incl. inline `COMPUTER_TOOL_IDS`). If web
   adds a group, mobile needs the same edit. A shared package extraction would
   be the clean fix (web-side change — deferred to Phase 10 list).
+
+## Phase 4 — Workspaces, management & sharing
+
+### 24. Roles view skipped
+- Web `WorkspaceSettingsPanel` has a `roles` management view that renders an
+  empty/deferred state. Mobile omits the Roles tab entirely rather than
+  shipping a dead tab.
+
+### 25. Tabs consolidated into one scrollable chip row
+- Web shows People/Agents/Guests/Sharing/Billing/Import (teams filtered out
+  server-side in some configs). Mobile keeps all eight surfaces — People,
+  Agents, Teams, Guests, Sharing, Billing, Import, Shared — as a horizontal
+  chip row instead of the web's full-width tab bar.
+
+### 26. Billing is read-only on mobile
+- App Store rules keep checkout/top-up/portal on web; mobile renders the
+  wallet summary (credits meter, plan card, rollout stage) plus a hint that
+  payments happen on the web app. `initializeBilling`/`checkout`/`topUp`/
+  `portal` client methods are intentionally not exposed in the UI.
+
+### 27. Audit export → NDJSON file + native share sheet
+- `GET /workspaces/{id}/audit-export` streams NDJSON; mobile writes it to
+  cache as `workspace-audit-<ts>.ndjson` and hands off to `expo-sharing`
+  (new dependency added this phase). No date-range picker yet — exports the
+  server default window; `from`/`limit` params exist in the service.
+
+### 28. ShareSheet consolidates the web ShareDialog
+- One bottom sheet covers: public-link row (copy), existing grants with
+  role-cycle + impact-confirmed revoke, directory picker (people/agents/
+  teams/rooms) with viewer/operator/editor role choice, impact confirmation
+  for team/room grants (`confirmRoomExpansion`), and a guest-invite row.
+- Role change uses an Alert picker cycling viewer→operator→editor rather
+  than a dropdown — matches native idiom.
+- Entry points wired: file rows in FilesTree (share icon), project detail
+  header (share icon). Knowledge bases have no management screen on mobile
+  yet, so `knowledge_base` sharing is reachable only via the workspace
+  "Shared" tab; conversations already have public-link share (Phase 2) —
+  per-grant conversation sharing can reuse ShareSheet if needed later.
+- All share UI is gated on `workspacesEnabled && isFeatureEnabled('resourceSharing')`.
+
+### 29. SlackImportPanel mirrors the web BFF surface only
+- Jobs list, channel multi-select (search, up to 4 paged channel fetches),
+  start, cancel, 5s polling while a job is queued/running. Unconnected state
+  shows a "connect Slack via Extensions" hint instead of web's OAuth button.
+
+### 30. Shared-with-me tab
+- `sharing.sharedWithMe` results route by kind: conversation→`/chat/[id]`
+  (self-redirects to dm/channel), file→files tab, knowledge_base→knowledge,
+  project→projects, automation→automations, agent→agent editor.
+
+### 31. Create workspace auto-activates
+- `WorkspaceContext.createWorkspace` creates, refreshes the list, activates
+  the new workspace, and force-refreshes session entitlements — matching the
+  web "create then land inside it" flow. Switcher sheet gains "Manage
+  workspace" + "New workspace" rows; Settings gains a Workspace section.
+
+### 32. Invitation route
+- `/invitations/[id]` mirrors web `AcceptWorkspaceInvitation`: single
+  accept button, 401 → sign-in prompt, success → workspace activated →
+  `/(tabs)/chat`. `overlay://invitations/<id>` and pasted web invite paths
+  deep-link there via `handleDeepLink`.

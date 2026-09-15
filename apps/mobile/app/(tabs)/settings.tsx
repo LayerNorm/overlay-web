@@ -28,6 +28,7 @@ import { useMobilePreferences } from '../../hooks/useMobilePreferences'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { DrawerSidebar } from '../../components/chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../../components/ui/ScreenWithDrawer'
 import { BottomSheet, MainScreenHeader, TopBarIconButton } from '../../components/ui/AppChrome'
@@ -105,6 +106,7 @@ export default function SettingsScreen(): React.ReactElement {
     defaults,
     error: sessionError,
   } = useAppSession()
+  const { activeWorkspace, workspacesEnabled } = useWorkspace()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
   const [billingLoading, setBillingLoading] = useState(false)
@@ -329,6 +331,23 @@ export default function SettingsScreen(): React.ReactElement {
                 busy={isSigningOut}
               />
             </SettingsSection>
+
+            {workspacesEnabled ? (
+              <SettingsSection theme={theme} title="Workspace" icon="briefcase">
+                <InfoRow
+                  theme={theme}
+                  label="Active workspace"
+                  value={activeWorkspace?.name ?? 'Personal'}
+                />
+                <ActionRow
+                  theme={theme}
+                  icon="users"
+                  title="Manage workspace"
+                  detail="People, teams, sharing, billing, and imports."
+                  onPress={() => router.push('/(tabs)/workspace')}
+                />
+              </SettingsSection>
+            ) : null}
 
             <SettingsSection
               theme={theme}

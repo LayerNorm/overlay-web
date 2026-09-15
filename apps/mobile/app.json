@@ -61,7 +61,8 @@
       "expo-font",
       "expo-secure-store",
       "expo-web-browser",
-      "react-native-enriched-markdown"
+      "react-native-enriched-markdown",
+      "expo-sharing"
     ],
     "extra": {
       "router": {},

@@ -17,6 +17,12 @@ function handleDeepLink(url: string | null | undefined): void {
   if (url.startsWith('overlay://dictate')) {
     router.push('/(tabs)/voice?autoEnable=1')
   }
+  // Workspace invitation links: overlay://invitations/<id> or a pasted web
+  // invite path (.../app/invitations/<id> or .../invite/<id>).
+  const inviteMatch = url.match(/invitations?\/([A-Za-z0-9_-]+)/i)
+  if (inviteMatch) {
+    router.push(`/invitations/${inviteMatch[1]}`)
+  }
 }
 
 function useDictateDeepLink(): void {
@@ -131,6 +137,13 @@ function RootLayoutNav(): React.ReactElement {
         />
         <Stack.Screen
           name="search"
+          options={{
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="invitations/[id]"
           options={{
             presentation: 'card',
             animation: 'slide_from_right',

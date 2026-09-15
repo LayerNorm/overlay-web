@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 import type { Theme } from '../../constants/theme'
 import { fontSize, spacing } from '../../constants/theme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -8,6 +9,7 @@ import { isPersonalWorkspace } from '../../services/workspaceService'
 import { AppIcon } from '../ui/AppIcon'
 import { BottomSheet } from '../ui/AppChrome'
 import { ListRow, Section } from '../ui/primitives'
+import { CreateWorkspaceSheet } from './CreateWorkspaceSheet'
 
 /**
  * Compact workspace switcher for the drawer header. Renders nothing when the
@@ -17,7 +19,9 @@ import { ListRow, Section } from '../ui/primitives'
 export function WorkspaceSwitcher({ theme }: { theme: Theme }): React.ReactElement | null {
   const { workspaces, activeWorkspace, activeWorkspaceId, workspacesEnabled, isSwitching, switchWorkspace } =
     useWorkspace()
+  const router = useRouter()
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [createVisible, setCreateVisible] = useState(false)
 
   if (!workspacesEnabled || workspaces.length === 0) {
     return null
@@ -89,7 +93,36 @@ export function WorkspaceSwitcher({ theme }: { theme: Theme }): React.ReactEleme
             />
           ))}
         </Section>
+        <Section theme={theme}>
+          <ListRow
+            theme={theme}
+            icon="settings"
+            iconSfSymbol="gear"
+            title="Manage workspace"
+            subtitle="People, teams, sharing, and billing"
+            onPress={() => {
+              setSheetVisible(false)
+              router.push('/(tabs)/workspace')
+            }}
+          />
+          <ListRow
+            theme={theme}
+            icon="plus"
+            iconSfSymbol="plus"
+            title="New workspace"
+            onPress={() => {
+              setSheetVisible(false)
+              setCreateVisible(true)
+            }}
+          />
+        </Section>
       </BottomSheet>
+
+      <CreateWorkspaceSheet
+        visible={createVisible}
+        theme={theme}
+        onClose={() => setCreateVisible(false)}
+      />
     </>
   )
 }
