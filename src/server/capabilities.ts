@@ -25,6 +25,7 @@ import {
   computerProviderFromEnv,
   computerRuntimeForProvider,
 } from '@/server/computers/computer-runtimes'
+import { managedHarnessSandboxProviders } from '@/server/agents/harnesses/sandbox-providers'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export { getRequiredCapabilityForRoute } from './capabilities-core'
@@ -71,6 +72,11 @@ export function withObservabilityProviderCapabilities(
     analytics: capabilities.analytics && analyticsProvider === 'posthog',
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
     connectedAgents: runtimeConfig.features?.connectedAgentControlPlane === true,
+    // Same shape as `computers`: the flag is the rollout switch and the
+    // provider-credential check keeps deployments without Vercel Sandbox keys
+    // from advertising a picker that would only 503.
+    managedHarnessAgents: runtimeConfig.features?.managedHarnessAgents === true
+      && managedHarnessSandboxProviders().length > 0,
     // Flag = hosted rollout control; a resolvable provider runtime = the
     // deployment actually has computer credentials (BOX_API_KEY for `box`).
     // Both are required, so self-host deployments without keys report the

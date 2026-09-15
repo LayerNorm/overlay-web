@@ -137,10 +137,10 @@ Bindings are managed through `/api/v1/agent-bindings` and remain separate from a
 The Agents directory derives its connected-harness label from the active binding rather than the
 agent's historical model ID, so agents created before the BYO editor still display their actual
 runtime.
-The agent editor starts with an explicit `Overlay agent` versus `Bring your own agent` choice.
-That choice is rendered only after a workspace-scoped connected-agent request succeeds; deployments
-with the global flag disabled and workspaces outside the active rollout stage stay on the normal
-Overlay-agent editor instead of exposing a form that can never submit.
+The agent editor starts with an explicit `Hosted on Overlay Cloud` versus `Bring your own agent`
+choice. The BYO branch is rendered only after a workspace-scoped connected-agent request succeeds;
+deployments with the global flag disabled and workspaces outside the active rollout stage stay on
+the normal Overlay-agent editor instead of exposing a form that can never submit.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
 records an explicitly granted default working directory. Creating an environment stays inside the same editor
@@ -221,6 +221,26 @@ reconnect (or recreate) the lease's sandbox, wrap the native handle with
 `createVercelSandbox({ sandbox })`, and stream the harness's UI-message chunks into the same
 generating reply row a hosted agent writes. `acp` bindings keep the remote command-queue path,
 and any other adapter fails loudly rather than falling back.
+
+The hosted branch of the agent editor gets its managed-harness picker from
+`GET /api/v1/agent-environments/managed`, which applies every gate server-side — the
+`managedHarnessAgents` feature flag (itself gated on resolvable Vercel Sandbox credentials), the
+independent `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` plus its internal/invited workspace lists, and
+the workspace `allowedAgentHarnesses` policy filtering the shared catalog. A 404 leaves Overlay as
+the only hosted runtime. Selecting a managed runtime swaps the model/tool-group section for harness
+config: a per-harness model select (Overlay-funded — the picker value maps to a harness-native
+`adapterConfig.model` on the binding while the priced gateway `billingModelId` becomes
+`agent.modelId` for usage reservations), a fixed `Vercel Sandbox` provider row, and `/workspace`.
+Saving creates the agent, provisions the managed environment, then upserts the binding; a mid-flow
+failure lands on the edit page so retry reuses the durable agent instead of duplicating it. Editing
+a managed agent shows the runtime, its sandbox status, and a manager-gated **Reset session** action
+backed by `POST /api/v1/agent-environments/[environmentId]/reset-harness` — it deletes every
+persisted harness session on the environment's bindings and destroys the sandbox while leaving the
+lease's stale `providerReference` to trigger recreation on the next turn. Switching an agent's
+runtime provisions a fresh environment and resets the detached one; switching away from managed
+entirely disables the binding and tears the sandbox down. Dispatch re-checks availability at turn
+time, so a flag flip or policy change that retires a harness fails the next message closed instead
+of turning on a stale binding.
 
 Provider selection for the agent-host mode is available only to operators through
 `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Harness mode resolves through

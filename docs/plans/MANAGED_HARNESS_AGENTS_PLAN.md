@@ -292,6 +292,18 @@ live two-turn `claude-code` run against real Vercel credentials.
 
 ### Phase 3 — creation UX
 
+**Status: implemented.** The editor's hosted branch offers Overlay plus every
+gated-in catalog harness; the picker is served by
+`GET /api/v1/agent-environments/managed` so feature flag, rollout stage,
+policy, and provider credentials all gate server-side (404 → the hosted
+branch shows only Overlay). Model picks are catalog values: the harness-native
+alias lands on `adapterConfig.model` while the priced `billingModelId` becomes
+`agent.modelId` for the usage reservation. Save order is create → provision →
+bind, with a fresh environment per runtime switch and reset-on-detach
+teardown. `POST .../reset-harness` clears sessions and destroys the sandbox
+behind manager auth. Dispatch re-checks availability so a retired runtime
+fails closed at turn time.
+
 - `AgentTypeSelector` becomes two options: **"Hosted on Overlay Cloud"** and
   **"Bring your own agent"**. The hosted branch shows a runtime list — Overlay
   first ("Models, tools, and memory managed by Overlay"), then Claude Code,

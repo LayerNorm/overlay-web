@@ -73,6 +73,10 @@ type HarnessTurnIdentity = {
   conversationId: string
   environmentId: string
   harnessId: ManagedHarnessId
+  /** Harness-native model alias for the HarnessAgent settings. */
+  harnessModel?: string
+  /** The agent record's standing instructions. */
+  instructions?: string
   invocationNonce: string
   modelId: string
   /** The full room-context prompt envelope, sent once on the first slice. */
@@ -267,6 +271,8 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
   const sandbox = await wrapHarnessSandbox(instance, instance.provider)
   const agent = await createManagedHarnessAgent({
     harnessId: input.harnessId,
+    ...(input.harnessModel ? { model: input.harnessModel } : {}),
+    ...(input.instructions ? { instructions: input.instructions } : {}),
     sandbox,
     sandboxConfig: {
       // Binding directories are absolute POSIX roots; the harness resolves

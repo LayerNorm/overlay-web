@@ -3,11 +3,15 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { Computer } from '@overlay/workspace-contracts'
+import type { ManagedHarnessPickerEntry } from '@overlay/api-client'
 import {
   AccessSelector,
+  AgentBehaviorFields,
   AgentComputerSection,
   AgentTypeSelector,
   ByoAgentFields,
+  HostedRuntimeSelector,
+  ManagedHarnessFields,
   OverlayAgentFields,
 } from './AgentEditorForm'
 
@@ -24,9 +28,9 @@ test('access selector marks the active mode and explains its effect', () => {
   assert.match(onlyMe, /Only you can see, chat with, or @-mention/)
 })
 
-test('agent type selector offers overlay and bring-your-own', () => {
+test('agent type selector offers hosted Overlay Cloud and bring-your-own', () => {
   const markup = renderToStaticMarkup(<AgentTypeSelector value="overlay" onChange={() => undefined} />)
-  assert.match(markup, /Overlay agent/)
+  assert.match(markup, /Hosted on Overlay Cloud/)
   assert.match(markup, /Bring your own agent/)
 })
 
@@ -136,6 +140,146 @@ test('computer section warns that disabling a provisioned computer deletes it', 
     <AgentComputerSection enabled={false} computer={agentComputer} {...computerSectionProps} />,
   )
   assert.match(markup, /Saving deletes this computer/)
+})
+
+const claudeCodePickerEntry: ManagedHarnessPickerEntry = {
+  id: 'claude-code',
+  label: 'Claude Code',
+  description: "Anthropic's coding agent, running in an isolated Overlay Cloud sandbox.",
+  models: [
+    { value: 'sonnet', label: 'Claude Sonnet 4.6', harnessModel: 'sonnet', billingModelId: 'claude-sonnet-4-6' },
+    { value: 'opus', label: 'Claude Opus 4.7', harnessModel: 'opus', billingModelId: 'anthropic/claude-opus-4.7' },
+  ],
+}
+
+test('hosted runtime selector lists Overlay first, then managed harnesses', () => {
+  const markup = renderToStaticMarkup(
+    <HostedRuntimeSelector value="overlay" onChange={() => undefined} harnesses={[claudeCodePickerEntry]} />,
+  )
+  assert.match(markup, /Models, tools, and memory managed by Overlay/)
+  assert.match(markup, /Claude Code/)
+  assert.match(markup, /isolated Overlay Cloud sandbox/)
+  const overlayIndex = markup.indexOf('>Overlay<')
+  const harnessIndex = markup.indexOf('Claude Code')
+  assert.ok(overlayIndex >= 0 && harnessIndex > overlayIndex, 'Overlay must render before harness entries')
+})
+
+test('managed harness fields render model picker, fixed provider, and working directory', () => {
+  const markup = renderToStaticMarkup(
+    <ManagedHarnessFields
+      harness={claudeCodePickerEntry}
+      instructions="Review pull requests."
+      onInstructionsChange={() => undefined}
+      modelValue="sonnet"
+      onModelChange={() => undefined}
+      provider="Vercel Sandbox"
+      workingDirectory="/workspace"
+    />,
+  )
+  assert.match(markup, /Agent instructions/)
+  assert.match(markup, /aria-label="Harness model"/)
+  assert.match(markup, /funded by Overlay/)
+  assert.match(markup, /Vercel Sandbox/)
+  assert.match(markup, /\/workspace/)
+  assert.doesNotMatch(markup, /Reset session/, 'create mode has no sandbox yet')
+})
+
+test('managed harness fields render sandbox status and reset control in edit mode', () => {
+  const markup = renderToStaticMarkup(
+    <ManagedHarnessFields
+      harness={claudeCodePickerEntry}
+      instructions=""
+      onInstructionsChange={() => undefined}
+      modelValue="opus"
+      onModelChange={() => undefined}
+      provider="Vercel Sandbox"
+      workingDirectory="/workspace"
+      sandboxStatus="online"
+      onReset={() => undefined}
+    />,
+  )
+  assert.match(markup, /Sandbox/)
+  assert.match(markup, /online/)
+  assert.match(markup, /Reset session/)
+})
+
+const behaviorBase = {
+  connectedAgentsEnabled: true,
+  computersAvailable: false,
+  instructions: 'Do work.',
+  onInstructionsChange: () => undefined,
+  modelId: 'test-model',
+  onModelChange: () => undefined,
+  modelOptions: [{ value: 'test-model', label: 'Test model' }],
+  enabledToolGroups: new Set<string>(),
+  onToggleToolGroup: () => undefined,
+  advanced: false,
+  onAdvancedChange: () => undefined,
+  hostedRuntime: 'overlay',
+  onHostedRuntimeChange: () => undefined,
+  managedHarnesses: [] as ManagedHarnessPickerEntry[],
+  harnessModel: '',
+  onHarnessModelChange: () => undefined,
+  managedProvider: 'Vercel Sandbox',
+  managedWorkingDirectory: '/workspace',
+  adapterId: 'codex',
+  harnessOptions: [],
+  onHarnessChange: () => undefined,
+  environmentChoice: 'existing' as const,
+  onEnvironmentChoiceChange: () => undefined,
+  compatibleEnvironments: [],
+  environmentsLoading: false,
+  environmentId: '',
+  onEnvironmentChange: () => undefined,
+  workingDirectory: '',
+  onWorkingDirectoryChange: () => undefined,
+  selectedHarnessConnectable: false,
+  environmentBusy: null,
+  environmentError: null,
+  command: '',
+  copied: false,
+  onCopyCommand: () => undefined,
+  onBeginConnection: () => undefined,
+  setupRoots: '',
+  onSetupRootsChange: () => undefined,
+  onApproveSetup: () => undefined,
+}
+
+test('behavior fields hide the runtime picker when managed harnesses are gated off', () => {
+  const markup = renderToStaticMarkup(
+    <AgentBehaviorFields {...behaviorBase} agentType="overlay" />,
+  )
+  assert.doesNotMatch(markup, /Hosted runtime/)
+  assert.match(markup, /Agent instructions/)
+})
+
+test('behavior fields swap Overlay-only config for the managed harness form', () => {
+  const markup = renderToStaticMarkup(
+    <AgentBehaviorFields
+      {...behaviorBase}
+      agentType="overlay"
+      hostedRuntime="claude-code"
+      managedHarnesses={[claudeCodePickerEntry]}
+      harnessModel="sonnet"
+    />,
+  )
+  assert.match(markup, /aria-label="Hosted runtime"/)
+  assert.match(markup, /aria-label="Harness model"/)
+  assert.match(markup, /Vercel Sandbox/)
+  // Overlay-native controls must not render for a managed runtime.
+  assert.doesNotMatch(markup, /aria-label="Agent model"/)
+  assert.doesNotMatch(markup, /persistent cloud desktop/)
+  // BYO enrollment controls must not leak into the managed branch.
+  assert.doesNotMatch(markup, /Create connection/)
+  assert.doesNotMatch(markup, /Existing environment/)
+})
+
+test('behavior fields hold a managed agent read-only when its runtime is retired', () => {
+  const markup = renderToStaticMarkup(
+    <AgentBehaviorFields {...behaviorBase} agentType="overlay" hostedRuntime="hermes" />,
+  )
+  assert.match(markup, /managed agent is unchanged/)
+  assert.doesNotMatch(markup, /aria-label="Agent model"/)
 })
 
 test('overlay fields render the computer accessory under its tool row', () => {

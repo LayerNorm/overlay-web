@@ -25,4 +25,14 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   stop-button cancellation destroys the in-sandbox session.
 - [ ] **Hermes live turn before picker exposure** — `harness-acp@1.0.40`
   constructs fine but `hermes acp` hasn't run a real turn in-sandbox; verify
-  before enabling it in the create-agent UI (Phase 3).
+  before enabling it in the create-agent UI (Phase 3 ships it in the catalog —
+  consider policy-allowlisting it out until verified).
+- [ ] **Set the managed-harness feature flags** — `managedHarnessAgents`
+  (config, or `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`) plus
+  `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` (`internal`/`invited`/`general` and
+  the matching workspace-id lists). Both default off; the picker stays hidden
+  until they're set.
+- [ ] **Run the Phase 3 exit gate** — with flags + Vercel creds on a staging
+  deployment: Agents > New agent > Hosted on Overlay Cloud, create each catalog
+  harness through the UI, screenshot QA both themes, confirm the agent renders
+  in directory/mentions, and DM it end-to-end.

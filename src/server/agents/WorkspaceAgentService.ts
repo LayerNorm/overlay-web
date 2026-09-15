@@ -11,6 +11,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import {
   WORKSPACE_AGENT_CREATURE_SHAPES,
+  WORKSPACE_AGENT_HARNESSES,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID, FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
@@ -130,7 +131,11 @@ export class WorkspaceAgentService {
     const instructions = required(args.input.instructions, 'Agent instructions', 20_000)
     const modelId = required(args.input.modelId, 'Model', 200)
     const harness = args.input.harness ?? 'overlay'
-    if (harness !== 'overlay' && harness !== 'claude-code') {
+    // Every catalog runtime is a valid `harness` value — which ones this
+    // workspace may actually use is the sharing policy's job below. Dispatch
+    // still requires a `protocolAdapter:'harness'` binding, so a non-overlay
+    // harness without a binding simply never gets remote turns.
+    if (!(WORKSPACE_AGENT_HARNESSES as readonly string[]).includes(harness)) {
       throw new WorkspaceAgentServiceError('validation', 'Unsupported agent harness')
     }
     await this.workspaces.assertAgentHarnessAllowed({
@@ -182,9 +187,15 @@ export class WorkspaceAgentService {
   }) {
     const { access, agent } = await this.requireEditor(args)
     if (args.input.harness !== undefined
-      && args.input.harness !== 'overlay'
-      && args.input.harness !== 'claude-code') {
+      && !(WORKSPACE_AGENT_HARNESSES as readonly string[]).includes(args.input.harness)) {
       throw new WorkspaceAgentServiceError('validation', 'Unsupported agent harness')
+    }
+    if (args.input.harness !== undefined) {
+      await this.workspaces.assertAgentHarnessAllowed({
+        actorUserId: args.actorUserId,
+        workspaceId: access.workspace.id,
+        harness: args.input.harness,
+      })
     }
     let teamIds: string[] | undefined
     if (args.input.teamIds !== undefined) {

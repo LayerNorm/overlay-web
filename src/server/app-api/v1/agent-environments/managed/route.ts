@@ -8,11 +8,42 @@ import {
   ManagedAgentSandboxError,
   ManagedAgentSandboxService,
 } from '@/server/agents/ManagedAgentSandboxService'
+import { managedHarnessAvailability } from '@/server/agents/harnesses/availability'
 import { managedHarnessSandboxProviders } from '@/server/agents/harnesses/sandbox-providers'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { agentEnvironmentErrorResponse } from '../shared'
 
 export const maxDuration = 300
+
+/**
+ * What the create-agent picker may offer for "Hosted on Overlay Cloud": the
+ * harness catalog entries this workspace is allowed to run. Returns 404 when
+ * the feature, rollout stage, or workspace policy gates it off — the editor
+ * probes this like it probes `agent-bindings` for the BYO branch.
+ */
+export async function GET(_request: Request, context: AppApiRouteContext) {
+  try {
+    const availability = await managedHarnessAvailability({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
+    if (!availability.enabled) {
+      return NextResponse.json({ error: 'Managed harness agents are disabled', code: 'capability_disabled' }, { status: 404 })
+    }
+    return NextResponse.json({
+      harnesses: availability.harnesses.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        description: entry.description,
+        models: entry.models,
+      })),
+      provider: availability.provider,
+      workingDirectory: '/workspace',
+    }, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
+    return agentEnvironmentErrorResponse(error)
+  }
+}
 
 export async function POST(request: Request, context: AppApiRouteContext) {
   try {
@@ -44,8 +75,15 @@ export async function POST(request: Request, context: AppApiRouteContext) {
     }
 
     if (body.mode === 'harness') {
+      const availability = await managedHarnessAvailability({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      })
+      if (!availability.enabled) {
+        return NextResponse.json({ error: 'Managed harness agents are disabled', code: 'capability_disabled' }, { status: 404 })
+      }
       const harnessId = body.harnessId?.trim()
-      if (!isManagedHarnessId(harnessId)) {
+      if (!isManagedHarnessId(harnessId) || !availability.harnesses.some((entry) => entry.id === harnessId)) {
         return NextResponse.json({ error: 'Unsupported managed harness', code: 'harness_invalid' }, { status: 400 })
       }
       const provider = body.provider?.trim() || undefined

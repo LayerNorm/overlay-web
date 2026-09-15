@@ -14,6 +14,20 @@ export type AgentEnvironmentResource = Omit<AgentEnvironment, 'publicKey'> & {
   enrollmentExpiresAt?: number
 }
 
+/** One row of the managed-harness picker, as served by `GET .../managed`. */
+export type ManagedHarnessPickerEntry = {
+  id: ManagedHarnessId
+  label: string
+  description: string
+  models: Array<{ value: string; label: string; harnessModel?: string; billingModelId: string }>
+}
+
+export type ManagedHarnessPicker = {
+  harnesses: ManagedHarnessPickerEntry[]
+  provider: string
+  workingDirectory: string
+}
+
 function workspaceInit(workspaceId: string, init?: RequestInit): RequestInit {
   const headers = new Headers(init?.headers)
   headers.set(WORKSPACE_HEADER, workspaceId)
@@ -83,11 +97,24 @@ export class AgentEnvironmentsClient {
     )
   }
 
+  /** Harness runtimes this workspace may host on Overlay Cloud (404 when gated). */
+  managedHarnesses(workspaceId: string, init?: RequestInit) {
+    return this.http.json<ManagedHarnessPicker>('/api/v1/agent-environments/managed', workspaceInit(workspaceId, init))
+  }
+
+  resetHarness(workspaceId: string, environmentId: string, init?: RequestInit) {
+    return this.http.json<{ reset: true; sessionsCleared: number; sandboxDestroyed: boolean; environmentId: string }>(
+      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/reset-harness`,
+      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+    )
+  }
+
   upsertBinding(workspaceId: string, input: {
     agentId: string
     environmentId: string
     adapterId: string
     workingDirectory: string
+    model?: string
   }, init?: RequestInit) {
     return this.http.json<{ binding: AgentBinding }>(
       '/api/v1/agent-bindings',

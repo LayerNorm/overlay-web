@@ -8,6 +8,7 @@ import {
   environmentSupportsHarness,
   generatedByoInstructions,
   workspaceAgentUsesByo,
+  workspaceAgentUsesManagedHarness,
   workspaceHarnessForByo,
 } from './byo-agent-setup'
 
@@ -47,4 +48,16 @@ test('existing BYO identity is recognized without a binding request', () => {
   assert.equal(workspaceAgentUsesByo({ harness: 'claude-code', modelId: 'byo/claude-code' }), true)
   assert.equal(workspaceAgentUsesByo({ harness: 'overlay', modelId: 'byo/hermes' }), true)
   assert.equal(workspaceAgentUsesByo({ harness: 'overlay', modelId: 'openrouter/free' }), false)
+  // A managed harness shares the harness id with its BYO counterpart — the
+  // byo/ model sentinel is what separates them.
+  assert.equal(workspaceAgentUsesByo({ harness: 'claude-code', modelId: 'claude-sonnet-4-6' }), false)
+})
+
+test('managed harness identity separates from BYO and native Overlay agents', () => {
+  assert.equal(workspaceAgentUsesManagedHarness({ harness: 'claude-code', modelId: 'claude-sonnet-4-6' }), true)
+  assert.equal(workspaceAgentUsesManagedHarness({ harness: 'hermes', modelId: 'claude-sonnet-4-6' }), true)
+  assert.equal(workspaceAgentUsesManagedHarness({ harness: 'overlay', modelId: 'openrouter/free' }), false)
+  // BYO Claude Code carries the same harness id — the byo/ sentinel wins.
+  assert.equal(workspaceAgentUsesManagedHarness({ harness: 'claude-code', modelId: 'byo/claude-code' }), false)
+  assert.equal(workspaceAgentUsesManagedHarness(null), false)
 })

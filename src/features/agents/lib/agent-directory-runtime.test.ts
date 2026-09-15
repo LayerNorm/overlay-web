@@ -36,13 +36,13 @@ test('binding indexing ignores disabled rows and keeps the newest active row', (
   assert.equal(indexed.get('agent-1')?.id, 'active')
 })
 
-test('harness bindings label by harnessId, not the protocol adapter name', () => {
+test('harness bindings label by harnessId as hosted on Overlay Cloud', () => {
   assert.equal(
     getAgentRuntimeLabel('moonshotai/kimi-k2.6', binding({
       protocolAdapter: 'harness',
       adapterConfig: { harnessId: 'claude-code', workingDirectory: '/workspace' },
     })),
-    'claude-code · connected',
+    'claude-code · Overlay Cloud',
   )
 })
 

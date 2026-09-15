@@ -241,6 +241,72 @@ test('artifact retention cleanup drains multiple bounded batches without touchin
   assert.deepEqual(await setup.service.cleanupArtifacts(100), { deleted: 0 })
 })
 
+test('reset clears harness sessions and destroys the provider sandbox', async () => {
+  const setup = harnessEnvironmentFixture()
+  const result = await setup.service.resetHarnessEnvironment({
+    actorUserId: 'user-1', workspaceId: 'workspace-1', environmentId: 'environment-harness',
+  })
+  assert.equal(result.reset, true)
+  assert.equal(result.sessionsCleared, 2)
+  assert.equal(result.sandboxDestroyed, true)
+  assert.deepEqual(setup.clearedBindingIds, ['binding-1', 'binding-2'])
+  assert.equal(setup.deletedReferences[0], 'sandbox-ref-1')
+})
+
+test('reset rejects non-harness environments and unknown ids', async () => {
+  const setup = harnessEnvironmentFixture()
+  await assertControlPlaneError(
+    () => setup.service.resetHarnessEnvironment({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', environmentId: 'environment-local',
+    }),
+    'not_a_harness_environment',
+  )
+  await assertControlPlaneError(
+    () => setup.service.resetHarnessEnvironment({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', environmentId: 'missing',
+    }),
+    'environment_not_found',
+  )
+})
+
+test('reset succeeds even when the provider sandbox is already gone', async () => {
+  const setup = harnessEnvironmentFixture({ reconnectFails: true })
+  const result = await setup.service.resetHarnessEnvironment({
+    actorUserId: 'user-1', workspaceId: 'workspace-1', environmentId: 'environment-harness',
+  })
+  assert.equal(result.reset, true)
+  assert.equal(result.sandboxDestroyed, false)
+  assert.equal(result.sessionsCleared, 2)
+})
+
+test('harness bindings stamp Overlay-funded model billing and the picked model', async () => {
+  const setup = harnessEnvironmentFixture()
+  const binding = await setup.service.upsertBinding({
+    actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+    environmentId: 'environment-harness', adapterId: 'claude-code',
+    workingDirectory: '/workspace', model: 'opus',
+  })
+  assert.equal(binding.protocolAdapter, 'harness')
+  assert.equal(binding.adapterConfig.harnessId, 'claude-code')
+  assert.equal(binding.adapterConfig.modelBilling, 'overlay')
+  assert.equal(binding.adapterConfig.model, 'opus')
+  assert.equal(binding.adapterConfig.provider, 'vercel')
+  assert.equal(binding.adapterConfig.workingDirectory, '/workspace')
+  assert.equal(setup.assertedHarness, 'claude-code')
+})
+
+test('harness bindings reject adapters the environment does not advertise', async () => {
+  const setup = harnessEnvironmentFixture()
+  await assertControlPlaneError(
+    () => setup.service.upsertBinding({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+      environmentId: 'environment-harness', adapterId: 'codex',
+      workingDirectory: '/workspace',
+    }),
+    'adapter_unavailable',
+  )
+})
+
 async function assertControlPlaneError(operation: () => Promise<unknown>, code: string) {
   await assert.rejects(operation, (error: unknown) =>
     error instanceof ConnectedAgentControlPlaneError && error.code === code)
@@ -321,4 +387,79 @@ function artifactRecord(
     runId: session.runId, remoteSessionId: session.id, name: 'artifact.txt', mediaType: 'text/plain', size: 7,
     sha256: sha256('expired'), objectKey: `artifacts/${id}`, status: 'clean', expiresAt: NOW + 60_000,
     createdAt: NOW - 1_000, updatedAt: NOW - 1_000, ...overrides }
+}
+
+/**
+ * A managed-harness environment (`overlay_cloud`, harness adapters advertised,
+ * `/workspace` grant) plus the repo/workspaces fakes the reset and
+ * harness-binding paths need.
+ */
+function harnessEnvironmentFixture(options: { reconnectFails?: boolean } = {}) {
+  const harnessEnvironment: AgentEnvironment = {
+    id: 'environment-harness', workspaceId: 'workspace-1', kind: 'overlay_cloud',
+    name: 'Overlay Cloud · claude-code', status: 'online', publicKey: 'public-key',
+    capabilities: { adapters: [{ id: 'claude-code', protocol: 'harness' }] },
+    filesystemGrant: { mode: 'selected_roots', roots: ['/workspace'] },
+    approvedAt: NOW - 1_000, approvedByUserId: 'user-1', createdAt: NOW - 2_000, updatedAt: NOW - 1_000,
+  }
+  const localEnvironment: AgentEnvironment = {
+    ...fixture().environment, id: 'environment-local', kind: 'local',
+  }
+  const environments = [harnessEnvironment, localEnvironment]
+  const bindings = [
+    { id: 'binding-1', workspaceId: 'workspace-1', agentId: 'agent-1', environmentId: 'environment-harness' },
+    { id: 'binding-2', workspaceId: 'workspace-1', agentId: 'agent-2', environmentId: 'environment-harness' },
+  ]
+  const lease = {
+    id: 'lease-1', workspaceId: 'workspace-1', environmentId: 'environment-harness',
+    provider: 'vercel', providerReference: 'sandbox-ref-1', status: 'running',
+    reservedUntil: NOW + 60_000, usage: {}, cleanupAttempts: 0, createdAt: NOW - 1_000, updatedAt: NOW - 1_000,
+  }
+  const clearedBindingIds: string[] = []
+  const deletedReferences: string[] = []
+  const upserts: Array<Record<string, unknown>> = []
+  let assertedHarness: string | null = null
+  const repository = {
+    async getEnvironment(args: { workspaceId: string; environmentId: string }) {
+      return environments.find(
+        (environment) => environment.id === args.environmentId && environment.workspaceId === args.workspaceId,
+      ) ?? null
+    },
+    async listBindings(args: { workspaceId: string }) {
+      return bindings.filter((binding) => binding.workspaceId === args.workspaceId)
+    },
+    async deleteHarnessSessionsForBinding(args: { workspaceId: string; bindingId: string }) {
+      clearedBindingIds.push(args.bindingId)
+      return 1
+    },
+    async getActiveSandboxLease(args: { workspaceId: string; environmentId: string }) {
+      return args.environmentId === lease.environmentId ? lease : null
+    },
+    async upsertBinding(input: Record<string, unknown>) {
+      upserts.push(input)
+      return { ...input, createdAt: input.now, updatedAt: input.now }
+    },
+  } as unknown as ConnectedAgentRepository
+  const workspaces = {
+    async resolveActiveWorkspace() { return { membership: { role: 'admin' } } },
+    async assertAgentHarnessAllowed(args: { harness: string }) { assertedHarness = args.harness },
+  } as unknown as WorkspaceService
+  const managedRuntime = () => ({
+    reconnect: async (reference: string) => {
+      if (options.reconnectFails) throw new Error('sandbox already deleted')
+      return { delete: async () => { deletedReferences.push(reference) } }
+    },
+  })
+  const service = new ConnectedAgentControlPlaneService({
+    repository,
+    audit: { record: async () => {} } as unknown as AuditService,
+    workspaces,
+    now: () => NOW,
+    isEnabled: () => true,
+    managedRuntime: managedRuntime as never,
+  })
+  return {
+    service, clearedBindingIds, deletedReferences, upserts,
+    get assertedHarness() { return assertedHarness },
+  }
 }

@@ -82,6 +82,10 @@ export type HarnessAgentBindingConfig = {
   harnessId: ManagedHarnessId
   workingDirectory: string
   provider?: string
+  /** `overlay` marks the turn's model usage as Overlay-funded for billing. */
+  modelBilling?: 'overlay'
+  /** Harness-facing model string (e.g. `sonnet`); absent means the harness default. */
+  model?: string
 }
 
 export function parseHarnessAgentBindingConfig(value: unknown): HarnessAgentBindingConfig | null {
@@ -90,10 +94,14 @@ export function parseHarnessAgentBindingConfig(value: unknown): HarnessAgentBind
   if (!isManagedHarnessId(candidate.harnessId)) return null
   if (typeof candidate.workingDirectory !== 'string' || !candidate.workingDirectory.trim()) return null
   if (candidate.provider !== undefined && typeof candidate.provider !== 'string') return null
+  if (candidate.modelBilling !== undefined && candidate.modelBilling !== 'overlay') return null
+  if (candidate.model !== undefined && typeof candidate.model !== 'string') return null
   return {
     harnessId: candidate.harnessId,
     workingDirectory: candidate.workingDirectory,
     ...(typeof candidate.provider === 'string' ? { provider: candidate.provider } : {}),
+    ...(candidate.modelBilling === 'overlay' ? { modelBilling: 'overlay' as const } : {}),
+    ...(typeof candidate.model === 'string' ? { model: candidate.model } : {}),
   }
 }
 

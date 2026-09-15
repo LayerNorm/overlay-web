@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import type {
+  AgentBinding,
   Computer,
   ComputerSize,
   WorkspaceAgentCreateInput,
@@ -12,6 +13,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
+import type { AgentEnvironmentResource, ManagedHarnessPicker } from '@overlay/api-client'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   getEnabledChatModels,
@@ -27,8 +29,8 @@ import {
   DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
-import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
-import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
+import { workspaceAgentUsesByo, workspaceAgentUsesManagedHarness } from '../lib/byo-agent-setup'
+import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent, isManagedHarnessRuntime } from '../lib/agent-editor-input'
 import { buildAgentEditorHref, buildAgentsDirectoryHref, startAgentChat } from '../lib/agent-chat'
 import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
 import { dispatchAgentDirectoryChanged, dispatchAgentDraftPreview } from '@/shared/workspace/sidebar-events'
@@ -105,12 +107,41 @@ export function AgentEditorPage({
   const [agentType, setAgentType] = useState<AgentType>(() => (
     workspaceAgentUsesByo(showcaseAgent) ? 'byo' : 'overlay'
   ))
+  // Hosted-branch runtime: 'overlay' is the native agent; a managed harness id
+  // selects a HarnessAgent running in an Overlay Cloud sandbox.
+  const [hostedRuntime, setHostedRuntime] = useState<string>(() => (
+    showcaseAgent && workspaceAgentUsesManagedHarness(showcaseAgent) ? showcaseAgent.harness : 'overlay'
+  ))
+  const [harnessModel, setHarnessModel] = useState('')
+  const [managedPicker, setManagedPicker] = useState<ManagedHarnessPicker | null>(null)
+  const [managedEnvironment, setManagedEnvironment] = useState<AgentEnvironmentResource | null>(null)
+  // The binding as loaded — the baseline a save compares against to detect a
+  // runtime switch and to restore on cancel.
+  const [boundHarnessId, setBoundHarnessId] = useState<string | null>(null)
+  const [boundHarnessModel, setBoundHarnessModel] = useState('')
+  const [managedResetBusy, setManagedResetBusy] = useState(false)
+
+  const onManagedBinding = useCallback((binding: AgentBinding, environment?: AgentEnvironmentResource) => {
+    setAgentType('overlay')
+    const harnessId = typeof binding.adapterConfig.harnessId === 'string' ? binding.adapterConfig.harnessId : ''
+    if (harnessId) {
+      setHostedRuntime(harnessId)
+      setBoundHarnessId(harnessId)
+    }
+    const model = typeof binding.adapterConfig.model === 'string' ? binding.adapterConfig.model : ''
+    setHarnessModel(model)
+    setBoundHarnessModel(model)
+    setManagedEnvironment(environment ?? null)
+  }, [])
+
   const {
     environmentChoice, setEnvironmentChoice, environmentsLoading, environmentId, adapterId,
     workingDirectory, setWorkingDirectory, harnessOptions, selectedHarness, compatibleEnvironments,
     setupEnvironment, environmentBusy, environmentError, command, copied, setupRoots, setSetupRoots,
     bindingValid, chooseHarness, chooseEnvironment, beginConnection, approveSetupEnvironment, copyCommand,
-  } = useByoConnection({ activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType })
+  } = useByoConnection({
+    activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType, onManagedBinding,
+  })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
@@ -158,6 +189,32 @@ export function AgentEditorPage({
     return () => { cancelled = true }
   }, [activeWorkspaceId, showcase])
 
+  // Managed-harness picker: the server applies every gate (feature, rollout,
+  // workspace policy, provider credentials) — a 404 just means the hosted
+  // branch offers only the native Overlay runtime.
+  const managedHarnessAgentsEnabled = capabilities.managedHarnessAgents === true
+  useEffect(() => {
+    if (showcase || !activeWorkspaceId || !managedHarnessAgentsEnabled) return
+    let cancelled = false
+    void overlayAppClient.agentEnvironments.managedHarnesses(activeWorkspaceId).then(
+      (picker) => { if (!cancelled) setManagedPicker(picker) },
+      () => { if (!cancelled) setManagedPicker(null) },
+    )
+    return () => { cancelled = true }
+  }, [activeWorkspaceId, managedHarnessAgentsEnabled, showcase])
+
+  const managedHarnessEntry = useMemo(
+    () => managedPicker?.harnesses.find((entry) => entry.id === hostedRuntime),
+    [managedPicker, hostedRuntime],
+  )
+  // The picker's catalog value; absent a selection the entry's default applies.
+  const harnessModelOption = managedHarnessEntry?.models.find((model) => model.value === harnessModel)
+    ?? managedHarnessEntry?.models[0]
+  const harnessBillingModelId = harnessModelOption?.billingModelId ?? ''
+  const managedProvider = managedPicker?.provider === 'vercel' ? 'Vercel Sandbox' : (managedPicker?.provider ?? 'Vercel Sandbox')
+  const managedWorkingDirectory = managedPicker?.workingDirectory ?? '/workspace'
+  const managedRuntimeSelected = agentType === 'overlay' && isManagedHarnessRuntime(hostedRuntime)
+
   // Load this agent's computer (edit mode, Overlay agents, capability on).
   // A bound machine implies the Computer tool group: force it on so the merged
   // toggle never shows "off" above a live machine.
@@ -194,7 +251,8 @@ export function AgentEditorPage({
 
   const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
-    name, instructions, modelId, agentType, connectedAgentsEnabled, bindingValid,
+    name, instructions, modelId, agentType, hostedRuntime, harnessBillingModelId,
+    managedHarnessEnabled: Boolean(managedPicker), connectedAgentsEnabled, bindingValid,
   })
 
   const toggleToolGroup = (groupId: string) => {
@@ -214,13 +272,13 @@ export function AgentEditorPage({
     const harnessLabel = selectedHarness?.label ?? adapterId
     return {
       ...buildWorkspaceAgentInput({
-        name, description, instructions, agentType, harnessLabel, adapterId,
-        modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
+        name, description, instructions, agentType, hostedRuntime, harnessBillingModelId,
+        harnessLabel, adapterId, modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
       }),
       teamIds: agent?.teamIds ?? [],
     }
-  }, [selectedHarness, adapterId, name, description, instructions, agentType, modelId,
-    avatarColor, avatarShape, enabledToolGroups, visibility, agent])
+  }, [selectedHarness, adapterId, name, description, instructions, agentType, hostedRuntime,
+    harnessBillingModelId, modelId, avatarColor, avatarShape, enabledToolGroups, visibility, agent])
 
   // Reset the form whenever a different agent loads.
   useEffect(() => {
@@ -233,6 +291,10 @@ export function AgentEditorPage({
     setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
+    // The agent record marks a managed harness via `harness`; the binding load
+    // (`onManagedBinding`) fills in the environment and picked model.
+    setHostedRuntime(workspaceAgentUsesManagedHarness(agent) ? agent.harness : 'overlay')
+    setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
     setDirty(false)
     setSavedFlash(false)
   }, [agent])
@@ -272,7 +334,30 @@ export function AgentEditorPage({
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
-        if (agentType === 'byo') {
+        if (managedRuntimeSelected && managedHarnessEntry) {
+          // Durable identity first, then the managed sandbox, then the binding —
+          // a failure after create lands on the edit page so retry never
+          // duplicates the agent.
+          await (async () => {
+            const provisioned = await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId, {
+              mode: 'harness',
+              harnessId: managedHarnessEntry.id,
+            })
+            await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+              agentId: saved.agent.id,
+              environmentId: provisioned.environment.id,
+              adapterId: managedHarnessEntry.id,
+              workingDirectory: managedWorkingDirectory,
+              ...(harnessModelOption?.value ? { model: harnessModelOption.value } : {}),
+            })
+          })().catch(async (bindingError) => {
+            setAgent(saved.agent)
+            if (presentation === 'page') {
+              router.push(`${buildAgentEditorHref(activeWorkspaceId, saved.agent.id)}?hello=1`)
+            }
+            throw bindingError
+          })
+        } else if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
             environmentId, adapterId, workingDirectory: workingDirectory.trim(),
@@ -324,14 +409,48 @@ export function AgentEditorPage({
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, buildInput())
-        if (agentType === 'byo') {
+        // null unless the managed branch rebinds — any other path means the
+        // loaded managed environment (if any) is being retired.
+        let nextManagedEnvironment: AgentEnvironmentResource | null = null
+        if (managedRuntimeSelected && managedHarnessEntry) {
+          // Same harness → rebind on the existing environment; a runtime switch
+          // needs a fresh sandbox since each environment advertises one harness.
+          const reuseEnvironment = managedEnvironment && boundHarnessId === hostedRuntime
+          const environment = reuseEnvironment
+            ? managedEnvironment
+            : (await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId, {
+                mode: 'harness',
+                harnessId: managedHarnessEntry.id,
+              })).environment
+          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+            agentId: saved.agent.id,
+            environmentId: environment.id,
+            adapterId: managedHarnessEntry.id,
+            workingDirectory: managedWorkingDirectory,
+            ...(harnessModelOption?.value ? { model: harnessModelOption.value } : {}),
+          })
+          nextManagedEnvironment = environment
+          setManagedEnvironment(environment)
+          setBoundHarnessId(managedHarnessEntry.id)
+          setBoundHarnessModel(harnessModelOption?.value ?? '')
+        } else if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
             environmentId, adapterId, workingDirectory: workingDirectory.trim(),
           })
-        } else if (workspaceAgentUsesByo(agent)) {
+        } else if (workspaceAgentUsesByo(agent) || managedEnvironment) {
           // Switched a connected agent back to Overlay: drop its binding once.
           await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+            .catch(() => undefined)
+          nextManagedEnvironment = null
+          setManagedEnvironment(null)
+          setBoundHarnessId(null)
+          setBoundHarnessModel('')
+        }
+        // An environment this agent no longer uses keeps no sandbox: clearing
+        // sessions + deleting the instance now beats waiting out the idle timeout.
+        if (managedEnvironment && managedEnvironment.id !== nextManagedEnvironment?.id) {
+          await overlayAppClient.agentEnvironments.resetHarness(activeWorkspaceId, managedEnvironment.id)
             .catch(() => undefined)
         }
         if (agentType === 'overlay' && computersAvailable) {
@@ -380,6 +499,8 @@ export function AgentEditorPage({
     setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
+    setHostedRuntime(boundHarnessId ?? 'overlay')
+    setHarnessModel(boundHarnessModel)
     setDirty(false)
     setError(null)
     closeEditor()
@@ -455,6 +576,20 @@ export function AgentEditorPage({
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the computer.')
     } finally {
       setComputerLifecycleBusy(null)
+    }
+  }
+
+  const resetManagedHarness = async () => {
+    if (!activeWorkspaceId || !managedEnvironment || managedResetBusy) return
+    if (!window.confirm(`Reset ${agent?.name ?? 'this agent'}'s session? Its sandbox is destroyed and rebuilt fresh on the next message.`)) return
+    setManagedResetBusy(true)
+    setError(null)
+    try {
+      await overlayAppClient.agentEnvironments.resetHarness(activeWorkspaceId, managedEnvironment.id)
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Could not reset the agent session.')
+    } finally {
+      setManagedResetBusy(false)
     }
   }
 
@@ -560,6 +695,21 @@ export function AgentEditorPage({
                   onToggleToolGroup={toggleToolGroup}
                   advanced={advanced}
                   onAdvancedChange={setAdvanced}
+                  hostedRuntime={hostedRuntime}
+                  onHostedRuntimeChange={(value) => {
+                    setHostedRuntime(value)
+                    // Reset the model pick so the new runtime's default applies.
+                    setHarnessModel('')
+                    markDirty()
+                  }}
+                  managedHarnesses={managedPicker?.harnesses ?? []}
+                  harnessModel={harnessModel}
+                  onHarnessModelChange={(value) => { setHarnessModel(value); markDirty() }}
+                  managedProvider={managedProvider}
+                  managedWorkingDirectory={managedWorkingDirectory}
+                  managedSandboxStatus={managedEnvironment?.status ?? null}
+                  managedResetBusy={managedResetBusy}
+                  onManagedReset={managedEnvironment ? () => void resetManagedHarness() : undefined}
                   adapterId={adapterId}
                   harnessOptions={harnessOptions}
                   onHarnessChange={(value) => { chooseHarness(value); markDirty() }}

@@ -15,7 +15,9 @@ export function getAgentRuntimeLabel(modelId: string, binding?: AgentBinding) {
     const adapterId = typeof configuredAdapterId === 'string' && configuredAdapterId.trim()
       ? configuredAdapterId.trim()
       : binding.protocolAdapter
-    return `${adapterId} · connected`
+    return binding.protocolAdapter === 'harness'
+      ? `${adapterId} · Overlay Cloud`
+      : `${adapterId} · connected`
   }
 
   return modelId.startsWith('byo/')

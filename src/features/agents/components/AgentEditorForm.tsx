@@ -5,7 +5,7 @@ import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Monitor, Server, 
 import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
 import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
-import type { AgentEnvironmentResource } from '@overlay/api-client'
+import type { AgentEnvironmentResource, ManagedHarnessPickerEntry } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
@@ -85,8 +85,8 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           checked={value === 'overlay'}
           onSelect={() => onChange('overlay')}
           icon={<Bot size={15} />}
-          label="Overlay agent"
-          description="Models, tools, and memory managed by Overlay. Best for research, writing, and operations."
+          label="Hosted on Overlay Cloud"
+          description="Overlay runs the agent for you — pick a runtime below. No machines to connect."
         />
         <OptionRow
           checked={value === 'byo'}
@@ -293,7 +293,99 @@ export function MasterAgentNotice() {
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+/** Runtime picker inside "Hosted on Overlay Cloud" — Overlay first, then the managed harnesses this workspace may run. */
+export function HostedRuntimeSelector({ value, onChange, harnesses }: {
+  value: string
+  onChange(value: string): void
+  harnesses: ManagedHarnessPickerEntry[]
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium">Runtime</p>
+      <div className="mt-1.5 space-y-2" role="radiogroup" aria-label="Hosted runtime">
+        <OptionRow
+          checked={value === 'overlay'}
+          onSelect={() => onChange('overlay')}
+          label="Overlay"
+          description="Models, tools, and memory managed by Overlay."
+        />
+        {harnesses.map((harness) => (
+          <OptionRow
+            key={harness.id}
+            checked={value === harness.id}
+            onSelect={() => onChange(harness.id)}
+            label={harness.label}
+            description={harness.description}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-[var(--foreground)]">{label}</p>
+      </div>
+      <p className="shrink-0 text-xs text-[var(--muted)]">{value}</p>
+    </div>
+  )
+}
+
+/**
+ * Configuration for a managed harness runtime: instructions, the harness's
+ * own model picker, and the fixed sandbox posture. Provider and working
+ * directory are read-only in v1 — Vercel Sandbox + /workspace are the only
+ * supported values.
+ */
+export function ManagedHarnessFields({ harness, instructions, onInstructionsChange, modelValue, onModelChange, provider, workingDirectory, sandboxStatus, resetBusy, onReset }: {
+  harness: ManagedHarnessPickerEntry
+  instructions: string
+  onInstructionsChange(value: string): void
+  modelValue: string
+  onModelChange(value: string): void
+  provider: string
+  workingDirectory: string
+  sandboxStatus?: string | null
+  resetBusy?: boolean
+  onReset?(): void
+}) {
+  const modelOptions = harness.models.map((model) => ({ value: model.value, label: model.label }))
+  const selectedModel = harness.models.find((model) => model.value === modelValue) ?? harness.models[0]
+  return (
+    <>
+      <label className="block text-xs font-medium">Agent instructions<textarea value={instructions} onChange={(event) => onInstructionsChange(event.target.value)} placeholder="Describe what this agent should do, how it should respond, and when it should stop." className="mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]" /></label>
+      <div>
+        <label className="block text-xs font-medium">Model<ListboxSelect className="mt-1.5" aria-label="Harness model" value={selectedModel?.value ?? modelValue} options={modelOptions} onChange={onModelChange} portal buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]" /></label>
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Model usage is funded by Overlay — no API key needed.</p>
+      </div>
+      <div>
+        <InfoRow label="Provider" value={provider} />
+        <InfoRow label="Working directory" value={workingDirectory} />
+        {sandboxStatus ? (
+          <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-[var(--foreground)]">Sandbox</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">Resetting clears the agent&rsquo;s saved session and rebuilds its sandbox on the next message.</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[11px] text-[var(--muted)]">{sandboxStatus}</span>
+              {onReset ? (
+                <Button variant="secondary" size="sm" onClick={onReset} disabled={resetBusy}>
+                  {resetBusy ? 'Resetting…' : 'Reset session'}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   computersAvailable: boolean
@@ -307,6 +399,19 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   onToggleToolGroup(groupId: string): void
   advanced: boolean
   onAdvancedChange(value: boolean): void
+  /** Runtime inside the hosted branch: `'overlay'` or a managed harness id. */
+  hostedRuntime: string
+  onHostedRuntimeChange(value: string): void
+  /** Picker entries from `GET agent-environments/managed`; empty when gated off. */
+  managedHarnesses: ManagedHarnessPickerEntry[]
+  harnessModel: string
+  onHarnessModelChange(value: string): void
+  managedProvider: string
+  managedWorkingDirectory: string
+  /** Edit mode: live environment status behind the harness binding. */
+  managedSandboxStatus?: string | null
+  managedResetBusy?: boolean
+  onManagedReset?(): void
   adapterId: string
   harnessOptions: Array<{ id: string; label: string; description: string; connectable: boolean }>
   onHarnessChange(value: string): void
@@ -331,20 +436,51 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   onApproveSetup(): void
 }) {
   if (agentType === 'overlay') {
+    const managedHarness = managedHarnesses.find((entry) => entry.id === hostedRuntime)
+    // Editing an agent whose managed runtime has since been gated off or
+    // disallowed: keep it read-only instead of silently rendering it as a
+    // native Overlay agent (which a save would convert it into).
+    if (hostedRuntime !== 'overlay' && !managedHarness) {
+      return (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
+          This managed agent is unchanged. Its hosted runtime is not available for this workspace right now.
+        </div>
+      )
+    }
     return (
-      <OverlayAgentFields
-        instructions={instructions}
-        onInstructionsChange={onInstructionsChange}
-        modelId={modelId}
-        onModelChange={onModelChange}
-        modelOptions={modelOptions}
-        enabledToolGroups={enabledToolGroups}
-        onToggleToolGroup={onToggleToolGroup}
-        advanced={advanced}
-        onAdvancedChange={onAdvancedChange}
-        computersAvailable={computersAvailable}
-        computer={computer}
-      />
+      <>
+        {managedHarnesses.length > 0 ? (
+          <HostedRuntimeSelector value={hostedRuntime} harnesses={managedHarnesses} onChange={onHostedRuntimeChange} />
+        ) : null}
+        {managedHarness ? (
+          <ManagedHarnessFields
+            harness={managedHarness}
+            instructions={instructions}
+            onInstructionsChange={onInstructionsChange}
+            modelValue={harnessModel}
+            onModelChange={onHarnessModelChange}
+            provider={managedProvider}
+            workingDirectory={managedWorkingDirectory}
+            sandboxStatus={managedSandboxStatus}
+            resetBusy={managedResetBusy}
+            onReset={onManagedReset}
+          />
+        ) : (
+          <OverlayAgentFields
+            instructions={instructions}
+            onInstructionsChange={onInstructionsChange}
+            modelId={modelId}
+            onModelChange={onModelChange}
+            modelOptions={modelOptions}
+            enabledToolGroups={enabledToolGroups}
+            onToggleToolGroup={onToggleToolGroup}
+            advanced={advanced}
+            onAdvancedChange={onAdvancedChange}
+            computersAvailable={computersAvailable}
+            computer={computer}
+          />
+        )}
+      </>
     )
   }
   if (!connectedAgentsEnabled) {

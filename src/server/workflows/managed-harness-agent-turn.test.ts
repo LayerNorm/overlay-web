@@ -95,3 +95,48 @@ test('failure path destroys the session, releases the reservation, settles billi
   assert.match(fail, /failAgentMessage/)
   assert.match(fail, /agentRunService\.fail/)
 })
+
+/**
+ * Phase 3 wiring — the picker-selected model and the agent's instructions
+ * must reach the HarnessAgent, and dispatch must re-check availability so a
+ * retired runtime cannot keep turning on an existing binding.
+ */
+test('dispatch re-gates availability and threads harness model + instructions', async () => {
+  const [invocation, workflow, steps] = await Promise.all([
+    read('src/server/agents/workspace-agent-invocation.ts'),
+    read('src/server/workflows/managed-harness-agent-turn.ts'),
+    read('src/server/agents/managed-harness-steps.ts'),
+  ])
+  const dispatch = invocation.slice(invocation.indexOf('export async function startManagedHarnessTurn'))
+  assert.match(dispatch, /managedHarnessAvailability\(/)
+  assert.match(dispatch, /managedHarnessModelOption\(/)
+  assert.match(dispatch, /harnessModel/)
+  assert.match(dispatch, /instructions/)
+  assert.match(workflow, /harnessModel: input\.harnessModel/)
+  assert.match(workflow, /instructions: input\.instructions/)
+  assert.match(steps, /model: input\.harnessModel/)
+  assert.match(steps, /instructions: input\.instructions/)
+})
+
+test('managed route serves the gated picker and enforces availability on POST', async () => {
+  const route = await read('src/server/app-api/v1/agent-environments/managed/route.ts')
+  assert.match(route, /export async function GET/)
+  // Both GET and POST consult the same availability helper — no divergence.
+  assert.equal((route.match(/managedHarnessAvailability\(/g) ?? []).length, 2)
+  assert.match(route, /availability\.harnesses\.some/)
+  assert.match(route, /managedHarnessSandboxProviders\(\)\.includes/)
+})
+
+test('the editor reset path is a dedicated endpoint on the control plane', async () => {
+  const [route, controlPlane] = await Promise.all([
+    read('src/server/app-api/v1/agent-environments/[environmentId]/reset-harness/route.ts'),
+    read('src/server/agents/ConnectedAgentControlPlaneService.ts'),
+  ])
+  assert.match(route, /resetHarnessEnvironment\(/)
+  // Reset clears durable sessions and destroys the sandbox — never touches
+  // the lease row the next turn recreates from.
+  const reset = controlPlane.slice(controlPlane.indexOf('async resetHarnessEnvironment'))
+  assert.match(reset, /deleteHarnessSessionsForBinding/)
+  assert.match(reset, /reconnect\(lease\.providerReference\)/)
+  assert.match(reset, /agent_environment\.harness_reset/)
+})

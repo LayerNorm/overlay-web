@@ -23,6 +23,7 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   automations: 'Automation scheduling',
   multiTenant: 'Multi-tenant support',
   connectedAgents: 'Connected agents',
+  managedHarnessAgents: 'Managed harness agents',
   computers: 'Computers',
 }
 

@@ -24,6 +24,20 @@ import {
  */
 export type ManagedHarnessKind = 'bridge' | 'acp' | 'host'
 
+/**
+ * One selectable model on a managed harness. `harnessModel` is the string the
+ * harness runtime receives (absent means the harness's own default);
+ * `billingModelId` is the real gateway model Overlay charges the turn's token
+ * usage against — harness usage meters the provider's tokens, so the billing
+ * id must price the same model family the harness actually runs.
+ */
+export type ManagedHarnessModelOption = {
+  value: string
+  label: string
+  harnessModel?: string
+  billingModelId: string
+}
+
 export type ManagedHarnessCatalogEntry = {
   id: ManagedHarnessId
   label: string
@@ -31,6 +45,8 @@ export type ManagedHarnessCatalogEntry = {
   kind: ManagedHarnessKind
   /** Bridge/ACP adapters need one reachable sandbox port for their bridge. */
   requiresSandboxPort: boolean
+  /** Pickable models; the first entry is the default. */
+  models: readonly ManagedHarnessModelOption[]
 }
 
 export const MANAGED_HARNESS_CATALOG = [
@@ -40,6 +56,13 @@ export const MANAGED_HARNESS_CATALOG = [
     description: "Anthropic's coding agent, running in an isolated Overlay Cloud sandbox.",
     kind: 'bridge',
     requiresSandboxPort: true,
+    // Ordered by quality like every other model picker — the first entry is
+    // the default.
+    models: [
+      { value: 'opus', label: 'Claude Opus 4.7', harnessModel: 'opus', billingModelId: 'anthropic/claude-opus-4.7' },
+      { value: 'sonnet', label: 'Claude Sonnet 4.6', harnessModel: 'sonnet', billingModelId: 'claude-sonnet-4-6' },
+      { value: 'haiku', label: 'Claude Haiku 4.5', harnessModel: 'haiku', billingModelId: 'claude-haiku-4-5' },
+    ],
   },
   {
     id: 'codex',
@@ -47,6 +70,8 @@ export const MANAGED_HARNESS_CATALOG = [
     description: "OpenAI's coding agent, running in an isolated Overlay Cloud sandbox.",
     kind: 'bridge',
     requiresSandboxPort: true,
+    // The codex CLI owns model selection; usage bills against the GPT-5 tier.
+    models: [{ value: 'default', label: 'Harness default', billingModelId: 'gpt-5.4' }],
   },
   {
     id: 'opencode',
@@ -54,6 +79,7 @@ export const MANAGED_HARNESS_CATALOG = [
     description: 'Open-source coding agent, running in an isolated Overlay Cloud sandbox.',
     kind: 'bridge',
     requiresSandboxPort: true,
+    models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
   },
   {
     id: 'pi',
@@ -61,6 +87,8 @@ export const MANAGED_HARNESS_CATALOG = [
     description: 'Pi coding agent; the agent loop runs on Overlay and the sandbox is its workspace.',
     kind: 'host',
     requiresSandboxPort: false,
+    // Pi resolves its model through the configured gateway at run time.
+    models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
   },
   {
     id: 'hermes',
@@ -68,11 +96,22 @@ export const MANAGED_HARNESS_CATALOG = [
     description: 'Hermes through its official ACP server, running in an isolated Overlay Cloud sandbox.',
     kind: 'acp',
     requiresSandboxPort: true,
+    models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
   },
 ] as const satisfies readonly ManagedHarnessCatalogEntry[]
 
 export function managedHarnessEntry(id: string): ManagedHarnessCatalogEntry | undefined {
   return MANAGED_HARNESS_CATALOG.find((entry) => entry.id === id)
+}
+
+/** Resolves a picker's `value` to its catalog option; falls back to the entry's default. */
+export function managedHarnessModelOption(
+  harnessId: string,
+  value?: string,
+): ManagedHarnessModelOption | undefined {
+  const models = managedHarnessEntry(harnessId)?.models
+  if (!models?.length) return undefined
+  return models.find((model) => model.value === value) ?? models[0]
 }
 
 export function managedHarnessCatalogIsComplete(): boolean {

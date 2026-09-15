@@ -47,6 +47,10 @@ export type ManagedHarnessTurnInput = {
   environmentId: string
   /** Validated with `isManagedHarnessId` at dispatch, before the run opens. */
   harnessId: ManagedHarnessId
+  /** Harness-native model alias resolved from the binding's catalog value. */
+  harnessModel?: string
+  /** Agent's standing instructions, applied to the HarnessAgent. */
+  instructions?: string
   invocationNonce: string
   /** Slice ceiling — dispatch derives it from the connected-agent run-time cap. */
   maxTurnSlices: number
@@ -96,6 +100,8 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
     conversationId: input.conversationId,
     environmentId: input.environmentId,
     harnessId: input.harnessId,
+    harnessModel: input.harnessModel,
+    instructions: input.instructions,
     invocationNonce: input.invocationNonce,
     modelId: input.modelId,
     prompt: input.prompt,

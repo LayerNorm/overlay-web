@@ -81,10 +81,23 @@ export function builtInHarnessCatalogIsComplete() {
     ))
 }
 
+/**
+ * The `byo/` model sentinel is the reliable BYO marker: BYO agents are saved
+ * with `modelId: 'byo/<adapter>'` while managed harness agents carry a real
+ * priced model id — and BYO Claude Code shares the `'claude-code'` harness id
+ * with its managed counterpart, so `harness` alone cannot tell them apart.
+ */
 export function workspaceAgentUsesByo(
   agent: Pick<WorkspaceAgentDirectoryItem, 'harness' | 'modelId'> | null | undefined,
 ) {
-  return Boolean(agent && (agent.harness !== 'overlay' || agent.modelId.startsWith('byo/')))
+  return Boolean(agent && agent.modelId.startsWith('byo/'))
+}
+
+/** A hosted agent backed by a managed harness runtime (not the native Overlay agent, not BYO). */
+export function workspaceAgentUsesManagedHarness(
+  agent: Pick<WorkspaceAgentDirectoryItem, 'harness' | 'modelId'> | null | undefined,
+) {
+  return Boolean(agent && agent.harness !== 'overlay' && !workspaceAgentUsesByo(agent))
 }
 
 export function environmentSupportsHarness(environment: AgentEnvironmentResource, harnessId: string) {

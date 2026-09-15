@@ -37,6 +37,8 @@ import {
 import { isManagedHarnessId, type AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import { managedHarnessAgentTurnWorkflow } from '@/server/workflows/managed-harness-agent-turn'
 import { MANAGED_HARNESS_TIME_SLICE_SECONDS } from '@/server/agents/managed-harness-steps'
+import { managedHarnessAvailability } from '@/server/agents/harnesses/availability'
+import { managedHarnessModelOption } from '@/shared/agents/harness-catalog'
 
 /**
  * Step budgets.
@@ -201,6 +203,8 @@ export type WorkspaceAgentInvocation = {
   agentId: string
   agentName: string
   agentPrincipalId: string
+  /** Standing instructions — managed harnesses pass them to the HarnessAgent. */
+  instructions?: string
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
@@ -210,6 +214,8 @@ export type WorkspaceAgentInvocation = {
     environmentId: string
     environmentName: string
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
+    /** Catalog model value picked on a `protocol:'harness'` binding. */
+    harnessModel?: string
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
     protocolAdapter: AgentProtocolAdapter
@@ -408,10 +414,13 @@ export async function resolveWorkspaceAgentInvocations(args: {
     const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
     const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'
       ? target.binding.adapterConfig.workingDirectory.trim() : ''
+    const harnessModel = target && typeof target.binding.adapterConfig.model === 'string'
+      ? target.binding.adapterConfig.model.trim() : ''
     invocations.push({
       agentId: agent.id,
       agentName: agent.name,
       agentPrincipalId: agent.principalId,
+      instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
       ...(target && adapterId && workingDirectory ? {
@@ -421,6 +430,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
           environmentId: target.environment.id,
           environmentKind: target.environment.kind,
           environmentName: target.environment.name,
+          ...(harnessModel ? { harnessModel } : {}),
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
@@ -689,6 +699,21 @@ export async function startManagedHarnessTurn(args: {
       `${args.invocation.agentName} is not bound to a managed harness.`,
     )
   }
+  // The picker gates creation, but a flag flip or policy change can retire a
+  // harness while bindings still point at it — fail closed at dispatch too.
+  const availability = await managedHarnessAvailability({
+    actorUserId: args.actorUserId,
+    workspaceId: args.workspaceId,
+  })
+  if (!availability.enabled || !availability.harnesses.some((entry) => entry.id === remoteTarget.adapterId)) {
+    throw new WorkspaceAgentInvocationError(
+      'not_entitled',
+      `${args.invocation.agentName}'s managed runtime is not enabled for this workspace.`,
+    )
+  }
+  // `remoteTarget.harnessModel` is the catalog picker value; the HarnessAgent
+  // receives the runtime-native alias while billing uses `agent.modelId`.
+  const harnessModel = managedHarnessModelOption(remoteTarget.adapterId, remoteTarget.harnessModel)?.harnessModel
   const requestFingerprint = hashOperationalIdentifier(
     'workspace-agent-harness-invocation',
     args.invocation.invocationNonce,
@@ -801,6 +826,8 @@ export async function startManagedHarnessTurn(args: {
       conversationId: args.conversationId,
       environmentId: remoteTarget.environmentId,
       harnessId: remoteTarget.adapterId,
+      ...(harnessModel ? { harnessModel } : {}),
+      ...(args.invocation.instructions?.trim() ? { instructions: args.invocation.instructions.trim() } : {}),
       invocationNonce: args.invocation.invocationNonce,
       // The turn's slice ceiling tracks the same run-time cap a remote run gets.
       maxTurnSlices: Math.max(1, Math.ceil(policy.maxRunTimeMs / (MANAGED_HARNESS_TIME_SLICE_SECONDS * 1_000))),
