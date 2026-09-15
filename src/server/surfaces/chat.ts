@@ -49,7 +49,13 @@ export async function getSurfaceChat(): Promise<Chat<{ slack: SlackAdapter }>> {
 }
 
 export async function getSlackAdapter(): Promise<SlackAdapter> {
-  return (await getSurfaceChat()).getAdapter('slack')
+  const chat = await getSurfaceChat()
+  // Non-webhook paths (OAuth callback, channel listing, outbound posts) never
+  // pass through Chat.handleWebhook, which is the only place the SDK
+  // auto-initializes. Without this the adapter has no bound Chat instance and
+  // setInstallation/postMessage throw VALIDATION_ERROR.
+  await chat.initialize()
+  return chat.getAdapter('slack')
 }
 
 /** OAuth and webhooks both need these; surfaces stay off when unset. */
