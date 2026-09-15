@@ -47,6 +47,7 @@ export default defineSchema({
     workspaceId: v.optional(v.string()),
     status: v.union(v.literal('active'), v.literal('suspended'), v.literal('closed')),
     primaryBillingContactUserId: v.optional(v.string()),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     pricingVersion: v.literal('markup_25_v1'),
     markupBasisPoints: v.number(),
     createdAt: v.number(),
@@ -77,6 +78,7 @@ export default defineSchema({
     ),
     autoTopUpEnabled: v.boolean(),
     autoTopUpAmountCents: v.number(),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
@@ -1977,6 +1979,7 @@ export default defineSchema({
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
     isDefault: v.optional(v.boolean()),
+    platforms: v.optional(v.array(v.union(v.literal('slack'), v.literal('msteams')))),
   })
     .index('by_agentId', ['agentId'])
     .index('by_workspaceId', ['workspaceId']),
