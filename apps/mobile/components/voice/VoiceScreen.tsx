@@ -17,8 +17,10 @@ import * as Clipboard from 'expo-clipboard'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
 import { MainScreenHeader, TopBarIconButton } from '../ui/AppChrome'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { FeatureGate } from '../ui/FeatureGate'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
 import {
   disableBackgroundVoice,
@@ -36,6 +38,7 @@ export function VoiceScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
+  const { isFeatureEnabled } = useAppSession()
   const params = useLocalSearchParams<{ autoEnable?: string }>()
 
   const [enabled, setEnabled] = useState(false)
@@ -122,6 +125,10 @@ export function VoiceScreen(): React.ReactElement {
 
   const permissionWarning =
     permission === 'denied' ? 'Microphone access denied — open Settings to allow it.' : null
+
+  if (!isFeatureEnabled('voiceTranscription')) {
+    return <FeatureGate title="Voice dictation is turned off" />
+  }
 
   return (
     <ScreenWithDrawer

@@ -7,6 +7,7 @@ import { useFonts } from 'expo-font'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider } from '../contexts/AuthContext'
 import { AppSessionProvider } from '../contexts/AppSessionContext'
+import { WorkspaceProvider } from '../contexts/WorkspaceContext'
 
 function handleDeepLink(url: string | null | undefined): void {
   if (!url) return
@@ -96,6 +97,13 @@ function RootLayoutNav(): React.ReactElement {
             animation: 'slide_from_right',
           }}
         />
+        <Stack.Screen
+          name="search"
+          options={{
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
       </Stack>
     </>
   )
@@ -124,7 +132,9 @@ export default function RootLayout(): React.ReactElement {
       <AuthProvider>
         <ThemeProvider>
           <AppSessionProvider>
-            <RootLayoutNav />
+            <WorkspaceProvider>
+              <RootLayoutNav />
+            </WorkspaceProvider>
           </AppSessionProvider>
         </ThemeProvider>
       </AuthProvider>

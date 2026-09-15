@@ -1,12 +1,12 @@
 PODS:
   - EXApplication (55.0.14):
     - ExpoModulesCore
-  - EXConstants (55.0.15):
+  - EXConstants (55.0.16):
     - ExpoModulesCore
   - EXJSONUtils (55.0.2)
   - EXManifests (55.0.16):
     - ExpoModulesCore
-  - Expo (55.0.17):
+  - Expo (55.0.23):
     - ExpoModulesCore
     - hermes-engine
     - RCTRequired
@@ -179,7 +179,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (55.0.16):
+  - ExpoAsset (55.0.17):
     - ExpoModulesCore
   - ExpoBlur (55.0.14):
     - ExpoModulesCore
@@ -189,17 +189,17 @@ PODS:
     - ExpoModulesCore
   - ExpoDocumentPicker (55.0.13):
     - ExpoModulesCore
-  - ExpoDomWebView (55.0.5):
+  - ExpoDomWebView (55.0.6):
     - ExpoModulesCore
-  - ExpoFileSystem (55.0.17):
+  - ExpoFileSystem (55.0.19):
     - ExpoModulesCore
-  - ExpoFont (55.0.6):
+  - ExpoFont (55.0.7):
     - ExpoModulesCore
   - ExpoGlassEffect (55.0.10):
     - ExpoModulesCore
   - ExpoHaptics (55.0.14):
     - ExpoModulesCore
-  - ExpoImage (55.0.9):
+  - ExpoImage (55.0.11):
     - ExpoModulesCore
     - libavif/libdav1d
     - SDWebImage (~> 5.21.0)
@@ -208,7 +208,7 @@ PODS:
     - SDWebImageWebPCoder (~> 0.14.6)
   - ExpoImagePicker (55.0.19):
     - ExpoModulesCore
-  - ExpoKeepAwake (55.0.6):
+  - ExpoKeepAwake (55.0.8):
     - ExpoModulesCore
   - ExpoLinearGradient (55.0.13):
     - ExpoModulesCore
@@ -216,7 +216,7 @@ PODS:
     - ExpoModulesCore
   - ExpoLogBox (55.0.11):
     - React-Core
-  - ExpoModulesCore (55.0.23):
+  - ExpoModulesCore (55.0.25):
     - ExpoModulesJSI
     - hermes-engine
     - RCTRequired
@@ -240,7 +240,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoModulesJSI (55.0.23):
+  - ExpoModulesJSI (55.0.25):
     - hermes-engine
     - React-Core
     - React-runtimescheduler
@@ -2852,32 +2852,32 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   EXApplication: ab5a9ca485adce8be81309a5172d1565e9d7467f
-  EXConstants: 5caf448ff399f60be9d1053e77aed32e39411900
+  EXConstants: dadbeba983acc30f855a919658a2b34fbd86615d
   EXJSONUtils: 04bc3807d351331a5fe154ce1da596ec15d99169
   EXManifests: f4e50a54115948e206f4c2391bdea755a1aa74ec
-  Expo: bfedba58da14bf45546ae57e6a5bd5152a1546b4
+  Expo: 51ac8f3473586b2634d9dfe52324793b086acb5a
   expo-dev-client: 6802a357b6ee3b36669c4c9e9622be55b3cd4494
   expo-dev-launcher: e7b80352aa5e11e696c1f939c9eafa8ad33a5779
   expo-dev-menu: 8d6cf955ad15b1f33b73aec853a9ec02afc39c04
   expo-dev-menu-interface: 833795f4c98a674d36cbc12b11b21756c38e01e8
-  ExpoAsset: f56ed740b6a127da2bfd90832cf688ae309d4410
+  ExpoAsset: 7721c5c4ae2a7c3c8147a046727ac6c020b05648
   ExpoBlur: 7a86e84e7728108fa6908d7103fa527705a3dbbf
   ExpoClipboard: 5d1b0cd2686406f21e616f2d9b3431259dee2e6a
   ExpoCrypto: 9fd0b78215cffa1aa20de026d452242401aa37dc
   ExpoDocumentPicker: be59b82799ae30811e3f37a7521d6622baa63a19
-  ExpoDomWebView: 2b2fbd9a07de8790569257cbf9dfdaa31cf95c70
-  ExpoFileSystem: a0e4a5a09c9c4f84338289b273a172609452dec9
-  ExpoFont: cdd7a1d574a376fa003c713eff49e0a4df8672c7
+  ExpoDomWebView: b2e9d601f9cb77d3c97da73234e175b64be91928
+  ExpoFileSystem: 0b73b097e67c83622640168f620defc65a1a6f70
+  ExpoFont: a95606f106a6394df8edf6d0d87aab9020af5ad4
   ExpoGlassEffect: 72bcb9dc634262c59897ff7c53c16e2ff03990d0
   ExpoHaptics: 679f09dc37d5981e619bc197732007a3334e80b8
-  ExpoImage: bd9e9c5bc4eff7a6883339be305f8b0bb5a0cf1c
+  ExpoImage: 5854bd51edd7c0a775755473598f9daeb3fde4e3
   ExpoImagePicker: 6d8e97db8aa1fcdd357c0ed1e7365cf30100a0fe
-  ExpoKeepAwake: a1baf9810a2dee1905aa9bdd336852598f7220e9
+  ExpoKeepAwake: d0eb7a0719500d2a43fbf29b6f79e84d70c75ebf
   ExpoLinearGradient: c654e92d726a6d64c588a0988bb22bea331d5e79
   ExpoLinking: f9e01f5182f2653ea9d90f18fb47f1913e2f99ef
   ExpoLogBox: 617da77cbc083627692b2ea050a3666808aef2cd
-  ExpoModulesCore: 1a328eb3e445ae57848d5fc87c6894ac4a0959f8
-  ExpoModulesJSI: 24121c9a2f32d5f6b6ca2f7ff54925be716d5841
+  ExpoModulesCore: 998d0fbf7f687b1ff715b87cec779fc92be628ac
+  ExpoModulesJSI: 964334271fc77832736f66ee1785761cdc778dbe
   ExpoRouter: e2c56f80102b153c5f8c887b38094ef936c266a2
   ExpoSecureStore: 38954f6bcef1287aa04c06fba3b86e8af3291ccd
   ExpoSymbols: 8b63e859ba013df1f2fc666f535fddb3d5270569

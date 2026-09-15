@@ -16,9 +16,63 @@ interface AppRequestOptions {
   formData?: FormData
   headers?: Record<string, string>
   timeoutMs?: number | null
+  /**
+   * Explicit workspace scope for this request. When omitted, the module-level
+   * active workspace (set by WorkspaceContext via `setRequestWorkspaceId`) is
+   * sent as `x-overlay-workspace-id`; the server falls back to the user's
+   * stored active workspace when no header is present.
+   */
+  workspaceId?: string | null
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000
+
+export const ACTIVE_WORKSPACE_HEADER = 'x-overlay-workspace-id'
+
+let requestWorkspaceId: string | null = null
+
+/**
+ * Sets the workspace id attached to every appRequest/appFetch call.
+ * WorkspaceContext calls this whenever the active workspace changes (or is
+ * cleared on sign-out). Pass `null` to clear — the server then resolves the
+ * user's stored active workspace.
+ */
+export function setRequestWorkspaceId(workspaceId: string | null): void {
+  requestWorkspaceId = workspaceId && workspaceId.trim().length > 0 ? workspaceId.trim() : null
+}
+
+export function getRequestWorkspaceId(): string | null {
+  return requestWorkspaceId
+}
+
+/** Typed API error so screens can branch on status/code instead of message text. */
+export class OverlayApiError extends Error {
+  readonly status: number
+  readonly code: string | undefined
+
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'OverlayApiError'
+    this.status = status
+    this.code = code
+  }
+
+  get isAuthError(): boolean {
+    return this.status === 401
+  }
+
+  get isForbidden(): boolean {
+    return this.status === 403
+  }
+
+  get isBudgetExceeded(): boolean {
+    return this.status === 402
+  }
+
+  get isRateLimited(): boolean {
+    return this.status === 429
+  }
+}
 
 function createUrl(
   path: string,
@@ -95,6 +149,12 @@ async function getValidSession(): Promise<AuthSession | null> {
   }
 }
 
+function resolveWorkspaceId(options: AppRequestOptions): string | null {
+  const workspaceId =
+    options.workspaceId === undefined ? requestWorkspaceId : options.workspaceId
+  return workspaceId && workspaceId.trim().length > 0 ? workspaceId.trim() : null
+}
+
 export async function appRequest(
   path: string,
   options: AppRequestOptions = {},
@@ -103,6 +163,10 @@ export async function appRequest(
   const headers = new Headers(options.headers)
   if (session?.accessToken) {
     headers.set('Authorization', `Bearer ${session.accessToken}`)
+  }
+  const workspaceId = resolveWorkspaceId(options)
+  if (workspaceId) {
+    headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
   }
 
   let body: BodyInit | undefined
@@ -157,6 +221,11 @@ export async function appFetch(
   if (session?.accessToken) {
     headers.set('Authorization', `Bearer ${session.accessToken}`)
   }
+  // RequestInit has no workspaceId option — callers scoping to a different
+  // workspace set the header themselves; otherwise the module default applies.
+  if (requestWorkspaceId && !headers.has(ACTIVE_WORKSPACE_HEADER)) {
+    headers.set(ACTIVE_WORKSPACE_HEADER, requestWorkspaceId)
+  }
 
   const path =
     typeof input === 'string'
@@ -177,34 +246,38 @@ export async function appJson<T>(
 ): Promise<T> {
   const response = await appRequest(path, options)
   if (!response.ok) {
-    throw new Error(await readApiErrorMessage(response))
+    throw await toOverlayApiError(response)
   }
   return response.json() as Promise<T>
 }
 
-async function readApiErrorMessage(response: Response): Promise<string> {
+async function toOverlayApiError(response: Response): Promise<OverlayApiError> {
   const text = await response.text().catch(() => '')
-  let payload: { error?: unknown; message?: unknown } | null = null
+  let payload: { error?: unknown; message?: unknown; code?: unknown } | null = null
   try {
-    payload = text ? JSON.parse(text) as { error?: unknown; message?: unknown } : null
+    payload = text ? JSON.parse(text) as { error?: unknown; message?: unknown; code?: unknown } : null
   } catch {
     payload = null
   }
 
+  const code = typeof payload?.code === 'string' ? payload.code : undefined
   const raw = String(payload?.message || payload?.error || text || '').trim()
   const lower = raw.toLowerCase()
-  if (response.status === 401) return 'Session expired. Please sign in again.'
-  if (response.status === 403 && (lower.includes('storage') || lower.includes('quota'))) {
-    return 'Not enough Overlay storage remaining.'
+  let message: string
+  if (response.status === 401) {
+    message = 'Session expired. Please sign in again.'
+  } else if (response.status === 403 && (lower.includes('storage') || lower.includes('quota'))) {
+    message = 'Not enough Overlay storage remaining.'
+  } else if (response.status === 403 && (lower.includes('paid plan') || lower.includes('upgrade'))) {
+    message = 'This feature requires a paid Overlay plan.'
+  } else if (response.status === 402 || lower.includes('budget') || lower.includes('credits')) {
+    message = 'Your Overlay budget is exhausted. Review billing on the web app.'
+  } else if (response.status >= 500) {
+    message = raw || 'Overlay backend is temporarily unavailable.'
+  } else {
+    message = raw || `Request failed with status ${response.status}`
   }
-  if (response.status === 403 && (lower.includes('paid plan') || lower.includes('upgrade'))) {
-    return 'This feature requires a paid Overlay plan.'
-  }
-  if (response.status === 402 || lower.includes('budget') || lower.includes('credits')) {
-    return 'Your Overlay budget is exhausted. Review billing on the web app.'
-  }
-  if (response.status >= 500) return raw || 'Overlay backend is temporarily unavailable.'
-  return raw || `Request failed with status ${response.status}`
+  return new OverlayApiError(message, response.status, code)
 }
 
 export async function readJsonSseStream<T>(
@@ -393,6 +466,10 @@ export async function* appXhrStreamSse<T>(
   const headers: Record<string, string> = { ...options.headers }
   if (session?.accessToken) {
     headers['Authorization'] = `Bearer ${session.accessToken}`
+  }
+  const streamWorkspaceId = resolveWorkspaceId(options)
+  if (streamWorkspaceId && !headers[ACTIVE_WORKSPACE_HEADER]) {
+    headers[ACTIVE_WORKSPACE_HEADER] = streamWorkspaceId
   }
   let body: string | undefined
   if (options.json) {

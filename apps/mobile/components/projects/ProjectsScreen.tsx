@@ -15,10 +15,12 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import type { ConversationSummary, KnowledgeFile, NoteDoc, ProjectSummary, SkillSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { BottomSheet, EmptyState, MainScreenHeader, SegmentedControl, TopBarIconButton } from '../ui/AppChrome'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { FeatureGate } from '../ui/FeatureGate'
 import {
   createProject,
   deleteProject,
@@ -36,6 +38,7 @@ export function ProjectsScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
+  const { isFeatureEnabled } = useAppSession()
   const router = useRouter()
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [selected, setSelected] = useState<ProjectSummary | null>(null)
@@ -162,6 +165,10 @@ export function ProjectsScreen(): React.ReactElement {
     if (tab === 'notes') return notes.length ? notes.map((note) => <Row key={note._id} theme={theme} icon="book-open" title={note.title || 'Untitled'} detail={new Date(note.updatedAt).toLocaleDateString()} onPress={() => router.push({ pathname: '/note/[id]', params: { id: note._id, projectId: selected._id } })} />) : <EmptyState theme={theme} icon="book-open" title="No notes" description="Project notes appear here." />
     if (tab === 'files') return files.length ? files.map((file) => <Row key={file._id} theme={theme} icon={file.type === 'folder' ? 'folder' : 'file'} title={file.name} detail={file.type} onPress={() => file.type === 'file' ? router.push(`/(tabs)/knowledge/file/${encodeURIComponent(file._id)}`) : undefined} />) : <EmptyState theme={theme} icon="file" title="No files" description="Project files appear here." />
     return skills.length ? skills.map((skill) => <Row key={skill._id} theme={theme} icon="terminal" title={skill.name} detail={skill.enabled === false ? 'Disabled' : 'Enabled'} />) : <EmptyState theme={theme} icon="terminal" title="No skills" description="Project skills appear here." />
+  }
+
+  if (!isFeatureEnabled('projects')) {
+    return <FeatureGate title="Projects are turned off" />
   }
 
   return (

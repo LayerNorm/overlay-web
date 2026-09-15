@@ -15,7 +15,7 @@ import {
   Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useRouter, usePathname } from 'expo-router'
+import { useRouter, usePathname, useLocalSearchParams } from 'expo-router'
 import { Feather, Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { Theme } from '../../constants/theme'
@@ -24,6 +24,10 @@ import type { ChatMeta } from '../../services/chatTypes'
 import type { NoteMeta } from '../../services/types'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
+import { resolveNavDestinations, type ResolvedNavItem } from '../../lib/destinations'
+import { WorkspaceSwitcher } from '../workspace/WorkspaceSwitcher'
+import { AppIcon } from '../ui/AppIcon'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 import { GlassSurface } from '../ui/GlassSurface'
 
@@ -31,20 +35,37 @@ const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
-interface NavItem {
-  label: string
-  icon: React.ComponentProps<typeof Feather>['name']
-  route: string
-  disabled?: boolean
+/**
+ * Route matching for drawer nav items. Routes may carry a `?tab=` qualifier
+ * (e.g. Files → knowledge?tab=files); a qualified route only matches when the
+ * current tab param equals it, and the unqualified knowledge route defers to
+ * the qualified one so both don't highlight at once.
+ */
+function isMobileRouteActive(
+  route: string,
+  pathname: string,
+  activeTab: string | undefined,
+  flags: { isChatActive: boolean; isNotesActive: boolean },
+): boolean {
+  const [pathPart, queryPart] = route.split('?')
+  const segment = pathPart.replace('/(tabs)/', '')
+  if (segment === 'chat') {
+    return pathname === '/chat' || pathname === '/(tabs)/chat' || (pathname === '/' && flags.isChatActive)
+  }
+  if (segment === 'notes') {
+    return pathname === '/notes' || pathname === '/(tabs)/notes' || pathname.startsWith('/note/') || flags.isNotesActive
+  }
+  if (!pathname.includes(segment)) {
+    return false
+  }
+  if (queryPart?.startsWith('tab=')) {
+    return queryPart.slice(4) === activeTab
+  }
+  if (segment === 'knowledge' && activeTab === 'files') {
+    return false
+  }
+  return true
 }
-
-const NAV_ITEMS: NavItem[] = [
-  { label: 'Chat', icon: 'message-circle', route: '/(tabs)/chat' },
-  { label: 'Notes', icon: 'book-open', route: '/(tabs)/notes' },
-  // Voice is grandfathered for App Store launch and will be reintroduced
-  // alongside the OverlayKeyboard extension. Keep the route file so existing
-  // deep links don't crash, but hide the entry point from the sidebar.
-]
 
 interface KnowledgeSubItem {
   label: string
@@ -84,6 +105,7 @@ export function DrawerSidebar({
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const pathname = usePathname()
+  const { tab: activeTabParam } = useLocalSearchParams<{ tab?: string }>()
   const { drawerVisible, closeDrawer } = useDrawer()
   const [shouldRender, setShouldRender] = useState(drawerVisible)
   const translateX = useMemo(() => new Animated.Value(-DRAWER_WIDTH), [])
@@ -187,14 +209,7 @@ export function DrawerSidebar({
   if (!shouldRender) return null
 
   function isRouteActive(route: string): boolean {
-    const segment = route.replace('/(tabs)/', '')
-    if (segment === 'chat') {
-      return pathname === '/chat' || pathname === '/(tabs)/chat' || (pathname === '/' && isChatActive)
-    }
-    if (segment === 'notes') {
-      return pathname === '/notes' || pathname === '/(tabs)/notes' || pathname.startsWith('/note/') || isNotesActive
-    }
-    return pathname.includes(segment)
+    return isMobileRouteActive(route, pathname, activeTabParam, { isChatActive, isNotesActive })
   }
 
   function navigate(route: string): void {
@@ -284,20 +299,20 @@ function DrawerContent({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { closeDrawer, requestSearch } = useDrawer()
+  const { tab: activeTabParam } = useLocalSearchParams<{ tab?: string }>()
+  const { closeDrawer } = useDrawer()
   const { user } = useAuth()
+  const { destinations, featureFlags, capabilities, isFeatureEnabled } = useAppSession()
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
+
+  const navItems = useMemo(
+    () => resolveNavDestinations(destinations, { featureFlags, capabilities, isFeatureEnabled }),
+    [destinations, featureFlags, capabilities, isFeatureEnabled],
+  )
 
   function isRouteActive(route: string): boolean {
     if (externalIsRouteActive) return externalIsRouteActive(route)
-    const segment = route.replace('/(tabs)/', '')
-    if (segment === 'chat') {
-      return pathname === '/chat' || pathname === '/(tabs)/chat' || (pathname === '/' && isChatActive)
-    }
-    if (segment === 'notes') {
-      return pathname === '/notes' || pathname === '/(tabs)/notes' || pathname.startsWith('/note/') || isNotesActive
-    }
-    return pathname.includes(segment)
+    return isMobileRouteActive(route, pathname, activeTabParam, { isChatActive, isNotesActive })
   }
 
   const isKnowledgeActive = pathname.startsWith('/knowledge') || pathname.includes('/(tabs)/knowledge')
@@ -322,36 +337,6 @@ function DrawerContent({
     }
   }, [notes, onSelectNote, externalNavigate, closeDrawer, router])
 
-  const navigateToLastKnowledgeView = useCallback(async () => {
-    try {
-      const lastView = await AsyncStorage.getItem('overlay:last-knowledge-view')
-      if (lastView && ['memories', 'files', 'outputs'].includes(lastView)) {
-        const subItem = KNOWLEDGE_SUBITEMS.find(s => s.label.toLowerCase() === lastView)
-        if (subItem) {
-          // Track the view
-          await AsyncStorage.setItem('overlay:last-knowledge-view', lastView)
-          if (externalNavigate) {
-            externalNavigate(subItem.route)
-          } else {
-            closeDrawer()
-            router.push(subItem.route as Parameters<typeof router.push>[0])
-          }
-          return
-        }
-      }
-    } catch {
-      // ignore
-    }
-    // Default to first knowledge item
-    const defaultRoute = KNOWLEDGE_SUBITEMS[0]?.route ?? '/(tabs)/knowledge'
-    if (externalNavigate) {
-      externalNavigate(defaultRoute)
-    } else {
-      closeDrawer()
-      router.push(defaultRoute as Parameters<typeof router.push>[0])
-    }
-  }, [externalNavigate, closeDrawer, router])
-
   const navigate = useCallback((route: string): void => {
     if (externalNavigate) {
       externalNavigate(route)
@@ -362,16 +347,16 @@ function DrawerContent({
     router.push(route as Parameters<typeof router.push>[0])
   }, [closeDrawer, externalNavigate, router])
 
-  const handleNavItemPress = useCallback((item: NavItem) => {
-    if (item.disabled) return
-    if (item.route === '/(tabs)/notes') {
+  const handleNavItemPress = useCallback((item: ResolvedNavItem) => {
+    if (!item.route) return
+    if (item.id === 'notes') {
       void navigateToLastNote()
-    } else if (item.route === '/(tabs)/knowledge') {
-      void navigateToLastKnowledgeView()
+    } else if (item.id === 'knowledge') {
+      setKnowledgeExpanded((expanded) => !expanded)
     } else {
       navigate(item.route)
     }
-  }, [navigateToLastNote, navigateToLastKnowledgeView, navigate])
+  }, [navigateToLastNote, navigate])
 
   const handleKnowledgeSubItemPress = useCallback(async (subItem: KnowledgeSubItem) => {
     const viewName = subItem.label.toLowerCase()
@@ -421,121 +406,107 @@ function DrawerContent({
 
   return (
     <View style={styles.drawerContent}>
-      {/* Header with Logo and Brand */}
+      {/* Header with Logo, Brand, and Workspace Switcher */}
       <View style={[styles.drawerHeader, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.brandContainer}>
           <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" alt="Overlay logo" />
           <Text style={[styles.brandText, { color: theme.text }]}>overlay</Text>
         </View>
+        <View style={styles.workspaceSwitcherWrap}>
+          <WorkspaceSwitcher theme={theme} />
+        </View>
       </View>
 
       {/* Main Content Area */}
       <View style={styles.mainContent}>
-        {/* Navigation */}
+        {/* Navigation — driven by bootstrap destinations + capability gates */}
         <View style={styles.navSection}>
-          {NAV_ITEMS.map((item) => {
-            const active = isRouteActive(item.route)
+          {navItems.map((item) => {
+            const disabled = !item.route
+            const isKnowledgeItem = item.id === 'knowledge'
+            const active = item.route ? isRouteActive(item.route) : false
             return (
-              <TouchableOpacity
-                key={item.label}
-                style={[
-                  styles.navItem,
-                  active && { backgroundColor: theme.surfaceSubtle },
-                  item.disabled && styles.navItemDisabled,
-                ]}
-                activeOpacity={item.disabled ? 1 : 0.65}
-                disabled={item.disabled}
-                onPress={() => handleNavItemPress(item)}
-              >
-                <Feather
-                  name={item.icon}
-                  size={18}
-                  color={item.disabled ? theme.mutedLight : active ? theme.text : theme.muted}
-                />
-                <Text
+              <View key={item.id}>
+                <TouchableOpacity
                   style={[
-                    styles.navLabel,
-                    {
-                      color: item.disabled
-                        ? theme.mutedLight
-                        : active
-                          ? theme.text
-                          : theme.muted,
+                    styles.navItem,
+                    (active || (isKnowledgeItem && isKnowledgeActive)) && {
+                      backgroundColor: theme.surfaceSubtle,
                     },
+                    disabled && styles.navItemDisabled,
                   ]}
+                  activeOpacity={disabled ? 1 : 0.65}
+                  disabled={disabled}
+                  onPress={() => handleNavItemPress(item)}
                 >
-                  {item.label}
-                </Text>
-                {item.disabled ? (
-                  <Text style={[styles.soonBadge, { color: theme.mutedLight }]}>Soon</Text>
+                  <AppIcon
+                    sfSymbol={item.sfSymbol}
+                    featherIcon={item.featherIcon}
+                    size={18}
+                    color={disabled ? theme.mutedLight : active || (isKnowledgeItem && isKnowledgeActive) ? theme.text : theme.muted}
+                  />
+                  <Text
+                    style={[
+                      styles.navLabel,
+                      {
+                        color: disabled
+                          ? theme.mutedLight
+                          : active || (isKnowledgeItem && isKnowledgeActive)
+                            ? theme.text
+                            : theme.muted,
+                      },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {disabled ? (
+                    <Text style={[styles.soonBadge, { color: theme.mutedLight }]}>Soon</Text>
+                  ) : null}
+                  {isKnowledgeItem ? (
+                    <Feather
+                      name={knowledgeExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={theme.muted}
+                    />
+                  ) : null}
+                </TouchableOpacity>
+
+                {isKnowledgeItem && knowledgeExpanded ? (
+                  <View style={styles.subItemsContainer}>
+                    {KNOWLEDGE_SUBITEMS.map((subItem) => {
+                      const isActive = pathname.includes(subItem.route.replace('/(tabs)', ''))
+                      return (
+                        <TouchableOpacity
+                          key={subItem.label}
+                          style={[
+                            styles.subItem,
+                            isActive && { backgroundColor: theme.surfaceSubtle },
+                          ]}
+                          activeOpacity={0.65}
+                          onPress={() => handleKnowledgeSubItemPress(subItem)}
+                        >
+                          <Feather
+                            name={subItem.icon}
+                            size={16}
+                            color={isActive ? theme.text : theme.muted}
+                            style={styles.subItemIcon}
+                          />
+                          <Text
+                            style={[
+                              styles.subItemLabel,
+                              { color: isActive ? theme.text : theme.muted },
+                            ]}
+                          >
+                            {subItem.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
                 ) : null}
-              </TouchableOpacity>
+              </View>
             )
           })}
-
-          {/* Knowledge Dropdown */}
-          <TouchableOpacity
-            style={[
-              styles.navItem,
-              isKnowledgeActive && { backgroundColor: theme.surfaceSubtle },
-            ]}
-            activeOpacity={0.65}
-            onPress={() => setKnowledgeExpanded(!knowledgeExpanded)}
-          >
-            <Feather
-              name="database"
-              size={18}
-              color={isKnowledgeActive ? theme.text : theme.muted}
-            />
-            <Text
-              style={[
-                styles.navLabel,
-                { color: isKnowledgeActive ? theme.text : theme.muted },
-              ]}
-            >
-              Knowledge
-            </Text>
-            <Feather
-              name={knowledgeExpanded ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={theme.muted}
-            />
-          </TouchableOpacity>
-
-          {/* Knowledge Sub-items */}
-          {knowledgeExpanded && (
-            <View style={styles.subItemsContainer}>
-              {KNOWLEDGE_SUBITEMS.map((subItem) => {
-                const isActive = pathname.includes(subItem.route.replace('/(tabs)', ''))
-                return (
-                  <TouchableOpacity
-                    key={subItem.label}
-                    style={[
-                      styles.subItem,
-                      isActive && { backgroundColor: theme.surfaceSubtle },
-                    ]}
-                    activeOpacity={0.65}
-                    onPress={() => handleKnowledgeSubItemPress(subItem)}
-                  >
-                    <Feather
-                      name={subItem.icon}
-                      size={16}
-                      color={isActive ? theme.text : theme.muted}
-                      style={styles.subItemIcon}
-                    />
-                    <Text
-                      style={[
-                        styles.subItemLabel,
-                        { color: isActive ? theme.text : theme.muted },
-                      ]}
-                    >
-                      {subItem.label}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-          )}
 
           {/* Web */}
           <TouchableOpacity
@@ -672,13 +643,9 @@ function DrawerContent({
           >
             <TouchableOpacity
               style={styles.searchButtonInner}
-              onPress={() => {
-                closeDrawer()
-                // Fire after the drawer close animation begins so the search
-                // input on the underlying screen can claim focus cleanly.
-                setTimeout(() => requestSearch(), 150)
-              }}
+              onPress={() => navigate('/search')}
               activeOpacity={0.7}
+              accessibilityLabel="Search"
             >
               <Ionicons name="search" size={22} color={theme.text} />
             </TouchableOpacity>
@@ -749,6 +716,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: -0.5,
     fontFamily: 'LibreBaskerville',
+  },
+  workspaceSwitcherWrap: {
+    paddingTop: spacing.md,
+    alignItems: 'flex-start',
   },
   navSection: {
     paddingHorizontal: spacing.sm,

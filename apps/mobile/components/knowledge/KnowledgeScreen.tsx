@@ -6,8 +6,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Feather } from '@expo/vector-icons'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { FeatureGate } from '../ui/FeatureGate'
 import { BottomSheet, MainScreenHeader, TopBarIconButton } from '../ui/AppChrome'
 import { MemoriesList } from './MemoriesList'
 import { FilesTree } from './FilesTree'
@@ -37,6 +39,8 @@ export function KnowledgeScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
+  const { isFeatureEnabled, featureFlags } = useAppSession()
+  const knowledgeEnabled = isFeatureEnabled('knowledge') && featureFlags.canUseKnowledge
   const { tab } = useLocalSearchParams<{ tab?: string }>()
   const routeTab: KnowledgeTab | null =
     tab === 'memories' || tab === 'files' || tab === 'outputs' ? tab : null
@@ -92,6 +96,10 @@ export function KnowledgeScreen(): React.ReactElement {
             { key: 'outputFiles', label: 'Files', icon: 'file' },
             { key: 'selectOutputs', label: 'Select', icon: 'check-square' },
           ]
+
+  if (!knowledgeEnabled) {
+    return <FeatureGate title="Knowledge is turned off" />
+  }
 
   return (
     <ScreenWithDrawer

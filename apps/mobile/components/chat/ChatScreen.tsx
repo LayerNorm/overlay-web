@@ -42,6 +42,7 @@ import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
 import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { FeatureGate } from '../ui/FeatureGate'
 import {
   BottomSheet,
   MainScreenHeader,
@@ -348,7 +349,7 @@ export function ChatScreen({
   const router = useRouter()
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
-  const { entitlements, chatModels, uiSettings } = useAppSession()
+  const { entitlements, chatModels, uiSettings, capabilities } = useAppSession()
   const { preferences: mobilePreferences } = useMobilePreferences()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
@@ -996,6 +997,10 @@ export function ChatScreen({
         <ActivityIndicator color={theme.textSecondary} size="large" />
       </View>
     )
+  }
+
+  if (!capabilities.chat) {
+    return <FeatureGate title="Chat is turned off" />
   }
 
   return (

@@ -17,10 +17,12 @@ import { useFocusEffect } from 'expo-router'
 import type { IntegrationSummary, McpServerSummary, SkillSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
 import { borderRadius, fontSize, spacing, type Theme } from '../../constants/theme'
 import { BottomSheet, EmptyState, MainScreenHeader, SearchField, SegmentedControl, TopBarIconButton } from '../ui/AppChrome'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { FeatureGate } from '../ui/FeatureGate'
 import {
   connectIntegration,
   createMcpServer,
@@ -43,6 +45,7 @@ export function ToolsScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
+  const { isFeatureEnabled } = useAppSession()
   const [tab, setTab] = useState<ToolTab>('integrations')
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([])
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -68,7 +71,31 @@ export function ToolsScreen(): React.ReactElement {
         listSkills(),
         listMcpServers(),
       ])
-      setIntegrations(integrationResult.items ?? integrationResult.connected.map((slug) => ({ slug, name: slug, description: '', logoUrl: null, isConnected: true })))
+      setIntegrations(
+        integrationResult.items ??
+          integrationResult.connected.map(
+            (slug): IntegrationSummary => ({
+              slug,
+              name: slug,
+              description: '',
+              logoUrl: null,
+              provider: 'composio',
+              providerKey: slug,
+              capabilities: {
+                provider: 'composio',
+                hosted: true,
+                selfHosted: false,
+                oauthOwnership: 'provider-managed',
+                connectionSetup: 'provider-console',
+                connectionLifecycle: 'provider-managed',
+                supportsApprovals: false,
+                supportsDisconnect: false,
+                supportedSchemas: [],
+              },
+              isConnected: true,
+            }),
+          ),
+      )
       setSkills(skillRows)
       setMcps(mcpRows)
     } catch (error) {
@@ -175,6 +202,10 @@ export function ToolsScreen(): React.ReactElement {
       <Row key={mcp._id} theme={theme} icon="server" title={mcp.name} detail={mcp.url} onPress={() => openMcpEditor(mcp)} action={<Switch value={mcp.enabled !== false} onValueChange={(enabled) => { void updateMcpServer(mcp._id, { enabled }).then(load) }} />} />
     )) : <EmptyState theme={theme} icon="server" title="No MCP servers" description="Add MCP tools for the assistant to use." />
   })()
+
+  if (!isFeatureEnabled('extensions')) {
+    return <FeatureGate title="Extensions are turned off" />
+  }
 
   return (
     <ScreenWithDrawer drawer={<DrawerSidebar variant="slide" theme={theme} chats={[]} activeChatId={null} onSelectChat={() => {}} onCreateChat={() => {}} />}>

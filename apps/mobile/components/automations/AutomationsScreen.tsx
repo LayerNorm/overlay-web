@@ -16,10 +16,12 @@ import { useFocusEffect } from 'expo-router'
 import type { AutomationSchedule, AutomationSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAppSession } from '../../contexts/AppSessionContext'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
 import { BottomSheet, EmptyState, MainScreenHeader, StatusPill, TopBarIconButton } from '../ui/AppChrome'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { FeatureGate } from '../ui/FeatureGate'
 import {
   createAutomation,
   deleteAutomation,
@@ -41,6 +43,7 @@ export function AutomationsScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
+  const { isFeatureEnabled } = useAppSession()
   const [automations, setAutomations] = useState<AutomationSummary[]>([])
   const [selected, setSelected] = useState<AutomationSummary | null>(null)
   const [runs, setRuns] = useState<Array<{ _id: string; status: string; scheduledFor: number; errorMessage?: string; resultSummary?: string }>>([])
@@ -157,6 +160,10 @@ export function AutomationsScreen(): React.ReactElement {
         },
       },
     ])
+  }
+
+  if (!isFeatureEnabled('automations')) {
+    return <FeatureGate title="Automations are turned off" />
   }
 
   return (

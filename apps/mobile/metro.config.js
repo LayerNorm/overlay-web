@@ -25,6 +25,13 @@ const overlayChatCore = path.resolve(workspaceRoot, 'packages/overlay-chat-core'
 if (fs.existsSync(overlayChatCore)) {
   watchFolders.push(overlayChatCore)
 }
+const overlayWorkspaceContracts = path.resolve(
+  workspaceRoot,
+  'packages/overlay-workspace-contracts',
+)
+if (fs.existsSync(overlayWorkspaceContracts)) {
+  watchFolders.push(overlayWorkspaceContracts)
+}
 if (watchFolders.length > 0) {
   config.watchFolders = watchFolders
 }
@@ -38,6 +45,7 @@ config.resolver.extraNodeModules = {
   '@overlay/api-client': overlayApiClient,
   '@overlay/app-core': overlayAppCore,
   '@overlay/chat-core': overlayChatCore,
+  '@overlay/workspace-contracts': overlayWorkspaceContracts,
 }
 
 module.exports = config

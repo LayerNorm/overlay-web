@@ -8,15 +8,18 @@ import React, {
 } from 'react'
 import {
   CANONICAL_APP_DESTINATIONS,
+  deriveOverlayCapabilities,
   type AppBootstrap,
   type AppDestinationConfig,
   type AppFeatureFlags,
   type AppSettings,
   type AppBootstrapDefaults,
   type AuthUser,
+  type CapabilityCheck,
   type ChatModel,
   type Entitlements,
   type ImageModel,
+  type OverlayFeatureFlagId,
   type VideoModel,
 } from '@overlay/app-core'
 import { useAuth } from './AuthContext'
@@ -42,7 +45,15 @@ type AppSessionContextValue = {
   imageModels: ImageModel[]
   videoModels: VideoModel[]
   featureFlags: AppFeatureFlags
+  capabilities: CapabilityCheck
   destinations: AppDestinationConfig[]
+  /**
+   * True when a feature-flag registry entry is enabled AND its required
+   * capabilities are satisfied. Flags absent from the registry fall back to
+   * the matching `featureFlags`/`capabilities` keys, then to enabled — so
+   * features stay on while bootstrap loads (matches previous behavior).
+   */
+  isFeatureEnabled: (flagId: OverlayFeatureFlagId) => boolean
   defaults?: AppBootstrapDefaults
   isLoading: boolean
   isRefreshing: boolean
@@ -182,6 +193,22 @@ export function AppSessionProvider({
     [bootstrap, isAuthenticated, uiSettings],
   )
 
+  const capabilities = useMemo(() => deriveOverlayCapabilities(bootstrap), [bootstrap])
+
+  const isFeatureEnabled = useCallback(
+    (flagId: OverlayFeatureFlagId): boolean => {
+      const entry = bootstrap?.featureFlagRegistry?.find((flag) => flag.id === flagId)
+      const flagEnabled = entry?.enabled ?? true
+      const required = entry?.requiredCapabilities ?? []
+      const anyOf = entry?.requiredAnyCapabilities ?? []
+      const meetsRequired = required.every((capability) => capabilities[capability])
+      const meetsAnyOf =
+        anyOf.length === 0 || anyOf.some((capability) => capabilities[capability])
+      return flagEnabled && meetsRequired && meetsAnyOf
+    },
+    [bootstrap?.featureFlagRegistry, capabilities],
+  )
+
   const value = useMemo<AppSessionContextValue>(
     () => ({
       bootstrap,
@@ -192,7 +219,9 @@ export function AppSessionProvider({
       imageModels: bootstrap?.imageModels ?? [],
       videoModels: bootstrap?.videoModels ?? [],
       featureFlags: bootstrap?.featureFlags ?? DEFAULT_FEATURE_FLAGS,
+      capabilities,
       destinations: bootstrap?.destinations ?? [...CANONICAL_APP_DESTINATIONS],
+      isFeatureEnabled,
       defaults: bootstrap?.defaults,
       isLoading:
         authLoading || !hasLoadedCachedSettings || (isAuthenticated && !bootstrap && isRefreshing),
@@ -205,10 +234,12 @@ export function AppSessionProvider({
       authLoading,
       authUser,
       bootstrap,
+      capabilities,
       error,
       hasLoadedCachedSettings,
       handleUpdateSettings,
       isAuthenticated,
+      isFeatureEnabled,
       isRefreshing,
       refresh,
       uiSettings,
