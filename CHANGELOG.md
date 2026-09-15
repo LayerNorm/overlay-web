@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Managed harness foundation (phase 0 of `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`): Overlay Cloud can now describe and load AI SDK HarnessAgent runtimes — a shared `src/shared/agents/harness-catalog.ts` catalog + `MANAGED_HARNESS_IDS` contract cover Claude Code, Codex, OpenCode, Pi, and Hermes (via generic ACP), and `src/server/agents/harnesses/` resolves each id to its adapter with lazy dynamic imports (`registry.ts`) and selects the sandbox provider (`sandbox-providers.ts`, Vercel-only in v1; Box/Daytona arrive via the Phase 4 bridge). No routes or UI yet. A live smoke run verified a `claude-code` HarnessAgent bootstraps and streams inside a real Vercel Sandbox. Dependency floor: `ai` pinned to `7.0.93` with `@ai-sdk/react@4.0.96`, `@ai-sdk/workflow@2.0.24`, and `@ai-sdk/otel@1.0.93` moved to the same lockstep batch to keep one deduped `ai`/`provider-utils` tree.
+
 - New marketing routes `/blog`, `/changelog`, and `/self-hosting` (shared `MarketingPlaceholderPage` scaffold) so every navbar and footer destination resolves to a real page instead of 404ing.
 
 - Agent DMs now surface the agent's computer in the conversation header: when a one-to-one agent has a usable bound machine (`ready` or `stopped`), a subtle **Desktop** button with a status dot (green running, amber stopped) issues a desktop stream ticket and opens the live view in a new tab — stopped machines resume on ticket issue automatically. Hidden when the `computers` capability is off or the agent has no machine.

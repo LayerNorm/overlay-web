@@ -43,6 +43,24 @@ export function isBuiltInUserOwnedAcpAdapterId(value: unknown): value is BuiltIn
     && (BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS as readonly string[]).includes(value)
 }
 
+/**
+ * Agent harnesses Overlay Cloud can host in managed sandboxes through the AI
+ * SDK HarnessAgent (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`). Kept separate
+ * from `BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS` (user-owned machines) and
+ * `OVERLAY_MANAGED_ACP_ADAPTER_IDS` (the agent-host managed path) — the same
+ * separation-of-allowlists rule applies: being listed here must never imply
+ * availability on another surface.
+ */
+export const MANAGED_HARNESS_IDS = [
+  'claude-code', 'codex', 'opencode', 'pi', 'hermes',
+] as const
+export type ManagedHarnessId = (typeof MANAGED_HARNESS_IDS)[number]
+
+export function isManagedHarnessId(value: unknown): value is ManagedHarnessId {
+  return typeof value === 'string'
+    && (MANAGED_HARNESS_IDS as readonly string[]).includes(value)
+}
+
 export type AgentBinding = {
   id: string
   workspaceId: string
