@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentEnvironment } from '@overlay/workspace-contracts'
-import type { SandboxCommandRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
-import { ManagedAgentSandboxService } from './ManagedAgentSandboxService'
+import type { SandboxCommandRequest, SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
+import { ManagedAgentSandboxService, ManagedAgentSandboxError } from './ManagedAgentSandboxService'
 
 test('managed provisioning uses normal enrollment, hides provider details, and records a lease', async () => {
   const previousImage = process.env.OVERLAY_AGENT_HOST_IMAGE
@@ -50,7 +50,97 @@ test('managed provisioning uses normal enrollment, hides provider details, and r
   }
 })
 
-function fakeRuntime(commands: SandboxCommandRequest[]): SandboxRuntime {
+test('harness provisioning skips enrollment, writes an approved overlay_cloud environment, and opens the bridge port', async () => {
+  const previous = {
+    VERCEL_TOKEN: process.env.VERCEL_TOKEN,
+    VERCEL_TEAM_ID: process.env.VERCEL_TEAM_ID,
+    VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+  }
+  process.env.VERCEL_TOKEN = 'token'
+  process.env.VERCEL_TEAM_ID = 'team'
+  process.env.VERCEL_PROJECT_ID = 'project'
+  const commands: SandboxCommandRequest[] = []
+  const creates: SandboxCreateRequest[] = []
+  const environments: Array<Record<string, unknown>> = []
+  const leases: Array<Record<string, unknown>> = []
+  const audits: Array<Record<string, unknown>> = []
+  try {
+    const service = new ManagedAgentSandboxService({
+      runtime: fakeRuntime(commands, creates),
+      controlPlane: {
+        createEnrollmentSession: async () => { throw new Error('enrollment must not run for harness mode') },
+      } as never,
+      repository: {
+        createEnvironment: async (input: Record<string, unknown>) => {
+          environments.push(input)
+          return { ...input, createdAt: input.now, updatedAt: input.now }
+        },
+        createSandboxLease: async (input: Record<string, unknown>) => {
+          leases.push(input)
+          return { ...input, createdAt: 1, updatedAt: 1 }
+        },
+      } as never,
+      audit: { record: async (input: Record<string, unknown>) => { audits.push(input) } } as never,
+      sleep: async () => {},
+    })
+    const result = await service.provision({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', serverUrl: 'https://getoverlay.io',
+      mode: 'harness', harnessId: 'claude-code',
+    })
+    assert.equal(result.setup.mode, 'harness')
+    assert.equal(result.setup.harnessId, 'claude-code')
+    assert.equal(result.setup.provider, 'vercel')
+    assert.equal(commands.length, 0, 'harness mode must not boot an agent host')
+    assert.deepEqual(creates[0]?.ports, [4000], 'bridge harness must expose its sandbox port')
+    assert.equal(creates[0]?.networkPolicy?.mode, 'allowlist')
+    assert.equal(creates[0]?.networkPolicy?.domains.includes('api.anthropic.com'), true)
+    assert.equal(creates[0]?.networkPolicy?.deniedCidrs?.includes('169.254.0.0/16'), true)
+    const environment = environments[0]
+    assert.equal(environment?.kind, 'overlay_cloud')
+    assert.equal(environment?.status, 'online')
+    assert.equal(typeof environment?.approvedAt, 'number')
+    assert.equal((environment?.approvedAt as number) > 0, true)
+    assert.equal(environment?.approvedByUserId, 'user-1')
+    assert.deepEqual(
+      (environment?.capabilities as { adapters?: Array<Record<string, unknown>> })?.adapters,
+      [{ id: 'claude-code', protocol: 'harness' }],
+    )
+    assert.deepEqual(environment?.filesystemGrant, { mode: 'selected_roots', roots: ['/workspace'] })
+    assert.equal(leases[0]?.providerReference, 'provider-reference')
+    assert.equal((audits[0]?.metadata as Record<string, unknown>)?.harnessId, 'claude-code')
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})
+
+test('harness provisioning rejects unsupported harnesses and providers loudly', async () => {
+  const service = new ManagedAgentSandboxService({
+    runtime: fakeRuntime([], []),
+    controlPlane: {} as never,
+    repository: {} as never,
+    audit: { record: async () => {} } as never,
+    sleep: async () => {},
+  })
+  await assert.rejects(
+    () => service.provision({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', serverUrl: 'https://getoverlay.io',
+      mode: 'harness', harnessId: 'not-a-harness' as never,
+    }),
+    (error: unknown) => error instanceof ManagedAgentSandboxError && error.code === 'harness_invalid',
+  )
+  await assert.rejects(
+    () => service.provision({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', serverUrl: 'https://getoverlay.io',
+      mode: 'harness', harnessId: 'codex', provider: 'box',
+    }),
+    (error: unknown) => error instanceof ManagedAgentSandboxError && error.code === 'managed_sandbox_provider_invalid',
+  )
+})
+
+function fakeRuntime(commands: SandboxCommandRequest[], creates?: SandboxCreateRequest[]): SandboxRuntime {
   const sandbox: SandboxInstance = {
     provider: 'vercel', reference: 'provider-reference', name: 'overlay-cloud-enrollme',
     capabilities: {
@@ -76,7 +166,11 @@ function fakeRuntime(commands: SandboxCommandRequest[]): SandboxRuntime {
   }
   return {
     provider: 'vercel', capabilities: sandbox.capabilities,
-    create: async () => sandbox, reconnect: async () => sandbox, restore: async () => sandbox,
+    create: async (request) => {
+      creates?.push(request)
+      return sandbox
+    },
+    reconnect: async () => sandbox, restore: async () => sandbox,
     deleteSnapshot: async () => {},
   }
 }

@@ -55,7 +55,7 @@ test('workspace agents use participant-scoped room history and persistence', asy
 
 test('a room agent turn is owned by a durable run, not by an HTTP request', async () => {
   const [workflow, lifecycle, messageRoute, policy, service] = await Promise.all([
-    readFile(`${root}/workflows/workspace-agent-turn.ts`, 'utf8'),
+    readFile(`${root}/src/server/workflows/workspace-agent-turn.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
     readFile(`${root}/src/server/authorization/authorization-route-policy.ts`, 'utf8'),

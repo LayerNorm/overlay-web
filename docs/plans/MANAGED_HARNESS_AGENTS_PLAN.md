@@ -224,6 +224,18 @@ is consulted.
 
 ### Phase 1 — data model + provisioning
 
+**Status: implemented.** Harness-mode provisioning now skips the enrollment
+ceremony entirely: `provision({mode:'harness'})` creates the sandbox (bridge
+port 4000 exposed for `bridge`/`acp` adapters, allowlist egress + denied
+private/metadata CIDRs), writes an already-approved `overlay_cloud`
+environment with a fixed `/workspace` grant, and records the lease. Binding
+upserts pick `protocolAdapter: 'harness'` off the environment's advertised
+adapters and stamp `provider` from the active lease. `agentHarnessSessions`
+persists per-binding+conversation `resumeState` in both Convex and Postgres
+(migration 0076); workspace deletion sweeps it. The live API exit gate is
+pending `VERCEL_*` env credentials (see `todos.md`) — provider selection fails
+closed without them.
+
 - Extend `AGENT_PROTOCOL_ADAPTERS`, `WORKSPACE_AGENT_HARNESSES`, and the
   binding `adapterConfig` schema; `agentHarnessSessions` in
   `convex/schema` + Postgres migration + both repository implementations.

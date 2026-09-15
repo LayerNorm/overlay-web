@@ -48,7 +48,7 @@ function conversationParts(parts: Array<Record<string, unknown>>) {
 }
 
 export const createEnvironmentByServer = mutation({
-  args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(), status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()), platform: v.optional(v.string()), capabilities: anyObject, lastSeenAt: v.optional(v.number()), revokedAt: v.optional(v.number()), now: v.number() },
+  args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(), status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()), platform: v.optional(v.string()), capabilities: anyObject, filesystemGrant: v.optional(anyObject), approvedByUserId: v.optional(v.string()), approvedAt: v.optional(v.number()), lastSeenAt: v.optional(v.number()), revokedAt: v.optional(v.number()), now: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const existing = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', args.id)).unique()
@@ -822,6 +822,61 @@ export const getActiveSandboxLeaseByServer = query({
   },
 })
 
+export const getHarnessSessionByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), bindingId: v.string(), conversationId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.query('agentHarnessSessions')
+      .withIndex('by_bindingId_conversationId', q => q.eq('bindingId', args.bindingId).eq('conversationId', args.conversationId))
+      .unique()
+    if (!row || row.workspaceId !== args.workspaceId) return null
+    return { ...clean(row), id: row.harnessSessionId }
+  },
+})
+
+export const upsertHarnessSessionByServer = mutation({
+  args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), bindingId: v.string(), conversationId: v.string(), harnessId: v.string(), sessionId: v.optional(v.string()), resumeState: v.optional(v.any()), now: v.number() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', args.bindingId)).unique()
+    if (!binding || binding.workspaceId !== args.workspaceId) throw new Error('AGENT_BINDING_UNAVAILABLE')
+    const existing = await ctx.db.query('agentHarnessSessions')
+      .withIndex('by_bindingId_conversationId', q => q.eq('bindingId', args.bindingId).eq('conversationId', args.conversationId))
+      .unique()
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        harnessId: args.harnessId, sessionId: args.sessionId, resumeState: args.resumeState, updatedAt: args.now,
+      })
+      return { ...clean(existing), harnessId: args.harnessId, sessionId: args.sessionId, resumeState: args.resumeState, updatedAt: args.now, id: existing.harnessSessionId }
+    }
+    const row = {
+      harnessSessionId: args.id, workspaceId: args.workspaceId, bindingId: args.bindingId,
+      conversationId: args.conversationId, harnessId: args.harnessId, sessionId: args.sessionId,
+      resumeState: args.resumeState, createdAt: args.now, updatedAt: args.now,
+    }
+    await ctx.db.insert('agentHarnessSessions', row)
+    return { ...row, id: row.harnessSessionId }
+  },
+})
+
+export const deleteHarnessSessionsForBindingByServer = mutation({
+  args: { serverSecret: v.string(), workspaceId: v.string(), bindingId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('agentHarnessSessions')
+      .withIndex('by_bindingId_conversationId', q => q.eq('bindingId', args.bindingId))
+      .collect()
+    let count = 0
+    for (const row of rows) {
+      if (row.workspaceId !== args.workspaceId) continue
+      await ctx.db.delete(row._id)
+      count += 1
+    }
+    return count
+  },
+})
+
 export const claimCommandsByServer = mutation({
   args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), now: v.number(), leaseMs: v.number(), limit: v.number() },
   handler: async (ctx, args) => {
@@ -1051,6 +1106,7 @@ export const deleteWorkspaceDataByServer = mutation({
       ctx.db.query('agentRunCommands').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentEventRateWindows').withIndex('by_workspaceId_windowStartedAt', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentWorkspacePolicyUsage').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
+      ctx.db.query('agentHarnessSessions').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentSandboxSettlements').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentRemoteSessions').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),
       ctx.db.query('agentSandboxLeases').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect(),

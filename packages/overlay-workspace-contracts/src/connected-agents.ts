@@ -27,7 +27,7 @@ export type AgentEnvironment = {
   updatedAt: number
 }
 
-export const AGENT_PROTOCOL_ADAPTERS = ['acp', 'eve', 'native'] as const
+export const AGENT_PROTOCOL_ADAPTERS = ['acp', 'eve', 'native', 'harness'] as const
 export type AgentProtocolAdapter = (typeof AGENT_PROTOCOL_ADAPTERS)[number]
 
 /**
@@ -69,6 +69,49 @@ export type AgentBinding = {
   protocolAdapter: AgentProtocolAdapter
   adapterConfig: Record<string, unknown>
   enabled: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * `adapterConfig` shape for `protocolAdapter: 'harness'` bindings — an agent
+ * bound to an `overlay_cloud` environment running an AI SDK HarnessAgent.
+ * `provider` records which managed sandbox provider hosts the harness.
+ */
+export type HarnessAgentBindingConfig = {
+  harnessId: ManagedHarnessId
+  workingDirectory: string
+  provider?: string
+}
+
+export function parseHarnessAgentBindingConfig(value: unknown): HarnessAgentBindingConfig | null {
+  if (typeof value !== 'object' || value === null) return null
+  const candidate = value as Record<string, unknown>
+  if (!isManagedHarnessId(candidate.harnessId)) return null
+  if (typeof candidate.workingDirectory !== 'string' || !candidate.workingDirectory.trim()) return null
+  if (candidate.provider !== undefined && typeof candidate.provider !== 'string') return null
+  return {
+    harnessId: candidate.harnessId,
+    workingDirectory: candidate.workingDirectory,
+    ...(typeof candidate.provider === 'string' ? { provider: candidate.provider } : {}),
+  }
+}
+
+/**
+ * Durable HarnessAgent session record, keyed per binding + conversation.
+ * `resumeState` is the opaque HarnessAgent `resumeFrom`/`continueFrom`
+ * payload — the server persists it verbatim so a later turn can resume the
+ * harness's native conversation without replaying transcript history.
+ */
+export type AgentHarnessSession = {
+  id: string
+  workspaceId: string
+  bindingId: string
+  conversationId: string
+  harnessId: string
+  /** Harness-side session id returned by `HarnessAgentSession.sessionId`. */
+  sessionId?: string
+  resumeState?: Record<string, unknown>
   createdAt: number
   updatedAt: number
 }

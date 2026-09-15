@@ -3,6 +3,7 @@ import type {
   AgentEnvironment,
   AgentFilesystemGrant,
   BuiltInUserOwnedAcpAdapterId,
+  ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 
@@ -35,11 +36,19 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  createManaged(workspaceId: string, input?: { adapterId?: 'codex' | 'claude-code' }, init?: RequestInit) {
+  createManaged(
+    workspaceId: string,
+    input?:
+      | { adapterId?: 'codex' | 'claude-code' }
+      | { mode: 'harness'; harnessId: ManagedHarnessId; provider?: string },
+    init?: RequestInit,
+  ) {
     return this.http.json<{
       environment: AgentEnvironmentResource
       lease: { id: string; status: string }
-      setup: { label: 'Overlay Cloud'; approvedRoot: string; adapterId: 'codex' | 'claude-code' }
+      setup:
+        | { label: 'Overlay Cloud'; approvedRoot: string; adapterId: 'codex' | 'claude-code' }
+        | { label: 'Overlay Cloud'; approvedRoot: string; mode: 'harness'; harnessId: ManagedHarnessId; provider: string }
     }>(
       '/api/v1/agent-environments/managed',
       this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),

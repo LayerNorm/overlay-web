@@ -9,6 +9,7 @@ import type {
   AgentEnvironmentEnrollmentView,
   AgentEnvironmentProofChallenge,
   AgentFilesystemGrant,
+  AgentHarnessSession,
   AgentRemoteEvent,
   AgentRemoteSession,
   AgentRunCommand,
@@ -60,6 +61,9 @@ export interface ConnectedAgentContractRepository {
     | 'status' | 'providerReference' | 'reservationId' | 'reservedUntil'
     | 'runtimeStartedAt' | 'runtimeEndedAt' | 'usage' | 'cleanupAttempts' | 'cleanupAfter'
   >> & { workspaceId: string; leaseId: string; now: number }): Promise<AgentSandboxLease | null>
+  getHarnessSession(args: { workspaceId: string; bindingId: string; conversationId: string }): Promise<AgentHarnessSession | null>
+  upsertHarnessSession(input: Omit<AgentHarnessSession, 'createdAt' | 'updatedAt'> & { now: number }): Promise<AgentHarnessSession>
+  deleteHarnessSessionsForBinding(args: { workspaceId: string; bindingId: string; now: number }): Promise<number>
   applyRemoteEvents(args: { workspaceId: string; environmentId: string; sessionId: string; events: AgentRemoteEvent[]; now: number }): Promise<ApplyResult>
   revokeEnvironment(args: { workspaceId: string; environmentId: string; now: number }): Promise<boolean>
   deleteWorkspaceData(args: { workspaceId: string }): Promise<void>
@@ -376,6 +380,38 @@ export async function verifyConnectedAgentRepositoryContract(fixture: ConnectedA
     runtimeStartedAt: now + 30,
     now: now + 30,
   }))?.status, 'running', 'owner workspace must advance sandbox lease state')
+
+  const conversationId = `${prefix}_conversation`
+  equal(await repository.getHarnessSession({ workspaceId, bindingId, conversationId }), null,
+    'missing harness session must read as null')
+  await rejects(
+    () => repository.upsertHarnessSession({
+      id: `${prefix}_harness_foreign`, workspaceId, bindingId: `${prefix}_missing_binding`,
+      conversationId, harnessId: 'codex', now,
+    }),
+    'a harness session must require a binding in the same workspace',
+  )
+  const harnessSession = await repository.upsertHarnessSession({
+    id: `${prefix}_harness_session`, workspaceId, bindingId, conversationId,
+    harnessId: 'codex', sessionId: 'harness-side-1', resumeState: { turn: 1 }, now,
+  })
+  equal(harnessSession.bindingId, bindingId, 'harness session must retain its binding')
+  const resumed = await repository.upsertHarnessSession({
+    id: `${prefix}_harness_session`, workspaceId, bindingId, conversationId,
+    harnessId: 'codex', sessionId: 'harness-side-2', resumeState: { turn: 2 }, now: now + 1,
+  })
+  equal(resumed.id, harnessSession.id, 'harness session upsert must keep identity per binding + conversation')
+  deepEqual(resumed.resumeState, { turn: 2 }, 'harness session upsert must replace resume state')
+  equal((await repository.getHarnessSession({ workspaceId, bindingId, conversationId }))?.sessionId, 'harness-side-2',
+    'harness session must read back the harness-side session id')
+  equal(await repository.getHarnessSession({ workspaceId: otherWorkspaceId, bindingId, conversationId }), null,
+    'foreign workspace must not read a harness session')
+  equal(await repository.deleteHarnessSessionsForBinding({ workspaceId: otherWorkspaceId, bindingId, now: now + 2 }), 0,
+    'foreign workspace must not delete harness sessions')
+  equal(await repository.deleteHarnessSessionsForBinding({ workspaceId, bindingId, now: now + 2 }), 1,
+    'owner workspace must delete its harness sessions')
+  equal(await repository.getHarnessSession({ workspaceId, bindingId, conversationId }), null,
+    'deleted harness session must read as null')
 
   await repository.enqueueCommand({
     id: `${prefix}_cancelled_by_revoke`,

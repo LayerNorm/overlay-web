@@ -33,6 +33,7 @@ import {
   connectedAgentRolloutConfigFromEnv,
   resolveConnectedAgentRollout,
 } from '@/shared/agents/connected-agent-rollout'
+import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 
 /**
  * Step budgets.
@@ -208,6 +209,7 @@ export type WorkspaceAgentInvocation = {
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
+    protocolAdapter: AgentProtocolAdapter
     workingDirectory: string
   }
   turnId: string
@@ -399,8 +401,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
           onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
         })
       : null
-    const adapterId = target && typeof target.binding.adapterConfig.adapterId === 'string'
-      ? target.binding.adapterConfig.adapterId.trim() : ''
+    const configuredAdapterId = target?.binding.adapterConfig.adapterId ?? target?.binding.adapterConfig.harnessId
+    const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
     const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'
       ? target.binding.adapterConfig.workingDirectory.trim() : ''
     invocations.push({
@@ -419,6 +421,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
+          protocolAdapter: target.binding.protocolAdapter,
           workingDirectory,
         },
       } : {}),
@@ -472,6 +475,15 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   workspaceId: string
 }) {
   const server = getOverlayServerContext()
+  // Managed HarnessAgent turns run through `managedHarnessAgentTurnWorkflow`
+  // (Phase 2 of docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md), not the ACP command
+  // queue — fail loudly rather than enqueue commands nothing will claim.
+  if (args.invocation.remoteTarget.protocolAdapter !== 'acp') {
+    throw new WorkspaceAgentInvocationError(
+      'model_failed',
+      `${args.invocation.agentName} runs on a managed harness runtime that is not dispatchable yet.`,
+    )
+  }
   const requestFingerprint = hashOperationalIdentifier(
     'workspace-agent-remote-invocation',
     args.invocation.invocationNonce,

@@ -9,14 +9,37 @@ import {
 } from '@overlay/sandbox-runtime'
 import { DaytonaSandboxRuntime } from '@overlay/sandbox-runtime/daytona'
 import { VercelSandboxRuntime } from '@overlay/sandbox-runtime/vercel'
+import { isManagedHarnessId, type ManagedHarnessId } from '@overlay/workspace-contracts'
 import type { AuditService } from '@/server/admin'
+import { managedHarnessEntry } from '@/shared/agents/harness-catalog'
 import type { ConnectedAgentControlPlaneService } from './ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
 import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
+import { managedHarnessDescriptor } from './harnesses/registry'
+import { resolveManagedHarnessSandboxProvider } from './harnesses/sandbox-providers'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
 const DEFAULT_HARD_TIMEOUT_MS = 24 * 60 * 60_000
 const MANAGED_ROOT = '/workspace'
+const MANAGED_RESOURCES = { vcpus: 2, memoryGiB: 4, diskGiB: 20 } as const
+const MANAGED_DENIED_CIDRS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
+
+export type ManagedAgentProvisionRequest =
+  | {
+      actorUserId: string
+      workspaceId: string
+      serverUrl: string
+      mode?: 'agent-host'
+      adapterId: OverlayManagedAcpAdapterId
+    }
+  | {
+      actorUserId: string
+      workspaceId: string
+      serverUrl: string
+      mode: 'harness'
+      harnessId: ManagedHarnessId
+      provider?: string
+    }
 
 export class ManagedAgentSandboxService {
   constructor(private readonly dependencies: {
@@ -28,7 +51,127 @@ export class ManagedAgentSandboxService {
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
   }) {}
 
-  async provision(args: {
+  async provision(args: ManagedAgentProvisionRequest) {
+    if (args.mode === 'harness') return await this.provisionHarness(args)
+    return await this.provisionAgentHost(args)
+  }
+
+  /**
+   * Managed HarnessAgent provisioning. No enrollment, no host image, no
+   * control-plane polling — the server owns the sandbox and writes the
+   * `overlay_cloud` environment (server-approved, fixed filesystem root) and
+   * lease directly. The harness itself bootstraps into the sandbox on the
+   * first turn (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`).
+   */
+  private async provisionHarness(args: {
+    actorUserId: string
+    workspaceId: string
+    serverUrl: string
+    harnessId: ManagedHarnessId
+    provider?: string
+  }) {
+    const entry = managedHarnessEntry(args.harnessId)
+    if (!entry || !isManagedHarnessId(args.harnessId)) {
+      throw managedSandboxError('Unsupported managed harness', 400, 'harness_invalid')
+    }
+    let provider: string
+    try {
+      provider = resolveManagedHarnessSandboxProvider(args.provider)
+    } catch (error) {
+      throw managedSandboxError(
+        error instanceof Error ? error.message : 'Managed sandbox provider is unavailable',
+        503,
+        'managed_sandbox_provider_invalid',
+      )
+    }
+    const runtime = this.dependencies.runtime ?? managedSandboxRuntimeFromEnv(provider)
+    const descriptor = managedHarnessDescriptor(args.harnessId)
+    const limits = await this.dependencies.policyLimits?.({ userId: args.actorUserId, workspaceId: args.workspaceId })
+    const idleTimeoutMs = Math.min(DEFAULT_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? DEFAULT_IDLE_TIMEOUT_MS)
+    const hardTimeoutMs = Math.min(DEFAULT_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? DEFAULT_HARD_TIMEOUT_MS)
+    const name = `overlay-harness-${randomUUID().slice(0, 8).toLowerCase()}`
+    let sandbox: SandboxInstance | null = null
+    try {
+      sandbox = await runtime.create({
+        name,
+        persistent: true,
+        ports: entry.requiresSandboxPort && descriptor.bridgePort ? [descriptor.bridgePort] : [],
+        networkPolicy: {
+          mode: 'allowlist',
+          domains: managedHarnessAllowedDomains(args.serverUrl, descriptor.modelApiHosts),
+          deniedCidrs: [...MANAGED_DENIED_CIDRS],
+        },
+        idleTimeoutMs,
+        hardTimeoutMs,
+        resources: { ...MANAGED_RESOURCES },
+        metadata: {
+          overlay: 'true', kind: 'managed-harness', harness: args.harnessId, workspace: args.workspaceId,
+        },
+      })
+      const now = Date.now()
+      const environment = await this.dependencies.repository.createEnvironment({
+        id: randomUUID(),
+        workspaceId: args.workspaceId,
+        kind: 'overlay_cloud',
+        name,
+        status: 'online',
+        capabilities: {
+          runtime: 'ai-sdk-harness',
+          adapters: [{ id: args.harnessId, protocol: 'harness' }],
+        },
+        filesystemGrant: { mode: 'selected_roots', roots: [MANAGED_ROOT] },
+        approvedAt: now,
+        approvedByUserId: args.actorUserId,
+        now,
+      })
+      const lease = await this.dependencies.repository.createSandboxLease({
+        id: randomUUID(),
+        workspaceId: args.workspaceId,
+        environmentId: environment.id,
+        provider: runtime.provider,
+        providerReference: sandbox.reference,
+        status: 'running',
+        reservedUntil: now + hardTimeoutMs,
+        runtimeStartedAt: now,
+        usage: { resources: { ...MANAGED_RESOURCES } },
+        cleanupAttempts: 0,
+        now,
+      })
+      await this.dependencies.audit.record({
+        action: 'agent_environment.managed_provisioned',
+        actorType: 'user',
+        actorUserId: args.actorUserId,
+        outcome: 'success',
+        resourceType: 'agent_environment',
+        resourceId: environment.id,
+        metadata: {
+          workspaceId: args.workspaceId,
+          leaseId: lease.id,
+          provider: runtime.provider,
+          providerReference: sandbox.reference,
+          mode: 'harness',
+          harnessId: args.harnessId,
+        },
+      })
+      const { publicKey: _publicKey, ...publicEnvironment } = environment
+      return {
+        environment: publicEnvironment,
+        lease: { id: lease.id, status: lease.status },
+        setup: {
+          label: 'Overlay Cloud' as const,
+          approvedRoot: MANAGED_ROOT,
+          mode: 'harness' as const,
+          harnessId: args.harnessId,
+          provider: runtime.provider,
+        },
+      }
+    } catch (error) {
+      if (sandbox) await sandbox.delete().catch((_error) => undefined)
+      throw error
+    }
+  }
+
+  private async provisionAgentHost(args: {
     actorUserId: string
     workspaceId: string
     serverUrl: string
@@ -155,9 +298,24 @@ export function managedSandboxRuntimeFromEnv(providerOverride?: string): Sandbox
 function managedAllowedDomains(serverUrl: string) {
   return [
     new URL(serverUrl).hostname,
+    ...managedHarnessBootstrapDomains(),
+    'api.openai.com', 'api.anthropic.com', 'generativelanguage.googleapis.com', 'api.x.ai',
+  ]
+}
+
+/** Package registries the harness bootstrap needs to install its runtime. */
+function managedHarnessBootstrapDomains() {
+  return [
     'registry.npmjs.org', '*.npmjs.org',
     'github.com', 'api.github.com', 'raw.githubusercontent.com', 'objects.githubusercontent.com',
-    'api.openai.com', 'api.anthropic.com', 'generativelanguage.googleapis.com', 'api.x.ai',
+  ]
+}
+
+function managedHarnessAllowedDomains(serverUrl: string, modelApiHosts: readonly string[]) {
+  return [
+    new URL(serverUrl).hostname,
+    ...managedHarnessBootstrapDomains(),
+    ...modelApiHosts,
   ]
 }
 

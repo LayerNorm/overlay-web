@@ -197,18 +197,31 @@ uses the official `@vercel/sandbox` SDK and is the default `Overlay Cloud` backe
 the official `@daytona/sdk` adapter, and the legacy `/api/v1/daytona/run` execution and artifact
 path now performs command and file operations through the same runtime contract.
 
-`POST /api/v1/agent-environments/managed` is the provider-neutral provisioning resource. The
-ordinary agent-creation choice is labeled `Overlay Cloud`; provider selection is available only to
-operators through `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Vercel creation is
-pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates match a
-known region. Both providers boot
-the image configured by `OVERLAY_AGENT_HOST_IMAGE`. That image contains the same
-`@layernorm/overlay-agent-host` executable used on user-owned machines and invokes the same one-time
-enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge.
-Managed hosts enroll as `overlay_cloud` and default their explicit approval root to `/workspace`.
-Provisioning receives the selected managed ACP adapter and starts only that pinned harness manifest;
-the browser still performs the normal explicit root approval. No provider receives a privileged
-alternate host credential.
+`POST /api/v1/agent-environments/managed` is the provider-neutral provisioning resource and accepts
+two modes. The default request body (`{adapterId}`) boots the image configured by
+`OVERLAY_AGENT_HOST_IMAGE`: that image contains the same `@layernorm/overlay-agent-host` executable
+used on user-owned machines and invokes the same one-time enrollment, Ed25519 proof, browser
+approval, short-lived credentials, polling, and ACP bridge. Managed hosts enroll as `overlay_cloud`
+and default their explicit approval root to `/workspace`; the browser still performs the normal
+explicit root approval. No provider receives a privileged alternate host credential.
+
+The harness mode (`{mode: 'harness', harnessId, provider?}`) is the managed AI SDK HarnessAgent
+path (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`). It skips the host image and the entire
+enrollment ceremony: the service creates the sandbox, writes an already-approved `overlay_cloud`
+environment with a fixed `/workspace` filesystem grant, records the lease, and returns the same
+`{environment, lease}` response shape. The harness itself bootstraps into the sandbox on the first
+turn; the environment advertises `capabilities.adapters: [{id: harnessId, protocol: 'harness'}]`
+and binding upserts against it write `protocolAdapter: 'harness'` with an
+`adapterConfig` of `{harnessId, workingDirectory, provider}`. Harness sessions resume through the
+durable `agentHarnessSessions` table (binding + conversation scoped `resumeState`), so the
+sandbox lease is renewable while the agent's conversation state survives provider expiration.
+
+Provider selection for the agent-host mode is available only to operators through
+`OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Harness mode resolves through
+`OVERLAY_HARNESS_SANDBOX_PROVIDER` (or the request `provider`), is Vercel-only until the Overlay
+sandbox bridge lands, and fails closed when the selected provider is not configured. Vercel
+creation is pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates
+match a known region.
 
 Credential bindings contain an opaque broker reference, placeholder environment variable, and
 allowed domains. Vercel translates resolved header material into network-policy transforms;

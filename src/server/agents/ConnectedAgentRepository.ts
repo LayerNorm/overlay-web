@@ -3,7 +3,8 @@ import 'server-only'
 import type {
   AgentApprovalRequest, AgentApprovalResolution, AgentArtifact, AgentBinding, AgentEnrollmentSession,
   AgentEnvironment, AgentEnvironmentCredential, AgentEnvironmentEnrollmentView, AgentEnvironmentProofChallenge,
-  AgentFilesystemGrant, AgentRemoteEvent, AgentRemoteSession, AgentRunCommand, AgentSandboxLease,
+  AgentFilesystemGrant, AgentHarnessSession, AgentRemoteEvent, AgentRemoteSession, AgentRunCommand,
+  AgentSandboxLease,
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
@@ -19,6 +20,7 @@ export type ConnectedAgentUpdateSandboxLease = Partial<Pick<
   | 'status' | 'providerReference' | 'reservationId' | 'reservedUntil'
   | 'runtimeStartedAt' | 'runtimeEndedAt' | 'usage' | 'cleanupAttempts' | 'cleanupAfter'
 >> & { workspaceId: string; leaseId: string; now: number }
+export type ConnectedAgentUpsertHarnessSession = Omit<AgentHarnessSession, 'createdAt' | 'updatedAt'> & { now: number }
 
 export type ApplyRemoteEventsResult =
   | {
@@ -307,6 +309,17 @@ export interface ConnectedAgentRepository {
   createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
   getActiveSandboxLease(args: { workspaceId: string; environmentId: string }): Promise<AgentSandboxLease | null>
   updateSandboxLease(input: ConnectedAgentUpdateSandboxLease): Promise<AgentSandboxLease | null>
+  getHarnessSession(args: {
+    workspaceId: string
+    bindingId: string
+    conversationId: string
+  }): Promise<AgentHarnessSession | null>
+  upsertHarnessSession(input: ConnectedAgentUpsertHarnessSession): Promise<AgentHarnessSession>
+  deleteHarnessSessionsForBinding(args: {
+    workspaceId: string
+    bindingId: string
+    now: number
+  }): Promise<number>
   applyRemoteEvents(args: {
     workspaceId: string
     environmentId: string

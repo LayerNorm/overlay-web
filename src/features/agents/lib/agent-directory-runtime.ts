@@ -11,7 +11,7 @@ export function indexActiveAgentBindings(bindings: AgentBinding[]) {
 
 export function getAgentRuntimeLabel(modelId: string, binding?: AgentBinding) {
   if (binding?.enabled) {
-    const configuredAdapterId = binding.adapterConfig.adapterId
+    const configuredAdapterId = binding.adapterConfig.adapterId ?? binding.adapterConfig.harnessId
     const adapterId = typeof configuredAdapterId === 'string' && configuredAdapterId.trim()
       ? configuredAdapterId.trim()
       : binding.protocolAdapter

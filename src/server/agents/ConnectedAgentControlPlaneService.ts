@@ -303,17 +303,24 @@ export class ConnectedAgentControlPlaneService {
     const adapters = Array.isArray(environment.capabilities.adapters)
       ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
     const adapter = adapters.find((candidate) => candidate.id === args.adapterId)
-    if (!adapter || adapter.protocol !== 'acp') {
-      throw controlPlaneError('The selected ACP adapter is not installed on this environment', 409, 'adapter_unavailable')
+    if (!adapter || (adapter.protocol !== 'acp' && adapter.protocol !== 'harness')) {
+      throw controlPlaneError('The selected agent adapter is not installed on this environment', 409, 'adapter_unavailable')
     }
     const now = this.now()
+    const adapterConfig: Record<string, unknown> = adapter.protocol === 'harness'
+      ? {
+          harnessId: args.adapterId,
+          workingDirectory: args.workingDirectory,
+          ...(await this.harnessProviderConfig(args))
+        }
+      : { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
     const binding = await this.dependencies.repository.upsertBinding({
       id: randomUUID(),
       workspaceId: args.workspaceId,
       agentId: args.agentId,
       environmentId: args.environmentId,
-      protocolAdapter: 'acp',
-      adapterConfig: { adapterId: args.adapterId, workingDirectory: args.workingDirectory },
+      protocolAdapter: adapter.protocol === 'harness' ? 'harness' : 'acp',
+      adapterConfig,
       enabled: true,
       now,
     })
@@ -325,6 +332,18 @@ export class ConnectedAgentControlPlaneService {
       workingDirectory: args.workingDirectory,
     }, binding.id, 'agent_binding')
     return binding
+  }
+
+  /**
+   * Stamps the sandbox provider hosting a harness binding onto `adapterConfig`
+   * for provenance — the active lease is authoritative.
+   */
+  private async harnessProviderConfig(args: { workspaceId: string; environmentId: string }) {
+    const lease = await this.dependencies.repository.getActiveSandboxLease({
+      workspaceId: args.workspaceId,
+      environmentId: args.environmentId,
+    })
+    return lease ? { provider: lease.provider } : {}
   }
 
   async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {

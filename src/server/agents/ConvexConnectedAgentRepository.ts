@@ -9,6 +9,7 @@ import type {
   AgentEnvironmentCredential,
   AgentEnvironmentEnrollmentView,
   AgentEnvironmentProofChallenge,
+  AgentHarnessSession,
   AgentRemoteSession,
   AgentRunCommand,
   AgentSandboxLease,
@@ -151,6 +152,15 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   }
   getActiveSandboxLease(input: Parameters<ConnectedAgentRepository['getActiveSandboxLease']>[0]) {
     return connectedQuery<AgentSandboxLease | null>('getActiveSandboxLeaseByServer', input)
+  }
+  getHarnessSession(input: Parameters<ConnectedAgentRepository['getHarnessSession']>[0]) {
+    return connectedQuery<AgentHarnessSession | null>('getHarnessSessionByServer', input)
+  }
+  upsertHarnessSession(input: Parameters<ConnectedAgentRepository['upsertHarnessSession']>[0]) {
+    return mutation<AgentHarnessSession>('upsertHarnessSessionByServer', input)
+  }
+  deleteHarnessSessionsForBinding(input: Parameters<ConnectedAgentRepository['deleteHarnessSessionsForBinding']>[0]) {
+    return mutation<number>('deleteHarnessSessionsForBindingByServer', input)
   }
   applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
     return mutation<ApplyRemoteEventsResult>('applyRemoteEventsByServer', input)

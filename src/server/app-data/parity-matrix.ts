@@ -42,7 +42,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     targetPhase: 'P1',
     capabilities: [{ key: 'supportsConnectedAgents', expectedAtParity: true }],
     routeRuleIds: ['connected-agent-control-plane'],
-    exitGate: 'Environment, enrollment, credential, replay, binding, command, remote-session, approval, and lease contracts pass the shared provider suite.',
+    exitGate: 'Environment, enrollment, credential, replay, binding, command, remote-session, approval, lease, and harness-session contracts pass the shared provider suite.',
   },
   {
     id: 'runtime-isolation',
