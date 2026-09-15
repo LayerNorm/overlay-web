@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   Animated,
   Image,
@@ -31,6 +31,21 @@ import { AppIcon } from '../ui/AppIcon'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 import { GlassSurface } from '../ui/GlassSurface'
 import { ChatActionsSheet } from './ChatActionsSheet'
+import { NewDirectMessageSheet } from './NewDirectMessageSheet'
+import { NewChannelSheet } from './NewChannelSheet'
+import { fetchNotifications } from '../../services/collaborationService'
+import { loadChatsMetaByView, type ChatListView } from '../../services/chatStorage'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
+
+/** Recents subview filter — mirrors the web `view=` switcher (ChatInlinePanel). */
+type ChatListFilter = 'all' | 'personal' | 'dms' | 'channels'
+
+const CHAT_FILTERS: Array<{ value: ChatListFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'personal', label: 'Chat' },
+  { value: 'dms', label: 'DMs' },
+  { value: 'channels', label: 'Channels' },
+]
 
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -308,11 +323,81 @@ function DrawerContent({
   const router = useRouter()
   const pathname = usePathname()
   const { tab: activeTabParam } = useLocalSearchParams<{ tab?: string }>()
-  const { closeDrawer } = useDrawer()
+  const { closeDrawer, drawerVisible } = useDrawer()
   const { user } = useAuth()
   const { destinations, featureFlags, capabilities, isFeatureEnabled } = useAppSession()
+  const { activeWorkspaceId } = useWorkspace()
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
   const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
+  const [chatFilter, setChatFilter] = useState<ChatListFilter>('all')
+  const [collabChats, setCollabChats] = useState<ChatMeta[]>([])
+  const collabChatsCache = useRef<Map<ChatListView, ChatMeta[]>>(new Map())
+  const [newDmOpen, setNewDmOpen] = useState(false)
+  const [newChannelOpen, setNewChannelOpen] = useState(false)
+  const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({})
+  const [unreadActivityCount, setUnreadActivityCount] = useState(0)
+
+  // Unread badges = unread collaboration notifications per conversation —
+  // same derivation as the web sidebar (`collaborationUnread`).
+  const refreshUnread = useCallback(() => {
+    void fetchNotifications('unread', { unreadOnly: true, limit: 100 })
+      .then((items) => {
+        const counts: Record<string, number> = {}
+        for (const notification of items) {
+          if (notification.readAt || !notification.conversationId) continue
+          counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
+        }
+        setUnreadByConversation(counts)
+        setUnreadActivityCount(items.filter((notification) => !notification.readAt).length)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    refreshUnread()
+    const interval = setInterval(refreshUnread, 20_000)
+    return () => clearInterval(interval)
+  }, [refreshUnread])
+
+  // Re-check when the drawer opens so badges reflect the latest activity.
+  useEffect(() => {
+    if (drawerVisible) refreshUnread()
+  }, [drawerVisible, refreshUnread])
+
+  // Collaboration lists load per view — the `chats` prop stays the personal
+  // default list; dms/channels/all fetch on demand and cache per filter.
+  useEffect(() => {
+    if (chatFilter === 'personal') return
+    const cached = collabChatsCache.current.get(chatFilter)
+    if (cached) {
+      setCollabChats(cached)
+      return
+    }
+    let cancelled = false
+    void loadChatsMetaByView(chatFilter)
+      .then((items) => {
+        if (cancelled) return
+        collabChatsCache.current.set(chatFilter, items)
+        setCollabChats(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [chatFilter])
+
+  // Invalidate collaboration list caches when the drawer reopens or a
+  // mutation lands (rename/archive/delete from the actions sheet).
+  useEffect(() => {
+    if (drawerVisible) collabChatsCache.current.clear()
+  }, [drawerVisible])
+  const handleChatsChanged = useCallback(
+    (removedChatId?: string) => {
+      collabChatsCache.current.clear()
+      onChatsChanged?.(removedChatId)
+    },
+    [onChatsChanged],
+  )
 
   const navItems = useMemo(
     () => resolveNavDestinations(destinations, { featureFlags, capabilities, isFeatureEnabled }),
@@ -462,6 +547,13 @@ function DrawerContent({
                   {disabled ? (
                     <Text style={[styles.soonBadge, { color: theme.mutedLight }]}>Soon</Text>
                   ) : null}
+                  {item.id === 'activity' && unreadActivityCount > 0 ? (
+                    <View style={[styles.unreadBadge, { backgroundColor: theme.surfaceMuted }]}>
+                      <Text style={[styles.unreadBadgeText, { color: theme.text }]}>
+                        {unreadActivityCount > 9 ? '9+' : unreadActivityCount}
+                      </Text>
+                    </View>
+                  ) : null}
                   {isKnowledgeItem ? (
                     <Feather
                       name={knowledgeExpanded ? 'chevron-up' : 'chevron-down'}
@@ -523,47 +615,126 @@ function DrawerContent({
           </TouchableOpacity>
         </View>
 
-        {/* Chat recents — shown only when on chat route */}
+        {/* Chat recents — shown only when on chat route. The view filter mirrors
+            the web sidebar's Personal/DMs/Channels/All switcher. */}
         {isChatActive && (
           <View style={[styles.recentsSection, {}]}>
             <View style={styles.recentsHeaderRow}>
               <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
-              <TouchableOpacity
-                activeOpacity={0.65}
-                onPress={() => navigate('/(tabs)/archived')}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.archivedLink, { color: theme.muted }]}>Archived</Text>
-              </TouchableOpacity>
+              <View style={styles.recentsHeaderActions}>
+                <TouchableOpacity
+                  activeOpacity={0.65}
+                  onPress={() => navigate('/(tabs)/archived')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.archivedLink, { color: theme.muted }]}>Archived</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.65}
+                  onPress={() => {
+                    if (chatFilter === 'dms') setNewDmOpen(true)
+                    else if (chatFilter === 'channels') setNewChannelOpen(true)
+                    else onCreateChat()
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="plus" size={16} color={theme.muted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {/* Subview filter chips — Personal / DMs / Channels / All */}
+            <View style={styles.filterChipsRow}>
+              {CHAT_FILTERS.map((filter) => {
+                const active = chatFilter === filter.value
+                return (
+                  <TouchableOpacity
+                    key={filter.value}
+                    activeOpacity={0.7}
+                    onPress={() => setChatFilter(filter.value)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: active ? theme.surfaceSubtle : 'transparent',
+                        borderColor: active ? theme.border : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        { color: active ? theme.text : theme.muted },
+                      ]}
+                    >
+                      {filter.label}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}
               style={styles.recentsList}
               contentContainerStyle={styles.recentsContent}
             >
-              {chats.slice(0, 20).map((chat) => (
-                <TouchableOpacity
-                  key={chat.id}
-                  onPress={() => {
-                    onSelectChat(chat.id)
-                    closeDrawer()
-                  }}
-                  onLongPress={() => handleLongPressChat(chat)}
-                  delayLongPress={500}
-                  activeOpacity={0.65}
-                  style={[
-                    styles.recentItem,
-                    activeChatId === chat.id && {
-                      backgroundColor: theme.surfaceSubtle,
-                      borderRadius: borderRadius.md,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.recentTitle, { color: theme.text }]} numberOfLines={1}>
-                    {chat.title || 'New chat'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {(chatFilter === 'personal' ? chats : collabChats)
+                .filter((chat) => {
+                  const type = chat.conversationType ?? 'personal'
+                  if (chatFilter === 'personal') return type === 'personal'
+                  if (chatFilter === 'dms') return type === 'dm'
+                  if (chatFilter === 'channels') return type === 'channel'
+                  return true
+                })
+                .slice(0, 30)
+                .map((chat) => {
+                  const type = chat.conversationType ?? 'personal'
+                  const unread = unreadByConversation[chat.id] ?? 0
+                  return (
+                    <TouchableOpacity
+                      key={chat.id}
+                      onPress={() => {
+                        if (type === 'dm') {
+                          closeDrawer()
+                          router.push({ pathname: '/dm/[id]', params: { id: chat.id } })
+                        } else if (type === 'channel') {
+                          closeDrawer()
+                          router.push({ pathname: '/channel/[id]', params: { id: chat.id } })
+                        } else {
+                          onSelectChat(chat.id)
+                          closeDrawer()
+                        }
+                      }}
+                      onLongPress={() => handleLongPressChat(chat)}
+                      delayLongPress={500}
+                      activeOpacity={0.65}
+                      style={[
+                        styles.recentItem,
+                        activeChatId === chat.id && {
+                          backgroundColor: theme.surfaceSubtle,
+                          borderRadius: borderRadius.md,
+                        },
+                      ]}
+                    >
+                      {type !== 'personal' ? (
+                        <Feather
+                          name={type === 'channel' ? 'hash' : 'message-circle'}
+                          size={13}
+                          color={theme.muted}
+                          style={styles.recentTypeIcon}
+                        />
+                      ) : null}
+                      <Text style={[styles.recentTitle, { color: theme.text }]} numberOfLines={1}>
+                        {chat.title || (type === 'channel' ? 'channel' : 'New chat')}
+                      </Text>
+                      {unread > 0 ? (
+                        <View style={[styles.unreadBadge, { backgroundColor: theme.surfaceMuted }]}>
+                          <Text style={[styles.unreadBadgeText, { color: theme.text }]}>
+                            {unread > 9 ? '9+' : unread}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  )
+                })}
             </ScrollView>
           </View>
         )}
@@ -690,9 +861,31 @@ function DrawerContent({
         visible={actionsChat !== null}
         chat={actionsChat}
         onClose={() => setActionsChat(null)}
-        onChanged={() => onChatsChanged?.()}
-        onDeleted={(chatId) => onChatsChanged?.(chatId)}
-        onArchived={(chatId) => onChatsChanged?.(chatId)}
+        onChanged={() => handleChatsChanged()}
+        onDeleted={(chatId) => handleChatsChanged(chatId)}
+        onArchived={(chatId) => handleChatsChanged(chatId)}
+      />
+      <NewDirectMessageSheet
+        visible={newDmOpen}
+        workspaceId={activeWorkspaceId ?? ''}
+        theme={theme}
+        onClose={() => setNewDmOpen(false)}
+        onCreated={(dm) => {
+          setNewDmOpen(false)
+          closeDrawer()
+          router.push({ pathname: '/dm/[id]', params: { id: dm.id } })
+        }}
+      />
+      <NewChannelSheet
+        visible={newChannelOpen}
+        workspaceId={activeWorkspaceId ?? ''}
+        theme={theme}
+        onClose={() => setNewChannelOpen(false)}
+        onCreated={(channel) => {
+          setNewChannelOpen(false)
+          closeDrawer()
+          router.push({ pathname: '/channel/[id]', params: { id: channel.id } })
+        }}
       />
     </View>
   )
@@ -776,6 +969,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     paddingHorizontal: spacing.xs,
   },
+  recentsHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   recentsLabel: {
     fontSize: fontSize.xs,
     fontWeight: '600',
@@ -783,6 +981,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   archivedLink: {
+    fontSize: fontSize.xs,
+    fontWeight: '600',
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingBottom: spacing.xs,
+  },
+  filterChip: {
+    borderRadius: borderRadius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  filterChipText: {
     fontSize: fontSize.xs,
     fontWeight: '600',
   },
@@ -804,12 +1018,31 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     paddingVertical: 9,
     paddingHorizontal: 8,
   },
+  recentTypeIcon: {
+    marginTop: 1,
+  },
   recentTitle: {
+    flex: 1,
     fontSize: fontSize.md,
     fontWeight: '400',
+  },
+  unreadBadge: {
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   drawerContent: {
     flex: 1,

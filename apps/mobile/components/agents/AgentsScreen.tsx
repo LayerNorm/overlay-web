@@ -82,7 +82,7 @@ export function AgentsScreen(): React.ReactElement {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     try {
       const conversationId = await openAgentChat(workspaceId, agent)
-      router.push({ pathname: '/chat/[id]', params: { id: conversationId } })
+      router.push({ pathname: '/dm/[id]', params: { id: conversationId } })
     } catch (nextError) {
       Alert.alert(
         'Could not open chat',

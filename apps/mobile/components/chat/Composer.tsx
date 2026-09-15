@@ -90,6 +90,20 @@ interface ComposerProps {
 
   /** Optional ref so parents can blur/focus the field (drawer open, reply). */
   inputRef?: React.RefObject<TextInput | null>
+
+  // ── Room (collaboration) variant ──────────────────────────────────────────
+  /** Custom mention search — rooms pass participant lookup instead of the
+   *  global `/mention-search` endpoint. Defaults to `searchMentions`. */
+  mentionProvider?: (query: string) => Promise<ChatMentionItem[]>
+  /**
+   * `'chip'` (default) turns a picked mention into a removable chip and strips
+   * the `@token`; `'text'` inserts `@Name ` into the input — rooms send the
+   * mention inside the message body so the server resolves principals.
+   */
+  mentionInsertStyle?: 'chip' | 'text'
+  /** Rooms don't grant per-turn tools (addMessage carries no tool ids) — the
+   *  tools button + sheet are hidden. */
+  showToolsButton?: boolean
 }
 
 /** Trailing `@token` the user is actively typing — drives the mention dropdown. */
@@ -136,6 +150,9 @@ export function Composer(props: ComposerProps): React.ReactElement {
     replyContext,
     onClearReply,
     inputRef,
+    mentionProvider,
+    mentionInsertStyle = 'chip',
+    showToolsButton = true,
   } = props
 
   const [attachPickerVisible, setAttachPickerVisible] = useState(false)
@@ -156,8 +173,9 @@ export function Composer(props: ComposerProps): React.ReactElement {
     }
     const seq = ++mentionSeq.current
     setMentionSearching(true)
+    const provider = mentionProvider ?? searchMentions
     const handle = setTimeout(() => {
-      void searchMentions(mentionQuery || ' ')
+      void provider(mentionQuery || ' ')
         .then((items) => {
           if (seq !== mentionSeq.current) return
           setMentionResults(items.filter((item) => !mentions.some((m) => m.id === item.id && m.type === item.type)))
@@ -170,16 +188,27 @@ export function Composer(props: ComposerProps): React.ReactElement {
         })
     }, 220)
     return () => clearTimeout(handle)
-  }, [mentionQuery, mentions])
+  }, [mentionQuery, mentions, mentionProvider])
 
   const handleSelectMention = useCallback(
     (item: ChatMentionItem) => {
-      // Strip the `@token` the user was typing; the mention rides as a chip.
-      onChangeInput(inputValue.replace(/(?:^|\s)@[\p{L}\p{N}_-]{0,40}$/u, ''))
-      onAddMention(item)
+      if (mentionInsertStyle === 'text') {
+        // Room mentions live inside the body text — replace the partial
+        // `@token` with the resolved `@Name ` so `resolveMentionTargets`
+        // finds the principal on send.
+        onChangeInput(
+          inputValue.replace(/(?:^|\s)@[\p{L}\p{N}_-]{0,40}$/u, (match) =>
+            match.startsWith(' ') ? ` @${item.name} ` : `@${item.name} `,
+          ),
+        )
+      } else {
+        // Strip the `@token` the user was typing; the mention rides as a chip.
+        onChangeInput(inputValue.replace(/(?:^|\s)@[\p{L}\p{N}_-]{0,40}$/u, ''))
+        onAddMention(item)
+      }
       setMentionResults([])
     },
-    [inputValue, onAddMention, onChangeInput],
+    [inputValue, onAddMention, onChangeInput, mentionInsertStyle],
   )
 
   const mentionGroups = useMemo(() => groupMentions(mentionResults), [mentionResults])
@@ -377,24 +406,26 @@ export function Composer(props: ComposerProps): React.ReactElement {
               </TouchableOpacity>
             </GlassSurface>
 
-            <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => setToolsSheetVisible(true)}
-              style={[
-                styles.toolsButton,
-                {
-                  backgroundColor: theme.surfaceSubtle,
-                  borderColor: selectedToolIds.length > 0 || generationKind ? theme.border : 'transparent',
-                },
-              ]}
-            >
-              <Feather name="sliders" size={15} color={theme.textSecondary} />
-              {activeToolCount > 0 ? (
-                <Text style={[styles.toolsButtonCount, { color: theme.textSecondary }]}>
-                  {activeToolCount}
-                </Text>
-              ) : null}
-            </TouchableOpacity>
+            {showToolsButton ? (
+              <TouchableOpacity
+                activeOpacity={0.82}
+                onPress={() => setToolsSheetVisible(true)}
+                style={[
+                  styles.toolsButton,
+                  {
+                    backgroundColor: theme.surfaceSubtle,
+                    borderColor: selectedToolIds.length > 0 || generationKind ? theme.border : 'transparent',
+                  },
+                ]}
+              >
+                <Feather name="sliders" size={15} color={theme.textSecondary} />
+                {activeToolCount > 0 ? (
+                  <Text style={[styles.toolsButtonCount, { color: theme.textSecondary }]}>
+                    {activeToolCount}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               activeOpacity={0.82}

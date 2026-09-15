@@ -34,13 +34,11 @@ phase; each lists the current mobile behavior and what owner input would change.
 - **Owner input could change:** expose a size row (small/default/large) or
   defer computer provisioning to web entirely.
 
-### 4. Agent chat uses the existing DM conversation route
+### 4. Agent chat uses the DM room surface
 - Chat-with-agent creates/opens a workspace DM with the agent principal and
-  routes to `/chat/[id]` — same mechanism as web (`view=dms` is a web-route
-  detail; mobile has no DM list yet).
-- **Verify:** `ChatScreen` renders agent DM conversations correctly
-  (participants, agent-authored messages). DMs/channels get their full surface
-  in Phase 3; if agent DMs render oddly, that's the phase to fix it.
+  routes to `/dm/[id]` (updated in Phase 3 from `/chat/[id]` — agent DMs are
+  real multiplayer rooms). `/chat/[id]` self-redirects for dm/channel
+  conversations that arrive via share links or stale recents.
 
 ### 5. `isDefault` agent flag is not editable on mobile
 - The create input supports `isDefault` but the web editor doesn't expose it
@@ -139,6 +137,59 @@ phase; each lists the current mobile behavior and what owner input would change.
   store `replyToTurnId` — web behaves identically (reply threading persists
   only for DM/channel messages via the addMessage route). Mobile shows the
   reply chip locally and sends `replyContextForModel` — full parity.
+
+## Phase 3 — Multiplayer chat
+
+### 17. Rooms poll REST every 8s; no realtime subscription
+- **Web:** Convex live queries stream room messages/presence/reactions.
+- **Mobile:** 8s poll on focus for transcript+participants+presence+reactions+
+  pins+saved (single `Promise.all`), 25s presence heartbeat, 2.5s-throttled
+  typing updates. After a send completes we reload immediately so the user's
+  own message + the agent's first turn show without waiting a full interval.
+- **Owner input could change:** Convex React Native subscription is the
+  documented stretch — it would make room updates instant; flag if you want
+  it scoped now.
+
+### 18. Room sends go through `conversations.addMessage`, not the act stream
+- Agent replies in shared rooms are server-owned: `addMessage` persists the
+  human turn (with `clientNonce` for optimistic reconciliation), the server
+  runs the agent, and the reply lands on the next poll/load. Mobile does not
+  hold a stream open in rooms — same data flow as web.
+- Room composer hides per-request tools/memory/mode/generation (the
+  addMessage contract carries none of them) and mentions insert as
+  `@DisplayName ` text, resolved to `mentionedPrincipalIds` on send — the
+  same mechanism web uses.
+
+### 19. Pinned/saved sheets list only already-loaded messages
+- The pins/saved panels filter the in-memory transcript. A pin on a message
+  older than the loaded window won't appear until you page up to it (the pin
+  endpoint returns ids, not content; a per-message `?messageId=` fetch per
+  pin is possible but was left out to keep the sheets simple).
+- **Owner input could change:** hydrate each pinned/saved id via
+  `loadRoomMessages({messageId})` — small change.
+
+### 20. Room mentions are participant-scoped
+- In rooms, `@` searches room participants (people + agents) rather than the
+  global `/mention-search` index — matching web room behavior, where
+  mentions exist to notify principals. File/knowledge mentions remain
+  available in personal chats.
+
+### 21. Agent DMs route through `/dm/[id]`
+- Phase 1's "chat with agent" pushed `/chat/[id]`; it now pushes `/dm/[id]`
+  since agent DMs are real multiplayer DMs. `/chat/[id]` also self-redirects
+  when a loaded conversation turns out to be a dm/channel (share links,
+  search results, stale recents).
+
+### 22. Notification deep-links land on the room, not the message
+- Activity taps resolve conversation type then route to `/dm`, `/channel`,
+  `/thread` (thread notifications use `threadRootMessageId`), or `/chat`.
+  Scroll-to-message inside a room isn't implemented (needs `?messageId=`
+  fetch + list anchor) — noted for a later polish pass.
+
+### 23. Principal search loads once per sheet open
+- `NewDirectMessageSheet`/`NewChannelSheet` fetch workspace people + agents
+  via `workspaces.management('people' | 'chats-agents')` on open and filter
+  locally (no server search endpoint). Fine at workspace scale.
 
 ## Cross-phase
 

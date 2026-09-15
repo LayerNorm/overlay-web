@@ -41,6 +41,9 @@ interface MobileDestinationMapEntry {
 const MOBILE_DESTINATION_MAP: Record<string, MobileDestinationMapEntry> = {
   agents: { route: '/(tabs)/agents', sfSymbol: 'sparkles', featherIcon: 'cpu' },
   chat: { route: '/(tabs)/chat', sfSymbol: 'bubble.left.and.bubble.right', featherIcon: 'message-circle' },
+  // Activity is a chat subview on web; on mobile it is its own surface
+  // injected after Chat (like Notes) when collaboration is enabled.
+  activity: { route: '/(tabs)/activity', sfSymbol: 'bell', featherIcon: 'bell' },
   // Notes are mobile-only (no web destination) — injected after chat below.
   notes: { route: '/(tabs)/notes', sfSymbol: 'note.text', featherIcon: 'book-open' },
   // Until dedicated Files screens land (Phase 5), the destination opens the
@@ -86,6 +89,14 @@ export function isDestinationEnabled(id: string, session: DestinationSession): b
 }
 
 const NOTES_DESTINATION_ID = 'notes'
+const ACTIVITY_DESTINATION_ID = 'activity'
+
+function isActivityEnabled(session: DestinationSession): boolean {
+  return (
+    session.capabilities.chat &&
+    (session.isFeatureEnabled('collaborativeChats') || session.isFeatureEnabled('channels'))
+  )
+}
 
 /**
  * Resolves bootstrap destinations into sidebar items: filters by flags and
@@ -116,20 +127,30 @@ export function resolveNavDestinations(
     })
   }
 
+  // Mobile-injected entries after Chat: Activity (when collaboration is on)
+  // then Notes.
+  const chatIndex = items.findIndex((item) => item.id === 'chat')
+  const insertAt = chatSeen && chatIndex >= 0 ? chatIndex + 1 : 0
+  const injected: ResolvedNavItem[] = []
+  if (isActivityEnabled(session)) {
+    const entry = MOBILE_DESTINATION_MAP[ACTIVITY_DESTINATION_ID]
+    injected.push({
+      id: ACTIVITY_DESTINATION_ID,
+      label: 'Activity',
+      route: entry.route,
+      sfSymbol: entry.sfSymbol,
+      featherIcon: entry.featherIcon,
+    })
+  }
   const notesEntry = MOBILE_DESTINATION_MAP[NOTES_DESTINATION_ID]
-  const notesItem: ResolvedNavItem = {
+  injected.push({
     id: NOTES_DESTINATION_ID,
     label: 'Notes',
     route: notesEntry.route,
     sfSymbol: notesEntry.sfSymbol,
     featherIcon: notesEntry.featherIcon,
-  }
-  const chatIndex = items.findIndex((item) => item.id === 'chat')
-  if (chatSeen && chatIndex >= 0) {
-    items.splice(chatIndex + 1, 0, notesItem)
-  } else {
-    items.unshift(notesItem)
-  }
+  })
+  items.splice(insertAt, 0, ...injected)
 
   return items
 }

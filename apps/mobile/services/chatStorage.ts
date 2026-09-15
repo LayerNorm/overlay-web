@@ -110,6 +110,24 @@ export async function loadChatsMeta(projectId?: string): Promise<ChatMeta[]> {
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
+export type ChatListView = 'personal' | 'dms' | 'channels' | 'all'
+
+/**
+ * Collaboration-aware list — `?view=` returns a paginated envelope
+ * (`{ data, nextCursor, hasMore }`) unlike the bare-array default list.
+ * Mirrors the web sidebar's Personal/DMs/Channels/All filtering.
+ */
+export async function loadChatsMetaByView(view: ChatListView): Promise<ChatMeta[]> {
+  const response = await appJson<{ data?: ConversationSummary[] } | ConversationSummary[]>(
+    '/api/v1/conversations',
+    { query: { view, limit: 100 } },
+  )
+  const summaries = Array.isArray(response) ? response : (response.data ?? [])
+  return summaries
+    .map(mapConversationSummary)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
 /** Archived conversations — `GET /conversations?archived=true` (web ChatArchivedView). */
 export async function loadArchivedChats(): Promise<ChatMeta[]> {
   const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations', {

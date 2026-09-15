@@ -508,6 +508,15 @@ export function ChatScreen({
           return false
         }
 
+        // DMs and channels have their own room surfaces — a shared link or
+        // agent-DM route landing on /chat/[id] redirects instead of rendering
+        // a multiplayer room as a personal chat.
+        if (chat.conversationType === 'dm' || chat.conversationType === 'channel') {
+          const pathname = chat.conversationType === 'dm' ? '/dm/[id]' : '/channel/[id]'
+          router.replace({ pathname, params: { id: chat.id } })
+          return false
+        }
+
         chatRef.current = chat
         setActiveChatId(chat.id)
         setChatTitle(chat.title)
@@ -537,7 +546,7 @@ export function ChatScreen({
         }
       }
     },
-    [],
+    [router],
   )
 
   const createConversation = useCallback(
