@@ -66,6 +66,7 @@ const APPEARANCE_OPTIONS: { label: string; value: AppearanceMode }[] = [
 const START_DESTINATIONS: { label: string; value: StartDestination }[] = [
   { label: 'Last used', value: 'last-used' },
   { label: 'Chat', value: 'chat' },
+  { label: 'Agents', value: 'agents' },
   { label: 'Voice', value: 'voice' },
   { label: 'Projects', value: 'projects' },
   { label: 'Knowledge', value: 'knowledge' },

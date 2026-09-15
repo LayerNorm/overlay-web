@@ -61,7 +61,7 @@ function routeForResult(result: WorkspaceSearchResult): string | null {
     case 'automation':
       return '/(tabs)/automations'
     case 'agent':
-      return null
+      return `/agent/${result.id}`
     default:
       return null
   }

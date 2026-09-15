@@ -39,8 +39,7 @@ interface MobileDestinationMapEntry {
  * instead of silently dropping entries.
  */
 const MOBILE_DESTINATION_MAP: Record<string, MobileDestinationMapEntry> = {
-  // Agents land in Phase 1 — kept visible-but-disabled when the flag is on.
-  agents: { route: null, sfSymbol: 'sparkles', featherIcon: 'cpu' },
+  agents: { route: '/(tabs)/agents', sfSymbol: 'sparkles', featherIcon: 'cpu' },
   chat: { route: '/(tabs)/chat', sfSymbol: 'bubble.left.and.bubble.right', featherIcon: 'message-circle' },
   // Notes are mobile-only (no web destination) — injected after chat below.
   notes: { route: '/(tabs)/notes', sfSymbol: 'note.text', featherIcon: 'book-open' },

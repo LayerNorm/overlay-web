@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
 import { loadMobilePreferences, type StartDestination } from '../../services/mobilePreferencesService'
 
-function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/voice' | '/(tabs)/projects' | '/(tabs)/knowledge' {
+function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/agents' | '/(tabs)/voice' | '/(tabs)/projects' | '/(tabs)/knowledge' {
+  if (destination === 'agents') return '/(tabs)/agents'
   if (destination === 'voice') return '/(tabs)/voice'
   if (destination === 'projects') return '/(tabs)/projects'
   if (destination === 'knowledge') return '/(tabs)/knowledge'

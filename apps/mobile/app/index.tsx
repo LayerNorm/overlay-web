@@ -3,7 +3,8 @@ import { useRouter } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
 import { loadMobilePreferences, type StartDestination } from '../services/mobilePreferencesService'
 
-function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/voice' | '/(tabs)/projects' | '/(tabs)/knowledge' {
+function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/agents' | '/(tabs)/voice' | '/(tabs)/projects' | '/(tabs)/knowledge' {
+  if (destination === 'agents') return '/(tabs)/agents'
   if (destination === 'voice') return '/(tabs)/voice'
   if (destination === 'projects') return '/(tabs)/projects'
   if (destination === 'knowledge') return '/(tabs)/knowledge'
