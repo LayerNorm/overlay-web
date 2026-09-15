@@ -18,11 +18,11 @@ import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 import { managedHarnessDescriptor } from './harnesses/registry'
 import { resolveManagedHarnessSandboxProvider } from './harnesses/sandbox-providers'
 
-const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
-const DEFAULT_HARD_TIMEOUT_MS = 24 * 60 * 60_000
+export const MANAGED_HARNESS_IDLE_TIMEOUT_MS = 15 * 60_000
+export const MANAGED_HARNESS_HARD_TIMEOUT_MS = 24 * 60 * 60_000
 const MANAGED_ROOT = '/workspace'
 const MANAGED_RESOURCES = { vcpus: 2, memoryGiB: 4, diskGiB: 20 } as const
-const MANAGED_DENIED_CIDRS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
+export const MANAGED_HARNESS_DENIED_CIDRS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
 
 export type ManagedAgentProvisionRequest =
   | {
@@ -87,8 +87,8 @@ export class ManagedAgentSandboxService {
     const runtime = this.dependencies.runtime ?? managedSandboxRuntimeFromEnv(provider)
     const descriptor = managedHarnessDescriptor(args.harnessId)
     const limits = await this.dependencies.policyLimits?.({ userId: args.actorUserId, workspaceId: args.workspaceId })
-    const idleTimeoutMs = Math.min(DEFAULT_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? DEFAULT_IDLE_TIMEOUT_MS)
-    const hardTimeoutMs = Math.min(DEFAULT_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? DEFAULT_HARD_TIMEOUT_MS)
+    const idleTimeoutMs = Math.min(MANAGED_HARNESS_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? MANAGED_HARNESS_IDLE_TIMEOUT_MS)
+    const hardTimeoutMs = Math.min(MANAGED_HARNESS_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? MANAGED_HARNESS_HARD_TIMEOUT_MS)
     const name = `overlay-harness-${randomUUID().slice(0, 8).toLowerCase()}`
     let sandbox: SandboxInstance | null = null
     try {
@@ -99,7 +99,7 @@ export class ManagedAgentSandboxService {
         networkPolicy: {
           mode: 'allowlist',
           domains: managedHarnessAllowedDomains(args.serverUrl, descriptor.modelApiHosts),
-          deniedCidrs: [...MANAGED_DENIED_CIDRS],
+          deniedCidrs: [...MANAGED_HARNESS_DENIED_CIDRS],
         },
         idleTimeoutMs,
         hardTimeoutMs,
@@ -118,6 +118,9 @@ export class ManagedAgentSandboxService {
         capabilities: {
           runtime: 'ai-sdk-harness',
           adapters: [{ id: args.harnessId, protocol: 'harness' }],
+          // Reconnect-time recreation rebuilds the egress allowlist from this
+          // host plus the descriptor's model API hosts.
+          serverHost: new URL(args.serverUrl).hostname,
         },
         filesystemGrant: { mode: 'selected_roots', roots: [MANAGED_ROOT] },
         approvedAt: now,
@@ -179,8 +182,8 @@ export class ManagedAgentSandboxService {
   }) {
     const runtime = this.dependencies.runtime ?? managedSandboxRuntimeFromEnv()
     const limits = await this.dependencies.policyLimits?.({ userId: args.actorUserId, workspaceId: args.workspaceId })
-    const idleTimeoutMs = Math.min(DEFAULT_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? DEFAULT_IDLE_TIMEOUT_MS)
-    const hardTimeoutMs = Math.min(DEFAULT_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? DEFAULT_HARD_TIMEOUT_MS)
+    const idleTimeoutMs = Math.min(MANAGED_HARNESS_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? MANAGED_HARNESS_IDLE_TIMEOUT_MS)
+    const hardTimeoutMs = Math.min(MANAGED_HARNESS_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? MANAGED_HARNESS_HARD_TIMEOUT_MS)
     const image = process.env.OVERLAY_AGENT_HOST_IMAGE?.trim()
     if (!image) throw managedSandboxError('OVERLAY_AGENT_HOST_IMAGE is not configured', 503, 'managed_sandbox_image_missing')
     const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
@@ -199,7 +202,7 @@ export class ManagedAgentSandboxService {
         networkPolicy: {
           mode: 'allowlist',
           domains: managedAllowedDomains(args.serverUrl),
-          deniedCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16'],
+          deniedCidrs: [...MANAGED_HARNESS_DENIED_CIDRS],
         },
         idleTimeoutMs,
         hardTimeoutMs,
@@ -311,12 +314,21 @@ function managedHarnessBootstrapDomains() {
   ]
 }
 
-function managedHarnessAllowedDomains(serverUrl: string, modelApiHosts: readonly string[]) {
+/**
+ * Egress allowlist for a managed harness sandbox. `serverHost` is optional so
+ * reconnect-time recreation works for environments provisioned before the
+ * host was recorded in capabilities.
+ */
+export function managedHarnessAllowedDomainsForHost(serverHost: string | undefined, modelApiHosts: readonly string[]) {
   return [
-    new URL(serverUrl).hostname,
+    ...(serverHost ? [serverHost] : []),
     ...managedHarnessBootstrapDomains(),
     ...modelApiHosts,
   ]
+}
+
+function managedHarnessAllowedDomains(serverUrl: string, modelApiHosts: readonly string[]) {
+  return managedHarnessAllowedDomainsForHost(new URL(serverUrl).hostname, modelApiHosts)
 }
 
 function managedSandboxError(message: string, status: number, code: string) {

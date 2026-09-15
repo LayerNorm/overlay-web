@@ -18,6 +18,11 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
 - [ ] **Apply migration 0076 + Convex schema** — `agent_harness_sessions` needs
   `app-db:migrate` for Postgres deployments and a `convex:push` (staging/main
   lanes only — never from a feature worktree) for the new Convex table.
+- [ ] **Run the Phase 2 exit gate live** — after Phase 1 verification: DM a
+  managed `claude-code` agent, confirm the reply streams through
+  `managedHarnessAgentTurnWorkflow`, then send a second message and confirm the
+  native session resumes via `agentHarnessSessions.resumeState`. Also verify
+  stop-button cancellation destroys the in-sandbox session.
 - [ ] **Hermes live turn before picker exposure** — `harness-acp@1.0.40`
   constructs fine but `hermes acp` hasn't run a real turn in-sandbox; verify
   before enabling it in the create-agent UI (Phase 3).

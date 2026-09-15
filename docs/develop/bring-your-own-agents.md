@@ -215,6 +215,12 @@ and binding upserts against it write `protocolAdapter: 'harness'` with an
 `adapterConfig` of `{harnessId, workingDirectory, provider}`. Harness sessions resume through the
 durable `agentHarnessSessions` table (binding + conversation scoped `resumeState`), so the
 sandbox lease is renewable while the agent's conversation state survives provider expiration.
+Dispatch branches on the binding's `protocolAdapter`: `harness` bindings run
+`managedHarnessAgentTurnWorkflow` — durable `@ai-sdk/workflow-harness` time slices that
+reconnect (or recreate) the lease's sandbox, wrap the native handle with
+`createVercelSandbox({ sandbox })`, and stream the harness's UI-message chunks into the same
+generating reply row a hosted agent writes. `acp` bindings keep the remote command-queue path,
+and any other adapter fails loudly rather than falling back.
 
 Provider selection for the agent-host mode is available only to operators through
 `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Harness mode resolves through

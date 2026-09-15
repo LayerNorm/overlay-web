@@ -253,6 +253,22 @@ closed without them.
 
 ### Phase 2 — dispatch + durable turn
 
+**Status: implemented.** `conversations/message` branches harness bindings to
+`startManagedHarnessTurn`, which opens the same run/reply row pair a hosted
+turn uses and starts `managedHarnessAgentTurnWorkflow`. Each workflow step
+runs one `runHarnessAgentTimeSlice` (240s): reconnect-or-recreate the lease's
+Vercel sandbox (`lease.providerReference` rewritten on recreate), wrap the
+native handle via `createVercelSandbox({ sandbox })`, drive the harness, and
+project UI-message chunks into the reply row through
+`createHarnessTranscriptWritable` + `AgentMessageStream.flush`. `ready_for_
+next_step` state (`continueFrom`) loops inside the run; `resumeFrom` lands in
+`agentHarnessSessions.resumeState` for the next user turn. v1 tool policy is
+`permissionMode: 'allow-all'` inside the sandbox boundary with
+`askUserQuestions` inactive; `awaiting_tool_approval` fails loudly. The run's
+cancel path destroys the native session, clears `resumeState`, releases both
+reservations, and settles sandbox billing. Remaining for the exit gate: a
+live two-turn `claude-code` run against real Vercel credentials.
+
 - `resolveWorkspaceAgentInvocations` carries `protocolAdapter` on
   `remoteTarget`; `conversations/message/route.ts` branches to
   `startManagedHarnessTurn` for `harness` bindings (mirrors

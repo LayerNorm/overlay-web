@@ -142,6 +142,10 @@ export async function createManagedHarnessAgent(args: {
   model?: HarnessAgentSettings['model']
   instructions?: HarnessAgentSettings['instructions']
   tools?: HarnessAgentSettings['tools']
+  permissionMode?: HarnessAgentSettings['permissionMode']
+  /** Disabled tools by name — covers harness builtins (e.g. `askUserQuestions`). */
+  inactiveTools?: readonly string[]
+  onLog?: HarnessAgentSettings['onLog']
 }): Promise<HarnessAgent> {
   const entry = managedHarnessEntry(args.harnessId)
   if (!entry || !isManagedHarnessId(args.harnessId)) {
@@ -158,5 +162,8 @@ export async function createManagedHarnessAgent(args: {
     model: args.model,
     instructions: args.instructions,
     tools: args.tools,
+    ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
+    ...(args.inactiveTools ? { inactiveTools: [...args.inactiveTools] } : {}),
+    ...(args.onLog ? { onLog: args.onLog } : {}),
   })
 }
