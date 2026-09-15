@@ -1,9 +1,12 @@
 import 'server-only'
 
 import { start } from 'workflow/api'
-import type { Chat } from 'chat'
-import type { Message, Thread } from 'chat'
 import type { SlackAdapter, SlackEvent } from '@chat-adapter/slack'
+import type {
+  SurfaceChat,
+  SurfaceInboundMessage,
+  SurfaceInboundThread,
+} from './chat'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { resolveSurfaceAuthorStatus } from '@/server/surfaces/surface-authors'
 import { logger } from '@/server/observability/logger'
@@ -24,8 +27,8 @@ const WORKING_PLACEHOLDER = '_Working…_'
  */
 async function handleInboundSlackMessage(args: {
   adapter: SlackAdapter
-  thread: Thread
-  message: Message
+  thread: SurfaceInboundThread
+  message: SurfaceInboundMessage
   /** Mentions in unbound channels get a one-line pointer to Overlay. */
   replyWhenUnbound: boolean
   /** Subscribe the thread so follow-ups route to onSubscribedMessage. */
@@ -156,7 +159,7 @@ async function handleInboundSlackMessage(args: {
  * the webhook route — the singleton `Chat` is shared with the OAuth flow
  * which needs no handlers.
  */
-export function registerSlackSurfaceHandlers(chat: Chat<{ slack: SlackAdapter }>): void {
+export function registerSlackSurfaceHandlers(chat: SurfaceChat): void {
   chat.onNewMention(async (thread, message) => {
     await handleInboundSlackMessage({
       adapter: chat.getAdapter('slack'),

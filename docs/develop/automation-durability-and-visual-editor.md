@@ -418,6 +418,13 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 **Automation chat continuity:**
 - Automations without a linked conversation now show their saved description and instructions instead of a blank chat surface.
+
+**Serialized-bundle poisoning (Chat SDK / serde auto-discovery):**
+- The Workflow builder's fast-discovery regex-scans **raw source of every project file** (comments included) for literal import specifiers — static imports, `import type`, dynamic `import('...')`, and `require('...')` all match — then inlines every reachable file that registers `@workflow/serde` classes into the vm-serialized workflow bundle, evaluated eagerly at `runInContext`.
+- The `chat` package ships serde classes whose module scope runs `new AbortController()` — a global the vm does not provide — so any literal specifier resolving to it killed **every** workflow run in the deployment (`surfaceAgentTurnWorkflow`, `automationScheduleWorkflow`, etc.) with `ReferenceError: AbortController is not defined` before user code ran.
+- Rule: no source file may contain a literal specifier resolving to the `chat` package. `src/server/surfaces/chat.ts` loads the SDK through a specifier with a leading block comment (`import(/* workflow-vm-exclusion */ 'chat')`) that the discovery regex misses but bundlers resolve normally; `surface-agent-turn.ts` uses the same pattern inside its step body. Type references come from derived types (`SurfaceChat`, `SurfaceInboundThread`, `SurfaceInboundMessage`) so `import type ... from 'chat'` never appears.
+- `slack-directory.ts` additionally takes the Slack adapter as a parameter (resolved by the route via `getSlackAdapter()`) rather than importing `chat.ts`, so `bootstrap.ts` stays clean for other bundler graphs.
+- Regression guard: `src/server/workflows/workflow-imports.test.ts` fails if any source file gains a literal specifier resolving to the `chat` package.
 - The first Automate-mode message links the created conversation to the automation's `sourceConversationId`, so subsequent navigation opens the same conversation and keeps the automation context in the URL.
 - The route synchronizer preserves `automationId` from the live browser URL when activating a newly created conversation; this prevents the message from becoming a standalone regular chat.
 - Automation detail loading validates the linked source conversation in the active workspace before selecting it. Missing, deleted, or cross-workspace links are removed from the URL and replaced with a valid automation conversation when one exists, otherwise the editor opens as an empty automation chat instead of displaying a false “chat no longer exists” error.

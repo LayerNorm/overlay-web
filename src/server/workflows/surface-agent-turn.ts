@@ -19,7 +19,6 @@ import type {
   AutomationAgentTurnInput,
   SurfaceTurnContext,
 } from '@/server/automations/automation-turn-runner'
-import { getSlackAdapter } from '@/server/surfaces/chat'
 import { ensureSurfaceConversation } from '@/server/surfaces/surface-conversations'
 import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
 
@@ -50,6 +49,16 @@ async function postSurfaceReplyStep(args: {
 }): Promise<void> {
   'use step'
   if (args.surface.platform !== 'slack') return
+  // The workflow bundler regex-scans this file's raw source for literal
+  // dynamic-import specifiers and inlines every reachable serde-registered
+  // package (the Chat SDK's dist chunk) into the vm-serialized bundle, where
+  // it throws at module scope (`AbortController` is not a vm global). The
+  // leading comment keeps the specifier invisible to that scan while esbuild
+  // still bundles it normally for the step. Do not remove the comment or
+  // convert this to a static import. See workflow-imports.test.ts.
+  const { getSlackAdapter } = await import(
+    /* step-only */ '@/server/surfaces/chat'
+  )
   await postSlackAgentMessage({
     adapter: await getSlackAdapter(),
     teamId: args.surface.teamId,

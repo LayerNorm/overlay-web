@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SurfaceConnection } from '@overlay/workspace-contracts'
-import { getSlackAdapter } from './chat'
+import type { SlackAdapter } from '@chat-adapter/slack'
 import { degradeSlackConnectionByTeam, isSlackTokenRevokedError } from './slack-lifecycle'
 import { SurfaceServiceError, type SurfaceChannelOption } from './SurfaceService'
 
@@ -11,11 +11,15 @@ import { SurfaceServiceError, type SurfaceChannelOption } from './SurfaceService
  * state adapter keyed on the connection's externalTeamId. `isMember` reports
  * whether the bot has already joined the channel; unjoined channels stay
  * bindable but can't be answered until the bot is invited.
+ *
+ * The adapter is resolved by the caller: this module is reachable from
+ * `bootstrap` (which lands in the Workflow vm bundle), so it must not import
+ * `./chat` — the `chat` package throws at module scope in the vm.
  */
 export async function listSlackChannels(
   connection: SurfaceConnection,
+  adapter: SlackAdapter,
 ): Promise<SurfaceChannelOption[]> {
-  const adapter = await getSlackAdapter()
   const installation = await adapter.getInstallation(connection.externalTeamId)
   if (!installation?.botToken) {
     // The state adapter has no install — mark the connection so the editor

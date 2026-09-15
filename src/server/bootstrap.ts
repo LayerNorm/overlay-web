@@ -73,6 +73,7 @@ import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgen
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { SurfaceService } from '@/server/surfaces/SurfaceService'
 import { listSlackChannels } from '@/server/surfaces/slack-directory'
+import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -318,7 +319,8 @@ export function createOverlayServerContext(
   const surfaceService = new SurfaceService({
     repository: appData.repositories.surfaces,
     agents: workspaceAgentRepository,
-    channelLister: listSlackChannels,
+    channelLister: (connection, adapter) =>
+      listSlackChannels(connection, adapter as SlackAdapter),
     resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
   })
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({

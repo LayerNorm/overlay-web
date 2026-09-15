@@ -45,6 +45,7 @@ export type { SurfaceChannelOption } from '@overlay/workspace-contracts'
  */
 export type SurfaceChannelLister = (
   connection: SurfaceConnection,
+  adapter: unknown,
 ) => Promise<SurfaceChannelOption[]>
 
 /**
@@ -107,9 +108,10 @@ export class SurfaceService {
   async listChannels(args: {
     workspaceId: string
     connectionId: string
+    adapter: unknown
   }): Promise<SurfaceChannelOption[]> {
     const connection = await this.requireWorkspaceConnection(args)
-    return await this.channelLister(connection)
+    return await this.channelLister(connection, args.adapter)
   }
 
   async createBinding(args: {
