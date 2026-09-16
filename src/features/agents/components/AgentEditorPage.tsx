@@ -55,6 +55,7 @@ import { useByoConnection } from './use-byo-connection'
 export function AgentEditorPage({
   mode,
   agentId,
+  freshDraft = false,
   showcase = false,
   presentation = 'page',
   panelMode,
@@ -66,6 +67,8 @@ export function AgentEditorPage({
 }: {
   mode: 'new' | 'edit'
   agentId?: string
+  /** The create flow inserts a draft row then opens edit mode — a fresh draft's runtime is still pickable until first save. */
+  freshDraft?: boolean
   showcase?: boolean
   presentation?: 'page' | 'panel'
   panelMode?: 'dialog' | 'side'
@@ -741,7 +744,7 @@ export function AgentEditorPage({
                   advanced={advanced}
                   onAdvancedChange={setAdvanced}
                   hostedRuntime={hostedRuntime}
-                  hostedRuntimeLocked={mode === 'edit' || Boolean(agent)}
+                  hostedRuntimeLocked={mode === 'edit' && !freshDraft}
                   managedPickerFailed={managedPickerFailed}
                   onManagedPickerRetry={() => setManagedPickerRetry((count) => count + 1)}
                   onHostedRuntimeChange={(value) => {
