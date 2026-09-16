@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, max, or, sql } from 'drizzle-orm'
 import type {
   AgentApprovalRequest, AgentArtifact, AgentBinding, AgentEnrollmentSession, AgentEnvironment,
-  AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentRemoteSession,
+  AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentHarnessSession, AgentRemoteSession,
   AgentRunCommand, AgentSandboxLease,
 } from '@overlay/workspace-contracts'
 import { MAX_COMMAND_BYTES, MAX_EVENT_BATCH_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
@@ -12,7 +12,7 @@ import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   agentApprovalRequests, agentArtifacts, agentBindings, agentEnrollmentSessions, agentEnvironmentCredentials,
   agentEnvironmentProofChallenges, agentEnvironmentProofNonces, agentEnvironments, agentEventRateWindows,
-  agentRemoteSessions, agentRunCommands, agentRuns, agentSandboxLeases, agentSandboxSettlements, conversationEvents,
+  agentHarnessSessions, agentRemoteSessions, agentRunCommands, agentRuns, agentSandboxLeases, agentSandboxSettlements, conversationEvents,
   conversationMessages, conversationParticipants, conversations, workspaceMemberships, workspacePrincipals,
 } from '@/server/database/postgres/schema'
 import {
@@ -1382,6 +1382,51 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
     return row ? sandboxLease(row) : null
   }
 
+  async getHarnessSession(args: { workspaceId: string; bindingId: string; conversationId: string }) {
+    const [row] = await this.db.select().from(agentHarnessSessions).where(and(
+      eq(agentHarnessSessions.workspaceId, args.workspaceId),
+      eq(agentHarnessSessions.bindingId, args.bindingId),
+      eq(agentHarnessSessions.conversationId, args.conversationId),
+    )).limit(1)
+    return row ? harnessSession(row) : null
+  }
+
+  async upsertHarnessSession(input: Parameters<ConnectedAgentRepository['upsertHarnessSession']>[0]) {
+    const [binding] = await this.db.select({ id: agentBindings.id }).from(agentBindings).where(and(
+      eq(agentBindings.id, input.bindingId),
+      eq(agentBindings.workspaceId, input.workspaceId),
+    )).limit(1)
+    if (!binding) throw new Error('AGENT_BINDING_UNAVAILABLE')
+    const [row] = await this.db.insert(agentHarnessSessions).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      bindingId: input.bindingId,
+      conversationId: input.conversationId,
+      harnessId: input.harnessId,
+      sessionId: input.sessionId,
+      resumeState: input.resumeState,
+      createdAt: new Date(input.now),
+      updatedAt: new Date(input.now),
+    }).onConflictDoUpdate({
+      target: [agentHarnessSessions.bindingId, agentHarnessSessions.conversationId],
+      set: {
+        harnessId: input.harnessId,
+        sessionId: input.sessionId,
+        resumeState: input.resumeState,
+        updatedAt: new Date(input.now),
+      },
+    }).returning()
+    return harnessSession(row)
+  }
+
+  async deleteHarnessSessionsForBinding(args: { workspaceId: string; bindingId: string; now: number }) {
+    const rows = await this.db.delete(agentHarnessSessions).where(and(
+      eq(agentHarnessSessions.workspaceId, args.workspaceId),
+      eq(agentHarnessSessions.bindingId, args.bindingId),
+    )).returning({ id: agentHarnessSessions.id })
+    return rows.length
+  }
+
   async applyRemoteEvents(args: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]): Promise<ApplyRemoteEventsResult> {
     return await this.db.transaction(async (tx) => {
       const [environmentRow] = await tx.select({ status: agentEnvironments.status }).from(agentEnvironments).where(and(
@@ -1614,6 +1659,7 @@ type CommandRow = typeof agentRunCommands.$inferSelect
 type ApprovalRow = typeof agentApprovalRequests.$inferSelect
 type ArtifactRow = typeof agentArtifacts.$inferSelect
 type SandboxLeaseRow = typeof agentSandboxLeases.$inferSelect
+type HarnessSessionRow = typeof agentHarnessSessions.$inferSelect
 type EnrollmentRow = typeof agentEnrollmentSessions.$inferSelect
 type ProofChallengeRow = typeof agentEnvironmentProofChallenges.$inferSelect
 type CredentialRow = typeof agentEnvironmentCredentials.$inferSelect
@@ -1626,6 +1672,7 @@ function command(row: CommandRow): AgentRunCommand { return { ...row, type: row.
 function approval(row: ApprovalRow): AgentApprovalRequest { return { ...row, kind: row.kind === 'elicitation' ? 'elicitation' : 'permission', requestedAt: row.requestedAt.getTime(), resolution: row.resolution ?? undefined } }
 function artifact(row: ArtifactRow): AgentArtifact { return { ...row, status: row.status as AgentArtifact['status'], scanResult: row.scanResult ?? undefined, expiresAt: row.expiresAt.getTime(), linkedAt: ms(row.linkedAt), deletedAt: ms(row.deletedAt), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function sandboxLease(row: SandboxLeaseRow): AgentSandboxLease { return { ...row, status: row.status as AgentSandboxLease['status'], providerReference: row.providerReference ?? undefined, runId: row.runId ?? undefined, reservationId: row.reservationId ?? undefined, reservedUntil: row.reservedUntil.getTime(), runtimeStartedAt: ms(row.runtimeStartedAt), runtimeEndedAt: ms(row.runtimeEndedAt), cleanupAfter: ms(row.cleanupAfter), createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
+function harnessSession(row: HarnessSessionRow): AgentHarnessSession { return { ...row, sessionId: row.sessionId ?? undefined, resumeState: row.resumeState ?? undefined, createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime() } }
 function sameResolution(
   left: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
   right: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },

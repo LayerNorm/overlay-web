@@ -23,6 +23,20 @@ export function connectedAgentRolloutConfigFromEnv(
   }
 }
 
+/**
+ * Managed HarnessAgents roll out on their own stage: BYO agents can be
+ * generally available while hosted sandboxed runtimes stay internal.
+ */
+export function managedHarnessRolloutConfigFromEnv(
+  env: Record<string, string | undefined>,
+): ConnectedAgentRolloutConfig {
+  return {
+    stage: env.OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE,
+    internalWorkspaceIds: env.OVERLAY_MANAGED_HARNESS_INTERNAL_WORKSPACE_IDS,
+    invitedWorkspaceIds: env.OVERLAY_MANAGED_HARNESS_INVITED_WORKSPACE_IDS,
+  }
+}
+
 export function resolveConnectedAgentRollout(
   config: ConnectedAgentRolloutConfig,
   workspaceId?: string,

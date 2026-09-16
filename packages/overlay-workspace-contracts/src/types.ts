@@ -492,7 +492,16 @@ export type WorkspaceChatSearchResult = {
   createdAt: number
 }
 
-export const WORKSPACE_AGENT_HARNESSES = ['overlay', 'claude-code'] as const
+/**
+ * Runtimes a workspace agent can be driven by. `'overlay'` is the hosted
+ * in-process agent; the rest are AI SDK HarnessAgent runtimes hosted in
+ * managed sandboxes (see `MANAGED_HARNESS_IDS` — the lists overlap on purpose
+ * and are kept in sync by `harness-catalog.test.ts`). Bring-your-own agents
+ * are bound through `AgentBinding`, not this enum.
+ */
+export const WORKSPACE_AGENT_HARNESSES = [
+  'overlay', 'claude-code', 'codex', 'opencode', 'pi', 'hermes',
+] as const
 export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
 
 export const WORKSPACE_AGENT_VISIBILITIES = ['creator', 'workspace'] as const

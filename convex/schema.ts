@@ -1080,6 +1080,7 @@ export default defineSchema({
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
+      title: v.optional(v.string()),
       requests: v.array(v.object({
         approvalId: v.string(),
         toolCallId: v.string(),
@@ -2392,6 +2393,18 @@ export default defineSchema({
     settledAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_reservationId', ['reservationId'])
     .index('by_status_updatedAt', ['status', 'updatedAt'])
+    .index('by_workspaceId', ['workspaceId']),
+
+  // Durable HarnessAgent session state per binding + conversation. The opaque
+  // resumeState carries the harness's native resume payload so a later turn
+  // can continue without replaying transcript history.
+  agentHarnessSessions: defineTable({
+    harnessSessionId: v.string(), workspaceId: v.string(), bindingId: v.string(),
+    conversationId: v.string(), harnessId: v.string(),
+    sessionId: v.optional(v.string()), resumeState: v.optional(v.any()),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_harnessSessionId', ['harnessSessionId'])
+    .index('by_bindingId_conversationId', ['bindingId', 'conversationId'])
     .index('by_workspaceId', ['workspaceId']),
 
   slackImportMappings: defineTable({

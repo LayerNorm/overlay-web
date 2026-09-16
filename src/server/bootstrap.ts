@@ -330,6 +330,7 @@ export function createOverlayServerContext(
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
     objectStore,
+    providerConnections: appData.repositories.providerConnections,
     repository: appData.repositories.connectedAgents,
     workspaces: workspaceService,
     isEnabled: (workspaceId) => {

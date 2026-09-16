@@ -36,6 +36,16 @@ test('binding indexing ignores disabled rows and keeps the newest active row', (
   assert.equal(indexed.get('agent-1')?.id, 'active')
 })
 
+test('harness bindings label by harnessId as hosted on Overlay Cloud', () => {
+  assert.equal(
+    getAgentRuntimeLabel('moonshotai/kimi-k2.6', binding({
+      protocolAdapter: 'harness',
+      adapterConfig: { harnessId: 'claude-code', workingDirectory: '/workspace' },
+    })),
+    'claude-code · Overlay Cloud',
+  )
+})
+
 test('new BYO identities retain their adapter fallback before binding metadata loads', () => {
   assert.equal(getAgentRuntimeLabel('byo/claude-code'), 'claude-code · connected')
   assert.equal(getAgentRuntimeLabel('openrouter/free'), 'openrouter/free')

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import { streamText, type ModelMessage } from 'ai'
+import { start } from 'workflow/api'
 import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -33,6 +34,11 @@ import {
   connectedAgentRolloutConfigFromEnv,
   resolveConnectedAgentRollout,
 } from '@/shared/agents/connected-agent-rollout'
+import { isManagedHarnessId, type AgentProtocolAdapter } from '@overlay/workspace-contracts'
+import { managedHarnessAgentTurnWorkflow } from '@/server/workflows/managed-harness-agent-turn'
+import { MANAGED_HARNESS_TIME_SLICE_SECONDS } from '@/server/agents/managed-harness-steps'
+import { managedHarnessAvailability } from '@/server/agents/harnesses/availability'
+import { managedHarnessModelOption } from '@/shared/agents/harness-catalog'
 
 /**
  * Step budgets.
@@ -197,6 +203,8 @@ export type WorkspaceAgentInvocation = {
   agentId: string
   agentName: string
   agentPrincipalId: string
+  /** Standing instructions — managed harnesses pass them to the HarnessAgent. */
+  instructions?: string
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
@@ -206,8 +214,15 @@ export type WorkspaceAgentInvocation = {
     environmentId: string
     environmentName: string
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
+    /** Catalog model value picked on a `protocol:'harness'` binding. */
+    harnessModel?: string
+    /** Provider connection funding `modelBilling:'byok'` harness bindings. */
+    byokConnectionId?: string
+    /** Owner of that connection — connections are per-user. */
+    byokConnectionUserId?: string
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
+    protocolAdapter: AgentProtocolAdapter
     workingDirectory: string
   }
   turnId: string
@@ -399,14 +414,21 @@ export async function resolveWorkspaceAgentInvocations(args: {
           onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
         })
       : null
-    const adapterId = target && typeof target.binding.adapterConfig.adapterId === 'string'
-      ? target.binding.adapterConfig.adapterId.trim() : ''
+    const configuredAdapterId = target?.binding.adapterConfig.adapterId ?? target?.binding.adapterConfig.harnessId
+    const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
     const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'
       ? target.binding.adapterConfig.workingDirectory.trim() : ''
+    const harnessModel = target && typeof target.binding.adapterConfig.model === 'string'
+      ? target.binding.adapterConfig.model.trim() : ''
+    const byokConnectionId = target && typeof target.binding.adapterConfig.byokConnectionId === 'string'
+      ? target.binding.adapterConfig.byokConnectionId.trim() : ''
+    const byokConnectionUserId = target && typeof target.binding.adapterConfig.byokConnectionUserId === 'string'
+      ? target.binding.adapterConfig.byokConnectionUserId.trim() : ''
     invocations.push({
       agentId: agent.id,
       agentName: agent.name,
       agentPrincipalId: agent.principalId,
+      instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
       ...(target && adapterId && workingDirectory ? {
@@ -416,9 +438,13 @@ export async function resolveWorkspaceAgentInvocations(args: {
           environmentId: target.environment.id,
           environmentKind: target.environment.kind,
           environmentName: target.environment.name,
+          ...(harnessModel ? { harnessModel } : {}),
+          ...(byokConnectionId ? { byokConnectionId } : {}),
+          ...(byokConnectionUserId ? { byokConnectionUserId } : {}),
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
+          protocolAdapter: target.binding.protocolAdapter,
           workingDirectory,
         },
       } : {}),
@@ -472,6 +498,15 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   workspaceId: string
 }) {
   const server = getOverlayServerContext()
+  // Managed HarnessAgent turns run through `managedHarnessAgentTurnWorkflow`
+  // (see `startManagedHarnessTurn`), not the ACP command queue — fail loudly
+  // rather than enqueue commands nothing will claim.
+  if (args.invocation.remoteTarget.protocolAdapter !== 'acp') {
+    throw new WorkspaceAgentInvocationError(
+      'model_failed',
+      `${args.invocation.agentName} is bound to a protocol this dispatch path does not serve.`,
+    )
+  }
   const requestFingerprint = hashOperationalIdentifier(
     'workspace-agent-remote-invocation',
     args.invocation.invocationNonce,
@@ -637,6 +672,237 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         reservationId: reservation.reservationId,
         sandboxReservationId: sandboxBilling?.reservationId,
         errorCode: error instanceof Error ? error.message.slice(0, 160) : 'remote_agent_dispatch_failed',
+      },
+    }).catch((_auditError) => undefined)
+    if (error instanceof ManagedAgentSandboxBudgetError ||
+      (error instanceof Error && error.message.startsWith('CONNECTED_AGENT_POLICY_LIMIT:'))) {
+      throw new WorkspaceAgentInvocationError('usage_limited')
+    }
+    throw error
+  }
+}
+
+/**
+ * Dispatches one managed HarnessAgent turn (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`,
+ * Phase 2). Mirrors `startRemoteWorkspaceAgentTurn` minus the ACP command
+ * queue: the run row and the reply row come from `collaboration.startAgentTurn`
+ * — the same durable pair a hosted turn uses — and the turn itself runs in
+ * `managedHarnessAgentTurnWorkflow`, which drives the harness inside the
+ * managed sandbox instead of polling a remote host.
+ */
+export async function startManagedHarnessTurn(args: {
+  actorUserId: string
+  conversationId: string
+  initiatorPrincipalId: string
+  invocation: WorkspaceAgentInvocation & { remoteTarget: NonNullable<WorkspaceAgentInvocation['remoteTarget']> }
+  messageId: string
+  memoryEnabled: boolean
+  prompt: string
+  threadRootMessageId?: string
+  workspaceId: string
+}) {
+  const server = getOverlayServerContext()
+  const remoteTarget = args.invocation.remoteTarget
+  if (remoteTarget.protocolAdapter !== 'harness' || !isManagedHarnessId(remoteTarget.adapterId)) {
+    throw new WorkspaceAgentInvocationError(
+      'model_failed',
+      `${args.invocation.agentName} is not bound to a managed harness.`,
+    )
+  }
+  // The picker gates creation, but a flag flip or policy change can retire a
+  // harness while bindings still point at it — fail closed at dispatch too.
+  const availability = await managedHarnessAvailability({
+    actorUserId: args.actorUserId,
+    workspaceId: args.workspaceId,
+  })
+  if (!availability.enabled || !availability.harnesses.some((entry) => entry.id === remoteTarget.adapterId)) {
+    throw new WorkspaceAgentInvocationError(
+      'not_entitled',
+      `${args.invocation.agentName}'s managed runtime is not enabled for this workspace.`,
+    )
+  }
+  // `remoteTarget.harnessModel` is the catalog picker value; the HarnessAgent
+  // receives the runtime-native alias while billing uses `agent.modelId`.
+  const harnessModel = managedHarnessModelOption(remoteTarget.adapterId, remoteTarget.harnessModel)?.harnessModel
+  const requestFingerprint = hashOperationalIdentifier(
+    'workspace-agent-harness-invocation',
+    args.invocation.invocationNonce,
+  )
+  const room = await loadRoomTurnContext(args)
+  const turnContext = await buildAgentTurnContext({
+    actorUserId: args.actorUserId,
+    agentName: args.invocation.agentName,
+    agentPrincipalId: args.invocation.agentPrincipalId,
+    billingProgrammaticSubjectId: `agent:${args.invocation.agentId}`,
+    conversationTitle: room.conversation.title,
+    conversationType: room.conversationType,
+    history: room.history,
+    idempotencyKey: `${args.invocation.invocationNonce}:harness-context`,
+    latestUserText: room.latestUserText,
+    memoryEnabled: args.memoryEnabled,
+    participants: room.participants.map((participant) => ({
+      displayName: participant.displayName,
+      principalId: participant.principalId,
+      principalType: participant.principalType,
+    })),
+    projectId: room.conversation.projectId,
+    requestFingerprint,
+    workspaceId: args.workspaceId,
+  })
+  const remotePrompt = buildRemoteAgentPrompt({
+    contextBlock: turnContext.contextBlock,
+    messages: turnContext.messages,
+    prompt: args.prompt,
+  })
+  const entitlements = await server.chatUsagePolicy.getEntitlements({
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    programmaticSubjectId: `agent:${args.invocation.agentId}`,
+  })
+  if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
+  const policy = connectedAgentPolicyFor(entitlements)
+  // Overlay-funded bindings settle model traffic against the configured
+  // model; `byok` bindings authenticate with the actor's own provider
+  // connection — resolved at slice time, never persisted in the sandbox.
+  const overlayModelUsage = remoteTarget.modelUsageBilling === 'overlay'
+  const reservation = await server.chatUsagePolicy.reserveForAttempt({
+    entitlements,
+    estimatedInputTokens: overlayModelUsage ? Math.max(1, Math.ceil(remotePrompt.length / 4)) : 0,
+    idempotencyKey: args.invocation.invocationNonce,
+    maxOutputTokens: overlayModelUsage ? MAX_OUTPUT_TOKENS_AGENT : 0,
+    modelId: overlayModelUsage ? args.invocation.modelId : FREE_TIER_AUTO_MODEL_ID,
+    operationId: `workspace-agent:${args.invocation.turnId}`,
+    paid: overlayModelUsage,
+    requestFingerprint,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    programmaticSubjectId: `agent:${args.invocation.agentId}`,
+  })
+  if (!reservation.ok) throw new WorkspaceAgentInvocationError(
+    reservation.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
+  )
+  const collaboration = server.appData.repositories.conversationCollaboration
+  const sandboxBillingService = new ManagedAgentSandboxBilling({
+    policy: server.generationUsagePolicy,
+    repository: server.appData.repositories.connectedAgents,
+  })
+  let sandboxBilling: Awaited<ReturnType<ManagedAgentSandboxBilling['reserve']>> | undefined
+  try {
+    if (remoteTarget.environmentKind === 'overlay_cloud') {
+      sandboxBilling = await sandboxBillingService.reserve({
+        agentId: args.invocation.agentId,
+        entitlements,
+        environmentId: remoteTarget.environmentId,
+        idempotencyKey: `${args.invocation.invocationNonce}:sandbox`,
+        maxRunTimeMs: policy.maxRunTimeMs,
+        maxSandboxEgressBytes: policy.maxSandboxEgressBytes,
+        operationId: `workspace-agent-sandbox:${args.invocation.turnId}`,
+        requestFingerprint,
+        userId: args.actorUserId,
+        workspaceId: args.workspaceId,
+      })
+    }
+    const turn = await collaboration.startAgentTurn({
+      actorUserId: args.actorUserId,
+      agentId: args.invocation.agentId,
+      authorPrincipalId: args.invocation.agentPrincipalId,
+      clientNonce: args.invocation.invocationNonce,
+      conversationId: args.conversationId,
+      modelId: args.invocation.modelId,
+      threadRootMessageId: args.threadRootMessageId,
+      turnId: args.invocation.turnId,
+      userMessageId: args.messageId,
+      workspaceId: args.workspaceId,
+    })
+    // A turn already exists for this (message, agent): a duplicate trigger, or
+    // a retried send. Starting a second workflow would bill the turn twice.
+    if (turn.resumed) {
+      await server.chatUsagePolicy.releaseReservation({
+        reason: 'workspace_agent_duplicate_trigger',
+        reservationId: reservation.reservationId,
+        userId: args.actorUserId,
+      }).catch((_error) => undefined)
+      await sandboxBillingService.release({
+        billing: sandboxBilling,
+        userId: args.actorUserId,
+        reason: 'workspace_agent_duplicate_trigger',
+      }).catch((_error) => undefined)
+      return { resumed: true as const, runId: turn.runId }
+    }
+    const workflowRun = await start(managedHarnessAgentTurnWorkflow, [{
+      actorUserId: args.actorUserId,
+      agentId: args.invocation.agentId,
+      agentPrincipalId: args.invocation.agentPrincipalId,
+      bindingId: remoteTarget.bindingId,
+      conversationId: args.conversationId,
+      environmentId: remoteTarget.environmentId,
+      harnessId: remoteTarget.adapterId,
+      ...(harnessModel ? { harnessModel } : {}),
+      ...(remoteTarget.byokConnectionId ? { byokConnectionId: remoteTarget.byokConnectionId } : {}),
+      ...(remoteTarget.byokConnectionUserId ? { byokConnectionUserId: remoteTarget.byokConnectionUserId } : {}),
+      ...(args.invocation.instructions?.trim() ? { instructions: args.invocation.instructions.trim() } : {}),
+      invocationNonce: args.invocation.invocationNonce,
+      // The turn's slice ceiling tracks the same run-time cap a remote run gets.
+      maxTurnSlices: Math.max(1, Math.ceil(policy.maxRunTimeMs / (MANAGED_HARNESS_TIME_SLICE_SECONDS * 1_000))),
+      memoryEnabled: args.memoryEnabled,
+      modelId: args.invocation.modelId,
+      prompt: remotePrompt,
+      reservationId: reservation.reservationId,
+      runId: turn.runId,
+      sandboxBilling: sandboxBilling ?? null,
+      ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+      turnId: args.invocation.turnId,
+      turnMessageId: turn.messageId,
+      workingDirectory: remoteTarget.workingDirectory,
+      workspaceId: args.workspaceId,
+    }])
+    await server.auditService.record({
+      action: 'agent_harness_run.dispatched',
+      actorType: 'user',
+      actorUserId: args.actorUserId,
+      outcome: 'success',
+      resourceType: 'agent_run',
+      resourceId: turn.runId,
+      metadata: {
+        workspaceId: args.workspaceId,
+        agentId: args.invocation.agentId,
+        environmentId: remoteTarget.environmentId,
+        bindingId: remoteTarget.bindingId,
+        harnessId: remoteTarget.adapterId,
+        runId: turn.runId,
+        workflowRunId: workflowRun.runId,
+        reservationId: reservation.reservationId,
+        sandboxReservationId: sandboxBilling?.reservationId,
+      },
+    })
+    return { resumed: false as const, runId: turn.runId }
+  } catch (error) {
+    await server.chatUsagePolicy.releaseReservation({
+      reason: 'harness_agent_dispatch_failed',
+      reservationId: reservation.reservationId,
+      userId: args.actorUserId,
+    }).catch((_error) => undefined)
+    await sandboxBillingService.release({
+      billing: sandboxBilling,
+      userId: args.actorUserId,
+      reason: 'harness_agent_dispatch_failed',
+    }).catch((_error) => undefined)
+    await server.auditService.record({
+      action: 'agent_harness_run.dispatch_failed',
+      actorType: 'user',
+      actorUserId: args.actorUserId,
+      outcome: 'failure',
+      resourceType: 'agent_run',
+      resourceId: args.invocation.turnId,
+      metadata: {
+        workspaceId: args.workspaceId,
+        agentId: args.invocation.agentId,
+        environmentId: remoteTarget.environmentId,
+        bindingId: remoteTarget.bindingId,
+        harnessId: remoteTarget.adapterId,
+        reservationId: reservation.reservationId,
+        sandboxReservationId: sandboxBilling?.reservationId,
+        errorCode: error instanceof Error ? error.message.slice(0, 160) : 'harness_agent_dispatch_failed',
       },
     }).catch((_auditError) => undefined)
     if (error instanceof ManagedAgentSandboxBudgetError ||

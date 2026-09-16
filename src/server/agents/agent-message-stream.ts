@@ -199,6 +199,21 @@ export function createAgentMessageStream(args: {
     },
 
     /**
+     * Forces any buffered text/parts into the write queue and waits for the
+     * queue to drain. A durable step must call this before returning — pending
+     * text that never crossed a flush threshold would otherwise be lost when
+     * the step's process exits.
+     */
+    async flush(): Promise<void> {
+      if (disabled) return
+      const contentDelta = pendingText
+      const parts = pendingParts
+      pendingText = ''
+      pendingParts = null
+      await enqueue(() => writePending(contentDelta, parts))
+    },
+
+    /**
      * Writes the authoritative result. Returns the row id, or `null` when no
      * durable row exists and the caller must persist the reply itself.
      */

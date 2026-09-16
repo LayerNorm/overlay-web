@@ -2352,6 +2352,22 @@ export const agentSandboxLeases = pgTable('agent_sandbox_leases', {
   index('agent_sandbox_leases_workspace_environment_idx').on(table.workspaceId, table.environmentId),
 ])
 
+export const agentHarnessSessions = pgTable('agent_harness_sessions', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  bindingId: text('binding_id').notNull().references(() => agentBindings.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id').notNull(),
+  harnessId: text('harness_id').notNull(),
+  sessionId: text('session_id'),
+  resumeState: jsonb('resume_state').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('agent_harness_sessions_binding_conversation_idx')
+    .on(table.bindingId, table.conversationId),
+  index('agent_harness_sessions_workspace_idx').on(table.workspaceId),
+])
+
 export const agentSandboxSettlements = pgTable('agent_sandbox_settlements', {
   reservationId: text('reservation_id').primaryKey(),
   workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

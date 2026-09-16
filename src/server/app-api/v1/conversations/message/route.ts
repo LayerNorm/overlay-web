@@ -10,6 +10,7 @@ import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { start } from 'workflow/api'
 import {
   resolveWorkspaceAgentInvocations,
+  startManagedHarnessTurn,
   startRemoteWorkspaceAgentTurn,
 } from '@/server/agents/workspace-agent-invocation'
 import { workspaceAgentTurnWorkflow } from '@/server/workflows/workspace-agent-turn'
@@ -57,6 +58,22 @@ async function triggerWorkspaceAgentTurns(args: {
   }
   for (const invocation of invocations) {
     try {
+      if (invocation.remoteTarget?.protocolAdapter === 'harness') {
+        // Managed HarnessAgent bindings are dispatched to the durable slice
+        // workflow — never the ACP command queue.
+        await startManagedHarnessTurn({
+          actorUserId: args.actorUserId,
+          conversationId: args.conversationId,
+          initiatorPrincipalId: args.initiatorPrincipalId,
+          invocation: { ...invocation, remoteTarget: invocation.remoteTarget },
+          messageId: args.messageId,
+          memoryEnabled: args.memoryEnabled,
+          prompt: args.prompt,
+          ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+          workspaceId: args.workspaceId,
+        })
+        continue
+      }
       if (invocation.remoteTarget) {
         await startRemoteWorkspaceAgentTurn({
           actorUserId: args.actorUserId,

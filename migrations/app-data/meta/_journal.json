@@ -547,6 +547,13 @@
       "when": 1789450000000,
       "tag": "0077_surface_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1789509279397,
+      "tag": "0076_agent_harness_sessions",
+      "breakpoints": true
     }
   ]
 }

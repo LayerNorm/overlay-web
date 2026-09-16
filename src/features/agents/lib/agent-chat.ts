@@ -105,6 +105,8 @@ export async function createAgentAndOpenChat(args: {
       description: '',
       instructions: 'You are a helpful assistant.',
       agentType: 'overlay',
+      hostedRuntime: 'overlay',
+      harnessBillingModelId: '',
       harnessLabel: '',
       adapterId: '',
       modelId: DEFAULT_MODEL_ID,

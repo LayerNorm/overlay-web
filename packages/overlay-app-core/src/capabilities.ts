@@ -21,6 +21,7 @@ export interface CapabilityCheck {
   automations: boolean
   multiTenant: boolean
   connectedAgents: boolean
+  managedHarnessAgents: boolean
   computers: boolean
 }
 
@@ -49,6 +50,7 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   automations: true,
   multiTenant: false,
   connectedAgents: false,
+  managedHarnessAgents: false,
   computers: false,
 }
 

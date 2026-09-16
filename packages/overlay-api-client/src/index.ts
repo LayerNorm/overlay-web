@@ -45,7 +45,12 @@ export type {
 } from './admin-authorization/client'
 
 export { ConversationsClient } from './chat/conversations-client'
-export { AgentEnvironmentsClient, type AgentEnvironmentResource } from './agent-environments/client'
+export {
+  AgentEnvironmentsClient,
+  type AgentEnvironmentResource,
+  type ManagedHarnessPicker,
+  type ManagedHarnessPickerEntry,
+} from './agent-environments/client'
 export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
 export { SurfacesClient } from './surfaces/client'
 export { ChatAuxClient } from './chat/chat-aux-client'

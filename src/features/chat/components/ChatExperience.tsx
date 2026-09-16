@@ -1571,7 +1571,7 @@ export default function ChatExperience({
   const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
     ? (
         <div className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 shadow-sm">
-          <p className="text-sm font-medium text-[var(--foreground)]">Work needs your approval</p>
+          <p className="text-sm font-medium text-[var(--foreground)]">{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</p>
           <p className="mt-1 text-xs text-[var(--muted)]">
             {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
           </p>

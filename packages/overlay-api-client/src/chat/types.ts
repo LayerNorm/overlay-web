@@ -99,6 +99,7 @@ export type AgentRunResource = {
   approval?: {
     token: string
     requestedAt: number
+    title?: string
     requests: Array<{
       approvalId: string
       toolCallId: string

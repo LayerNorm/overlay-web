@@ -104,6 +104,12 @@ export type SandboxPort = {
   url: string
   access: 'private' | 'public'
   expiresAt?: number
+  /**
+   * Headers a client must send when connecting to `url` — e.g. Daytona's
+   * `x-daytona-preview-token` for private preview links. These are
+   * credentials for the port; never log them.
+   */
+  headers?: Record<string, string>
 }
 
 export type SandboxSnapshot = {

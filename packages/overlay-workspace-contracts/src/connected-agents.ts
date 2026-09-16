@@ -27,7 +27,7 @@ export type AgentEnvironment = {
   updatedAt: number
 }
 
-export const AGENT_PROTOCOL_ADAPTERS = ['acp', 'eve', 'native'] as const
+export const AGENT_PROTOCOL_ADAPTERS = ['acp', 'eve', 'native', 'harness'] as const
 export type AgentProtocolAdapter = (typeof AGENT_PROTOCOL_ADAPTERS)[number]
 
 /**
@@ -43,6 +43,24 @@ export function isBuiltInUserOwnedAcpAdapterId(value: unknown): value is BuiltIn
     && (BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS as readonly string[]).includes(value)
 }
 
+/**
+ * Agent harnesses Overlay Cloud can host in managed sandboxes through the AI
+ * SDK HarnessAgent (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`). Kept separate
+ * from `BUILT_IN_USER_OWNED_ACP_ADAPTER_IDS` (user-owned machines) and
+ * `OVERLAY_MANAGED_ACP_ADAPTER_IDS` (the agent-host managed path) — the same
+ * separation-of-allowlists rule applies: being listed here must never imply
+ * availability on another surface.
+ */
+export const MANAGED_HARNESS_IDS = [
+  'claude-code', 'codex', 'opencode', 'pi', 'hermes',
+] as const
+export type ManagedHarnessId = (typeof MANAGED_HARNESS_IDS)[number]
+
+export function isManagedHarnessId(value: unknown): value is ManagedHarnessId {
+  return typeof value === 'string'
+    && (MANAGED_HARNESS_IDS as readonly string[]).includes(value)
+}
+
 export type AgentBinding = {
   id: string
   workspaceId: string
@@ -51,6 +69,75 @@ export type AgentBinding = {
   protocolAdapter: AgentProtocolAdapter
   adapterConfig: Record<string, unknown>
   enabled: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * `adapterConfig` shape for `protocolAdapter: 'harness'` bindings — an agent
+ * bound to an `overlay_cloud` environment running an AI SDK HarnessAgent.
+ * `provider` records which managed sandbox provider hosts the harness.
+ */
+export type HarnessAgentBindingConfig = {
+  harnessId: ManagedHarnessId
+  workingDirectory: string
+  provider?: string
+  /**
+   * `overlay` marks the turn's model usage as Overlay-funded for billing;
+   * `byok` means the turn authenticates the harness with the customer's own
+   * provider connection (Vercel-hosted sandboxes only — the key reaches the
+   * sandbox exclusively through request transformations at the boundary).
+   */
+  modelBilling?: 'overlay' | 'byok'
+  /** Harness-facing model string (e.g. `sonnet`); absent means the harness default. */
+  model?: string
+  /** Provider connection (`byok_connections` id) backing `modelBilling:'byok'`. */
+  byokConnectionId?: string
+  /** User who owns the BYOK connection — connections are per-user, so turns triggered by other members resolve the key under the configurer's identity. */
+  byokConnectionUserId?: string
+}
+
+export function parseHarnessAgentBindingConfig(value: unknown): HarnessAgentBindingConfig | null {
+  if (typeof value !== 'object' || value === null) return null
+  const candidate = value as Record<string, unknown>
+  if (!isManagedHarnessId(candidate.harnessId)) return null
+  if (typeof candidate.workingDirectory !== 'string' || !candidate.workingDirectory.trim()) return null
+  if (candidate.provider !== undefined && typeof candidate.provider !== 'string') return null
+  if (candidate.modelBilling !== undefined
+    && candidate.modelBilling !== 'overlay'
+    && candidate.modelBilling !== 'byok') return null
+  if (candidate.model !== undefined && typeof candidate.model !== 'string') return null
+  if (candidate.byokConnectionId !== undefined && typeof candidate.byokConnectionId !== 'string') return null
+  if (candidate.byokConnectionUserId !== undefined && typeof candidate.byokConnectionUserId !== 'string') return null
+  if (candidate.modelBilling === 'byok' && typeof candidate.byokConnectionId !== 'string') return null
+  return {
+    harnessId: candidate.harnessId,
+    workingDirectory: candidate.workingDirectory,
+    ...(typeof candidate.provider === 'string' ? { provider: candidate.provider } : {}),
+    ...(candidate.modelBilling === 'overlay' || candidate.modelBilling === 'byok'
+      ? { modelBilling: candidate.modelBilling }
+      : {}),
+    ...(typeof candidate.model === 'string' ? { model: candidate.model } : {}),
+    ...(typeof candidate.byokConnectionId === 'string' ? { byokConnectionId: candidate.byokConnectionId } : {}),
+    ...(typeof candidate.byokConnectionUserId === 'string' ? { byokConnectionUserId: candidate.byokConnectionUserId } : {}),
+  }
+}
+
+/**
+ * Durable HarnessAgent session record, keyed per binding + conversation.
+ * `resumeState` is the opaque HarnessAgent `resumeFrom`/`continueFrom`
+ * payload — the server persists it verbatim so a later turn can resume the
+ * harness's native conversation without replaying transcript history.
+ */
+export type AgentHarnessSession = {
+  id: string
+  workspaceId: string
+  bindingId: string
+  conversationId: string
+  harnessId: string
+  /** Harness-side session id returned by `HarnessAgentSession.sessionId`. */
+  sessionId?: string
+  resumeState?: Record<string, unknown>
   createdAt: number
   updatedAt: number
 }

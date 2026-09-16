@@ -16,6 +16,7 @@ import {
   type AgentEnvironmentCredential,
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
+  type ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import {
@@ -38,6 +39,9 @@ import { getOverlayRuntimeConfig } from '@/server/config'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
 import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
+import { managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
+import { managedHarnessDescriptor } from './harnesses/registry'
+import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { logger } from '@/server/observability/logger'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
@@ -80,12 +84,16 @@ export class ConnectedAgentControlPlaneService {
     repository: ConnectedAgentRepository
     workspaces: WorkspaceService
     objectStore?: ObjectStore
+    /** For BYOK harness bindings — validates the actor owns the connection. */
+    providerConnections?: Pick<ProviderConnectionRepository, 'get'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
     onTerminalMessage?: (input: RemoteAgentUsageSettlement) => Promise<void>
+    /** Injectable for tests; production resolves the provider from env. */
+    managedRuntime?: typeof managedSandboxRuntimeFromEnv
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
@@ -267,6 +275,66 @@ export class ConnectedAgentControlPlaneService {
     }, args.environmentId)
   }
 
+  /**
+   * Resets a managed-harness environment: clears every persisted HarnessAgent
+   * session on its bindings and destroys the sandbox. The lease stays
+   * `running` with a now-stale `providerReference`, so the next turn's acquire
+   * step recreates a fresh sandbox — reset means "start over", not "shut down".
+   */
+  async resetHarnessEnvironment(args: { actorUserId: string; workspaceId: string; environmentId: string }) {
+    await this.assertEnabled(args.workspaceId)
+    await this.requireManager(args.actorUserId, args.workspaceId)
+    const environment = await this.dependencies.repository.getEnvironment({
+      workspaceId: args.workspaceId,
+      environmentId: args.environmentId,
+    })
+    if (!environment || environment.status === 'revoked') {
+      throw controlPlaneError('Environment not found', 404, 'environment_not_found')
+    }
+    const adapters = Array.isArray(environment.capabilities.adapters)
+      ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
+    if (environment.kind !== 'overlay_cloud' || !adapters.some((adapter) => adapter.protocol === 'harness')) {
+      throw controlPlaneError('Environment does not host a managed harness', 400, 'not_a_harness_environment')
+    }
+    const now = this.now()
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId })
+    let sessionsCleared = 0
+    for (const binding of bindings.filter((candidate) => candidate.environmentId === args.environmentId)) {
+      sessionsCleared += await this.dependencies.repository.deleteHarnessSessionsForBinding({
+        workspaceId: args.workspaceId,
+        bindingId: binding.id,
+        now,
+      })
+    }
+    // Deleting the provider sandbox is best-effort: the next turn reconciles a
+    // missing or expired instance into a fresh one either way.
+    const lease = await this.dependencies.repository.getActiveSandboxLease({
+      workspaceId: args.workspaceId,
+      environmentId: args.environmentId,
+    })
+    let sandboxDestroyed = false
+    if (lease?.providerReference) {
+      const runtime = (this.dependencies.managedRuntime ?? managedSandboxRuntimeFromEnv)(lease.provider)
+      sandboxDestroyed = await runtime.reconnect(lease.providerReference)
+        .then((instance) => instance.delete())
+        .then(() => true)
+        .catch((error) => {
+          logger.warn('[connected-agents] managed harness sandbox destroy failed during reset', {
+            environmentId: args.environmentId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          return false
+        })
+    }
+    await this.audit('agent_environment.harness_reset', 'user', args.actorUserId, {
+      workspaceId: args.workspaceId,
+      environmentId: args.environmentId,
+      sessionsCleared,
+      sandboxDestroyed,
+    }, args.environmentId)
+    return { reset: true as const, sessionsCleared, sandboxDestroyed }
+  }
+
   async listBindings(args: { actorUserId: string; workspaceId: string; agentId?: string }) {
     await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
@@ -283,13 +351,19 @@ export class ConnectedAgentControlPlaneService {
     environmentId: string
     adapterId: string
     workingDirectory: string
+    /** Harness-facing model alias for `protocol:'harness'` adapters. */
+    model?: string
+    /** `byok` funds the turn with the actor's own provider connection. */
+    modelBilling?: 'overlay' | 'byok'
+    byokConnectionId?: string
   }) {
     await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     if (!args.agentId.trim() || args.agentId.length > 256 ||
       !args.environmentId.trim() || args.environmentId.length > 256 ||
       !args.adapterId.trim() || args.adapterId.length > 128 ||
-      !args.workingDirectory.trim() || args.workingDirectory.length > 4_096) {
+      !args.workingDirectory.trim() || args.workingDirectory.length > 4_096 ||
+      (args.model !== undefined && (typeof args.model !== 'string' || args.model.length > 128))) {
       throw controlPlaneError('Agent binding fields are invalid', 400, 'binding_invalid')
     }
     const environment = await this.dependencies.repository.getEnvironment({
@@ -303,17 +377,33 @@ export class ConnectedAgentControlPlaneService {
     const adapters = Array.isArray(environment.capabilities.adapters)
       ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
     const adapter = adapters.find((candidate) => candidate.id === args.adapterId)
-    if (!adapter || adapter.protocol !== 'acp') {
-      throw controlPlaneError('The selected ACP adapter is not installed on this environment', 409, 'adapter_unavailable')
+    if (!adapter || (adapter.protocol !== 'acp' && adapter.protocol !== 'harness')) {
+      throw controlPlaneError('The selected agent adapter is not installed on this environment', 409, 'adapter_unavailable')
+    }
+    if (adapter.protocol === 'harness') {
+      // A harness binding declares the agent's runtime — the workspace policy
+      // gate for runtimes applies here too, not only at agents.create.
+      await this.dependencies.workspaces.assertAgentHarnessAllowed({
+        actorUserId: args.actorUserId,
+        workspaceId: args.workspaceId,
+        harness: args.adapterId,
+      })
     }
     const now = this.now()
+    const adapterConfig: Record<string, unknown> = adapter.protocol === 'harness'
+      ? {
+          harnessId: args.adapterId,
+          workingDirectory: args.workingDirectory,
+          ...(await this.harnessBillingConfig(args))
+        }
+      : { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
     const binding = await this.dependencies.repository.upsertBinding({
       id: randomUUID(),
       workspaceId: args.workspaceId,
       agentId: args.agentId,
       environmentId: args.environmentId,
-      protocolAdapter: 'acp',
-      adapterConfig: { adapterId: args.adapterId, workingDirectory: args.workingDirectory },
+      protocolAdapter: adapter.protocol === 'harness' ? 'harness' : 'acp',
+      adapterConfig,
       enabled: true,
       now,
     })
@@ -325,6 +415,73 @@ export class ConnectedAgentControlPlaneService {
       workingDirectory: args.workingDirectory,
     }, binding.id, 'agent_binding')
     return binding
+  }
+
+  /**
+   * Resolves a harness binding's model-billing config: stamps the sandbox
+   * provider from the active lease, defaults to Overlay-funded billing, and
+   * validates BYOK — the connection must belong to the actor, be compatible
+   * with the harness, and run on Vercel (the only provider whose request
+   * transformations keep the customer's key out of the sandbox environment).
+   */
+  private async harnessBillingConfig(args: {
+    actorUserId: string
+    workspaceId: string
+    environmentId: string
+    adapterId: string
+    model?: string
+    modelBilling?: 'overlay' | 'byok'
+    byokConnectionId?: string
+  }) {
+    const lease = await this.dependencies.repository.getActiveSandboxLease({
+      workspaceId: args.workspaceId,
+      environmentId: args.environmentId,
+    })
+    const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : undefined
+    if (args.modelBilling !== 'byok') {
+      return {
+        modelBilling: 'overlay' as const,
+        ...(model ? { model } : {}),
+        ...(lease ? { provider: lease.provider } : {}),
+      }
+    }
+    if (lease?.provider !== 'vercel') {
+      throw controlPlaneError(
+        'Bring-your-own-key managed agents require the Vercel sandbox provider',
+        400,
+        'byok_provider_unsupported',
+      )
+    }
+    const descriptor = managedHarnessDescriptor(args.adapterId as ManagedHarnessId)
+    if (!descriptor.byokAuth || Object.keys(descriptor.byokAuth).length === 0) {
+      throw controlPlaneError('This runtime does not support customer model keys', 400, 'byok_unsupported')
+    }
+    if (!args.byokConnectionId?.trim() || !this.dependencies.providerConnections) {
+      throw controlPlaneError('A provider connection is required for customer-key billing', 400, 'byok_connection_required')
+    }
+    const connection = await this.dependencies.providerConnections.get({
+      connectionId: args.byokConnectionId.trim(),
+      userId: args.actorUserId,
+    })
+    if (!connection || connection.status !== 'active' || !connection.credentialRef) {
+      throw controlPlaneError('The selected provider connection is unavailable', 400, 'byok_connection_unavailable')
+    }
+    if (!descriptor.byokAuth[connection.providerId]) {
+      throw controlPlaneError(
+        `This provider cannot fund a ${descriptor.id} agent`,
+        400,
+        'byok_provider_incompatible',
+      )
+    }
+    return {
+      modelBilling: 'byok' as const,
+      byokConnectionId: args.byokConnectionId.trim(),
+      // Connections are per-user; the configurer's identity resolves the key
+      // at turn time so any workspace member can trigger the shared agent.
+      byokConnectionUserId: args.actorUserId,
+      ...(model ? { model } : {}),
+      ...(lease ? { provider: lease.provider } : {}),
+    }
   }
 
   async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {
