@@ -160,7 +160,10 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return mutation<AgentHarnessSession>('upsertHarnessSessionByServer', input)
   }
   deleteHarnessSessionsForBinding(input: Parameters<ConnectedAgentRepository['deleteHarnessSessionsForBinding']>[0]) {
-    return mutation<number>('deleteHarnessSessionsForBindingByServer', input)
+    return mutation<number>('deleteHarnessSessionsForBindingByServer', {
+      bindingId: input.bindingId,
+      workspaceId: input.workspaceId,
+    })
   }
   applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
     return mutation<ApplyRemoteEventsResult>('applyRemoteEventsByServer', input)
