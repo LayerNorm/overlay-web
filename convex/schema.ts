@@ -80,6 +80,8 @@ export default defineSchema({
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
+    // Legacy Stripe-migrated rows can carry this field; not written by current code.
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     providerEventCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
