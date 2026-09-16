@@ -136,6 +136,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Allowed `data-remote-agent-commands` parts in the conversation message schema and BFF serialization: the Convex validator rejected connected-agent command events with 500s, and the BFF conversation serializer dropped the commands payload, leaving the agent DM slash menu empty after a page load.
 - Fixed the agent DM slash menu ignoring typed input: the composer kept its live text outside React state by design, so the slash-menu hook only ever saw programmatically set text — typing `/` did not open the menu, filtering and selection did not update, and choosing a command left the menu stuck open. Typing now refreshes composer state only while a slash token is on screen, preserving the no-re-render-per-keystroke behavior for normal text.
 
+### Operational
+
+- Production release 2026-09-16: `846d41f43` promoted on `overlay-landing` and production Convex synced. Managed harness agents enabled for every workspace (`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=1`, `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`, `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=general`); the production `VERCEL_TOKEN` (rotated/dead) and empty `AI_GATEWAY_API_KEY` were replaced with valid values so sandbox provisioning and in-sandbox model brokering work.
+
 ## 2026-08-30
 
 ### Added
