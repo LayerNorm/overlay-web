@@ -91,6 +91,21 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   kept reply text in `content` and never emitted a `text` part, while the
   settled UI renders from `parts` — tool-using replies persisted content but
   rendered textless. Finalize now appends a text part when none exists.
+- [x] **Agent save 500 on non-Claude runtimes** — `PATCH /api/v1/agents/{id}`
+  with `harness:'opencode'` (or codex/pi/hermes) returned a bare 500 because
+  the Convex `harness` union in `collaboration/agents` + `schema.ts` only
+  allowed `overlay`/`claude-code`; arg validation rejected the runtime
+  before the handler. Widened to the full `WORKSPACE_AGENT_HARNESSES` list
+  (`2ef6ccb44`) and mapped `WorkspaceServiceError` in `agentErrorResponse`
+  (policy denial → 403, not 500). Dev Convex push also unblocked by adding
+  optional compat fields (`cancelAtPeriodEnd`, `externalPlatform`/
+  `externalChannelId`/`externalThreadId`/`surfaceBindingId`, `platforms`)
+  for rows written by other releases on the shared backend (`6157576e5`,
+  `e95eb63d4`). Verified live: PATCH `harness:'opencode'` → 200.
+- [x] **Runtime picker missing on fresh drafts** — create flow inserts the
+  draft row then opens edit mode, so the edit-mode lock hid the picker for
+  new agents too (`ea69682b5`): `freshAgentRef` now marks the draft and
+  keeps the picker editable until first save.
 - [ ] **Editor "Agent not found" on expired sessions** — the side-panel editor
   renders "Agent not found" (not a re-auth prompt) when the WorkOS token
   lapses mid-session: `agents.get` 401s → `loadFailed` → not-found copy.
