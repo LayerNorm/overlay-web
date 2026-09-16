@@ -47,7 +47,12 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   output: process.env.NEXT_OUTPUT_MODE?.trim() === "standalone" ? "standalone" : undefined,
-  transpilePackages: ["@overlay/app-core"],
+  transpilePackages: [
+    "@overlay/app-core",
+    // Ships raw .ts entry points — Turbopack must compile it when the Pi
+    // harness adapter is traced into the server bundle.
+    "pi-mcp-adapter",
+  ],
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
     serverActions: {
