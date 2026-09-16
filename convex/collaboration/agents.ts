@@ -4,7 +4,14 @@ import { mutation, query } from '../_generated/server'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
-const harness = v.union(v.literal('overlay'), v.literal('claude-code'))
+const harness = v.union(
+  v.literal('overlay'),
+  v.literal('claude-code'),
+  v.literal('codex'),
+  v.literal('opencode'),
+  v.literal('pi'),
+  v.literal('hermes'),
+)
 const agentVisibility = v.union(v.literal('creator'), v.literal('workspace'))
 const agentValidator = v.object({
   agentId: v.string(),
@@ -160,7 +167,7 @@ export const updateByServer = mutation({
       name?: string
       description?: string
       instructions?: string
-      harness?: 'overlay' | 'claude-code'
+      harness?: 'overlay' | 'claude-code' | 'codex' | 'opencode' | 'pi' | 'hermes'
       modelId?: string
       avatarColor?: string
       avatarShape?: string
