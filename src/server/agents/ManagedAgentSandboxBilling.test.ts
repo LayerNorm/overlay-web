@@ -102,6 +102,80 @@ test('managed sandbox settlement failure marks its reservation for reconciliatio
   assert.equal(reconciled, 'sandbox-reservation')
 })
 
+test('reserve tolerates a dead provider sandbox and settle follows a repointed lease', async () => {
+  // Reset/expiry leaves the lease running but its providerReference dead; the
+  // turn's acquire step recreates the sandbox and repoints the same lease.
+  // reserve must still return a reservation (empty baseline meters the fresh
+  // sandbox's full lifetime) and settle must read the lease's CURRENT
+  // providerReference — the dispatch-time snapshot names a destroyed sandbox.
+  const reconnects: string[] = []
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async (reference: string) => {
+      reconnects.push(reference)
+      if (reference === 'destroyed-sandbox') throw new Error('404 Named sandbox not found')
+      return { usage: async () => ({ wallTimeMs: 60_000, activeCpuTimeMs: 30_000 }) } as SandboxInstance
+    },
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const usageEvents: Array<Record<string, unknown>> = []
+  // `stale` models the window between reserve (lease still points at the dead
+  // ref) and settle (the acquire step repointed the same lease).
+  let stale = true
+  const repository = {
+    getActiveSandboxLease: async () => ({
+      id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
+      providerReference: stale ? 'destroyed-sandbox' : 'recreated-sandbox',
+      status: 'running', reservedUntil: 10_000,
+      runtimeStartedAt: 1_000, usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
+      cleanupAttempts: 0, createdAt: 1_000, updatedAt: 1_000,
+    }),
+    updateSandboxLease: async () => ({
+      id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
+      providerReference: 'recreated-sandbox', status: 'running', reservedUntil: 10_000,
+      usage: {}, cleanupAttempts: 0, createdAt: 1_000, updatedAt: 5_000,
+    }),
+    markSandboxSettlementComplete: async () => true,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 5_000,
+    policy: {
+      reserve: async () => ({ ok: true as const, billingAccountId: 'billing', reservationId: 'sandbox-reservation', reservedCents: 10, entitlements: {} }),
+      markStarted: async () => ({ success: true as const }),
+      release: async () => ({ success: true as const }),
+      markForReconcile: async () => ({ success: true as const }),
+      finalize: async (args: { events?: Array<Record<string, unknown>> }) => {
+        usageEvents.push(...(args.events ?? []))
+        return { success: true as const }
+      },
+    } as never,
+    repository: repository as never,
+    runtime: () => runtime,
+  })
+  const billing = await service.reserve({
+    agentId: 'agent', entitlements: {} as never, environmentId: 'environment',
+    idempotencyKey: 'turn:sandbox', maxRunTimeMs: 60_000, maxSandboxEgressBytes: 1024,
+    operationId: 'sandbox:run',
+    requestFingerprint: 'fingerprint', userId: 'user', workspaceId: 'workspace',
+  })
+  assert.equal(billing.providerReference, 'destroyed-sandbox')
+  assert.deepEqual(billing.baselineUsage, {})
+  stale = false // acquire step recreated the sandbox and repointed the lease
+  await service.settle({
+    agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
+    inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
+    outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
+    workspaceId: 'workspace', sandboxBilling: billing,
+  })
+  // reserve reconnected to the dead ref once (baseline attempt); settle must
+  // have reconnected to the recreated ref, never the dead snapshot.
+  assert.deepEqual(reconnects, ['destroyed-sandbox', 'recreated-sandbox'])
+  assert.equal(usageEvents.length, 1)
+  assert.equal(usageEvents[0]?.type, 'sandbox')
+})
+
 test('provider pricing uses provider-native runtime dimensions', () => {
   assert.equal(sandboxCostUsd({
     provider: 'daytona', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },

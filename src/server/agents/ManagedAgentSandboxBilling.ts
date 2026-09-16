@@ -46,8 +46,20 @@ export class ManagedAgentSandboxBilling {
     })
     if (!lease?.providerReference || lease.status !== 'running') throw new Error('MANAGED_SANDBOX_LEASE_UNAVAILABLE')
     const runtime = this.runtime(lease.provider)
-    const instance = await runtime.reconnect(lease.providerReference)
-    const baselineUsage = await instance.usage()
+    // The lease's sandbox may be gone (idle expiry, reset, provider reclaim) —
+    // the turn's acquire step recreates it and repoints this same lease. A
+    // dead instance still bills correctly: the recreated sandbox starts at
+    // zero usage, so an empty baseline meters its full lifetime.
+    const baselineUsage = await runtime.reconnect(lease.providerReference)
+      .then(async (instance) => await instance.usage())
+      .catch((error) => {
+        logger.warn('[managed-harness] sandbox baseline unavailable — treating as fresh', {
+          environmentId: args.environmentId,
+          error: error instanceof Error ? error.message : String(error),
+          workspaceId: args.workspaceId,
+        })
+        return {} as SandboxUsage
+      })
     const resources = sandboxResources(lease.usage)
     const estimatedProviderCostUsd = sandboxReservationCostUsd({
       provider: lease.provider,
@@ -96,7 +108,17 @@ export class ManagedAgentSandboxBilling {
     if (!billing?.reservationId || !settlement.userId) return
     try {
       const runtime = this.runtime(billing.provider)
-      const instance = await runtime.reconnect(billing.providerReference)
+      // The lease's providerReference may have been repointed mid-turn when
+      // the acquire step recreated an expired sandbox — settle against the
+      // lease's current reference, not the dispatch-time snapshot.
+      const currentLease = await this.dependencies.repository.getActiveSandboxLease({
+        workspaceId: settlement.workspaceId,
+        environmentId: settlement.environmentId,
+      })
+      const providerReference = currentLease?.id === billing.leaseId && currentLease.providerReference
+        ? currentLease.providerReference
+        : billing.providerReference
+      const instance = await runtime.reconnect(providerReference)
       const currentUsage = await instance.usage()
       const usage = usageDelta(billing.baselineUsage, currentUsage, this.now() - billing.startedAt)
       const providerCostUsd = sandboxCostUsd({ provider: billing.provider, resources: billing.resources, usage })
