@@ -299,10 +299,14 @@ policy, and provider credentials all gate server-side (404 → the hosted
 branch shows only Overlay). Model picks are catalog values: the harness-native
 alias lands on `adapterConfig.model` while the priced `billingModelId` becomes
 `agent.modelId` for the usage reservation. Save order is create → provision →
-bind, with a fresh environment per runtime switch and reset-on-detach
-teardown. `POST .../reset-harness` clears sessions and destroys the sandbox
-behind manager auth. Dispatch re-checks availability so a retired runtime
-fails closed at turn time.
+bind. The runtime is the agent's identity: it is fixed at creation and renders
+read-only on edit — switching runtimes means archiving and recreating the
+agent. `POST .../reset-harness` clears sessions and destroys the sandbox
+behind manager auth; the next turn recreates the sandbox through the lease's
+stale-providerReference path (reserve bills a fresh sandbox from a zero
+baseline, settle follows the repointed reference, and settlement failures can
+never fail a finalized turn). Dispatch re-checks availability so a retired
+runtime fails closed at turn time.
 
 - `AgentTypeSelector` becomes two options: **"Hosted on Overlay Cloud"** and
   **"Bring your own agent"**. The hosted branch shows a runtime list — Overlay
