@@ -90,7 +90,7 @@ test('harnessApprovalContinuationMessages omits reason and providerExecuted when
   const [, tool] = harnessApprovalContinuationMessages(
     [{ approvalId: 'ap-1', toolCallId: 'call-1', toolName: 'bash', input: 'not-json' }],
     { approved: true },
-  ) as [{}, { content: Array<Record<string, unknown>> }]
+  ) as [unknown, { content: Array<Record<string, unknown>> }]
   assert.deepEqual(tool.content, [
     { type: 'tool-approval-response', approvalId: 'ap-1', approved: true },
   ])

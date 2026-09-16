@@ -91,7 +91,7 @@ export function harnessApprovalContinuationMessages(
 function safeParseJson(value: string): unknown {
   try {
     return JSON.parse(value)
-  } catch {
+  } catch (_error) {
     return value
   }
 }
