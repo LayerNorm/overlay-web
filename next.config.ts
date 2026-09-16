@@ -48,6 +48,11 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   output: process.env.NEXT_OUTPUT_MODE?.trim() === "standalone" ? "standalone" : undefined,
   transpilePackages: ["@overlay/app-core"],
+  // Vercel's build container OOMs in `Running TypeScript` on the externalized
+  // harness .d.ts trees; typecheck stays enforced via `npm run typecheck`.
+  typescript: process.env.OVERLAY_SKIP_BUILD_TYPECHECK === "1"
+    ? { ignoreBuildErrors: true }
+    : undefined,
   // Managed-harness adapters are server-only and lazily imported — resolve
   // them from node_modules at runtime instead of bundling. This also keeps
   // the ~134MB pi-coding-agent tree and pi-mcp-adapter's raw .ts entry out of
