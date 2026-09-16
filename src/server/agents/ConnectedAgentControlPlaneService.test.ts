@@ -307,6 +307,66 @@ test('harness bindings reject adapters the environment does not advertise', asyn
   )
 })
 
+test('BYOK harness bindings stamp the validated connection and byok billing', async () => {
+  const setup = harnessEnvironmentFixture({ connections: [gatewayConnection()] })
+  const binding = await setup.service.upsertBinding({
+    actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+    environmentId: 'environment-harness', adapterId: 'claude-code',
+    workingDirectory: '/workspace', modelBilling: 'byok', byokConnectionId: 'connection-1',
+  })
+  assert.equal(binding.adapterConfig.modelBilling, 'byok')
+  assert.equal(binding.adapterConfig.byokConnectionId, 'connection-1')
+})
+
+test('BYOK harness bindings fail closed on missing, foreign, or incompatible connections', async () => {
+  const setup = harnessEnvironmentFixture({ connections: [gatewayConnection()] })
+  // No connection id at all.
+  await assertControlPlaneError(
+    () => setup.service.upsertBinding({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+      environmentId: 'environment-harness', adapterId: 'claude-code',
+      workingDirectory: '/workspace', modelBilling: 'byok',
+    }),
+    'byok_connection_required',
+  )
+  // The connection belongs to a different user.
+  await assertControlPlaneError(
+    () => setup.service.upsertBinding({
+      actorUserId: 'user-2', workspaceId: 'workspace-1', agentId: 'agent-1',
+      environmentId: 'environment-harness', adapterId: 'claude-code',
+      workingDirectory: '/workspace', modelBilling: 'byok', byokConnectionId: 'connection-1',
+    }),
+    'byok_connection_unavailable',
+  )
+  // claude-code cannot authenticate against an OpenRouter connection.
+  const withOpenRouter = harnessEnvironmentFixture({
+    connections: [gatewayConnection({ providerId: 'openrouter' })],
+  })
+  await assertControlPlaneError(
+    () => withOpenRouter.service.upsertBinding({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+      environmentId: 'environment-harness', adapterId: 'claude-code',
+      workingDirectory: '/workspace', modelBilling: 'byok', byokConnectionId: 'connection-1',
+    }),
+    'byok_provider_incompatible',
+  )
+})
+
+test('BYOK harness bindings require the Vercel sandbox provider', async () => {
+  const setup = harnessEnvironmentFixture({
+    connections: [gatewayConnection()],
+    leaseProvider: 'daytona',
+  })
+  await assertControlPlaneError(
+    () => setup.service.upsertBinding({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+      environmentId: 'environment-harness', adapterId: 'claude-code',
+      workingDirectory: '/workspace', modelBilling: 'byok', byokConnectionId: 'connection-1',
+    }),
+    'byok_provider_unsupported',
+  )
+})
+
 async function assertControlPlaneError(operation: () => Promise<unknown>, code: string) {
   await assert.rejects(operation, (error: unknown) =>
     error instanceof ConnectedAgentControlPlaneError && error.code === code)
@@ -389,12 +449,29 @@ function artifactRecord(
     createdAt: NOW - 1_000, updatedAt: NOW - 1_000, ...overrides }
 }
 
+/** An active user-owned provider connection, as `providerConnections.get` returns. */
+function gatewayConnection(overrides: Record<string, unknown> = {}) {
+  return {
+    _id: 'connection-1', userId: 'user-1', workspaceId: 'workspace-1',
+    providerId: 'user-vercel-ai-gateway', endpoint: 'https://ai-gateway.vercel.sh/v1',
+    displayName: 'My Vercel AI Gateway', enabledModelIds: [],
+    status: 'active', credentialRef: 'vault:connection-1',
+    isDefault: false, isDeletable: true,
+    createdAt: NOW - 1_000, updatedAt: NOW - 1_000,
+    ...overrides,
+  }
+}
+
 /**
  * A managed-harness environment (`overlay_cloud`, harness adapters advertised,
  * `/workspace` grant) plus the repo/workspaces fakes the reset and
  * harness-binding paths need.
  */
-function harnessEnvironmentFixture(options: { reconnectFails?: boolean } = {}) {
+function harnessEnvironmentFixture(options: {
+  reconnectFails?: boolean
+  leaseProvider?: string
+  connections?: Array<Record<string, unknown>>
+} = {}) {
   const harnessEnvironment: AgentEnvironment = {
     id: 'environment-harness', workspaceId: 'workspace-1', kind: 'overlay_cloud',
     name: 'Overlay Cloud · claude-code', status: 'online', publicKey: 'public-key',
@@ -412,7 +489,7 @@ function harnessEnvironmentFixture(options: { reconnectFails?: boolean } = {}) {
   ]
   const lease = {
     id: 'lease-1', workspaceId: 'workspace-1', environmentId: 'environment-harness',
-    provider: 'vercel', providerReference: 'sandbox-ref-1', status: 'running',
+    provider: options.leaseProvider ?? 'vercel', providerReference: 'sandbox-ref-1', status: 'running',
     reservedUntil: NOW + 60_000, usage: {}, cleanupAttempts: 0, createdAt: NOW - 1_000, updatedAt: NOW - 1_000,
   }
   const clearedBindingIds: string[] = []
@@ -454,6 +531,13 @@ function harnessEnvironmentFixture(options: { reconnectFails?: boolean } = {}) {
     repository,
     audit: { record: async () => {} } as unknown as AuditService,
     workspaces,
+    providerConnections: {
+      async get(args: { connectionId: string; userId: string }) {
+        return (options.connections ?? []).find(
+          (connection) => connection._id === args.connectionId && connection.userId === args.userId,
+        ) ?? null
+      },
+    } as never,
     now: () => NOW,
     isEnabled: () => true,
     managedRuntime: managedRuntime as never,

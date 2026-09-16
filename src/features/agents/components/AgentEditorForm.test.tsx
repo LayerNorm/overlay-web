@@ -150,6 +150,7 @@ const claudeCodePickerEntry: ManagedHarnessPickerEntry = {
     { value: 'sonnet', label: 'Claude Sonnet 4.6', harnessModel: 'sonnet', billingModelId: 'claude-sonnet-4-6' },
     { value: 'opus', label: 'Claude Opus 4.7', harnessModel: 'opus', billingModelId: 'anthropic/claude-opus-4.7' },
   ],
+  byokProviders: ['user-vercel-ai-gateway'],
 }
 
 test('hosted runtime selector lists Overlay first, then managed harnesses', () => {
@@ -172,16 +173,58 @@ test('managed harness fields render model picker, fixed provider, and working di
       onInstructionsChange={() => undefined}
       modelValue="sonnet"
       onModelChange={() => undefined}
+      modelAccess="overlay"
+      onModelAccessChange={() => undefined}
+      byokConnections={[{ id: 'connection-1', label: 'My Vercel AI Gateway' }]}
       provider="Vercel Sandbox"
       workingDirectory="/workspace"
     />,
   )
   assert.match(markup, /Agent instructions/)
   assert.match(markup, /aria-label="Harness model"/)
+  assert.match(markup, /aria-label="Model access"/)
   assert.match(markup, /funded by Overlay/)
   assert.match(markup, /Vercel Sandbox/)
   assert.match(markup, /\/workspace/)
   assert.doesNotMatch(markup, /Reset session/, 'create mode has no sandbox yet')
+})
+
+test('managed harness fields explain BYOK funding when a connection is selected', () => {
+  const markup = renderToStaticMarkup(
+    <ManagedHarnessFields
+      harness={claudeCodePickerEntry}
+      instructions=""
+      onInstructionsChange={() => undefined}
+      modelValue="opus"
+      onModelChange={() => undefined}
+      modelAccess="connection-1"
+      onModelAccessChange={() => undefined}
+      byokConnections={[{ id: 'connection-1', label: 'My Vercel AI Gateway' }]}
+      provider="Vercel Sandbox"
+      workingDirectory="/workspace"
+    />,
+  )
+  assert.match(markup, /Billed to your own provider connection/)
+  assert.match(markup, /stays in Overlay/)
+})
+
+test('managed harness fields omit the access picker when the harness has no BYOK providers', () => {
+  const markup = renderToStaticMarkup(
+    <ManagedHarnessFields
+      harness={{ ...claudeCodePickerEntry, byokProviders: [] }}
+      instructions=""
+      onInstructionsChange={() => undefined}
+      modelValue="opus"
+      onModelChange={() => undefined}
+      modelAccess="overlay"
+      onModelAccessChange={() => undefined}
+      byokConnections={[]}
+      provider="Vercel Sandbox"
+      workingDirectory="/workspace"
+    />,
+  )
+  assert.doesNotMatch(markup, /aria-label="Model access"/)
+  assert.match(markup, /funded by Overlay/)
 })
 
 test('managed harness fields render sandbox status and reset control in edit mode', () => {
@@ -192,6 +235,9 @@ test('managed harness fields render sandbox status and reset control in edit mod
       onInstructionsChange={() => undefined}
       modelValue="opus"
       onModelChange={() => undefined}
+      modelAccess="overlay"
+      onModelAccessChange={() => undefined}
+      byokConnections={[]}
       provider="Vercel Sandbox"
       workingDirectory="/workspace"
       sandboxStatus="online"
@@ -220,6 +266,9 @@ const behaviorBase = {
   managedHarnesses: [] as ManagedHarnessPickerEntry[],
   harnessModel: '',
   onHarnessModelChange: () => undefined,
+  managedModelAccess: 'overlay',
+  onManagedModelAccessChange: () => undefined,
+  managedByokConnections: [] as Array<{ id: string; label: string }>,
   managedProvider: 'Vercel Sandbox',
   managedWorkingDirectory: '/workspace',
   adapterId: 'codex',

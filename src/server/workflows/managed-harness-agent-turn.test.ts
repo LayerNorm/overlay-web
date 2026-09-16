@@ -75,14 +75,11 @@ test('slice step wraps the reconnected native handle and persists resume state',
   assert.match(steps, /stream\.flush\(\)/)
 })
 
-test('v1 tool policy: sandbox-boundary permissions, no elicitation tool', async () => {
+test('tool policy: env-configurable permission mode, no elicitation tool', async () => {
   const steps = await read('src/server/agents/managed-harness-steps.ts')
-  assert.match(steps, /permissionMode: 'allow-all'/)
+  assert.match(steps, /OVERLAY_MANAGED_HARNESS_PERMISSION_MODE/)
+  assert.match(steps, /permissionMode: managedHarnessPermissionMode\(\)/)
   assert.match(steps, /inactiveTools: \['askUserQuestions'\]/)
-  // Interactive approvals remain a follow-up — the workflow fails that state
-  // loudly rather than parking the turn.
-  const workflow = await read('src/server/workflows/managed-harness-agent-turn.ts')
-  assert.match(workflow, /awaiting_tool_approval/)
 })
 
 test('failure path destroys the session, releases the reservation, settles billing', async () => {
@@ -139,4 +136,63 @@ test('the editor reset path is a dedicated endpoint on the control plane', async
   assert.match(reset, /deleteHarnessSessionsForBinding/)
   assert.match(reset, /reconnect\(lease\.providerReference\)/)
   assert.match(reset, /agent_environment\.harness_reset/)
+})
+
+/**
+ * Phase 4 wiring — providers, approvals, and BYOK
+ * (docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md).
+ */
+test('awaiting_tool_approval parks the run on a durable hook the approval route resolves', async () => {
+  const [workflow, steps] = await Promise.all([
+    read('src/server/workflows/managed-harness-agent-turn.ts'),
+    read('src/server/agents/managed-harness-steps.ts'),
+  ])
+  // The unified loop re-enters the slice path after an approval resolves —
+  // a resolved turn lands back on ready_for_next_step, not straight to done.
+  assert.match(workflow, /state\.status === 'ready_for_next_step' \|\| state\.status === 'awaiting_tool_approval'/)
+  assert.match(workflow, /createHook<\{ approved: boolean; reason\?: string \}>/)
+  assert.match(workflow, /markManagedHarnessApprovalWaiting/)
+  assert.match(workflow, /markManagedHarnessApprovalResolved/)
+  assert.match(workflow, /MAX_MANAGED_HARNESS_APPROVAL_CYCLES/)
+  assert.match(workflow, /harnessApprovalContinuationMessages\(pending, decision\)/)
+  // Approval state lands on the run row — the shared card + route drive it.
+  assert.match(steps, /agentRunService\.waitForApproval/)
+  assert.match(steps, /agentRunService\.resumeAfterApproval/)
+})
+
+test('non-Vercel providers reach the harness through the Overlay sandbox bridge', async () => {
+  const [steps, providers] = await Promise.all([
+    read('src/server/agents/managed-harness-steps.ts'),
+    read('src/server/agents/harnesses/sandbox-providers.ts'),
+  ])
+  assert.match(steps, /createOverlayHarnessInstanceProvider/)
+  assert.match(providers, /createOverlayHarnessSandboxProvider/)
+  // Daytona is selectable; Box is refused loudly rather than offered insecurely.
+  assert.match(providers, /daytonaHarnessCredentialsConfigured/)
+  assert.match(providers, /Box is not offered for managed harnesses/)
+})
+
+test('BYOK threads the connection id to the slice, which resolves the key at run time', async () => {
+  const [invocation, workflow, steps, registry, controlPlane, bindingsRoute] = await Promise.all([
+    read('src/server/agents/workspace-agent-invocation.ts'),
+    read('src/server/workflows/managed-harness-agent-turn.ts'),
+    read('src/server/agents/managed-harness-steps.ts'),
+    read('src/server/agents/harnesses/registry.ts'),
+    read('src/server/agents/ConnectedAgentControlPlaneService.ts'),
+    read('src/server/app-api/v1/agent-bindings/route.ts'),
+  ])
+  assert.match(invocation, /adapterConfig\.byokConnectionId/)
+  assert.match(invocation, /byokConnectionId: remoteTarget\.byokConnectionId/)
+  assert.match(workflow, /byokConnectionId: input\.byokConnectionId/)
+  assert.match(steps, /resolveManagedHarnessAuthentication/)
+  assert.match(steps, /byokCredentialStore\.read/)
+  // The adapter receives the env record at construction — nothing is persisted.
+  assert.match(registry, /loadAdapter: \(authentication\?/)
+  assert.match(registry, /loadHarnessAdapter\(args\.harnessId, args\.authentication\)/)
+  // The control plane validates ownership, compatibility, and the provider.
+  const billing = controlPlane.slice(controlPlane.indexOf('private async harnessBillingConfig'))
+  assert.match(billing, /lease\?\.provider !== 'vercel'/)
+  assert.match(billing, /providerConnections\.get/)
+  assert.match(bindingsRoute, /modelBilling/)
+  assert.match(bindingsRoute, /byokConnectionId/)
 })

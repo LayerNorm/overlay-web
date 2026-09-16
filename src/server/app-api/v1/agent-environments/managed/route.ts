@@ -35,9 +35,10 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
         id: entry.id,
         label: entry.label,
         description: entry.description,
+        byokProviders: entry.byokProviders,
         models: entry.models,
       })),
-      provider: availability.provider,
+      providers: availability.providers,
       workingDirectory: '/workspace',
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
@@ -87,7 +88,7 @@ export async function POST(request: Request, context: AppApiRouteContext) {
         return NextResponse.json({ error: 'Unsupported managed harness', code: 'harness_invalid' }, { status: 400 })
       }
       const provider = body.provider?.trim() || undefined
-      if (provider && !managedHarnessSandboxProviders().includes(provider as 'vercel')) {
+      if (provider && !managedHarnessSandboxProviders().includes(provider as never)) {
         return NextResponse.json({ error: 'Managed sandbox provider is unavailable', code: 'provider_unavailable' }, { status: 400 })
       }
       const provisioned = await service.provision({ ...common, mode: 'harness', harnessId, provider })

@@ -12,7 +12,7 @@ import 'server-only'
  *
  * See `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`.
  */
-import type { HarnessV1 } from '@ai-sdk/harness'
+import type { HarnessV1, HarnessV1AuthenticationEnvironment } from '@ai-sdk/harness'
 import type {
   HarnessAgent,
   HarnessAgentSandboxConfig,
@@ -46,7 +46,28 @@ export type ManagedHarnessDescriptor = {
    * request-transformation match rules.
    */
   modelApiHosts: readonly string[]
-  loadAdapter: () => Promise<HarnessV1>
+  /**
+   * BYOK provider ids this harness can authenticate with, mapped to the auth
+   * environment the adapter should be constructed with. Absent providers are
+   * not eligible for `modelBilling:'byok'` bindings.
+   */
+  byokAuth?: Readonly<Record<string, (credential: {
+    apiKey: string
+    endpoint: string
+  }) => Record<string, string>>>
+  loadAdapter: (authentication?: HarnessV1AuthenticationEnvironment) => Promise<HarnessV1>
+}
+
+/**
+ * The stored connection endpoint is an OpenAI-compatible base
+ * (`https://ai-gateway.vercel.sh/v1`); the harness `ai-gateway` auth mode
+ * wants the bare gateway origin.
+ */
+function aiGatewayAuthEnvironment(credential: { apiKey: string; endpoint: string }) {
+  return {
+    AI_GATEWAY_API_KEY: credential.apiKey,
+    AI_GATEWAY_BASE_URL: credential.endpoint.replace(/\/v1\/?$/, ''),
+  }
 }
 
 const MANAGED_HARNESS_DESCRIPTORS = {
@@ -55,31 +76,49 @@ const MANAGED_HARNESS_DESCRIPTORS = {
     packageName: '@ai-sdk/harness-claude-code',
     bridgePort: MANAGED_HARNESS_BRIDGE_PORT,
     credentialEnv: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL'],
-    modelApiHosts: ['api.anthropic.com'],
-    loadAdapter: async () => (await import('@ai-sdk/harness-claude-code')).claudeCode,
+    // `ai-gateway.vercel.sh` serves `ai-gateway` auth — Overlay-funded and
+    // BYOK connections alike route model calls through it.
+    modelApiHosts: ['api.anthropic.com', 'ai-gateway.vercel.sh'],
+    byokAuth: { 'user-vercel-ai-gateway': aiGatewayAuthEnvironment },
+    loadAdapter: async (authentication) => {
+      const adapterModule = await import('@ai-sdk/harness-claude-code')
+      return authentication ? adapterModule.createClaudeCode({ auth: authentication }) : adapterModule.claudeCode
+    },
   },
   codex: {
     id: 'codex',
     packageName: '@ai-sdk/harness-codex',
     bridgePort: MANAGED_HARNESS_BRIDGE_PORT,
     credentialEnv: ['OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'],
-    modelApiHosts: ['api.openai.com', 'chatgpt.com'],
-    loadAdapter: async () => (await import('@ai-sdk/harness-codex')).codex,
+    modelApiHosts: ['api.openai.com', 'chatgpt.com', 'ai-gateway.vercel.sh'],
+    byokAuth: { 'user-vercel-ai-gateway': aiGatewayAuthEnvironment },
+    loadAdapter: async (authentication) => {
+      const adapterModule = await import('@ai-sdk/harness-codex')
+      return authentication ? adapterModule.createCodex({ auth: authentication }) : adapterModule.codex
+    },
   },
   opencode: {
     id: 'opencode',
     packageName: '@ai-sdk/harness-opencode',
     bridgePort: MANAGED_HARNESS_BRIDGE_PORT,
     credentialEnv: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENCODE_CONFIG'],
-    modelApiHosts: ['api.anthropic.com', 'api.openai.com', 'opencode.ai'],
-    loadAdapter: async () => (await import('@ai-sdk/harness-opencode')).openCode,
+    modelApiHosts: ['api.anthropic.com', 'api.openai.com', 'opencode.ai', 'ai-gateway.vercel.sh'],
+    byokAuth: { 'user-vercel-ai-gateway': aiGatewayAuthEnvironment },
+    loadAdapter: async (authentication) => {
+      const adapterModule = await import('@ai-sdk/harness-opencode')
+      return authentication ? adapterModule.createOpenCode({ auth: authentication }) : adapterModule.openCode
+    },
   },
   pi: {
     id: 'pi',
     packageName: '@ai-sdk/harness-pi',
     credentialEnv: [],
     modelApiHosts: [],
-    loadAdapter: async () => (await import('@ai-sdk/harness-pi')).pi,
+    byokAuth: { 'user-vercel-ai-gateway': aiGatewayAuthEnvironment },
+    loadAdapter: async (authentication) => {
+      const adapterModule = await import('@ai-sdk/harness-pi')
+      return authentication ? adapterModule.createPi({ auth: authentication }) : adapterModule.pi
+    },
   },
   hermes: {
     id: 'hermes',
@@ -87,7 +126,8 @@ const MANAGED_HARNESS_DESCRIPTORS = {
     bridgePort: MANAGED_HARNESS_BRIDGE_PORT,
     credentialEnv: ['OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY'],
     modelApiHosts: ['openrouter.ai', 'api.anthropic.com'],
-    loadAdapter: async () => {
+    byokAuth: { openrouter: ({ apiKey }) => ({ OPENROUTER_API_KEY: apiKey }) },
+    loadAdapter: async (authentication) => {
       const { createACP } = await import('@ai-sdk/harness-acp')
       return createACP({
         harnessId: 'hermes',
@@ -99,6 +139,7 @@ const MANAGED_HARNESS_DESCRIPTORS = {
         executable: 'hermes',
         args: ['acp'],
         modelMapping: { type: 'session-model', path: 'modelId' },
+        ...(authentication ? { auth: authentication } : {}),
       })
     },
   },
@@ -119,10 +160,15 @@ export function listManagedHarnessDescriptors(): readonly ManagedHarnessDescript
 /**
  * Loads the adapter for a managed harness. Call inside `'use step'` bodies —
  * the dynamic import keeps adapter code out of workflow bundles and page
- * chunks that only read descriptors.
+ * chunks that only read descriptors. `authentication` is a BYOK environment
+ * record (`{OPENROUTER_API_KEY: …}` style) — it is passed to the adapter's
+ * `auth` setting, never persisted.
  */
-export async function loadHarnessAdapter(id: ManagedHarnessId): Promise<HarnessV1> {
-  const adapter = await managedHarnessDescriptor(id).loadAdapter()
+export async function loadHarnessAdapter(
+  id: ManagedHarnessId,
+  authentication?: HarnessV1AuthenticationEnvironment,
+): Promise<HarnessV1> {
+  const adapter = await managedHarnessDescriptor(id).loadAdapter(authentication)
   if (adapter.specificationVersion !== 'harness-v1') {
     throw new Error(
       `Managed harness '${id}' returned specificationVersion '${adapter.specificationVersion}', expected 'harness-v1'`,
@@ -145,6 +191,8 @@ export async function createManagedHarnessAgent(args: {
   permissionMode?: HarnessAgentSettings['permissionMode']
   /** Disabled tools by name — covers harness builtins (e.g. `askUserQuestions`). */
   inactiveTools?: readonly string[]
+  /** BYOK environment record for the adapter's `auth` — never persisted. */
+  authentication?: HarnessV1AuthenticationEnvironment
   onLog?: HarnessAgentSettings['onLog']
 }): Promise<HarnessAgent> {
   const entry = managedHarnessEntry(args.harnessId)
@@ -153,7 +201,7 @@ export async function createManagedHarnessAgent(args: {
   }
   const [{ HarnessAgent: HarnessAgentClass }, harness] = await Promise.all([
     import('@ai-sdk/harness/agent'),
-    loadHarnessAdapter(args.harnessId),
+    loadHarnessAdapter(args.harnessId, args.authentication),
   ])
   return new HarnessAgentClass({
     harness,

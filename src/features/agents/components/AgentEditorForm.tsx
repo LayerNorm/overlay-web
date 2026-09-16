@@ -340,12 +340,17 @@ function InfoRow({ label, value }: { label: string; value: string }) {
  * directory are read-only in v1 — Vercel Sandbox + /workspace are the only
  * supported values.
  */
-export function ManagedHarnessFields({ harness, instructions, onInstructionsChange, modelValue, onModelChange, provider, workingDirectory, sandboxStatus, resetBusy, onReset }: {
+export function ManagedHarnessFields({ harness, instructions, onInstructionsChange, modelValue, onModelChange, modelAccess, onModelAccessChange, byokConnections, provider, workingDirectory, sandboxStatus, resetBusy, onReset }: {
   harness: ManagedHarnessPickerEntry
   instructions: string
   onInstructionsChange(value: string): void
   modelValue: string
   onModelChange(value: string): void
+  /** `'overlay'` or a provider-connection id — who funds model usage. */
+  modelAccess: string
+  onModelAccessChange(value: string): void
+  /** Active provider connections compatible with this harness's `byokProviders`. */
+  byokConnections: Array<{ id: string; label: string }>
   provider: string
   workingDirectory: string
   sandboxStatus?: string | null
@@ -354,13 +359,35 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
 }) {
   const modelOptions = harness.models.map((model) => ({ value: model.value, label: model.label }))
   const selectedModel = harness.models.find((model) => model.value === modelValue) ?? harness.models[0]
+  const byokSelectable = harness.byokProviders.length > 0
+  const modelAccessOptions = [
+    { value: 'overlay', label: 'Overlay' },
+    ...byokConnections.map((connection) => ({ value: connection.id, label: connection.label })),
+    // A bound connection that has since gone stale still renders so the
+    // operator sees what the agent is configured with.
+    ...(modelAccess !== 'overlay' && !byokConnections.some((connection) => connection.id === modelAccess)
+      ? [{ value: modelAccess, label: 'Unavailable connection' }]
+      : []),
+  ]
+  const modelAccessByok = modelAccess !== 'overlay'
   return (
     <>
       <label className="block text-xs font-medium">Agent instructions<textarea value={instructions} onChange={(event) => onInstructionsChange(event.target.value)} placeholder="Describe what this agent should do, how it should respond, and when it should stop." className="mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]" /></label>
       <div>
         <label className="block text-xs font-medium">Model<ListboxSelect className="mt-1.5" aria-label="Harness model" value={selectedModel?.value ?? modelValue} options={modelOptions} onChange={onModelChange} portal buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]" /></label>
-        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Model usage is funded by Overlay — no API key needed.</p>
       </div>
+      {byokSelectable ? (
+        <div>
+          <label className="block text-xs font-medium">Model access<ListboxSelect className="mt-1.5" aria-label="Model access" value={modelAccess} options={modelAccessOptions} onChange={onModelAccessChange} portal buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]" /></label>
+          <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+            {modelAccessByok
+              ? 'Billed to your own provider connection. The key stays in Overlay\u2019s vault — the sandbox never sees it.'
+              : 'Model usage is funded by Overlay — no API key needed.'}
+          </p>
+        </div>
+      ) : (
+        <p className="text-[11px] leading-4 text-[var(--muted)]">Model usage is funded by Overlay — no API key needed.</p>
+      )}
       <div>
         <InfoRow label="Provider" value={provider} />
         <InfoRow label="Working directory" value={workingDirectory} />
@@ -385,7 +412,7 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedModelAccess, onManagedModelAccessChange, managedByokConnections, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   computersAvailable: boolean
@@ -406,6 +433,11 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   managedHarnesses: ManagedHarnessPickerEntry[]
   harnessModel: string
   onHarnessModelChange(value: string): void
+  /** `'overlay'` or a provider-connection id — who funds model usage. */
+  managedModelAccess: string
+  onManagedModelAccessChange(value: string): void
+  /** Active provider connections compatible with the selected harness. */
+  managedByokConnections: Array<{ id: string; label: string }>
   managedProvider: string
   managedWorkingDirectory: string
   /** Edit mode: live environment status behind the harness binding. */
@@ -459,6 +491,9 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
             onInstructionsChange={onInstructionsChange}
             modelValue={harnessModel}
             onModelChange={onHarnessModelChange}
+            modelAccess={managedModelAccess}
+            onModelAccessChange={onManagedModelAccessChange}
+            byokConnections={managedByokConnections}
             provider={managedProvider}
             workingDirectory={managedWorkingDirectory}
             sandboxStatus={managedSandboxStatus}

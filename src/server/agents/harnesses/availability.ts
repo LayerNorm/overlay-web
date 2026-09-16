@@ -30,10 +30,11 @@ import { managedHarnessSandboxProviders } from './sandbox-providers'
 export type ManagedHarnessAvailability = {
   enabled: boolean
   harnesses: ManagedHarnessCatalogEntry[]
-  provider: 'vercel'
+  /** Providers the deployment can create sandboxes on, preferred first. */
+  providers: string[]
 }
 
-const DISABLED: ManagedHarnessAvailability = { enabled: false, harnesses: [], provider: 'vercel' }
+const DISABLED: ManagedHarnessAvailability = { enabled: false, harnesses: [], providers: [] }
 
 /**
  * The pure decision, split from `managedHarnessAvailability` so tests can
@@ -51,7 +52,9 @@ export function managedHarnessCatalogFor(args: {
   const harnesses = args.allowedHarnesses?.length
     ? MANAGED_HARNESS_CATALOG.filter((entry) => (args.allowedHarnesses as readonly string[]).includes(entry.id))
     : [...MANAGED_HARNESS_CATALOG]
-  return harnesses.length > 0 ? { enabled: true, harnesses, provider: 'vercel' } : DISABLED
+  return harnesses.length > 0
+    ? { enabled: true, harnesses, providers: [...args.providers] }
+    : DISABLED
 }
 
 export async function managedHarnessAvailability(args: {

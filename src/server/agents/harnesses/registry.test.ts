@@ -50,3 +50,29 @@ test('createManagedHarnessAgent builds a HarnessAgent without contacting a sandb
     /Unknown managed harness/,
   )
 })
+
+test('catalog byokProviders mirror the registry byokAuth keys exactly', () => {
+  for (const entry of MANAGED_HARNESS_CATALOG) {
+    const descriptor = managedHarnessDescriptor(entry.id)
+    assert.deepEqual(
+      [...entry.byokProviders].sort(),
+      Object.keys(descriptor.byokAuth ?? {}).sort(),
+      `${entry.id}: the picker's connection filter must match what the server can authenticate`,
+    )
+  }
+})
+
+test('BYOK auth builders produce an env record without persisting secrets', async () => {
+  const descriptor = managedHarnessDescriptor('claude-code')
+  const build = descriptor.byokAuth?.['user-vercel-ai-gateway']
+  assert.ok(build, 'claude-code must accept user Vercel AI Gateway connections')
+  const env = build({ apiKey: 'sk-test', endpoint: 'https://ai-gateway.vercel.sh/v1' })
+  assert.deepEqual(env, {
+    AI_GATEWAY_API_KEY: 'sk-test',
+    AI_GATEWAY_BASE_URL: 'https://ai-gateway.vercel.sh',
+  })
+  const hermes = managedHarnessDescriptor('hermes')
+  assert.deepEqual(hermes.byokAuth?.openrouter?.({ apiKey: 'or-key', endpoint: 'https://openrouter.ai/api/v1' }), {
+    OPENROUTER_API_KEY: 'or-key',
+  })
+})

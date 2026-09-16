@@ -16,6 +16,7 @@ import {
   type AgentEnvironmentCredential,
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
+  type ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import {
@@ -39,6 +40,8 @@ import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
 import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 import { managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
+import { managedHarnessDescriptor } from './harnesses/registry'
+import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { logger } from '@/server/observability/logger'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
@@ -81,6 +84,8 @@ export class ConnectedAgentControlPlaneService {
     repository: ConnectedAgentRepository
     workspaces: WorkspaceService
     objectStore?: ObjectStore
+    /** For BYOK harness bindings — validates the actor owns the connection. */
+    providerConnections?: Pick<ProviderConnectionRepository, 'get'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -348,6 +353,9 @@ export class ConnectedAgentControlPlaneService {
     workingDirectory: string
     /** Harness-facing model alias for `protocol:'harness'` adapters. */
     model?: string
+    /** `byok` funds the turn with the actor's own provider connection. */
+    modelBilling?: 'overlay' | 'byok'
+    byokConnectionId?: string
   }) {
     await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
@@ -386,11 +394,7 @@ export class ConnectedAgentControlPlaneService {
       ? {
           harnessId: args.adapterId,
           workingDirectory: args.workingDirectory,
-          // Managed harness turns are always Overlay-funded — the sandbox
-          // never sees a customer model key.
-          modelBilling: 'overlay',
-          ...(typeof args.model === 'string' && args.model.trim() ? { model: args.model.trim() } : {}),
-          ...(await this.harnessProviderConfig(args))
+          ...(await this.harnessBillingConfig(args))
         }
       : { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
     const binding = await this.dependencies.repository.upsertBinding({
@@ -414,15 +418,70 @@ export class ConnectedAgentControlPlaneService {
   }
 
   /**
-   * Stamps the sandbox provider hosting a harness binding onto `adapterConfig`
-   * for provenance — the active lease is authoritative.
+   * Resolves a harness binding's model-billing config: stamps the sandbox
+   * provider from the active lease, defaults to Overlay-funded billing, and
+   * validates BYOK — the connection must belong to the actor, be compatible
+   * with the harness, and run on Vercel (the only provider whose request
+   * transformations keep the customer's key out of the sandbox environment).
    */
-  private async harnessProviderConfig(args: { workspaceId: string; environmentId: string }) {
+  private async harnessBillingConfig(args: {
+    actorUserId: string
+    workspaceId: string
+    environmentId: string
+    adapterId: string
+    model?: string
+    modelBilling?: 'overlay' | 'byok'
+    byokConnectionId?: string
+  }) {
     const lease = await this.dependencies.repository.getActiveSandboxLease({
       workspaceId: args.workspaceId,
       environmentId: args.environmentId,
     })
-    return lease ? { provider: lease.provider } : {}
+    const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : undefined
+    if (args.modelBilling !== 'byok') {
+      return {
+        modelBilling: 'overlay' as const,
+        ...(model ? { model } : {}),
+        ...(lease ? { provider: lease.provider } : {}),
+      }
+    }
+    if (lease?.provider !== 'vercel') {
+      throw controlPlaneError(
+        'Bring-your-own-key managed agents require the Vercel sandbox provider',
+        400,
+        'byok_provider_unsupported',
+      )
+    }
+    const descriptor = managedHarnessDescriptor(args.adapterId as ManagedHarnessId)
+    if (!descriptor.byokAuth || Object.keys(descriptor.byokAuth).length === 0) {
+      throw controlPlaneError('This runtime does not support customer model keys', 400, 'byok_unsupported')
+    }
+    if (!args.byokConnectionId?.trim() || !this.dependencies.providerConnections) {
+      throw controlPlaneError('A provider connection is required for customer-key billing', 400, 'byok_connection_required')
+    }
+    const connection = await this.dependencies.providerConnections.get({
+      connectionId: args.byokConnectionId.trim(),
+      userId: args.actorUserId,
+    })
+    if (!connection || connection.status !== 'active' || !connection.credentialRef) {
+      throw controlPlaneError('The selected provider connection is unavailable', 400, 'byok_connection_unavailable')
+    }
+    if (!descriptor.byokAuth[connection.providerId]) {
+      throw controlPlaneError(
+        `This provider cannot fund a ${descriptor.id} agent`,
+        400,
+        'byok_provider_incompatible',
+      )
+    }
+    return {
+      modelBilling: 'byok' as const,
+      byokConnectionId: args.byokConnectionId.trim(),
+      // Connections are per-user; the configurer's identity resolves the key
+      // at turn time so any workspace member can trigger the shared agent.
+      byokConnectionUserId: args.actorUserId,
+      ...(model ? { model } : {}),
+      ...(lease ? { provider: lease.provider } : {}),
+    }
   }
 
   async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {

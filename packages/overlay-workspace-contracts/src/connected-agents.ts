@@ -82,10 +82,19 @@ export type HarnessAgentBindingConfig = {
   harnessId: ManagedHarnessId
   workingDirectory: string
   provider?: string
-  /** `overlay` marks the turn's model usage as Overlay-funded for billing. */
-  modelBilling?: 'overlay'
+  /**
+   * `overlay` marks the turn's model usage as Overlay-funded for billing;
+   * `byok` means the turn authenticates the harness with the customer's own
+   * provider connection (Vercel-hosted sandboxes only — the key reaches the
+   * sandbox exclusively through request transformations at the boundary).
+   */
+  modelBilling?: 'overlay' | 'byok'
   /** Harness-facing model string (e.g. `sonnet`); absent means the harness default. */
   model?: string
+  /** Provider connection (`byok_connections` id) backing `modelBilling:'byok'`. */
+  byokConnectionId?: string
+  /** User who owns the BYOK connection — connections are per-user, so turns triggered by other members resolve the key under the configurer's identity. */
+  byokConnectionUserId?: string
 }
 
 export function parseHarnessAgentBindingConfig(value: unknown): HarnessAgentBindingConfig | null {
@@ -94,14 +103,23 @@ export function parseHarnessAgentBindingConfig(value: unknown): HarnessAgentBind
   if (!isManagedHarnessId(candidate.harnessId)) return null
   if (typeof candidate.workingDirectory !== 'string' || !candidate.workingDirectory.trim()) return null
   if (candidate.provider !== undefined && typeof candidate.provider !== 'string') return null
-  if (candidate.modelBilling !== undefined && candidate.modelBilling !== 'overlay') return null
+  if (candidate.modelBilling !== undefined
+    && candidate.modelBilling !== 'overlay'
+    && candidate.modelBilling !== 'byok') return null
   if (candidate.model !== undefined && typeof candidate.model !== 'string') return null
+  if (candidate.byokConnectionId !== undefined && typeof candidate.byokConnectionId !== 'string') return null
+  if (candidate.byokConnectionUserId !== undefined && typeof candidate.byokConnectionUserId !== 'string') return null
+  if (candidate.modelBilling === 'byok' && typeof candidate.byokConnectionId !== 'string') return null
   return {
     harnessId: candidate.harnessId,
     workingDirectory: candidate.workingDirectory,
     ...(typeof candidate.provider === 'string' ? { provider: candidate.provider } : {}),
-    ...(candidate.modelBilling === 'overlay' ? { modelBilling: 'overlay' as const } : {}),
+    ...(candidate.modelBilling === 'overlay' || candidate.modelBilling === 'byok'
+      ? { modelBilling: candidate.modelBilling }
+      : {}),
     ...(typeof candidate.model === 'string' ? { model: candidate.model } : {}),
+    ...(typeof candidate.byokConnectionId === 'string' ? { byokConnectionId: candidate.byokConnectionId } : {}),
+    ...(typeof candidate.byokConnectionUserId === 'string' ? { byokConnectionUserId: candidate.byokConnectionUserId } : {}),
   }
 }
 

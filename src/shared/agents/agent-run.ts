@@ -44,6 +44,8 @@ export type AgentRunApproval = {
   token: string
   requestedAt: number
   requests: AgentRunApprovalRequest[]
+  /** Card heading — defaults to the work-mode copy when absent. */
+  title?: string
 }
 
 export type AgentRunMetrics = {

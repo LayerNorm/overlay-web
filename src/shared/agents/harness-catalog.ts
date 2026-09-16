@@ -45,6 +45,11 @@ export type ManagedHarnessCatalogEntry = {
   kind: ManagedHarnessKind
   /** Bridge/ACP adapters need one reachable sandbox port for their bridge. */
   requiresSandboxPort: boolean
+  /**
+   * BYOK provider ids whose connections can fund this harness — mirrors the
+   * server registry's `byokAuth` mapping. Empty means Overlay-funded only.
+   */
+  byokProviders: readonly string[]
   /** Pickable models; the first entry is the default. */
   models: readonly ManagedHarnessModelOption[]
 }
@@ -56,6 +61,7 @@ export const MANAGED_HARNESS_CATALOG = [
     description: "Anthropic's coding agent, running in an isolated Overlay Cloud sandbox.",
     kind: 'bridge',
     requiresSandboxPort: true,
+    byokProviders: ['user-vercel-ai-gateway'],
     // Ordered by quality like every other model picker — the first entry is
     // the default.
     models: [
@@ -70,6 +76,7 @@ export const MANAGED_HARNESS_CATALOG = [
     description: "OpenAI's coding agent, running in an isolated Overlay Cloud sandbox.",
     kind: 'bridge',
     requiresSandboxPort: true,
+    byokProviders: ['user-vercel-ai-gateway'],
     // The codex CLI owns model selection; usage bills against the GPT-5 tier.
     models: [{ value: 'default', label: 'Harness default', billingModelId: 'gpt-5.4' }],
   },
@@ -79,6 +86,7 @@ export const MANAGED_HARNESS_CATALOG = [
     description: 'Open-source coding agent, running in an isolated Overlay Cloud sandbox.',
     kind: 'bridge',
     requiresSandboxPort: true,
+    byokProviders: ['user-vercel-ai-gateway'],
     models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
   },
   {
@@ -87,6 +95,8 @@ export const MANAGED_HARNESS_CATALOG = [
     description: 'Pi coding agent; the agent loop runs on Overlay and the sandbox is its workspace.',
     kind: 'host',
     requiresSandboxPort: false,
+    // Pi's loop runs host-side, so a customer gateway key never enters the sandbox.
+    byokProviders: ['user-vercel-ai-gateway'],
     // Pi resolves its model through the configured gateway at run time.
     models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
   },
@@ -96,6 +106,7 @@ export const MANAGED_HARNESS_CATALOG = [
     description: 'Hermes through its official ACP server, running in an isolated Overlay Cloud sandbox.',
     kind: 'acp',
     requiresSandboxPort: true,
+    byokProviders: ['openrouter'],
     models: [{ value: 'default', label: 'Harness default', billingModelId: 'claude-sonnet-4-6' }],
   },
 ] as const satisfies readonly ManagedHarnessCatalogEntry[]

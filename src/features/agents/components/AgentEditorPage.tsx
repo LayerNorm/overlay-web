@@ -20,6 +20,7 @@ import {
   getGatewayCatalogRevision,
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { useByokModels } from '@/components/providers/useByokModels'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -119,6 +120,9 @@ export function AgentEditorPage({
   // runtime switch and to restore on cancel.
   const [boundHarnessId, setBoundHarnessId] = useState<string | null>(null)
   const [boundHarnessModel, setBoundHarnessModel] = useState('')
+  /** `'overlay'` or a provider-connection id — who funds the harness's model usage. */
+  const [modelAccess, setModelAccess] = useState('overlay')
+  const [boundModelAccess, setBoundModelAccess] = useState('overlay')
   const [managedResetBusy, setManagedResetBusy] = useState(false)
 
   const onManagedBinding = useCallback((binding: AgentBinding, environment?: AgentEnvironmentResource) => {
@@ -131,6 +135,11 @@ export function AgentEditorPage({
     const model = typeof binding.adapterConfig.model === 'string' ? binding.adapterConfig.model : ''
     setHarnessModel(model)
     setBoundHarnessModel(model)
+    const boundConnection = typeof binding.adapterConfig.byokConnectionId === 'string'
+      ? binding.adapterConfig.byokConnectionId : ''
+    const access = binding.adapterConfig.modelBilling === 'byok' && boundConnection ? boundConnection : 'overlay'
+    setModelAccess(access)
+    setBoundModelAccess(access)
     setManagedEnvironment(environment ?? null)
   }, [])
 
@@ -211,9 +220,23 @@ export function AgentEditorPage({
   const harnessModelOption = managedHarnessEntry?.models.find((model) => model.value === harnessModel)
     ?? managedHarnessEntry?.models[0]
   const harnessBillingModelId = harnessModelOption?.billingModelId ?? ''
-  const managedProvider = managedPicker?.provider === 'vercel' ? 'Vercel Sandbox' : (managedPicker?.provider ?? 'Vercel Sandbox')
+  const managedProviderId = managedPicker?.providers[0] ?? 'vercel'
+  const managedProvider = managedProviderId === 'vercel' ? 'Vercel Sandbox'
+    : managedProviderId === 'daytona' ? 'Daytona'
+    : managedProviderId
   const managedWorkingDirectory = managedPicker?.workingDirectory ?? '/workspace'
   const managedRuntimeSelected = agentType === 'overlay' && isManagedHarnessRuntime(hostedRuntime)
+
+  // BYOK "Model access" options: the actor's active provider connections whose
+  // provider the selected harness can authenticate (`byokProviders`).
+  const { connections: byokConnections } = useByokModels({ enabled: managedRuntimeSelected })
+  const managedByokConnections = useMemo(() => (
+    !managedHarnessEntry || managedHarnessEntry.byokProviders.length === 0 ? [] :
+      byokConnections
+        .filter((connection) => connection.status === 'active'
+          && managedHarnessEntry.byokProviders.includes(connection.providerId))
+        .map((connection) => ({ id: connection._id, label: connection.displayName }))
+  ), [byokConnections, managedHarnessEntry])
 
   // Load this agent's computer (edit mode, Overlay agents, capability on).
   // A bound machine implies the Computer tool group: force it on so the merged
@@ -295,6 +318,8 @@ export function AgentEditorPage({
     // (`onManagedBinding`) fills in the environment and picked model.
     setHostedRuntime(workspaceAgentUsesManagedHarness(agent) ? agent.harness : 'overlay')
     setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
+    // `onManagedBinding` restores the saved access for managed agents.
+    setModelAccess('overlay')
     setDirty(false)
     setSavedFlash(false)
   }, [agent])
@@ -349,6 +374,9 @@ export function AgentEditorPage({
               adapterId: managedHarnessEntry.id,
               workingDirectory: managedWorkingDirectory,
               ...(harnessModelOption?.value ? { model: harnessModelOption.value } : {}),
+              ...(modelAccess !== 'overlay'
+                ? { modelBilling: 'byok' as const, byokConnectionId: modelAccess }
+                : { modelBilling: 'overlay' as const }),
             })
           })().catch(async (bindingError) => {
             setAgent(saved.agent)
@@ -428,11 +456,15 @@ export function AgentEditorPage({
             adapterId: managedHarnessEntry.id,
             workingDirectory: managedWorkingDirectory,
             ...(harnessModelOption?.value ? { model: harnessModelOption.value } : {}),
+            ...(modelAccess !== 'overlay'
+              ? { modelBilling: 'byok' as const, byokConnectionId: modelAccess }
+              : { modelBilling: 'overlay' as const }),
           })
           nextManagedEnvironment = environment
           setManagedEnvironment(environment)
           setBoundHarnessId(managedHarnessEntry.id)
           setBoundHarnessModel(harnessModelOption?.value ?? '')
+          setBoundModelAccess(modelAccess)
         } else if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
@@ -446,6 +478,8 @@ export function AgentEditorPage({
           setManagedEnvironment(null)
           setBoundHarnessId(null)
           setBoundHarnessModel('')
+          setBoundModelAccess('overlay')
+          setModelAccess('overlay')
         }
         // An environment this agent no longer uses keeps no sandbox: clearing
         // sessions + deleting the instance now beats waiting out the idle timeout.
@@ -501,6 +535,7 @@ export function AgentEditorPage({
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
     setHostedRuntime(boundHarnessId ?? 'overlay')
     setHarnessModel(boundHarnessModel)
+    setModelAccess(boundModelAccess)
     setDirty(false)
     setError(null)
     closeEditor()
@@ -700,11 +735,16 @@ export function AgentEditorPage({
                     setHostedRuntime(value)
                     // Reset the model pick so the new runtime's default applies.
                     setHarnessModel('')
+                    // A different runtime supports a different connection set.
+                    setModelAccess('overlay')
                     markDirty()
                   }}
                   managedHarnesses={managedPicker?.harnesses ?? []}
                   harnessModel={harnessModel}
                   onHarnessModelChange={(value) => { setHarnessModel(value); markDirty() }}
+                  managedModelAccess={modelAccess}
+                  onManagedModelAccessChange={(value) => { setModelAccess(value); markDirty() }}
+                  managedByokConnections={managedByokConnections}
                   managedProvider={managedProvider}
                   managedWorkingDirectory={managedWorkingDirectory}
                   managedSandboxStatus={managedEnvironment?.status ?? null}

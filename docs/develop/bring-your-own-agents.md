@@ -218,9 +218,13 @@ sandbox lease is renewable while the agent's conversation state survives provide
 Dispatch branches on the binding's `protocolAdapter`: `harness` bindings run
 `managedHarnessAgentTurnWorkflow` — durable `@ai-sdk/workflow-harness` time slices that
 reconnect (or recreate) the lease's sandbox, wrap the native handle with
-`createVercelSandbox({ sandbox })`, and stream the harness's UI-message chunks into the same
-generating reply row a hosted agent writes. `acp` bindings keep the remote command-queue path,
-and any other adapter fails loudly rather than falling back.
+`createVercelSandbox({ sandbox })` (or the Overlay bridge for other providers), and stream the
+harness's UI-message chunks into the same generating reply row a hosted agent writes. When the
+harness suspends on a tool approval, the workflow records the pending calls on the run row's
+`approval` and parks itself on `createHook`; the existing approval card and
+`POST /api/v1/conversations/run/approval` resolution resume it with synthesized
+`tool-approval-response` messages (capped at 20 cycles per turn). `acp` bindings keep the
+remote command-queue path, and any other adapter fails loudly rather than falling back.
 
 The hosted branch of the agent editor gets its managed-harness picker from
 `GET /api/v1/agent-environments/managed`, which applies every gate server-side — the
@@ -230,7 +234,9 @@ the workspace `allowedAgentHarnesses` policy filtering the shared catalog. A 404
 the only hosted runtime. Selecting a managed runtime swaps the model/tool-group section for harness
 config: a per-harness model select (Overlay-funded — the picker value maps to a harness-native
 `adapterConfig.model` on the binding while the priced gateway `billingModelId` becomes
-`agent.modelId` for usage reservations), a fixed `Vercel Sandbox` provider row, and `/workspace`.
+`agent.modelId` for usage reservations), a **Model access** picker when the harness advertises
+BYOK providers (see below), a provider row (`Vercel Sandbox`, or `Daytona` when that provider is
+configured), and `/workspace`.
 Saving creates the agent, provisions the managed environment, then upserts the binding; a mid-flow
 failure lands on the edit page so retry reuses the durable agent instead of duplicating it. Editing
 a managed agent shows the runtime, its sandbox status, and a manager-gated **Reset session** action
@@ -242,10 +248,34 @@ entirely disables the binding and tears the sandbox down. Dispatch re-checks ava
 time, so a flag flip or policy change that retires a harness fails the next message closed instead
 of turning on a stale binding.
 
+Non-Vercel managed providers reach the harness through
+`createOverlaySandboxProvider(runtime)` / `createOverlayInstanceProvider(instance)` in
+`@overlay/sandbox-runtime` (`src/harness-bridge.ts`) — a provider-neutral adapter that maps
+`SandboxInstance` onto the AI SDK's `HarnessV1SandboxProvider` surface (spawn/run/files/ports/
+network policy/lifecycle/`restricted()`), with deterministic session-name derivation so
+`resumeSession` reconnects the same sandbox. Daytona is selectable via `DAYTONA_API_KEY`; its
+private preview links authenticate through `x-daytona-preview-token`, carried on the new
+`SandboxPort.headers` field so the bridge can connect the harness's in-sandbox bridge port.
+Box stays excluded for harnesses — it lacks the egress allowlist and credential-forwarding
+guarantees, and the provider seam rejects it with a documented reason.
+
+Managed harnesses can also run on a member's own provider connection (BYOK). The editor's
+**Model access** picker lists the member's active provider connections filtered by the
+harness's `byokProviders` (Vercel AI Gateway for the bridge adapters and Pi, OpenRouter for
+Hermes). The binding records `modelBilling:'byok'`, the connection id, and the configurer's
+user id — connections are per-user, so turns triggered by other workspace members resolve the
+key under the configurer's identity. The turn slice reads the key from the credential vault at
+execution time and passes it to the adapter as an `auth` environment record; it is never
+persisted in binding config or workflow state and never enters the sandbox environment. BYOK
+requires the Vercel provider — its request transformations inject the key at the sandbox
+boundary — and `upsertBinding` fails closed on missing, foreign, disabled, or incompatible
+connections. BYOK turns skip the Overlay model-usage reservation.
+
 Provider selection for the agent-host mode is available only to operators through
 `OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Harness mode resolves through
-`OVERLAY_HARNESS_SANDBOX_PROVIDER` (or the request `provider`), is Vercel-only until the Overlay
-sandbox bridge lands, and fails closed when the selected provider is not configured. Vercel
+`OVERLAY_HARNESS_SANDBOX_PROVIDER` (or the request `provider`), offers `vercel` and `daytona`
+when their credentials are configured, and fails closed when the selected provider is not
+configured. Vercel
 creation is pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates
 match a known region.
 

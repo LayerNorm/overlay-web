@@ -19,12 +19,13 @@ export type ManagedHarnessPickerEntry = {
   id: ManagedHarnessId
   label: string
   description: string
+  byokProviders: string[]
   models: Array<{ value: string; label: string; harnessModel?: string; billingModelId: string }>
 }
 
 export type ManagedHarnessPicker = {
   harnesses: ManagedHarnessPickerEntry[]
-  provider: string
+  providers: string[]
   workingDirectory: string
 }
 
@@ -115,6 +116,8 @@ export class AgentEnvironmentsClient {
     adapterId: string
     workingDirectory: string
     model?: string
+    modelBilling?: 'overlay' | 'byok'
+    byokConnectionId?: string
   }, init?: RequestInit) {
     return this.http.json<{ binding: AgentBinding }>(
       '/api/v1/agent-bindings',

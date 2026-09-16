@@ -75,6 +75,10 @@ type HarnessTurnIdentity = {
   harnessId: ManagedHarnessId
   /** Harness-native model alias for the HarnessAgent settings. */
   harnessModel?: string
+  /** Provider connection funding `modelBilling:'byok'` bindings. */
+  byokConnectionId?: string
+  /** Owner of that connection — connections are per-user. */
+  byokConnectionUserId?: string
   /** The agent record's standing instructions. */
   instructions?: string
   invocationNonce: string
@@ -188,19 +192,81 @@ function harnessTurnError(message: string) {
 }
 
 /**
- * Wraps a reconnected sandbox instance as a `HarnessV1SandboxProvider`. Only
- * Vercel is supported in v1 — the lease records which provider created it.
+ * Wraps a reconnected sandbox instance as a `HarnessV1SandboxProvider`.
+ * Vercel uses its native provider — the only one with request
+ * transformations (boundary credential injection). Other providers go
+ * through the Overlay harness bridge over `SandboxInstance`.
  */
-async function wrapHarnessSandbox(instance: SandboxInstance, provider: string) {
+async function wrapHarnessSandbox(instance: SandboxInstance, provider: string, ports: readonly number[]) {
+  if (provider === 'vercel') {
+    const { createVercelSandbox } = await import('@ai-sdk/sandbox-vercel')
+    const native = instance.rawProviderDiagnosticHandle()
+    if (!native || typeof native !== 'object') {
+      throw harnessTurnError('The managed sandbox did not expose a provider handle.')
+    }
+    return createVercelSandbox({ sandbox: native as never })
+  }
+  const { createOverlayHarnessInstanceProvider } = await import('@overlay/sandbox-runtime/harness-bridge')
+  return createOverlayHarnessInstanceProvider({ instance, ports })
+}
+
+/**
+ * Interactive-approval posture for managed turns. Defaults to `allow-all` —
+ * the sandbox boundary is the safety story. `allow-edits`/`allow-reads` gate
+ * built-in tools on the room's approve/deny card.
+ */
+function managedHarnessPermissionMode(): 'allow-all' | 'allow-edits' | 'allow-reads' {
+  const mode = process.env.OVERLAY_MANAGED_HARNESS_PERMISSION_MODE?.trim()
+  return mode === 'allow-edits' || mode === 'allow-reads' ? mode : 'allow-all'
+}
+
+/** Ports the harness's in-sandbox bridge binds — same rule as provisioning. */
+function harnessSandboxPorts(harnessId: ManagedHarnessId): number[] {
+  const descriptor = managedHarnessDescriptor(harnessId)
+  const entry = managedHarnessEntry(harnessId)
+  return entry?.requiresSandboxPort && descriptor.bridgePort ? [descriptor.bridgePort] : []
+}
+
+/**
+ * BYOK for managed harnesses: the actor's provider-connection key is read
+ * from the credential store at slice time and handed to the adapter's `auth`
+ * — on Vercel it reaches the sandbox only through request transformations at
+ * the boundary, never as a sandbox env value. Any other provider, a stale
+ * connection, or a vault miss fails the turn loudly rather than silently
+ * falling back to host credentials.
+ */
+async function resolveManagedHarnessAuthentication(
+  input: {
+    actorUserId: string
+    byokConnectionId?: string
+    byokConnectionUserId?: string
+    harnessId: ManagedHarnessId
+  },
+  provider: string,
+): Promise<Record<string, string> | undefined> {
+  if (!input.byokConnectionId) return undefined
   if (provider !== 'vercel') {
-    throw harnessTurnError(`Managed harness sandbox provider '${provider}' is not supported yet.`)
+    throw harnessTurnError('Customer model keys require the Vercel sandbox provider.')
   }
-  const { createVercelSandbox } = await import('@ai-sdk/sandbox-vercel')
-  const native = instance.rawProviderDiagnosticHandle()
-  if (!native || typeof native !== 'object') {
-    throw harnessTurnError('The managed sandbox did not expose a provider handle.')
+  const { server } = repositories()
+  // Connections are per-user: the binding records who configured it so any
+  // workspace member's message can fund the shared agent's turn.
+  const connection = await server.appData.repositories.providerConnections.get({
+    connectionId: input.byokConnectionId,
+    userId: input.byokConnectionUserId ?? input.actorUserId,
+  })
+  if (!connection || connection.status !== 'active' || !connection.credentialRef) {
+    throw harnessTurnError('The model connection funding this agent is no longer available.')
   }
-  return createVercelSandbox({ sandbox: native as never })
+  const buildAuth = managedHarnessDescriptor(input.harnessId).byokAuth?.[connection.providerId]
+  if (!buildAuth) {
+    throw harnessTurnError(`This provider cannot fund a ${input.harnessId} agent.`)
+  }
+  const apiKey = await server.byokCredentialStore.read(connection.credentialRef)
+  if (!apiKey) {
+    throw harnessTurnError('The model connection funding this agent has no stored key.')
+  }
+  return buildAuth({ apiKey, endpoint: connection.endpoint })
 }
 
 /**
@@ -268,10 +334,16 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
     harnessId: input.harnessId,
     workspaceId: input.workspaceId,
   })
-  const sandbox = await wrapHarnessSandbox(instance, instance.provider)
+  const sandbox = await wrapHarnessSandbox(
+    instance,
+    instance.provider,
+    harnessSandboxPorts(input.harnessId),
+  )
+  const authentication = await resolveManagedHarnessAuthentication(input, instance.provider)
   const agent = await createManagedHarnessAgent({
     harnessId: input.harnessId,
     ...(input.harnessModel ? { model: input.harnessModel } : {}),
+    ...(authentication ? { authentication } : {}),
     ...(input.instructions ? { instructions: input.instructions } : {}),
     sandbox,
     sandboxConfig: {
@@ -279,11 +351,10 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
       // workDir relative to the sandbox's home directory.
       workDir: input.workingDirectory.replace(/^\/+/, ''),
     },
-    // v1 policy: the sandbox boundary (egress allowlist + denied CIDRs) is the
-    // safety story, so built-in tools run without per-call approval — anything
-    // stricter would suspend the turn on approvals nobody can serve yet.
-    // Interactive approval arrives later via suspendTurn + AgentApprovalRequest.
-    permissionMode: 'allow-all',
+    // The sandbox boundary (egress allowlist + denied CIDRs) is the primary
+    // safety story; `OVERLAY_MANAGED_HARNESS_PERMISSION_MODE` can gate
+    // built-in tools on the room's approve/deny card (`createHook`).
+    permissionMode: managedHarnessPermissionMode(),
     // Elicitation is disabled in v1: `askUserQuestions` would park the turn on
     // input the room cannot deliver.
     inactiveTools: ['askUserQuestions'],
@@ -367,6 +438,48 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
     now: Date.now(),
   })
   return { state: next, transcript: transcript.snapshot() }
+}
+
+export {
+  harnessApprovalContinuationMessages,
+  pendingHarnessApprovals,
+  type ManagedHarnessPendingApproval,
+} from '@/server/agents/harnesses/approvals'
+
+/**
+ * Approval-wait step: parks the run on `waiting_for_approval` with the
+ * pending request set — the room's approval card renders from this record.
+ * The workflow then blocks on `createHook` until the approval route resolves
+ * the token.
+ */
+export async function markManagedHarnessApprovalWaiting(input: {
+  actorUserId: string
+  approval: {
+    token: string
+    requestedAt: number
+    title?: string
+    requests: Array<{ approvalId: string; toolCallId: string; toolName: string; input: unknown }>
+  }
+  runId: string
+}) {
+  'use step'
+  await agentRunService.waitForApproval({
+    approval: input.approval,
+    runId: input.runId,
+    userId: input.actorUserId,
+  })
+}
+
+/** Approval-resolved step: returns the run to `running`. */
+export async function markManagedHarnessApprovalResolved(input: {
+  actorUserId: string
+  runId: string
+}) {
+  'use step'
+  await agentRunService.resumeAfterApproval({
+    runId: input.runId,
+    userId: input.actorUserId,
+  })
 }
 
 /**
@@ -510,7 +623,7 @@ async function destroyManagedHarnessSessionHandle(input: HarnessTurnIdentity & {
     harnessId: input.harnessId,
     workspaceId: input.workspaceId,
   })
-  const sandbox = await wrapHarnessSandbox(instance, instance.provider)
+  const sandbox = await wrapHarnessSandbox(instance, instance.provider, harnessSandboxPorts(input.harnessId))
   const agent = await createManagedHarnessAgent({
     harnessId: input.harnessId,
     sandbox,

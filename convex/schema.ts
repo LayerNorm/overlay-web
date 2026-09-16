@@ -1029,6 +1029,7 @@ export default defineSchema({
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
+      title: v.optional(v.string()),
       requests: v.array(v.object({
         approvalId: v.string(),
         toolCallId: v.string(),

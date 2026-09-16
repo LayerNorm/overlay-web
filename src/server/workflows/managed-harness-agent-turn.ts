@@ -1,4 +1,4 @@
-import { getWorkflowMetadata } from 'workflow'
+import { createHook, getWorkflowMetadata } from 'workflow'
 import type { ConnectedAgentSandboxBilling } from '@/server/agents/ConnectedAgentRepository'
 import type { ManagedHarnessId } from '@overlay/workspace-contracts'
 import {
@@ -10,6 +10,10 @@ import {
   acquireManagedHarnessTurn,
   failManagedHarnessTurn,
   finalizeManagedHarnessTurn,
+  harnessApprovalContinuationMessages,
+  markManagedHarnessApprovalResolved,
+  markManagedHarnessApprovalWaiting,
+  pendingHarnessApprovals,
   runManagedHarnessTurnSlice,
   type ManagedHarnessWorkflowState,
 } from '@/server/agents/managed-harness-steps'
@@ -38,6 +42,13 @@ function describeManagedHarnessFailure(error: unknown): {
   }
 }
 
+/**
+ * Bound on approve/deny round-trips in one turn — mirrors
+ * `MAX_WORK_APPROVAL_CYCLES` in the hosted work loop so a harness that
+ * suspends on every call cannot park the run forever.
+ */
+const MAX_MANAGED_HARNESS_APPROVAL_CYCLES = 20
+
 export type ManagedHarnessTurnInput = {
   actorUserId: string
   agentId: string
@@ -49,6 +60,10 @@ export type ManagedHarnessTurnInput = {
   harnessId: ManagedHarnessId
   /** Harness-native model alias resolved from the binding's catalog value. */
   harnessModel?: string
+  /** Provider connection funding `modelBilling:'byok'` bindings. */
+  byokConnectionId?: string
+  /** Owner of that connection — connections are per-user. */
+  byokConnectionUserId?: string
   /** Agent's standing instructions, applied to the HarnessAgent. */
   instructions?: string
   invocationNonce: string
@@ -101,6 +116,8 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
     environmentId: input.environmentId,
     harnessId: input.harnessId,
     harnessModel: input.harnessModel,
+    byokConnectionId: input.byokConnectionId,
+    byokConnectionUserId: input.byokConnectionUserId,
     instructions: input.instructions,
     invocationNonce: input.invocationNonce,
     modelId: input.modelId,
@@ -138,10 +155,53 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
       transcript: { content: '', parts: [] },
     })
     let slices = 1
+    let approvalCycles = 0
     let state: ManagedHarnessWorkflowState = slice.state
-    while (state.status === 'ready_for_next_step' && slices < input.maxTurnSlices) {
-      resumeFrom = state.resumeFrom
-      continueFrom = state.continueFrom
+
+    // One loop over the slice state machine: `ready_for_next_step` keeps
+    // time-slicing within the run budget; `awaiting_tool_approval` parks the
+    // run on `waiting_for_approval` (the room's approve/deny card renders
+    // from the run row) and blocks on a `createHook` token the shared
+    // approval route resolves via `resumeHook`. Decisions re-enter the
+    // suspended turn as synthesized `tool-approval-response` continuation
+    // messages — the session owns the real transcript.
+    while (state.status === 'ready_for_next_step' || state.status === 'awaiting_tool_approval') {
+      if (state.status === 'awaiting_tool_approval') {
+        const pending = pendingHarnessApprovals(state.continueFrom)
+        if (pending.length === 0) {
+          throw new Error('The managed agent turn suspended without an approval request.')
+        }
+        if (approvalCycles >= MAX_MANAGED_HARNESS_APPROVAL_CYCLES) {
+          throw new Error('The managed agent turn exceeded the maximum number of approval cycles.')
+        }
+        const token = `agent-run:${input.runId}:approval:${approvalCycles}`
+        approvalCycles += 1
+        await markManagedHarnessApprovalWaiting({
+          actorUserId: input.actorUserId,
+          approval: {
+            token,
+            requestedAt: Date.now(),
+            title: 'The agent needs your approval',
+            requests: pending.map((request) => ({
+              approvalId: request.approvalId,
+              toolCallId: request.toolCallId,
+              toolName: request.toolName,
+              input: request.input,
+            })),
+          },
+          runId: input.runId,
+        })
+        const decision = await createHook<{ approved: boolean; reason?: string }>({ token })
+        await markManagedHarnessApprovalResolved({
+          actorUserId: input.actorUserId,
+          runId: input.runId,
+        })
+        state = { ...state, messages: harnessApprovalContinuationMessages(pending, decision) }
+      } else {
+        if (slices >= input.maxTurnSlices) break
+        resumeFrom = state.resumeFrom
+        continueFrom = state.continueFrom
+      }
       slice = await runManagedHarnessTurnSlice({
         ...identity,
         sessionId,
@@ -180,11 +240,6 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
       return { completed: true, runId: input.runId }
     }
 
-    if (state.status === 'awaiting_tool_approval') {
-      // Interactive approvals are a later phase — fail loudly rather than
-      // leaving the turn parked on a decision nobody can serve.
-      throw new Error('This harness requested a tool approval, which is not supported yet.')
-    }
     if (state.status === 'ready_for_next_step' || state.status === 'timed_out') {
       throw new Error('The managed agent turn exceeded its time budget.')
     }

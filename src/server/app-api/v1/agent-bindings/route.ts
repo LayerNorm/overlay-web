@@ -25,7 +25,10 @@ export async function PUT(_request: Request, context: AppApiRouteContext) {
       adapterId: string
       workingDirectory: string
       model: string
+      modelBilling: string
+      byokConnectionId: string
     }>
+    const modelBilling = string(body.modelBilling)
     const binding = await getOverlayServerContext().connectedAgentControlPlane.upsertBinding({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
@@ -34,6 +37,8 @@ export async function PUT(_request: Request, context: AppApiRouteContext) {
       adapterId: string(body.adapterId),
       workingDirectory: string(body.workingDirectory),
       ...(string(body.model) ? { model: string(body.model) } : {}),
+      ...(modelBilling === 'overlay' || modelBilling === 'byok' ? { modelBilling } : {}),
+      ...(string(body.byokConnectionId) ? { byokConnectionId: string(body.byokConnectionId) } : {}),
     })
     return NextResponse.json({ binding })
   } catch (error) {

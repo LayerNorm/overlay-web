@@ -324,6 +324,21 @@ fails closed at turn time.
 
 ### Phase 4 — providers, approvals, hardening
 
+**Status: implemented.** `createOverlaySandboxProvider(runtime)` /
+`createOverlayInstanceProvider(instance)` in
+`packages/overlay-sandbox-runtime/src/harness-bridge.ts` map
+`SandboxInstance`/`SandboxRuntime` onto `HarnessV1SandboxProvider` — Daytona is
+now a selectable managed provider (`DAYTONA_API_KEY`, preview links carry
+`x-daytona-preview-token` via `SandboxPort.headers`), and Box stays excluded
+with a documented keys-in-sandbox / no-egress-policy reason. Approval-gated
+tool calls park the workflow on `createHook` (capped at 20 cycles per turn),
+render through the existing run-row approval card, and resume through the
+shared `conversations/run/approval` route. BYOK (Vercel provider only) reads
+the connection's key from the credential vault inside the turn slice — never
+persisted in workflow or binding state — and the editor's **Model access**
+picker offers compatible provider connections. Live bridge conformance runs
+behind `OVERLAY_SANDBOX_LIVE_CONFORMANCE=1`.
+
 - `packages/overlay-sandbox-runtime/src/harness-bridge.ts`:
   `createOverlaySandboxProvider(runtime) → HarnessV1SandboxProvider` mapping
   `SandboxInstance` to `HarnessV1NetworkSandboxSession` (spawn/run/files/ports/

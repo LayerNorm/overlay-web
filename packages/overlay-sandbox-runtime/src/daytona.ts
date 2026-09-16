@@ -212,7 +212,12 @@ class DaytonaSandboxInstance implements SandboxInstance {
   }
   async port(port: number): Promise<SandboxPort> {
     const preview = await this.sandbox.getPreviewLink(port)
-    return { port, url: preview.url, access: preview.token ? 'private' : 'public' }
+    return {
+      port,
+      url: preview.url,
+      access: preview.token ? 'private' : 'public',
+      ...(preview.token ? { headers: { 'x-daytona-preview-token': preview.token } } : {}),
+    }
   }
   async snapshot(options?: { expiresInMs?: number }): Promise<SandboxSnapshot> {
     void options

@@ -216,6 +216,10 @@ export type WorkspaceAgentInvocation = {
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
     /** Catalog model value picked on a `protocol:'harness'` binding. */
     harnessModel?: string
+    /** Provider connection funding `modelBilling:'byok'` harness bindings. */
+    byokConnectionId?: string
+    /** Owner of that connection — connections are per-user. */
+    byokConnectionUserId?: string
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
     protocolAdapter: AgentProtocolAdapter
@@ -416,6 +420,10 @@ export async function resolveWorkspaceAgentInvocations(args: {
       ? target.binding.adapterConfig.workingDirectory.trim() : ''
     const harnessModel = target && typeof target.binding.adapterConfig.model === 'string'
       ? target.binding.adapterConfig.model.trim() : ''
+    const byokConnectionId = target && typeof target.binding.adapterConfig.byokConnectionId === 'string'
+      ? target.binding.adapterConfig.byokConnectionId.trim() : ''
+    const byokConnectionUserId = target && typeof target.binding.adapterConfig.byokConnectionUserId === 'string'
+      ? target.binding.adapterConfig.byokConnectionUserId.trim() : ''
     invocations.push({
       agentId: agent.id,
       agentName: agent.name,
@@ -431,6 +439,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
           environmentKind: target.environment.kind,
           environmentName: target.environment.name,
           ...(harnessModel ? { harnessModel } : {}),
+          ...(byokConnectionId ? { byokConnectionId } : {}),
+          ...(byokConnectionUserId ? { byokConnectionUserId } : {}),
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
@@ -751,8 +761,9 @@ export async function startManagedHarnessTurn(args: {
   })
   if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
   const policy = connectedAgentPolicyFor(entitlements)
-  // Managed harnesses are Overlay-funded: model traffic settles against the
-  // configured model, never a key inside the sandbox.
+  // Overlay-funded bindings settle model traffic against the configured
+  // model; `byok` bindings authenticate with the actor's own provider
+  // connection — resolved at slice time, never persisted in the sandbox.
   const overlayModelUsage = remoteTarget.modelUsageBilling === 'overlay'
   const reservation = await server.chatUsagePolicy.reserveForAttempt({
     entitlements,
@@ -827,6 +838,8 @@ export async function startManagedHarnessTurn(args: {
       environmentId: remoteTarget.environmentId,
       harnessId: remoteTarget.adapterId,
       ...(harnessModel ? { harnessModel } : {}),
+      ...(remoteTarget.byokConnectionId ? { byokConnectionId: remoteTarget.byokConnectionId } : {}),
+      ...(remoteTarget.byokConnectionUserId ? { byokConnectionUserId: remoteTarget.byokConnectionUserId } : {}),
       ...(args.invocation.instructions?.trim() ? { instructions: args.invocation.instructions.trim() } : {}),
       invocationNonce: args.invocation.invocationNonce,
       // The turn's slice ceiling tracks the same run-time cap a remote run gets.

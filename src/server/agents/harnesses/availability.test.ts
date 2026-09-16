@@ -12,7 +12,7 @@ test('managed harness catalog is enabled when every gate passes', () => {
   const result = managedHarnessCatalogFor(ALL_ON)
   assert.equal(result.enabled, true)
   assert.equal(result.harnesses.length, MANAGED_HARNESS_CATALOG.length)
-  assert.equal(result.provider, 'vercel')
+  assert.deepEqual(result.providers, ['vercel'])
 })
 
 test('each gate independently closes the picker', () => {
