@@ -521,12 +521,17 @@ export async function finalizeManagedHarnessTurn(input: HarnessTurnIdentity & {
     })
     return null
   }
+  // The transcript stream keeps reply text in `content` and reserves `parts`
+  // for reasoning/tool rows — but the transcript UI renders from `parts`, so a
+  // reply with tool calls must carry its text as a trailing text part or it
+  // renders nothing but the work summary.
+  const transcriptParts = input.transcript.parts
+  const parts = content && !transcriptParts.some((part) => part.type === 'text')
+    ? [...transcriptParts, { type: 'text', text: content }]
+    : transcriptParts.length > 0 ? transcriptParts : [{ type: 'text', text: content }]
   // The same bounded representation keeps Convex's nested-document limits
   // from turning a successful turn into a persistence failure.
-  const persistence = compactAssistantPersistenceForConvex({
-    content,
-    parts: input.transcript.parts.length > 0 ? input.transcript.parts : [{ type: 'text', text: content }],
-  })
+  const persistence = compactAssistantPersistenceForConvex({ content, parts })
   await collaboration.finalizeAgentMessage({
     actorUserId: input.actorUserId,
     content: persistence.content,
