@@ -42,8 +42,9 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   resumes the same workflow (check the reply continues on the same turn), and
   denying produces a `tool-output-denied` part in the transcript. Also verify
   stop-button cancellation while the workflow is parked.
-- [ ] **Verify Daytona as a managed provider** — set `DAYTONA_API_KEY` and
-  `OVERLAY_HARNESS_SANDBOX_PROVIDER=daytona`; provision
+- [ ] **Daytona managed provider — deferred for now** (owner call, Phase 4
+  follow-up). When revisiting: `DAYTONA_API_KEY` is already in local env;
+  set `OVERLAY_HARNESS_SANDBOX_PROVIDER=daytona`, provision
   `POST /api/v1/agent-environments/managed` with `{mode:'harness',
   harnessId:'claude-code', provider:'daytona'}`, run a turn, and confirm the
   harness reaches its in-sandbox bridge port through the private preview link.
