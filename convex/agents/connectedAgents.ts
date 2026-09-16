@@ -860,7 +860,7 @@ export const upsertHarnessSessionByServer = mutation({
 })
 
 export const deleteHarnessSessionsForBindingByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), bindingId: v.string() },
+  args: { serverSecret: v.string(), workspaceId: v.string(), bindingId: v.string(), now: v.number() },
   returns: v.number(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
