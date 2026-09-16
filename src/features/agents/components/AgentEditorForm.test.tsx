@@ -28,9 +28,9 @@ test('access selector marks the active mode and explains its effect', () => {
   assert.match(onlyMe, /Only you can see, chat with, or @-mention/)
 })
 
-test('agent type selector offers hosted Overlay Cloud and bring-your-own', () => {
+test('agent type selector offers create-your-own and bring-your-own', () => {
   const markup = renderToStaticMarkup(<AgentTypeSelector value="overlay" onChange={() => undefined} />)
-  assert.match(markup, /Hosted on Overlay Cloud/)
+  assert.match(markup, /Create your own agent/)
   assert.match(markup, /Bring your own agent/)
 })
 

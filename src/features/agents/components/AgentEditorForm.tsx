@@ -85,8 +85,8 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           checked={value === 'overlay'}
           onSelect={() => onChange('overlay')}
           icon={<Bot size={15} />}
-          label="Hosted on Overlay Cloud"
-          description="Overlay runs the agent for you — pick a runtime below. No machines to connect."
+          label="Create your own agent"
+          description="Runs on Overlay Cloud — pick a runtime below. No machines to connect."
         />
         <OptionRow
           checked={value === 'byo'}
@@ -412,7 +412,7 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, hostedRuntimeLocked = false, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedModelAccess, onManagedModelAccessChange, managedByokConnections, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, hostedRuntimeLocked = false, managedPickerFailed = false, onManagedPickerRetry, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedModelAccess, onManagedModelAccessChange, managedByokConnections, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   computersAvailable: boolean
@@ -430,6 +430,9 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   hostedRuntime: string
   /** Edit mode: the runtime is the agent's identity — it cannot change after creation. */
   hostedRuntimeLocked?: boolean
+  /** Runtime-catalog fetch failed for a reason other than gating — show a retry row instead of silently degrading to Overlay-only. */
+  managedPickerFailed?: boolean
+  onManagedPickerRetry?(): void
   onHostedRuntimeChange(value: string): void
   /** Picker entries from `GET agent-environments/managed`; empty when gated off. */
   managedHarnesses: ManagedHarnessPickerEntry[]
@@ -483,7 +486,15 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
     }
     return (
       <>
-        {hostedRuntimeLocked ? (
+        {managedPickerFailed && !hostedRuntimeLocked ? (
+          <div>
+            <p className="text-xs font-medium">Runtime</p>
+            <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
+              <p className="text-xs leading-4 text-[var(--muted)]">Couldn&rsquo;t load runtimes — only Overlay is available right now.</p>
+              <button type="button" onClick={onManagedPickerRetry} className="shrink-0 text-xs font-medium text-[var(--foreground)] underline-offset-2 hover:underline">Retry</button>
+            </div>
+          </div>
+        ) : hostedRuntimeLocked ? (
           <div>
             <p className="text-xs font-medium">Runtime</p>
             <div className="mt-1.5 flex items-baseline gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">

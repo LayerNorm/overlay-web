@@ -13,7 +13,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
-import type { AgentEnvironmentResource, ManagedHarnessPicker } from '@overlay/api-client'
+import { ApiRequestError, type AgentEnvironmentResource, type ManagedHarnessPicker } from '@overlay/api-client'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   getEnabledChatModels,
@@ -199,18 +199,28 @@ export function AgentEditorPage({
   }, [activeWorkspaceId, showcase])
 
   // Managed-harness picker: the server applies every gate (feature, rollout,
-  // workspace policy, provider credentials) — a 404 just means the hosted
-  // branch offers only the native Overlay runtime.
+  // workspace policy, provider credentials). A 404 means the hosted branch
+  // offers only the native Overlay runtime — silent, correct. Any other
+  // failure (expired session, 5xx, network) must be visible: silently
+  // degrading to Overlay-only is how an agent gets created on the wrong
+  // runtime.
   const managedHarnessAgentsEnabled = capabilities.managedHarnessAgents === true
+  const [managedPickerFailed, setManagedPickerFailed] = useState(false)
+  const [managedPickerRetry, setManagedPickerRetry] = useState(0)
   useEffect(() => {
     if (showcase || !activeWorkspaceId || !managedHarnessAgentsEnabled) return
     let cancelled = false
     void overlayAppClient.agentEnvironments.managedHarnesses(activeWorkspaceId).then(
-      (picker) => { if (!cancelled) setManagedPicker(picker) },
-      () => { if (!cancelled) setManagedPicker(null) },
+      (picker) => { if (!cancelled) { setManagedPicker(picker); setManagedPickerFailed(false) } },
+      (error) => {
+        if (cancelled) return
+        setManagedPicker(null)
+        // 404 = gated off for this workspace — not a failure worth surfacing.
+        setManagedPickerFailed(!(error instanceof ApiRequestError && error.status === 404))
+      },
     )
     return () => { cancelled = true }
-  }, [activeWorkspaceId, managedHarnessAgentsEnabled, showcase])
+  }, [activeWorkspaceId, managedHarnessAgentsEnabled, managedPickerRetry, showcase])
 
   const managedHarnessEntry = useMemo(
     () => managedPicker?.harnesses.find((entry) => entry.id === hostedRuntime),
@@ -732,6 +742,8 @@ export function AgentEditorPage({
                   onAdvancedChange={setAdvanced}
                   hostedRuntime={hostedRuntime}
                   hostedRuntimeLocked={mode === 'edit' || Boolean(agent)}
+                  managedPickerFailed={managedPickerFailed}
+                  onManagedPickerRetry={() => setManagedPickerRetry((count) => count + 1)}
                   onHostedRuntimeChange={(value) => {
                     setHostedRuntime(value)
                     // Reset the model pick so the new runtime's default applies.

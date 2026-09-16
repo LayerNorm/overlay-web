@@ -69,13 +69,23 @@ export async function parseJson<T>(response: Response): Promise<T> {
       const retryGuidance = retryAfterSeconds === null
         ? 'Please wait a moment, then try again.'
         : `Try again in ${formatRetryDelay(retryAfterSeconds)}.`
-      throw new Error(
+      throw new ApiRequestError(
         `${detail ?? 'Too many requests'}. This account has reached its temporary request limit. ${retryGuidance}`,
+        response.status,
       )
     }
-    throw new Error(detail ?? `Request failed (${response.status})`)
+    throw new ApiRequestError(detail ?? `Request failed (${response.status})`, response.status)
   }
   return value as T
+}
+
+/** Request failure carrying the HTTP status so callers can distinguish a
+ * gated-404 ("feature off for this workspace") from a real failure (401/500). */
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
 }
 
 function retryAfterSecondsFromResponse(response: Response, value: unknown): number | null {
