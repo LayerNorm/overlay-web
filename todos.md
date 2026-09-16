@@ -83,10 +83,18 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   its identity (environment, binding, sessions are all per-harness), so the
   editor renders a read-only row on edit instead of the switchable selector
   (`149eaa8bd`). Switching = archive + recreate.
-- [ ] **Verify reply text renders post-fix** — turns that produced output were
-  marked `failed`/`model_failed` by the settle bug, which is why their text
-  didn't render. After the deploy, confirm a completed run shows its
-  assistant text in the transcript.
+- [x] **Verify reply text renders post-fix** — verified on staging 2026-09-16:
+  a post-reset turn recreated the sandbox (`overlay-harness-e6eb2e03`,
+  repointing lease `9e251862`), completed with `reset-proof.txt` written and
+  read back, and the settled reply renders its text in the transcript.
+  Second root cause found + fixed in `08eb8e1cc`: the transcript writable
+  kept reply text in `content` and never emitted a `text` part, while the
+  settled UI renders from `parts` — tool-using replies persisted content but
+  rendered textless. Finalize now appends a text part when none exists.
+- [ ] **Editor "Agent not found" on expired sessions** — the side-panel editor
+  renders "Agent not found" (not a re-auth prompt) when the WorkOS token
+  lapses mid-session: `agents.get` 401s → `loadFailed` → not-found copy.
+  Consider distinguishing auth failure from genuinely missing agents.
 - [ ] **Exercise a managed tool approval end-to-end** — DM a managed agent a
   prompt that triggers an approval-gated tool; confirm the run flips to
   `waiting_for_approval`, the card renders the requested tool names, approving
