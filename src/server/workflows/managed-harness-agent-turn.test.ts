@@ -82,6 +82,21 @@ test('tool policy: env-configurable permission mode, no elicitation tool', async
   assert.match(steps, /inactiveTools: \['askUserQuestions'\]/)
 })
 
+test('sandbox settlement never fails a finalized or abandoned turn', async () => {
+  const steps = await read('src/server/agents/managed-harness-steps.ts')
+  const finalize = steps.slice(
+    steps.indexOf('export async function finalizeManagedHarnessTurn'),
+    steps.indexOf('export async function failManagedHarnessTurn'),
+  )
+  // A dead sandbox or repointed lease makes settle throw — but the reply is
+  // already persisted by then, so every call site must swallow the error and
+  // let the reservation's reconcile path recover the cents.
+  for (const match of finalize.matchAll(/settleManagedHarnessSandbox\([^)]*\)\s*(\.catch)?/g)) {
+    assert.ok(match[1], `settle call in finalizeManagedHarnessTurn must be .catch-guarded: ${match[0]}`)
+  }
+  assert.ok(finalize.includes('settleManagedHarnessSandbox'), 'expected a settle call in finalize')
+})
+
 test('failure path destroys the session, releases the reservation, settles billing', async () => {
   const steps = await read('src/server/agents/managed-harness-steps.ts')
   const fail = steps.slice(steps.indexOf('export async function failManagedHarnessTurn'))

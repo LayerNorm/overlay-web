@@ -731,6 +731,7 @@ export function AgentEditorPage({
                   advanced={advanced}
                   onAdvancedChange={setAdvanced}
                   hostedRuntime={hostedRuntime}
+                  hostedRuntimeLocked={mode === 'edit' || Boolean(agent)}
                   onHostedRuntimeChange={(value) => {
                     setHostedRuntime(value)
                     // Reset the model pick so the new runtime's default applies.

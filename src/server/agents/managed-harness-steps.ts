@@ -513,7 +513,12 @@ export async function finalizeManagedHarnessTurn(input: HarnessTurnIdentity & {
       reservationId: input.reservationId,
       userId: input.actorUserId,
     }).catch((_error) => undefined)
-    await settleManagedHarnessSandbox({ ...input, outcome: 'failed', outputTokens: 0, inputTokens: 0 })
+    await settleManagedHarnessSandbox({ ...input, outcome: 'failed', outputTokens: 0, inputTokens: 0 }).catch((error) => {
+      logger.warn('[managed-harness] sandbox settlement failed on empty-response path', {
+        error: error instanceof Error ? error.message : String(error),
+        runId: input.runId,
+      })
+    })
     return null
   }
   // The same bounded representation keeps Convex's nested-document limits
@@ -552,7 +557,15 @@ export async function finalizeManagedHarnessTurn(input: HarnessTurnIdentity & {
     reservationId: input.reservationId,
     userId: input.actorUserId,
   })
-  await settleManagedHarnessSandbox({ ...input, outcome: 'completed' })
+  // Settlement is bookkeeping — a dead sandbox or stale lease must not turn
+  // an already-finalized reply into a failed run. `settle` marks the
+  // reservation for reconcile before rethrowing, so the cents recover.
+  await settleManagedHarnessSandbox({ ...input, outcome: 'completed' }).catch((error) => {
+    logger.warn('[managed-harness] sandbox settlement failed on success path', {
+      error: error instanceof Error ? error.message : String(error),
+      runId: input.runId,
+    })
+  })
   return { content: persistence.content, modelId: input.modelId, parts: persistence.parts, tokens }
 }
 

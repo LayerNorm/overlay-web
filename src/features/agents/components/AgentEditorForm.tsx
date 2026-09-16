@@ -412,7 +412,7 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedModelAccess, onManagedModelAccessChange, managedByokConnections, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
+export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, hostedRuntimeLocked = false, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedModelAccess, onManagedModelAccessChange, managedByokConnections, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   computersAvailable: boolean
@@ -428,6 +428,8 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   onAdvancedChange(value: boolean): void
   /** Runtime inside the hosted branch: `'overlay'` or a managed harness id. */
   hostedRuntime: string
+  /** Edit mode: the runtime is the agent's identity — it cannot change after creation. */
+  hostedRuntimeLocked?: boolean
   onHostedRuntimeChange(value: string): void
   /** Picker entries from `GET agent-environments/managed`; empty when gated off. */
   managedHarnesses: ManagedHarnessPickerEntry[]
@@ -481,7 +483,15 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
     }
     return (
       <>
-        {managedHarnesses.length > 0 ? (
+        {hostedRuntimeLocked ? (
+          <div>
+            <p className="text-xs font-medium">Runtime</p>
+            <div className="mt-1.5 flex items-baseline gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
+              <p className="text-sm text-[var(--foreground)]">{managedHarness?.label ?? 'Overlay'}</p>
+              <p className="text-[11px] leading-4 text-[var(--muted)]">Fixed at creation — archive and recreate the agent to switch.</p>
+            </div>
+          </div>
+        ) : managedHarnesses.length > 0 ? (
           <HostedRuntimeSelector value={hostedRuntime} harnesses={managedHarnesses} onChange={onHostedRuntimeChange} />
         ) : null}
         {managedHarness ? (
