@@ -38,6 +38,19 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   EMPTY on `overlay-web-staging`, so the adapter fell back to the runtime's
   `VERCEL_OIDC_TOKEN` JWT as the injection value. Set the real `vck_…` key on
   the project (Production env) — also required on production before launch.
+- [x] **Production rollout (2026-09-16)** — `846d41f43` deployed to
+  `overlay-landing` (www.getoverlay.io) via `deploy --prod --skip-domain` +
+  `promote`; `convex:push:prod` deployed clean (added `agentHarnessSessions`
+  indexes). Prod env had the same rot as staging: `VERCEL_TOKEN` dead
+  (`invalidToken`), `AI_GATEWAY_API_KEY` empty, `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=0`.
+  Replaced token/team/project ids with clean values, set the real `vck_` key,
+  `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=1`,
+  `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`,
+  `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=general` (owner chose everyone), and
+  redeployed (`mrccau3l3`). Verified authenticated on prod: picker returns
+  claude-code/codex/opencode/pi/hermes with providers vercel+daytona; OpenCode
+  provisioning 201 (test sandbox destroyed via reset-harness; orphan env row
+  `overlay-harness-dc2ff13a` left for reconcile).
 - [ ] **Hermes live turn before picker exposure** — `harness-acp@1.0.40`
   constructs fine but `hermes acp` hasn't run a real turn in-sandbox; verify
   before enabling it in the create-agent UI (Phase 3 ships it in the catalog —
