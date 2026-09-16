@@ -82,6 +82,20 @@ test('tool policy: env-configurable permission mode, no elicitation tool', async
   assert.match(steps, /inactiveTools: \['askUserQuestions'\]/)
 })
 
+test('finalized replies always persist their text as a text part', async () => {
+  const steps = await read('src/server/agents/managed-harness-steps.ts')
+  const finalize = steps.slice(
+    steps.indexOf('export async function finalizeManagedHarnessTurn'),
+    steps.indexOf('export async function failManagedHarnessTurn'),
+  )
+  // The transcript stream keeps reply text in `content` — `parts` only carries
+  // reasoning + tool rows. The transcript UI renders from parts, so finalize
+  // must append a text part when none exists or tool-using replies render
+  // with no text.
+  assert.match(finalize, /type:\s*'text',\s*text:\s*content/)
+  assert.match(finalize, /some\(\(part\)\s*=>\s*part\.type\s*===\s*'text'\)/)
+})
+
 test('sandbox settlement never fails a finalized or abandoned turn', async () => {
   const steps = await read('src/server/agents/managed-harness-steps.ts')
   const finalize = steps.slice(
