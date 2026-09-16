@@ -44,43 +44,12 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     userId: string
     isAutomation?: boolean
     workspaceId?: string
-    conversationType?: 'personal' | 'dm' | 'channel'
-    createdByPrincipalId?: string
-    externalPlatform?: string
-    externalChannelId?: string
-    externalThreadId?: string
-    surfaceBindingId?: string
   }): Promise<ConversationId> {
     const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to create conversation')
-    return asConversationId(id)
-  }
-
-  async ensureSurfaceConversation(args: {
-    actModelId: string
-    askModelIds: string[]
-    externalChannelId: string
-    externalPlatform: string
-    externalThreadId: string
-    surfaceBindingId: string
-    title: string
-    userId: string
-    conversationType?: 'personal' | 'dm' | 'channel'
-    createdByPrincipalId?: string
-    agentPrincipalId?: string
-    lastMode?: 'ask' | 'act'
-    projectId?: string
-    workspaceId?: string
-  }): Promise<ConversationId> {
-    const id = await convex.mutation<Id<'conversations'>>(
-      'surfaces/surfaces:ensureSurfaceConversation',
-      { ...args, serverSecret: this.serverSecret },
-      { throwOnError: true },
-    )
-    if (!id) throw new Error('Failed to ensure surface conversation')
     return asConversationId(id)
   }
 
@@ -229,11 +198,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     turnId: string
     userId: string
     variantIndex?: number
-    authorKind?: 'human' | 'agent' | 'model' | 'system'
-    authorPrincipalId?: string
-    importedAuthorName?: string
-    importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   }): Promise<Id<'conversationMessages'> | null> {
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {
       ...args,

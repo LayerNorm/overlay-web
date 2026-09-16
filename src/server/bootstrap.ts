@@ -71,9 +71,6 @@ import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRe
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
-import { SurfaceService } from '@/server/surfaces/SurfaceService'
-import { listSlackChannels } from '@/server/surfaces/slack-directory'
-import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -153,7 +150,6 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
   computerService: ComputerService
-  surfaceService: SurfaceService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
@@ -315,13 +311,6 @@ export function createOverlayServerContext(
         : null
     },
     limits: computerLimits,
-  })
-  const surfaceService = new SurfaceService({
-    repository: appData.repositories.surfaces,
-    agents: workspaceAgentRepository,
-    channelLister: (connection, adapter) =>
-      listSlackChannels(connection, adapter as SlackAdapter),
-    resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
   })
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,
@@ -501,7 +490,6 @@ export function createOverlayServerContext(
     workspaceAgentService,
     connectedAgentControlPlane,
     computerService,
-    surfaceService,
     workspaceSharingService,
     workspaceSearchService,
     knowledgeSourceIngestionService,

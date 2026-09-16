@@ -1,4 +1,4 @@
-import { isNull, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import {
   type AnyPgColumn,
   bigint,
@@ -563,49 +563,6 @@ export const computers = pgTable('computers', {
   check('computers_status_check', sql`${table.status} IN ('provisioning', 'ready', 'stopped', 'error')`),
 ])
 
-// External agent surfaces. Tokens live in the Chat SDK state adapter keyed on
-// external_team_id; these rows carry metadata and ownership only.
-export const surfaceConnections = pgTable('surface_connections', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id').notNull(),
-  platform: text('platform').notNull(),
-  externalTeamId: text('external_team_id').notNull(),
-  externalTeamName: text('external_team_name'),
-  externalEnterpriseId: text('external_enterprise_id'),
-  botUserId: text('bot_user_id'),
-  status: text('status').notNull(),
-  installedByUserId: text('installed_by_user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  uniqueIndex('surface_connections_platform_team_idx').on(table.platform, table.externalTeamId),
-  index('surface_connections_workspace_id_idx').on(table.workspaceId),
-  check('surface_connections_platform_check', sql`${table.platform} IN ('slack')`),
-  check('surface_connections_status_check', sql`${table.status} IN ('active', 'degraded', 'uninstalled')`),
-])
-
-export const surfaceBindings = pgTable('surface_bindings', {
-  id: text('id').primaryKey(),
-  connectionId: text('connection_id')
-    .notNull()
-    .references(() => surfaceConnections.id, { onDelete: 'cascade' }),
-  agentId: text('agent_id').notNull(),
-  channelId: text('channel_id').notNull(),
-  channelName: text('channel_name'),
-  status: text('status').notNull(),
-  createdByUserId: text('created_by_user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  uniqueIndex('surface_bindings_connection_channel_idx').on(table.connectionId, table.channelId),
-  index('surface_bindings_agent_id_idx').on(table.agentId),
-  check('surface_bindings_status_check', sql`${table.status} IN ('active', 'removed')`),
-])
-
 export const skills = pgTable('skills', {
   id: text('id').primaryKey(),
   userId: text('user_id')
@@ -750,11 +707,6 @@ export const conversations = pgTable('conversations', {
   channelSlug: text('channel_slug'),
   channelVisibility: text('channel_visibility'),
   channelTopic: text('channel_topic'),
-  // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
-  externalPlatform: text('external_platform'),
-  externalChannelId: text('external_channel_id'),
-  externalThreadId: text('external_thread_id'),
-  surfaceBindingId: text('surface_binding_id'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
   uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
@@ -767,11 +719,6 @@ export const conversations = pgTable('conversations', {
   index('conversations_workspace_type_last_modified_idx').on(table.workspaceId, table.conversationType, table.lastModified),
   uniqueIndex('conversations_workspace_dm_identity_key_idx').on(table.workspaceId, table.dmIdentityKey),
   uniqueIndex('conversations_workspace_channel_slug_idx').on(table.workspaceId, table.channelSlug),
-  // One live conversation per (binding, platform thread). Partial so deleted
-  // conversations don't block a fresh thread mapping.
-  uniqueIndex('conversations_surface_thread_idx')
-    .on(table.surfaceBindingId, table.externalThreadId)
-    .where(isNull(table.deletedAt)),
 ])
 
 export const conversationMessages = pgTable('conversation_messages', {
@@ -797,12 +744,6 @@ export const conversationMessages = pgTable('conversation_messages', {
   status: messageStatus('status'),
   authorKind: messageAuthorKind('author_kind').notNull(),
   authorPrincipalId: text('author_principal_id'),
-  // Denormalized identity for messages authored on an external surface
-  // (e.g. a Slack sender who is not an Overlay principal).
-  importedAuthorName: text('imported_author_name'),
-  importedAuthorEmail: text('imported_author_email'),
-  importedAuthorStatus: text('imported_author_status')
-    .$type<'member' | 'invited' | 'not_invited'>(),
   clientNonce: text('client_nonce'),
   threadRootMessageId: text('thread_root_message_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

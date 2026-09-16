@@ -20,7 +20,6 @@ import {
   workspaces,
   workspacePrincipals,
   workspaceMemberships,
-  workspaceResourceScopes,
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -75,10 +74,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
     isAutomation?: boolean
-    externalPlatform?: string
-    externalChannelId?: string
-    externalThreadId?: string
-    surfaceBindingId?: string
   }): Promise<ConversationId> {
     const now = new Date()
     const id = conversationId()
@@ -162,10 +157,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
         createdAt: now,
         updatedAt: now,
         isAutomation: args.isAutomation ?? false,
-        externalPlatform: args.externalPlatform,
-        externalChannelId: args.externalChannelId,
-        externalThreadId: args.externalThreadId,
-        surfaceBindingId: args.surfaceBindingId,
       }
       await assertActivePostgresProject(tx, {
         projectId: values.projectId,
@@ -208,121 +199,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
 
     if (!row?.id) throw new Error('Failed to create conversation')
     return row.id as ConversationId
-  }
-
-  async ensureSurfaceConversation(args: {
-    actModelId: string
-    askModelIds: string[]
-    externalChannelId: string
-    externalPlatform: string
-    externalThreadId: string
-    surfaceBindingId: string
-    title: string
-    userId: string
-    conversationType?: 'personal' | 'dm' | 'channel'
-    createdByPrincipalId?: string
-    agentPrincipalId?: string
-    lastMode?: 'ask' | 'act'
-    projectId?: string
-    workspaceId?: string
-  }): Promise<ConversationId> {
-    const [existing] = await this.db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(and(
-        eq(conversations.surfaceBindingId, args.surfaceBindingId),
-        eq(conversations.externalThreadId, args.externalThreadId),
-        isNull(conversations.deletedAt),
-      ))
-      .limit(1)
-    let conversationId: ConversationId
-    if (existing) {
-      conversationId = existing.id as ConversationId
-    } else {
-      try {
-        conversationId = await this.createConversation(args)
-      } catch (error) {
-        // A concurrent insert can win the partial unique index race — the winner
-        // is the canonical row for the thread.
-        const [winner] = await this.db
-          .select({ id: conversations.id })
-          .from(conversations)
-          .where(and(
-            eq(conversations.surfaceBindingId, args.surfaceBindingId),
-            eq(conversations.externalThreadId, args.externalThreadId),
-            isNull(conversations.deletedAt),
-          ))
-          .limit(1)
-        if (winner) {
-          conversationId = winner.id as ConversationId
-        } else {
-          throw error
-        }
-      }
-    }
-    await this.ensureSurfaceConversationRows({
-      conversationId: String(conversationId),
-      workspaceId: args.workspaceId,
-      createdByPrincipalId: args.createdByPrincipalId,
-      agentPrincipalId: args.agentPrincipalId,
-    })
-    return conversationId
-  }
-
-  /**
-   * Surface conversations are collaboration rooms — the binding creator (as
-   * moderator) and the bound agent hold participant rows so the conversation
-   * appears in their accessible lists. Idempotent: runs on every ensure so
-   * rows created before this contract get backfilled on the next inbound
-   * message. A row the creator removed stays removed.
-   */
-  private async ensureSurfaceConversationRows(args: {
-    conversationId: string
-    workspaceId?: string
-    createdByPrincipalId?: string
-    agentPrincipalId?: string
-  }): Promise<void> {
-    if (!args.workspaceId) return
-    const workspaceId = args.workspaceId
-    const candidates = ([
-      { principalId: args.createdByPrincipalId, role: 'moderator' as const },
-      { principalId: args.agentPrincipalId, role: 'member' as const },
-    ] as const).filter((row) => Boolean(row.principalId))
-    if (candidates.length > 0) {
-      const principals = await this.db
-        .select({ id: workspacePrincipals.id, type: workspacePrincipals.type })
-        .from(workspacePrincipals)
-        .where(and(
-          inArray(workspacePrincipals.id, candidates.map((row) => row.principalId as string)),
-          eq(workspacePrincipals.workspaceId, workspaceId),
-          isNull(workspacePrincipals.archivedAt),
-        ))
-      const types = new Map(principals.map((row) => [row.id, row.type]))
-      const rows = candidates
-        .filter((row) => types.has(row.principalId as string))
-        .map((row) => ({
-          conversationId: args.conversationId,
-          workspaceId,
-          principalId: row.principalId as string,
-          principalType: types.get(row.principalId as string)!,
-          role: row.role,
-          status: 'active' as const,
-          notificationLevel: 'all' as const,
-          joinedAt: new Date(),
-          updatedAt: new Date(),
-        }))
-      if (rows.length > 0) {
-        await this.db.insert(conversationParticipants).values(rows)
-          .onConflictDoNothing({
-            target: [conversationParticipants.conversationId, conversationParticipants.principalId],
-          })
-      }
-    }
-    await this.db.insert(workspaceResourceScopes).values({
-      workspaceId,
-      resourceType: 'conversation',
-      resourceId: args.conversationId,
-    }).onConflictDoNothing()
   }
 
   async getConversationById(args: {
@@ -622,9 +498,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
     workspaceId?: string
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
-    importedAuthorName?: string
-    importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
     clientNonce?: string
     threadRootMessageId?: string
   }): Promise<ConversationMessageId | null> {
@@ -666,13 +539,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
         throw new Error('CONVERSATION_NOT_FOUND')
       }
       const authorKind = args.authorKind ?? (args.role === 'user' ? 'human' : 'model')
-      // Imported authors (a Slack sender, not an Overlay principal) carry their
-      // identity on the imported-author fields and never get a principal id.
-      const isImportedAuthor = Boolean(args.importedAuthorName)
-      const authorPrincipalId = !isImportedAuthor && (authorKind === 'human' || authorKind === 'agent')
+      const authorPrincipalId = authorKind === 'human' || authorKind === 'agent'
         ? args.authorPrincipalId ?? conversation.createdByPrincipalId ?? undefined
-        : args.authorPrincipalId
-      if ((authorKind === 'human' || authorKind === 'agent') && !authorPrincipalId && !isImportedAuthor) {
+        : undefined
+      if ((authorKind === 'human' || authorKind === 'agent') && !authorPrincipalId) {
         throw new Error('MESSAGE_AUTHOR_PRINCIPAL_REQUIRED')
       }
       const inserted = await tx.insert(conversationMessages).values({
@@ -694,9 +564,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
         status: 'completed',
         authorKind,
         authorPrincipalId,
-        importedAuthorName: args.importedAuthorName,
-        importedAuthorEmail: args.importedAuthorEmail,
-        importedAuthorStatus: args.importedAuthorStatus,
         clientNonce: args.clientNonce,
         threadRootMessageId: args.threadRootMessageId,
         createdAt: now,
@@ -1620,10 +1487,6 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     shareVisibility: row.shareVisibility ?? undefined,
     shareToken: row.shareToken,
     isAutomation: row.isAutomation ?? undefined,
-    externalPlatform: row.externalPlatform ?? undefined,
-    externalChannelId: row.externalChannelId ?? undefined,
-    externalThreadId: row.externalThreadId ?? undefined,
-    surfaceBindingId: row.surfaceBindingId ?? undefined,
   }
 }
 
@@ -1646,9 +1509,6 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     status: row.status ?? undefined,
     authorKind: row.authorKind,
     authorPrincipalId: row.authorPrincipalId ?? undefined,
-    importedAuthorName: row.importedAuthorName ?? undefined,
-    importedAuthorEmail: row.importedAuthorEmail ?? undefined,
-    importedAuthorStatus: row.importedAuthorStatus ?? undefined,
     clientNonce: row.clientNonce ?? undefined,
     deletedAt: row.deletedAt ? toMillis(row.deletedAt) : undefined,
     editedAt: row.editedAt ? toMillis(row.editedAt) : undefined,

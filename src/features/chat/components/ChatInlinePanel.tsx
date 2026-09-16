@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
+import { Archive, Bot, Check, Hash, MessageSquare, Pencil, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -51,7 +51,6 @@ type Conversation = {
   lastModified: number
   conversationType?: 'personal' | 'dm' | 'channel'
   otherParticipantTypes?: Array<'human' | 'agent'>
-  externalPlatform?: string
 }
 
 function directMessageIcon(participantTypes?: Array<'human' | 'agent'>) {
@@ -584,13 +583,11 @@ export function ChatInlinePanel({
             const active = activeId === chat._id
             const isEditing = editingChatId === chat._id
             const isDeleting = deletingChatIds.includes(chat._id)
-            const ConversationIcon = chat.externalPlatform === 'slack'
-              ? Slack
-              : chat.conversationType === 'channel'
-                ? Hash
-                : chat.conversationType === 'dm'
-                  ? directMessageIcon(chat.otherParticipantTypes)
-                  : MessageSquare
+            const ConversationIcon = chat.conversationType === 'channel'
+              ? Hash
+              : chat.conversationType === 'dm'
+                ? directMessageIcon(chat.otherParticipantTypes)
+                : MessageSquare
             return (
               <SidebarResourceRow
                 key={chat._id}

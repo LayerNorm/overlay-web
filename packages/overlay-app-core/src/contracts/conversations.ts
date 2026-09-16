@@ -10,12 +10,6 @@ export interface ConversationSummary {
   actModelId: string
   clientId?: string
   projectId?: string
-  conversationType?: 'personal' | 'dm' | 'channel'
-  /** Set on conversations mapped to an external surface thread (e.g. Slack). */
-  externalPlatform?: string
-  externalChannelId?: string
-  externalThreadId?: string
-  surfaceBindingId?: string
 }
 
 export type ConversationMessagePart =

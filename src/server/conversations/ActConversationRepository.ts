@@ -84,11 +84,6 @@ export type ConversationListRow = {
   /** Active participant types other than the current actor, for DM presentation. */
   otherParticipantTypes?: Array<'human' | 'agent'>
   workspaceId?: string
-  /** Set on conversations mapped to an external surface thread (e.g. Slack). */
-  externalPlatform?: string
-  externalChannelId?: string
-  externalThreadId?: string
-  surfaceBindingId?: string
 }
 
 export type ConversationMessageRow = {
@@ -179,31 +174,6 @@ export interface ActConversationRepository {
     workspaceId?: string
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
-    externalPlatform?: string
-    externalChannelId?: string
-    externalThreadId?: string
-    surfaceBindingId?: string
-  }): Promise<ConversationId>
-  /**
-   * Find-or-create the conversation for a surface thread. Atomic: callers can
-   * race two inbound messages for the same platform thread and still get one
-   * conversation. Deleted mappings stay deleted — a new live row is created.
-   */
-  ensureSurfaceConversation(args: {
-    actModelId: string
-    askModelIds: string[]
-    externalChannelId: string
-    externalPlatform: string
-    externalThreadId: string
-    surfaceBindingId: string
-    title: string
-    userId: string
-    conversationType?: 'personal' | 'dm' | 'channel'
-    createdByPrincipalId?: string
-    agentPrincipalId?: string
-    lastMode?: 'ask' | 'act'
-    projectId?: string
-    workspaceId?: string
   }): Promise<ConversationId>
   getConversationById(args: {
     conversationId: ConversationId
@@ -288,10 +258,6 @@ export interface ActConversationRepository {
     workspaceId?: string
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
-    /** Identity of an external-surface sender who is not an Overlay principal. */
-    importedAuthorName?: string
-    importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
     clientNonce?: string
     threadRootMessageId?: string
   }): Promise<Id<'conversationMessages'> | null>

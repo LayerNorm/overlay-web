@@ -160,7 +160,7 @@ live import support until the import job repository is provider-neutral.
 
 ## Imported message authorship
 
-- Imported messages carry `importedAuthorName`, `importedAuthorEmail`, and `importedAuthorStatus` so authors who are not Overlay principals still render. The same fields mark live inbound senders on surface-bound conversations (Slack threads answered by a bound agent): `surface-authors.ts` resolves the sender's email to a workspace-membership status with the same member/invited/not_invited convention, reusing `imports/slackImporter:resolveAuthorStatuses` on Convex.
+- Imported messages carry `importedAuthorName`, `importedAuthorEmail`, and `importedAuthorStatus` so authors who are not Overlay principals still render.
 - The authenticated importer's own messages are recognized by the Slack user ID when it can be resolved, with email and a unique display-name fallback. For 1:1 DMs, the importer can also be inferred as the author other than the DM's known counterpart. Those messages are stored with `authorKind: 'human'` and `authorPrincipalId: <importer>`, causing them to render as "You".
 
 ## UI

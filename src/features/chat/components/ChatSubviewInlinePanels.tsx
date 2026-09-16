@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, Bell, Hash, Loader2, MessageSquare, RotateCcw, Slack, Trash2, UsersRound } from 'lucide-react'
+import { Archive, Bell, Hash, Loader2, MessageSquare, RotateCcw, Trash2, UsersRound } from 'lucide-react'
 import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
@@ -155,7 +155,6 @@ type ArchivedConversation = {
   _id: string
   title?: string | null
   conversationType?: string
-  externalPlatform?: string
 }
 
 export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
@@ -202,7 +201,6 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
           _id: archived._id,
           title: archived.title,
           conversationType: archived.conversationType,
-          externalPlatform: archived.externalPlatform,
         }, ...next]
       })
     }
@@ -327,9 +325,7 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
             }}
             className="cursor-pointer"
           >
-            {conversation.externalPlatform === 'slack' ? (
-              <Slack size={12} className="shrink-0" aria-hidden />
-            ) : conversation.conversationType === 'channel' ? (
+            {conversation.conversationType === 'channel' ? (
               <Hash size={12} className="shrink-0" aria-hidden />
             ) : conversation.conversationType === 'dm' ? (
               <UsersRound size={12} className="shrink-0" aria-hidden />

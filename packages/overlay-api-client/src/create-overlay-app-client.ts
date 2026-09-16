@@ -25,7 +25,6 @@ import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
-import { SurfacesClient } from './surfaces/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkspacesClient } from './workspaces/client'
 import { createHttpContext } from './shared/http'
@@ -66,7 +65,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),
     computers: new ComputersClient(http),
-    surfaces: new SurfacesClient(http),
   }
 }
 

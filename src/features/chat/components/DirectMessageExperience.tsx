@@ -19,7 +19,6 @@ import {
   Paperclip,
   Pin,
   Share2,
-  Slack,
   UserRound,
   UsersRound,
   X,
@@ -366,8 +365,6 @@ export function DirectMessageExperience({
     updatedAt: Date.parse('2026-07-29T18:10:00.000Z'),
   } : null)
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
-  /** Platform a mirrored surface thread came from (Slack) — read-only room. */
-  const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
   const [reactions, setReactions] = useState<MessageReaction[]>(showcase ? [{
     conversationId,
     messageId: 'showcase-dm-message-1',
@@ -490,8 +487,6 @@ export function DirectMessageExperience({
     const result = await overlayAppClient.conversations.get<{
       title?: string
       conversationType?: 'personal' | 'dm' | 'channel'
-      externalPlatform?: string
-      externalChannelId?: string
       messages: Array<{
         id: string
         authorKind: RoomMessageRecord['authorKind']
@@ -540,7 +535,6 @@ export function DirectMessageExperience({
         }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
       : null
     setConversationTitle(result.title?.trim() || null)
-    setSurfacePlatform(result.externalPlatform ?? null)
     setHasMoreMessages(result.hasMore === true)
     const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
       ...message,
@@ -789,13 +783,11 @@ export function DirectMessageExperience({
   }, [showAttachMenu])
 
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
-  const HeaderIcon = surfacePlatform === 'slack'
-    ? Slack
-    : conversationType === 'channel'
-      ? Hash
-      : otherParticipants.length <= 1
-        ? UserRound
-        : UsersRound
+  const HeaderIcon = conversationType === 'channel'
+    ? Hash
+    : otherParticipants.length <= 1
+      ? UserRound
+      : UsersRound
   // Agent identity (creature color + shape) resolves from the directory once
   // per conversation: the header for one-to-one agent DMs and every agent
   // message avatar read from the same map. Falls back to neutral while
@@ -1630,9 +1622,6 @@ export function DirectMessageExperience({
         setThreadInput('')
         void sendMessage(text, { threadRootMessageId: threadRoot.id })
       }}
-      readOnlyNotice={surfacePlatform
-        ? `Mirrored from ${surfacePlatform === 'slack' ? 'Slack' : surfacePlatform} — reply in the original thread.`
-        : undefined}
       onClose={() => {
         setRoomPanel(null)
         setThreadRootId(null)
@@ -1697,7 +1686,7 @@ export function DirectMessageExperience({
           onDragEnter={(event) => {
             event.preventDefault()
             dragCounterRef.current++
-            if (!surfacePlatform && event.dataTransfer.types.includes('Files')) setIsDragging(true)
+            if (event.dataTransfer.types.includes('Files')) setIsDragging(true)
           }}
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => {
@@ -1712,7 +1701,6 @@ export function DirectMessageExperience({
             event.preventDefault()
             dragCounterRef.current = 0
             setIsDragging(false)
-            if (surfacePlatform) return
             const files = Array.from(event.dataTransfer.files ?? [])
             const images = files.filter((file) => file.type.startsWith('image/'))
             const documents = files.filter((file) => !file.type.startsWith('image/'))
@@ -1768,7 +1756,7 @@ export function DirectMessageExperience({
                     <Pin size={13} />{pins.length}
                   </button>
                 ) : null}
-                {!showcase && !surfacePlatform ? (
+                {!showcase ? (
                   <button
                     type="button"
                     onClick={() => setAttachOpen(true)}
@@ -1978,16 +1966,6 @@ export function DirectMessageExperience({
                 </div>
               </div>
             </div>
-            {surfacePlatform ? (
-              <div className="border-t border-[var(--border)] px-4 py-3.5">
-                <div className="flex items-center justify-center gap-2 text-xs text-[var(--muted)]">
-                  {surfacePlatform === 'slack' ? <Slack size={13} /> : <Hash size={13} />}
-                  <span>
-                    Mirrored from {surfacePlatform === 'slack' ? 'Slack' : surfacePlatform} — reply in the original thread.
-                  </span>
-                </div>
-              </div>
-            ) : (
             <ChatComposer
               mode="chat"
               surface={{
@@ -2056,7 +2034,6 @@ export function DirectMessageExperience({
                 onSend: () => void handleSend(),
               }}
             />
-            )}
           </AppScreenBody>
         </div>
       </AppScreenShell>

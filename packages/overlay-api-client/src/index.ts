@@ -52,7 +52,6 @@ export {
   type ManagedHarnessPickerEntry,
 } from './agent-environments/client'
 export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
-export { SurfacesClient } from './surfaces/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'

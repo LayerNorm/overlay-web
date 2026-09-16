@@ -226,14 +226,6 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     exitGate: 'Owner-keyed computer rows pass the shared contract suite on both backends; lifecycle and stream issuance stay behind the capability flag.',
   },
   {
-    id: 'surfaces',
-    name: 'External agent surfaces',
-    targetPhase: 'P7',
-    capabilities: [],
-    routeRuleIds: ['surfaces', 'surface-webhooks'],
-    exitGate: 'Surface connection and binding rows pass the shared contract suite on both backends; Slack tokens resolve through the Chat SDK state adapter, not app-data.',
-  },
-  {
     id: 'background-runtime',
     name: 'Background runtime and production safety',
     targetPhase: 'P1',
