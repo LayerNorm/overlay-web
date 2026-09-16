@@ -314,6 +314,10 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       key={`${editorMode}:${agentId ?? 'new'}`}
       mode={editorMode}
       agentId={editorMode === 'edit' ? (agentId ?? undefined) : undefined}
+      // The create flow inserts the draft row first, then opens the editor in
+      // edit mode — a fresh draft is still "creating", so its runtime must
+      // stay pickable until first save.
+      freshDraft={Boolean(agentId) && agentId === freshAgentRef.current?.agentId}
       presentation="panel"
       panelMode={panelMode}
       onTogglePanelMode={() => setPanelMode(panelMode === 'dialog' ? 'side' : 'dialog')}
