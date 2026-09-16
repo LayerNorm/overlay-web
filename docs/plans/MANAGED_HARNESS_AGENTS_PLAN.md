@@ -308,7 +308,7 @@ baseline, settle follows the repointed reference, and settlement failures can
 never fail a finalized turn). Dispatch re-checks availability so a retired
 runtime fails closed at turn time.
 
-- `AgentTypeSelector` becomes two options: **"Hosted on Overlay Cloud"** and
+- `AgentTypeSelector` becomes two options: **"Create your own agent"** and
   **"Bring your own agent"**. The hosted branch shows a runtime list — Overlay
   first ("Models, tools, and memory managed by Overlay"), then Claude Code,
   Codex, OpenCode, Pi, Hermes ("Runs in an isolated Overlay Cloud sandbox").

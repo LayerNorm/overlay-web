@@ -1,4 +1,5 @@
 export { createOverlayAppClient, type OverlayAppClient } from './create-overlay-app-client'
+export { ApiRequestError } from './shared/http'
 
 export type {
   CreateOverlayAppClientOptions,

@@ -137,7 +137,7 @@ Bindings are managed through `/api/v1/agent-bindings` and remain separate from a
 The Agents directory derives its connected-harness label from the active binding rather than the
 agent's historical model ID, so agents created before the BYO editor still display their actual
 runtime.
-The agent editor starts with an explicit `Hosted on Overlay Cloud` versus `Bring your own agent`
+The agent editor starts with an explicit `Create your own agent` versus `Bring your own agent`
 choice. The BYO branch is rendered only after a workspace-scoped connected-agent request succeeds;
 deployments with the global flag disabled and workspaces outside the active rollout stage stay on
 the normal Overlay-agent editor instead of exposing a form that can never submit.
