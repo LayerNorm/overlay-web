@@ -55,11 +55,38 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   even while turns work (reconcile treats `overlay_cloud` envs as connected
   hosts), and a `/workspace` working dir resolves to the sandbox's real
   `/vercel/workspace` root.
-- [ ] **Reset-session e2e** — the button and confirm dialog render, but the
-  Convex path 500'd: `deleteHarnessSessionsForBindingByServer` rejected the
-  repo's `now` arg (undeclared field). Fixed in `276be8c39` (repo strips `now`;
-  validator takes it optionally). Verify the button clears sessions + destroys
-  the sandbox once the staging deploy carrying the fix is live.
+- [x] **Reset-session e2e** — `POST …/reset-harness` returns 200 with
+  `sandboxDestroyed: true` and clears `agentHarnessSessions` (the Convex-arg
+  fix in `276be8c39` landed). The UI confirm dialog races the Playwright tab
+  group, so the click itself is unverified — the endpoint is proven.
+- [x] **Post-reset stale-sandbox turn failures** — root cause found and fixed
+  in `149eaa8bd`: reset/expiry leaves the lease `running` with a destroyed
+  `providerReference`; `ManagedAgentSandboxBilling.reserve()` reconnected
+  unconditionally → every turn threw at dispatch ("could not start this turn"),
+  and `settle()` rethrew inside `finalizeManagedHarnessTurn` AFTER the reply
+  was persisted → the workflow catch ran `failManagedHarnessTurn`, marking the
+  written message failed (that's why responses rendered no text) and the run
+  `model_failed`. Fix: reserve tolerates a dead ref (fresh sandbox bills from
+  zero baseline), settle reads the lease's CURRENT providerReference (the
+  acquire step repoints it on recreate), and every settle call site is
+  .catch-guarded — `markForReconcile` recovers the cents without failing the
+  turn. Regression test asserts settle calls in finalize are guarded.
+- [x] **Provisioning 500s + turn failures (second root cause)** — the staging
+  project's stored `VERCEL_TOKEN` was rotated/dead: raw `Sandbox.create`
+  returned `403 Not authorized` while the current CLI token succeeded.
+  Replaced `VERCEL_TOKEN`/`VERCEL_TEAM_ID`/`VERCEL_PROJECT_ID` on
+  `overlay-web-staging` with clean values (the earlier ones also carried a
+  literal `\n` suffix — app `.trim()`s it, but stored values are now clean).
+  Verified: OpenCode provisioning 201, local smoke test creates sandbox +
+  HarnessAgent session + real `hi.txt` write.
+- [x] **Runtime picker locked after creation** — a hosted agent's harness is
+  its identity (environment, binding, sessions are all per-harness), so the
+  editor renders a read-only row on edit instead of the switchable selector
+  (`149eaa8bd`). Switching = archive + recreate.
+- [ ] **Verify reply text renders post-fix** — turns that produced output were
+  marked `failed`/`model_failed` by the settle bug, which is why their text
+  didn't render. After the deploy, confirm a completed run shows its
+  assistant text in the transcript.
 - [ ] **Exercise a managed tool approval end-to-end** — DM a managed agent a
   prompt that triggers an approval-gated tool; confirm the run flips to
   `waiting_for_approval`, the card renders the requested tool names, approving
