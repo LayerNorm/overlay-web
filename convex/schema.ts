@@ -976,6 +976,12 @@ export default defineSchema({
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
+    // Compatibility-only fields for channel rows written by external-surface
+    // (e.g. Slack) releases on shared deployments; not read or written here.
+    externalPlatform: v.optional(v.string()),
+    externalChannelId: v.optional(v.string()),
+    externalThreadId: v.optional(v.string()),
+    surfaceBindingId: v.optional(v.string()),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
@@ -1938,6 +1944,9 @@ export default defineSchema({
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
     isDefault: v.optional(v.boolean()),
+    // Compatibility-only field for agent rows written by external-surface
+    // releases on shared deployments; not read or written here.
+    platforms: v.optional(v.array(v.string())),
   })
     .index('by_agentId', ['agentId'])
     .index('by_workspaceId', ['workspaceId']),
