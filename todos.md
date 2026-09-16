@@ -4,20 +4,21 @@
 
 Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
 
-- [ ] **Set Vercel Sandbox env credentials** — `VERCEL_TOKEN`, `VERCEL_TEAM_ID`,
-  `VERCEL_PROJECT_ID` (plus optional `OVERLAY_VERCEL_SANDBOX_REGION`). Harness
-  provisioning fails closed without them; the Phase 0 smoke only worked because
-  a local Vercel CLI session existed, which the service deliberately does not
-  rely on.
+- [x] **Set Vercel Sandbox env credentials** — done for **staging**:
+  `VERCEL_TOKEN` (from the local Vercel CLI auth token), `VERCEL_TEAM_ID`,
+  `VERCEL_PROJECT_ID`, and `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true` are on
+  the `overlay-web-staging` Vercel project (Production env). Still needed for
+  **local dev** (`.env.local`) and **production** when promoting.
 - [ ] **Run the Phase 1 exit gate live** — with credentials set, POST
   `/api/v1/agent-environments/managed` with
   `{mode:'harness', harnessId:'claude-code'}`; verify the `overlay_cloud`
   environment (approved, `adapters:[{id:'claude-code',protocol:'harness'}]`),
   lease, and audit event in Convex; then repeat against Postgres
   (`OVERLAY_DATABASE_URL` / `npm run app-db:migrate` for migration 0076).
-- [ ] **Apply migration 0076 + Convex schema** — `agent_harness_sessions` needs
-  `app-db:migrate` for Postgres deployments and a `convex:push` (staging/main
-  lanes only — never from a feature worktree) for the new Convex table.
+- [x] **Apply migration 0076 + Convex schema** — `agentHarnessSessions` table +
+  indexes pushed to the shared dev deployment (`different-caiman-77`) via
+  `convex:push:dev` from the staging worktree. Postgres path still needs
+  `app-db:up && app-db:migrate` for Postgres-backed deployments.
 - [ ] **Run the Phase 2 exit gate live** — after Phase 1 verification: DM a
   managed `claude-code` agent, confirm the reply streams through
   `managedHarnessAgentTurnWorkflow`, then send a second message and confirm the
@@ -27,11 +28,10 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   constructs fine but `hermes acp` hasn't run a real turn in-sandbox; verify
   before enabling it in the create-agent UI (Phase 3 ships it in the catalog —
   consider policy-allowlisting it out until verified).
-- [ ] **Set the managed-harness feature flags** — `managedHarnessAgents`
-  (config, or `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`) plus
-  `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` (`internal`/`invited`/`general` and
-  the matching workspace-id lists). Both default off; the picker stays hidden
-  until they're set.
+- [x] **Set the managed-harness feature flags** — `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`
+  is set on staging. `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` defaults to
+  `general`, so every staging workspace passes the rollout gate; narrow it to
+  `dogfood` later if you want dogfood-only exposure.
 - [ ] **Run the Phase 3 exit gate** — with flags + Vercel creds on a staging
   deployment: Agents > New agent > Hosted on Overlay Cloud, create each catalog
   harness through the UI, screenshot QA both themes, confirm the agent renders
