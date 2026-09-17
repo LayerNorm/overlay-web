@@ -13,8 +13,6 @@ test('Phase 6 exposes one sharing surface for every shareable resource type', ()
   assert.deepEqual([...WORKSPACE_SHARE_RESOURCE_TYPES], [
     'conversation',
     'file',
-    'project',
-    'knowledge_base',
     'automation',
     'agent',
   ])
@@ -44,9 +42,6 @@ test('Phase 6 routes resource reads and automation runs through resource authori
   assert.equal(automations.methods.DELETE?.resource?.action, 'delete')
   const automationTest = routes.get('/api/v1/automations/test')!
   assert.equal(automationTest.methods.POST?.resource?.action, 'execute')
-  const knowledge = routes.get('/api/v1/knowledge-bases')!
-  assert.equal(knowledge.methods.GET?.resource?.type, 'knowledge_base')
-  assert.equal(knowledge.methods.GET?.resource?.optional, true)
 })
 
 test('Phase 6 sharing is gated on the Postgres provider until provider-neutral repositories land', () => {
@@ -89,8 +84,6 @@ test('Phase 6 replaces resource-specific sharing menus with the universal dialog
   const surfaces = await Promise.all([
     'src/features/files/components/FileShareMenu.tsx',
     'src/features/files/components/ExportMenu.tsx',
-    'src/features/projects/components/ProjectsView.tsx',
-    'src/features/knowledge-bases/components/KnowledgeBaseWorkspace.tsx',
     'src/features/agents/components/AgentsDirectory.tsx',
     'src/features/chat/components/DirectMessageExperience.tsx',
   ].map((path) => readFile(`${root}/${path}`, 'utf8')))

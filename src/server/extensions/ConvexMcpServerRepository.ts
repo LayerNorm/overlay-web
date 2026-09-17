@@ -47,7 +47,7 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     return getInternalApiSecret()
   }
 
-  async list(args: { userId: string; projectId?: string }): Promise<McpServerSummary[]> {
+  async list(args: { userId: string }): Promise<McpServerSummary[]> {
     const rows = await convex.query<ConvexMcpSummary[]>('integrations/mcpServers:list', {
       ...args,
       serverSecret: this.serverSecret,
@@ -60,7 +60,7 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     }))
   }
 
-  async listEnabled(args: { userId: string; projectId?: string }): Promise<McpServerRecord[]> {
+  async listEnabled(args: { userId: string }): Promise<McpServerRecord[]> {
     const rows = await convex.query<ConvexMcpRecord[]>('integrations/mcpServers:listEnabled', {
       ...args,
       serverSecret: this.serverSecret,
@@ -106,9 +106,8 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     const encryptedAuthConfig = shouldReplaceCredentials
       ? this.cipher.encrypt(authType === 'none' ? undefined : args.authConfig)
       : undefined
-    // Forward only what the Convex validator declares. `UpdateMcpServerInput` also carries
-    // `projectId`, which the update mutation does not accept — spreading it would fail the same
-    // way the `get` query did.
+    // Forward only what the Convex validator declares; spreading the whole update input
+    // would fail the same way the `get` query did.
     await convex.mutation('integrations/mcpServers:update', {
       clearAuthConfig: shouldReplaceCredentials && !encryptedAuthConfig,
       encryptedAuthConfig,

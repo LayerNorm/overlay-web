@@ -9,7 +9,6 @@ export interface ConversationSummary {
   askModelIds: string[]
   actModelId: string
   clientId?: string
-  projectId?: string
 }
 
 export type ConversationMessagePart =

@@ -146,18 +146,6 @@ export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: numb
   return sharedComputeNextRunAt(scheduleInput, fromMs)
 }
 
-async function ensureProjectAccess(
-  ctx: MutationCtx,
-  userId: string,
-  projectId?: string,
-) {
-  if (!projectId) return
-  const project = await ctx.db.get(projectId as Id<'projects'>)
-  if (!project || project.userId !== userId || project.deletedAt) {
-    throw new Error('Unauthorized')
-  }
-}
-
 export const list = query({
   args: {
     userId: v.string(),
@@ -165,12 +153,11 @@ export const list = query({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     includeDeleted: v.optional(v.boolean()),
-    projectId: v.optional(v.string()),
     limit: v.optional(v.number()),
     beforeUpdatedAt: v.optional(v.number()),
   },
   returns: v.array(automationDoc),
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, projectId, limit, beforeUpdatedAt }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, limit, beforeUpdatedAt }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -179,22 +166,16 @@ export const list = query({
     const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
     // Over-fetch by 3x to account for in-memory filters (deletedAt, workspaceId).
     const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
-    const rows = projectId
-      ? await ctx.db
-        .query('automations')
-        .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
-        .order('desc')
-        .take(scanLimit)
-      : await ctx.db
-        .query('automations')
-        .withIndex('by_userId_updatedAt', (q) => {
-          const scoped = q.eq('userId', userId)
-          return beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt)
-            ? scoped.lt('updatedAt', beforeUpdatedAt)
-            : scoped
-        })
-        .order('desc')
-        .take(scanLimit)
+    const rows = await ctx.db
+      .query('automations')
+      .withIndex('by_userId_updatedAt', (q) => {
+        const scoped = q.eq('userId', userId)
+        return beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt)
+          ? scoped.lt('updatedAt', beforeUpdatedAt)
+          : scoped
+      })
+      .order('desc')
+      .take(scanLimit)
     return rows
       .filter((row) => row.userId === userId)
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
@@ -235,7 +216,6 @@ export const create = mutation({
     enabled: v.optional(v.boolean()),
     schedule: automationSchedule,
     timezone: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
     graph: v.optional(v.any()),
@@ -245,7 +225,6 @@ export const create = mutation({
   returns: v.id('automations'),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
-    await ensureProjectAccess(ctx, args.userId, args.projectId)
     if (args.sourceConversationId) {
       const conversation = await ctx.db.get(args.sourceConversationId)
       if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
@@ -270,7 +249,6 @@ export const create = mutation({
       schedule,
       timezone: args.timezone?.trim() || 'UTC',
       nextRunAt: enabled ? computeNextRunAt(schedule, now) : undefined,
-      projectId: args.projectId,
       modelId: args.modelId?.trim() || undefined,
       graphSource: args.graphSource?.trim() || undefined,
       graph: args.graph ?? undefined,
@@ -295,7 +273,6 @@ export const update = mutation({
     enabled: v.optional(v.boolean()),
     schedule: v.optional(automationSchedule),
     timezone: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
     graph: v.optional(v.any()),
@@ -309,7 +286,6 @@ export const update = mutation({
     if (!automation || automation.userId !== userId || automation.deletedAt || (workspaceId !== undefined && automation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
-    await ensureProjectAccess(ctx, userId, updates.projectId)
     if (updates.sourceConversationId) {
       const conversation = await ctx.db.get(updates.sourceConversationId)
       if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
@@ -333,7 +309,6 @@ export const update = mutation({
     if (updates.description !== undefined) patch.description = updates.description.trim()
     if (updates.instructions !== undefined) patch.instructions = updates.instructions.trim()
     if (updates.timezone !== undefined) patch.timezone = updates.timezone.trim() || 'UTC'
-    if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.modelId !== undefined) patch.modelId = updates.modelId.trim() || undefined
     if (updates.graphSource !== undefined) patch.graphSource = updates.graphSource.trim() || undefined
     if (updates.graph !== undefined) patch.graph = updates.graph ?? undefined

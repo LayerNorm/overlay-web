@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto'
 import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { mcpOAuthSessions, mcpServers, mcpToolExecutions } from '@/server/database/postgres/schema'
-import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import { McpCredentialCipher } from './McpCredentialCipher'
 import type {
   CreateMcpServerInput,
@@ -28,12 +27,12 @@ export class PostgresMcpServerRepository implements McpServerRepository {
     private readonly cipher = McpCredentialCipher.fromEnvironment(),
   ) {}
 
-  async list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerSummary[]> {
+  async list(args: { userId: string; workspaceId?: string }): Promise<McpServerSummary[]> {
     const rows = await this.selectServers(args)
     return rows.map(mapSummary)
   }
 
-  async listEnabled(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerRecord[]> {
+  async listEnabled(args: { userId: string; workspaceId?: string }): Promise<McpServerRecord[]> {
     const rows = await this.selectServers(args, true)
     return rows.map((row) => this.mapRecord(row))
   }
@@ -52,7 +51,6 @@ export class PostgresMcpServerRepository implements McpServerRepository {
   }
 
   async create(args: CreateMcpServerInput): Promise<string> {
-    await assertActivePostgresProject(this.db, args)
     const id = `mcp_${randomUUID()}`
     const authConfig = args.authType === 'none' ? undefined : args.authConfig
     await this.db.insert(mcpServers).values({
@@ -63,7 +61,6 @@ export class PostgresMcpServerRepository implements McpServerRepository {
       encryptedAuthConfig: this.cipher.encrypt(authConfig),
       id,
       name: args.name.trim(),
-      projectId: args.projectId,
       timeoutMs: args.timeoutMs,
       toolPolicies: args.toolPolicies ?? {},
       transport: args.transport,
@@ -154,7 +151,6 @@ export class PostgresMcpServerRepository implements McpServerRepository {
       mcpServerId: args.mcpServerId,
       modelId: args.modelId,
       policyDecision: args.policyDecision,
-      projectId: args.projectId,
       status: args.status,
       toolName: args.toolName,
       turnId: args.turnId,
@@ -288,7 +284,7 @@ export class PostgresMcpServerRepository implements McpServerRepository {
   }
 
   private async selectServers(
-    args: { userId: string; projectId?: string; workspaceId?: string },
+    args: { userId: string; workspaceId?: string },
     enabledOnly = false,
   ): Promise<McpServerRow[]> {
     return await this.db
@@ -296,7 +292,7 @@ export class PostgresMcpServerRepository implements McpServerRepository {
       .from(mcpServers)
       .where(and(
         eq(mcpServers.userId, args.userId),
-        args.projectId ? eq(mcpServers.projectId, args.projectId) : isNull(mcpServers.projectId),
+        isNull(mcpServers.projectId),
         enabledOnly ? eq(mcpServers.enabled, true) : undefined,
         args.workspaceId ? eq(mcpServers.workspaceId, args.workspaceId) : undefined,
       ))
@@ -336,7 +332,6 @@ function mapCommon(row: McpServerRow) {
   return {
     _id: row.id,
     userId: row.userId,
-    projectId: row.projectId ?? undefined,
     name: row.name,
     description: row.description ?? undefined,
     transport: row.transport,
@@ -365,7 +360,6 @@ function mapExecution(row: McpExecutionRow): McpExecutionRecord {
   return {
     id: row.id,
     userId: row.userId,
-    projectId: row.projectId ?? undefined,
     mcpServerId: row.mcpServerId,
     toolName: row.toolName,
     argumentsHash: row.argumentsHash,

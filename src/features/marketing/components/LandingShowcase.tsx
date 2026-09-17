@@ -12,12 +12,10 @@ import {
   ArrowRight,
   AtSign,
   Bell,
-  BookOpen,
   Bot,
   Check,
   ChevronDown,
   FileText,
-  FolderOpen,
   Hash,
   MessageSquare,
   Monitor,
@@ -284,17 +282,6 @@ const EXTENSIONS = [
   { name: "iMessage", logo: "apple" as const, sub: "Connected · 1 agent" },
   { name: "Discord", logo: "discord" as const, sub: "Available" },
 ];
-const PROJECTS = [
-  { name: "Q2 launch", sub: "4 agents · 12 files" },
-  { name: "Finance ops", sub: "Ledge · monthly close" },
-  { name: "Support desk", sub: "Mira · shared inbox" },
-];
-const KNOWLEDGE = [
-  { name: "Company handbook", sub: "84 documents" },
-  { name: "Competitor notes", sub: "Kept current by Scout" },
-  { name: "Brand voice", sub: "Used by Brief" },
-];
-
 /* ---------- rail + panel definitions ---------- */
 
 type PanelId =
@@ -302,8 +289,6 @@ type PanelId =
   | "chats"
   | "files"
   | "extensions"
-  | "projects"
-  | "knowledge"
   | "automations";
 
 const RAIL: Array<{ id: PanelId; icon: LucideIcon; label: string; badge?: string }> = [
@@ -311,8 +296,6 @@ const RAIL: Array<{ id: PanelId; icon: LucideIcon; label: string; badge?: string
   { id: "chats", icon: MessageSquare, label: "Chats", badge: "3" },
   { id: "files", icon: FileText, label: "Files" },
   { id: "extensions", icon: Puzzle, label: "Extensions" },
-  { id: "projects", icon: FolderOpen, label: "Projects" },
-  { id: "knowledge", icon: BookOpen, label: "Knowledge" },
   { id: "automations", icon: Workflow, label: "Automations" },
 ];
 
@@ -321,8 +304,6 @@ const PANEL_TITLE: Record<PanelId, { title: string; action: string; search: stri
   chats: { title: "chats", action: "New chat", search: "Search chats" },
   files: { title: "files", action: "New upload", search: "Search files" },
   extensions: { title: "extensions", action: "New extension", search: "Search extensions" },
-  projects: { title: "projects", action: "New project", search: "Search projects" },
-  knowledge: { title: "knowledge", action: "New base", search: "Search knowledge" },
   automations: { title: "automations", action: "New automation", search: "Search automations" },
 };
 
@@ -480,19 +461,13 @@ export function LandingShowcase() {
         );
       case "files":
       case "extensions":
-      case "projects":
-      case "knowledge":
       case "automations": {
         const rows =
           activePanel === "files"
             ? FILES.map((f) => ({ ...f, icon: FileText }))
             : activePanel === "extensions"
               ? EXTENSIONS
-              : activePanel === "projects"
-                ? PROJECTS.map((p) => ({ ...p, icon: FolderOpen }))
-                : activePanel === "knowledge"
-                  ? KNOWLEDGE.map((k) => ({ ...k, icon: BookOpen }))
-                  : AUTOS.map((a) => ({ ...a, icon: Workflow }));
+              : AUTOS.map((a) => ({ ...a, icon: Workflow }));
         return (
           <>
             <div className="panel-search">

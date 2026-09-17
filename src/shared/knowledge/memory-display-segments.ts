@@ -88,7 +88,6 @@ export type MemoryRowForSidebar = {
   source: string
   type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
   importance?: number
-  projectId?: string
   conversationId?: string
   noteId?: string
   messageId?: string
@@ -121,7 +120,6 @@ export function memoriesToClientListRows(
     source: string
     type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
     importance?: number
-    projectId?: string
     conversationId?: string
     noteId?: string
     messageId?: string
@@ -151,7 +149,6 @@ export function memoriesToClientListRows(
       source: m.source,
       type: m.type,
       importance: m.importance,
-      projectId: m.projectId,
       conversationId: m.conversationId,
       noteId: m.noteId,
       messageId: m.messageId,
@@ -181,7 +178,6 @@ export function expandMemoriesForSidebarList(
     source: string
     type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
     importance?: number
-    projectId?: string
     conversationId?: string
     noteId?: string
     messageId?: string
@@ -205,7 +201,6 @@ export function expandMemoriesForSidebarList(
         source: m.source,
         type: m.type,
         importance: m.importance,
-        projectId: m.projectId,
         conversationId: m.conversationId,
         noteId: m.noteId,
         messageId: m.messageId,

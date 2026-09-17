@@ -105,8 +105,6 @@ export function describeTargetInheritance(targetType: WorkspaceShareTargetType):
 export const SHARE_RESOURCE_LABELS: Record<WorkspaceShareResourceType, string> = {
   conversation: 'chat',
   file: 'file',
-  project: 'project',
-  knowledge_base: 'knowledge base',
   automation: 'automation',
   agent: 'agent',
 }

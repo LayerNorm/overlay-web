@@ -4,7 +4,6 @@ import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, PaginationQu
 export const ConversationListQuery = PaginationQuery.extend({
   conversationId: IdQuery,
   messages: BooleanQueryValue,
-  projectId: IdQuery,
   updatedSince: IntegerQueryValue,
   includeDeleted: BooleanQueryValue,
   beforeCreatedAt: IntegerQueryValue,
@@ -18,7 +17,6 @@ export const ConversationEventsQuery = z.object({
 export const CreateConversationRequest = z.object({
   ...AuthFields,
   title: z.string().min(1).max(200).optional(),
-  projectId: z.string().optional(),
   askModelIds: z.array(z.string().min(1).max(160)).max(4).optional(),
   actModelId: z.string().optional(),
   lastMode: z.enum(['ask', 'act']).optional(),
@@ -28,7 +26,6 @@ export const CreateConversationRequest = z.object({
 export const UpdateConversationRequest = CreateConversationRequest.partial().extend({
   ...AuthFields,
   conversationId: z.string().min(1),
-  projectId: z.string().nullable().optional(),
 })
 
 export const DeleteConversationRequest = z.object({
@@ -95,7 +92,6 @@ export const ActConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().optional(),
   conversationClientId: z.string().min(1).optional(),
-  projectId: z.string().optional(),
   askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),

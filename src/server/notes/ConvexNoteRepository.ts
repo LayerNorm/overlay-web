@@ -51,7 +51,6 @@ export class ConvexNoteRepository implements NoteRepository {
 
   async listNotes(args: {
     userId: string
-    projectId?: string
     includeDeleted?: boolean
     workspaceId?: string
   }): Promise<NoteRecord[]> {
@@ -59,7 +58,6 @@ export class ConvexNoteRepository implements NoteRepository {
       userId: args.userId,
       serverSecret: this.serverSecret,
       kind: 'note',
-      ...(args.projectId !== undefined ? { projectId: args.projectId } : {}),
       ...(args.includeDeleted !== undefined ? { includeDeleted: args.includeDeleted } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }) ?? []
@@ -69,7 +67,6 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     title: string
     content: string
-    projectId?: string
     tags?: string[]
     clientId?: string
     workspaceId?: string
@@ -84,7 +81,6 @@ export class ConvexNoteRepository implements NoteRepository {
       type: 'file',
       content: args.content,
       contentHash: args.content ? hashTextContent(args.content) : undefined,
-      projectId: args.projectId,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!fileId) {
@@ -104,7 +100,6 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     title?: string
     content?: string
-    projectId?: string | null
     tags?: string[]
     expectedUpdatedAt?: number
     workspaceId?: string
@@ -126,7 +121,6 @@ export class ConvexNoteRepository implements NoteRepository {
         ...(args.content !== undefined
           ? { content: args.content, contentHash: hashTextContent(args.content) }
           : {}),
-        projectId: args.projectId,
         ...(args.expectedUpdatedAt !== undefined
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),

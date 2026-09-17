@@ -1,7 +1,6 @@
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 
 export const NEW_AGENT_EVENT = 'overlay:sidebar-new-agent'
-export const NEW_KNOWLEDGE_BASE_EVENT = 'overlay:sidebar-new-knowledge-base'
 export const AGENT_DIRECTORY_CHANGED_EVENT = 'overlay:agent-directory-changed'
 export const AGENT_DRAFT_PREVIEW_EVENT = 'overlay:agent-draft-preview'
 

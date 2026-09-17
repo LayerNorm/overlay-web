@@ -9,10 +9,6 @@ import {
   authorizeCatalogResource,
 } from '@/server/authorization'
 import { normalizeIntegrationProviderKey } from '@overlay/app-core'
-import { actConversationRepository } from '@/server/conversations/http'
-import { readProjectSettings } from '@/shared/projects/project-settings'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
-import type { ConversationId } from '@/server/conversations/ActConversationRepository'
 
 /**
  * Dynamic catalog authorization for an act turn: model catalog access plus the
@@ -48,7 +44,6 @@ export async function authorizeActRequest(args: {
     if (!mention || typeof mention !== 'object') continue
     const type = 'type' in mention ? mention.type : undefined
     if (type === 'connector') capabilityRequirements.add('integrations.use')
-    if (type === 'knowledge') capabilityRequirements.add('knowledge.read')
     if (type === 'skill') capabilityRequirements.add('skills.use')
     if (type === 'mcp') capabilityRequirements.add('mcp.use')
     if (type === 'automation') capabilityRequirements.add('automations.use')
@@ -90,27 +85,3 @@ export async function authorizeActRequest(args: {
   return null
 }
 
-export async function resolveProjectPreferredModelId(args: {
-  conversationId?: ConversationId
-  projectId?: string
-  userId: string
-}): Promise<string | undefined> {
-  try {
-    const conversation = args.conversationId
-      ? await actConversationRepository.getConversation({
-          conversationId: args.conversationId,
-          userId: args.userId,
-        })
-      : null
-    const projectId = args.projectId?.trim() || conversation?.projectId
-    if (!projectId) return undefined
-    const project = await actConversationRepository.getProject({
-      projectId: projectId as Id<'projects'>,
-      userId: args.userId,
-    })
-    if (!project || project.archivedAt) return undefined
-    return readProjectSettings(project.settings).preferredModelId
-  } catch (_error) {
-    return undefined
-  }
-}

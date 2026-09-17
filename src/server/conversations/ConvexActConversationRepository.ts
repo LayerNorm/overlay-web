@@ -12,7 +12,6 @@ import {
   type ConversationMessageRow,
   type ActMemoryRow,
   type ActPersistedMessage,
-  type ActProjectRow,
   type ActSkillRow,
   type ActUsageEvent,
   type SharedConversationRow,
@@ -39,7 +38,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     askModelIds: string[]
     clientId?: string
     lastMode?: 'ask' | 'act'
-    projectId?: string
     title: string
     userId: string
     isAutomation?: boolean
@@ -74,18 +72,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     }) ?? []
   }
 
-  async listConversationsByProject(args: {
-    includeDeleted?: boolean
-    projectId: string
-    updatedSince?: number
-    userId: string
-  }): Promise<ConversationListRow[]> {
-    return await convex.query<ConversationListRow[]>('chat/conversations:listByProject', {
-      ...args,
-      serverSecret: this.serverSecret,
-    }) ?? []
-  }
-
   async getRecentMessages(args: {
     beforeCreatedAt?: number
     compactToolPayloads?: boolean
@@ -114,7 +100,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     askModelIds?: string[]
     conversationId: ConversationId
     lastMode?: 'ask' | 'act'
-    projectId?: string | null
     title?: string
     userId: string
   }): Promise<void> {
@@ -244,17 +229,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }): Promise<ActConversationRow | null> {
     return await convex.query<ActConversationRow | null>('chat/conversations:get', {
       conversationId: args.conversationId,
-      userId: args.userId,
-      serverSecret: this.serverSecret,
-    })
-  }
-
-  async getProject(args: {
-    projectId: Id<'projects'>
-    userId: string
-  }): Promise<ActProjectRow | null> {
-    return await convex.query<ActProjectRow | null>('projects/projects:get', {
-      projectId: args.projectId,
       userId: args.userId,
       serverSecret: this.serverSecret,
     })

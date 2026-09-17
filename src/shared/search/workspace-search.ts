@@ -7,8 +7,6 @@ import type { WorkspaceShareAccessRole } from '@overlay/workspace-contracts'
 export const WORKSPACE_SEARCH_KINDS = [
   'conversation',
   'file',
-  'project',
-  'knowledge_base',
   'automation',
   'agent',
 ] as const
@@ -88,8 +86,6 @@ function score(result: WorkspaceSearchResult, needle: string): number {
 export const WORKSPACE_SEARCH_KIND_LABELS: Record<WorkspaceSearchKind, string> = {
   conversation: 'Chats',
   file: 'Files',
-  project: 'Projects',
-  knowledge_base: 'Knowledge',
   automation: 'Automations',
   agent: 'Agents',
 }
@@ -101,10 +97,6 @@ export function workspaceSearchHref(result: WorkspaceSearchResult, workspaceId?:
       return `${base}/chat?id=${encodeURIComponent(result.id)}`
     case 'file':
       return `${base}/files?file=${encodeURIComponent(result.id)}`
-    case 'project':
-      return `${base}/projects?projectId=${encodeURIComponent(result.id)}`
-    case 'knowledge_base':
-      return `${base}/knowledge/${encodeURIComponent(result.id)}`
     case 'automation':
       return `${base}/automations?automationId=${encodeURIComponent(result.id)}`
     case 'agent':

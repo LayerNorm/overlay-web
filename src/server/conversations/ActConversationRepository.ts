@@ -55,13 +55,6 @@ export type ActSkillRow = {
 
 export type ActConversationRow = {
   _id?: string
-  projectId?: string
-}
-
-export type ActProjectRow = {
-  instructions?: string
-  archivedAt?: number
-  settings?: Record<string, unknown>
 }
 
 export type ConversationListRow = {
@@ -76,7 +69,6 @@ export type ConversationListRow = {
   lastMode: 'ask' | 'act'
   askModelIds: string[]
   actModelId: string
-  projectId?: string
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
   isAutomation?: boolean
@@ -167,7 +159,6 @@ export interface ActConversationRepository {
     askModelIds: string[]
     clientId?: string
     lastMode?: 'ask' | 'act'
-    projectId?: string
     title: string
     userId: string
     isAutomation?: boolean
@@ -182,13 +173,6 @@ export interface ActConversationRepository {
   }): Promise<ConversationListRow | null>
   listConversations(args: {
     includeDeleted?: boolean
-    updatedSince?: number
-    userId: string
-    workspaceId?: string
-  }): Promise<ConversationListRow[]>
-  listConversationsByProject(args: {
-    includeDeleted?: boolean
-    projectId: string
     updatedSince?: number
     userId: string
     workspaceId?: string
@@ -209,7 +193,6 @@ export interface ActConversationRepository {
     askModelIds?: string[]
     conversationId: ConversationId
     lastMode?: 'ask' | 'act'
-    projectId?: string | null
     title?: string
     userId: string
     workspaceId?: string
@@ -275,10 +258,6 @@ export interface ActConversationRepository {
     conversationId: ConversationId
     userId: string
   }): Promise<ActConversationRow | null>
-  getProject(args: {
-    projectId: Id<'projects'>
-    userId: string
-  }): Promise<ActProjectRow | null>
   getContextSummary(args: {
     conversationId: ConversationId
     scope: string

@@ -98,15 +98,12 @@ const emptyDocumentContextBundle: DocumentContextBundle = {
 
 export type ActTurnContext = {
   autoRetrieval: string
-  conversationProjectId?: string
   docContextBundle: DocumentContextBundle
   enabledSkills: ActSkillRow[]
   hasPreloadedDocContext: boolean
   indexedAttachmentList: IndexedAttachmentRef[]
   memoryContext: string
   mentionsContext: string
-  projectInstructions: string
-  projectSettings?: Record<string, unknown>
   skillsContext: string
   sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
 }
@@ -122,7 +119,6 @@ type AutoRetrievalBuilder = (args: {
   userMessage: string
   userId: string
   accessToken?: string
-  projectId?: string
   includeMemories?: boolean
   workspaceId?: string
 }) => Promise<{
@@ -210,7 +206,6 @@ export class ActContextService {
     externalContextEnabled?: boolean
     memoryEnabled?: boolean
     mentions?: IncomingMention[]
-    mentionedKnowledgeBaseIds?: string[]
     requestIdempotencyKey: string
     requestFingerprint: string
     serverSecret: string
@@ -261,22 +256,9 @@ export class ActContextService {
       }
     })()
 
-    const conversationTask: Promise<{ projectId?: string } | null> = (async () => {
-      if (!args.conversationId) return null
-      try {
-        return await this.deps.repository.getConversation({
-          conversationId: args.conversationId,
-          userId: args.userId,
-        })
-      } catch (_error) {
-        return null
-      }
-    })()
-
-    const [effectiveMemories, enabledSkills, conv] = await Promise.all([
+    const [effectiveMemories, enabledSkills] = await Promise.all([
       memoriesTask,
       skillsTask,
-      conversationTask,
     ])
 
     const mentionsContextTask = externalContextEnabled
@@ -289,20 +271,6 @@ export class ActContextService {
           })
         })()
       : Promise.resolve('')
-
-    const conversationProjectId = conv?.projectId
-    const projectTask: Promise<string> = (async () => {
-      if (!conversationProjectId) return ''
-      try {
-        const project = await this.deps.repository.getProject({
-          projectId: conversationProjectId as Id<'projects'>,
-          userId: args.userId,
-        })
-        return project?.instructions?.trim() || ''
-      } catch (_error) {
-        return ''
-      }
-    })()
 
     const autoRetrievalTask: Promise<{
       extension: string
@@ -328,7 +296,6 @@ export class ActContextService {
           userMessage: args.latestUserText ?? '',
           userId: args.userId,
           ...(args.accessToken ? { accessToken: args.accessToken } : {}),
-          projectId: conversationProjectId,
           includeMemories: memoryEnabled,
           ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         })
@@ -357,9 +324,8 @@ export class ActContextService {
           })()
         : Promise.resolve(emptyDocumentContextBundle)
 
-    const [projectInstructions, autoRetrievalBundle, mentionsContext, docContextBundle] =
+    const [autoRetrievalBundle, mentionsContext, docContextBundle] =
       await Promise.all([
-        projectTask,
         autoRetrievalTask,
         mentionsContextTask,
         docContextTask,
@@ -367,14 +333,12 @@ export class ActContextService {
 
     return {
       autoRetrieval: autoRetrievalBundle.extension,
-      conversationProjectId,
       docContextBundle,
       enabledSkills,
       hasPreloadedDocContext: docContextBundle.hasContent && docContextBundle.totalChars > 0,
       indexedAttachmentList,
       memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories) : '',
       mentionsContext,
-      projectInstructions,
       // Use the lightweight skill directory (name + description only) instead
       // of injecting full instructions for every skill into every turn.
       // The agent loads full instructions on demand via the list_skills tool.
@@ -538,7 +502,7 @@ export class ActContextService {
     const attachmentTokens = args.context.docContextBundle.totalChars > 0
       ? estimateTokens(args.context.docContextBundle.contextText)
       : estimateTokens(args.context.autoRetrieval)
-    const systemTokens = estimateTokens(args.context.projectInstructions + args.context.mentionsContext)
+    const systemTokens = estimateTokens(args.context.mentionsContext)
 
     captureModelTokenBreakdown({
       runId: args.runId,

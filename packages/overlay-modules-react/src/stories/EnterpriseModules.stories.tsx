@@ -10,7 +10,6 @@ import type {
   OutputSummary,
   OverlaySettingsPanel,
   OverlaySettingsSection,
-  ProjectSummary,
   SkillSummary,
 } from '@overlay/app-core'
 import {
@@ -26,8 +25,6 @@ import {
   MemoryList,
   NotesEditorShell,
   OutputGallery,
-  ProjectDetail,
-  ProjectTree,
   SettingsCard,
   SettingsPageShell,
   SettingsSectionRenderer,
@@ -132,11 +129,6 @@ const notes: NoteDoc[] = [
   { _id: 'note-2', title: 'Customer Brief', content: 'Summarize deployment requirements.', tags: [], createdAt: now, updatedAt: now },
 ]
 
-const projects: ProjectSummary[] = [
-  { _id: 'project-1', name: 'Enterprise Rollout', instructions: 'Keep docs concise.', parentId: null, createdAt: now, updatedAt: now },
-  { _id: 'project-2', name: 'Security', parentId: 'project-1', createdAt: now, updatedAt: now },
-]
-
 const composioCapabilities = {
   provider: 'composio' as const,
   hosted: true,
@@ -199,19 +191,6 @@ export function NotesEditorShellStory() {
       content="Outline enterprise launch plan."
       dirty
     />
-  )
-}
-
-export function ProjectTreeDetailStory() {
-  return (
-    <div className="flex h-[520px]">
-      <div className="w-72 border-r border-[var(--border)]">
-        <ProjectTree nodes={buildTree(projects)} selectedProjectId="project-1" />
-      </div>
-      <div className="flex-1">
-        <ProjectDetail project={projects[0]!} notes={notes} files={files} />
-      </div>
-    </div>
   )
 }
 

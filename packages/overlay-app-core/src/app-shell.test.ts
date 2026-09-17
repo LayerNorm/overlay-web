@@ -61,7 +61,7 @@ test('resolveOverlayAppShellConfig filters disabled feature registries', () => {
 test('sidebar registries resolve feature modules and actions from routes', () => {
   const shell = resolveOverlayAppShellConfig()
 
-  assert.equal(resolveFeatureModuleForPath('/app/projects/child', shell.featureModules)?.id, 'projects')
+  assert.equal(resolveFeatureModuleForPath('/app/files/sub', shell.featureModules)?.id, 'files-knowledge')
   assert.equal(resolveSidebarActionForPath('/app/notes', shell.sidebarActions)?.actionKey, 'notes.create')
   assert.equal(resolveSidebarActionForPath('/app/settings', shell.sidebarActions), null)
   assert.equal(DEFAULT_OVERLAY_SETTINGS_SECTIONS.find((item) => item.id === 'agent-environments')?.label, 'Environments')

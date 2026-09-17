@@ -8,8 +8,7 @@ function repository() {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const projectId = request.nextUrl.searchParams.get('projectId') || undefined
-    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id, projectId }))
+    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch skills' }, { status: 500 })
   }
@@ -21,7 +20,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const name = stringValue(body.name)
     const description = stringValue(body.description)
     const instructions = stringValue(body.instructions)
-    const projectId = optionalString(body.projectId)
     if (!name || !description || !instructions) {
       return NextResponse.json(
         { error: 'name, description, and instructions are required' },
@@ -34,7 +32,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       name,
       description,
       instructions,
-      projectId,
     })
     return NextResponse.json({ id })
   } catch (_error) {

@@ -42,7 +42,6 @@ export type AutomationScheduleWorkflowInput = {
   name: string
   description: string
   instructions: string
-  projectId?: string
   modelId?: string
   conversationId?: string
   schedule: AutomationSchedule
@@ -172,7 +171,6 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
     name: input.name,
     description: input.description,
     instructions: input.instructions,
-    projectId: input.projectId,
     modelId: input.modelId,
     conversationId: input.conversationId,
     turnId: await generateTurnId(input.automationId),

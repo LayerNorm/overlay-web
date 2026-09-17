@@ -156,7 +156,6 @@ export class PostgresAutomationRunCoordinator {
       instructions: string
       modelId: string | null
       name: string
-      projectId: string | null
       runConversationId: string | null
       scheduledFor: Date | string
       sourceConversationId: string | null
@@ -169,7 +168,6 @@ export class PostgresAutomationRunCoordinator {
         automation.name,
         automation.description,
         automation.instructions,
-        automation.project_id AS "projectId",
         automation.model_id AS "modelId",
         automation.source_conversation_id AS "sourceConversationId",
         automation.conversation_id AS "conversationId",
@@ -192,7 +190,6 @@ export class PostgresAutomationRunCoordinator {
       instructions: row.instructions,
       modelId: row.modelId ?? undefined,
       name: row.name,
-      projectId: row.projectId ?? undefined,
       runId,
       scheduledFor: dateValue(row.scheduledFor).getTime(),
       turnId: row.turnId ?? `automation-${runId}-${Date.now()}`,

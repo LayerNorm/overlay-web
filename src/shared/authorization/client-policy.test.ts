@@ -14,12 +14,12 @@ test('navigation and route requirements map to product capabilities', () => {
   assert.deepEqual(getNavigationAuthorizationRequirement('files'), {
     any: ['files.read', 'notes.read', 'outputs.read'],
   })
-  assert.deepEqual(getAppRouteAuthorizationRequirement('/app/projects/project_1'), {
-    all: ['projects.read'],
+  assert.deepEqual(getAppRouteAuthorizationRequirement('/app/files/file_1'), {
+    all: ['files.read'],
   })
   assert.equal(getAppRouteAuthorizationRequirement('/app/settings'), null)
-  assert.deepEqual(getSidebarActionAuthorizationRequirement('projects.create'), {
-    all: ['projects.create'],
+  assert.deepEqual(getSidebarActionAuthorizationRequirement('notes.create'), {
+    all: ['notes.create'],
   })
   assert.deepEqual(getSettingsSectionAuthorizationRequirement('webhooks'), {
     all: ['webhooks.manage'],
@@ -35,7 +35,7 @@ test('strict checks support all, any, and deployment-owner access', () => {
 })
 
 test('observe keeps product UI available while enforce applies requirements', () => {
-  const requirement = { all: ['projects.read'] as const }
+  const requirement = { all: ['files.read'] as const }
   assert.equal(allowsClientRequirement(state([], 'observe'), requirement), true)
   assert.equal(allowsClientRequirement(state([], 'enforce'), requirement), false)
 })

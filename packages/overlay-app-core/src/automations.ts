@@ -53,7 +53,6 @@ export interface CreateAutomationRequest {
   enabled?: boolean
   schedule?: AutomationSchedule
   timezone?: string
-  projectId?: string
   modelId?: string
   graphSource?: string
   graph?: AutomationGraph
@@ -79,7 +78,6 @@ export interface UpdateAutomationRequest {
   enabled?: boolean
   schedule?: AutomationSchedule
   timezone?: string
-  projectId?: string
   modelId?: string
   graphSource?: string
   graph?: AutomationGraph

@@ -7,9 +7,7 @@ import { runAuthorizationRepositoryContract } from './authorization-repository-c
 import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import assert from 'node:assert/strict'
-import { createConvexKnowledgeBaseRepositories } from '@/server/knowledge-bases'
 import { ConvexNoteRepository } from '@/server/notes/ConvexNoteRepository'
 
 const enabled = process.env.AUTHORIZATION_CONTRACT_CONVEX === '1'
@@ -47,15 +45,7 @@ test('real Convex authorization repository contract and account cleanup', {
       user: { id: ownerUserId, email: `${ownerUserId}@example.com`, emailVerified: true },
       now: new Date(),
     })
-    const project = await new ConvexProjectRepository().createProject({
-      userId: ownerUserId,
-      name: 'Owned project',
-    })
     const repositories = createConvexAuthorizationRepositories()
-    assert.equal(await repositories.resourceOwners.getOwner({
-      resourceType: 'project',
-      resourceId: project._id,
-    }), ownerUserId)
     const note = await new ConvexNoteRepository().createNote({
       userId: ownerUserId,
       title: 'Owned note',
@@ -64,16 +54,6 @@ test('real Convex authorization repository contract and account cleanup', {
     assert.equal(await repositories.resourceOwners.getOwner({
       resourceType: 'note',
       resourceId: note.id,
-    }), ownerUserId)
-    const knowledgeBase = await createConvexKnowledgeBaseRepositories().bases.create({
-      id: `${scope}_knowledge_base`,
-      ownerUserId,
-      title: 'Ownership contract',
-      createdBy: ownerUserId,
-    })
-    assert.equal(await repositories.resourceOwners.getOwner({
-      resourceType: 'knowledge_base',
-      resourceId: knowledgeBase.id,
     }), ownerUserId)
     await convex.mutation('auth/users:deleteUserAccountByServer', {
       serverSecret: getInternalApiSecret(),

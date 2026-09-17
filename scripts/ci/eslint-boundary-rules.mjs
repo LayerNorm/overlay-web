@@ -13,11 +13,9 @@ export const FEATURE_DOMAINS = [
   'files',
   'integrations',
   'knowledge',
-  'knowledge-bases',
   'landing',
   'marketing',
   'notebook',
-  'projects',
   'settings',
   'share',
   'showcase',
@@ -53,7 +51,6 @@ export const SERVER_DOMAINS = [
   'integrations',
   'jobs',
   'knowledge',
-  'knowledge-bases',
   'legal',
   'lifecycle-events',
   'memory',
@@ -61,7 +58,6 @@ export const SERVER_DOMAINS = [
   'observability',
   'onboarding',
   'outputs',
-  'projects',
   'releases',
   'search',
   'security',
@@ -98,7 +94,6 @@ const LEGACY_FEATURE_BOUNDARY_DEBT_FILES_BY_DOMAIN = {
     'src/features/marketing/components/StaticMarketingShell.tsx',
   ],
   notebook: ['src/features/notebook/components/NotebookEditor.tsx'],
-  projects: ['src/features/projects/components/ProjectsView.tsx'],
 }
 
 function otherFeatureImportPatterns(selfDomain) {

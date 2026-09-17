@@ -9,12 +9,10 @@ export interface NoteDoc {
   updatedAt: number
   deletedAt?: number
   clientId?: string
-  projectId?: string
 }
 
 export interface NoteQueryContract extends PaginationQueryContract {
   noteId?: string
-  projectId?: string | null
   includeDeleted?: boolean
 }
 
@@ -22,7 +20,6 @@ export interface CreateNoteRequest {
   title?: string
   content?: string
   tags?: string[]
-  projectId?: string
   clientId?: string
   accessToken?: string
   userId?: string
@@ -40,7 +37,6 @@ export interface UpdateNoteRequest {
   title?: string
   content?: string
   tags?: string[]
-  projectId?: string | null
   expectedUpdatedAt?: number
   accessToken?: string
   userId?: string
@@ -76,7 +72,6 @@ export interface NotebookAgentRequest {
   message: string
   modelId?: string
   mode?: 'ask' | 'write'
-  projectId?: string
   mentions?: NotebookAgentMention[]
   accessToken?: string
   userId?: string

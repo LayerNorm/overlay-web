@@ -52,7 +52,6 @@ const TEST_CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsFileMetadata: true,
   supportsFileUploads: true,
   supportsNotes: true,
-  supportsProjects: true,
   supportsIntegrations: true,
   supportsSkills: true,
   supportsMcpServers: true,
@@ -306,22 +305,6 @@ test('generate-video rejects malformed request bodies before provider work', asy
     request('/api/v1/generate-video', {
       method: 'POST',
       body: JSON.stringify({ prompt: 'make a clip', videoSubMode: 'unsupported-mode' }),
-    }),
-    context(),
-  )
-
-  assert.equal(response.status, 400)
-  const body = await readJson(response) as { error?: string; issues?: unknown[] }
-  assert.equal(body.error, 'Invalid request')
-  assert.ok(Array.isArray(body.issues))
-})
-
-test('projects POST rejects malformed request bodies before Convex work', async () => {
-  const route = await import('./projects/route')
-  const response = await route.POST(
-    request('/api/v1/projects', {
-      method: 'POST',
-      body: JSON.stringify({ name: 123 }),
     }),
     context(),
   )

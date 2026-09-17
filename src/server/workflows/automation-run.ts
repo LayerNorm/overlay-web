@@ -30,7 +30,6 @@ export type AutomationRunWorkflowInput = {
   name: string
   description: string
   instructions: string
-  projectId?: string
   modelId?: string
   conversationId?: string
   turnId: string
@@ -49,7 +48,6 @@ export async function automationRunWorkflow(input: AutomationRunWorkflowInput) {
     name: input.name,
     description: input.description,
     instructions: input.instructions,
-    projectId: input.projectId,
     modelId: input.modelId,
     conversationId: input.conversationId,
     turnId: input.turnId,

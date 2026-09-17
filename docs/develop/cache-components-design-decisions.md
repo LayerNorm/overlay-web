@@ -67,7 +67,7 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
     session + `searchParams` + `redirect()` inside.
 23. `/app/projects` — `src/app/app/projects/page.tsx` — Moved session +
     `searchParams` inside Suspense. `getOverlayCapabilities()` (async, env-only)
-    + `notFound()` stay outside.
+    + `notFound()` stay outside. Route removed with the projects feature.
 
 ### Batch 5 — Marketing + auth decouple (15 newly converted routes)
 

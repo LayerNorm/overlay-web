@@ -14,7 +14,6 @@ export type ScheduledAutomationTurn = {
   name: string
   description?: string
   instructions: string
-  projectId?: string
   modelId?: string
   conversationId?: string
   turnId: string
@@ -80,7 +79,6 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
     .appData.repositories.conversations.createConversation({
       userId: input.userId,
       title,
-      projectId: input.projectId,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',

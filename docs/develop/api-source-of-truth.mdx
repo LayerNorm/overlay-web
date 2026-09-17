@@ -174,7 +174,7 @@ credentials are never public contract fields.
 
 ## Database pagination (Phase B)
 
-Convex list queries for conversations, projects, notes, and automations now accept `limit` and cursor parameters (`beforeLastModified` for conversations, `beforeUpdatedAt` for others). The default page size is 100 (down from unbounded/200/300). Over-fetch is bounded at 3x the page limit to account for in-memory filters. The BFF `paginateArray` helper still handles final client-facing pagination on the merged result.
+Convex list queries for conversations, notes, and automations now accept `limit` and cursor parameters (`beforeLastModified` for conversations, `beforeUpdatedAt` for others). The default page size is 100 (down from unbounded/200/300). Over-fetch is bounded at 3x the page limit to account for in-memory filters. The BFF `paginateArray` helper still handles final client-facing pagination on the merged result.
 
 `watchMessages` now accepts an optional `limit` parameter. When provided, it watches only the most recent N messages (the "tail") instead of the entire transcript. The client passes `limit=200` by default; older history is loaded on demand via `getRecentMessages`.
 

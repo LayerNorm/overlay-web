@@ -21,7 +21,6 @@ export const BrowserTaskRequest = z.object({
 }).passthrough()
 
 export const EntityListQuery = PaginationQuery.extend({
-  projectId: z.string().optional(),
   skillId: z.string().optional(),
   mcpServerId: z.string().optional(),
 })
@@ -29,7 +28,6 @@ export const EntityListQuery = PaginationQuery.extend({
 export const EntityMutationRequest = z.object({
   ...AuthFields,
   name: z.string().optional(),
-  projectId: z.string().optional(),
 }).passthrough()
 
 export const EntityDeleteRequest = z.object({

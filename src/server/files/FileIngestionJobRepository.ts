@@ -34,7 +34,6 @@ export interface FileIngestionJobRepository {
     fileName: string
     mimeType: string
     sizeBytes: number
-    projectId?: string
     parentId?: string
   }): Promise<{ jobId: string }>
 

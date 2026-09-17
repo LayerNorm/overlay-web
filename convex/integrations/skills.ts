@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import type { Id } from '../_generated/dataModel'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -15,8 +14,8 @@ async function authorizeUserAccess(params: {
 }
 
 export const list = query({
-  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()), projectId: v.optional(v.string()) },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
+  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -27,10 +26,6 @@ export const list = query({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .order('desc')
       .collect()
-    if (projectId !== undefined) {
-      return all.filter((s) => s.projectId === projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
-    }
-    // Global skills = no projectId
     return all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
   },
 })
@@ -55,8 +50,8 @@ export const get = query({
  * instead of injecting every skill's full instructions into every turn.
  */
 export const listDirectory = query({
-  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()), projectId: v.optional(v.string()) },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
+  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -67,10 +62,7 @@ export const listDirectory = query({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .order('desc')
       .collect()
-    const filtered = (projectId !== undefined
-      ? all.filter((s) => s.projectId === projectId)
-      : all.filter((s) => !s.projectId)
-    ).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    const filtered = all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
     return filtered.map((s) => ({
       _id: s._id,
       name: s.name,
@@ -108,16 +100,9 @@ export const create = mutation({
     description: v.string(),
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
-    projectId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
-    if (args.projectId) {
-      const project = await ctx.db.get(args.projectId as Id<'projects'>)
-      if (!project || project.userId !== args.userId) {
-        throw new Error('Unauthorized')
-      }
-    }
     const now = Date.now()
     return await ctx.db.insert('skills', {
       userId: args.userId,
@@ -126,7 +111,6 @@ export const create = mutation({
       description: args.description,
       instructions: args.instructions,
       ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
-      projectId: args.projectId,
       version: 1,
       createdAt: now,
       updatedAt: now,

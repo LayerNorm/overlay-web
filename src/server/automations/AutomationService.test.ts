@@ -391,7 +391,6 @@ test('AutomationService.getAutomationForExecution delegates to repository.getAut
         userId: args.userId,
         name: 'Durable automation',
         instructions: 'Do something durable',
-        projectId: 'project_1',
         modelId: 'gpt-4o',
         conversationId: 'conv_1',
       } as never

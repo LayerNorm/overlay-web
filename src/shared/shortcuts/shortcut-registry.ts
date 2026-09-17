@@ -44,7 +44,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
     id: 'global.search',
     label: 'Open search',
-    description: 'Open the command palette to search chats, files, agents, projects, and extensions.',
+    description: 'Open the command palette to search chats, files, agents, and extensions.',
     group: 'global',
     hotkey: 'mod+k',
     keys: [['Mod', 'K']],

@@ -13,7 +13,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       kVec?: number
       m?: number
       minVecScore?: number
-      projectId?: string
       query?: string
       sourceKind?: 'file' | 'memory'
     }
@@ -30,7 +29,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       kVec: body.kVec,
       m: body.m,
       minVecScore: body.minVecScore,
-      projectId: body.projectId,
       query: body.query ?? '',
       sourceKind: body.sourceKind,
       userId: context.auth.userId,

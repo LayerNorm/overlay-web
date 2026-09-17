@@ -8,7 +8,6 @@ import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/dat
 import {
   automationTriggers,
   conversations,
-  projects,
   users,
   workspaces,
 } from '@/server/database/postgres/schema'
@@ -33,7 +32,6 @@ test(
     const foreignUserId = `p6_foreign_${randomUUID()}`
     const workspaceId = `p6_workspace_${randomUUID()}`
     const principalId = `p6_principal_${randomUUID()}`
-    const projectId = `p6_project_${randomUUID()}`
     const conversationsRepository = new PostgresActConversationRepository(db)
     const workspacesRepository = new PostgresWorkspaceRepository(db)
     const repository = new PostgresAutomationRepository(db, conversationsRepository)
@@ -52,13 +50,11 @@ test(
         displayName: 'P6 owner',
         now: Date.now(),
       })
-      await db.insert(projects).values({ id: projectId, name: 'P6 project', userId, workspaceId })
       conversationId = await conversationsRepository.createConversation({
         actModelId: 'openai/gpt-4.1',
         askModelIds: ['openai/gpt-4.1'],
         createdByPrincipalId: principalId,
         conversationType: 'personal',
-        projectId,
         title: 'Automation conversation',
         userId,
         workspaceId,
@@ -71,7 +67,6 @@ test(
           description: 'Daily report',
           instructions: 'Write the daily report.',
           name: 'Daily report',
-          projectId,
           schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 30 },
           sourceConversationId: conversationId,
           timezone: 'America/Los_Angeles',
@@ -80,7 +75,6 @@ test(
         })
         const [automation] = await repository.listAutomations({ userId, workspaceId })
         assert.equal(automation?._id, automationId)
-        assert.equal(automation?.projectId, projectId)
         assert.equal(automation?.concurrencyPolicy, 'queue')
         assert.ok(automation?.nextRunAt)
 
@@ -94,14 +88,11 @@ test(
         assert.deepEqual(triggers[0]?.config, { kind: 'daily', hourUTC: 14, minuteUTC: 30 })
       })
 
-      await t.test('ownership and project checks fail closed', async () => {
+      await t.test('ownership checks fail closed', async () => {
         assert.equal(await repository.getAutomation({ automationId, userId: foreignUserId }), null)
-        await assert.rejects(() => repository.createAutomation({
-          description: 'Foreign project',
-          instructions: 'No access',
-          name: 'Unauthorized',
-          projectId,
-          schedule: { kind: 'daily' },
+        await assert.rejects(() => repository.updateAutomation({
+          automationId,
+          name: 'Unauthorized rename',
           userId: foreignUserId,
         }), /Unauthorized/)
       })

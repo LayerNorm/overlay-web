@@ -163,7 +163,6 @@ for (const path of platformFileSources) {
 
 for (const [path, required] of [
   ['src/app/app/_components/KnowledgeViewHost.tsx', "from '@overlay/modules-react/knowledge'"],
-  ['src/features/projects/components/ProjectsView.tsx', "from '@overlay/modules-react/knowledge'"],
   ['overlay-desktop/src/renderer/src/pages/RemoteFilePreviewPage.tsx', "from '@overlay/modules-react/knowledge'"],
   ['overlay-desktop/src/renderer/src/pages/OutputPreviewPage.tsx', "from '@overlay/modules-react/knowledge'"],
   ['overlay-desktop/src/renderer/src/features/notebook/DesktopNotebookEditor.tsx', "from '@overlay/modules-react/notes'"],

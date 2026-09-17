@@ -82,7 +82,6 @@ export interface McpServerConfig {
     headerValue?: string
   }
   timeoutMs?: number
-  projectId?: string
   defaultToolPolicy: McpToolPolicyMode
   toolPolicies: Record<string, McpToolPolicyMode>
   toolCatalog?: McpToolCatalogEntry[]
@@ -119,20 +118,9 @@ function getMcpRepository(): McpServerRepository {
 
 async function listRuntimeMcpServers(args: {
   userId: string
-  projectId?: string
-  enabledServerIds?: readonly string[]
 }) {
   const repository = getMcpRepository()
-  const [global, project] = await Promise.all([
-    repository.listEnabled({ userId: args.userId }),
-    args.projectId
-      ? repository.listEnabled({ userId: args.userId, projectId: args.projectId })
-      : Promise.resolve([]),
-  ])
-  const servers = [...global, ...project]
-  if (args.enabledServerIds === undefined) return servers
-  const enabled = new Set(args.enabledServerIds)
-  return servers.filter((server) => enabled.has(server._id))
+  return await repository.listEnabled({ userId: args.userId })
 }
 
 async function recordMcpExecution(input: {
@@ -152,7 +140,6 @@ async function recordMcpExecution(input: {
 }): Promise<void> {
   await getMcpRepository().recordExecution({
     userId: input.args.userId,
-    projectId: input.config.projectId,
     mcpServerId: input.config._id,
     toolName: input.toolName,
     argumentsHash: createHash('sha256')
@@ -431,13 +418,9 @@ export async function createMcpLazyMetaTools(args: {
   conversationId?: string
   turnId?: string
   modelId?: string
-  projectId?: string
-  enabledServerIds?: readonly string[]
 }): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
-    projectId: args.projectId,
-    enabledServerIds: args.enabledServerIds,
   })
 
   if (!configs || configs.length === 0) {
@@ -869,12 +852,10 @@ async function buildMcpToolSet(args: {
   userId: string
   accessToken?: string
   serverSecret?: string
-  projectId?: string
 }): Promise<ToolSet> {
   logger.info(`[MCP] Fetching enabled MCP servers for user ${args.userId}`)
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
-    projectId: args.projectId,
   })
 
   if (!configs || configs.length === 0) {
@@ -919,10 +900,9 @@ export async function createMcpToolSet(args: {
   userId: string
   accessToken?: string
   serverSecret?: string
-  projectId?: string
 }): Promise<ToolSet> {
   const now = Date.now()
-  const cacheKey = `${args.userId}:${args.projectId ?? 'global'}`
+  const cacheKey = `${args.userId}:global`
   const cached = mcpCache.get(cacheKey)
   if (cached && now - cached.createdAt < MCP_CACHE_TTL_MS) {
     logger.info(`[MCP] Cache hit for user ${args.userId}, returning ${Object.keys(cached.tools).length} cached tools`)
@@ -955,9 +935,8 @@ export function prewarmMcpTools(args: {
   userId: string
   accessToken?: string
   serverSecret?: string
-  projectId?: string
 }): void {
-  const cacheKey = `${args.userId}:${args.projectId ?? 'global'}`
+  const cacheKey = `${args.userId}:global`
   const cached = mcpCache.get(cacheKey)
   if (cached && Date.now() - cached.createdAt < MCP_CACHE_TTL_MS) return
   if (mcpInFlight.has(cacheKey)) return

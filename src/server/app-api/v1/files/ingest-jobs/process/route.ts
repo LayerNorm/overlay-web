@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'jobId and r2Key are required' }, { status: 400 })
   }
 
-  const { jobId, userId, r2Key, fileName, mimeType, projectId, parentId } = body
+  const { jobId, userId, r2Key, fileName, mimeType, parentId } = body
   const ingestionJobs = getOverlayServerContext().appData.repositories.fileIngestionJobs
 
   try {
@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
     const result = await fileService.ingestDocument({
       userId,
       file,
-      ...(typeof projectId === 'string' ? { projectId } : {}),
       ...(typeof parentId === 'string' ? { parentId } : {}),
     })
 

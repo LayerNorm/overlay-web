@@ -31,7 +31,6 @@ export type CreateAutomationInput = {
   enabled?: boolean
   schedule: AutomationSchedule
   timezone?: string
-  projectId?: string
   modelId?: string
   graphSource?: string
   graph?: AutomationSummary['graph']
@@ -48,7 +47,6 @@ export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'
 export interface AutomationRepository {
   listAutomations(args: {
     includeDeleted?: boolean
-    projectId?: string
     userId: string
     workspaceId?: string
   }): Promise<AutomationRecord[]>

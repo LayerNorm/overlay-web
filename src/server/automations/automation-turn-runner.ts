@@ -53,7 +53,6 @@ import {
 } from '@/server/app-api/v1/conversations/act/route-helpers'
 import {
   authorizeActRequest,
-  resolveProjectPreferredModelId,
 } from '@/server/app-api/v1/conversations/act/turn-authorization'
 import {
   prepareActTooling,
@@ -91,7 +90,6 @@ export type AutomationAgentTurnInput = {
   name: string
   description?: string
   instructions: string
-  projectId?: string
   modelId?: string
   conversationId?: string
   turnId: string
@@ -231,7 +229,6 @@ export async function ensureAutomationConversation(
     .createConversation({
       userId: input.userId,
       title: `Automation: ${input.name || 'Untitled'}`,
-      projectId: input.projectId,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
@@ -251,8 +248,8 @@ export async function ensureAutomationConversation(
  * Replicates the act route's request preamble inside a durable step:
  * entitlement gating, workflow-step metering, billing payer, model policy,
  * catalog authorization, user-message persistence, context assembly
- * (history, memory, mentions, skills, project instructions), tool
- * construction, instruction assembly, and the turn-level usage reservation.
+ * (history, memory, mentions, skills), tool construction, instruction
+ * assembly, and the turn-level usage reservation.
  */
 export async function prepareAutomationAgentTurn(
   input: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
@@ -264,12 +261,7 @@ export async function prepareAutomationAgentTurn(
   const cid = asConversationId(input.conversationId)
   const billingWorkspaceId = input.workspaceId
 
-  const preferredProjectModelId = await resolveProjectPreferredModelId({
-    conversationId: cid,
-    projectId: input.projectId,
-    userId,
-  })
-  const effectiveModelId = resolveEffectiveActModelId(input.modelId ?? preferredProjectModelId)
+  const effectiveModelId = resolveEffectiveActModelId(input.modelId)
 
   const billingProgrammaticSubjectId = `automation:${input.automationId ?? input.runId ?? input.turnId}`
   const requestIdempotencyKey = `automation:${input.runId ?? input.automationId ?? 'turn'}:${input.turnId}`
@@ -398,7 +390,6 @@ export async function prepareAutomationAgentTurn(
     latestUserText: userText,
     memoryEnabled,
     mentions,
-    mentionedKnowledgeBaseIds: [],
     requestIdempotencyKey,
     requestFingerprint,
     billingProgrammaticSubjectId,
@@ -432,14 +423,11 @@ export async function prepareAutomationAgentTurn(
   ])
   const {
     autoRetrieval,
-    conversationProjectId,
     docContextBundle,
     hasPreloadedDocContext,
     indexedAttachmentList,
     memoryContext,
     mentionsContext,
-    projectInstructions,
-    projectSettings,
     skillsContext,
     sourceCitationMap,
   } = turnContext
@@ -561,9 +549,6 @@ export async function prepareAutomationAgentTurn(
     automationId: input.automationId,
     baseUrl,
     conversationId: cid,
-    conversationProjectId,
-    activeKnowledgeBaseIds: [],
-    projectSettings,
     entitlements: runtimeEntitlements,
     effectiveModelId,
     isMultiModelFollowUpSlot: false,
@@ -604,7 +589,6 @@ export async function prepareAutomationAgentTurn(
     mentionsContext,
     mode: undefined,
     paid,
-    projectInstructions,
     requestedToolIds: [],
     skillsContext,
     userSystemPromptExtension: buildSecondarySystemPromptExtension(
@@ -652,18 +636,15 @@ export async function prepareAutomationAgentTurn(
   const toolingContext: PersonalChatWorkToolingContext = {
     accountAllowedConnectorIds: [...accountAllowedConnectorIds],
     accountAllowedToolIds: [...accountAllowedToolIds],
-    activeKnowledgeBaseIds: [],
     baseUrl,
     billingProgrammaticSubjectId,
     conversationId: cid,
-    conversationProjectId,
     effectiveModelId,
     entitlements: runtimeEntitlements,
     latestUserText: userText,
     mediaToolIntent: resolvedMediaToolIntent,
     memoryEnabled,
     paid,
-    projectSettings,
     requestFingerprint,
     requestedToolIds: [],
     turnId: input.turnId,

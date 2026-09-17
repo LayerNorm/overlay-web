@@ -6,7 +6,6 @@ import type { AdministrativeRepository, AuditRepository } from '@/server/admin'
 import { ApiKeyService, type ApiKeyRepository } from '@/server/auth/api-keys'
 import type { BillingProviderEventRepository } from '@/server/billing/BillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
-import type { ProjectRepository } from '@/server/projects/ProjectRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 
 export type P7ProviderContractBackend = {
@@ -18,7 +17,6 @@ export type P7ProviderContractBackend = {
   cleanupUser?(userId: string): Promise<void>
   deleteUser(userId: string): Promise<void>
   prepareUser?(userId: string): Promise<void>
-  projects: ProjectRepository
   provider: 'convex' | 'postgres'
   usage: UsageRepository
 }
@@ -417,16 +415,12 @@ export async function runP7ProviderContract(
         .some((candidate) => candidate.action === 'p7.contract.audit'), false)
     })
 
-    await t.test(`${backend.provider} project and account deletion remove owned P7 state`, async () => {
-      const project = await backend.projects.createProject({ name: 'P7 deletion proof', userId })
-      assert.equal(await backend.projects.getProject({ projectId: project._id, userId: foreignUserId }), null)
-      assert.ok(await backend.projects.deleteProjectTree({ projectId: project._id, userId }))
+    await t.test(`${backend.provider} account deletion removes owned P7 state`, async () => {
       const key = await apiKeys.create({ createdBy: userId, scopes: ['chat:read'], userId })
       assert.ok(key)
       await backend.deleteUser(userId)
       assert.equal((await apiKeys.list({ userId })).length, 0)
       assert.equal(await backend.administration.get({ userId }), null)
-      assert.equal((await backend.projects.listProjects({ includeDeleted: true, userId })).length, 0)
       assert.equal(await backend.billing.getSubscriptionByUserIdByServer({ userId }), null)
     })
   } finally {

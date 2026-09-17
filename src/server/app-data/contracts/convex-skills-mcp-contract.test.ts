@@ -2,7 +2,6 @@ import 'server-only'
 
 import test from 'node:test'
 import { ConvexMcpServerRepository, ConvexSkillRepository } from '@/server/extensions'
-import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import { runSkillsMcpContract } from './skills-mcp-contract'
 
 const enabled = process.env.APP_DATA_CONTRACT_CONVEX === '1'
@@ -16,7 +15,6 @@ test('real Convex skills and MCP provider contract', {
 }, async (t) => {
   await runSkillsMcpContract(t, {
     mcpServers: new ConvexMcpServerRepository(),
-    projects: new ConvexProjectRepository(),
     provider: 'convex',
     skills: new ConvexSkillRepository(),
   })

@@ -16,7 +16,6 @@ import {
   type EmbeddingProvider,
 } from '@/server/knowledge'
 import { PostgresMemoryRepository } from '@/server/memory'
-import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUserRepository } from '@/server/users/PostgresUserRepository'
 import { runKnowledgeCharacterizationContract } from './knowledge-characterization-contract'
 
@@ -54,7 +53,6 @@ test('Postgres pgvector knowledge characterization', {
       files: new PostgresFileRepository(db),
       memories: new PostgresMemoryRepository(db),
       name: 'postgres-pgvector',
-      projects: new PostgresProjectRepository(db),
       search: new PostgresKnowledgeSearchRepository({ db, embeddings }),
       users: new PostgresUserRepository(db),
     })

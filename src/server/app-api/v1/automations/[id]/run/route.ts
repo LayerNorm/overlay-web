@@ -74,7 +74,6 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       description: (automation as { description?: string }).description || '',
       instructions: (automation as { instructions?: string; instructionsMarkdown?: string }).instructions ||
         (automation as { instructionsMarkdown?: string }).instructionsMarkdown || '',
-      projectId: (automation as { projectId?: string }).projectId,
       modelId: (automation as { modelId?: string }).modelId,
       conversationId: (automation as { conversationId?: string; sourceConversationId?: string }).conversationId ||
         (automation as { sourceConversationId?: string }).sourceConversationId,

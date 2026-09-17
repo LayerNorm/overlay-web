@@ -28,7 +28,7 @@ test('administration service manages roles, groups, assignments, and grants with
 
   const role = await fixture.service.createRole(ACTOR, {
     name: 'Knowledge publisher',
-    capabilities: ['knowledge.read', 'knowledge.publish'],
+    capabilities: ['files.upload', 'files.share'],
   })
   const group = await fixture.service.createGroup(ACTOR, { name: 'Curriculum team' })
   const membership = await fixture.service.addGroupMember(ACTOR, {
@@ -41,8 +41,8 @@ test('administration service manages roles, groups, assignments, and grants with
     roleId: role.id,
   })
   const grant = await fixture.service.upsertResourceGrant(ACTOR, {
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_1',
+    resourceType: 'file',
+    resourceId: 'file_1',
     principalType: 'group',
     principalId: group.id,
     accessRole: 'editor',
@@ -62,8 +62,8 @@ test('administration service manages roles, groups, assignments, and grants with
     groups: [assignment],
   })
   assert.deepEqual(await fixture.service.listResourceGrants(ACTOR, {
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_1',
+    resourceType: 'file',
+    resourceId: 'file_1',
   }), [grant])
   assert.deepEqual(fixture.auditEvents.map(({ action }) => action), [
     'authorization.role.create',

@@ -26,7 +26,6 @@ export async function buildAutoRetrievalBundle(args: {
   userMessage: string
   userId: string
   accessToken?: string
-  projectId?: string
   includeMemories?: boolean
   workspaceId?: string
 }): Promise<AutoRetrievalBundle> {
@@ -40,7 +39,6 @@ export async function buildAutoRetrievalBundle(args: {
       billing: args.billing,
       userId: args.userId,
       query: q.slice(0, MAX_QUERY_CHARS),
-      projectId: args.projectId,
       workspaceId: args.workspaceId,
       ...(args.accessToken ? { accessToken: args.accessToken } : {}),
       ...(args.includeMemories === false ? { sourceKind: 'file' as const } : {}),
@@ -136,7 +134,6 @@ export async function buildAutoRetrievalSystemExtension(args: {
   userMessage: string
   userId: string
   accessToken?: string
-  projectId?: string
   workspaceId?: string
 }): Promise<string> {
   const { extension } = await buildAutoRetrievalBundle(args)

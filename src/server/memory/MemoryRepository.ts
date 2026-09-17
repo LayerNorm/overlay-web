@@ -13,7 +13,6 @@ export type MemoryRecord = {
   source: MemorySource
   type?: MemoryType
   importance?: number
-  projectId?: string
   conversationId?: string
   noteId?: string
   messageId?: string
@@ -33,7 +32,6 @@ export type MemoryWrite = {
   importance?: number
   messageId?: string
   noteId?: string
-  projectId?: string
   source: MemorySource
   tags?: string[]
   turnId?: string
@@ -49,7 +47,6 @@ export interface MemoryRepository {
     creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
-    projectId?: string
     scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string

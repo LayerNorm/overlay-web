@@ -85,7 +85,6 @@ export interface AutomationSummary {
   lastRunAt?: number
   lastRunStatus?: string
   lastError?: string
-  projectId?: string
   modelId?: string
   /** Structured graph model — the source of truth for the visual editor. */
   graph?: AutomationGraph

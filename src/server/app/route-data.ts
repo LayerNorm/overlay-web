@@ -6,11 +6,9 @@ import type {
   AppBootstrapResponse,
   ConnectedIntegrationsResponse,
   IntegrationSearchResponse,
-  KnowledgeBase,
   KnowledgeFileNode,
   MemoryRow,
   NoteDoc,
-  ProjectSummary,
 } from '@overlay/app-core'
 import { noteDocToKnowledgeFile } from '@overlay/app-core'
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
@@ -19,13 +17,11 @@ import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { getBaseUrl } from '@/server/web/app-url'
 import { handleBffRoute, type BffDomainService } from '@/app/api/v1/_utils/bff'
 import * as conversationsService from '@/server/app-api/v1/conversations/route'
-import * as projectsService from '@/server/app-api/v1/projects/route'
 import * as filesService from '@/server/app-api/v1/files/route'
 import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
-import * as knowledgeBasesService from '@/server/app-api/v1/knowledge-bases/route'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 const INITIAL_CHAT_LIST_LIMIT = 24
@@ -86,14 +82,6 @@ export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConvers
   )
 }
 
-export function getInitialProjectList(archived = false): Promise<ProjectSummary[]> {
-  return callAppApi<ProjectSummary[]>(
-    `/api/v1/projects?limit=100${archived ? '&archived=true' : ''}`,
-    projectsService.GET as BffDomainService,
-    [],
-  )
-}
-
 export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
   const [files, notes] = await Promise.all([
     callAppApi<KnowledgeFileNode[]>(
@@ -117,14 +105,6 @@ export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {
     memoryService.GET as BffDomainService,
     [],
   )
-}
-
-export function getInitialKnowledgeBases(): Promise<KnowledgeBase[]> {
-  return callAppApi<{ knowledgeBases: KnowledgeBase[] }>(
-    '/api/v1/knowledge-bases',
-    knowledgeBasesService.GET as BffDomainService,
-    { knowledgeBases: [] },
-  ).then(({ knowledgeBases }) => knowledgeBases)
 }
 
 export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {

@@ -7,7 +7,6 @@ import { CONVEX_APP_DATA_CAPABILITIES } from '@/server/app-data/capabilities'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
-import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { runKnowledgeCharacterizationContract } from './knowledge-characterization-contract'
 
@@ -26,11 +25,8 @@ test('Convex knowledge characterization', {
       const expected = new Set([
         fixture.sourceIds.globalFile,
         fixture.sourceIds.globalMemory,
-        fixture.sourceIds.projectAFile,
-        fixture.sourceIds.projectAMemory,
-        fixture.sourceIds.projectBFile,
       ])
-      const query = 'Cedar Lantern Silver Orchard Quartz Harbor Indigo Compass Crimson Delta'
+      const query = 'Cedar Lantern Silver Orchard'
       for (let attempt = 0; attempt < 30; attempt += 1) {
         const nonce = globalThis.crypto.randomUUID()
         const result = await search.hybridSearch({
@@ -53,7 +49,6 @@ test('Convex knowledge characterization', {
     files: new ConvexFileRepository(),
     memories: new ConvexMemoryRepository(),
     name: 'convex',
-    projects: new ConvexProjectRepository(),
     search,
     users: new ConvexUserRepository(),
   })

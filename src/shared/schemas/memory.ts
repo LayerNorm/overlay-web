@@ -6,7 +6,6 @@ export const MemoryListQuery = PaginationQuery.extend({
   raw: BooleanQueryValue,
   updatedSince: IntegerQueryValue,
   includeDeleted: BooleanQueryValue,
-  projectId: IdQuery,
   conversationId: IdQuery,
   noteId: IdQuery,
 })
@@ -31,7 +30,6 @@ export const DeleteMemoryRequest = z.object({
 export const KnowledgeSearchRequest = z.object({
   ...AuthFields,
   query: z.string().min(1).optional(),
-  projectId: z.string().optional(),
   limit: z.number().int().positive().optional(),
 }).passthrough()
 

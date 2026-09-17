@@ -39,8 +39,6 @@ export type {
   OutputSource,
   OutputSummary,
   OutputType,
-  ProjectSubview,
-  ProjectSummary,
   SettingsSubview,
   SkillSummary,
   ThemePreference,

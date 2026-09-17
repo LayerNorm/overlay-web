@@ -225,7 +225,6 @@ export const getAccessibleConversation = query({
       lastMode: conversation.lastMode,
       askModelIds: conversation.askModelIds,
       actModelId: conversation.actModelId,
-      projectId: conversation.projectId,
       shareVisibility: conversation.shareVisibility,
       shareToken: conversation.shareToken,
       isAutomation: conversation.isAutomation,
@@ -255,7 +254,6 @@ export const listAccessibleConversations = query({
       .collect()
     const accessible = rows.filter((conversation) => (
       !conversation.deletedAt
-      && !conversation.projectId
       && !conversation.isAutomation
       && (
         ((conversation.conversationType ?? 'personal') === 'personal' && conversation.userId === args.actorUserId)
@@ -274,7 +272,6 @@ export const listAccessibleConversations = query({
       lastMode: conversation.lastMode,
       askModelIds: conversation.askModelIds,
       actModelId: conversation.actModelId,
-      projectId: conversation.projectId,
       shareVisibility: conversation.shareVisibility,
       shareToken: conversation.shareToken,
       isAutomation: conversation.isAutomation,
@@ -333,7 +330,6 @@ export const listArchivedConversations = query({
         lastMode: conversation.lastMode,
         askModelIds: conversation.askModelIds,
         actModelId: conversation.actModelId,
-        projectId: conversation.projectId,
         shareVisibility: conversation.shareVisibility,
         shareToken: conversation.shareToken,
         isAutomation: conversation.isAutomation,

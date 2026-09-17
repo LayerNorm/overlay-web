@@ -20,21 +20,11 @@ export const FIXED_AUTHORIZATION_ROLE_IDS: Record<AdministrativeRole, string> = 
 export const MEMBER_AUTHORIZATION_ROLE_ID = 'system:member'
 
 export const MEMBER_AUTHORIZATION_CAPABILITIES: AuthorizationCapability[] = [
-  'knowledge.create',
-  'knowledge.read',
-  'knowledge.edit',
-  'knowledge.share',
-  'knowledge.delete',
   'conversations.create',
   'conversations.read',
   'conversations.edit',
   'conversations.share',
   'conversations.delete',
-  'projects.create',
-  'projects.read',
-  'projects.edit',
-  'projects.share',
-  'projects.delete',
   'files.upload',
   'files.read',
   'files.edit',
@@ -77,8 +67,6 @@ export const FIXED_AUTHORIZATION_ROLE_DEFINITIONS: Record<AdministrativeRole, {
       'groups.read',
       'roles.read',
       'audit.read',
-      'governance.read',
-      'governance.export',
     ],
   },
   billing_admin: {

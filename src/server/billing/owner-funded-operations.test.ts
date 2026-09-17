@@ -27,11 +27,11 @@ test('owner-funded operation registry is exact and has unique routes and ids', (
     null,
   )
   assert.equal(
-    getOwnerFundedOperation('POST', '/api/v1/knowledge-bases/kb_123/search')?.id,
-    'knowledge.knowledge-base-search',
+    getOwnerFundedOperation('POST', '/api/v1/knowledge/search')?.id,
+    'knowledge.hybrid-search',
   )
   assert.equal(
-    getOwnerFundedOperation('GET', '/api/v1/knowledge-bases/kb_123/search'),
+    getOwnerFundedOperation('GET', '/api/v1/knowledge/search'),
     null,
   )
 })

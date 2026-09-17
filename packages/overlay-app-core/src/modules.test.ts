@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  buildProjectTree,
   buildTree,
   buildSettingsRegistrySummary,
-  collectProjectDescendantIds,
   filterExtensionCatalog,
   normalizeTopUpDraft,
   noteEditorState,
@@ -33,16 +31,6 @@ test('noteEditorState normalizes title and detects dirty drafts', () => {
     }),
     { title: 'New', isDirty: true, canSave: true },
   )
-})
-
-test('project helpers collect descendants', () => {
-  const projects = [
-    { _id: 'root', name: 'Root', parentId: null, createdAt: 1, updatedAt: 1 },
-    { _id: 'child', name: 'Child', parentId: 'root', createdAt: 1, updatedAt: 1 },
-    { _id: 'grand', name: 'Grand', parentId: 'child', createdAt: 1, updatedAt: 1 },
-  ]
-  assert.equal(buildProjectTree(projects).length, 1)
-  assert.deepEqual(collectProjectDescendantIds(projects, 'root'), ['child', 'grand'])
 })
 
 test('extension catalog filter handles kind and query', () => {

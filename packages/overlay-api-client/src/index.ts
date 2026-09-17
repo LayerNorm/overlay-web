@@ -25,7 +25,6 @@ export type {
 } from './chat/types'
 export type { FileQuery } from './files/types'
 export type { NoteFileQuery, NoteQuery } from './notes/types'
-export type { ProjectQuery } from './projects/types'
 export type { AutomationQuery } from './automations/types'
 export type { IntegrationQuery } from './integrations/types'
 export type { SkillQuery } from './skills/types'
@@ -33,13 +32,6 @@ export type { McpServerQuery } from './mcp-servers/types'
 export type { MemoryQuery } from './memory/types'
 export type { OutputQuery } from './outputs/types'
 export type { OverlayServerDiscovery } from './discovery/types'
-export type {
-  AdministrativeKnowledgeBase,
-  KnowledgeBaseSearchResponse,
-  KnowledgeBaseShareDirectoryResponse,
-  KnowledgeBaseSourceDetail,
-  KnowledgeSourceDiagnostics,
-} from './knowledge-bases/types'
 export type {
   AdminCatalogResource,
   AdminCatalogResourceType,
@@ -56,7 +48,6 @@ export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'
-export { ProjectsClient } from './projects/client'
 export { AutomationsClient } from './automations/client'
 export { AccountClient } from './auth/account-client'
 export { BillingClient } from './auth/billing-client'

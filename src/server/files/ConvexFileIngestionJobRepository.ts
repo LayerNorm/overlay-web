@@ -20,7 +20,6 @@ export class ConvexFileIngestionJobRepository implements FileIngestionJobReposit
     fileName: string
     mimeType: string
     sizeBytes: number
-    projectId?: string
     parentId?: string
   }): Promise<{ jobId: string }> {
     const result = await convex.mutation<{ jobId: string } | null>('files/ingestion/jobs:createJob', {
@@ -29,7 +28,6 @@ export class ConvexFileIngestionJobRepository implements FileIngestionJobReposit
       fileName: args.fileName,
       mimeType: args.mimeType,
       sizeBytes: args.sizeBytes,
-      ...(args.projectId ? { projectId: args.projectId } : {}),
       ...(args.parentId ? { parentId: args.parentId } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       serverSecret: this.serverSecret,

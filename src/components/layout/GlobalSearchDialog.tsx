@@ -4,22 +4,18 @@
  * Global search (Cmd+K) container. Search + navigation wiring stays here;
  * presentation lives in @overlay/ui CommandPalette.
  *
- * Chats, files, knowledge bases, automations, skills, MCP servers, and
- * connectors come from the shared mention index. Agents and projects are not
- * mentionable, so they are fetched here and filtered client-side.
+ * Chats, files, automations, skills, MCP servers, and connectors come from
+ * the shared mention index. Agents are not mentionable, so they are fetched
+ * here and filtered client-side.
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
-import { projectHubHref } from '@overlay/app-core'
-import type { ProjectSummary } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   Bot,
-  BookOpen,
   FileText,
-  FolderKanban,
   MessageSquare,
   Plug,
   Server,
@@ -27,13 +23,11 @@ import {
   Zap,
 } from 'lucide-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
-import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 /** Mention categories plus the search-only categories that have no mention type. */
-type SearchType = MentionType | 'agent' | 'project'
+type SearchType = MentionType | 'agent'
 
 interface SearchItem extends Omit<MentionItem, 'type'> {
   type: SearchType
@@ -45,10 +39,8 @@ interface SearchCategory extends Omit<MentionCategory, 'type' | 'items'> {
 }
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
-  BookOpen,
   Bot,
   FileText,
-  FolderKanban,
   Plug,
   Zap,
   Sparkles,
@@ -58,10 +50,8 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
 
 const CATEGORY_ORDER: Array<{ type: SearchType; label: string; icon: string }> = [
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
-  { type: 'project', label: 'Projects', icon: 'FolderKanban' },
   { type: 'agent', label: 'Agents', icon: 'Bot' },
   { type: 'file', label: 'Files', icon: 'FileText' },
-  { type: 'knowledge', label: 'Knowledge Bases', icon: 'BookOpen' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
   { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
@@ -78,15 +68,11 @@ function hrefForItem(item: SearchItem): string {
   switch (item.type) {
     case 'chat':
       return `/app/chat?id=${encodeURIComponent(item.id)}`
-    case 'project':
-      return projectHubHref({ _id: item.id, name: item.name })
     case 'agent':
       return `/app/agents?agentId=${encodeURIComponent(item.id)}`
     case 'file':
       if (item.description === 'note') return `/app/notes?id=${encodeURIComponent(item.id)}`
       return `/app/files?file=${encodeURIComponent(item.id)}`
-    case 'knowledge':
-      return `/app/knowledge/${encodeURIComponent(item.id)}`
     case 'automation':
       return `/app/automations?automationId=${encodeURIComponent(item.id)}`
     case 'skill':
@@ -105,7 +91,7 @@ interface GlobalSearchDialogProps {
   onClose: () => void
   initialCategory?: MentionType | null
   onNewChat: () => void
-  /** Scopes agent and project results to the workspace the user is viewing. */
+  /** Scopes agent results to the workspace the user is viewing. */
   workspaceId?: string | null
 }
 
@@ -125,7 +111,6 @@ export function GlobalSearchDialog({
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [agents, setAgents] = useState<SearchItem[]>([])
-  const [projects, setProjects] = useState<SearchItem[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -162,44 +147,27 @@ export function GlobalSearchDialog({
     }
   }, [open, query])
 
-  // Agents and projects are small, workspace-scoped lists: fetch once per open
-  // and filter locally instead of round-tripping on every keystroke.
+  // Agents are a small, workspace-scoped list: fetch once per open and
+  // filter locally instead of round-tripping on every keystroke.
   useEffect(() => {
     if (!open) return
     let cancelled = false
 
     void (async () => {
-      const [agentsResult, projectsResult] = await Promise.allSettled([
-        workspaceId
-          ? overlayAppClient.agents.list(workspaceId)
-          : Promise.resolve({ agents: [] as WorkspaceAgentDirectoryItem[] }),
-        overlayAppClient.projects
-          .getResponse(
-            { limit: 100 },
-            workspaceId ? { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } } : undefined,
-          )
-          .then((res) => (res.ok ? res.json() : [])),
-      ])
+      const { agents } = workspaceId
+        ? await overlayAppClient.agents
+            .list(workspaceId)
+            .catch(() => ({ agents: [] as WorkspaceAgentDirectoryItem[] }))
+        : { agents: [] as WorkspaceAgentDirectoryItem[] }
       if (cancelled) return
 
       setAgents(
-        (agentsResult.status === 'fulfilled' ? agentsResult.value.agents : []).map((agent) => ({
+        agents.map((agent) => ({
           type: 'agent' as const,
           id: agent.id,
           name: agent.name,
           description: agent.description || agent.instructions || '',
           icon: 'Bot',
-        })),
-      )
-      setProjects(
-        (projectsResult.status === 'fulfilled'
-          ? unwrapPaginatedData<ProjectSummary>(projectsResult.value)
-          : []
-        ).map((project) => ({
-          type: 'project' as const,
-          id: project._id,
-          name: project.name || 'Untitled project',
-          icon: 'FolderKanban',
         })),
       )
     })()
@@ -217,12 +185,11 @@ export function GlobalSearchDialog({
       (item.description || '').toLowerCase().includes(needle)
 
     const extras: SearchCategory[] = [
-      { type: 'project' as const, label: 'Projects', icon: 'FolderKanban', items: projects.filter(matches).slice(0, 10) },
       { type: 'agent' as const, label: 'Agents', icon: 'Bot', items: agents.filter(matches).slice(0, 10) },
     ].filter((cat) => cat.items.length > 0)
 
     return [...(categories as SearchCategory[]), ...extras]
-  }, [agents, categories, projects, query])
+  }, [agents, categories, query])
 
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []

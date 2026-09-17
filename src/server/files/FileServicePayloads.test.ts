@@ -35,7 +35,6 @@ test('parseCreateFileRequest maps exact create-file DTO fields', () => {
     type: 'file',
     kind: 'upload',
     parentId: 'parent_1',
-    projectId: 'project_1',
     mimeType: 'Text/Plain',
     extension: 'txt',
     conversationId: 'conversation_1',
@@ -53,7 +52,6 @@ test('parseCreateFileRequest maps exact create-file DTO fields', () => {
     type: 'file',
     kind: 'upload',
     parentId: 'parent_1',
-    projectId: 'project_1',
     mimeType: 'Text/Plain',
     extension: 'txt',
     conversationId: 'conversation_1',
@@ -70,7 +68,6 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
   assert.deepEqual(buildFileListArgs({
     userId: 'user_1',
     parentId: 'null',
-    projectId: 'project_1',
     conversationId: 'conversation_1',
     outputType: 'image',
     kind: 'output',
@@ -80,7 +77,6 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
   }), {
     userId: 'user_1',
     parentId: null,
-    projectId: 'project_1',
     conversationId: 'conversation_1',
     outputType: 'image',
     kind: 'output',
@@ -93,7 +89,6 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
     fileId: 'file_1',
     name: 'renamed.txt',
     parentId: '',
-    projectId: 'project_1',
     textContent: 'updated',
   }, 'user_1')
   assert.equal(update.content, 'updated')
@@ -103,7 +98,6 @@ test('file list and update DTO builders preserve route-facing mapping', () => {
     userId: 'user_1',
     name: 'renamed.txt',
     parentId: null,
-    projectId: 'project_1',
     content: 'updated',
     contentHash: '<hash>',
   })

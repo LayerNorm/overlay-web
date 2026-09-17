@@ -31,18 +31,18 @@ export async function runAuthorizationRepositoryContract(
         id: roleId,
         name: `${args.scope} Knowledge Curator`,
         description: 'Curates shared knowledge without deployment administration.',
-        capabilities: ['knowledge.read', 'knowledge.edit', 'files.read'],
+        capabilities: ['files.upload', 'files.edit', 'files.read'],
         createdBy: userId,
       })
       assert.equal(created.id, roleId)
-      assert.deepEqual(created.capabilities, ['knowledge.read', 'knowledge.edit', 'files.read'])
+      assert.deepEqual(created.capabilities, ['files.upload', 'files.edit', 'files.read'])
       assert.equal((await args.repositories.roles.get(roleId))?.description, created.description)
 
       const updated = await args.repositories.roles.update({
         id: roleId,
-        capabilities: ['knowledge.read', 'knowledge.edit', 'knowledge.publish', 'files.read'],
+        capabilities: ['files.upload', 'files.edit', 'files.share', 'files.read'],
       })
-      assert.ok(updated?.capabilities.includes('knowledge.publish'))
+      assert.ok(updated?.capabilities.includes('files.share'))
       assert.ok((await args.repositories.roles.list()).some((role) => role.id === roleId))
     })
 
@@ -73,7 +73,7 @@ export async function runAuthorizationRepositoryContract(
     await t.test('persists direct, group, and role resource ACLs', async () => {
       const grant = await args.repositories.resourceGrants.upsert({
         id: grantId,
-        resourceType: 'knowledge_base',
+        resourceType: 'file',
         resourceId: `${args.scope}_knowledge`,
         principalType: 'group',
         principalId: groupId,
@@ -88,21 +88,21 @@ export async function runAuthorizationRepositoryContract(
       assert.equal(upgraded.id, grantId)
       assert.equal(upgraded.accessRole, 'editor')
       assert.equal((await args.repositories.resourceGrants.listForResource({
-        resourceType: 'knowledge_base',
+        resourceType: 'file',
         resourceId: `${args.scope}_knowledge`,
       })).length, 1)
       assert.equal((await args.repositories.resourceGrants.listForPrincipals({
         userId,
         groupIds: [groupId],
         roleIds: [roleId],
-        resourceType: 'knowledge_base',
+        resourceType: 'file',
       })).length, 1)
       const decision = await new AuthorizationService({
         repositories: args.repositories,
       }).checkResourceAccess({
         userId,
-        capability: 'knowledge.edit',
-        resourceType: 'knowledge_base',
+        capability: 'files.edit',
+        resourceType: 'file',
         resourceId: `${args.scope}_knowledge`,
         action: 'edit',
       })
@@ -112,7 +112,7 @@ export async function runAuthorizationRepositoryContract(
       assert.equal(await args.repositories.resourceGrants.remove(grantId), false)
       await args.repositories.resourceGrants.upsert({
         id: `${grantId}_account_cleanup`,
-        resourceType: 'knowledge_base',
+        resourceType: 'file',
         resourceId: `${args.scope}_account_cleanup`,
         principalType: 'user',
         principalId: userId,
@@ -172,7 +172,7 @@ export async function runAuthorizationRepositoryContract(
       userId,
       groupIds: [],
       roleIds: [],
-      resourceType: 'knowledge_base',
+      resourceType: 'file',
     })).length, 0)
   }
 }

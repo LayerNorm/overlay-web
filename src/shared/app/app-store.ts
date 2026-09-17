@@ -8,16 +8,6 @@ export interface StoredFile {
   type: 'file' | 'folder'
   parentId: string | null
   content: string
-  projectId?: string
-  createdAt: number
-  updatedAt: number
-}
-
-export interface StoredProject {
-  _id: string
-  userId: string
-  name: string
-  parentId: string | null
   createdAt: number
   updatedAt: number
 }
@@ -26,7 +16,6 @@ export interface StoredAgent {
   _id: string
   userId: string
   title: string
-  projectId?: string
   lastModified: number
 }
 
@@ -44,7 +33,6 @@ export interface StoredChat {
   userId: string
   title: string
   folderId?: string
-  projectId?: string
   lastModified: number
   model: string
 }
@@ -67,7 +55,6 @@ export interface StoredNote {
   title: string
   content: string
   tags: string[]
-  projectId?: string
   updatedAt: number
 }
 
@@ -91,7 +78,6 @@ type StoreState = {
   agents: StoredAgent[]
   agentMessages: StoredAgentMessage[]
   files: StoredFile[]
-  projects: StoredProject[]
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -108,12 +94,7 @@ function getStore(): StoreState {
       agents: [],
       agentMessages: [],
       files: [],
-      projects: [],
     }
-  }
-  // Ensure fields added after initial store creation are present (hot-reload safety)
-  if (!globalStore.__overlayAppStore.projects) {
-    globalStore.__overlayAppStore.projects = []
   }
   return globalStore.__overlayAppStore
 }
@@ -122,20 +103,18 @@ function createId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function listChats(userId: string, projectId?: string | null): StoredChat[] {
-  let chats = getStore().chats.filter((chat) => chat.userId === userId)
-  if (projectId !== undefined) chats = chats.filter((chat) => chat.projectId === projectId)
+export function listChats(userId: string): StoredChat[] {
+  const chats = getStore().chats.filter((chat) => chat.userId === userId)
   return chats.sort((a, b) => b.lastModified - a.lastModified)
 }
 
-export function createChat(userId: string, title: string, model: string, projectId?: string): string {
+export function createChat(userId: string, title: string, model: string): string {
   const chatId = createId('chat')
   getStore().chats.push({
     _id: chatId,
     userId,
     title,
     model,
-    projectId,
     lastModified: Date.now(),
   })
   return chatId
@@ -196,13 +175,12 @@ export function addMessage(args: {
   return messageId
 }
 
-export function listNotes(userId: string, projectId?: string | null): StoredNote[] {
-  let notes = getStore().notes.filter((note) => note.userId === userId)
-  if (projectId !== undefined) notes = notes.filter((note) => note.projectId === projectId)
+export function listNotes(userId: string): StoredNote[] {
+  const notes = getStore().notes.filter((note) => note.userId === userId)
   return notes.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-export function createNote(userId: string, title: string, content: string, tags: string[], projectId?: string): string {
+export function createNote(userId: string, title: string, content: string, tags: string[]): string {
   const noteId = createId('note')
   getStore().notes.push({
     _id: noteId,
@@ -210,7 +188,6 @@ export function createNote(userId: string, title: string, content: string, tags:
     title,
     content,
     tags,
-    projectId,
     updatedAt: Date.now(),
   })
   return noteId
@@ -260,19 +237,17 @@ export function removeMemory(memoryId: string): void {
   store.memories = store.memories.filter((memory) => memory._id !== memoryId)
 }
 
-export function listAgents(userId: string, projectId?: string | null): StoredAgent[] {
-  let agents = getStore().agents.filter((agent) => agent.userId === userId)
-  if (projectId !== undefined) agents = agents.filter((a) => a.projectId === projectId)
+export function listAgents(userId: string): StoredAgent[] {
+  const agents = getStore().agents.filter((agent) => agent.userId === userId)
   return agents.sort((a, b) => b.lastModified - a.lastModified)
 }
 
-export function createAgent(userId: string, title: string, projectId?: string): string {
+export function createAgent(userId: string, title: string): string {
   const agentId = createId('agent')
   getStore().agents.push({
     _id: agentId,
     userId,
     title,
-    projectId,
     lastModified: Date.now(),
   })
   return agentId
@@ -330,49 +305,16 @@ export function getFile(fileId: string): StoredFile | undefined {
   return getStore().files.find((f) => f._id === fileId)
 }
 
-export function listFiles(userId: string, projectId?: string | null): StoredFile[] {
-  let files = getStore().files.filter((f) => f.userId === userId)
-  if (projectId !== undefined) files = files.filter((f) => f.projectId === projectId)
+export function listFiles(userId: string): StoredFile[] {
+  const files = getStore().files.filter((f) => f.userId === userId)
   return files.sort((a, b) => a.createdAt - b.createdAt)
 }
 
-export function createFile(userId: string, name: string, type: 'file' | 'folder', parentId: string | null, projectId?: string): string {
+export function createFile(userId: string, name: string, type: 'file' | 'folder', parentId: string | null): string {
   const fileId = createId(type === 'folder' ? 'folder' : 'file')
   const now = Date.now()
-  getStore().files.push({ _id: fileId, userId, name, type, parentId, content: '', projectId, createdAt: now, updatedAt: now })
+  getStore().files.push({ _id: fileId, userId, name, type, parentId, content: '', createdAt: now, updatedAt: now })
   return fileId
-}
-
-// ─── Projects ─────────────────────────────────────────────────────────────────
-
-export function listProjects(userId: string): StoredProject[] {
-  return getStore().projects.filter((p) => p.userId === userId).sort((a, b) => a.createdAt - b.createdAt)
-}
-
-export function createProject(userId: string, name: string, parentId: string | null): string {
-  const projectId = createId('project')
-  const now = Date.now()
-  getStore().projects.push({ _id: projectId, userId, name, parentId, createdAt: now, updatedAt: now })
-  return projectId
-}
-
-export function updateProject(projectId: string, updates: { name?: string }): boolean {
-  const project = getStore().projects.find((p) => p._id === projectId)
-  if (!project) return false
-  if (updates.name !== undefined) project.name = updates.name
-  project.updatedAt = Date.now()
-  return true
-}
-
-export function deleteProject(projectId: string): void {
-  const store = getStore()
-  const idsToDelete = new Set<string>()
-  function collect(id: string) {
-    idsToDelete.add(id)
-    store.projects.filter((p) => p.parentId === id).forEach((p) => collect(p._id))
-  }
-  collect(projectId)
-  store.projects = store.projects.filter((p) => !idsToDelete.has(p._id))
 }
 
 export function updateFile(fileId: string, updates: { name?: string; content?: string }): boolean {

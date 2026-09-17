@@ -21,7 +21,6 @@
     "./file-viewer": "./src/file-viewer.ts",
     "./modules": "./src/modules.ts",
     "./notes": "./src/notes.ts",
-    "./projects": "./src/projects.ts",
     "./settings-account": "./src/settings-account.ts",
     "./theme": "./src/theme.ts"
   },

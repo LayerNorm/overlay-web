@@ -13,8 +13,6 @@ const RESOURCE_ID_KEYS: Record<string, readonly string[]> = {
   file: ['fileId'],
   note: ['noteId'],
   output: ['outputId'],
-  project: ['projectId'],
-  knowledge_base: ['knowledgeBaseId'],
   automation: ['automationId'],
 }
 
@@ -111,8 +109,6 @@ function resourceCapability(resourceType: string) {
     case 'file': return 'files.read' as const
     case 'note': return 'notes.read' as const
     case 'output': return 'outputs.read' as const
-    case 'project': return 'projects.read' as const
-    case 'knowledge_base': return 'knowledge.read' as const
     case 'automation': return 'automations.use' as const
     default: throw new Error(`No authorization capability for resource type ${resourceType}`)
   }

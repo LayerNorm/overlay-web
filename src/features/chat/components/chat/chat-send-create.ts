@@ -34,7 +34,6 @@ export async function createNewChatForSend({
   applyUiStateToView,
   askModelSelectionMode,
   clearTransientComposerState,
-  embedProjectId,
   emptyRuntime,
   ensureConversationRuntime,
   invalidateLoadChatRequest,
@@ -61,7 +60,6 @@ export async function createNewChatForSend({
   applyUiStateToView: (ui: ConversationUiState) => void
   askModelSelectionMode: AskModelSelectionMode
   clearTransientComposerState: () => void
-  embedProjectId: string | null
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
   invalidateLoadChatRequest: () => void
@@ -102,7 +100,6 @@ export async function createNewChatForSend({
       askModelIds: initialSelectedModels,
       actModelId: normalizedInitialSelection.actModelId,
       lastMode: 'act',
-      ...(embedProjectId ? { projectId: embedProjectId } : {}),
       ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
     },
     { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },

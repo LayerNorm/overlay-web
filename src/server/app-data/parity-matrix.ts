@@ -110,14 +110,6 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     exitGate: 'File and note routes are fully supported, including atomic ingestion, durable object cleanup, reconciliation, sharing, and deletion.',
   },
   {
-    id: 'projects',
-    name: 'Projects',
-    targetPhase: 'P3a',
-    capabilities: [{ key: 'supportsProjects', expectedAtParity: true }],
-    routeRuleIds: ['projects'],
-    exitGate: 'Project CRUD, hierarchy, resource association, authorization, and UI pass shared tests.',
-  },
-  {
     id: 'outputs-media',
     name: 'Generated outputs and media',
     targetPhase: 'P3c',

@@ -54,10 +54,6 @@ export type AutomationExecutor = (input: ScheduledAutomationTurn) => Promise<{
 }>
 
 export type AutomationServiceDeps = {
-  assertProjectAutomationAllowed?: (args: {
-    projectId: string
-    userId: string
-  }) => Promise<boolean>
   automationWorkflowStarter?: (
     input: AutomationScheduleWorkflowInput,
   ) => Promise<{ runId: string }>
@@ -78,7 +74,6 @@ type CreateAutomationBody = {
   enabled?: boolean
   schedule?: AutomationSchedule
   timezone?: string
-  projectId?: string
   modelId?: string
   graphSource?: string
   graph?: AutomationSummary['graph']
@@ -98,7 +93,6 @@ type UpdateAutomationBody = {
   enabled?: boolean
   schedule?: AutomationSchedule
   timezone?: string
-  projectId?: string
   modelId?: string
   graphSource?: string
   graph?: AutomationSummary['graph']
@@ -271,7 +265,6 @@ export class AutomationService {
     automationId?: string | null
     includeDeleted?: boolean
     includeRuns?: boolean
-    projectId?: string
     userId: string
     workspaceId?: string
   }): Promise<unknown> {
@@ -293,7 +286,6 @@ export class AutomationService {
     return await this.deps.repository.listAutomations({
       userId: args.userId,
       includeDeleted: args.includeDeleted,
-      projectId: args.projectId,
       workspaceId: args.workspaceId,
     })
   }
@@ -309,7 +301,6 @@ export class AutomationService {
     }
     const schedule = normalizeScheduleValue(body.schedule)
     this.assertScheduleAllowed(schedule)
-    await this.assertProjectAllowsAutomation(body.projectId, args.userId)
     if (body.enabled !== false) {
       await this.assertCanEnable(args.userId)
     }
@@ -322,7 +313,6 @@ export class AutomationService {
       enabled: body.enabled,
       schedule,
       timezone: body.timezone,
-      projectId: body.projectId,
       modelId: body.modelId,
       graphSource: body.graphSource,
       graph: body.graph,
@@ -370,16 +360,6 @@ export class AutomationService {
     const automationId = body.automationId
     const idArgs = { automationId, userId: args.userId, workspaceId: args.workspaceId }
     const existingAutomation = await this.deps.repository.getAutomation(idArgs)
-    if (
-      body.action === 'resume'
-      || body.enabled === true
-      || (body.projectId !== undefined && body.enabled !== false)
-    ) {
-      await this.assertProjectAllowsAutomation(
-        body.projectId ?? existingAutomation?.projectId,
-        args.userId,
-      )
-    }
     if (body.action === 'pause') {
       // Cancel any active scheduler workflow before pausing
       await this.cancelSchedulerWorkflow(idArgs)
@@ -400,7 +380,6 @@ export class AutomationService {
         enabled: body.enabled,
         schedule,
         timezone: body.timezone,
-        projectId: body.projectId,
         modelId: body.modelId,
         graphSource: body.graphSource,
         graph: body.graph,
@@ -498,7 +477,6 @@ export class AutomationService {
         userId: args.userId,
       })
       if (!automation) serviceError({ error: 'Automation not found' }, 404)
-      await this.assertProjectAllowsAutomation(automation.projectId, args.userId)
 
       const name = (automation.name || automation.title || 'Untitled automation').trim()
       const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
@@ -539,7 +517,6 @@ export class AutomationService {
         name,
         description: automation.description || '',
         instructions,
-        projectId: automation.projectId,
         modelId: automation.modelId,
         conversationId,
         turnId,
@@ -600,7 +577,6 @@ export class AutomationService {
       if (automation.userId !== args.serviceUserId) {
         serviceError({ error: 'Unauthorized' }, 401)
       }
-      await this.assertProjectAllowsAutomation(automation.projectId, automation.userId)
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
       const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 
@@ -614,7 +590,6 @@ export class AutomationService {
         name: automation.name || automation.title || 'Untitled automation',
         description: automation.description || '',
         instructions: automation.instructions || automation.instructionsMarkdown || '',
-        projectId: automation.projectId,
         modelId: automation.modelId,
         conversationId,
         turnId,
@@ -684,7 +659,6 @@ export class AutomationService {
     if (automation.userId !== args.serviceUserId) {
       serviceError({ error: 'Unauthorized' }, 401)
     }
-    await this.assertProjectAllowsAutomation(automation.projectId, automation.userId)
 
     // Idempotent replay: Convex scheduled actions are at-least-once, so a
     // duplicate dispatch must return the existing workflow instead of
@@ -699,7 +673,6 @@ export class AutomationService {
       name: automation.name || automation.title || 'Untitled automation',
       description: automation.description || '',
       instructions: automation.instructions || automation.instructionsMarkdown || '',
-      projectId: automation.projectId,
       modelId: automation.modelId,
       conversationId:
         run.conversationId ||
@@ -859,16 +832,6 @@ export class AutomationService {
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {
     if (scheduleTooFrequent(schedule)) {
       serviceError({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, 400)
-    }
-  }
-
-  private async assertProjectAllowsAutomation(
-    projectId: string | undefined,
-    userId: string,
-  ): Promise<void> {
-    if (!projectId || !this.deps.assertProjectAutomationAllowed) return
-    if (!await this.deps.assertProjectAutomationAllowed({ projectId, userId })) {
-      serviceError({ error: 'Automations are disabled for this project' }, 409)
     }
   }
 
