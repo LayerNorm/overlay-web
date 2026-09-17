@@ -1,81 +1,290 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import { ManagedAgentSandboxBilling, sandboxCostUsd } from './ManagedAgentSandboxBilling'
 
-test('managed sandbox reservation uses the agent spend subject and terminal retries settle once', async () => {
-  let usage = { wallTimeMs: 1_000, activeCpuTimeMs: 500 }
+test('reserve holds a bootstrap reservation and records the payer on the lease', async () => {
   const reservationArgs: Array<Record<string, unknown>> = []
-  const finalizedReservations = new Set<string>()
-  const usageEvents: Array<Record<string, unknown>> = []
-  let leaseUpdateAttempts = 0
-  let settlementMarkerWrites = 0
+  const usagePatches: Array<Record<string, unknown>> = []
   const policy = {
     reserve: async (args: Record<string, unknown>) => {
       reservationArgs.push(args)
       return { ok: true as const, billingAccountId: 'billing', reservationId: 'sandbox-reservation', reservedCents: 10, entitlements: {} }
-    },
-    markStarted: async () => ({ success: true as const }),
-    release: async () => ({ success: true as const }),
-    markForReconcile: async () => ({ success: true as const }),
-    finalize: async (args: { reservationId?: string | null; events?: Array<Record<string, unknown>> }) => {
-      if (args.reservationId && !finalizedReservations.has(args.reservationId)) {
-        finalizedReservations.add(args.reservationId)
-        usageEvents.push(...(args.events ?? []))
-      }
-      return { success: true as const }
     },
   }
   const service = new ManagedAgentSandboxBilling({
     now: () => 5_000,
     policy: policy as never,
     repository: {
-      getActiveSandboxLease: async () => ({
-        id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
-        providerReference: 'sandbox-reference', status: 'running', reservedUntil: 10_000,
-        runtimeStartedAt: 1_000, usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
-        cleanupAttempts: 0, createdAt: 1_000, updatedAt: 1_000,
+      getActiveSandboxLease: async () => leaseFixture({
+        usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, meteredUsage: {}, meterVersion: 0 },
       }),
-      updateSandboxLease: async () => {
-        leaseUpdateAttempts += 1
-        if (leaseUpdateAttempts === 1) throw new Error('simulated crash after ledger finalization')
-        return {
-          id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
-          providerReference: 'sandbox-reference', status: 'running', reservedUntil: 10_000,
-          usage: {}, cleanupAttempts: 0, createdAt: 1_000, updatedAt: 5_000,
-        }
+      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown> }) => {
+        usagePatches.push(args.patch)
+        return leaseFixture({})
       },
-      markSandboxSettlementComplete: async () => {
-        settlementMarkerWrites += 1
-        return true
+    } as never,
+    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 1_000, activeCpuTimeMs: 500 })),
+  })
+  const billing = await service.reserve({
+    agentId: 'agent', entitlements: {} as never, environmentId: 'environment',
+    idempotencyKey: 'turn:sandbox', operationId: 'sandbox:run',
+    requestFingerprint: 'fingerprint', userId: 'user', workspaceId: 'workspace',
+  })
+  assert.equal(reservationArgs[0]?.kind, 'sandbox')
+  assert.equal(reservationArgs[0]?.programmaticSubjectId, 'agent:agent')
+  // The hold is markup(coverage) + the $1 low-balance floor — a few dollars,
+  // not the ~$15 worst-case 24h reservation.
+  const providerCostUsd = reservationArgs[0]?.providerCostUsd as number
+  assert.equal(providerCostUsd > 0.8 && providerCostUsd < 2.5, true)
+  assert.equal(billing.leaseId, 'lease')
+  // The payer write is best-effort: resolving needs the app context, which is
+  // absent under test — either zero or one patch, never a throw.
+  assert.equal(usagePatches.length <= 1, true)
+})
+
+test('meterLease debits the usage delta against the lease cursor', async () => {
+  const meterCalls: Array<Record<string, unknown>> = []
+  const usage = { wallTimeMs: 130_000, activeCpuTimeMs: 60_000 }
+  const lease = leaseFixture({
+    usage: {
+      resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+      meteredUsage: { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 4, remainingCents: 500 }
       },
     } as never,
     runtime: () => runtimeWithUsage(() => usage),
   })
-  const billing = await service.reserve({
-    agentId: 'agent', entitlements: {} as never, environmentId: 'environment',
-    idempotencyKey: 'turn:sandbox', maxRunTimeMs: 60_000, maxSandboxEgressBytes: 1024,
-    operationId: 'sandbox:run',
-    requestFingerprint: 'fingerprint', userId: 'user', workspaceId: 'workspace',
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  const call = meterCalls[0]!
+  assert.equal(call.expectedMeterVersion, 3)
+  assert.deepEqual(call.meteredUsage, usage)
+  assert.equal(call.meteredProviderReference, 'sandbox-reference')
+  assert.equal(call.minRemainingCents, 100)
+  const charge = call.charge as { costCents: number; providerCostUsd: number; durationSeconds: number }
+  // Delta: 70s wall + 30s CPU since the cursor.
+  assert.equal(charge.durationSeconds, 70)
+  assert.equal(charge.providerCostUsd > 0, true)
+  assert.equal(charge.costCents > 0, true)
+})
+
+test('meterLease adopts current counters for a legacy lease without charging', async () => {
+  const meterCalls: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({
+    usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
   })
-  assert.equal(reservationArgs[0]?.programmaticSubjectId, 'agent:agent')
-  assert.equal(reservationArgs[0]?.kind, 'sandbox')
-  usage = { wallTimeMs: 11_000, activeCpuTimeMs: 5_500 }
-  const settlement = {
-    agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
-    inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok' as const,
-    operationId: 'workspace-agent:turn', outcome: 'completed' as const, outputTokens: 0,
-    reservationId: null, runId: 'run', sandboxBilling: billing,
-    userId: 'user', workspaceId: 'workspace',
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 1 }
+      },
+      getEnvironment: async () => null,
+    } as never,
+    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 3_600_000, activeCpuTimeMs: 60_000 })),
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  assert.equal(meterCalls[0]!.charge, undefined)
+  assert.deepEqual(meterCalls[0]!.meteredUsage, { wallTimeMs: 3_600_000, activeCpuTimeMs: 60_000 })
+})
+
+test('meterLease bills a repointed sandbox from zero', async () => {
+  const meterCalls: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({
+    providerReference: 'recreated-sandbox',
+    usage: {
+      resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+      meteredUsage: { wallTimeMs: 3_600_000 },
+      meteredProviderReference: 'destroyed-sandbox',
+      meterVersion: 7,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 8, remainingCents: 900 }
+      },
+    } as never,
+    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 120_000 })),
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  const charge = meterCalls[0]!.charge as { durationSeconds: number }
+  assert.equal(charge.durationSeconds, 120)
+})
+
+test('meterLeases kills a lease when the meter debit is declined', async () => {
+  const deletes: string[] = []
+  const stopped: string[] = []
+  const released: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({
+    usage: {
+      meteredUsage: { wallTimeMs: 0 },
+      meteredProviderReference: 'sandbox-reference',
+      meterVersion: 2,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      usage: async () => ({ wallTimeMs: 60_000 }),
+      delete: async () => { deletes.push('sandbox-reference') },
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
   }
-  await assert.rejects(() => service.settle(settlement), /simulated crash after ledger finalization/)
-  await service.settle(settlement)
-  await service.settle(settlement)
-  assert.equal(finalizedReservations.size, 1)
-  assert.equal(usageEvents.length, 1)
-  assert.equal(settlementMarkerWrites, 2)
-  assert.equal(usageEvents[0]?.type, 'sandbox')
-  assert.equal(usageEvents[0]?.durationSeconds, 10)
+  let stopping = false
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
+      meterSandboxLease: async () => ({ applied: false as const, reason: 'insufficient_budget' as const, remainingCents: 12 }),
+      stopSandboxLease: async () => { stopping = true; stopped.push('lease'); return { ...lease, status: 'stopping' as const } },
+      updateSandboxLease: async (args: Record<string, unknown>) => {
+        released.push(args)
+        return { ...lease, status: args.status }
+      },
+    } as never,
+    runtime: () => runtime,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'killed')
+  assert.equal(ticks[0]?.reason, 'budget_exhausted')
+  assert.equal(stopping, true)
+  assert.deepEqual(deletes, ['sandbox-reference'])
+  // The reaper released the lease after the provider delete succeeded.
+  assert.equal(released.at(-1)?.status, 'released')
+})
+
+test('meterLeases kills a lease when remaining balance falls under the floor', async () => {
+  const lease = leaseFixture({
+    usage: {
+      meteredUsage: { wallTimeMs: 0 },
+      meteredProviderReference: 'sandbox-reference',
+      meterVersion: 0,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      usage: async () => ({ wallTimeMs: 30_000 }),
+      delete: async () => undefined,
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const stopReasons: string[] = []
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 1, remainingCents: 42 }),
+      stopSandboxLease: async (args: { reason: string }) => { stopReasons.push(args.reason); return { ...lease, status: 'stopping' as const } },
+      updateSandboxLease: async () => lease,
+    } as never,
+    runtime: () => runtime,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'killed')
+  assert.equal(ticks[0]?.reason, 'low_balance')
+  assert.deepEqual(stopReasons, ['low_balance'])
+})
+
+test('meterLeases reaps stopping leases and retries provider cleanup', async () => {
+  const updates: Array<Record<string, unknown>> = []
+  const stoppingLease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      usage: async () => { throw new Error('gone') },
+      delete: async () => { throw new Error('provider 500') },
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
+        args.statuses.includes('stopping') ? [stoppingLease] : [],
+      meterSandboxLease: async () => { throw new Error('unmeterable') },
+      updateSandboxLease: async (args: Record<string, unknown>) => { updates.push(args); return stoppingLease },
+    } as never,
+    runtime: () => runtime,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'cleanup_failed')
+  assert.equal(updates[0]?.status, 'cleanup_failed')
+  assert.equal(typeof updates[0]?.cleanupAfter, 'number')
+  assert.equal((updates[0]?.cleanupAfter as number) > 190_000, true)
+})
+
+test('metered settle runs a final tick, releases the bootstrap hold, and tolerates a missing marker', async () => {
+  const released: Array<Record<string, unknown>> = []
+  const patches: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({
+    usage: {
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meterVersion: 5,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {
+      release: async (args: Record<string, unknown>) => { released.push(args); return { success: true as const } },
+      markForReconcile: async () => { throw new Error('must not reconcile') },
+    } as never,
+    repository: {
+      getSandboxLease: async () => lease,
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 6, remainingCents: 800 }),
+      markSandboxSettlementComplete: async () => false,
+      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown> }) => { patches.push(args.patch); return lease },
+    } as never,
+    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 90_000 })),
+  })
+  await service.settle({
+    agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
+    inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
+    outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
+    workspaceId: 'workspace',
+    sandboxBilling: {
+      baselineUsage: {}, leaseId: 'lease', provider: 'vercel', providerReference: 'sandbox-reference',
+      reservationId: 'sandbox-reservation', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: 60_000,
+    },
+  })
+  assert.deepEqual(released, [{ reservationId: 'sandbox-reservation', userId: 'user', reason: 'sandbox_metered' }])
+  assert.equal(typeof (patches[0]?.lastSettlement as Record<string, unknown>)?.providerCostUsd, 'number')
 })
 
 test('managed sandbox settlement failure marks its reservation for reconciliation', async () => {
@@ -87,7 +296,9 @@ test('managed sandbox settlement failure marks its reservation for reconciliatio
         return { success: true as const }
       },
     } as never,
-    repository: {} as never,
+    repository: {
+      getSandboxLease: async () => null,
+    } as never,
     runtime: () => { throw new Error('provider unavailable') },
   })
   await assert.rejects(() => service.settle({
@@ -102,12 +313,9 @@ test('managed sandbox settlement failure marks its reservation for reconciliatio
   assert.equal(reconciled, 'sandbox-reservation')
 })
 
-test('reserve tolerates a dead provider sandbox and settle follows a repointed lease', async () => {
+test('legacy settle follows a repointed lease and seeds the meter cursor', async () => {
   // Reset/expiry leaves the lease running but its providerReference dead; the
   // turn's acquire step recreates the sandbox and repoints the same lease.
-  // reserve must still return a reservation (empty baseline meters the fresh
-  // sandbox's full lifetime) and settle must read the lease's CURRENT
-  // providerReference — the dispatch-time snapshot names a destroyed sandbox.
   const reconnects: string[] = []
   const runtime: SandboxRuntime = {
     provider: 'vercel', capabilities: {} as never,
@@ -121,22 +329,14 @@ test('reserve tolerates a dead provider sandbox and settle follows a repointed l
     deleteSnapshot: async () => undefined,
   }
   const usageEvents: Array<Record<string, unknown>> = []
-  // `stale` models the window between reserve (lease still points at the dead
-  // ref) and settle (the acquire step repointed the same lease).
-  let stale = true
+  const patches: Array<Record<string, unknown>> = []
   const repository = {
-    getActiveSandboxLease: async () => ({
-      id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
-      providerReference: stale ? 'destroyed-sandbox' : 'recreated-sandbox',
-      status: 'running', reservedUntil: 10_000,
-      runtimeStartedAt: 1_000, usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
-      cleanupAttempts: 0, createdAt: 1_000, updatedAt: 1_000,
-    }),
-    updateSandboxLease: async () => ({
-      id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
-      providerReference: 'recreated-sandbox', status: 'running', reservedUntil: 10_000,
-      usage: {}, cleanupAttempts: 0, createdAt: 1_000, updatedAt: 5_000,
-    }),
+    getActiveSandboxLease: async () => leaseFixture({ providerReference: 'destroyed-sandbox' }),
+    getSandboxLease: async () => leaseFixture({ providerReference: 'recreated-sandbox' }),
+    patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown> }) => {
+      patches.push(args.patch)
+      return leaseFixture({ providerReference: 'recreated-sandbox' })
+    },
     markSandboxSettlementComplete: async () => true,
   }
   const service = new ManagedAgentSandboxBilling({
@@ -156,13 +356,11 @@ test('reserve tolerates a dead provider sandbox and settle follows a repointed l
   })
   const billing = await service.reserve({
     agentId: 'agent', entitlements: {} as never, environmentId: 'environment',
-    idempotencyKey: 'turn:sandbox', maxRunTimeMs: 60_000, maxSandboxEgressBytes: 1024,
-    operationId: 'sandbox:run',
+    idempotencyKey: 'turn:sandbox', operationId: 'sandbox:run',
     requestFingerprint: 'fingerprint', userId: 'user', workspaceId: 'workspace',
   })
   assert.equal(billing.providerReference, 'destroyed-sandbox')
   assert.deepEqual(billing.baselineUsage, {})
-  stale = false // acquire step recreated the sandbox and repointed the lease
   await service.settle({
     agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
     inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
@@ -174,6 +372,8 @@ test('reserve tolerates a dead provider sandbox and settle follows a repointed l
   assert.deepEqual(reconnects, ['destroyed-sandbox', 'recreated-sandbox'])
   assert.equal(usageEvents.length, 1)
   assert.equal(usageEvents[0]?.type, 'sandbox')
+  assert.deepEqual(patches[0]?.meteredUsage, { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 })
+  assert.equal(patches[0]?.meteredProviderReference, 'recreated-sandbox')
 })
 
 test('provider pricing uses provider-native runtime dimensions', () => {
@@ -187,7 +387,17 @@ test('provider pricing uses provider-native runtime dimensions', () => {
   }) > 0, true)
 })
 
-function runtimeWithUsage(read: () => { wallTimeMs: number; activeCpuTimeMs: number }): SandboxRuntime {
+function leaseFixture(overrides: Partial<AgentSandboxLease>): AgentSandboxLease {
+  return {
+    id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
+    providerReference: 'sandbox-reference', status: 'running', reservedUntil: 10_000,
+    runtimeStartedAt: 1_000, usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
+    cleanupAttempts: 0, createdAt: 1_000, updatedAt: 1_000,
+    ...overrides,
+  }
+}
+
+function runtimeWithUsage(read: () => { wallTimeMs: number; activeCpuTimeMs?: number }): SandboxRuntime {
   const instance = { usage: async () => read() } as SandboxInstance
   return {
     provider: 'vercel', capabilities: {} as never,

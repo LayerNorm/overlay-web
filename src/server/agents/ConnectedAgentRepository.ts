@@ -4,7 +4,7 @@ import type {
   AgentApprovalRequest, AgentApprovalResolution, AgentArtifact, AgentBinding, AgentEnrollmentSession,
   AgentEnvironment, AgentEnvironmentCredential, AgentEnvironmentEnrollmentView, AgentEnvironmentProofChallenge,
   AgentFilesystemGrant, AgentHarnessSession, AgentRemoteEvent, AgentRemoteSession, AgentRunCommand,
-  AgentSandboxLease,
+  AgentSandboxLease, AgentSandboxLeaseStatus,
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
@@ -100,6 +100,27 @@ export type ConnectedAgentSandboxBilling = {
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
   startedAt: number
 }
+
+export type ConnectedAgentSandboxLeasePayer = {
+  scope: 'personal' | 'workspace'
+  billingAccountId?: string
+  userId: string
+  workspaceId?: string
+  spendSubjectKind?: 'member' | 'programmatic'
+  spendSubjectId?: string
+}
+
+export type ConnectedAgentSandboxMeterCharge = {
+  costCents: number
+  durationSeconds: number
+  modelId: string
+  providerCostUsd: number
+  metadata: Record<string, unknown>
+}
+
+export type ConnectedAgentMeterSandboxLeaseResult =
+  | { applied: true; meterVersion: number; remainingCents?: number }
+  | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget'; remainingCents?: number }
 
 export type ConnectedAgentStartRemoteTurn = {
   actorUserId: string
@@ -307,8 +328,38 @@ export interface ConnectedAgentRepository {
     settledAt: number
   }): Promise<boolean>
   createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
+  getSandboxLease(args: { workspaceId: string; leaseId: string }): Promise<AgentSandboxLease | null>
   getActiveSandboxLease(args: { workspaceId: string; environmentId: string }): Promise<AgentSandboxLease | null>
+  listSandboxLeases(args: {
+    statuses: AgentSandboxLeaseStatus[]
+    cleanupBefore?: number
+    limit?: number
+  }): Promise<AgentSandboxLease[]>
   updateSandboxLease(input: ConnectedAgentUpdateSandboxLease): Promise<AgentSandboxLease | null>
+  patchSandboxLeaseUsage(args: {
+    workspaceId: string
+    leaseId: string
+    patch: Record<string, unknown>
+    now: number
+  }): Promise<AgentSandboxLease | null>
+  meterSandboxLease(args: {
+    workspaceId: string
+    leaseId: string
+    now: number
+    expectedMeterVersion: number
+    meteredUsage: Record<string, unknown>
+    meteredProviderReference?: string
+    meteredAt: number
+    payer?: ConnectedAgentSandboxLeasePayer
+    charge?: ConnectedAgentSandboxMeterCharge
+    minRemainingCents: number
+  }): Promise<ConnectedAgentMeterSandboxLeaseResult>
+  stopSandboxLease(args: {
+    workspaceId: string
+    leaseId: string
+    reason: string
+    now: number
+  }): Promise<AgentSandboxLease | null>
   getHarnessSession(args: {
     workspaceId: string
     bindingId: string

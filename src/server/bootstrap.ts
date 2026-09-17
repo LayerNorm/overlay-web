@@ -149,6 +149,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
+  managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
@@ -489,6 +490,7 @@ export function createOverlayServerContext(
     workspaceGovernanceService,
     workspaceAgentService,
     connectedAgentControlPlane,
+    managedAgentSandboxBilling,
     computerService,
     workspaceSharingService,
     workspaceSearchService,

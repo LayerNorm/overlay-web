@@ -186,7 +186,7 @@ async function persistUsageBuckets(
   })
 }
 
-async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
+export async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
   const subscription = await getOrCreateSubscription(ctx, userId)
   const planKind = derivePlanKind(subscription ?? {})
   const buckets = await getUsageBuckets(ctx, subscription)
@@ -1325,7 +1325,7 @@ function workspaceBalanceSummary(balance: {
   }
 }
 
-async function finalizeWorkspaceLedger(
+export async function finalizeWorkspaceLedger(
   ctx: MutationCtx,
   args: {
     actualMicros: number

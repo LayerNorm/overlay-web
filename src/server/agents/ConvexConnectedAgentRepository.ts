@@ -153,6 +153,23 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   getActiveSandboxLease(input: Parameters<ConnectedAgentRepository['getActiveSandboxLease']>[0]) {
     return connectedQuery<AgentSandboxLease | null>('getActiveSandboxLeaseByServer', input)
   }
+  getSandboxLease(input: Parameters<ConnectedAgentRepository['getSandboxLease']>[0]) {
+    return connectedQuery<AgentSandboxLease | null>('getSandboxLeaseByServer', input)
+  }
+  listSandboxLeases(input: Parameters<ConnectedAgentRepository['listSandboxLeases']>[0]) {
+    return connectedQuery<AgentSandboxLease[]>('listSandboxLeasesByServer', input)
+  }
+  patchSandboxLeaseUsage(input: Parameters<ConnectedAgentRepository['patchSandboxLeaseUsage']>[0]) {
+    return mutationNullable<AgentSandboxLease | null>('patchSandboxLeaseUsageByServer', input)
+  }
+  meterSandboxLease(input: Parameters<ConnectedAgentRepository['meterSandboxLease']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['meterSandboxLease']>>>(
+      'meterSandboxLeaseDebitByServer', input,
+    )
+  }
+  stopSandboxLease(input: Parameters<ConnectedAgentRepository['stopSandboxLease']>[0]) {
+    return mutationNullable<AgentSandboxLease | null>('stopSandboxLeaseByServer', input)
+  }
   getHarnessSession(input: Parameters<ConnectedAgentRepository['getHarnessSession']>[0]) {
     return connectedQuery<AgentHarnessSession | null>('getHarnessSessionByServer', input)
   }
@@ -206,4 +223,10 @@ async function mutation<T>(operation: string, args: Record<string, unknown>): Pr
   }, { throwOnError: true })
   if (result === null || result === undefined) throw new Error(`Convex connected-agent operation ${operation} returned no result`)
   return result
+}
+
+async function mutationNullable<T>(operation: string, args: Record<string, unknown>): Promise<T> {
+  return await convex.mutation<T>(`${PREFIX}:${operation}`, {
+    ...args, serverSecret: getInternalApiSecret(),
+  }, { throwOnError: true }) as T
 }

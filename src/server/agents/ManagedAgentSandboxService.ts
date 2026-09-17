@@ -136,7 +136,9 @@ export class ManagedAgentSandboxService {
         status: 'running',
         reservedUntil: now + hardTimeoutMs,
         runtimeStartedAt: now,
-        usage: { resources: { ...MANAGED_RESOURCES } },
+        // meteredUsage/meterVersion seed the billing meter's cursor — the
+        // first tick bills the full provider-reported lifetime of this lease.
+        usage: { resources: { ...MANAGED_RESOURCES }, meteredUsage: {}, meterVersion: 0 },
         cleanupAttempts: 0,
         now,
       })
@@ -227,7 +229,7 @@ export class ManagedAgentSandboxService {
         status: 'running',
         reservedUntil: now + hardTimeoutMs,
         runtimeStartedAt: now,
-        usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
+        usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, meteredUsage: {}, meterVersion: 0 },
         cleanupAttempts: 0,
         now,
       })
