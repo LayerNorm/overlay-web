@@ -86,7 +86,6 @@ import {
 import { buildActAgentInstructions } from './instructions'
 import {
   authorizeActRequest,
-  resolveProjectPreferredModelId,
 } from './turn-authorization'
 import {
   logActTooling,
@@ -163,9 +162,6 @@ export async function executeActTurn(
       systemPrompt,
       conversationId,
       conversationClientId,
-      projectId,
-      knowledgeBaseId,
-      knowledgeBaseIds,
       askModelIds,
       turnId,
       modelId,
@@ -229,12 +225,7 @@ export async function executeActTurn(
       turnId,
       variantIndex: rawMultiModelSlotIndex,
     })
-    const preferredProjectModelId = await resolveProjectPreferredModelId({
-      conversationId: conversationId ? asConversationId(conversationId) : undefined,
-      projectId,
-      userId: conversationUserId,
-    })
-    const effectiveModelId = resolveEffectiveActModelId(modelId ?? preferredProjectModelId)
+    const effectiveModelId = resolveEffectiveActModelId(modelId)
     requestModelId = effectiveModelId
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
@@ -316,7 +307,6 @@ export async function executeActTurn(
         repository: actConversationRepository,
         conversationClientId: trimmedClientId,
         entitlements: runtimeEntitlements,
-        projectId,
         askModelIds,
         actModelId: effectiveModelId,
         workspaceId: context.workspace.workspace.id,
@@ -336,20 +326,6 @@ export async function executeActTurn(
           error,
         })
       })
-    }
-    // Bases named on this turn become part of the conversation's grounding and
-    // also narrow this turn's retrieval. Access is verified inside the service.
-    const turnKnowledgeBaseIds = [
-      ...new Set([...(Array.isArray(knowledgeBaseIds) ? knowledgeBaseIds : []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
-    ]
-    if (cid && turnKnowledgeBaseIds.length > 0) {
-      for (const id of turnKnowledgeBaseIds) {
-        await overlayContext.knowledgeBaseService.attachConversation({
-          conversationId: cid,
-          knowledgeBaseId: id,
-          userId: conversationUserId,
-        })
-      }
     }
     const tid = resolveActTurnId(turnId)
 
@@ -426,7 +402,6 @@ export async function executeActTurn(
       latestUserText,
       memoryEnabled,
       mentions: rawMentions,
-      mentionedKnowledgeBaseIds: turnKnowledgeBaseIds,
       requestIdempotencyKey: context.requestIdempotencyKey!,
       requestFingerprint: context.requestFingerprint,
       billingProgrammaticSubjectId,
@@ -473,14 +448,11 @@ export async function executeActTurn(
     ])
     const {
       autoRetrieval,
-      conversationProjectId,
       docContextBundle,
       hasPreloadedDocContext,
       indexedAttachmentList,
       memoryContext,
       mentionsContext,
-      projectInstructions,
-      projectSettings,
       skillsContext,
       sourceCitationMap,
     } = turnContext
@@ -617,9 +589,6 @@ export async function executeActTurn(
 	        automationId,
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
-	        conversationProjectId,
-        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
-        projectSettings,
         entitlements: runtimeEntitlements,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
@@ -678,7 +647,6 @@ export async function executeActTurn(
       mentionsContext,
       mode,
       paid,
-      projectInstructions,
       requestedToolIds,
       skillsContext,
       userSystemPromptExtension,
@@ -768,17 +736,14 @@ export async function executeActTurn(
         toolingContext: {
           accountAllowedConnectorIds: [...accountAllowedConnectorIds],
           accountAllowedToolIds: [...accountAllowedToolIds],
-          activeKnowledgeBaseIds: [...turnKnowledgeBaseIds],
           baseUrl: getInternalApiBaseUrl(request),
           billingProgrammaticSubjectId,
           conversationId: cid,
-          conversationProjectId,
           effectiveModelId,
           entitlements: runtimeEntitlements,
           latestUserText,
           memoryEnabled,
           paid,
-          projectSettings,
           requestFingerprint: context.requestFingerprint,
           requestedToolIds: [...requestedToolIds],
           turnId: tid,

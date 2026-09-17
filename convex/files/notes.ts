@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import type { Id } from '../_generated/dataModel'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -25,7 +24,6 @@ function normalizeNoteDoc<T extends {
   }
 }
 
-// Returns only notes NOT scoped to a project (for the main Notes tab).
 export const list = query({
   args: {
     userId: v.string(),
@@ -44,7 +42,7 @@ export const list = query({
       return []
     }
     const pageLimit = Math.min(200, Math.max(1, Math.floor(limit ?? 200)))
-    // Over-fetch by 3x to account for in-memory filters (projectId, deletedAt, workspaceId).
+    // Over-fetch by 3x to account for in-memory filters (deletedAt, workspaceId).
     const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
     const all = await ctx.db
       .query('notes')
@@ -58,42 +56,10 @@ export const list = query({
       .take(scanLimit)
     return all
       .map(normalizeNoteDoc)
-      .filter((n) => !n.projectId)
       .filter((n) => (updatedSince !== undefined ? n.updatedAt > updatedSince : true))
       .filter((n) => (includeDeleted ? true : !n.deletedAt))
       .filter((n) => (workspaceId !== undefined ? n.workspaceId === workspaceId : true))
       .slice(0, pageLimit)
-  },
-})
-
-// Returns notes belonging to a specific project.
-export const listByProject = query({
-  args: {
-    projectId: v.string(),
-    userId: v.string(),
-    workspaceId: v.optional(v.string()),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    updatedSince: v.optional(v.number()),
-    includeDeleted: v.optional(v.boolean()),
-  },
-  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken, serverSecret })
-    } catch {
-      return []
-    }
-    const notes = await ctx.db
-      .query('notes')
-      .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
-      .order('desc')
-      .collect()
-    return notes
-      .map(normalizeNoteDoc)
-      .filter((note) => note.userId === userId)
-      .filter((note) => (updatedSince !== undefined ? note.updatedAt > updatedSince : true))
-      .filter((note) => (includeDeleted ? true : !note.deletedAt))
-      .filter((note) => (workspaceId !== undefined ? note.workspaceId === workspaceId : true))
   },
 })
 
@@ -126,7 +92,6 @@ export const create = mutation({
     title: v.string(),
     content: v.string(),
     tags: v.array(v.string()),
-    projectId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -139,12 +104,6 @@ export const create = mutation({
         return existing._id
       }
     }
-    if (args.projectId) {
-      const project = await ctx.db.get(args.projectId as Id<'projects'>)
-      if (!project || project.userId !== args.userId || project.deletedAt) {
-        throw new Error('Unauthorized')
-      }
-    }
     const now = Date.now()
     return await ctx.db.insert('notes', {
       userId: args.userId,
@@ -153,7 +112,6 @@ export const create = mutation({
       title: args.title,
       content: args.content,
       tags: args.tags,
-      projectId: args.projectId,
       createdAt: now,
       updatedAt: now,
     })
@@ -170,7 +128,6 @@ export const update = mutation({
     title: v.optional(v.string()),
     content: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
-    projectId: v.optional(v.string()),
   },
   handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, noteId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -178,17 +135,10 @@ export const update = mutation({
     if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
-    if (updates.projectId !== undefined && updates.projectId !== null) {
-      const project = await ctx.db.get(updates.projectId as Id<'projects'>)
-      if (!project || project.userId !== userId || project.deletedAt) {
-        throw new Error('Unauthorized')
-      }
-    }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (updates.title !== undefined) patch.title = updates.title
     if (updates.content !== undefined) patch.content = updates.content
     if (updates.tags !== undefined) patch.tags = updates.tags
-    if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     await ctx.db.patch(noteId, patch)
   },
 })

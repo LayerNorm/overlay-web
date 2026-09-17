@@ -24,7 +24,6 @@ export class MemoryService {
     creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
-    projectId?: string
     scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string
@@ -44,7 +43,6 @@ export class MemoryService {
     importance?: number
     messageId?: string
     noteId?: string
-    projectId?: string
     source?: string
     tags?: string[]
     turnId?: string
@@ -80,7 +78,6 @@ export class MemoryService {
     memoryId: string
     messageId?: string
     noteId?: string
-    projectId?: string
     source?: MemorySource
     tags?: string[]
     turnId?: string
@@ -102,7 +99,6 @@ export class MemoryService {
       memoryId: args.memoryId,
       messageId: args.messageId ?? existing.messageId,
       noteId: args.noteId ?? existing.noteId,
-      projectId: args.projectId ?? existing.projectId,
       source: args.source ?? existing.source,
       tags: args.tags ?? existing.tags,
       turnId: args.turnId ?? existing.turnId,

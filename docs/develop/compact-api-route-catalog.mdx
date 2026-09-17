@@ -59,11 +59,6 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, POST /api/v1/admin/authorization/memberships`
 - `DELETE, GET, PATCH, POST /api/v1/admin/authorization/roles`
 - `GET /api/v1/admin/catalog`
-- `GET /api/v1/admin/governance/export`
-- `GET, PATCH, POST /api/v1/admin/governance/policies`
-- `GET, PATCH, POST /api/v1/admin/governance/reviews`
-- `DELETE, GET, POST /api/v1/admin/knowledge-bases/defaults`
-- `GET /api/v1/admin/knowledge-bases`
 - `DELETE, GET, POST /api/v1/admin/principals`
 - `GET, POST /api/v1/admin/usage`
 - `DELETE, GET, PUT /api/v1/agent-bindings`
@@ -147,16 +142,6 @@ For a description of what each route does and its associated implementation file
 - `PATCH /api/v1/conversations/share`
 - `POST /api/v1/conversations/stop`
 
-## Projects
-
-- `GET, POST /api/v1/projects/duplicate`
-- `GET /api/v1/projects/export`
-- `DELETE, GET, POST /api/v1/projects/grants`
-- `DELETE, GET, POST /api/v1/projects/knowledge-bases`
-- `POST /api/v1/projects/knowledge-transfer`
-- `DELETE, GET, PATCH, POST /api/v1/projects`
-- `GET /api/v1/projects/share-directory`
-
 ## Generators, sandbox, files, outputs
 
 - `POST /api/v1/daytona/run`
@@ -189,18 +174,8 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/mcps/test`
 - `DELETE, GET, PATCH, POST /api/v1/memory`
 
-## Knowledge bases, notes, skills, search
+## Notes, skills, and knowledge search
 
-- `GET /api/v1/knowledge-bases/[knowledgeBaseId]/conversations`
-- `GET /api/v1/knowledge-bases/[knowledgeBaseId]/diagnostics`
-- `DELETE, GET, POST /api/v1/knowledge-bases/[knowledgeBaseId]/grants`
-- `GET, POST /api/v1/knowledge-bases/[knowledgeBaseId]/reindex`
-- `POST /api/v1/knowledge-bases/[knowledgeBaseId]/search`
-- `DELETE, GET, PATCH, POST /api/v1/knowledge-bases/[knowledgeBaseId]/sources`
-- `POST /api/v1/knowledge-bases/[knowledgeBaseId]/sources/upload`
-- `GET, POST /api/v1/knowledge-bases/personal`
-- `DELETE, GET, PATCH, POST /api/v1/knowledge-bases`
-- `GET /api/v1/knowledge-bases/share-directory`
 - `GET /api/v1/link-preview`
 - `POST /api/v1/notebook-agent`
 - `DELETE, GET, PATCH, POST /api/v1/notes`

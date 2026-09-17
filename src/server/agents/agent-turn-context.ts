@@ -62,7 +62,6 @@ export async function buildAgentTurnContext(args: {
   latestUserText: string
   memoryEnabled: boolean
   participants: readonly AgentRoomParticipant[]
-  projectId?: string
   requestFingerprint: string
   workspaceId: string
 }): Promise<AgentTurnContext> {
@@ -99,7 +98,6 @@ export async function buildAgentTurnContext(args: {
           requestFingerprint: args.requestFingerprint,
         },
         includeMemories: args.memoryEnabled,
-        projectId: args.projectId,
         userId: args.actorUserId,
         userMessage: args.latestUserText,
         workspaceId: args.workspaceId,

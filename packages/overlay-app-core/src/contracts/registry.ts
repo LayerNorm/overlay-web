@@ -34,7 +34,6 @@ export type OverlayIconName =
 export type OverlayFeatureFlagId =
   | 'voiceTranscription'
   | 'knowledge'
-  | 'projects'
   | 'automations'
   | 'extensions'
   | (string & {})
@@ -85,7 +84,6 @@ export interface OverlaySettingsSection {
 export type OverlayFeatureModuleId =
   | 'files-knowledge'
   | 'notes'
-  | 'projects'
   | 'tools-extensions'
   | 'settings-account'
   | (string & {})
@@ -107,7 +105,6 @@ export interface OverlayFeatureModule {
 export type OverlaySidebarActionKey =
   | 'chat.create'
   | 'notes.create'
-  | 'projects.create'
   | 'automations.create'
   | (string & {})
 

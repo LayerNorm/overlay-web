@@ -3,7 +3,6 @@ import { AuthFields, BooleanQueryValue, IdQuery, PaginationQuery, UnknownRespons
 
 export const NoteListQuery = PaginationQuery.extend({
   noteId: IdQuery,
-  projectId: IdQuery,
   includeDeleted: BooleanQueryValue,
 })
 
@@ -11,7 +10,6 @@ export const CreateNoteRequest = z.object({
   ...AuthFields,
   title: z.string().max(200).optional(),
   content: z.string().optional(),
-  projectId: z.string().optional(),
 })
 
 export const UpdateNoteRequest = CreateNoteRequest.partial().extend({

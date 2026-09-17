@@ -65,12 +65,10 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(note)
     }
 
-    const projectId = request.nextUrl.searchParams.get('projectId') ?? undefined
     const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
     const notes = await noteService.listNotes({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
-      projectId,
       includeDeleted,
     })
     return NextResponse.json(notes)
@@ -88,7 +86,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       title: body.title,
       content: body.content,
       tags: body.tags,
-      projectId: body.projectId,
       clientId: body.clientId,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
@@ -109,7 +106,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       title: body.title,
       content: body.content,
       tags: body.tags,
-      projectId: body.projectId,
       expectedUpdatedAt: body.expectedUpdatedAt,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,

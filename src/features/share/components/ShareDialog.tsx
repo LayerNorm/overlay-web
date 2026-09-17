@@ -7,7 +7,7 @@ import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type Resource = {
   id?: string
-  type: 'chat' | 'file' | 'agent' | 'knowledge_base'
+  type: 'chat' | 'file' | 'agent'
   title: string
   url?: string
   /** Thumbnail (OG image) url, optional. */

@@ -4,7 +4,6 @@ import type {
   MemoryRow,
   NoteDoc,
   OutputSummary,
-  ProjectSummary,
   SettingsSubview,
 } from './contracts'
 export { filterExtensionCatalog, type ExtensionCatalogItem } from './extensions'
@@ -12,7 +11,6 @@ export { filterExtensionCatalog, type ExtensionCatalogItem } from './extensions'
 export type FeatureModuleId =
   | 'files-knowledge'
   | 'notes'
-  | 'projects'
   | 'tools-extensions'
   | 'settings-account'
 
@@ -70,11 +68,10 @@ export function flattenTree<T extends { _id: string; parentId?: string | null }>
 
 export function filterKnowledgeFiles(
   files: readonly KnowledgeFile[],
-  options: { query?: string; projectId?: string | null; kind?: KnowledgeFile['kind'] | KnowledgeFile['type'] } = {},
+  options: { query?: string; kind?: KnowledgeFile['kind'] | KnowledgeFile['type'] } = {},
 ): KnowledgeFile[] {
   const q = options.query?.trim().toLowerCase()
   return files.filter((file) => {
-    if (options.projectId !== undefined && (file.projectId ?? null) !== options.projectId) return false
     if (options.kind && file.kind !== options.kind && file.type !== options.kind) return false
     if (!q) return true
     return file.name.toLowerCase().includes(q) || file.content?.toLowerCase().includes(q)
@@ -116,18 +113,6 @@ export function noteEditorState(input: {
   }
 }
 
-export function buildProjectTree(projects: readonly ProjectSummary[]): TreeNode<ProjectSummary>[] {
-  return buildTree(projects)
-}
-
-export function collectProjectDescendantIds(
-  projects: readonly Pick<ProjectSummary, '_id' | 'parentId'>[],
-  projectId: string,
-): string[] {
-  const children = projects.filter((project) => project.parentId === projectId)
-  return children.flatMap((child) => [child._id, ...collectProjectDescendantIds(projects, child._id)])
-}
-
 export function resolveSettingsSection(
   section: string | null | undefined,
   available: readonly { id: SettingsSubview | (string & {}) }[],
@@ -155,12 +140,11 @@ export function applySettingsPatch(settings: AppSettings, patch: Partial<AppSett
 
 export function filterMemories(
   memories: readonly MemoryRow[],
-  options: { query?: string; status?: MemoryRow['status']; projectId?: string } = {},
+  options: { query?: string; status?: MemoryRow['status'] } = {},
 ): MemoryRow[] {
   const q = options.query?.trim().toLowerCase()
   return memories.filter((memory) => {
     if (options.status && memory.status !== options.status) return false
-    if (options.projectId && memory.projectId !== options.projectId) return false
     if (!q) return true
     return [memory.content, memory.fullContent, memory.source, ...(memory.tags ?? [])]
       .join(' ')

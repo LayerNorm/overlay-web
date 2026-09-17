@@ -1,6 +1,6 @@
 # @overlay/modules-react
 
-React feature modules for knowledge, notes, projects, settings, automations, and extensions in the Overlay app.
+React feature modules for knowledge, notes, settings, automations, and extensions in the Overlay app.
 
 ## Install
 

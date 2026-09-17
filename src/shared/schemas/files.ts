@@ -3,7 +3,6 @@ import { AuthFields, BooleanQueryValue, FormDataBoundary, IdQuery, IntegerQueryV
 
 export const FileListQuery = PaginationQuery.extend({
   fileId: IdQuery,
-  projectId: IdQuery,
   kind: z.string().optional(),
   parentId: IdQuery,
   conversationId: IdQuery,
@@ -19,7 +18,6 @@ export const CreateFileRequest = z.object({
   name: z.string().min(1).optional(),
   mimeType: z.string().optional(),
   sizeBytes: z.number().nonnegative().optional(),
-  projectId: z.string().nullable().optional(),
   parentId: z.string().nullable().optional(),
   conversationId: z.string().optional(),
   kind: z.string().optional(),

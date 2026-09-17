@@ -23,7 +23,6 @@ export interface ToolExecutionContext {
   accessToken?: string
   conversationId?: string
   turnId?: string
-  projectId?: string
   metadata?: Record<string, unknown>
 }
 

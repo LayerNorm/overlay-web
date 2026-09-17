@@ -23,7 +23,6 @@ test('canonical note files map to notebook notes', () => {
     _id: 'note_1',
     name: 'Plan',
     textContent: 'Body',
-    projectId: 'proj_1',
     createdAt: 1,
     updatedAt: 2,
     shareVisibility: 'public',
@@ -33,7 +32,6 @@ test('canonical note files map to notebook notes', () => {
     title: 'Plan',
     content: 'Body',
     tags: [],
-    projectId: 'proj_1',
     createdAt: 1,
     updatedAt: 2,
     shareVisibility: 'public',
@@ -61,7 +59,6 @@ test('dedicated note records map into the file-list contract', () => {
     title: 'Architecture notes',
     content: '<p>Postgres</p>',
     tags: [],
-    projectId: 'project_1',
     createdAt: 10,
     updatedAt: 20,
   }), {
@@ -76,7 +73,6 @@ test('dedicated note records map into the file-list contract', () => {
     sizeBytes: 15,
     createdAt: 10,
     updatedAt: 20,
-    projectId: 'project_1',
   })
 })
 
@@ -121,7 +117,6 @@ test('notebook controllers derive draft, persisted, and renamed state', () => {
     title: 'Saved',
     content: '<p>Body</p>',
     tags: [],
-    projectId: undefined,
     createdAt: 10,
     updatedAt: 20,
     shareVisibility: undefined,

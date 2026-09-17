@@ -29,7 +29,6 @@ export function buildActAgentInstructions(params: {
   mentionsContext: string
   mode?: ActMode
   paid: boolean
-  projectInstructions?: string
   requestedToolIds?: readonly ChatToolRequestId[]
   skillsContext: string
   userSystemPromptExtension: string
@@ -44,7 +43,6 @@ export function buildActAgentInstructions(params: {
     notes.multiCompareSlotNote +
     (params.userSystemPromptExtension ? `\n\n${params.userSystemPromptExtension}` : '')
   ) +
-    projectInstructionsExtension(params.projectInstructions) +
     params.skillsContext +
     params.mentionsContext +
     generatedUiNote() +
@@ -207,11 +205,5 @@ function requestedToolsNote(
   }
   return lines.length > 0
     ? '\n\nThe user specifically requested these tools for this turn. Use the matching tool call when it is available; if a selected tool is unavailable, say so briefly.\n' + lines.join('\n')
-    : ''
-}
-
-function projectInstructionsExtension(projectInstructions?: string): string {
-  return projectInstructions
-    ? `\n\nProject instructions:\n${projectInstructions}`
     : ''
 }

@@ -5,9 +5,12 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
 const resourceType = v.union(
-  v.literal('conversation'), v.literal('file'), v.literal('project'),
-  v.literal('knowledge_base'), v.literal('automation'), v.literal('agent'),
+  v.literal('conversation'), v.literal('file'),
+  v.literal('automation'), v.literal('agent'),
 )
+const LIVE_RESOURCE_TYPES = new Set<Doc<'workspaceResourceGrants'>['resourceType']>([
+  'conversation', 'file', 'automation', 'agent',
+])
 const targetType = v.union(v.literal('principal'), v.literal('team'), v.literal('room'))
 const accessRole = v.union(v.literal('viewer'), v.literal('operator'), v.literal('editor'))
 const grantValidator = v.object({
@@ -89,7 +92,10 @@ export const listForResourceByServer = query({
         .eq('resourceType', args.resourceType)
         .eq('resourceId', args.resourceId))
       .collect()
-    return grants.map(grantValue).sort(orderGrants)
+    return grants
+      .filter((grant) => LIVE_RESOURCE_TYPES.has(grant.resourceType))
+      .map(grantValue)
+      .sort(orderGrants)
   },
 })
 
@@ -111,7 +117,8 @@ export const listForTargetsByServer = query({
       .withIndex('by_workspaceId_resource', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
     return grants
-      .filter((grant) => (!args.resourceType || grant.resourceType === args.resourceType)
+      .filter((grant) => LIVE_RESOURCE_TYPES.has(grant.resourceType)
+        && (!args.resourceType || grant.resourceType === args.resourceType)
         && targets.has(`${grant.targetType}:${grant.targetId}`))
       .map(grantValue)
       .sort(orderGrants)
@@ -162,7 +169,7 @@ function grantValue(row: Doc<'workspaceResourceGrants'> | (Doc<'workspaceResourc
   return {
     id: row.grantId,
     workspaceId: row.workspaceId,
-    resourceType: row.resourceType,
+    resourceType: row.resourceType as 'agent' | 'automation' | 'conversation' | 'file',
     resourceId: row.resourceId,
     targetType: row.targetType,
     targetId: row.targetId,

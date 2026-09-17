@@ -80,7 +80,6 @@ export interface SkillSummary {
   description: string
   instructions: string
   enabled?: boolean
-  projectId?: string
   createdAt?: number
   updatedAt?: number
 }
@@ -90,7 +89,6 @@ export interface CreateSkillRequest {
   description: string
   instructions: string
   enabled?: boolean
-  projectId?: string
   accessToken?: string
   userId?: string
 }

@@ -5,7 +5,7 @@ import type { ShowcaseSurface } from '@/features/showcase/showcase-data'
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
 export const instant = false;
 
-const SURFACES = new Set<ShowcaseSurface>(['chat', 'files', 'projects', 'automations', 'extensions'])
+const SURFACES = new Set<ShowcaseSurface>(['chat', 'files', 'automations', 'extensions'])
 
 export default async function ShowcaseSurfacePage({ params }: { params: Promise<{ surface: string }> }) {
   const { surface } = await params
@@ -13,7 +13,6 @@ export default async function ShowcaseSurfacePage({ params }: { params: Promise<
   const destinations: Record<ShowcaseSurface, string> = {
     chat: '/app/chat?showcase=1&id=showcase-welcome',
     files: '/app/files?showcase=1',
-    projects: '/app/projects?showcase=1',
     automations: '/app/automations?showcase=1',
     extensions: '/app/tools?showcase=1',
   }

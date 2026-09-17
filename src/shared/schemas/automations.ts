@@ -3,7 +3,6 @@ import { AuthFields, BooleanQueryValue, IdQuery, PaginationQuery, UnknownRespons
 
 export const AutomationListQuery = PaginationQuery.extend({
   automationId: IdQuery,
-  projectId: IdQuery,
   includeDeleted: BooleanQueryValue,
   runs: BooleanQueryValue,
 })
@@ -13,7 +12,6 @@ export const CreateAutomationRequest = z.object({
   name: z.string().min(1).max(200).optional(),
   prompt: z.string().optional(),
   schedule: z.unknown().optional(),
-  projectId: z.string().optional(),
 }).passthrough()
 
 export const UpdateAutomationRequest = CreateAutomationRequest.partial().extend({

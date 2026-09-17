@@ -60,19 +60,15 @@ function createService(options: {
         { _id: 'file_own', name: 'Launch checklist', updatedAt: 3 },
         { _id: 'file_other', name: 'Unrelated notes', updatedAt: 2 },
       ],
-      projects: async () => [{ id: 'project_own', name: 'Launch project', updatedAt: 4 }],
-      knowledgeBases: async () => [{ id: 'kb_own', title: 'Launch research', updatedAt: 1 }],
       automations: async () => [{ id: 'automation_own', name: 'Launch digest', updatedAt: 7 }],
     },
     loaders: {
       file: async ({ resourceId }) => (
         resourceId === 'file_shared' ? { title: 'Shared launch brief', updatedAt: 8 } : null
       ),
-      project: async ({ resourceId }) => (
-        resourceId === 'project_shared' ? { title: 'Shared launch program', updatedAt: 9 } : null
+      automation: async ({ resourceId }) => (
+        resourceId === 'automation_shared' ? { title: 'Shared launch automation', updatedAt: 9 } : null
       ),
-      knowledge_base: async () => null,
-      automation: async () => null,
     },
   })
   return { service, sharingCalls }
@@ -96,10 +92,10 @@ test('search spans every requested kind and matches on title', async () => {
     actorUserId: ACTOR,
     workspaceId: WORKSPACE,
     query: 'launch',
-    kinds: ['conversation', 'file', 'project', 'knowledge_base', 'automation', 'agent'],
+    kinds: ['conversation', 'file', 'automation', 'agent'],
   })
   const kinds = new Set(response.results.map((result) => result.kind))
-  assert.deepEqual([...kinds].sort(), ['automation', 'conversation', 'file', 'knowledge_base', 'project'])
+  assert.deepEqual([...kinds].sort(), ['automation', 'conversation', 'file'])
   assert.equal(response.results.some((result) => result.title === 'Unrelated notes'), false)
 })
 
@@ -196,17 +192,17 @@ test('shared with me lists only grants, never owned resources', async () => {
   const { service } = createService({
     accessible: [
       { resourceId: 'file_shared', ownerUserId: OWNER, accessRole: 'editor', targetType: 'principal', resourceType: 'file' },
-      { resourceId: 'project_shared', ownerUserId: OWNER, accessRole: 'viewer', targetType: 'room', resourceType: 'project' },
+      { resourceId: 'automation_shared', ownerUserId: OWNER, accessRole: 'viewer', targetType: 'room', resourceType: 'automation' },
     ],
   })
   const results = await service.listSharedWithMe({
     actorUserId: ACTOR,
     workspaceId: WORKSPACE,
-    kinds: ['file', 'project', 'knowledge_base', 'automation'],
+    kinds: ['file', 'automation'],
   })
-  assert.deepEqual(results.map((result) => result.id), ['project_shared', 'file_shared'])
+  assert.deepEqual(results.map((result) => result.id), ['automation_shared', 'file_shared'])
   assert.equal(results.some((result) => result.id.endsWith('_own')), false)
-  assert.equal(results.find((result) => result.id === 'project_shared')?.sharedVia, 'room')
+  assert.equal(results.find((result) => result.id === 'automation_shared')?.sharedVia, 'room')
 })
 
 test('a non-member cannot search the workspace at all', async () => {
@@ -257,8 +253,8 @@ test('creator-only agents are hidden from search for other members', async () =>
         }
       },
     },
-    sources: { files: async () => [], projects: async () => [], knowledgeBases: async () => [], automations: async () => [] },
-    loaders: { file: async () => null, project: async () => null, knowledge_base: async () => null, automation: async () => null },
+    sources: { files: async () => [], automations: async () => [] },
+    loaders: { file: async () => null, automation: async () => null },
   } as never)
   const response = await service.search({
     actorUserId: ACTOR,

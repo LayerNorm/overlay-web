@@ -29,16 +29,7 @@ export default mutation({
       throw new Error(`No subscription found for userId: ${userId}`);
     }
 
-    // 1. Create a sample project
-    const project = await ctx.db.insert("projects", {
-      name: "Welcome to Overlay",
-      instructions: "Your AI workspace for projects, notes, and conversations.",
-      userId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    // 2. Create sample notes
+    // 1. Create sample notes
     const note1 = await ctx.db.insert("notes", {
       title: "Getting Started",
       content: JSON.stringify({
@@ -54,7 +45,6 @@ export default mutation({
       }),
       tags: ["welcome", "getting-started"],
       userId,
-      projectId: project,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -74,14 +64,13 @@ export default mutation({
           },
         ],
       }),
-      tags: ["ideas", "projects"],
+      tags: ["ideas", "getting-started"],
       userId,
-      projectId: project,
       createdAt: Date.now() - 86400000,
       updatedAt: Date.now() - 86400000,
     });
 
-    // 3. Create a saved memory
+    // 2. Create a saved memory
     await ctx.db.insert("memories", {
       content: "User prefers concise, bullet-point summaries. Interested in productivity tools, AI workflows, and building efficient teams.",
       source: "manual",
@@ -89,19 +78,18 @@ export default mutation({
       createdAt: Date.now(),
     });
 
-    // 4. Create sample file
+    // 3. Create sample file
     await ctx.db.insert("files", {
       name: "Overlay Documentation",
       type: "file",
       kind: "upload",
-      content: "Overlay is a model-agnostic AI workspace. Features: Chat, Memory, Notes, Projects, Knowledge Base, Automations, and Integrations.",
+      content: "Overlay is a model-agnostic AI workspace. Features: Chat, Memory, Notes, Automations, and Integrations.",
       userId,
-      projectId: project,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
 
-    // 5. Create a sample chat conversation
+    // 4. Create a sample chat conversation
     const conversation = await ctx.db.insert("conversations", {
       title: "Welcome Chat",
       userId,
@@ -139,7 +127,6 @@ export default mutation({
 
     return {
       success: true,
-      projectId: project,
       noteIds: [note1, note2],
       conversationId: conversation,
       message: `Demo data seeded for user ${userId}`,

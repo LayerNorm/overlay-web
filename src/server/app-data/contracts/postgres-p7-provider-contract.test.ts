@@ -9,7 +9,6 @@ import { PostgresApiKeyRepository } from '@/server/auth/api-keys'
 import { PostgresBillingProviderEventRepository, PostgresBillingRepository } from '@/server/billing/PostgresBillingRepository'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import { users } from '@/server/database/postgres/schema'
-import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUsageRepository } from '@/server/usage/PostgresUsageRepository'
 import { runP7ProviderContract } from './p7-provider-contract'
 
@@ -38,7 +37,6 @@ test('real Postgres P7 provider contract', {
       prepareUser: async (userId) => {
         await db.insert(users).values({ email: `${userId}@example.test`, id: userId }).onConflictDoNothing()
       },
-      projects: new PostgresProjectRepository(db),
       provider: 'postgres',
       usage: new PostgresUsageRepository(db),
     })

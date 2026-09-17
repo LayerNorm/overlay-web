@@ -3,7 +3,6 @@ import { BillingClient } from './auth/billing-client'
 import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
 import { AdminAuthorizationClient } from './admin-authorization/client'
-import { AdminGovernanceClient } from './admin-governance/client'
 import { AgentsClient } from './agents/client'
 import { AgentEnvironmentsClient } from './agent-environments/client'
 import { AutomationRunsClient } from './automation-runs/client'
@@ -15,13 +14,11 @@ import { ConversationsClient } from './chat/conversations-client'
 import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
 import { IntegrationsClient } from './integrations/client'
-import { KnowledgeBasesClient } from './knowledge-bases/client'
 import { McpServersClient } from './mcp-servers/client'
 import { MemoryClient } from './memory/client'
 import { NotesClient } from './notes/client'
 import { OnboardingClient } from './onboarding/client'
 import { OutputsClient } from './outputs/client'
-import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
@@ -43,7 +40,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     memory: new MemoryClient(http),
     outputs: new OutputsClient(http),
     notes: new NotesClient(http),
-    projects: new ProjectsClient(http),
     integrations: new IntegrationsClient(http),
     skills: new SkillsClient(http),
     mcpServers: new McpServersClient(http),
@@ -58,9 +54,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     automationRuns: new AutomationRunsClient(http),
     webhooks: new WebhooksClient(http),
     adminAuthorization: new AdminAuthorizationClient(http),
-    adminGovernance: new AdminGovernanceClient(http),
     sharing: new SharingClient(http),
-    knowledgeBases: new KnowledgeBasesClient(http),
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),

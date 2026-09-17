@@ -29,7 +29,6 @@ test('agent reply extraction writes conservative memories to the agent owner', a
         return {
           contextMessages: [{ role: 'user', text: 'Make the rollout reversible.' }],
           messageId: 'message-agent',
-          projectId: 'project-private-to-human-owner',
           targetActor: 'agent' as const,
           targetText: 'The production rollout requires a reversible smoke test.',
           turnId: 'turn-agent',
@@ -57,5 +56,4 @@ test('agent reply extraction writes conservative memories to the agent owner', a
   assert.equal(created[0]?.userId, 'agent-memory:agent-1')
   assert.equal(created[0]?.actor, 'agent')
   assert.equal(created[0]?.workspaceId, 'workspace-1')
-  assert.equal(created[0]?.projectId, undefined)
 })

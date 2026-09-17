@@ -7,7 +7,6 @@ import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/dat
 import { users } from '@/server/database/postgres/schema'
 import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
 import { McpCredentialCipher, PostgresMcpServerRepository, PostgresSkillRepository } from '@/server/extensions'
-import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { runSkillsMcpContract } from './skills-mcp-contract'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
@@ -32,7 +31,6 @@ test('real Postgres skills and MCP provider contract', {
       prepareUser: async (userId) => {
         await db.insert(users).values({ email: `${userId}@example.test`, id: userId })
       },
-      projects: new PostgresProjectRepository(db),
       provider: 'postgres',
       skills: new PostgresSkillRepository(db),
     })

@@ -7,14 +7,12 @@ import type { OverlayToolsOptions } from './types'
 
 export async function executeListNotes(
   options: OverlayToolsOptions,
-  input: { projectId?: string },
+  _input: Record<string, never>,
 ) {
   try {
     const params = new URLSearchParams({ userId: options.userId })
     params.set('kind', 'note')
     params.set('limit', '100')
-    const projectId = input.projectId ?? options.projectId
-    if (projectId) params.set('projectId', projectId)
     const res = await callInternalApiGet(
       `/api/v1/files?${params}`,
       options.accessToken,
@@ -31,13 +29,11 @@ export async function executeListNotes(
       _id: string
       name?: string
       updatedAt: number
-      projectId?: string
     }>(await res.json())
     const slim = notes.map((n) => ({
       noteId: n._id,
       title: n.name || 'Untitled',
       updatedAt: n.updatedAt,
-      projectId: n.projectId,
     }))
     return { success: true, notes: slim }
   } catch (err) {
@@ -71,7 +67,6 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       name?: string
       content?: string
       textContent?: string
-      projectId?: string
       updatedAt: number
     }
     return {
@@ -81,7 +76,6 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
         title: note.name || 'Untitled',
         content: note.textContent ?? note.content ?? '',
         tags: [],
-        projectId: note.projectId,
         updatedAt: note.updatedAt,
       },
     }
@@ -95,7 +89,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
 
 export async function executeCreateNote(
   options: OverlayToolsOptions,
-  input: { title?: string; content: string; tags?: string[]; projectId?: string },
+  input: { title?: string; content: string; tags?: string[] },
 ) {
   try {
     const res = await callInternalApi(
@@ -104,7 +98,6 @@ export async function executeCreateNote(
         kind: 'note',
         name: input.title ?? 'Untitled',
         textContent: input.content,
-        projectId: input.projectId ?? options.projectId,
         ...toolAuthBody(options),
       },
       options.accessToken,

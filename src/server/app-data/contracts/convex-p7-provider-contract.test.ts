@@ -6,7 +6,6 @@ import { ConvexApiKeyRepository } from '@/server/auth/api-keys'
 import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ConvexUsageRepository } from '@/server/usage/ConvexUsageRepository'
 import { runP7ProviderContract } from './p7-provider-contract'
@@ -29,7 +28,6 @@ test('real Convex P7 provider contract', {
     billingEvents: new ConvexBillingProviderEventRepository(),
     cleanupUser: deleteUser,
     deleteUser,
-    projects: new ConvexProjectRepository(),
     provider: 'convex',
     usage: new ConvexUsageRepository(),
   })

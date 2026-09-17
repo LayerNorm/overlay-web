@@ -6,7 +6,6 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   memory: 'Memory',
   knowledge: 'Knowledge',
   integrations: 'Integrations',
-  projects: 'Projects',
   skills: 'Skills',
   mcpServers: 'MCP servers',
   browserUse: 'Browser use',
@@ -57,7 +56,6 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/integrations')) return 'integrations'
-  if (startsWithRoute(normalizedPath, '/api/v1/projects')) return 'projects'
   if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'
   if (startsWithRoute(normalizedPath, '/api/v1/mcps')) return 'mcpServers'
   if (startsWithRoute(normalizedPath, '/api/v1/providers/connections')) return 'modelRouting'
@@ -67,7 +65,6 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'memory'
   if (startsWithRoute(normalizedPath, '/api/v1/files')) return 'files'
   if (normalizedPath === '/api/v1/knowledge/search') return 'vectorSearch'
-  if (startsWithRoute(normalizedPath, '/api/v1/knowledge')) return 'knowledge'
 
   return null
 }

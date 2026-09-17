@@ -72,26 +72,11 @@ test('Postgres app-data capabilities hide unsupported integrations while preserv
   )
   const shell = resolveOverlayAppShellConfig(undefined, { capabilities })
 
-  assert.equal(capabilities.projects, true)
   assert.equal(capabilities.integrations, false)
   assert.equal(capabilities.skills, true)
   assert.equal(capabilities.mcpServers, true)
-  assert.equal(shell.appFeatureFlags.canUseProjects, true)
   assert.equal(shell.navigation.some((item) => item.id === 'extensions'), true)
-  assert.equal(shell.navigation.some((item) => item.id === 'projects'), true)
-  assert.equal(shell.sidebarActions.some((item) => item.id === 'projects.create'), true)
   assert.equal(shell.featureModules.some((item) => item.id === 'tools-extensions'), true)
-  assert.equal(shell.featureModules.some((item) => item.id === 'projects'), true)
-})
-
-test('Postgres app-data mode supports project hierarchy routes', () => {
-  const support = getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
-    method: 'POST',
-    pathname: '/api/v1/projects',
-  })
-  assert.equal(support.status, 'supported')
-  assert.equal(support.feature, 'projects')
 })
 
 test('Postgres app-data mode supports conversation persistence and realtime routes', () => {

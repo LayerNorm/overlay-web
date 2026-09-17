@@ -45,7 +45,6 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       automationId?: string
       userId?: string
       name?: string
-      projectId?: string
       modelId?: string
       conversationId?: string
       runId?: string
@@ -103,7 +102,6 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       .appData.repositories.conversations.createConversation({
         userId: body.userId,
         title,
-        projectId: body.projectId,
         askModelIds: [body.modelId || DEFAULT_MODEL_ID],
         actModelId: body.modelId || DEFAULT_MODEL_ID,
         lastMode: 'act',

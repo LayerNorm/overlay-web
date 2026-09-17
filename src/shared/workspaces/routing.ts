@@ -9,11 +9,9 @@ const APP_SURFACES = new Set([
   'automations',
   'chat',
   'files',
-  'knowledge',
   'memories',
   'notes',
   'outputs',
-  'projects',
   'settings',
   'tools',
 ])

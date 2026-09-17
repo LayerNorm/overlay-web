@@ -10,15 +10,12 @@ const NAVIGATION_REQUIREMENTS: Record<string, ClientAuthorizationRequirement> = 
   chat: { any: ['conversations.read', 'conversations.create'] },
   files: { any: ['files.read', 'notes.read', 'outputs.read'] },
   extensions: { any: ['integrations.use', 'skills.use', 'mcp.use', 'tools.use'] },
-  projects: { any: ['projects.read', 'projects.create'] },
-  knowledge: { any: ['knowledge.read', 'knowledge.create'] },
   automations: { all: ['automations.use'] },
 }
 
 const SIDEBAR_ACTION_REQUIREMENTS: Record<string, ClientAuthorizationRequirement> = {
   'chat.create': { all: ['conversations.create'] },
   'notes.create': { all: ['notes.create'] },
-  'projects.create': { all: ['projects.create'] },
   'automations.create': { all: ['automations.use'] },
 }
 
@@ -34,11 +31,9 @@ const ROUTE_REQUIREMENTS: Array<{
 }> = [
   { prefix: '/app/admin', requirement: { all: ['administration.access'] } },
   { prefix: '/app/automations', requirement: { all: ['automations.use'] } },
-  { prefix: '/app/knowledge', requirement: { all: ['knowledge.read'] } },
   { prefix: '/app/memories', requirement: { all: ['memory.use'] } },
   { prefix: '/app/notes', requirement: { all: ['notes.read'] } },
   { prefix: '/app/outputs', requirement: { all: ['outputs.read'] } },
-  { prefix: '/app/projects', requirement: { all: ['projects.read'] } },
   { prefix: '/app/files', requirement: { all: ['files.read'] } },
   { prefix: '/app/tools', requirement: { any: ['integrations.use', 'skills.use', 'mcp.use', 'tools.use'] } },
   { prefix: '/app/chat', requirement: { any: ['conversations.read', 'conversations.create'] } },

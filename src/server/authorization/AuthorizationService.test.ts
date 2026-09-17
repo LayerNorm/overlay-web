@@ -21,8 +21,8 @@ test('authorization evaluator resolves direct and group capabilities', async () 
   fixture.groups.push(group('research'))
   fixture.memberships.push({ groupId: 'research', userId: 'user_1', source: 'local', createdAt: 1 })
   fixture.roles.push(
-    role('reader', ['knowledge.read']),
-    role('publisher', ['knowledge.publish', 'files.read']),
+    role('reader', ['files.upload']),
+    role('publisher', ['files.share', 'files.read']),
   )
   fixture.userRoles.push({ userId: 'user_1', roleId: 'reader', createdAt: 1 })
   fixture.groupRoles.push({ groupId: 'research', roleId: 'publisher', createdAt: 1 })
@@ -33,11 +33,11 @@ test('authorization evaluator resolves direct and group capabilities', async () 
   assert.deepEqual(subject.roleIds, ['reader', 'publisher'])
   assert.deepEqual(
     [...subject.capabilities].sort(),
-    ['files.read', 'knowledge.publish', 'knowledge.read'],
+    ['files.read', 'files.share', 'files.upload'],
   )
   assert.equal((await service.checkCapability({
     userId: 'user_1',
-    capability: 'knowledge.publish',
+    capability: 'files.share',
   })).allowed, true)
   assert.equal((await service.checkCapability({
     userId: 'user_1',
@@ -69,8 +69,8 @@ test('resource authorization uses ownership and the strongest matching ACL', asy
   const fixture = createFixture()
   fixture.groups.push(group('research'))
   fixture.memberships.push({ groupId: 'research', userId: 'user_1', source: 'local', createdAt: 1 })
-  fixture.roles.push(role('knowledge_user', ['knowledge.read', 'knowledge.edit', 'knowledge.delete']))
-  fixture.userRoles.push({ userId: 'user_1', roleId: 'knowledge_user', createdAt: 1 })
+  fixture.roles.push(role('files_user', ['files.upload', 'files.edit', 'files.delete']))
+  fixture.userRoles.push({ userId: 'user_1', roleId: 'files_user', createdAt: 1 })
   fixture.grants.push(
     grant('viewer', 'user', 'user_1', 'viewer'),
     grant('editor', 'group', 'research', 'editor'),
@@ -79,9 +79,9 @@ test('resource authorization uses ownership and the strongest matching ACL', asy
 
   const edit = await service.checkResourceAccess({
     userId: 'user_1',
-    capability: 'knowledge.edit',
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_1',
+    capability: 'files.edit',
+    resourceType: 'file',
+    resourceId: 'file_1',
     action: 'edit',
   })
   assert.equal(edit.allowed, true)
@@ -90,9 +90,9 @@ test('resource authorization uses ownership and the strongest matching ACL', asy
 
   const remove = await service.checkResourceAccess({
     userId: 'user_1',
-    capability: 'knowledge.delete',
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_1',
+    capability: 'files.delete',
+    resourceType: 'file',
+    resourceId: 'file_1',
     action: 'delete',
   })
   assert.equal(remove.allowed, false)
@@ -100,9 +100,9 @@ test('resource authorization uses ownership and the strongest matching ACL', asy
 
   const foreignUser = await service.checkResourceAccess({
     userId: 'user_2',
-    capability: 'knowledge.edit',
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_1',
+    capability: 'files.edit',
+    resourceType: 'file',
+    resourceId: 'file_1',
     action: 'edit',
   })
   assert.equal(foreignUser.allowed, false)
@@ -110,9 +110,9 @@ test('resource authorization uses ownership and the strongest matching ACL', asy
 
   const owner = await service.checkResourceAccess({
     userId: 'user_1',
-    capability: 'knowledge.delete',
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_owned',
+    capability: 'files.delete',
+    resourceType: 'file',
+    resourceId: 'file_owned',
     ownerUserId: 'user_1',
     action: 'delete',
   })
@@ -126,9 +126,9 @@ test('resource authorization denies by default and deployment owner bypass is ex
   await assert.rejects(
     service.assertResourceAccess({
       userId: 'user_1',
-      capability: 'projects.read',
-      resourceType: 'project',
-      resourceId: 'project_1',
+      capability: 'files.read',
+      resourceType: 'file',
+      resourceId: 'file_1',
       action: 'view',
     }),
     AuthorizationDeniedError,
@@ -304,8 +304,8 @@ function grant(
 ): ResourceGrant {
   return {
     id,
-    resourceType: 'knowledge_base',
-    resourceId: 'kb_1',
+    resourceType: 'file',
+    resourceId: 'file_1',
     principalType,
     principalId,
     accessRole,

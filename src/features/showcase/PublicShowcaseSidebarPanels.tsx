@@ -1,12 +1,11 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { File, Folder, Workflow } from 'lucide-react'
+import { File, Workflow } from 'lucide-react'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 import {
   SHOWCASE_AUTOMATIONS,
   SHOWCASE_KNOWLEDGE_NODES,
-  SHOWCASE_PROJECTS,
 } from './showcase-data'
 
 const rowClass =
@@ -33,34 +32,6 @@ export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: ()
           <span className="truncate">{file.name}</span>
         </button>
       ))}
-    </SidebarResourceList>
-  )
-}
-
-export function PublicShowcaseProjectsInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const activeId = searchParams?.get('projectId') ?? `showcase-${SHOWCASE_PROJECTS[0]!.id}`
-
-  return (
-    <SidebarResourceList>
-      {SHOWCASE_PROJECTS.map((project) => {
-        const id = `showcase-${project.id}`
-        return (
-          <button
-            key={id}
-            type="button"
-            className={`${rowClass} ${activeId === id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-            onClick={() => {
-              router.push(`/app/projects?${new URLSearchParams({ showcase: '1', projectId: id }).toString()}`)
-              onNavigate?.()
-            }}
-          >
-            <Folder size={12} className="shrink-0" />
-            <span className="truncate">{project.name}</span>
-          </button>
-        )
-      })}
     </SidebarResourceList>
   )
 }

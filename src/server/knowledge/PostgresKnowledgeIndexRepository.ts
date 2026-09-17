@@ -14,7 +14,6 @@ import type { EmbeddingModelIdentity } from './EmbeddingProvider'
 export type KnowledgeIndexSource = {
   content: string
   contentHash: string
-  projectId?: string
   sourceId: string
   sourceKind: 'file' | 'memory'
   title?: string
@@ -48,7 +47,6 @@ export class PostgresKnowledgeIndexRepository {
           id: files.id,
           indexable: files.indexable,
           name: files.name,
-          projectId: files.projectId,
           userId: files.userId,
           workspaceId: files.workspaceId,
         })
@@ -64,7 +62,6 @@ export class PostgresKnowledgeIndexRepository {
       return {
         content,
         contentHash: row.contentHash,
-        projectId: row.projectId ?? undefined,
         sourceId: row.id,
         sourceKind: 'file',
         title: row.name,
@@ -86,7 +83,6 @@ export class PostgresKnowledgeIndexRepository {
     return {
       content: row.content,
       contentHash: row.contentHash,
-      projectId: row.projectId ?? undefined,
       sourceId: row.id,
       sourceKind: 'memory',
       title: 'Memory',
@@ -114,7 +110,6 @@ export class PostgresKnowledgeIndexRepository {
           contentHash: chunk.contentHash,
           createdAt: now,
           id: chunkId,
-          projectId: args.source.projectId,
           sourceId: args.source.sourceId,
           sourceKind: args.source.sourceKind,
           startOffset: chunk.startOffset,

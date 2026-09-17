@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { and, desc, eq, gt, isNull } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { knowledgeChunks, memories } from '@/server/database/postgres/schema'
-import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import { enqueueKnowledgeReindexJob } from '@/server/knowledge/PostgresKnowledgeIndexJobs'
 import type { MemoryRecord, MemoryRepository, MemoryWrite } from './MemoryRepository'
 
@@ -30,7 +29,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
     creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
-    projectId?: string
     scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string
@@ -49,7 +47,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
         args.workspaceId ? eq(memories.workspaceId, args.workspaceId) : undefined,
         ...(args.includeDeleted ? [] : [isNull(memories.deletedAt)]),
         ...(args.updatedSince !== undefined ? [gt(memories.updatedAt, new Date(args.updatedSince))] : []),
-        ...(args.projectId !== undefined ? [eq(memories.projectId, args.projectId)] : []),
         ...(args.conversationId !== undefined ? [eq(memories.conversationId, args.conversationId)] : []),
         ...(args.noteId !== undefined ? [eq(memories.noteId, args.noteId)] : []),
       ))
@@ -66,7 +63,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
     const id = `memory_${randomUUID()}`
 
     const row = await this.db.transaction(async (tx) => {
-      await assertActivePostgresProject(tx, { projectId: args.projectId, userId: args.userId })
       const inserted = await tx
         .insert(memories)
         .values({
@@ -81,7 +77,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
           indexStatus: 'pending',
           messageId: args.messageId,
           noteId: args.noteId,
-          projectId: args.projectId,
           source: args.source,
           tags: args.tags ?? [],
           turnId: args.turnId,
@@ -136,7 +131,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
     const content = requireContent(args.content)
     const now = new Date()
     const [row] = await this.db.transaction(async (tx) => {
-      await assertActivePostgresProject(tx, { projectId: args.projectId, userId: args.userId })
       await tx.delete(knowledgeChunks).where(and(
         eq(knowledgeChunks.sourceKind, 'memory'),
         eq(knowledgeChunks.sourceId, args.memoryId),
@@ -156,7 +150,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
           indexStatus: 'pending',
           messageId: args.messageId,
           noteId: args.noteId,
-          projectId: args.projectId,
           source: args.source,
           tags: args.tags ?? [],
           turnId: args.turnId,
@@ -218,7 +211,6 @@ function toMemoryRecord(row: MemoryRow): MemoryRecord {
     source: row.source,
     type: row.type ?? undefined,
     importance: row.importance ?? undefined,
-    projectId: row.projectId ?? undefined,
     conversationId: row.conversationId ?? undefined,
     noteId: row.noteId ?? undefined,
     messageId: row.messageId ?? undefined,

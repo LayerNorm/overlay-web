@@ -21,7 +21,6 @@ export class ConvexMemoryRepository implements MemoryRepository {
     creatorUserId?: string
     includeDeleted?: boolean
     noteId?: string
-    projectId?: string
     scope?: 'owner' | 'workspace'
     updatedSince?: number
     userId: string

@@ -10,7 +10,7 @@ import {
 } from './routing'
 
 test('workspace routing preserves the current canonical surface', () => {
-  assert.equal(resolveWorkspaceSurface('/app/projects'), 'projects')
+  assert.equal(resolveWorkspaceSurface('/app/files'), 'files')
   assert.equal(resolveWorkspaceSurface('/app/w/ws_old/files'), 'files')
   assert.equal(buildWorkspaceHref('ws next', '/app/w/ws_old/files'), '/app/w/ws%20next/files')
 })

@@ -49,12 +49,6 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     enabled: true,
   },
   {
-    id: 'projects',
-    label: 'Projects',
-    enabled: true,
-    requiredCapabilities: ['projects'],
-  },
-  {
     id: 'automations',
     label: 'Automations',
     enabled: true,
@@ -131,22 +125,6 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
   {
-    id: 'projects',
-    href: '/app/projects',
-    label: 'Projects',
-    icon: 'folder-open',
-    featureFlagId: 'projects',
-    requiredCapabilities: ['projects'],
-  },
-  {
-    id: 'knowledge',
-    href: '/app/knowledge',
-    label: 'Knowledge',
-    icon: 'book-open',
-    featureFlagId: 'knowledge',
-    requiredCapabilities: ['knowledge'],
-  },
-  {
     id: 'automations',
     href: '/app/automations',
     label: 'Automations',
@@ -177,7 +155,7 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     label: 'Files and knowledge',
     description: 'Files, memories, generated outputs, and knowledge search surfaces.',
     navigationItemId: 'files',
-    routePatterns: ['/app/files', '/app/knowledge', '/app/memories', '/app/outputs'],
+    routePatterns: ['/app/files', '/app/memories', '/app/outputs'],
     componentKey: 'overlay.modules.filesKnowledge',
     packageName: '@overlay/modules-react',
     featureFlagId: 'knowledge',
@@ -193,18 +171,6 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     componentKey: 'overlay.modules.notes',
     packageName: '@overlay/modules-react',
     order: 20,
-  },
-  {
-    id: 'projects',
-    label: 'Projects',
-    description: 'Project hierarchy and scoped workspace resources.',
-    navigationItemId: 'projects',
-    routePatterns: ['/app/projects'],
-    componentKey: 'overlay.modules.projects',
-    packageName: '@overlay/modules-react',
-    featureFlagId: 'projects',
-    requiredCapabilities: ['projects'],
-    order: 30,
   },
   {
     id: 'tools-extensions',
@@ -253,18 +219,6 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
     featureFlagId: 'knowledge',
     requiredCapabilities: ['knowledge'],
     order: 20,
-  },
-  {
-    id: 'projects.create',
-    label: 'New project',
-    actionKey: 'projects.create',
-    navigationItemId: 'projects',
-    featureModuleId: 'projects',
-    routePatterns: ['/app/projects'],
-    requiresAuth: true,
-    featureFlagId: 'projects',
-    requiredCapabilities: ['projects'],
-    order: 30,
   },
   {
     id: 'automations.create',
@@ -383,7 +337,6 @@ export const DEFAULT_OVERLAY_APP_CONFIG: OverlayAppConfig = {
 const FEATURE_FLAG_TO_APP_FLAG: Partial<Record<OverlayFeatureFlagId, keyof AppFeatureFlags>> = {
   voiceTranscription: 'canUseVoiceTranscription',
   knowledge: 'canUseKnowledge',
-  projects: 'canUseProjects',
   automations: 'canUseAutomations',
   extensions: 'canUseExtensions',
 }
@@ -398,7 +351,6 @@ export function overlayFeatureFlagsToAppFeatureFlags(
   const next: AppFeatureFlags = {
     canUseVoiceTranscription: true,
     canUseKnowledge: true,
-    canUseProjects: true,
     canUseAutomations: true,
     canUseExtensions: true,
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import AppSidebar from '@/components/layout/AppSidebar'
-import { AgentsInlinePanel, KnowledgeInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
+import { AgentsInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
 import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
 import {
   ActivityInlinePanel,
@@ -13,7 +13,6 @@ import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
 import {
   PublicShowcaseAutomationsInlinePanel,
   PublicShowcaseFilesInlinePanel,
-  PublicShowcaseProjectsInlinePanel,
 } from '@/features/showcase/PublicShowcaseSidebarPanels'
 import { WorkspaceSwitcher } from '@/features/workspaces/components/WorkspaceSwitcher'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -75,9 +74,6 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
       renderFilesPanel={publicShowcase
         ? ({ onNavigate }) => <PublicShowcaseFilesInlinePanel onNavigate={onNavigate} />
         : undefined}
-      renderProjectsPanel={publicShowcase
-        ? ({ onNavigate }) => <PublicShowcaseProjectsInlinePanel onNavigate={onNavigate} />
-        : undefined}
       renderAgentsPanel={({ onNavigate }) => (
         publicShowcase
           ? undefined
@@ -85,16 +81,6 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
             <AgentsInlinePanel
               workspaceId={activeWorkspaceId}
               baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
-              onNavigate={onNavigate}
-            />
-          )
-      )}
-      renderKnowledgePanel={({ onNavigate }) => (
-        publicShowcase
-          ? undefined
-          : (
-            <KnowledgeInlinePanel
-              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
               onNavigate={onNavigate}
             />
           )

@@ -16,7 +16,6 @@ export interface OverlayToolsOptions {
   turnId?: string
   automationId?: string
   workspaceId?: string
-  projectId?: string
   baseUrl?: string
   allowedToolIds?: readonly string[]
   /** Original browser Cookie header — required for server-side tool `fetch` to `/api/v1/*` (middleware expects session cookie). */
@@ -41,8 +40,6 @@ export interface OverlayToolsOptions {
    */
   agentId?: string
   agentPrincipalId?: string
-  /** Knowledge base ids activated for the current turn. */
-  activeKnowledgeBaseIds?: readonly string[]
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
   idempotencyKey?: string
 }

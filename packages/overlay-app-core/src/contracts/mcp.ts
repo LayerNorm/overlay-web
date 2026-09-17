@@ -15,7 +15,6 @@ export interface McpServerSummary {
   oauthConnectedAt?: number
   oauthError?: string
   timeoutMs?: number
-  projectId?: string
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
   toolCatalogCount?: number
@@ -45,7 +44,6 @@ export interface CreateMcpServerRequest {
   authType?: McpAuthType
   authConfig?: McpAuthConfig | null
   timeoutMs?: number
-  projectId?: string
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
   accessToken?: string

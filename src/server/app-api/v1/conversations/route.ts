@@ -61,7 +61,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const { searchParams } = request.nextUrl
     const conversationId = searchParams.get('conversationId')
     const includeMessages = searchParams.get('messages') === 'true'
-    const projectId = searchParams.get('projectId')
     const updatedSinceParam = searchParams.get('updatedSince')
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
     const includeDeleted = readBooleanParam(searchParams.get('includeDeleted'))
@@ -154,17 +153,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       })
     }
 
-    if (projectId) {
-      const list = await repository.listConversationsByProject({
-        projectId,
-        userId: auth.userId,
-        workspaceId: context.workspace.workspace.id,
-        ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
-        ...(includeDeleted !== undefined ? { includeDeleted } : {}),
-      })
-      return NextResponse.json(list)
-    }
-
     // Archived view. These are exactly the rows the default list subtracts.
     if (request.nextUrl.searchParams.get('archived') === 'true') {
       const list = await appData.repositories.conversationCollaboration.listArchivedConversations({
@@ -247,7 +235,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as {
       title?: string
-      projectId?: string
       askModelIds?: string[]
       actModelId?: string
       lastMode?: 'ask' | 'act'
@@ -271,7 +258,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
-      projectId: body.projectId ?? undefined,
       askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
       actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
       lastMode: body.lastMode,
@@ -293,7 +279,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const body = await request.json() as {
       conversationId?: string
       title?: string
-      projectId?: string | null
       askModelIds?: string[]
       actModelId?: string
       lastMode?: 'ask' | 'act'
@@ -332,7 +317,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       title: body.title,
-      projectId: body.projectId,
       askModelIds,
       actModelId,
       lastMode: body.lastMode,

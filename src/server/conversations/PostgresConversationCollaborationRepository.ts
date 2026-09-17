@@ -2115,7 +2115,6 @@ function mapAccessibleConversation(
     lastMode: row.lastMode,
     askModelIds: row.askModelIds,
     actModelId: row.actModelId,
-    projectId: row.projectId ?? undefined,
     shareVisibility: row.shareVisibility ?? undefined,
     shareToken: row.shareToken,
     isAutomation: row.isAutomation ?? undefined,

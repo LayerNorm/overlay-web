@@ -20,7 +20,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         ? parsedLimit
         : undefined,
       paginated: !fileId,
-      projectId: searchParams.get('projectId'),
       kind: searchParams.get('kind'),
       parentId: searchParams.get('parentId'),
       conversationId: searchParams.get('conversationId'),

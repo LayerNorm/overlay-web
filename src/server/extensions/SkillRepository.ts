@@ -7,7 +7,6 @@ export type SkillRecord = {
   description: string
   instructions: string
   enabled: boolean
-  projectId?: string
   version: number
   createdAt: number
   updatedAt: number
@@ -19,7 +18,6 @@ export type CreateSkillInput = {
   description: string
   instructions: string
   enabled?: boolean
-  projectId?: string
   workspaceId?: string
 }
 
@@ -34,7 +32,7 @@ export type UpdateSkillInput = {
 }
 
 export interface SkillRepository {
-  list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<SkillRecord[]>
+  list(args: { userId: string; workspaceId?: string }): Promise<SkillRecord[]>
   get(args: { skillId: string; userId: string; workspaceId?: string }): Promise<SkillRecord | null>
   create(args: CreateSkillInput): Promise<string>
   update(args: UpdateSkillInput): Promise<void>

@@ -19,7 +19,6 @@ interface MemoryListItem {
   source: string
   type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
   importance?: number
-  projectId?: string
   conversationId?: string
   noteId?: string
   messageId?: string
@@ -41,7 +40,6 @@ interface Memory {
   source: string
   type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
   importance?: number
-  projectId?: string
   conversationId?: string
   noteId?: string
   messageId?: string
@@ -69,7 +67,6 @@ function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
       source: row.source,
       type: row.type,
       importance: row.importance,
-      projectId: row.projectId,
       conversationId: row.conversationId,
       noteId: row.noteId,
       messageId: row.messageId,
@@ -537,11 +534,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                               {memory.actor && (
                                 <span className={metaChipClass}>
                                   {memory.actor}
-                                </span>
-                              )}
-                              {memory.projectId && (
-                                <span className={metaChipClass}>
-                                  project
                                 </span>
                               )}
                               {memory.conversationId && (

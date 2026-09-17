@@ -128,7 +128,6 @@ export class MemoryExtractionService {
           content,
           conversationId: args.conversationId,
           messageId: turn.messageId,
-          ...(turn.targetActor === 'human' ? { projectId: turn.projectId } : {}),
           source: 'chat',
           turnId: turn.turnId,
           type: candidate.type,

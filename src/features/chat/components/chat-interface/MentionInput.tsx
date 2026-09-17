@@ -297,7 +297,6 @@ function buildSafeRichPasteFragment(html: string): DocumentFragment | null {
 const MENTION_ICON_PATHS: Record<MentionType, string[]> = {
   person: ['M20 21a8 8 0 0 0-16 0', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
   file: ['M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z', 'M14 2v6h6', 'M8 13h8', 'M8 17h8'],
-  knowledge: ['M2 6s3-2 6-2 4 2 4 2v14s-4-2-4-2-6 2-6 2z', 'M22 6s-3-2-6-2-4 2-4 2v14s4-2 4-2 6 2 6 2z'],
   connector: ['M12 22v-5', 'M9 8V2', 'M15 8V2', 'M18 8v5a6 6 0 0 1-12 0V8z'],
   automation: ['M3 3v5h5', 'M3.05 13A9 9 0 1 0 5.3 6.3L3 8', 'M12 7v5l4 2'],
   skill: ['M12 3l1.9 3.9L18 8.8l-3 2.9.7 4.1-3.7-2-3.7 2 .7-4.1-3-2.9 4.1-.6z'],

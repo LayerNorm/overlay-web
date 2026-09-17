@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bot, FileText, FolderOpen, Library, Loader2, TriangleAlert, User, Workflow, X } from 'lucide-react'
+import { Bot, FileText, Loader2, TriangleAlert, User, Workflow, X } from 'lucide-react'
 import { usePresence } from '@overlay/ui'
 import type {
   WorkspaceShareAccessRole,
@@ -163,7 +163,7 @@ export function AttachResourceDialog({
             </div>
           ) : resources.length === 0 ? (
             <p data-testid="attach-resource-empty" className="text-sm text-[var(--muted)]">
-              You do not manage any files, projects, knowledge bases, automations, or agents yet.
+              You do not manage any files, automations, or agents yet.
             </p>
           ) : (
             <>
@@ -260,8 +260,6 @@ export function AttachResourceDialog({
 }
 
 export function attachableResourceIcon(resourceType: WorkspaceShareResourceType) {
-  if (resourceType === 'project') return <FolderOpen size={13} />
-  if (resourceType === 'knowledge_base') return <Library size={13} />
   if (resourceType === 'automation') return <Workflow size={13} />
   if (resourceType === 'agent') return <Bot size={13} />
   return <FileText size={13} />
@@ -276,10 +274,8 @@ function key(resource: AttachableResource) {
  * re-checks ownership before creating any grant.
  */
 async function loadAttachableResources(workspaceId: string): Promise<AttachableResource[]> {
-  const [files, projects, knowledgeBases, automations, agents] = await Promise.allSettled([
+  const [files, automations, agents] = await Promise.allSettled([
     overlayAppClient.files.get<Array<{ _id: string; name?: string; title?: string }>>({ limit: 50, summary: true }),
-    overlayAppClient.projects.get<Array<{ _id?: string; id?: string; name: string }>>({ limit: 50 }),
-    overlayAppClient.knowledgeBases.list(),
     overlayAppClient.automations.get<Array<{ _id?: string; id?: string; name: string }>>({ limit: 50 }),
     overlayAppClient.agents.list(workspaceId),
   ])
@@ -291,17 +287,6 @@ async function loadAttachableResources(workspaceId: string): Promise<AttachableR
         resourceId: file._id,
         title: file.name ?? file.title ?? 'Untitled file',
       })
-    }
-  }
-  if (projects.status === 'fulfilled' && Array.isArray(projects.value)) {
-    for (const project of projects.value) {
-      const id = project._id ?? project.id
-      if (id) resources.push({ resourceType: 'project', resourceId: id, title: project.name })
-    }
-  }
-  if (knowledgeBases.status === 'fulfilled') {
-    for (const base of knowledgeBases.value.knowledgeBases) {
-      resources.push({ resourceType: 'knowledge_base', resourceId: base.id, title: base.title })
     }
   }
   if (automations.status === 'fulfilled' && Array.isArray(automations.value)) {

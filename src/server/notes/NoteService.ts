@@ -20,7 +20,6 @@ export interface NoteRecord {
   content?: string
   textContent?: string
   tags?: string[]
-  projectId?: string
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -36,7 +35,6 @@ export interface NoteRepository {
   getNote(args: { noteId: string; userId: string; workspaceId?: string }): Promise<NoteRecord | null>
   listNotes(args: {
     userId: string
-    projectId?: string
     includeDeleted?: boolean
     workspaceId?: string
   }): Promise<NoteRecord[]>
@@ -44,7 +42,6 @@ export interface NoteRepository {
     userId: string
     title: string
     content: string
-    projectId?: string
     tags?: string[]
     clientId?: string
     workspaceId?: string
@@ -54,7 +51,6 @@ export interface NoteRepository {
     userId: string
     title?: string
     content?: string
-    projectId?: string | null
     tags?: string[]
     expectedUpdatedAt?: number
     workspaceId?: string
@@ -97,7 +93,6 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
     title: note.name || 'Untitled',
     content: note.textContent ?? note.content ?? '',
     tags: note.tags ?? [],
-    projectId: note.projectId,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
     deletedAt: note.deletedAt,
@@ -123,7 +118,6 @@ export class NoteService {
 
   async listNotes(args: {
     userId: string
-    projectId?: string
     includeDeleted?: boolean
     workspaceId?: string
   }): Promise<ServerNoteDoc[]> {
@@ -140,7 +134,6 @@ export class NoteService {
       userId: args.userId,
       title: normalizeNoteTitle(args.title),
       content,
-      projectId: args.projectId,
       tags: args.tags,
       clientId: args.clientId,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
@@ -163,7 +156,6 @@ export class NoteService {
       userId: args.userId,
       title: args.title,
       content: args.content,
-      projectId: args.projectId,
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),

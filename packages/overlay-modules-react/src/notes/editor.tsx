@@ -214,7 +214,6 @@ function noteDocToNotebookNote(note: NoteDoc, now = Date.now()): NotebookNote {
     title: note.title || 'Untitled',
     content: note.content ?? '',
     tags: note.tags ?? [],
-    projectId: note.projectId,
     createdAt: note.createdAt ?? now,
     updatedAt: note.updatedAt ?? now,
   }
@@ -984,7 +983,6 @@ export function CanonicalNotebookEditor({
         noteTitle: normalizeNotebookTitle(title),
         message,
         modelId,
-        projectId: activeNote.projectId,
         mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
       }, ac.signal)
 

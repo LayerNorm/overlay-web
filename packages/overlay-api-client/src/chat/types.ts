@@ -5,7 +5,6 @@ export interface ConversationQuery extends PaginationQuery {
   view?: 'personal' | 'dms' | 'channels' | 'all'
   conversationId?: string
   messages?: boolean
-  projectId?: string
   updatedSince?: number
   includeDeleted?: boolean
   limit?: number
@@ -29,12 +28,10 @@ export type ConversationGetResponse =
 export interface CreateConversationRequest {
   conversationType?: 'personal' | 'dm' | 'channel'
   title?: string
-  projectId?: string
   askModelIds?: string[]
   actModelId?: string
   lastMode?: 'ask' | 'act'
   clientId?: string
-  knowledgeBaseId?: string
 }
 
 export interface CreateConversationResponse {
@@ -46,12 +43,10 @@ export interface CreateConversationResponse {
 export interface UpdateConversationRequest {
   conversationId?: string
   title?: string
-  projectId?: string | null
   lastMode?: 'ask' | 'act'
   askModelIds?: string[]
   actModelId?: string
   lastModified?: number
-  knowledgeBaseId?: string | null
 }
 
 export interface ConversationMessageRequest {

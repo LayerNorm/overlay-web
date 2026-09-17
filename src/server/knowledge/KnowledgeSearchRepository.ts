@@ -16,7 +16,6 @@ export type KnowledgeSearchArgs = {
   kVec?: number
   m?: number
   minVecScore?: number
-  projectId?: string
   query: string
   sourceKind?: 'file' | 'memory'
   userId: string

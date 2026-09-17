@@ -82,9 +82,6 @@ import { PostgresWorkspaceSharingRepository } from '@/server/sharing/PostgresWor
 import { ConvexWorkspaceSharingRepository } from '@/server/sharing/ConvexWorkspaceSharingRepository'
 import { WorkspaceSearchService } from '@/server/search/WorkspaceSearchService'
 import { WorkspaceGovernanceService } from '@/server/governance/WorkspaceGovernanceService'
-import { GovernanceService } from '@/server/governance/GovernanceService'
-import { PostgresGovernanceRepository } from '@/server/governance/PostgresGovernanceRepository'
-import { ConvexGovernanceRepository } from '@/server/governance/ConvexGovernanceRepository'
 import {
   AuthorizationService,
 } from '@/server/authorization/AuthorizationService'
@@ -101,18 +98,6 @@ import {
   ConvexConversationCollaborationRepository,
 } from '@/server/conversations/ConvexConversationCollaborationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
-import {
-  KnowledgeBaseService,
-  KnowledgeSourceIngestionService,
-  KnowledgeBaseRetrievalService,
-  createPostgresKnowledgeBaseRepositories,
-  createConvexKnowledgeBaseRepositories,
-  PostgresCanonicalKnowledgeIndexQueue,
-  ConvexCanonicalKnowledgeIndexQueue,
-  KnowledgeSourceFetcherRegistry,
-} from '@/server/knowledge-bases'
-import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
-import { ProjectSharingService } from '@/server/projects/ProjectSharingService'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -153,16 +138,10 @@ export interface OverlayServerContext extends OverlayProviderContext {
   computerService: ComputerService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
-  knowledgeSourceIngestionService: KnowledgeSourceIngestionService
-  knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
-  knowledgeBaseService: KnowledgeBaseService
   authorizationService: AuthorizationService
-  governanceService: GovernanceService
   fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
   authorizationAdministrationService: AuthorizationAdministrationService
   conversationCollaboration: ConversationCollaborationRepository
-  projectKnowledgeTransferService: ProjectKnowledgeTransferService
-  projectSharingService: ProjectSharingService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -268,17 +247,6 @@ export function createOverlayServerContext(
   const assertCapability = async (userId: string, capability: AuthorizationCapability) => {
     await authorizationService.assertCapability({ userId, capability })
   }
-
-  const governanceRepository = isPostgres && postgresDb
-    ? new PostgresGovernanceRepository(postgresDb)
-    : new ConvexGovernanceRepository()
-
-  const governanceService = new GovernanceService({
-    assertCapability,
-    audit: auditService,
-    authorization: authorizationRepositories,
-    repository: governanceRepository,
-  })
 
   const authorizationAdministrationService = new AuthorizationAdministrationService({
     assertCapability,
@@ -399,8 +367,6 @@ export function createOverlayServerContext(
     sharing: workspaceSharingService,
     sources: {
       files: async () => [],
-      projects: async () => [],
-      knowledgeBases: async () => [],
       automations: async () => [],
     },
     loaders: {},
@@ -414,53 +380,6 @@ export function createOverlayServerContext(
     workspaces: workspaceService,
     appDataProvider: appData.capabilities.provider,
     requiresConvexClient: !isPostgres,
-  })
-
-  const knowledgeBaseRepositories = isPostgres && postgresDb
-    ? createPostgresKnowledgeBaseRepositories(postgresDb)
-    : createConvexKnowledgeBaseRepositories()
-
-  const knowledgeBaseService = new KnowledgeBaseService({
-    authorization: authorizationService,
-    authorizationRepositories,
-    audit: auditService,
-    governance: governanceService,
-    repositories: knowledgeBaseRepositories,
-    users: appData.repositories.users,
-  })
-
-  const canonicalIndexQueue = isPostgres && postgresDb
-    ? new PostgresCanonicalKnowledgeIndexQueue(postgresDb)
-    : new ConvexCanonicalKnowledgeIndexQueue()
-
-  const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
-    authorization: authorizationService,
-    bases: knowledgeBaseService,
-    fetchers: new KnowledgeSourceFetcherRegistry([]),
-    indexQueue: canonicalIndexQueue,
-    repositories: knowledgeBaseRepositories,
-  })
-
-  const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
-    bases: knowledgeBaseService,
-    search: knowledgeSearchService,
-  })
-
-  const projectKnowledgeTransferService = new ProjectKnowledgeTransferService({
-    bases: knowledgeBaseService,
-    files: appData.repositories.files,
-    ingestion: knowledgeSourceIngestionService,
-    notes: {
-      createNote: async (args) => appData.repositories.notes.createNote(args),
-    },
-  })
-
-  const projectSharingService = new ProjectSharingService({
-    authorization: authorizationService,
-    authorizationRepositories,
-    projects: appData.repositories.projects,
-    users: appData.repositories.users,
-    audit: auditService,
   })
 
   return {
@@ -497,16 +416,10 @@ export function createOverlayServerContext(
     computerService,
     workspaceSharingService,
     workspaceSearchService,
-    knowledgeSourceIngestionService,
-    knowledgeBaseRetrievalService,
-    knowledgeBaseService,
     authorizationService,
-    governanceService,
     fixedRoleAuthorizationBridge,
     authorizationAdministrationService,
     conversationCollaboration,
-    projectKnowledgeTransferService,
-    projectSharingService,
   }
 }
 

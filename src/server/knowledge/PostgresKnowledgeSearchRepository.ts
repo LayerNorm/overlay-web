@@ -9,14 +9,12 @@ import { calculateEmbeddingModelCostOrNull } from '@/server/ai/gateway/live-mode
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 
 const RRF_K = 60
-const PROJECT_CHUNK_BOOST = 1.85
 const PACK_MAX_TOTAL_CHARS = 12_000
 const PACK_MAX_PER_SOURCE = 3
 
 type SearchRow = {
   chunk_index: number
   id: string
-  project_id: string | null
   source_id: string
   source_kind: 'file' | 'memory'
   text: string
@@ -63,9 +61,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const sourceFilter = args.sourceKind
       ? sql`AND chunk.source_kind = ${args.sourceKind}`
       : sql``
-    const projectFilter = args.projectId
-      ? sql`AND (chunk.project_id IS NULL OR chunk.project_id = ${args.projectId})`
-      : sql``
     const workspaceFilter = args.workspaceId
       ? sql`AND chunk.workspace_id = ${args.workspaceId}`
       : sql``
@@ -79,7 +74,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const vectorRows = await this.deps.db.execute<SearchRow & { similarity: number }>(sql`
       SELECT
         chunk.id,
-        chunk.project_id,
         chunk.source_kind,
         chunk.source_id,
         chunk.chunk_index,
@@ -93,7 +87,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
         AND embedding.model_version = ${this.deps.embeddings.identity.modelVersion}
         ${ownerOrWorkspaceMemoryFilter}
         ${sourceFilter}
-        ${projectFilter}
         ${workspaceFilter}
         ${args.minVecScore !== undefined
           ? sql`AND 1 - (embedding.embedding <=> ${vectorLiteral}::vector) >= ${args.minVecScore}`
@@ -104,7 +97,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const lexicalRows = await this.deps.db.execute<SearchRow & { lexical_score: number }>(sql`
       SELECT
         chunk.id,
-        chunk.project_id,
         chunk.source_kind,
         chunk.source_id,
         chunk.chunk_index,
@@ -118,7 +110,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
       WHERE 1 = 1
         ${ownerOrWorkspaceMemoryFilter}
         ${sourceFilter}
-        ${projectFilter}
         ${workspaceFilter}
         AND to_tsvector('simple', coalesce(chunk.title, '') || ' ' || chunk.text)
           @@ websearch_to_tsquery('simple', ${query})
@@ -130,11 +121,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const scores = new Map<string, number>()
     addRankedRows(vectorRows.rows, rows, scores)
     addRankedRows(lexicalRows.rows, rows, scores)
-    if (args.projectId) {
-      for (const [id, row] of rows) {
-        if (row.project_id === args.projectId) scores.set(id, (scores.get(id) ?? 0) * PROJECT_CHUNK_BOOST)
-      }
-    }
     const ordered = [...rows.values()].sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0))
     return { chunks: packChunks(ordered, scores, maxChunks) }
   }

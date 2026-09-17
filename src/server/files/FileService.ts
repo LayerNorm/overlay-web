@@ -149,7 +149,6 @@ export class FileService {
     parentId?: string | null
     limit?: number
     paginated?: boolean
-    projectId?: string | null
     summary?: boolean
     userId: string
     workspaceId?: string
@@ -451,7 +450,6 @@ export class FileService {
   async ingestDocument(args: {
     file: File | null
     parentId?: string
-    projectId?: string
     userId: string
   }): Promise<{ id: string | undefined; ids: string[]; name: string; parts: number }> {
     let uploadedR2Key: string | null = null
@@ -530,7 +528,6 @@ export class FileService {
           mimeType,
           parentId: sanitizeConvexIdParam(args.parentId),
           parts: partWrites,
-          projectId: sanitizeConvexIdParam(args.projectId),
           r2Key,
           sourceSizeBytes: Math.max(0, Math.round(buf.byteLength)),
           userId: args.userId,

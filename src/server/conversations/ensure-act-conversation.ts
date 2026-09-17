@@ -33,7 +33,6 @@ export async function ensureActConversationId(params: {
   conversationClientId: string
   entitlements: Entitlements
   title?: string
-  projectId?: string
   askModelIds?: string[]
   actModelId?: string
   workspaceId?: string
@@ -56,7 +55,6 @@ export async function ensureActConversationId(params: {
     userId: params.userId,
     clientId,
     title: params.title || 'New Chat',
-    projectId: params.projectId ?? undefined,
     askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
     actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
     lastMode: 'act',

@@ -157,17 +157,11 @@ function normalizeConversationDoc<T extends {
 async function getLinkedAutomationConversationIds(
   ctx: Pick<QueryCtx, 'db'>,
   userId: string,
-  projectId?: string,
 ): Promise<Set<string>> {
-  const automations = projectId
-    ? await ctx.db
-      .query('automations')
-      .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
-      .collect()
-    : await ctx.db
-      .query('automations')
-      .withIndex('by_userId_updatedAt', (q) => q.eq('userId', userId))
-      .collect()
+  const automations = await ctx.db
+    .query('automations')
+    .withIndex('by_userId_updatedAt', (q) => q.eq('userId', userId))
+    .collect()
   const ids = new Set<string>()
   for (const automation of automations) {
     if (automation.userId !== userId || automation.deletedAt) continue
@@ -264,7 +258,7 @@ export const list = query({
       return []
     }
     const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
-    // Over-fetch by 3x to account for in-memory filters (projectId, isAutomation,
+    // Over-fetch by 3x to account for in-memory filters (isAutomation,
     // automation-linked, deletedAt, workspaceId).  This is still far less than
     // the previous take(200) → slice(100) pattern.
     const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
@@ -283,49 +277,12 @@ export const list = query({
     ])
     return all
       .map(normalizeConversationDoc)
-      .filter((c) => !c.projectId)
       .filter((c) => !c.isAutomation)
       .filter((c) => !automationConversationIds.has(c._id))
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
       .filter((c) => (workspaceId !== undefined ? c.workspaceId === workspaceId : true))
       .slice(0, pageLimit)
-  },
-})
-
-export const listByProject = query({
-  args: {
-    projectId: v.string(),
-    userId: v.string(),
-    workspaceId: v.optional(v.string()),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    updatedSince: v.optional(v.number()),
-    includeDeleted: v.optional(v.boolean()),
-  },
-  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken, serverSecret })
-    } catch {
-      return []
-    }
-    const [conversations, automationConversationIds] = await Promise.all([
-      ctx.db
-        .query('conversations')
-        .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
-        .order('desc')
-        .collect(),
-      getLinkedAutomationConversationIds(ctx, userId, projectId),
-    ])
-    return conversations
-      .map(normalizeConversationDoc)
-      .filter((conversation) => conversation.userId === userId)
-      .filter((conversation) => !conversation.isAutomation)
-      .filter((conversation) => !automationConversationIds.has(conversation._id))
-      .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
-      .filter((conversation) => (includeDeleted ? true : !conversation.deletedAt))
-      .filter((conversation) => (workspaceId !== undefined ? conversation.workspaceId === workspaceId : true))
-      .sort((a, b) => (b.lastModified ?? b.createdAt) - (a.lastModified ?? a.createdAt))
   },
 })
 
@@ -352,13 +309,12 @@ export const create = mutation({
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),
-    projectId: v.optional(v.string()),
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
     isAutomation: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode, isAutomation }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -369,12 +325,6 @@ export const create = mutation({
         return existing._id
       }
     }
-    if (projectId) {
-      const project = await ctx.db.get(projectId as Id<'projects'>)
-      if (!project || project.userId !== userId || project.deletedAt) {
-        throw new Error('Unauthorized')
-      }
-    }
     const ask = clampAskModels(askModelIds ?? [DEFAULT_MODEL_ID])
     const act = actModelId?.trim() || ask[0] || DEFAULT_MODEL_ID
     const now = Date.now()
@@ -383,7 +333,6 @@ export const create = mutation({
       workspaceId,
       clientId: clientId?.trim() || undefined,
       title,
-      projectId,
       lastModified: now,
       createdAt: now,
       updatedAt: now,
@@ -412,27 +361,19 @@ export const update = mutation({
     serverSecret: v.optional(v.string()),
     conversationId: v.id('conversations'),
     title: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     askModelIds: v.optional(v.array(v.string())),
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, conversationId, title, projectId, askModelIds, actModelId, lastMode }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, conversationId, title, askModelIds, actModelId, lastMode }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
     if (!conversation || conversation.userId !== userId || conversation.deletedAt || (workspaceId !== undefined && conversation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
-    if (projectId !== undefined && projectId !== null) {
-      const project = await ctx.db.get(projectId as Id<'projects'>)
-      if (!project || project.userId !== userId || project.deletedAt) {
-        throw new Error('Unauthorized')
-      }
-    }
     const now = Date.now()
     const updates: Record<string, unknown> = { lastModified: now, updatedAt: now }
     if (title !== undefined) updates.title = title
-    if (projectId !== undefined) updates.projectId = projectId || undefined
     if (askModelIds !== undefined) updates.askModelIds = clampAskModels(askModelIds)
     if (actModelId !== undefined) updates.actModelId = actModelId
     if (lastMode !== undefined) updates.lastMode = lastMode

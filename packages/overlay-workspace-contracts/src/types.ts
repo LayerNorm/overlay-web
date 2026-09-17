@@ -577,8 +577,6 @@ export type WorkspaceAgentListResponse = {
 export const WORKSPACE_SHARE_RESOURCE_TYPES = [
   'conversation',
   'file',
-  'project',
-  'knowledge_base',
   'automation',
   'agent',
 ] as const

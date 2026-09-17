@@ -528,7 +528,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       principalId: participant.principalId,
       principalType: participant.principalType,
     })),
-    projectId: room.conversation.projectId,
     requestFingerprint,
     workspaceId: args.workspaceId,
   })
@@ -743,7 +742,6 @@ export async function startManagedHarnessTurn(args: {
       principalId: participant.principalId,
       principalType: participant.principalType,
     })),
-    projectId: room.conversation.projectId,
     requestFingerprint,
     workspaceId: args.workspaceId,
   })
@@ -1057,7 +1055,6 @@ export async function runWorkspaceAgentTurn(args: {
             principalId: participant.principalId,
             principalType: participant.principalType,
           })),
-          projectId: conversation.projectId,
           requestFingerprint,
           workspaceId: args.workspaceId,
         }),

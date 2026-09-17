@@ -36,8 +36,6 @@ export function sendTextTurn({
   automationIdParam,
   completeSessionForStream,
   createNewChat,
-  embedProjectId,
-  knowledgeBaseId,
   reasoning,
   personalChatMode,
   emptyRuntime,
@@ -67,8 +65,6 @@ export function sendTextTurn({
   automationIdParam: string | null
   completeSessionForStream: CompleteSession
   createNewChat: (options?: CreateNewChatOptions) => Promise<string | null>
-  embedProjectId: string | null
-  knowledgeBaseId?: string
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
   isFirstMessage: boolean
@@ -256,8 +252,6 @@ export function sendTextTurn({
         ? pendingFirstSendRef.current!.conversationClientId
         : null,
     temporaryChatSnapshot: snapshot.temporaryChatSnapshot,
-    embedProjectId,
-    knowledgeBaseId,
     textModelsForTurn: effectiveTextModelsForTurn,
     turnId: textTurnId,
     requestMode: snapshot.requestMode,

@@ -235,7 +235,6 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         schedule: automationScheduleSchema,
         timezone: z.string().optional(),
         enabled: z.boolean().optional(),
-        projectId: z.string().optional(),
         modelId: z.string().optional(),
         graphSource: z.string().optional(),
         sourceConversationId: z.string().optional(),
@@ -380,11 +379,8 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   if (shouldExposeTool('list_notes')) {
     tools.list_notes = tool({
-    description:
-      'List the user\'s notes in Overlay. When the chat is tied to a project, pass projectId from context to scope results.',
-    inputSchema: z.object({
-      projectId: z.string().optional().describe('Only notes in this project (omit for general notes tab)'),
-    }),
+    description: 'List the user\'s notes in Overlay.',
+    inputSchema: z.object({}),
     execute: async (input) => {
       assertToolAllowed('list_notes')
       return executeListNotes(options, input)
@@ -663,12 +659,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
     if (shouldExposeTool('create_note')) {
       tools.create_note = tool({
-      description: 'Create a new note (title, markdown/plain content, optional tags and project).',
+      description: 'Create a new note (title, markdown/plain content, optional tags).',
       inputSchema: z.object({
         title: z.string().optional(),
         content: z.string(),
         tags: z.array(z.string()).optional(),
-        projectId: z.string().optional(),
       }),
       execute: async (input) => {
         assertToolAllowed('create_note')

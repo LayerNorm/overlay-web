@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  BookOpen,
   LayoutDashboard,
   ListTree,
   RefreshCw,
-  Scale,
   Search,
   ShieldCheck,
   UsersRound,
@@ -16,8 +14,6 @@ import {
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 import { CatalogPolicyAdminPanel } from '@/features/admin/catalog/CatalogPolicyAdminPanel'
-import { KnowledgeAdminPanel } from '@/features/admin/knowledge/KnowledgeAdminPanel'
-import { GovernanceAdminPanel } from '@/features/admin/governance/GovernanceAdminPanel'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 import { SecondaryPanelHeader } from '@/components/layout/sidebar/AppSidebarSecondaryPanel'
 
@@ -41,7 +37,7 @@ type AuditRow = {
   createdAt: number
 }
 
-type AdminSection = 'overview' | 'roles' | 'groups' | 'knowledge' | 'catalog' | 'governance'
+type AdminSection = 'overview' | 'roles' | 'groups' | 'catalog'
 
 type AdminSectionOption = {
   value: AdminSection
@@ -58,13 +54,8 @@ export default function AdminPage() {
   const canManageRoles = can('roles.manage')
   const canViewGroups = can('groups.read')
   const canManageGroups = can('groups.manage')
-  const canViewKnowledge = can('knowledge.publish') && can('knowledge.share') && can('roles.read')
-  const canManageKnowledge = canViewKnowledge && can('roles.manage')
   const canViewCatalog = can('roles.read')
   const canManageCatalog = can('roles.manage')
-  const canViewGovernance = can('governance.read')
-  const canManageGovernance = can('governance.manage')
-  const canExportGovernance = can('governance.export')
   const [section, setSection] = useState<AdminSection>('overview')
   const [usage, setUsage] = useState<UsageRow[]>([])
   const [events, setEvents] = useState<AuditRow[]>([])
@@ -79,9 +70,7 @@ export default function AdminPage() {
     ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview', Icon: LayoutDashboard }] : []),
     ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles', Icon: ShieldCheck }] : []),
     ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups', Icon: UsersRound }] : []),
-    ...(canViewKnowledge ? [{ value: 'knowledge' as const, label: 'Knowledge', Icon: BookOpen }] : []),
     ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog', Icon: ListTree }] : []),
-    ...(canViewGovernance ? [{ value: 'governance' as const, label: 'Governance', Icon: Scale }] : []),
   ]
 
   const load = useCallback(async () => {
@@ -112,16 +101,12 @@ export default function AdminPage() {
     if (section === 'overview' && (canViewUsage || canViewAudit)) return
     if (section === 'roles' && canViewRoles) return
     if (section === 'groups' && canViewGroups) return
-    if (section === 'knowledge' && canViewKnowledge) return
     if (section === 'catalog' && canViewCatalog) return
-    if (section === 'governance' && canViewGovernance) return
     if (canViewUsage || canViewAudit) setSection('overview')
     else if (canViewRoles) setSection('roles')
     else if (canViewGroups) setSection('groups')
-    else if (canViewKnowledge) setSection('knowledge')
     else if (canViewCatalog) setSection('catalog')
-    else if (canViewGovernance) setSection('governance')
-  }, [canViewAudit, canViewCatalog, canViewGovernance, canViewGroups, canViewKnowledge, canViewRoles, canViewUsage, section])
+  }, [canViewAudit, canViewCatalog, canViewGroups, canViewRoles, canViewUsage, section])
 
   async function adjustBudget() {
     const amount = Number(amountCents)
@@ -213,17 +198,8 @@ export default function AdminPage() {
             userDirectory={usage}
           />
         ) : null}
-        {section === 'knowledge' && canViewKnowledge ? (
-          <KnowledgeAdminPanel canManage={canManageKnowledge} />
-        ) : null}
         {section === 'catalog' && canViewCatalog ? (
           <CatalogPolicyAdminPanel canManage={canManageCatalog} />
-        ) : null}
-        {section === 'governance' && canViewGovernance ? (
-          <GovernanceAdminPanel
-            canExport={canExportGovernance}
-            canManage={canManageGovernance}
-          />
         ) : null}
 
         {section === 'overview' && (forbidden || (!canViewUsage && !canViewAudit)) ? (

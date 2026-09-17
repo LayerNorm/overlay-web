@@ -15,7 +15,7 @@ function createNoteRepository(): NoteRepository {
     async listNotes() {
       return [...notes.values()]
     },
-    async createNote({ userId, title, content, projectId }) {
+    async createNote({ userId, title, content }) {
       const id = `note_${notes.size + 1}`
       const note: NoteRecord = {
         _id: id,
@@ -24,7 +24,6 @@ function createNoteRepository(): NoteRepository {
         kind: 'note',
         content,
         textContent: content,
-        projectId,
         createdAt: now,
         updatedAt: now,
       }
