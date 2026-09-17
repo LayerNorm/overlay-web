@@ -100,10 +100,12 @@ export async function loadHarnessSandboxProvider(
  * supported production path and the only one the picker should advertise.
  */
 function vercelHarnessCredentialsConfigured(): boolean {
-  // Explicit static credentials or the platform-injected OIDC token both let
-  // the @vercel/sandbox SDK authenticate; either one is sufficient.
+  // On Vercel the @vercel/sandbox SDK authenticates with a per-request OIDC
+  // token (x-vercel-oidc-token header context); elsewhere it needs the static
+  // VERCEL_TOKEN/TEAM_ID/PROJECT_ID triple.
   return Boolean(
-    process.env.VERCEL_OIDC_TOKEN?.trim()
+    process.env.VERCEL?.trim()
+      || process.env.VERCEL_OIDC_TOKEN?.trim()
       || (process.env.VERCEL_TOKEN?.trim()
         && process.env.VERCEL_TEAM_ID?.trim()
         && process.env.VERCEL_PROJECT_ID?.trim()),
