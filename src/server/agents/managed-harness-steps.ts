@@ -178,7 +178,7 @@ function leaseResources(usage: Record<string, unknown>) {
   const positive = (value: unknown, fallback: number) =>
     typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
   return {
-    diskGiB: positive(stored.diskGiB, 20),
+    diskGiB: positive(stored.diskGiB, 10),
     memoryGiB: positive(stored.memoryGiB, 4),
     vcpus: positive(stored.vcpus, 2),
   }

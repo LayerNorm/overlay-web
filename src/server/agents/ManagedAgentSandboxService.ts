@@ -21,7 +21,8 @@ import { resolveManagedHarnessSandboxProvider } from './harnesses/sandbox-provid
 export const MANAGED_HARNESS_IDLE_TIMEOUT_MS = 15 * 60_000
 export const MANAGED_HARNESS_HARD_TIMEOUT_MS = 24 * 60 * 60_000
 const MANAGED_ROOT = '/workspace'
-const MANAGED_RESOURCES = { vcpus: 2, memoryGiB: 4, diskGiB: 20 } as const
+// diskGiB stays within Daytona's per-sandbox 10 GiB cap; Vercel only reads vcpus.
+const MANAGED_RESOURCES = { vcpus: 2, memoryGiB: 4, diskGiB: 10 } as const
 export const MANAGED_HARNESS_DENIED_CIDRS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
 
 export type ManagedAgentProvisionRequest =
@@ -208,7 +209,7 @@ export class ManagedAgentSandboxService {
         },
         idleTimeoutMs,
         hardTimeoutMs,
-        resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+        resources: { ...MANAGED_RESOURCES },
         metadata: { overlay: 'true', kind: 'agent-host', workspace: args.workspaceId },
       })
       await sandbox.runCommand(managedAgentHostCommand({
@@ -229,7 +230,7 @@ export class ManagedAgentSandboxService {
         status: 'running',
         reservedUntil: now + hardTimeoutMs,
         runtimeStartedAt: now,
-        usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, meteredUsage: {}, meterVersion: 0 },
+        usage: { resources: { ...MANAGED_RESOURCES }, meteredUsage: {}, meterVersion: 0 },
         cleanupAttempts: 0,
         now,
       })
@@ -284,11 +285,15 @@ export function managedSandboxRuntimeFromEnv(providerOverride?: string): Sandbox
     || process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER?.trim().toLowerCase()
     || 'vercel'
   if (provider === 'vercel') {
+    // On Vercel the platform injects a fresh VERCEL_OIDC_TOKEN per function;
+    // prefer it over static VERCEL_TOKEN/TEAM_ID/PROJECT_ID so a stale or
+    // revoked long-lived token cannot take sandbox provisioning down.
+    const hasOidc = Boolean(process.env.VERCEL_OIDC_TOKEN?.trim())
     const token = process.env.VERCEL_TOKEN?.trim()
     const teamId = process.env.VERCEL_TEAM_ID?.trim()
     const projectId = process.env.VERCEL_PROJECT_ID?.trim()
     return new VercelSandboxRuntime({
-      ...(token && teamId && projectId ? { credentials: { token, teamId, projectId } } : {}),
+      ...(!hasOidc && token && teamId && projectId ? { credentials: { token, teamId, projectId } } : {}),
       region: process.env.OVERLAY_VERCEL_SANDBOX_REGION?.trim() || 'iad1',
     })
   }
