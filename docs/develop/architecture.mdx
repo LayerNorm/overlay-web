@@ -188,7 +188,12 @@ retries replay as `lease_conflict` instead of double-charging. When the payer's 
 drops under the floor (`OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS`, default $1) or a tick debit is
 declined, the lease flips to `stopping`, pending commands and queued/running turns are cancelled
 with a `usage_limited` terminal error, and the provider sandbox is deleted by the reaper pass; a
-turn's settle is just the final meter tick plus bootstrap-hold release. The meter driver runs from
+turn's settle is just the final meter tick plus bootstrap-hold release. All metering and cleanup
+reconnects use `{resume:false}` — passive reads never wake an idle-stopped sandbox. Some providers
+(Vercel) only publish cumulative usage counters once a session stops, so while a sandbox runs the
+meter bills the elapsed window against a virtual wall-time cursor instead; teardown paths
+(reap, harness reset) stop the instance, take one final meter read that reconciles real totals
+against the virtual cursor, then delete — session usage is never lost. The meter driver runs from
 the BFF `agent-environments/operations/reconcile` route (Convex cron calls it) and the Postgres
 `app-data.maintenance` job. The standalone sandbox route keeps the worst-case reservation model
 because it always denies outbound network access and can make a byte-exact provider-cost promise;
