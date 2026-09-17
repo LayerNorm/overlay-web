@@ -170,6 +170,18 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
       lastSeenAt: now - 60_000,
       now,
     })
+    await repository.createEnvironment({
+      id: `${environmentId}_managed`,
+      workspaceId,
+      kind: 'overlay_cloud',
+      name: `overlay-harness-${suffix}`,
+      status: 'offline',
+      capabilities: {},
+      approvedAt: now - 2_000,
+      approvedByUserId: userId,
+      lastSeenAt: now - 60_000,
+      now,
+    })
     await repository.upsertBinding({
       id: bindingId,
       workspaceId,
@@ -332,8 +344,15 @@ test('Postgres remote room turn is atomic, resumable, and projects terminal even
     await repository.applyRemoteEvents({ workspaceId, environmentId, sessionId: recoverySessionId,
       events: [{ ...remoteEvent(1, 'session_started', { remoteSessionId: `resume_${suffix}`, adapterId: 'acp' }),
         environmentId, runId: recoveryRunId }], now: queueExpiresAt + 20 })
-    assert.deepEqual((await repository.sweepRemoteRuns({ now: queueExpiresAt + 21,
-      hostOfflineBefore: queueExpiresAt + 20, limit: 10 })).expiredRunIds, [recoveryRunId])
+    const swept = await repository.sweepRemoteRuns({ now: queueExpiresAt + 21,
+      hostOfflineBefore: queueExpiresAt + 20, limit: 10 })
+    assert.deepEqual(swept.expiredRunIds, [recoveryRunId])
+    const offlineAlertEnvironmentIds = swept.alerts
+      .filter((alert) => alert.code === 'offline_environment')
+      .map((alert) => alert.environmentId)
+    assert.ok(offlineAlertEnvironmentIds.includes(environmentId), 'stale local environment should alert')
+    assert.ok(!offlineAlertEnvironmentIds.includes(`${environmentId}_managed`),
+      'overlay_cloud environments read offline while idle-stopped and must not alert')
     const [recoveryMessage] = await db.select().from(conversationMessages).where(eq(conversationMessages.id, recovery.messageId))
     assert.ok((recoveryMessage?.parts ?? []).some((part) => part.type === 'data-remote-agent-status'
       && part.data?.state === 'recoverable'))

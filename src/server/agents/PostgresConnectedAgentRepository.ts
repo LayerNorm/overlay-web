@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, max, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, max, ne, or, sql } from 'drizzle-orm'
 import type {
   AgentApprovalRequest, AgentArtifact, AgentBinding, AgentEnrollmentSession, AgentEnvironment,
   AgentEnvironmentCredential, AgentEnvironmentProofChallenge, AgentHarnessSession, AgentRemoteSession,
@@ -1239,6 +1239,9 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       }).from(agentEnvironments).where(and(
         isNotNull(agentEnvironments.approvedAt),
         isNull(agentEnvironments.revokedAt),
+        // overlay_cloud environments have no heartbeat host — they read offline
+        // whenever the managed sandbox is idle-stopped, which is normal.
+        ne(agentEnvironments.kind, 'overlay_cloud'),
         or(eq(agentEnvironments.status, 'offline'), lte(agentEnvironments.lastSeenAt, new Date(args.hostOfflineBefore))),
       )).limit(args.limit)
       const alertedEnvironments = new Set(alerts.map((alert) => alert.environmentId).filter(Boolean))

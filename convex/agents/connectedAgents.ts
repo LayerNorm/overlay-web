@@ -1505,7 +1505,9 @@ async function sweepRemoteRuns(
   ])
   const alertedEnvironments = new Set(alerts.map(alert => alert.environmentId).filter(Boolean))
   for (const environment of [...offlineEnvironments, ...staleOnlineEnvironments]) {
-    if (!environment.approvedAt || environment.revokedAt || alertedEnvironments.has(environment.environmentId)) continue
+    // overlay_cloud environments have no heartbeat host — they read offline
+    // whenever the managed sandbox is idle-stopped, which is normal.
+    if (!environment.approvedAt || environment.revokedAt || environment.kind === 'overlay_cloud' || alertedEnvironments.has(environment.environmentId)) continue
     alerts.push({
       code: 'offline_environment', workspaceId: environment.workspaceId,
       environmentId: environment.environmentId,

@@ -300,6 +300,32 @@ describe('Convex remote agent room turns', () => {
       now: now + 6, hostOfflineBefore: 0, limit: 10,
     })).expiredRunIds).toEqual([])
   })
+
+  test('offline alerts skip overlay_cloud environments whose idle-stopped sandbox is normal', async () => {
+    const convex = convexTest(schema, modules)
+    await seedRoom(convex)
+    await convex.run(async ctx => {
+      await ctx.db.insert('agentEnvironments', {
+        environmentId: 'environment-managed', workspaceId, kind: 'overlay_cloud',
+        name: 'overlay-harness-managed', status: 'offline', capabilities: {},
+        approvedAt: now - 1_000, approvedByUserId: actorUserId,
+        lastSeenAt: now - 60_000, createdAt: now - 2_000, updatedAt: now,
+      })
+      await ctx.db.insert('agentEnvironments', {
+        environmentId: 'environment-byo-stale', workspaceId, kind: 'local',
+        name: 'Stale laptop', status: 'online', capabilities: {},
+        approvedAt: now - 1_000, approvedByUserId: actorUserId,
+        lastSeenAt: now - 60_000, createdAt: now - 2_000, updatedAt: now,
+      })
+    })
+    const swept = await convex.mutation(mutationRef('sweepRemoteRunsInternal'), {
+      now: now + 2, hostOfflineBefore: now - 30_000,
+    }) as { alerts: Array<{ code: string; environmentId?: string }> }
+    const alertedEnvironmentIds = swept.alerts
+      .filter(alert => alert.code === 'offline_environment')
+      .map(alert => alert.environmentId)
+    expect(alertedEnvironmentIds.sort()).toEqual(['environment-byo-stale', environmentId])
+  })
 })
 
 async function seedRoom(convex: ReturnType<typeof convexTest>) {
