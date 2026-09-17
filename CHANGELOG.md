@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Managed sandboxes no longer burn provider budget while idle. Vercel sandboxes have no native idle-stop — they run until the 24-hour `timeout` — so every managed lease provisioned ~96 GB-hours/day of memory whether or not the agent was used. The meter now enforces the lease's idle window itself: a sandbox with no acquire/settle activity for `idleTimeoutMs` (15 minutes) is stopped while the lease stays resumable, turn-slice acquires heartbeat `usage.lastActiveAt` so working sandboxes never cool mid-turn, and `running` leases past their 24-hour `reservedUntil` are reaped instead of lingering forever.
+
 - The reconciliation sweep no longer emits recurring `offline_environment` warnings for managed (`overlay_cloud`) environments. Those environments have no heartbeat host — they read offline whenever their sandbox is idle-stopped, which is normal — so the BYO-oriented stale-environment pass now skips them in both the Convex and Postgres implementations. Genuinely stale BYO environments still alert.
 
 ### Changed
