@@ -168,7 +168,7 @@ export class WorkspaceSharingService {
     await this.requireTarget({ ...args, workspaceId: access.workspace.id })
     if (
       args.targetType === 'room'
-      && ['conversation', 'project', 'knowledge_base'].includes(args.resourceType)
+      && args.resourceType === 'conversation'
       && !args.confirmRoomExpansion
     ) {
       throw new WorkspaceSharingServiceError(

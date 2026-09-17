@@ -7,10 +7,8 @@ import type { DraftModalState } from '../chat-interface/types'
 type SkillDraftSummary = Extract<DraftModalState, { kind: 'skill' }>['draft']
 
 export function useDraftReviewActions({
-  embedProjectId,
   setComposerNotice,
 }: {
-  embedProjectId: string | null
   setComposerNotice: (value: string | null | ((current: string | null) => string | null)) => void
 }) {
   const [draftModalState, setDraftModalState] = useState<DraftModalState | null>(null)
@@ -24,7 +22,6 @@ export function useDraftReviewActions({
         description: draft.description,
         instructions: draft.instructions,
         enabled: true,
-        ...(embedProjectId ? { projectId: embedProjectId } : {}),
       })
       const payload = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
@@ -39,7 +36,7 @@ export function useDraftReviewActions({
     } finally {
       setIsDraftSaving(false)
     }
-  }, [embedProjectId, setComposerNotice])
+  }, [setComposerNotice])
 
   return {
     draftModalState,

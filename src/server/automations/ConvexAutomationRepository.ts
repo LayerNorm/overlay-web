@@ -21,7 +21,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
 
   async listAutomations(args: {
     includeDeleted?: boolean
-    projectId?: string
     userId: string
   }): Promise<AutomationRecord[]> {
     return await convex.query<AutomationRecord[]>('automations/automations:list', {

@@ -9,7 +9,7 @@ import {
   FILE_PARITY_VIDEO_DATA_URL,
 } from '@overlay/app-core/file-parity-fixtures'
 
-export type ShowcaseSurface = 'chat' | 'files' | 'projects' | 'automations' | 'extensions'
+export type ShowcaseSurface = 'chat' | 'files' | 'automations' | 'extensions'
 
 export interface ShowcaseMessage {
   id: string
@@ -42,7 +42,7 @@ export const SHOWCASE_CONVERSATIONS: ShowcaseConversation[] = [
       {
         id: 'welcome-assistant',
         role: 'assistant',
-        text: `Overlay gives you one place to **think, find, create, and act** with AI.\n\n- Search the web and cite the answer\n- Remember useful context across conversations\n- Work with files, notes, projects, and connected apps\n- Run browser and code tasks in isolated sandboxes\n- Generate images and video\n- Turn recurring work into automations\n\nEverything in this workspace uses Overlay's real product surfaces. Open the chats and files on the left; actions that would change data ask you to sign in.`,
+        text: `Overlay gives you one place to **think, find, create, and act** with AI.\n\n- Search the web and cite the answer\n- Remember useful context across conversations\n- Work with files, notes, and connected apps\n- Run browser and code tasks in isolated sandboxes\n- Generate images and video\n- Turn recurring work into automations\n\nEverything in this workspace uses Overlay's real product surfaces. Open the chats and files on the left; actions that would change data ask you to sign in.`,
       },
     ],
   },
@@ -71,7 +71,7 @@ export const SHOWCASE_CONVERSATIONS: ShowcaseConversation[] = [
   {
     id: 'files',
     title: 'Analyze a launch folder',
-    eyebrow: 'Files and projects',
+    eyebrow: 'Files',
     messages: [
       { id: 'files-user', role: 'user', text: 'Read the launch brief, metrics CSV, and customer notes. What deserves attention first?' },
       { id: 'files-assistant', role: 'assistant', text: `The biggest opportunity is activation. The brief promises fast time-to-value, but the metrics show a drop between connecting a source and completing the first useful task.\n\nI’d make the first-run path demonstrate one complete outcome before presenting the rest of the workspace.` },
@@ -92,7 +92,7 @@ export const SHOWCASE_CONVERSATIONS: ShowcaseConversation[] = [
     eyebrow: 'Images, video, and code',
     messages: [
       { id: 'create-user', role: 'user', text: 'Turn this product idea into a launch visual, a 15-second storyboard, and a working prototype.' },
-      { id: 'create-assistant', role: 'assistant', text: 'I created a visual direction, a scene-by-scene storyboard, and a sandboxed prototype. You can inspect every output, branch from any response, or save the useful pieces to a project.' },
+      { id: 'create-assistant', role: 'assistant', text: 'I created a visual direction, a scene-by-scene storyboard, and a sandboxed prototype. You can inspect every output, branch from any response, or save the useful pieces for later.' },
     ],
   },
 ]
@@ -138,7 +138,7 @@ export const SHOWCASE_FILES: ShowcaseFile[] = [
     id: 'launch-note',
     name: 'Start here.md',
     kind: 'note',
-    content: `# Overlay, explained by Overlay\n\nThis public workspace is the product—not a video of it. Browse its chats, inspect real file viewers, open projects, and see how extensions and automations fit together.\n\n## The idea\n\nAI should feel like one coherent layer across your work. Your models, knowledge, tools, permissions, and deployment choices should remain yours.`,
+    content: `# Overlay, explained by Overlay\n\nThis public workspace is the product—not a video of it. Browse its chats, inspect real file viewers, and see how extensions and automations fit together.\n\n## The idea\n\nAI should feel like one coherent layer across your work. Your models, knowledge, tools, permissions, and deployment choices should remain yours.`,
   },
   {
     id: 'brief',
@@ -220,14 +220,9 @@ export const SHOWCASE_CONNECTORS: ConnectorCatalogItem[] = [
   { id: 'github', providerKey: 'github', slug: 'github', name: 'GitHub', description: 'Inspect repositories and manage work', icon: '', logoUrl: 'https://api.iconify.design/logos:github-icon.svg' },
 ]
 
-export const SHOWCASE_PROJECTS = [
-  { id: 'launch', name: 'Overlay launch', description: 'Positioning, research, launch assets, and the public product story.', resources: ['Start here.md', 'Activation metrics.csv', 'Research with sources'] },
-  { id: 'private-ai', name: 'Private AI deployment', description: 'A reusable workspace for evaluating customer VPC and on-premises deployments.', resources: ['Private AI report.pdf', 'Customer research.docx', 'Launch plan.xlsx'] },
-] as const
-
 export const SHOWCASE_AUTOMATIONS = [
   { id: 'briefing', name: 'Daily customer briefing', schedule: 'Weekdays at 8:00 AM', description: 'Summarize priority email, meetings, and open customer issues.', enabled: true },
-  { id: 'research', name: 'Weekly market watch', schedule: 'Mondays at 9:00 AM', description: 'Research product updates and save a cited report to the launch project.', enabled: true },
+  { id: 'research', name: 'Weekly market watch', schedule: 'Mondays at 9:00 AM', description: 'Research product updates and save a cited report to the workspace.', enabled: true },
   { id: 'followup', name: 'Meeting follow-up', schedule: 'After every recorded meeting', description: 'Extract decisions, draft follow-ups, and create reviewable tasks.', enabled: false },
 ] as const
 

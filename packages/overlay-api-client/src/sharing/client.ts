@@ -15,7 +15,7 @@ const WORKSPACE_HEADER = 'x-overlay-workspace-id'
  * stays free of app-internal imports.
  */
 export type WorkspaceSharedResource = {
-  kind: 'conversation' | 'file' | 'project' | 'knowledge_base' | 'automation' | 'agent'
+  kind: 'conversation' | 'file' | 'automation' | 'agent'
   id: string
   title: string
   snippet?: string

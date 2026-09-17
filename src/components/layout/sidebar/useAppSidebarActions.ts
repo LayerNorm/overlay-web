@@ -4,7 +4,6 @@ import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  PROJECTS_CHANGED_EVENT,
   createKnowledgeMutationPublisher,
   type OverlaySidebarAction,
   type OverlaySidebarActionKey,
@@ -30,18 +29,15 @@ export interface UseAppSidebarActionsOptions {
   requireAuth: (reason: GateReason) => void
   onCloseMobileMenu: () => void
   onChatCreated: () => void
-  onProjectCreated: () => void
 }
 
 function isKnownActionKey(actionKey: OverlaySidebarActionKey): actionKey is
   | 'chat.create'
   | 'notes.create'
-  | 'projects.create'
   | 'automations.create' {
   return (
     actionKey === 'chat.create' ||
     actionKey === 'notes.create' ||
-    actionKey === 'projects.create' ||
     actionKey === 'automations.create'
   )
 }
@@ -52,7 +48,6 @@ export function useAppSidebarActions({
   requireAuth,
   onCloseMobileMenu,
   onChatCreated,
-  onProjectCreated,
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
   const createChat = useCallback(async () => {
@@ -114,7 +109,6 @@ export function useAppSidebarActions({
         tags?: string[]
         createdAt?: number
         updatedAt?: number
-        projectId?: string
       }
     }
     const noteId = data.id ?? data.note?._id
@@ -124,30 +118,6 @@ export function useAppSidebarActions({
     router.push(`/app/notes?id=${encodeURIComponent(noteId)}`)
     return true
   }, [onCloseMobileMenu, requireAuth, router, user])
-
-  const createProject = useCallback(async () => {
-    if (!user) {
-      requireAuth('nav')
-      return false
-    }
-    const res = await overlayAppClient.projects.createResponse({ name: 'Untitled Project' })
-    if (!res.ok) return false
-    const data = (await res.json().catch(() => ({}))) as {
-      id?: string
-      project?: { _id?: string }
-    }
-    const createdId = data.project?._id ?? data.id
-    // The projects page listens for this to reload, and the `rename` query
-    // param puts the new tile straight into inline rename with its text
-    // selected, so the keyboard can immediately retitle it.
-    window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
-    onProjectCreated()
-    onCloseMobileMenu()
-    router.push(createdId
-      ? `/app/projects?rename=${encodeURIComponent(createdId)}`
-      : '/app/projects')
-    return true
-  }, [onCloseMobileMenu, onProjectCreated, requireAuth, router, user])
 
   const runSidebarAction = useCallback(async (action: OverlaySidebarAction | null | undefined) => {
     if (!action) return false
@@ -161,12 +131,10 @@ export function useAppSidebarActions({
     }
     if (action.actionKey === 'chat.create') return createChat()
     if (action.actionKey === 'notes.create') return createNote()
-    if (action.actionKey === 'projects.create') return createProject()
     return startAutomationDraft()
   }, [
     createChat,
     createNote,
-    createProject,
     requireAuth,
     startAutomationDraft,
     user,

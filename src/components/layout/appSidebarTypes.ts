@@ -37,8 +37,6 @@ export interface AppSidebarProps {
   /** Injected from app shell — keeps automations feature UI out of shared layout code. */
   renderAutomationsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
-  renderProjectsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
-  renderKnowledgePanel?: (context: AppSidebarNavigateContext) => ReactNode
   workspace?: AppSidebarWorkspaceAdapter
 }

@@ -13,7 +13,6 @@ export interface AppDataCapabilities {
   supportsFileMetadata: boolean
   supportsFileUploads: boolean
   supportsNotes: boolean
-  supportsProjects: boolean
   supportsIntegrations: boolean
   supportsSkills: boolean
   supportsMcpServers: boolean
@@ -42,7 +41,6 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsFileMetadata: true,
   supportsFileUploads: true,
   supportsNotes: true,
-  supportsProjects: true,
   supportsIntegrations: true,
   supportsSkills: true,
   supportsMcpServers: true,
@@ -71,7 +69,6 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsFileMetadata: true,
   supportsFileUploads: true,
   supportsNotes: true,
-  supportsProjects: true,
   // Connector account state is Convex-backed until the Postgres parity phase.
   // Keep the capability false so the app shell and server gates agree.
   supportsIntegrations: false,
@@ -132,7 +129,6 @@ export function applyAppDataCapabilitiesToOverlayCapabilities(
     ),
     memory: capabilities.memory && appData.supportsVectorSearch,
     mcpServers: capabilities.mcpServers && appData.supportsMcpServers,
-    projects: capabilities.projects && appData.supportsProjects,
     skills: capabilities.skills && appData.supportsSkills,
     vectorSearch: capabilities.vectorSearch && appData.supportsVectorSearch,
     webhooks: capabilities.webhooks && appData.supportsWebhooks,

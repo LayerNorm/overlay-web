@@ -6,10 +6,9 @@ import test from 'node:test'
 import { sql } from 'drizzle-orm'
 import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
-import { projects, users } from '@/server/database/postgres/schema'
+import { users } from '@/server/database/postgres/schema'
 import { createPostgresAuthorizationRepositories } from './PostgresAuthorizationRepositories'
 import { runAuthorizationRepositoryContract } from './authorization-repository-contract'
-import { createPostgresKnowledgeBaseRepositories } from '@/server/knowledge-bases'
 import { PostgresNoteRepository } from '@/server/notes/PostgresNoteRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
@@ -44,17 +43,7 @@ test('real Postgres authorization repository contract and account cleanup', {
     })
     await t.test('resolves resource ownership without trusting a caller user id', async () => {
       const ownerUserId = `${scope}_owner`
-      const projectId = `${scope}_project`
       await db.insert(users).values({ id: ownerUserId, email: `${ownerUserId}@example.com`, emailVerified: true })
-      await db.insert(projects).values({ id: projectId, userId: ownerUserId, name: 'Owned project' })
-      assert.equal(await repositories.resourceOwners.getOwner({
-        resourceType: 'project',
-        resourceId: projectId,
-      }), ownerUserId)
-      assert.equal(await repositories.resourceOwners.getOwner({
-        resourceType: 'project',
-        resourceId: `${projectId}_missing`,
-      }), null)
       const note = await new PostgresNoteRepository(db).createNote({
         userId: ownerUserId,
         title: 'Owned note',
@@ -63,16 +52,6 @@ test('real Postgres authorization repository contract and account cleanup', {
       assert.equal(await repositories.resourceOwners.getOwner({
         resourceType: 'note',
         resourceId: note.id,
-      }), ownerUserId)
-      const knowledgeBase = await createPostgresKnowledgeBaseRepositories(db).bases.create({
-        id: `${scope}_knowledge_base`,
-        ownerUserId,
-        title: 'Ownership contract',
-        createdBy: ownerUserId,
-      })
-      assert.equal(await repositories.resourceOwners.getOwner({
-        resourceType: 'knowledge_base',
-        resourceId: knowledgeBase.id,
       }), ownerUserId)
       await deletion.deleteUserAccount({ userId: ownerUserId })
     })

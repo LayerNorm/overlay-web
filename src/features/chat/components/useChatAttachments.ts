@@ -79,10 +79,8 @@ async function prepareImageAttachment(file: File, mimeType: string): Promise<Att
 }
 
 export function useChatAttachments({
-  embedProjectId,
   setComposerNotice,
 }: {
-  embedProjectId?: string | null
   setComposerNotice: (notice: string | null) => void
 }) {
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
@@ -105,7 +103,6 @@ export function useChatAttachments({
     ])
     const form = new FormData()
     form.append('file', file)
-    if (embedProjectId) form.append('projectId', embedProjectId)
     void overlayAppClient.files.ingestDocumentResponse(form, {
       credentials: 'same-origin',
     })

@@ -1,5 +1,4 @@
 import type { Entitlements } from '@/shared/app/app-contracts'
-import type { ProjectSettings } from '@/shared/projects/project-settings'
 
 export type PersonalChatWorkToolDefinition = {
   name: string
@@ -17,11 +16,9 @@ export type PersonalChatWorkToolDefinition = {
 export type PersonalChatWorkToolingContext = {
   accountAllowedConnectorIds?: string[]
   accountAllowedToolIds?: string[]
-  activeKnowledgeBaseIds: string[]
   baseUrl: string
   billingProgrammaticSubjectId?: string
   conversationId: string
-  conversationProjectId?: string
   effectiveModelId: string
   entitlements: Entitlements
   latestUserText?: string
@@ -30,7 +27,6 @@ export type PersonalChatWorkToolingContext = {
   /** Conversation-mode hint for tool gating; automation turns leave it unset. */
   mode?: 'chat' | 'automate'
   paid: boolean
-  projectSettings?: ProjectSettings
   requestFingerprint: string
   requestedToolIds: string[]
   turnId: string

@@ -133,7 +133,7 @@ test('legacy resources are claimed only by Personal and existing bindings never 
     async getResourceWorkspace({ resourceId }) {
       const workspaceId = bindings.get(resourceId)
       return workspaceId
-        ? { workspaceId, resourceType: 'knowledge_base', resourceId, createdAt: 1, updatedAt: 1 }
+        ? { workspaceId, resourceType: 'file', resourceId, createdAt: 1, updatedAt: 1 }
         : null
     },
     async bindResource(input) {
@@ -146,7 +146,7 @@ test('legacy resources are claimed only by Personal and existing bindings never 
   assert.deepEqual(await service.bindUnscopedResourcesToPersonalWorkspace({
     actorUserId: 'user_1',
     workspaceId: personal.workspace.id,
-    resourceType: 'knowledge_base',
+    resourceType: 'file',
     resourceIds: ['legacy_one', 'already_bound', 'legacy_one'],
   }), ['legacy_one'])
   assert.deepEqual(bound, ['legacy_one'])
@@ -159,7 +159,7 @@ test('legacy resources are claimed only by Personal and existing bindings never 
   assert.deepEqual(await organizationService.bindUnscopedResourcesToPersonalWorkspace({
     actorUserId: 'user_1',
     workspaceId: organization.workspace.id,
-    resourceType: 'knowledge_base',
+    resourceType: 'file',
     resourceIds: ['unbound'],
   }), [])
 })

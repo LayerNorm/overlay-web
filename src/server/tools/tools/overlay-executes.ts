@@ -43,7 +43,6 @@ export async function executeSearchKnowledge(
       '/api/v1/knowledge/search',
       {
         query,
-        projectId: options.projectId,
         sourceKind: options.memoryEnabled === false ? 'file' : sourceKind,
         ...toolAuthBody(options),
       },
@@ -159,7 +158,6 @@ export async function executeSaveMemory(
         source: source ?? 'chat',
         type,
         importance,
-        projectId: options.projectId,
         conversationId: options.conversationId,
         turnId: options.turnId,
         tags,
@@ -198,7 +196,6 @@ export async function executeSearchMemory(
       '/api/v1/knowledge/search',
       {
         query,
-        projectId: options.projectId,
         sourceKind: 'memory',
         ...toolAuthBody(options),
       },
@@ -477,7 +474,6 @@ export async function executeCreateAutomation(
     schedule: AutomationScheduleDraft
     timezone?: string
     enabled?: boolean
-    projectId?: string
     modelId?: string
     graphSource?: string
     sourceConversationId?: string
@@ -494,7 +490,6 @@ export async function executeCreateAutomation(
         ...input,
         schedule,
         ...(automationId ? { automationId } : {}),
-        projectId: input.projectId ?? options.projectId,
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
         ...toolAuthBody(options),

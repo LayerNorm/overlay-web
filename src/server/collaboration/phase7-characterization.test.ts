@@ -16,8 +16,6 @@ test('Phase 7 searches every collaboration resource kind', () => {
   assert.deepEqual([...WORKSPACE_SEARCH_KINDS], [
     'conversation',
     'file',
-    'project',
-    'knowledge_base',
     'automation',
     'agent',
   ])
@@ -42,9 +40,9 @@ test('Phase 7 search is gated on the Postgres provider until provider-neutral re
 })
 
 test('shared resources surface in place rather than in a second destination', () => {
-  // Files and projects already merge granted resources into their lists, so a
-  // dedicated "Shared with me" nav item was a redundant second home for items
-  // the person can already see where they expect them.
+  // Files already merge granted resources into their lists, so a dedicated
+  // "Shared with me" nav item was a redundant second home for items the person
+  // can already see where they expect them.
   assert.equal(overlayAppConfig.navigation?.some((item) => item.id === 'shared'), false)
   const flags = new Map(overlayAppConfig.featureFlags?.map((flag) => [flag.id, flag.enabled]))
   assert.equal(flags.get('resourceSharing'), true)

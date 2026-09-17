@@ -473,7 +473,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                 <ul className="mt-4 flex flex-col gap-2.5">
                   {[
                     'Unlimited Auto model messages',
-                    'Notes, chats, knowledge, projects',
+                    'Notes, chats, files, knowledge',
                     'Basic AI tools and core flows',
                     '10 MB file storage',
                   ].map((feature) => (

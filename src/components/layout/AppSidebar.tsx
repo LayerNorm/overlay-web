@@ -28,10 +28,7 @@ import {
 import {
   AgentsInlinePanel,
   FilesInlinePanel,
-  KnowledgeInlinePanel,
-  ProjectsInlinePanel,
   chatsInlineItems,
-  projectsInlineItems,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
 import { filesInlineItems, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
@@ -81,7 +78,7 @@ import {
 import type { AppSidebarProps } from './appSidebarTypes'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
-import { NEW_AGENT_EVENT, NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
+import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 
@@ -92,15 +89,13 @@ export type {
   AppSidebarWorkspaceAdapter,
 } from './appSidebarTypes'
 
-type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'agents' | 'knowledge' | 'automations' | 'tools' | 'settings'
+type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
 
 const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   chat: 'chats',
   files: 'files',
   notes: 'notes',
-  projects: 'projects',
   agents: 'agents',
-  knowledge: 'knowledge',
   automations: 'automations',
   tools: 'extensions',
   settings: 'settings',
@@ -129,9 +124,7 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'chat',
   'files',
   'notes',
-  'projects',
   'agents',
-  'knowledge',
   'automations',
 ])
 
@@ -164,9 +157,7 @@ export default function AppSidebar({
   renderChatPanel,
   renderAutomationsPanel,
   renderFilesPanel,
-  renderProjectsPanel,
   renderAgentsPanel,
-  renderKnowledgePanel,
   workspace,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? ''
@@ -250,7 +241,6 @@ export default function AppSidebar({
   }, [publicShowcase])
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
-  const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
@@ -294,16 +284,7 @@ export default function AppSidebar({
       setMobileView('nav')
     },
     onChatCreated: () => setChatPanelRefreshKey((value) => value + 1),
-    onProjectCreated: () => setProjectsPanelRefreshKey((value) => value + 1),
   })
-
-  useEffect(() => {
-    function onProjectsChanged() {
-      setProjectsPanelRefreshKey((v) => v + 1)
-    }
-    window.addEventListener('overlay:projects-changed', onProjectsChanged)
-    return () => window.removeEventListener('overlay:projects-changed', onProjectsChanged)
-  }, [])
 
   useEffect(() => {
     function onTemporaryChatUi(event: Event) {
@@ -332,12 +313,10 @@ export default function AppSidebar({
   )
   const workspaceSurface = resolveWorkspaceSurface(pathname)
   const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
-  const projectsOpen = pathname.startsWith('/app/projects') || (canonicalWorkspaceRoute && workspaceSurface === 'projects')
   const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
   const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
   const agentsOpen = pathname.startsWith('/app/agents') || (canonicalWorkspaceRoute && workspaceSurface === 'agents')
-  const knowledgeOpen = pathname.startsWith('/app/knowledge') || (canonicalWorkspaceRoute && workspaceSurface === 'knowledge')
   // Activity is its own page but stays under the Chats secondary panel, so the
   // subnavigation it was selected from remains visible beside it.
   const activityOpen = pathname.startsWith('/app/activity') || (canonicalWorkspaceRoute && workspaceSurface === 'activity')
@@ -361,7 +340,6 @@ export default function AppSidebar({
     return 'connectors'
   })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
-  const projectsView = currentSearchParams.get('archived') === '1' ? 'archived' : 'all'
   const chatViewParam = currentSearchParams.get('view')
   const chatsView = (() => {
     if (activityOpen) return 'activity'
@@ -575,19 +553,15 @@ export default function AppSidebar({
       ? 'files'
       : notesOpen
         ? 'notes'
-        : projectsOpen
-          ? 'projects'
-            : agentsOpen
-              ? 'agents'
-              : knowledgeOpen
-                ? 'knowledge'
-                : automationsSectionOpen
-                  ? 'automations'
-                  : toolsOpen
-                    ? 'tools'
-                    : settingsPathActive
-                      ? 'settings'
-                      : null
+        : agentsOpen
+          ? 'agents'
+          : automationsSectionOpen
+            ? 'automations'
+            : toolsOpen
+              ? 'tools'
+              : settingsPathActive
+                ? 'settings'
+                : null
   const hasResourcePanel = panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind)
   const showSecondaryPanel = panelKind != null
   const panelTitle = panelKind
@@ -624,12 +598,8 @@ export default function AppSidebar({
         return 'chat'
       case '/app/files':
         return 'files'
-      case '/app/projects':
-        return 'projects'
       case '/app/agents':
         return 'agents'
-      case '/app/knowledge':
-        return 'knowledge'
       case '/app/automations':
         return capabilities.automations ? 'automations' : null
       case '/app/tools':
@@ -708,12 +678,7 @@ export default function AppSidebar({
             label: 'New agent',
             onClick: () => window.dispatchEvent(new CustomEvent(NEW_AGENT_EVENT)),
           }
-          : panelKind === 'knowledge'
-            ? {
-              label: 'New knowledge base',
-              onClick: () => window.dispatchEvent(new CustomEvent(NEW_KNOWLEDGE_BASE_EVENT)),
-            }
-            : null
+          : null
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
 
   // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
@@ -875,35 +840,6 @@ export default function AppSidebar({
         },
       }
     }
-    if (panelKind === 'projects') {
-      return {
-        items: projectsInlineItems,
-        activeId: projectsView,
-        pendingId: effectivePendingSecondaryNavId,
-        onSelect: (next) => {
-          closeMobileDrawer()
-          // Like the files categories: selecting the tab you are already in is
-          // how you get back out of an open project hub to the list.
-          const hasOpenProject = currentSearchParams.has('projectId') || currentSearchParams.has('view') || currentSearchParams.has('rename')
-          if (next === projectsView && !hasOpenProject) return
-          beginSecondaryNavigation(next)
-          const params = new URLSearchParams(currentSearchParams.toString())
-          if (publicShowcase) params.set('showcase', '1')
-          if (next === 'archived') params.set('archived', '1')
-          else params.delete('archived')
-          params.delete('projectId')
-          params.delete('projectName')
-          params.delete('view')
-          params.delete('id')
-          params.delete('rename')
-          const query = params.toString()
-          const projectsHref = canonicalWorkspaceRoute && activeWorkspaceId
-            ? buildWorkspaceHref(activeWorkspaceId, '/app/projects')
-            : '/app/projects'
-          router.push(query ? `${projectsHref}?${query}` : projectsHref)
-        },
-      }
-    }
     return undefined
   })()
 
@@ -939,29 +875,12 @@ export default function AppSidebar({
           ? renderFilesPanel({ onNavigate: closeMobileDrawer })
           : <FilesInlinePanel searchQuery="" onNavigate={closeMobileDrawer} />
       ) : null}
-      {panelKind === 'projects' ? (
-        renderProjectsPanel
-          ? renderProjectsPanel({ onNavigate: closeMobileDrawer })
-          : <ProjectsInlinePanel
-            refreshKey={projectsPanelRefreshKey}
-            archived={projectsView === 'archived'}
-            onNavigate={closeMobileDrawer}
-          />
-      ) : null}
       {panelKind === 'agents' ? (
         renderAgentsPanel
           ? renderAgentsPanel({ onNavigate: closeMobileDrawer })
           : <AgentsInlinePanel
             workspaceId={activeWorkspaceId}
             baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
-            onNavigate={closeMobileDrawer}
-          />
-      ) : null}
-      {panelKind === 'knowledge' ? (
-        renderKnowledgePanel
-          ? renderKnowledgePanel({ onNavigate: closeMobileDrawer })
-          : <KnowledgeInlinePanel
-            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
             onNavigate={closeMobileDrawer}
           />
       ) : null}

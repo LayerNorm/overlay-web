@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import type { Id } from '../_generated/dataModel'
 
 /** Basic URL format validation at creation time. Full SSRF validation
  *  (DNS resolution, private IP blocking) runs at connection time in mcp-tools.ts. */
@@ -42,9 +41,8 @@ export const list = query({
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
-    projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -56,10 +54,9 @@ export const list = query({
       .order('desc')
       .collect()
     // Scrub authConfig from the response
-    return all.filter((s) => projectId !== undefined ? s.projectId === projectId : !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)).map((s) => ({
+    return all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)).map((s) => ({
       _id: s._id,
       userId: s.userId,
-      projectId: s.projectId,
       name: s.name,
       description: s.description,
       transport: s.transport,
@@ -93,9 +90,8 @@ export const listEnabled = query({
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
-    projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -107,7 +103,7 @@ export const listEnabled = query({
         q.eq('userId', userId).eq('enabled', true)
       )
       .collect()
-    return all.filter((server) => projectId !== undefined ? server.projectId === projectId : !server.projectId).filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
+    return all.filter((server) => !server.projectId).filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
   },
 })
 
@@ -138,7 +134,6 @@ export const create = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
-    projectId: v.optional(v.string()),
     description: v.optional(v.string()),
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
     url: v.string(),
@@ -159,17 +154,10 @@ export const create = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     validateMcpUrl(args.url)
-    if (args.projectId) {
-      const project = await ctx.db.get(args.projectId as Id<'projects'>)
-      if (!project || project.userId !== args.userId || project.deletedAt) {
-        throw new Error('Unauthorized')
-      }
-    }
     const now = Date.now()
     return await ctx.db.insert('mcpServers', {
       userId: args.userId,
       workspaceId: args.workspaceId,
-      projectId: args.projectId,
       name: args.name,
       description: args.description,
       transport: args.transport,
@@ -276,7 +264,6 @@ export const recordExecution = mutation({
     userId: v.string(),
     serverSecret: v.optional(v.string()),
     mcpServerId: v.id('mcpServers'),
-    projectId: v.optional(v.string()),
     toolName: v.string(),
     argumentsHash: v.string(),
     policyDecision: toolPolicy,
@@ -294,7 +281,6 @@ export const recordExecution = mutation({
     if (!server || server.userId !== args.userId) throw new Error('Unauthorized')
     return await ctx.db.insert('mcpToolExecutions', {
       userId: args.userId,
-      projectId: args.projectId,
       mcpServerId: args.mcpServerId,
       toolName: args.toolName,
       argumentsHash: args.argumentsHash,

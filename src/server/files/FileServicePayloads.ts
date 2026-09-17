@@ -86,13 +86,11 @@ export function buildFileListArgs(args: {
   limit?: number
   outputType?: string | null
   parentId?: string | null
-  projectId?: string | null
   summary?: boolean
   userId: string
   workspaceId?: string
 }): Record<string, unknown> & { userId: string } {
   const listArgs: Record<string, unknown> & { userId: string } = { userId: args.userId }
-  assignIfPresent(listArgs, 'projectId', args.projectId)
   if (args.parentId !== null && args.parentId !== undefined) {
     listArgs.parentId = args.parentId === 'null' ? null : args.parentId
   }
@@ -129,7 +127,6 @@ export function parseCreateFileRequest(
   }
   if (isFileKind(body.kind)) fileArgs.kind = body.kind
   if (body.parentId) fileArgs.parentId = body.parentId
-  if (body.projectId) fileArgs.projectId = body.projectId
 
   const textValue = getTextValue(body)
   return {
@@ -171,7 +168,7 @@ export function buildUpdateFileArgs(
   body: Record<string, unknown>,
   userId: string,
 ): Record<string, unknown> & { fileId: string; userId: string } {
-  const { fileId, name, content, textContent, parentId, projectId } = body
+  const { fileId, name, content, textContent, parentId } = body
   if (!fileId) serviceError({ error: 'fileId required' }, 400)
   const updateArgs: Record<string, unknown> & { fileId: string; userId: string } = {
     fileId: String(fileId),
@@ -179,7 +176,6 @@ export function buildUpdateFileArgs(
   }
   if (name !== undefined) updateArgs.name = name
   if (parentId !== undefined) updateArgs.parentId = parentId || null
-  if (projectId !== undefined) updateArgs.projectId = projectId || null
   const nextContent = textContent ?? content
   if (typeof nextContent === 'string') {
     updateArgs.content = nextContent

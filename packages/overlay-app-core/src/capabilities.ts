@@ -4,7 +4,6 @@ export interface CapabilityCheck {
   memory: boolean
   knowledge: boolean
   integrations: boolean
-  projects: boolean
   skills: boolean
   mcpServers: boolean
   browserUse: boolean
@@ -33,7 +32,6 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   memory: true,
   knowledge: true,
   integrations: true,
-  projects: true,
   skills: true,
   mcpServers: true,
   browserUse: true,

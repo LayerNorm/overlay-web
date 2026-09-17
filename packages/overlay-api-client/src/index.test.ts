@@ -68,7 +68,7 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   )
 })
 
-test('file mutations accept null parent and project IDs', async () => {
+test('file mutations accept null parent IDs', async () => {
   const { calls, client } = createRecordedClient()
 
   await client.files.createResponse({
@@ -76,12 +76,10 @@ test('file mutations accept null parent and project IDs', async () => {
     type: 'folder',
     kind: 'folder',
     parentId: null,
-    projectId: null,
   })
   await client.files.updateResponse({
     fileId: 'folder_1',
     parentId: null,
-    projectId: null,
   })
 
   assert.equal(calls.length, 2)
@@ -90,12 +88,10 @@ test('file mutations accept null parent and project IDs', async () => {
     type: 'folder',
     kind: 'folder',
     parentId: null,
-    projectId: null,
   })
   assert.deepEqual(await jsonBody(calls[1]!), {
     fileId: 'folder_1',
     parentId: null,
-    projectId: null,
   })
 })
 
@@ -221,7 +217,6 @@ test('module feature methods use canonical app endpoints', async () => {
     noteTitle: 'Untitled',
     message: 'summarize this',
   })
-  await client.projects.getResponse({ projectId: 'proj_1', includeDeleted: true, updatedSince: 123 })
   await client.integrations.connectResponse({ toolkit: 'github' })
   await client.skills.deleteResponse({ skillId: 'skill_1' })
   await client.mcpServers.testResponse({ url: 'https://mcp.example.test', transport: 'streamable-http' })
@@ -267,31 +262,26 @@ test('module feature methods use canonical app endpoints', async () => {
   assert.equal(String(calls[10]!.input), 'https://example.test/api/v1/notebook-agent')
   assert.equal(calls[10]!.init?.method, 'POST')
 
-  assert.equal(
-    String(calls[11]!.input),
-    'https://example.test/api/v1/projects?projectId=proj_1&includeDeleted=true&updatedSince=123',
-  )
+  assert.equal(String(calls[11]!.input), 'https://example.test/api/v1/integrations')
+  assert.equal(calls[11]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[11]!), { toolkit: 'github', action: 'connect' })
 
-  assert.equal(String(calls[12]!.input), 'https://example.test/api/v1/integrations')
-  assert.equal(calls[12]!.init?.method, 'POST')
-  assert.deepEqual(await jsonBody(calls[12]!), { toolkit: 'github', action: 'connect' })
+  assert.equal(String(calls[12]!.input), 'https://example.test/api/v1/skills?skillId=skill_1')
+  assert.equal(calls[12]!.init?.method, 'DELETE')
 
-  assert.equal(String(calls[13]!.input), 'https://example.test/api/v1/skills?skillId=skill_1')
-  assert.equal(calls[13]!.init?.method, 'DELETE')
+  assert.equal(String(calls[13]!.input), 'https://example.test/api/v1/mcps/test')
+  assert.equal(calls[13]!.init?.method, 'POST')
 
-  assert.equal(String(calls[14]!.input), 'https://example.test/api/v1/mcps/test')
-  assert.equal(calls[14]!.init?.method, 'POST')
+  assert.equal(String(calls[14]!.input), 'https://example.test/api/v1/automations')
+  assert.equal(calls[14]!.init?.method, 'PATCH')
+  assert.deepEqual(await jsonBody(calls[14]!), { automationId: 'auto_1', name: 'Renamed' })
 
-  assert.equal(String(calls[15]!.input), 'https://example.test/api/v1/automations')
-  assert.equal(calls[15]!.init?.method, 'PATCH')
-  assert.deepEqual(await jsonBody(calls[15]!), { automationId: 'auto_1', name: 'Renamed' })
-
-  assert.equal(String(calls[16]!.input), 'https://example.test/api/v1/automations/test')
-  assert.equal(calls[16]!.init?.method, 'POST')
-  assert.deepEqual(await jsonBody(calls[16]!), { automationId: 'auto_1' })
+  assert.equal(String(calls[15]!.input), 'https://example.test/api/v1/automations/test')
+  assert.equal(calls[15]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[15]!), { automationId: 'auto_1' })
 
   assert.equal(
-    String(calls[17]!.input),
+    String(calls[16]!.input),
     'https://example.test/api/v1/automations?automationId=auto_1&includeRuns=true',
   )
 })
@@ -396,11 +386,11 @@ test('list helpers unwrap paginated envelopes while getPage preserves metadata',
     },
   })
 
-  const list = await client.projects.get<Array<{ _id: string; name: string }>>({ limit: 1, sort: 'name', order: 'asc' })
+  const list = await client.files.get<Array<{ _id: string; name: string }>>({ limit: 1, sort: 'name', order: 'asc' })
   assert.deepEqual(list, [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }])
-  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/projects?limit=1&sort=name&order=asc')
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/files?limit=1&sort=name&order=asc')
 
-  const page = await client.projects.getPage<{ _id: string; name: string }>({ cursor: 'next' })
+  const page = await client.files.getPage<{ _id: string; name: string }>({ cursor: 'next' })
   assert.equal(page.hasMore, true)
   assert.equal(page.nextCursor, 'next')
   assert.deepEqual(page.data, [{ _id: 'proj_1', name: 'Alpha', createdAt: 1, updatedAt: 2 }])

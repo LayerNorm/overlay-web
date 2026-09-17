@@ -36,7 +36,6 @@ const memoryDocValidator = v.object({
   importance: v.optional(v.number()),
   messageId: v.optional(v.string()),
   noteId: v.optional(v.string()),
-  projectId: v.optional(v.string()),
   source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
   tags: v.optional(v.array(v.string())),
   turnId: v.optional(v.string()),
@@ -60,11 +59,10 @@ export const list = query({
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
-    projectId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, projectId, conversationId, noteId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, conversationId, noteId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -79,7 +77,6 @@ export const list = query({
       .map(normalizeMemoryDoc)
       .filter((memory) => (updatedSince !== undefined ? memory.updatedAt > updatedSince : true))
       .filter((memory) => (includeDeleted ? true : !memory.deletedAt))
-      .filter((memory) => (projectId !== undefined ? memory.projectId === projectId : true))
       .filter((memory) => (conversationId !== undefined ? memory.conversationId === conversationId : true))
       .filter((memory) => (noteId !== undefined ? memory.noteId === noteId : true))
       .filter((memory) => (workspaceId !== undefined ? memory.workspaceId === workspaceId : true))
@@ -93,7 +90,6 @@ export const listWorkspace = query({
     serverSecret: v.string(),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
-    projectId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
   },
@@ -104,7 +100,6 @@ export const listWorkspace = query({
     serverSecret,
     updatedSince,
     includeDeleted,
-    projectId,
     conversationId,
     noteId,
   }) => {
@@ -124,7 +119,6 @@ export const listWorkspace = query({
       .map(normalizeMemoryDoc)
       .filter((memory) => (updatedSince !== undefined ? memory.updatedAt > updatedSince : true))
       .filter((memory) => (includeDeleted ? true : !memory.deletedAt))
-      .filter((memory) => (projectId !== undefined ? memory.projectId === projectId : true))
       .filter((memory) => (conversationId !== undefined ? memory.conversationId === conversationId : true))
       .filter((memory) => (noteId !== undefined ? memory.noteId === noteId : true))
   },
@@ -149,7 +143,6 @@ export const add = mutation({
       ),
     ),
     importance: v.optional(v.number()),
-    projectId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
     messageId: v.optional(v.string()),
@@ -215,7 +208,6 @@ export const add = mutation({
       source: args.source,
       type: args.type,
       importance: args.importance,
-      projectId: args.projectId,
       conversationId: args.conversationId,
       noteId: args.noteId,
       messageId: args.messageId,
@@ -249,7 +241,6 @@ export const update = mutation({
       ),
     ),
     importance: v.optional(v.number()),
-    projectId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
     messageId: v.optional(v.string()),
@@ -272,7 +263,6 @@ export const update = mutation({
     if (updates.source !== undefined) patch.source = updates.source
     if (updates.type !== undefined) patch.type = updates.type
     if (updates.importance !== undefined) patch.importance = updates.importance
-    if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.conversationId !== undefined) patch.conversationId = updates.conversationId || undefined
     if (updates.noteId !== undefined) patch.noteId = updates.noteId || undefined
     if (updates.messageId !== undefined) patch.messageId = updates.messageId || undefined

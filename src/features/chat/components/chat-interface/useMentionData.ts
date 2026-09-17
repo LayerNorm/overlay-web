@@ -9,7 +9,6 @@ import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 interface CachedData {
   cacheKey: string
   files: MentionItem[]
-  knowledge: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
   skills: MentionItem[]
@@ -21,7 +20,6 @@ type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
-  { type: 'knowledge', label: 'Knowledge Bases', icon: 'BookOpen' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
@@ -46,8 +44,6 @@ function supportedMentionTypes(capabilities: ReturnType<typeof useOverlayCapabil
       switch (cat.type) {
         case 'file':
           return capabilities.files
-        case 'knowledge':
-          return capabilities.knowledge
         case 'connector':
           return capabilities.integrations
         case 'automation':
@@ -108,14 +104,11 @@ export function useMentionData() {
     const init = workspaceInit(workspaceId)
     const request = (async () => {
       try {
-        const [filesRes, knowledgeRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
+        const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
           await Promise.allSettled([
             capabilities.files
               ? overlayAppClient.files.getResponse({ limit: 100, summary: true }, init).then((r) => r.ok ? r.json() : [])
               : Promise.resolve([]),
-            capabilities.knowledge
-              ? overlayAppClient.knowledgeBases.list(init)
-              : Promise.resolve({ knowledgeBases: [] }),
             capabilities.integrations
               ? overlayAppClient.integrations.getResponse(undefined, init).then((r) => r.ok ? r.json() : { items: [] })
               : Promise.resolve({ items: [] }),
@@ -144,17 +137,6 @@ export function useMentionData() {
           description: f.kind || f.mimeType || 'file',
           icon: 'FileText',
         }))
-
-        const knowledgeRaw = knowledgeRes.status === 'fulfilled' ? knowledgeRes.value : { knowledgeBases: [] }
-        const knowledge: MentionItem[] = (knowledgeRaw.knowledgeBases || []).map(
-          (base: { id: string; title: string; description?: string; kind?: string }) => ({
-            type: 'knowledge' as const,
-            id: base.id,
-            name: base.title,
-            description: base.description || base.kind || 'Knowledge base',
-            icon: 'BookOpen',
-          }),
-        )
 
         const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
         const connectors: MentionItem[] = (connectorsRaw.items || []).map(
@@ -219,7 +201,7 @@ export function useMentionData() {
           icon: 'MessageSquare',
         }))
 
-        const data: CachedData = { cacheKey: requestKey, files, knowledge, connectors, automations, skills, mcps, chats }
+        const data: CachedData = { cacheKey: requestKey, files, connectors, automations, skills, mcps, chats }
         mentionCache.set(requestKey, { data, cachedAt: Date.now() })
         return data
       } finally {
@@ -237,7 +219,6 @@ export function useMentionData() {
     capabilities.automations,
     capabilities.chat,
     capabilities.files,
-    capabilities.knowledge,
     capabilities.integrations,
     capabilities.mcpServers,
     capabilities.skills,
@@ -275,6 +256,5 @@ export function useMentionData() {
 
 function mentionListKey(type: MentionType): MentionListKey {
   if (type === 'connector') return 'connectors'
-  if (type === 'knowledge') return 'knowledge'
   return `${type}s` as MentionListKey
 }

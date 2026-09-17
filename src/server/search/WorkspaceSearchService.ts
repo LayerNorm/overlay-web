@@ -20,8 +20,6 @@ type OwnedLister<T> = (args: { userId: string }) => Promise<T[]>
 
 export type WorkspaceSearchSources = {
   files: OwnedLister<{ _id?: string; id?: string; name?: string; title?: string; updatedAt?: number; workspaceId?: string }>
-  projects: OwnedLister<{ id?: string; _id?: string; name?: string; updatedAt?: number }>
-  knowledgeBases: OwnedLister<{ id: string; title: string; updatedAt?: number }>
   automations: OwnedLister<{ id?: string; _id?: string; name?: string; updatedAt?: number }>
 }
 
@@ -186,18 +184,6 @@ export class WorkspaceSearchService {
         title: file.name ?? file.title ?? 'Untitled',
         updatedAt: file.updatedAt,
       })).filter((row) => row.id)
-    }
-    if (kind === 'project') {
-      const projects = await this.deps.sources.projects.call(this.deps.sources, { userId })
-      return projects.map((project) => ({
-        id: String(project.id ?? project._id ?? ''),
-        title: project.name ?? 'Untitled project',
-        updatedAt: project.updatedAt,
-      })).filter((row) => row.id)
-    }
-    if (kind === 'knowledge_base') {
-      const bases = await this.deps.sources.knowledgeBases.call(this.deps.sources, { userId })
-      return bases.map((base) => ({ id: base.id, title: base.title, updatedAt: base.updatedAt }))
     }
     if (kind === 'automation') {
       const automations = await this.deps.sources.automations.call(this.deps.sources, { userId })

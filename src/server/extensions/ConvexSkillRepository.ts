@@ -15,7 +15,7 @@ export class ConvexSkillRepository implements SkillRepository {
     return getInternalApiSecret()
   }
 
-  async list(args: { userId: string; projectId?: string }): Promise<SkillRecord[]> {
+  async list(args: { userId: string }): Promise<SkillRecord[]> {
     const rows = await convex.query<ConvexSkill[]>('integrations/skills:list', {
       ...args,
       serverSecret: this.serverSecret,

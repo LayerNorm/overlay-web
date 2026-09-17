@@ -16,7 +16,6 @@ export interface NotebookNote {
   title: string
   content: string
   tags: string[]
-  projectId?: string
   createdAt: number
   updatedAt: number
   shareVisibility?: 'private' | 'public'
@@ -25,7 +24,7 @@ export interface NotebookNote {
 
 export interface CanonicalNoteFile extends Pick<
   KnowledgeFile,
-  '_id' | 'name' | 'content' | 'textContent' | 'projectId' | 'createdAt' | 'updatedAt'
+  '_id' | 'name' | 'content' | 'textContent' | 'createdAt' | 'updatedAt'
 > {
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
@@ -67,7 +66,6 @@ export function canonicalFileToNotebookNote(file: CanonicalNoteFile, now = Date.
     title: file.name || 'Untitled',
     content: file.textContent ?? file.content ?? '',
     tags: [],
-    projectId: file.projectId,
     createdAt: file.createdAt ?? now,
     updatedAt: file.updatedAt ?? now,
     shareVisibility: file.shareVisibility,
@@ -92,7 +90,6 @@ export function noteDocToKnowledgeFile(note: NoteDoc): KnowledgeFile & { type: '
     sizeBytes: note.content.length,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
-    projectId: note.projectId,
   }
 }
 
@@ -168,7 +165,7 @@ export function createNotebookPersistedNote({
   title: string
   content: string
   file?: CanonicalNoteFile | null
-  fallbackNote?: Pick<NotebookNote, 'createdAt' | 'projectId' | 'shareVisibility' | 'shareToken'> | null
+  fallbackNote?: Pick<NotebookNote, 'createdAt' | 'shareVisibility' | 'shareToken'> | null
   now?: number
 }): NotebookNote {
   if (file) return canonicalFileToNotebookNote(file, now)
@@ -177,7 +174,6 @@ export function createNotebookPersistedNote({
     title: normalizeNotebookTitle(title),
     content,
     tags: [],
-    projectId: fallbackNote?.projectId,
     createdAt: fallbackNote?.createdAt ?? now,
     updatedAt: now,
     shareVisibility: fallbackNote?.shareVisibility,

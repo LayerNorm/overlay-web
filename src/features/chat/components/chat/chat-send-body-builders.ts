@@ -262,8 +262,6 @@ export function buildCommonActBody({
   chatId,
   pendingConversationClientId,
   temporaryChatSnapshot,
-  embedProjectId,
-  knowledgeBaseId,
   textModelsForTurn,
   turnId,
   requestMode,
@@ -281,8 +279,6 @@ export function buildCommonActBody({
   chatId: string
   pendingConversationClientId: string | null
   temporaryChatSnapshot: boolean
-  embedProjectId: string | null
-  knowledgeBaseId?: string
   textModelsForTurn: string[]
   turnId: string
   requestMode: 'chat' | 'automate'
@@ -303,7 +299,6 @@ export function buildCommonActBody({
       : chatId === PENDING_FIRST_CHAT_ID
         ? {
             conversationClientId: pendingConversationClientId,
-            ...(embedProjectId ? { projectId: embedProjectId } : {}),
             askModelIds: textModelsForTurn,
           }
         : { conversationId: chatId }),
@@ -314,19 +309,9 @@ export function buildCommonActBody({
     ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
     ...(replyContext?.bodyForModel ? { replyContextForModel: replyContext.bodyForModel } : {}),
     ...(userMeta.mentions && userMeta.mentions.length > 0 ? { mentions: userMeta.mentions } : {}),
-    ...(userMeta.mentions?.some((mention) => mention.type === 'knowledge')
-      ? {
-          knowledgeBaseIds: [...new Set(
-            userMeta.mentions
-              .filter((mention) => mention.type === 'knowledge')
-              .map((mention) => mention.id),
-          )],
-        }
-      : {}),
     ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
     requestedToolIds: selectedToolIdsSnapshot,
     memoryEnabled: memoryEnabledSnapshot,
-    ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
     ...(reasoning && reasoning !== 'provider-default' ? { reasoning } : {}),
     ...(personalChatMode ? { personalChatMode } : {}),
   }

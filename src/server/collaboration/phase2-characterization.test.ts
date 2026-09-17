@@ -38,7 +38,6 @@ test('Phase 2 conversation and message rows carry explicit scope and authorship'
     lastMode: 'act',
     askModelIds: ['model_a'],
     actModelId: 'model_b',
-    projectId: 'project_1',
     shareVisibility: 'public',
     shareToken: 'preserved-token',
   }

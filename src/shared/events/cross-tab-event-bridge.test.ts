@@ -62,13 +62,13 @@ test('cross-tab bridge rejects duplicate and unsupported messages', () => {
   let received = 0
   const bridge = createCrossTabEventBridge({
     eventTarget: target,
-    eventTypes: ['overlay:projects-changed'],
+    eventTypes: ['overlay:chats-changed'],
     sourceId: 'tab-b',
     transport: bus.transport,
   })
-  target.addEventListener('overlay:projects-changed', () => { received += 1 })
+  target.addEventListener('overlay:chats-changed', () => { received += 1 })
   const duplicate = {
-    eventType: 'overlay:projects-changed',
+    eventType: 'overlay:chats-changed',
     messageId: 'same-message',
     sourceId: 'tab-a',
   }

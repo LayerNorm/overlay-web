@@ -90,7 +90,6 @@ export class ConvexFileRepository implements FileRepository {
     mimeType: string
     parentId?: string
     parts: ExtractedDocumentPart[]
-    projectId?: string
     r2Key: string
     sourceSizeBytes: number
     userId: string

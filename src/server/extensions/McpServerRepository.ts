@@ -52,7 +52,6 @@ export type McpToolCatalogEntry = {
 export type McpServerRecord = {
   _id: string
   userId: string
-  projectId?: string
   name: string
   description?: string
   transport: McpTransport
@@ -88,7 +87,6 @@ export type McpServerSummary =
 
 export type CreateMcpServerInput = {
   userId: string
-  projectId?: string
   name: string
   description?: string
   transport: McpTransport
@@ -110,7 +108,6 @@ export type UpdateMcpServerInput = Partial<Omit<CreateMcpServerInput, 'userId'>>
 export type McpExecutionRecord = {
   id: string
   userId: string
-  projectId?: string
   mcpServerId: string
   toolName: string
   argumentsHash: string
@@ -125,8 +122,8 @@ export type McpExecutionRecord = {
 }
 
 export interface McpServerRepository {
-  list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerSummary[]>
-  listEnabled(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerRecord[]>
+  list(args: { userId: string; workspaceId?: string }): Promise<McpServerSummary[]>
+  listEnabled(args: { userId: string; workspaceId?: string }): Promise<McpServerRecord[]>
   get(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<McpServerRecord | null>
   create(args: CreateMcpServerInput): Promise<string>
   update(args: UpdateMcpServerInput): Promise<void>

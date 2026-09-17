@@ -13,7 +13,6 @@ import {
   type CharacterizationSourceKey,
 } from '@/server/knowledge/characterization'
 import type { MemoryRepository } from '@/server/memory/MemoryRepository'
-import type { ProjectRepository } from '@/server/projects/ProjectRepository'
 import type { UserRepository } from '@/server/users/types'
 
 export type KnowledgeCharacterizationBackend = {
@@ -22,7 +21,6 @@ export type KnowledgeCharacterizationBackend = {
   files: FileRepository
   memories: MemoryRepository
   name: string
-  projects: ProjectRepository
   search: KnowledgeSearchRepository
   users: UserRepository
 }
@@ -39,35 +37,19 @@ export async function runKnowledgeCharacterizationContract(
   try {
     await upsertUser(backend.users, userId)
     await upsertUser(backend.users, foreignUserId)
-    const projectA = await backend.projects.createProject({
-      clientId: `knowledge-project-a-${suffix}`,
-      name: 'Characterization Atlas',
-      userId,
-    })
-    const projectB = await backend.projects.createProject({
-      clientId: `knowledge-project-b-${suffix}`,
-      name: 'Characterization Borealis',
-      userId,
-    })
     const sourceIds = {} as Record<CharacterizationSourceKey, string>
 
     for (const [key, source] of Object.entries(KNOWLEDGE_CHARACTERIZATION_CORPUS) as Array<[
       CharacterizationSourceKey,
       (typeof KNOWLEDGE_CHARACTERIZATION_CORPUS)[CharacterizationSourceKey],
     ]>) {
-      const sourceUserId = source.project === 'foreign' ? foreignUserId : userId
-      const projectId = source.project === 'projectA'
-        ? projectA._id
-        : source.project === 'projectB'
-          ? projectB._id
-          : undefined
+      const sourceUserId = source.owner === 'foreign' ? foreignUserId : userId
       if (source.kind === 'file') {
         const fileId = await backend.files.createFile({
           content: source.content,
           contentHash: createHash('sha256').update(source.content).digest('hex'),
           kind: 'upload',
           name: source.name,
-          projectId,
           textContent: source.content,
           type: 'file',
           userId: sourceUserId,
@@ -78,7 +60,6 @@ export async function runKnowledgeCharacterizationContract(
         const memory = await backend.memories.create({
           clientId: `knowledge-${key}-${suffix}`,
           content: source.content,
-          projectId,
           source: 'manual',
           userId: sourceUserId,
         })
@@ -88,8 +69,6 @@ export async function runKnowledgeCharacterizationContract(
 
     fixture = {
       foreignUserId,
-      projectAId: projectA._id,
-      projectBId: projectB._id,
       sourceIds,
       userId,
     }

@@ -11,7 +11,6 @@ import {
   conversations,
   durableJobs,
 } from '@/server/database/postgres/schema'
-import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import {
@@ -43,7 +42,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
 
   async listAutomations(args: {
     includeDeleted?: boolean
-    projectId?: string
     userId: string
     workspaceId?: string
   }): Promise<AutomationRecord[]> {
@@ -53,7 +51,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
       .where(and(
         eq(automations.userId, args.userId),
         args.includeDeleted ? undefined : isNull(automations.deletedAt),
-        args.projectId ? eq(automations.projectId, args.projectId) : undefined,
         args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(desc(automations.updatedAt))
@@ -99,7 +96,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
 
   async createAutomation(args: CreateAutomationInput): Promise<string> {
     return await this.db.transaction(async (tx) => {
-      await assertActivePostgresProject(tx, { projectId: args.projectId, userId: args.userId })
       await assertConversationAccess(tx, {
         conversationId: args.sourceConversationId,
         userId: args.userId,
@@ -121,7 +117,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
         modelId: normalizeOptional(args.modelId),
         name: args.name.trim() || 'Untitled automation',
         nextRunAt: nextRunAt ? new Date(nextRunAt) : null,
-        projectId: normalizeOptional(args.projectId),
         schedule,
         sourceConversationId: normalizeOptional(args.sourceConversationId),
         timezone: args.timezone?.trim() || 'UTC',
@@ -156,7 +151,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
         ))
         .limit(1)
       if (!current) throw new Error('Unauthorized')
-      await assertActivePostgresProject(tx, { projectId: args.projectId, userId: args.userId })
       await assertConversationAccess(tx, {
         conversationId: args.sourceConversationId,
         userId: args.userId,
@@ -184,7 +178,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
           ...(args.instructions !== undefined ? { instructions: args.instructions.trim() } : {}),
           ...(args.modelId !== undefined ? { modelId: normalizeOptional(args.modelId) } : {}),
           ...(args.name !== undefined ? { name: args.name.trim() || current.name } : {}),
-          ...(args.projectId !== undefined ? { projectId: normalizeOptional(args.projectId) } : {}),
           ...(args.schedule !== undefined ? { schedule } : {}),
           ...(args.sourceConversationId !== undefined
             ? { sourceConversationId: normalizeOptional(args.sourceConversationId) }
@@ -586,7 +579,6 @@ function mapAutomation(row: AutomationRow): AutomationRecord {
     lastRunAt: row.lastRunAt?.getTime(),
     lastRunStatus: row.lastRunStatus ?? undefined,
     lastError: row.lastError ?? undefined,
-    projectId: row.projectId ?? undefined,
     modelId: row.modelId ?? undefined,
     graphSource: row.graphSource ?? undefined,
     graph: row.graph ?? undefined,

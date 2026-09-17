@@ -61,11 +61,6 @@ export const OWNER_FUNDED_OPERATIONS = [
     method: 'POST',
     path: '/api/v1/knowledge/search',
   },
-  {
-    id: 'knowledge.knowledge-base-search',
-    method: 'POST',
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/search',
-  },
 ] as const
 
 export type OwnerFundedOperation = (typeof OWNER_FUNDED_OPERATIONS)[number]
@@ -88,9 +83,6 @@ export function getOwnerFundedOperation(
     `${method.toUpperCase()} ${pathname}`,
   )
   if (exact) return exact
-  if (method.toUpperCase() === 'POST' && /^\/api\/v1\/knowledge-bases\/[^/]+\/search$/.test(pathname)) {
-    return OWNER_FUNDED_OPERATIONS.find((operation) => operation.id === 'knowledge.knowledge-base-search') ?? null
-  }
   return null
 }
 

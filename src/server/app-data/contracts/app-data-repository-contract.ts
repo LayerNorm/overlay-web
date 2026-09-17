@@ -13,7 +13,6 @@ import type { ActConversationRepository } from '@/server/conversations/ActConver
 import type { ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import type { FileRepository } from '@/server/files/FileRepository'
 import type { NoteRepository } from '@/server/notes'
-import type { ProjectRepository } from '@/server/projects'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { UserRepository } from '@/server/users/types'
 import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
@@ -36,7 +35,6 @@ export interface AppDataRepositoryContractBackend {
   name: string
   notes: NoteRepository
   provider: AppDataProvider
-  projects: ProjectRepository
   usagePolicy: ActUsagePolicy
   users: UserRepository
 }
@@ -97,177 +95,6 @@ export async function runAppDataRepositoryContractSuite(
         day: '2026-07-11',
         prompts: ['One', 'Two', 'Three', 'Four'],
       })
-    })
-
-    await t.test(`${backend.name}: project hierarchy and linked resources enforce ownership`, async () => {
-      const foreignUserService = new UserService({
-        authProvider: backend.authProvider,
-        repository: backend.users,
-      })
-      const foreignUser = await foreignUserService.upsertFromSession({
-        user: {
-          id: foreignUserId,
-          email: `${foreignUserId}@example.com`,
-          firstName: 'Foreign',
-          lastName: 'User',
-          emailVerified: true,
-        },
-      })
-      assert.equal(foreignUser.success, true)
-      foreignUserCreated = true
-
-      const root = await backend.projects.createProject({
-        clientId: `project_root_${randomUUID()}`,
-        instructions: 'Root instructions',
-        name: 'Root project',
-        userId,
-      })
-      const retriedRoot = await backend.projects.createProject({
-        clientId: root.clientId,
-        instructions: 'Changed retry instructions',
-        name: 'Changed retry name',
-        parentId: 'stale_retry_parent',
-        userId,
-      })
-      assert.equal(retriedRoot._id, root._id)
-      assert.equal(retriedRoot.name, 'Root project')
-      assert.equal(retriedRoot.instructions, 'Root instructions')
-
-      const child = await backend.projects.createProject({
-        name: 'Child project',
-        parentId: root._id,
-        userId,
-      })
-      const grandchild = await backend.projects.createProject({
-        name: 'Grandchild project',
-        parentId: child._id,
-        userId,
-      })
-      assert.equal((await backend.projects.getProject({
-        projectId: child._id,
-        userId,
-      }))?.parentId, root._id)
-      assert.equal(await backend.projects.getProject({
-        projectId: root._id,
-        userId: foreignUserId,
-      }), null)
-      await assert.rejects(backend.projects.createProject({
-        name: 'Unauthorized child',
-        parentId: root._id,
-        userId: foreignUserId,
-      }))
-      await assert.rejects(backend.projects.updateProject({
-        parentId: grandchild._id,
-        projectId: root._id,
-        userId,
-      }))
-
-      const conversationId = await backend.conversations.createConversation({
-        actModelId: 'openrouter/free',
-        askModelIds: ['openrouter/free'],
-        lastMode: 'act',
-        projectId: child._id,
-        title: 'Project conversation',
-        userId,
-      })
-      const note = await backend.notes.createNote({
-        content: 'Project note',
-        projectId: child._id,
-        title: 'Project note',
-        userId,
-      })
-      const fileId = await backend.files.createFile({
-        content: 'Project file',
-        kind: 'upload',
-        name: 'project.txt',
-        projectId: child._id,
-        type: 'file',
-        userId,
-      })
-      assert.ok(fileId)
-      assert.equal((await backend.conversations.listConversationsByProject({
-        projectId: child._id,
-        userId,
-      })).some((conversation) => conversation._id === conversationId), true)
-      assert.equal((await backend.notes.listNotes({
-        projectId: child._id,
-        userId,
-      })).some((row) => row._id === note.id), true)
-      assert.equal((await backend.files.listFiles({
-        projectId: child._id,
-        userId,
-      }) as Array<{ _id?: string }>).some((row) => row._id === fileId), true)
-
-      const foreignProject = await backend.projects.createProject({
-        name: 'Foreign project',
-        userId: foreignUserId,
-      })
-      await assert.rejects(backend.conversations.createConversation({
-        actModelId: 'openrouter/free',
-        askModelIds: ['openrouter/free'],
-        projectId: foreignProject._id,
-        title: 'Unauthorized conversation',
-        userId,
-      }))
-      await assert.rejects(backend.notes.createNote({
-        content: '',
-        projectId: foreignProject._id,
-        title: 'Unauthorized note',
-        userId,
-      }))
-      await assert.rejects(backend.files.createFile({
-        content: '',
-        kind: 'upload',
-        name: 'unauthorized.txt',
-        projectId: foreignProject._id,
-        type: 'file',
-        userId,
-      }))
-
-      const deletion = await backend.projects.deleteProjectTree({
-        projectId: root._id,
-        userId,
-      })
-      assert.ok(deletion)
-      assert.deepEqual(new Set(deletion.deletedIds), new Set([
-        root._id,
-        child._id,
-        grandchild._id,
-      ]))
-      assert.equal(await backend.projects.getProject({ projectId: child._id, userId }), null)
-      const deletedProjects = (await backend.projects.listProjects({
-        includeDeleted: true,
-        userId,
-      })).filter((project) => deletion.deletedIds.includes(project._id))
-      assert.equal(deletedProjects.length, 3)
-      assert.equal(deletedProjects.every((project) => Boolean(project.deletedAt)), true)
-      assert.equal((await backend.conversations.listConversationsByProject({
-        projectId: child._id,
-        userId,
-      })).length, 0)
-      assert.equal((await backend.conversations.listConversationsByProject({
-        includeDeleted: true,
-        projectId: child._id,
-        userId,
-      })).some((conversation) => conversation._id === conversationId), true)
-      assert.equal((await backend.notes.listNotes({
-        projectId: child._id,
-        userId,
-      })).length, 0)
-      assert.equal((await backend.notes.listNotes({
-        includeDeleted: true,
-        projectId: child._id,
-        userId,
-      })).some((row) => row._id === note.id), true)
-      assert.equal((await backend.files.listFiles({
-        projectId: child._id,
-        userId,
-      }) as unknown[]).length, 0)
-      assert.equal((await backend.files.listFiles({
-        includeDeleted: true,
-        projectId: child._id,
-        userId,
-      }) as Array<{ _id?: string }>).some((row) => row._id === fileId), true)
     })
 
     await t.test(`${backend.name}: conversations, messages, and AgentRuns preserve chat behavior`, async () => {
@@ -927,6 +754,7 @@ export async function runAppDataRepositoryContractSuite(
         userId: foreignUserId,
         workspaceId,
       })
+      foreignUserCreated = true
 
       const all = await backend.memories.list({
         scope: 'workspace',

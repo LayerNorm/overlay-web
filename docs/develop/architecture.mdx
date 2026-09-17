@@ -193,7 +193,14 @@ reconnects use `{resume:false}` — passive reads never wake an idle-stopped san
 (Vercel) only publish cumulative usage counters once a session stops, so while a sandbox runs the
 meter bills the elapsed window against a virtual wall-time cursor instead; teardown paths
 (reap, harness reset) stop the instance, take one final meter read that reconciles real totals
-against the virtual cursor, then delete — session usage is never lost. The meter driver runs from
+against the virtual cursor, then delete — session usage is never lost. The meter also enforces
+the lease's idle window: Vercel sandboxes have no native idle-stop (Daytona honors the same
+`idleTimeoutMs` via `autoStopInterval`), so a running sandbox whose lease shows no activity for
+`usage.idleTimeoutMs` (default 15 minutes) is provider-stopped while the lease stays `running` —
+every turn-slice acquire heartbeats `usage.lastActiveAt`, so an actively working sandbox never
+cools mid-turn, and the next turn's `resume:true` acquire wakes it again. A `running` lease past
+`reservedUntil` (the 24-hour hard cap) is reaped on the next tick regardless of whether its
+sandbox still answers. The meter driver runs from
 the BFF `agent-environments/operations/reconcile` route (Convex cron calls it) and the Postgres
 `app-data.maintenance` job. The standalone sandbox route keeps the worst-case reservation model
 because it always denies outbound network access and can make a byte-exact provider-cost promise;

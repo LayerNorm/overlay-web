@@ -6,7 +6,6 @@ import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   files,
   knowledgeChunks,
-  projects,
   r2UploadIntents,
 } from '@/server/database/postgres/schema'
 import {
@@ -93,7 +92,6 @@ export class PostgresFileRepository implements FileRepository {
     const filters = [
       eq(files.userId, args.userId),
       args.includeDeleted === true ? undefined : isNull(files.deletedAt),
-      typeof args.projectId === 'string' ? eq(files.projectId, args.projectId) : undefined,
       args.parentId !== undefined
         ? args.parentId === null
           ? isNull(files.parentId)
@@ -119,10 +117,9 @@ export class PostgresFileRepository implements FileRepository {
   async createFile(args: Record<string, unknown> & { userId: string; workspaceId?: string }): Promise<string | null> {
     return await this.db.transaction(async (tx) => {
       await lockFileHierarchy(tx, args.userId)
-      await this.assertParentAndProject(tx, {
+      await this.assertParent(tx, {
         userId: args.userId,
         parentId: stringValue(args.parentId),
-        projectId: stringValue(args.projectId),
       })
 
       const now = dateValue(args.createdAt) ?? new Date()
@@ -174,7 +171,6 @@ export class PostgresFileRepository implements FileRepository {
         outputCompletedAt: dateValue(args.outputCompletedAt),
         expiresAt: dateValue(args.expiresAt),
         legacyOutputId: stringValue(args.legacyOutputId),
-        projectId: stringValue(args.projectId),
         createdAt: now,
         updatedAt,
         workspaceId: args.workspaceId,
@@ -197,10 +193,9 @@ export class PostgresFileRepository implements FileRepository {
     return await this.db.transaction(async (tx) => {
       await lockFileHierarchy(tx, args.userId)
       await lockStorageQuota(tx, args.userId)
-      await this.assertParentAndProject(tx, {
+      await this.assertParent(tx, {
         userId: args.userId,
         parentId: stringValue(args.parentId),
-        projectId: stringValue(args.projectId),
       })
 
       const actualSizeBytes = positiveNumber(args.sizeBytes) ?? 0
@@ -236,7 +231,6 @@ export class PostgresFileRepository implements FileRepository {
         sizeBytes: actualSizeBytes,
         indexable: false,
         indexStatus: 'skipped',
-        projectId: stringValue(args.projectId),
         createdAt: now,
         updatedAt: now,
         workspaceId: args.workspaceId,
@@ -258,7 +252,6 @@ export class PostgresFileRepository implements FileRepository {
     mimeType: string
     parentId?: string
     parts: ExtractedDocumentPart[]
-    projectId?: string
     r2Key: string
     sourceSizeBytes: number
     userId: string
@@ -269,7 +262,7 @@ export class PostgresFileRepository implements FileRepository {
     return await this.db.transaction(async (tx) => {
       await lockFileHierarchy(tx, args.userId)
       await lockStorageQuota(tx, args.userId)
-      await this.assertParentAndProject(tx, args)
+      await this.assertParent(tx, args)
       const now = new Date()
       const ids: string[] = []
       for (let index = 0; index < args.parts.length; index += 1) {
@@ -298,7 +291,6 @@ export class PostgresFileRepository implements FileRepository {
           duplicateOfFileId: canonicalDuplicate?.id,
           indexable: true,
           indexStatus: canonicalDuplicate ? 'skipped' : 'pending',
-          projectId: args.projectId,
           createdAt: now,
           updatedAt: now,
           workspaceId: args.workspaceId,
@@ -332,11 +324,10 @@ export class PostgresFileRepository implements FileRepository {
         .limit(1)
       if (!existing) throw new Error('Unauthorized')
 
-      await this.assertParentAndProject(tx, {
+      await this.assertParent(tx, {
         fileId: args.fileId,
         userId: args.userId,
         parentId: args.parentId === null ? undefined : stringValue(args.parentId),
-        projectId: args.projectId === null ? undefined : stringValue(args.projectId),
       })
 
       const patch: Partial<typeof files.$inferInsert> = {
@@ -347,7 +338,6 @@ export class PostgresFileRepository implements FileRepository {
         patch.extension = extensionOf(patch.name)
       }
       if (args.parentId !== undefined) patch.parentId = stringValue(args.parentId)
-      if (args.projectId !== undefined) patch.projectId = stringValue(args.projectId)
       if (args.r2Key !== undefined) patch.r2Key = stringValue(args.r2Key)
       if (args.mimeType !== undefined) patch.mimeType = stringValue(args.mimeType)
       if (args.sizeBytes !== undefined) patch.sizeBytes = positiveNumber(args.sizeBytes) ?? 0
@@ -704,11 +694,10 @@ export class PostgresFileRepository implements FileRepository {
     return { token: null, visibility: 'private' }
   }
 
-  private async assertParentAndProject(db: FileDb, args: {
+  private async assertParent(db: FileDb, args: {
     fileId?: string
     userId: string
     parentId?: string
-    projectId?: string
   }): Promise<void> {
     if (args.parentId) {
       const [parent] = await db
@@ -743,18 +732,6 @@ export class PostgresFileRepository implements FileRepository {
         `)
         if (cycle.rows.length > 0) throw new Error('File parent cycle detected')
       }
-    }
-    if (args.projectId) {
-      const [project] = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(
-          eq(projects.id, args.projectId),
-          eq(projects.userId, args.userId),
-          isNull(projects.deletedAt),
-        ))
-        .limit(1)
-      if (!project) throw new Error('Unauthorized')
     }
   }
 
@@ -939,7 +916,6 @@ function normalizeFile(row: FileRow): FileRecord {
     expiresAt: row.expiresAt?.getTime(),
     legacyNoteId: row.legacyNoteId ?? undefined,
     legacyOutputId: row.legacyOutputId ?? undefined,
-    projectId: row.projectId ?? undefined,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     deletedAt: row.deletedAt?.getTime(),
@@ -968,6 +944,7 @@ function fileRowFromRaw(row: Record<string, unknown>): FileRow & { depth: number
     type: row.type as FileType,
     kind: (row.kind ?? null) as FileKind | null,
     parentId: nullableString(row.parent_id),
+    projectId: nullableString(row.project_id),
     content: nullableString(row.content),
     textContent: nullableString(row.text_content),
     storageId: nullableString(row.storage_id),
@@ -996,7 +973,6 @@ function fileRowFromRaw(row: Record<string, unknown>): FileRow & { depth: number
     expiresAt: dateFromRaw(row.expires_at),
     legacyNoteId: nullableString(row.legacy_note_id),
     legacyOutputId: nullableString(row.legacy_output_id),
-    projectId: nullableString(row.project_id),
     createdAt: requiredDateFromRaw(row.created_at),
     updatedAt: requiredDateFromRaw(row.updated_at),
     deletedAt: dateFromRaw(row.deleted_at),

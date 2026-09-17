@@ -13,7 +13,6 @@ import { hasSameMemoryExtractionAuthor } from '@/shared/knowledge/memory-extract
 export type MemoryExtractionTurn = {
   contextMessages: Array<{ role: string; text: string }>
   messageId: string
-  projectId?: string
   targetText: string
   targetActor: 'human' | 'agent'
   turnId: string
@@ -31,7 +30,6 @@ export class PostgresMemoryExtractionRepository {
     workspaceId?: string
   }): Promise<MemoryExtractionTurn | null> {
     const [conversation] = await this.db.select({
-      projectId: conversations.projectId,
       workspaceId: conversations.workspaceId,
     })
       .from(conversations)
@@ -64,7 +62,6 @@ export class PostgresMemoryExtractionRepository {
         .filter((message) => message.id !== target.id)
         .map((message) => ({ role: message.role, text: messageText(message).slice(0, 800) })),
       messageId: target.id,
-      projectId: conversation.projectId ?? undefined,
       targetText: messageText(target),
       targetActor,
       turnId: target.turnId,

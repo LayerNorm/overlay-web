@@ -15,7 +15,6 @@ import { UnlimitedUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
 import { PostgresNoteRepository } from '@/server/notes'
-import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUserRepository } from '@/server/users/PostgresUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
 import {
@@ -24,7 +23,6 @@ import {
   knowledgeChunkEmbeddings,
   knowledgeChunks,
   memories,
-  projects,
   users,
 } from '@/server/database/postgres/schema'
 import { KNOWLEDGE_EMBEDDING_DIMENSIONS, type EmbeddingProvider } from '@/server/knowledge'
@@ -143,12 +141,6 @@ test('Postgres app-data repository contracts', {
       const suffix = randomUUID()
       const userId = `contract_index_${suffix}`
       await db.insert(users).values({ id: userId, email: `${userId}@example.com` })
-      const projectId = `project_${suffix}`
-      const otherProjectId = `project_other_${suffix}`
-      await db.insert(projects).values([
-        { id: projectId, name: 'Target', userId },
-        { id: otherProjectId, name: 'Other', userId },
-      ])
       const repository = new PostgresMemoryRepository(db)
       const embeddings: EmbeddingProvider = {
         identity: {
@@ -174,14 +166,7 @@ test('Postgres app-data repository contracts', {
           userId,
         })
         const projectMemory = await repository.create({
-          content: 'Target project AWS knowledge for the scoped pilot.',
-          projectId,
-          source: 'manual',
-          userId,
-        })
-        const otherProjectMemory = await repository.create({
-          content: 'Other project AWS knowledge that must remain out of scope.',
-          projectId: otherProjectId,
+          content: 'Target workspace AWS knowledge for the scoped pilot.',
           source: 'manual',
           userId,
         })
@@ -205,7 +190,6 @@ test('Postgres app-data repository contracts', {
 
         const search = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
           billing: testSearchBilling('owner'),
-          projectId: undefined,
           query: 'private AWS account',
           userId,
         })
@@ -219,14 +203,10 @@ test('Postgres app-data repository contracts', {
         assert.deepEqual(foreignSearch.chunks, [])
         const scopedSearch = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
           billing: testSearchBilling('scoped'),
-          projectId,
           query: 'AWS knowledge pilot',
           userId,
         })
         assert.ok(scopedSearch.chunks.some((chunk) => chunk.sourceId === projectMemory._id))
-        assert.ok(scopedSearch.chunks.some((chunk) => chunk.sourceId === memory._id))
-        assert.equal(scopedSearch.chunks.some((chunk) => chunk.sourceId === otherProjectMemory._id), false)
-        assert.equal(scopedSearch.chunks[0]?.sourceId, projectMemory._id)
 
         await repository.remove({ memoryId: memory._id, userId })
         assert.equal((await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))).length, 0)
@@ -262,7 +242,6 @@ function testSearchBilling(label: string) {
       files: new PostgresFileRepository(db),
       memories: new PostgresMemoryRepository(db),
       notes: new PostgresNoteRepository(db),
-      projects: new PostgresProjectRepository(db),
       usagePolicy: new UnlimitedUsagePolicy(),
       users: new PostgresUserRepository(db),
     })

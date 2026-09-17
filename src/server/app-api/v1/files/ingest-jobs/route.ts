@@ -36,7 +36,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     fileName: body.fileName,
     mimeType: typeof body.mimeType === 'string' ? body.mimeType : 'application/octet-stream',
     sizeBytes: typeof body.sizeBytes === 'number' ? body.sizeBytes : 0,
-    ...(typeof body.projectId === 'string' ? { projectId: body.projectId } : {}),
     ...(typeof body.parentId === 'string' ? { parentId: body.parentId } : {}),
     ...(context.workspace ? { workspaceId: context.workspace.workspace.id } : {}),
   })

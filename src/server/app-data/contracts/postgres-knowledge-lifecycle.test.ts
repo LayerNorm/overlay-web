@@ -3,7 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
@@ -26,8 +26,6 @@ import {
   type EmbeddingProvider,
 } from '@/server/knowledge'
 import { PostgresMemoryRepository, type MemoryExtractionProvider } from '@/server/memory'
-import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
-import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -237,56 +235,6 @@ test('Postgres P4d knowledge lifecycle', {
       }
     })
 
-    await t.test('project deletion removes project memories, chunks, and embeddings', async () => {
-      await db.delete(durableJobs)
-      const userId = `p4d_project_${randomUUID()}`
-      await db.insert(users).values({ id: userId, email: `${userId}@example.com` })
-      try {
-        const projects = new PostgresProjectRepository(db)
-        const project = await projects.createProject({ name: 'Private project', userId })
-        const memory = await new PostgresMemoryRepository(db).create({
-          content: 'Project-only retrieval marker.',
-          projectId: project._id,
-          source: 'manual',
-          userId,
-        })
-        const content = 'Project-only file retrieval marker.'
-        const fileId = await new PostgresFileRepository(db).createFile({
-          content,
-          contentHash: createHash('sha256').update(content).digest('hex'),
-          kind: 'upload',
-          name: 'project.txt',
-          projectId: project._id,
-          type: 'file',
-          userId,
-        })
-        assert.ok(fileId)
-        const runtime = createPostgresRuntime({
-          db,
-          embeddingProvider: embeddingsV1,
-          leaseMs: 5_000,
-          workerId: `project-worker-${randomUUID()}`,
-        })
-        assert.equal(await runtime.worker.runOnce(), 'succeeded')
-        assert.equal(await runtime.worker.runOnce(), 'succeeded')
-        const sourceIds = [memory._id, fileId!]
-        const chunkIds = (await db.select({ id: knowledgeChunks.id }).from(knowledgeChunks)
-          .where(inArray(knowledgeChunks.sourceId, sourceIds))).map(({ id }) => id)
-        assert.ok(chunkIds.length >= 2)
-
-        const result = await projects.deleteProjectTree({ projectId: project._id, userId })
-        assert.deepEqual(result?.deletedMemoryIds, [memory._id])
-        assert.equal((await db.select().from(knowledgeChunks).where(inArray(knowledgeChunks.sourceId, sourceIds))).length, 0)
-        assert.equal((await db.select().from(knowledgeChunkEmbeddings).where(inArray(
-          knowledgeChunkEmbeddings.chunkId,
-          chunkIds,
-        ))).length, 0)
-        assert.equal((await db.select().from(files).where(eq(files.id, fileId!)))[0]?.indexStatus, 'skipped')
-      } finally {
-        await db.delete(users).where(eq(users.id, userId))
-        await db.delete(durableJobs)
-      }
-    })
   } finally {
     await pool.end()
   }

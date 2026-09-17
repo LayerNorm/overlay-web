@@ -51,7 +51,6 @@ const BodySchema = z.object({
   message: z.string().min(1).max(32_000),
   modelId: z.string().optional(),
   mode: z.enum(['ask', 'write']).optional(), // Deprecated: kept for backward compatibility
-  projectId: z.string().optional(),
   accessToken: z.string().optional(),
   userId: z.string().optional(),
   mentions: z.array(MentionSchema).optional(),
@@ -189,7 +188,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
   }
 
-  const { noteContent: rawNoteContent, noteTitle, message, modelId, projectId, mentions: rawMentions } = parsed.data
+  const { noteContent: rawNoteContent, noteTitle, message, modelId, mentions: rawMentions } = parsed.data
 
   const { auth } = context
 
@@ -325,7 +324,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     accessToken: auth.accessToken,
     baseUrl: getInternalApiBaseUrl(request),
     forwardCookie,
-    projectId,
   }
 
   const encoder = new TextEncoder()

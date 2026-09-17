@@ -139,6 +139,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
   const stopped: string[] = []
   const released: Array<Record<string, unknown>> = []
   const lease = leaseFixture({
+    reservedUntil: 1_000_000,
     usage: {
       meteredUsage: { wallTimeMs: 0 },
       meteredProviderReference: 'sandbox-reference',
@@ -182,6 +183,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
 
 test('meterLeases kills a lease when remaining balance falls under the floor', async () => {
   const lease = leaseFixture({
+    reservedUntil: 1_000_000,
     usage: {
       meteredUsage: { wallTimeMs: 0 },
       meteredProviderReference: 'sandbox-reference',
@@ -215,6 +217,49 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
   assert.equal(ticks[0]?.outcome, 'killed')
   assert.equal(ticks[0]?.reason, 'low_balance')
   assert.deepEqual(stopReasons, ['low_balance'])
+})
+
+test('meterLeases reaps a running lease past its reserved window even when the sandbox answers', async () => {
+  // A lease past reservedUntil hit the hard runtime limit: the sandbox may
+  // still be reachable, but billing attempts must stop and the lease reaped.
+  const events: string[] = []
+  const lease = leaseFixture({
+    reservedUntil: 100_000,
+    usage: {
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meterVersion: 1,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'stopped' as const,
+      stop: async () => { events.push('stop') },
+      usage: async () => ({ wallTimeMs: 90_000 }),
+      delete: async () => { events.push('delete') },
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 2 }),
+      stopSandboxLease: async () => ({ ...lease, status: 'stopping' as const }),
+      updateSandboxLease: async (args: Record<string, unknown>) => ({ ...lease, status: args.status }),
+    } as never,
+    runtime: () => runtime,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'killed')
+  assert.equal(ticks[0]?.reason, 'lease_expired')
+  // The reap path still captured the post-stop read and deleted it.
+  assert.deepEqual(events, ['delete'])
 })
 
 test('meterLeases reaps stopping leases and retries provider cleanup', async () => {
@@ -466,6 +511,83 @@ test('meterLease bills real counter totals on a stopped instance without elapsed
   // even though 130s passed since the last tick.
   assert.equal((meterCalls[0]!.charge as { durationSeconds: number }).durationSeconds, 30)
   assert.equal((meterCalls[0]!.meteredUsage as { wallTimeMs: number }).wallTimeMs, 150_000)
+})
+
+test('meterLease idle-stops a running sandbox whose lease shows no recent activity', async () => {
+  // Vercel has no provider idle-stop, so the meter enforces the lease's idle
+  // window: a sandbox idle past idleTimeoutMs is stopped while the lease stays
+  // running — the next turn's acquire resumes it.
+  const events: string[] = []
+  const lease = leaseFixture({
+    usage: {
+      lastActiveAt: 60_000,
+      idleTimeoutMs: 900_000,
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      stop: async () => { events.push('stop') },
+      usage: async () => ({ wallTimeMs: 60_000 }),
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 1_000_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
+    } as never,
+    runtime: () => runtime,
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  assert.deepEqual(events, ['stop'])
+})
+
+test('meterLease leaves a recently-active sandbox running', async () => {
+  const events: string[] = []
+  const lease = leaseFixture({
+    usage: {
+      lastActiveAt: 990_000,
+      idleTimeoutMs: 900_000,
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      stop: async () => { events.push('stop') },
+      usage: async () => ({ wallTimeMs: 60_000 }),
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 1_000_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
+    } as never,
+    runtime: () => runtime,
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  assert.deepEqual(events, [])
 })
 
 test('reaped leases stop the sandbox before the final usage read and delete', async () => {

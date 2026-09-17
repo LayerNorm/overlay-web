@@ -41,7 +41,6 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
     listMemories: () => unexpected('listMemories'),
     listSkills: () => unexpected('listSkills'),
     getConversation: () => unexpected('getConversation'),
-    getProject: () => unexpected('getProject'),
     getContextSummary: () => unexpected('getContextSummary'),
     upsertContextSummary: () => unexpected('upsertContextSummary'),
     deleteTurn: () => unexpected('deleteTurn'),
@@ -159,8 +158,7 @@ test('act context service keeps auto retrieval enabled when external provider co
   let retrievalArgs: Record<string, unknown> | undefined
   const service = new ActContextService({
     repository: repository({
-      getConversation: async () => ({ projectId: 'project_1' }),
-      getProject: async () => ({ instructions: 'Project rules' }),
+      getConversation: async () => ({ _id: 'conv_1' }),
       listMemories: async () => [],
       listSkills: async () => [],
     }),
@@ -195,7 +193,6 @@ test('act context service keeps auto retrieval enabled when external provider co
       requestFingerprint: 'act-test-fingerprint',
     },
     includeMemories: true,
-    projectId: 'project_1',
     userId: 'user_1',
     userMessage: 'What is the deployment checkpoint?',
   })

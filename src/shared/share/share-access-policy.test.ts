@@ -27,8 +27,6 @@ test('running an automation is separate from editing it', () => {
   assert.equal(shareRoleRejection('automation', 'operator'), null)
   assert.equal(shareRoleRejection('agent', 'operator'), null)
   assert.match(String(shareRoleRejection('file', 'operator')), /automations and agents/)
-  assert.match(String(shareRoleRejection('project', 'operator')), /automations and agents/)
-  assert.match(String(shareRoleRejection('knowledge_base', 'operator')), /automations and agents/)
 })
 
 test('conversations are shareable as view-only', () => {

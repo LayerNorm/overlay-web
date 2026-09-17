@@ -199,14 +199,6 @@ const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
     ],
   },
   {
-    method: 'POST',
-    pattern: /^\/api\/v1\/knowledge-bases\/[^/]+\/reindex$/,
-    limits: [
-      { bucket: 'knowledge-reindex:ip', limit: 20, windowMs: ONE_HOUR },
-      { bucket: 'knowledge-reindex:user', limit: 10, windowMs: ONE_HOUR },
-    ],
-  },
-  {
     method: 'PATCH',
     pattern: /^\/api\/v1\/webhooks$/,
     limits: [

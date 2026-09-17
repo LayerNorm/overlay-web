@@ -1,15 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Archive,
   Bell,
-  BookOpen,
-  Brain,
-  Folder,
   Hash,
   Loader2,
   Mail,
@@ -19,35 +16,24 @@ import {
   Server,
   Sparkles,
 } from 'lucide-react'
-import type { KnowledgeBase } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
   KNOWLEDGE_RECONCILE_EVENT,
   KnowledgeMutationConsumer,
-  PROJECT_META_UPDATED_EVENT,
-  canMoveProjectFile,
-  filterProjectFilesForSearch,
-  projectFilesExcludingNotes,
-  projectHubHref,
-  projectItemHref,
-  projectNotesFromFiles,
-  projectRouteViewForFile,
-  renameProjectInList,
+  canMoveFileInTree,
+  filterFilesForTreeSearch,
+  fileTreeRouteView,
   noteDocToKnowledgeFile,
   normalizeKnowledgeSurfaceNode,
   removeKnowledgeFileSubtrees,
   createKnowledgeMutationPublisher,
   isKnowledgeEntityMutation,
-  sortProjectsByName,
-  type ProjectChatSummary,
-  type ProjectFileSummary,
-  type ProjectResourceItems,
-  type ProjectSummary,
+  type FileTreeEntry,
   type NoteDoc,
 } from '@overlay/app-core'
-import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
+import { FilesInlineTree } from '@overlay/modules-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
@@ -67,12 +53,7 @@ import {
 } from '@/shared/agents/last-agent-by-workspace'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 
-type Project = ProjectSummary
-type ProjectChat = ProjectChatSummary
-type ProjectFile = ProjectFileSummary
-
 const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []
-const INITIAL_SIDEBAR_LIST_LIMIT = 24
 const nextSidebarMutation = createKnowledgeMutationPublisher(
   `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
 )
@@ -86,19 +67,19 @@ export function FilesInlinePanel({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [files, setFiles] = useState<ProjectFile[]>([])
+  const [files, setFiles] = useState<FileTreeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const activeFileId = searchParams?.get('file') ?? null
   const activeNoteId = searchParams?.get('id') ?? null
   const activeCanonicalFileId = activeFileId ?? activeNoteId
 
-  const fetchItems = useCallback(async (signal?: AbortSignal): Promise<ProjectFile[]> => {
+  const fetchItems = useCallback(async (signal?: AbortSignal): Promise<FileTreeEntry[]> => {
     const [fileRows, noteRows] = await Promise.all([
-      overlayAppClient.files.get<ProjectFile[]>({ limit: 100, summary: true }, { signal }),
+      overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true }, { signal }),
       overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
     ])
-    const files = arrayOrEmpty<ProjectFile>(fileRows)
+    const files = arrayOrEmpty<FileTreeEntry>(fileRows)
     const fileIds = new Set(files.map((file) => file._id))
     const notes = arrayOrEmpty<NoteDoc>(noteRows)
       .map(noteDocToKnowledgeFile)
@@ -185,13 +166,13 @@ export function FilesInlinePanel({
     })
   }
 
-  function openFile(file: ProjectFile) {
+  function openFile(file: FileTreeEntry) {
     if (file.type === 'folder') {
       router.push(`/app/files?folder=${encodeURIComponent(file._id)}`)
       onNavigate?.()
       return
     }
-    if (projectRouteViewForFile(file) === 'note') {
+    if (fileTreeRouteView(file) === 'note') {
       router.push(`/app/notes?id=${encodeURIComponent(file._id)}`)
     } else {
       router.push(`/app/files?file=${encodeURIComponent(file._id)}`)
@@ -200,7 +181,7 @@ export function FilesInlinePanel({
   }
 
   async function moveFile(fileId: string, parentId: string | null) {
-    if (!canMoveProjectFile(files, fileId, parentId)) return
+    if (!canMoveFileInTree(files, fileId, parentId)) return
     const res = await overlayAppClient.files.updateResponse({ fileId, parentId })
     if (res.ok) {
       setFiles((current) => current.map((file) => file._id === fileId ? { ...file, parentId } : file))
@@ -211,7 +192,7 @@ export function FilesInlinePanel({
   }
 
   const q = searchQuery.trim()
-  const filteredFiles = useMemo(() => filterProjectFilesForSearch(files, q), [files, q])
+  const filteredFiles = useMemo(() => filterFilesForTreeSearch(files, q), [files, q])
 
   return (
     <SidebarResourceList>
@@ -226,201 +207,6 @@ export function FilesInlinePanel({
         onOpen={openFile}
         onMove={moveFile}
       />
-    </SidebarResourceList>
-  )
-}
-
-export function ProjectsInlinePanel({
-  refreshKey,
-  archived = false,
-  onNavigate,
-}: {
-  refreshKey: number
-  /** When true, list archived projects instead of active ones. */
-  archived?: boolean
-  onNavigate?: () => void
-}) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [nextCursor, setNextCursor] = useState<string | undefined>()
-  const [hasMore, setHasMore] = useState(false)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [itemsByProject, setItemsByProject] = useState<Record<string, ProjectResourceItems>>({})
-  const [itemsLoading, setItemsLoading] = useState<Set<string>>(new Set())
-  const activeProjectId = searchParams?.get('projectId') ?? null
-
-  const loadProjects = useCallback(async () => {
-    try {
-      const page = await overlayAppClient.projects.getPage<Project>({
-        limit: INITIAL_SIDEBAR_LIST_LIMIT,
-        archived: archived || undefined,
-      })
-      setProjects(arrayOrEmpty<Project>(page.data))
-      setNextCursor(page.nextCursor)
-      setHasMore(page.hasMore)
-    } catch { setProjects([]) } finally { setLoading(false) }
-  }, [archived])
-
-  useEffect(() => {
-    setLoading(true)
-    void loadProjects()
-  }, [loadProjects, refreshKey])
-
-  useWorkspaceChanged(loadProjects)
-
-  async function loadMoreProjects() {
-    if (!nextCursor) return
-    setLoadingMore(true)
-    try {
-      const page = await overlayAppClient.projects.getPage<Project>({
-        cursor: nextCursor,
-        limit: INITIAL_SIDEBAR_LIST_LIMIT,
-        archived: archived || undefined,
-      })
-      setProjects((current) => {
-        const byId = new Map(current.map((project) => [project._id, project]))
-        for (const project of arrayOrEmpty<Project>(page.data)) byId.set(project._id, project)
-        return [...byId.values()]
-      })
-      setNextCursor(page.nextCursor)
-      setHasMore(page.hasMore)
-    } finally {
-      setLoadingMore(false)
-    }
-  }
-
-  const loadProjectItems = useCallback(async (projectId: string) => {
-    setItemsLoading((prev) => new Set(prev).add(projectId))
-    try {
-      const [chats, notes, files] = await Promise.all([
-        overlayAppClient.conversations.get<ProjectChat[]>({ projectId, limit: 100 }),
-        overlayAppClient.files.get<ProjectFile[]>({ kind: 'note', projectId, limit: 100 }),
-        overlayAppClient.files.get<ProjectFile[]>({ projectId, limit: 100 }),
-      ])
-      const noteRows = Array.isArray(notes) ? projectNotesFromFiles(notes) : []
-      const fileRows = Array.isArray(files) ? projectFilesExcludingNotes(files) : []
-      setItemsByProject((prev) => ({ ...prev, [projectId]: { chats: arrayOrEmpty<ProjectChat>(chats), notes: noteRows, files: fileRows } }))
-    } finally {
-      setItemsLoading((prev) => {
-        const next = new Set(prev)
-        next.delete(projectId)
-        return next
-      })
-    }
-  }, [])
-
-  function toggleProject(projectId: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(projectId)) next.delete(projectId)
-      else next.add(projectId)
-      return next
-    })
-    if (!itemsByProject[projectId] && !itemsLoading.has(projectId)) {
-      void loadProjectItems(projectId)
-    }
-  }
-
-  function navigateItem(project: Project, view: 'chat' | 'note' | 'file', id: string) {
-    router.push(projectItemHref({ project, view, id }))
-    onNavigate?.()
-  }
-
-  function openProjectHub(project: Project) {
-    router.push(projectHubHref(project))
-    onNavigate?.()
-  }
-
-  async function deleteProject(projectId: string, event: MouseEvent) {
-    event.stopPropagation()
-    await overlayAppClient.projects.deleteResponse({ projectId })
-    setProjects((prev) => prev.filter((project) => project._id !== projectId))
-    setItemsByProject((prev) => {
-      const next = { ...prev }
-      delete next[projectId]
-      return next
-    })
-  }
-
-  function handleProjectRenamed(projectId: string, name: string) {
-    setProjects((prev) => renameProjectInList(prev, projectId, name))
-  }
-
-  async function renameProject(project: Project, name: string): Promise<string | null> {
-    try {
-      const res = await overlayAppClient.projects.updateResponse({ projectId: project._id, name })
-      if (!res.ok) return null
-      const data = (await res.json().catch(() => ({}))) as { project?: Project }
-      const finalName = data.project?.name?.trim() || name
-      handleProjectRenamed(project._id, finalName)
-      window.dispatchEvent(
-        new CustomEvent(PROJECT_META_UPDATED_EVENT, { detail: { projectId: project._id, name: finalName } }),
-      )
-      return finalName
-    } catch {
-      return null
-    }
-  }
-
-  async function deleteItem(type: 'chat' | 'note', id: string, event: MouseEvent) {
-    event.stopPropagation()
-    if (type === 'chat') {
-      await overlayAppClient.conversations.deleteResponse({ conversationId: id })
-    } else {
-      await overlayAppClient.notes.deleteResponse({ noteId: id })
-    }
-    setItemsByProject((prev) => {
-      const next = { ...prev }
-      for (const key of Object.keys(next)) {
-        const entry = next[key]
-        next[key] = {
-          chats: type === 'chat' ? entry.chats.filter((chat) => chat._id !== id) : entry.chats,
-          notes: type === 'note' ? entry.notes.filter((note) => note._id !== id) : entry.notes,
-          files: entry.files,
-        }
-      }
-      return next
-    })
-  }
-
-  const rootProjects = useMemo(() => {
-    const loadedIds = new Set(projects.map((project) => project._id))
-    return sortProjectsByName(
-      projects.filter((project) => !project.parentId || !loadedIds.has(project.parentId)),
-    )
-  }, [projects])
-
-  return (
-    <SidebarResourceList>
-      <ProjectsInlineTree
-        projects={projects}
-        rootProjects={rootProjects}
-        loading={loading}
-        loadingContent={<SidebarListSkeleton rows={5} />}
-        expanded={expanded}
-        activeProjectId={activeProjectId}
-        items={itemsByProject}
-        itemsLoading={itemsLoading}
-        onToggle={toggleProject}
-        onOpenProject={openProjectHub}
-        onNavigateItem={navigateItem}
-        onDeleteProject={deleteProject}
-        onDeleteItem={deleteItem}
-        onRenameProject={renameProject}
-      />
-      {hasMore ? (
-        <button
-          type="button"
-          disabled={loadingMore}
-          onClick={() => void loadMoreProjects()}
-          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
-        >
-          {loadingMore ? 'Loading...' : 'Load more'}
-        </button>
-      ) : null}
     </SidebarResourceList>
   )
 }
@@ -616,58 +402,6 @@ export function AgentsInlinePanel({
   )
 }
 
-export function KnowledgeInlinePanel({
-  baseHref = '/app/knowledge',
-  onNavigate,
-}: {
-  baseHref?: string
-  onNavigate?: () => void
-}) {
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
-  const [loading, setLoading] = useState(true)
-  const searchParams = useSearchParams()
-  const activeKnowledgeBaseId = searchParams?.get('knowledgeBase') ?? null
-
-  const loadKnowledgeBases = useCallback(async () => {
-    setLoading(true)
-    try {
-      const response = await overlayAppClient.knowledgeBases.list()
-      setKnowledgeBases(arrayOrEmpty<KnowledgeBase>(response.knowledgeBases))
-    } catch {
-      setKnowledgeBases([])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void loadKnowledgeBases() }, [loadKnowledgeBases])
-  useWorkspaceChanged(loadKnowledgeBases)
-
-  return (
-    <SidebarResourceList>
-      {loading ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          <Loader2 size={13} className="animate-spin" /> Loading knowledge...
-        </div>
-      ) : knowledgeBases.length ? (
-        knowledgeBases.map((knowledgeBase) => (
-          <Link
-            key={knowledgeBase.id}
-            href={`${baseHref}/${encodeURIComponent(knowledgeBase.id)}`}
-            onClick={onNavigate}
-            className={`${resourceRowClass} ${activeKnowledgeBaseId === knowledgeBase.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-          >
-            {knowledgeBase.kind === 'personal' ? <Brain size={13} className="shrink-0" /> : <BookOpen size={13} className="shrink-0" />}
-            <span className="truncate">{knowledgeBase.title}</span>
-          </Link>
-        ))
-      ) : (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No knowledge bases yet</p>
-      )}
-    </SidebarResourceList>
-  )
-}
-
 export const toolsInlineItems = [
   { id: 'connectors', label: 'Connectors', icon: Plug },
   { id: 'skills', label: 'Skills', icon: Sparkles },
@@ -680,11 +414,6 @@ export const chatsInlineItems = [
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
   { id: 'activity', label: 'Activity', icon: Bell },
-  { id: 'archived', label: 'Archived', icon: Archive },
-] as const
-
-export const projectsInlineItems = [
-  { id: 'all', label: 'All', icon: Folder },
   { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
 

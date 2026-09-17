@@ -154,15 +154,6 @@ export default function ChatExperience({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const isPublicShowcase = Boolean(publicShowcaseSnapshots)
-  /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
-  const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
-  const embedProjectId =
-    rawEmbedProjectId &&
-    /^[a-z0-9]+$/i.test(rawEmbedProjectId) &&
-    rawEmbedProjectId.length >= 16 &&
-    rawEmbedProjectId.length <= 64
-      ? rawEmbedProjectId
-      : null
   const { settings, updateSettings } = useAppSettings()
   const { user: authUser, isLoading: authLoading } = useAuth()
   const gatewayCatalogEnabled = shouldLoadGatewayModelCatalog({
@@ -363,7 +354,7 @@ export default function ChatExperience({
     addDocumentsFromPicker,
     addImages,
     handlePaste,
-  } = useChatAttachments({ embedProjectId, setComposerNotice })
+  } = useChatAttachments({ setComposerNotice })
 
   const [replyContext, setReplyContext] = useState<{
     snippet: string
@@ -513,7 +504,6 @@ export default function ChatExperience({
     saveSkillDraft,
     setDraftModalState,
   } = useDraftReviewActions({
-    embedProjectId,
     setComposerNotice,
   })
 
@@ -1452,7 +1442,6 @@ export default function ChatExperience({
     clearTransientComposerState,
     completeSession,
     effectiveGenType,
-    embedProjectId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     inputRef,
@@ -1816,7 +1805,6 @@ export default function ChatExperience({
           schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
           modelId: selectedActModel,
           enabled: false,
-          ...(embedProjectId ? { projectId: embedProjectId } : {}),
         })
         const payload = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
         if (!res.ok || !payload.id) {
@@ -1842,7 +1830,7 @@ export default function ChatExperience({
     }
     const query = params.toString()
     router.replace(`${pathname}${query ? `?${query}` : ''}`)
-  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, embedProjectId, setComposerNotice])
+  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, setComposerNotice])
 
   const automationHeaderModels = selectableTextModels
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {

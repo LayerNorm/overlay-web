@@ -211,8 +211,6 @@ test('search never reaches into another workspace, even with a forged id', async
     } as never,
     sources: {
       files: async () => [{ _id: 'file_acme', name: 'Acme secret plan' }],
-      projects: async () => [],
-      knowledgeBases: async () => [],
       automations: async () => [],
     },
     loaders: {},

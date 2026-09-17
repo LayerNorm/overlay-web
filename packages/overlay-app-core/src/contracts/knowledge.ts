@@ -20,7 +20,6 @@ export interface KnowledgeFile {
   prompt?: string
   createdAt: number
   updatedAt: number
-  projectId?: string
 }
 
 export type KnowledgeFileKind = 'folder' | 'note' | 'upload' | 'output' | string
@@ -33,7 +32,6 @@ export interface KnowledgeFileTreeNode extends KnowledgeFile {
 
 export interface FileQueryContract extends PaginationQueryContract {
   fileId?: string
-  projectId?: string | null
   kind?: KnowledgeFileKind
   parentId?: string | null
   conversationId?: string
@@ -52,7 +50,6 @@ export interface CreateFileRequest {
   textContent?: string
   r2Key?: string
   sizeBytes?: number
-  projectId?: string | null
   mimeType?: string
   extension?: string
   conversationId?: string
@@ -79,7 +76,6 @@ export interface UpdateFileRequest {
   content?: string
   textContent?: string
   parentId?: string | null
-  projectId?: string | null
   accessToken?: string
   userId?: string
 }
@@ -136,7 +132,6 @@ export interface FileBulkActionRequest {
   action: FileBulkAction
   fileIds: readonly string[]
   targetParentId?: string | null
-  targetProjectId?: string | null
   visibility?: 'private' | 'public'
 }
 
@@ -174,7 +169,6 @@ export interface MemoryRow {
   source: string
   type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
   importance?: number
-  projectId?: string
   conversationId?: string
   noteId?: string
   messageId?: string
@@ -196,7 +190,6 @@ export interface MemoryQueryContract extends PaginationQueryContract {
   raw?: boolean
   updatedSince?: number
   includeDeleted?: boolean
-  projectId?: string
   conversationId?: string
   noteId?: string
   memberPrincipalId?: string
@@ -208,7 +201,6 @@ export interface CreateMemoryRequest {
   clientId?: string
   type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
   importance?: number
-  projectId?: string
   conversationId?: string
   noteId?: string
   messageId?: string

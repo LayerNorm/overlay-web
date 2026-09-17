@@ -230,7 +230,6 @@ export const replaceKnowledgeSource = internalMutation({
   args: {
     userId: v.string(),
     workspaceId: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
     title: v.optional(v.string()),
@@ -260,7 +259,6 @@ export const replaceKnowledgeSource = internalMutation({
       const chunkId = await ctx.db.insert('knowledgeChunks', {
         userId: args.userId,
         workspaceId: args.workspaceId,
-        projectId: args.projectId,
         sourceKind: args.sourceKind,
         sourceId: args.sourceId,
         chunkIndex: seg.chunkIndex,
@@ -295,7 +293,6 @@ export const getFileForReindex = internalQuery({
       kind: 'ok' as const,
       userId: f.userId,
       workspaceId: f.workspaceId,
-      projectId: f.projectId,
       name: f.name,
       content,
     }
@@ -307,7 +304,7 @@ export const getMemoryForReindex = internalQuery({
   handler: async (ctx, { memoryId }) => {
     const m = await ctx.db.get(memoryId)
     if (!m || m.deletedAt) return null
-    return { userId: m.userId, workspaceId: m.workspaceId, projectId: m.projectId, content: m.content }
+    return { userId: m.userId, workspaceId: m.workspaceId, content: m.content }
   },
 })
 
@@ -425,7 +422,7 @@ export const reindexFileInternal = internalAction({
   handler: async (ctx, { fileId }) => {
     const meta = await ctx.runQuery(internal.knowledge.knowledge.getFileForReindex, { fileId })
     if (!meta || meta.kind === 'skip') return
-    const { userId, projectId, name } = meta
+    const { userId, name } = meta
     const MAX_INDEXABLE_BYTES = 2 * 1024 * 1024 // 2 MB
     const content = new TextEncoder().encode(meta.content).byteLength > MAX_INDEXABLE_BYTES
       ? meta.content.slice(0, MAX_INDEXABLE_BYTES)
@@ -490,7 +487,6 @@ export const reindexFileInternal = internalAction({
       await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
         userId,
         workspaceId: meta.workspaceId,
-        projectId,
         sourceKind: 'file',
         sourceId: fileId,
         title: name,
@@ -622,7 +618,6 @@ export const reindexMemoryInternal = internalAction({
       await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
         userId: meta.userId,
         workspaceId: meta.workspaceId,
-        projectId: meta.projectId,
         sourceKind: 'memory',
         sourceId: memoryId,
         title: 'Memory',
@@ -673,14 +668,6 @@ export const reindexMemoryInternal = internalAction({
   },
 })
 
-function chunkMatchesProject(
-  projectId: string | undefined,
-  chunkProjectId: string | undefined,
-): boolean {
-  if (!projectId) return true
-  return chunkProjectId === undefined || chunkProjectId === projectId
-}
-
 /** Post-processing after RRF: cap total injected characters and diversity per source (step 6). */
 const PACK_MAX_TOTAL_CHARS = 12_000
 const PACK_MAX_PER_SOURCE = 3
@@ -728,7 +715,6 @@ export const hybridSearch = action({
     spendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
     requestFingerprint: v.string(),
     query: v.string(),
-    projectId: v.optional(v.string()),
     sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
     workspaceId: v.optional(v.string()),
     kVec: v.optional(v.number()),
@@ -925,24 +911,11 @@ export const hybridSearch = action({
     const filtered = rankedIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => !!row)
-      .filter((row) => chunkMatchesProject(args.projectId, row.projectId))
-
-    // Prefer chunks whose file was saved under this project when the user is in a project chat.
-    const PROJECT_CHUNK_BOOST = 1.85
-    const boostedScores = new Map(scores)
-    if (args.projectId) {
-      for (const row of filtered) {
-        if (row.projectId === args.projectId) {
-          const id = row._id
-          boostedScores.set(id, (boostedScores.get(id) ?? 0) * PROJECT_CHUNK_BOOST)
-        }
-      }
-    }
     const resorted = [...filtered].sort(
-      (a, b) => (boostedScores.get(b._id) ?? 0) - (boostedScores.get(a._id) ?? 0),
+      (a, b) => (scores.get(b._id) ?? 0) - (scores.get(a._id) ?? 0),
     )
 
-    const top = packChunksForContext(resorted, boostedScores, m)
+    const top = packChunksForContext(resorted, scores, m)
 
     return { chunks: top }
   },

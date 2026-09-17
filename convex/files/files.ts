@@ -108,7 +108,6 @@ function normalizeFile(file: Doc<'files'>) {
     expiresAt: file.expiresAt,
     legacyNoteId: file.legacyNoteId,
     legacyOutputId: file.legacyOutputId,
-    projectId: file.projectId,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,
@@ -209,11 +208,10 @@ function validStorageKeyForKind(userId: string, kind: FileKind, r2Key: string): 
   return kind === 'output' ? isOwnedOutputR2Key(userId, r2Key) : isOwnedFileR2Key(userId, r2Key)
 }
 
-async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'projects'>) => Promise<unknown> } }, args: {
+async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'>) => Promise<unknown> } }, args: {
   fileId?: Id<'files'>
   userId: string
   parentId?: string
-  projectId?: string
 }) {
   if (args.parentId) {
     const parent = await ctx.db.get(args.parentId as Id<'files'>) as Doc<'files'> | null
@@ -231,12 +229,6 @@ async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'p
       if (cursor && (cursor.userId !== args.userId || cursor.deletedAt)) {
         throw new Error('Unauthorized')
       }
-    }
-  }
-  if (args.projectId) {
-    const project = await ctx.db.get(args.projectId as Id<'projects'>) as Doc<'projects'> | null
-    if (!project || project.userId !== args.userId || project.deletedAt) {
-      throw new Error('Unauthorized')
     }
   }
 }
@@ -416,7 +408,6 @@ export const expireUploadIntentsByServer = mutation({
 type FileListArgs = {
   userId: string
   workspaceId?: string
-  projectId?: string
   parentId?: string | null
   conversationId?: string
   outputType?: string
@@ -426,11 +417,6 @@ type FileListArgs = {
 
 function fileListQuery(ctx: QueryCtx, args: FileListArgs) {
   if (args.workspaceId) {
-    if (args.projectId !== undefined) {
-      return ctx.db.query('files').withIndex('by_workspaceId_userId_projectId_updatedAt', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('userId', args.userId).eq('projectId', args.projectId)
-      )).order('desc')
-    }
     if (args.parentId !== undefined) {
       return ctx.db.query('files').withIndex('by_workspaceId_userId_parentId_updatedAt', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('userId', args.userId).eq('parentId', args.parentId ?? undefined)
@@ -458,7 +444,6 @@ function fileListQuery(ctx: QueryCtx, args: FileListArgs) {
 function filterFileList(files: Doc<'files'>[], args: FileListArgs): Doc<'files'>[] {
   return files
     .filter((file) => (args.includeDeleted ? true : !file.deletedAt))
-    .filter((file) => (args.projectId !== undefined ? file.projectId === args.projectId : true))
     .filter((file) => (args.parentId !== undefined ? (file.parentId ?? null) === args.parentId : true))
     .filter((file) => (args.conversationId !== undefined ? file.conversationId === args.conversationId : true))
     .filter((file) => (args.outputType !== undefined ? file.outputType === args.outputType : true))
@@ -471,7 +456,6 @@ const fileListArgs = {
   workspaceId: v.optional(v.string()),
   accessToken: v.optional(v.string()),
   serverSecret: v.optional(v.string()),
-  projectId: v.optional(v.string()),
   parentId: v.optional(v.union(v.string(), v.null())),
   conversationId: v.optional(v.string()),
   outputType: v.optional(v.string()),
@@ -495,7 +479,6 @@ export const list = query({
     workspaceId,
     accessToken,
     serverSecret,
-    projectId,
     parentId,
     conversationId,
     outputType,
@@ -511,10 +494,10 @@ export const list = query({
     }
     const requestedLimit = Math.max(1, Math.min(100, Math.floor(limit ?? 100)))
     const candidates = await fileListQuery(ctx, {
-      userId, workspaceId, projectId, parentId, conversationId, outputType, kind, includeDeleted,
+      userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted,
     }).take(Math.min(300, requestedLimit * 3))
     const filteredFiles = filterFileList(candidates, {
-      userId, workspaceId, projectId, parentId, conversationId, outputType, kind, includeDeleted,
+      userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted,
     }).slice(0, requestedLimit)
 
     return summary
@@ -715,7 +698,6 @@ export const create = mutation({
     content: v.optional(v.string()),
     textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     r2Key: v.optional(v.string()),
     storageId: v.optional(v.id('_storage')),
     sizeBytes: v.optional(v.number()),
@@ -813,7 +795,6 @@ export const create = mutation({
           indexable,
           indexStatus: indexable && !canonicalDuplicate ? 'pending' : 'skipped',
           indexError: undefined,
-          projectId: args.projectId,
           deletedAt: undefined,
           updatedAt: args.updatedAt ?? now,
         })
@@ -877,7 +858,6 @@ export const create = mutation({
       expiresAt: args.expiresAt,
       legacyNoteId: args.legacyNoteId,
       legacyOutputId: args.legacyOutputId,
-      projectId: args.projectId,
       createdAt: args.createdAt ?? now,
       updatedAt: args.updatedAt ?? now,
     })
@@ -902,7 +882,6 @@ export const createWithStorage = mutation({
     storageId: v.optional(v.id('_storage')),
     r2Key: v.optional(v.string()),
     sizeBytes: v.number(),
-    projectId: v.optional(v.string()),
     mimeType: v.optional(v.string()),
     extension: v.optional(v.string()),
   },
@@ -929,7 +908,6 @@ export const createWithStorage = mutation({
       sizeBytes: args.sizeBytes,
       indexable: false,
       indexStatus: 'skipped',
-      projectId: args.projectId,
       createdAt: now,
       updatedAt: now,
     })
@@ -948,7 +926,6 @@ export const createExtractedDocument = mutation({
     mimeType: v.string(),
     sourceSizeBytes: v.number(),
     parentId: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     parts: v.array(v.object({
       name: v.string(),
       content: v.string(),
@@ -995,7 +972,6 @@ export const createExtractedDocument = mutation({
         duplicateOfFileId: canonicalDuplicate?._id,
         indexable: true,
         indexStatus: canonicalDuplicate ? 'skipped' : 'pending',
-        projectId: args.projectId,
         createdAt: now,
         updatedAt: now,
       })
@@ -1021,7 +997,6 @@ export const update = mutation({
     textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
     parentId: v.optional(v.union(v.string(), v.null())),
-    projectId: v.optional(v.union(v.string(), v.null())),
     indexStatus: v.optional(v.union(
       v.literal('pending'),
       v.literal('indexed'),
@@ -1059,12 +1034,11 @@ export const update = mutation({
     if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
       throw new Error('NOTE_REVISION_CONFLICT')
     }
-    if (updates.parentId !== undefined || updates.projectId !== undefined) {
+    if (updates.parentId !== undefined) {
       await assertParentAndProject(ctx, {
         fileId,
         userId,
         parentId: updates.parentId === null ? undefined : updates.parentId,
-        projectId: updates.projectId === null ? undefined : updates.projectId,
       })
     }
 
@@ -1081,7 +1055,6 @@ export const update = mutation({
       patch.extension = extensionOf(updates.name)
     }
     if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
-    if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
     if (updates.r2Key !== undefined) {
@@ -1267,7 +1240,6 @@ export const backfillCanonicalFilesystem = mutation({
           extension: 'md',
           indexable: note.content.trim().length > 0,
           indexStatus: note.content.trim().length > 0 ? 'pending' : 'skipped',
-          projectId: note.projectId,
           legacyNoteId: note._id,
           createdAt: note.createdAt ?? note.updatedAt,
           updatedAt: note.updatedAt,

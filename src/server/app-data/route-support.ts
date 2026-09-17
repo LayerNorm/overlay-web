@@ -282,13 +282,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'integration-metadata',
   },
   {
-    id: 'projects',
-    methods: '*',
-    prefixes: ['/api/v1/projects'],
-    status: 'supported',
-    feature: 'projects',
-  },
-  {
     id: 'subscription-and-billing-records',
     methods: '*',
     prefixes: ['/api/v1/subscription'],
@@ -316,7 +309,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
       // These surfaces are shipped for Convex but do not have Postgres
       // repositories yet. Keep this rule after supported conversation routes
       // so the core Postgres chat contract remains available.
-      '/api/v1/knowledge-bases',
       '/api/v1/search',
       '/api/v1/shares',
       '/api/v1/workspace-invitations',

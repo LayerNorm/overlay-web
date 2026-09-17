@@ -12,7 +12,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
     const automationId = request.nextUrl.searchParams.get('automationId')
-    const projectId = request.nextUrl.searchParams.get('projectId') || undefined
     const includeDeleted = request.nextUrl.searchParams.get('includeDeleted') === 'true'
     const includeRuns =
       request.nextUrl.searchParams.get('runs') === 'true' ||
@@ -21,7 +20,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       automationId,
-      projectId,
       includeDeleted,
       includeRuns,
     })

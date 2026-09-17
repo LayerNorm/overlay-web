@@ -20,7 +20,6 @@ export interface AgentTurnInput {
   userId: string
   turnId: string
   conversationId?: string
-  projectId?: string
   modelId?: string
   latestUserText?: string
   messages?: AgentMessage[]

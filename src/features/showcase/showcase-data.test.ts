@@ -6,7 +6,6 @@ import {
   SHOWCASE_CONVERSATIONS,
   SHOWCASE_FILES,
   SHOWCASE_MCPS,
-  SHOWCASE_PROJECTS,
   SHOWCASE_SKILLS,
   SHOWCASE_CHAT_SNAPSHOTS,
   SHOWCASE_CHAT_SUMMARIES,
@@ -15,7 +14,6 @@ import {
 
 test('public workspace has a deterministic outcome-led seed', () => {
   assert.equal(SHOWCASE_CONVERSATIONS.length, 6)
-  assert.equal(SHOWCASE_PROJECTS.length, 2)
   assert.equal(SHOWCASE_AUTOMATIONS.length, 3)
   assert.ok(SHOWCASE_CONNECTORS.some((connector) => connector.isConnected))
   assert.ok(SHOWCASE_CONNECTORS.some((connector) => !connector.isConnected))

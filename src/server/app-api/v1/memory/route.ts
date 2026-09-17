@@ -100,7 +100,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       creatorUserId: requestedMember?.principal.userId,
       includeDeleted,
       noteId: request.nextUrl.searchParams.get('noteId') ?? undefined,
-      projectId: request.nextUrl.searchParams.get('projectId') ?? undefined,
       scope: 'workspace',
       updatedSince: Number.isFinite(updatedSinceValue) && updatedSinceValue > 0 ? updatedSinceValue : undefined,
       userId: context.auth.userId,
@@ -146,7 +145,6 @@ type MemoryBody = {
   memoryId?: string
   messageId?: string
   noteId?: string
-  projectId?: string
   source?: MemorySource | string
   tags?: string[]
   turnId?: string

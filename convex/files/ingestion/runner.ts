@@ -19,7 +19,6 @@ export const listQueuedJobsInternal = query({
     fileName: v.string(),
     mimeType: v.string(),
     sizeBytes: v.number(),
-    projectId: v.optional(v.string()),
     parentId: v.optional(v.string()),
     createdAt: v.number(),
   })),
@@ -37,7 +36,6 @@ export const listQueuedJobsInternal = query({
       fileName: job.fileName,
       mimeType: job.mimeType,
       sizeBytes: job.sizeBytes,
-      ...(job.projectId ? { projectId: job.projectId } : {}),
       ...(job.parentId ? { parentId: job.parentId } : {}),
       createdAt: job.createdAt,
     }))
@@ -116,8 +114,7 @@ export const runMinuteTick = internalAction({
         fileName: job.fileName,
         mimeType: job.mimeType,
         sizeBytes: job.sizeBytes,
-        ...(job.projectId ? { projectId: job.projectId } : {}),
-        ...(job.parentId ? { parentId: job.parentId } : {}),
+          ...(job.parentId ? { parentId: job.parentId } : {}),
       })
     }
 
@@ -137,7 +134,6 @@ export const processOne = internalAction({
     fileName: v.string(),
     mimeType: v.string(),
     sizeBytes: v.number(),
-    projectId: v.optional(v.string()),
     parentId: v.optional(v.string()),
   },
   returns: v.null(),
@@ -171,8 +167,7 @@ export const processOne = internalAction({
           fileName: args.fileName,
           mimeType: args.mimeType,
           sizeBytes: args.sizeBytes,
-          ...(args.projectId ? { projectId: args.projectId } : {}),
-          ...(args.parentId ? { parentId: args.parentId } : {}),
+              ...(args.parentId ? { parentId: args.parentId } : {}),
         }),
       })
 

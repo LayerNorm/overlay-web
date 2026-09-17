@@ -14,7 +14,6 @@ import {
   conversations,
   memories,
   automations,
-  projects,
   skills,
   userSettings,
   workspaces,
@@ -23,14 +22,12 @@ import {
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
-import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
   ActConversationRepository,
   ActConversationRow,
   ActMemoryRow,
   ActPersistedMessage,
-  ActProjectRow,
   ActSkillRow,
   ActUsageEvent,
   ConversationId,
@@ -67,7 +64,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
     askModelIds: string[]
     clientId?: string
     lastMode?: 'ask' | 'act'
-    projectId?: string
     title: string
     userId: string
     workspaceId?: string
@@ -149,7 +145,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
         userId: args.userId,
         clientId: normalizeOptional(args.clientId),
         title: args.title,
-        projectId: normalizeOptional(args.projectId),
         askModelIds: args.askModelIds,
         actModelId: args.actModelId,
         lastMode: args.lastMode ?? 'act' as const,
@@ -158,10 +153,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
         updatedAt: now,
         isAutomation: args.isAutomation ?? false,
       }
-      await assertActivePostgresProject(tx, {
-        projectId: values.projectId,
-        userId: args.userId,
-      })
       const inserted = values.clientId
         ? await tx
             .insert(conversations)
@@ -175,7 +166,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
                 askModelIds: values.askModelIds,
                 lastMode: values.lastMode,
                 lastModified: now,
-                projectId: values.projectId,
                 title: values.title,
                 isAutomation: values.isAutomation,
                 updatedAt: now,
@@ -239,31 +229,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
     return rows.map(mapConversationRow)
   }
 
-  async listConversationsByProject(args: {
-    includeDeleted?: boolean
-    projectId: string
-    updatedSince?: number
-    userId: string
-    workspaceId?: string
-  }): Promise<ConversationListRow[]> {
-    const linkedAutomationConversationIds = await listLinkedAutomationConversationIds(this.db, args.userId)
-    const rows = await this.db
-      .select()
-      .from(conversations)
-      .where(and(
-        conversationListWhere({
-          includeDeleted: args.includeDeleted,
-          updatedSince: args.updatedSince,
-          userId: args.userId,
-          workspaceId: args.workspaceId,
-          linkedAutomationConversationIds,
-        }),
-        eq(conversations.projectId, args.projectId),
-      ))
-      .orderBy(desc(conversations.lastModified))
-    return rows.map(mapConversationRow)
-  }
-
   async getRecentMessages(args: {
     beforeCreatedAt?: number
     compactToolPayloads?: boolean
@@ -309,26 +274,18 @@ export class PostgresActConversationRepository implements ActConversationReposit
     askModelIds?: string[]
     conversationId: ConversationId
     lastMode?: 'ask' | 'act'
-    projectId?: string | null
     title?: string
     userId: string
     workspaceId?: string
   }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
-      if (args.projectId !== undefined) {
-        await assertActivePostgresProject(tx, {
-          projectId: args.projectId,
-          userId: args.userId,
-        })
-      }
       const updated = await tx
         .update(conversations)
         .set({
           ...(args.actModelId !== undefined ? { actModelId: args.actModelId } : {}),
           ...(args.askModelIds !== undefined ? { askModelIds: args.askModelIds } : {}),
           ...(args.lastMode !== undefined ? { lastMode: args.lastMode } : {}),
-          ...(args.projectId !== undefined ? { projectId: normalizeNullable(args.projectId) } : {}),
           ...(args.title !== undefined ? { title: args.title } : {}),
           lastModified: now,
           updatedAt: now,
@@ -641,7 +598,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         name: skills.name,
       })
       .from(skills)
-      .where(and(eq(skills.userId, args.userId), isNull(skills.projectId)))
+      .where(eq(skills.userId, args.userId))
       .orderBy(desc(skills.updatedAt))
       .limit(200)
   }
@@ -655,7 +612,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         enabled: skills.enabled,
       })
       .from(skills)
-      .where(and(eq(skills.userId, args.userId), isNull(skills.projectId)))
+      .where(eq(skills.userId, args.userId))
       .orderBy(desc(skills.updatedAt))
       .limit(200)
     return rows.map((row) => ({
@@ -672,26 +629,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   }): Promise<ActConversationRow | null> {
     const row = await this.getConversationById(args)
     if (!row) return null
-    return {
-      _id: row._id,
-      projectId: row.projectId,
-    }
-  }
-
-  async getProject(args: {
-    projectId: Id<'projects'>
-    userId: string
-  }): Promise<ActProjectRow | null> {
-    const [row] = await this.db
-      .select({ instructions: projects.instructions })
-      .from(projects)
-      .where(and(
-        eq(projects.id, args.projectId),
-        eq(projects.userId, args.userId),
-        isNull(projects.deletedAt),
-      ))
-      .limit(1)
-    return row ? { instructions: row.instructions ?? undefined } : null
+    return { _id: row._id }
   }
 
   async getContextSummary(args: {
@@ -1483,7 +1421,6 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     lastMode: row.lastMode,
     askModelIds: row.askModelIds ?? [],
     actModelId: row.actModelId,
-    projectId: row.projectId ?? undefined,
     shareVisibility: row.shareVisibility ?? undefined,
     shareToken: row.shareToken,
     isAutomation: row.isAutomation ?? undefined,

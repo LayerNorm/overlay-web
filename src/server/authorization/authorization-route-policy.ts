@@ -243,38 +243,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/admin/catalog',
     methods: { GET: capability('roles.read') },
   },
-  {
-    path: '/api/v1/admin/knowledge-bases',
-    methods: { GET: capability('administration.access', 'knowledge.publish') },
-  },
-  {
-    path: '/api/v1/admin/knowledge-bases/defaults',
-    methods: {
-      GET: capability('administration.access', 'groups.read', 'knowledge.publish'),
-      POST: capability('administration.access', 'groups.manage', 'knowledge.publish'),
-      DELETE: capability('administration.access', 'groups.manage', 'knowledge.publish'),
-    },
-  },
-  {
-    path: '/api/v1/admin/governance/policies',
-    methods: {
-      GET: capability('governance.read'),
-      POST: capability('governance.manage'),
-      PATCH: capability('governance.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/governance/reviews',
-    methods: {
-      GET: capability('governance.read'),
-      POST: capability('governance.manage'),
-      PATCH: capability('governance.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/governance/export',
-    methods: { GET: capability('governance.export') },
-  },
 
   {
     path: '/api/v1/conversations',
@@ -450,61 +418,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/files/upload-url', methods: { POST: capability('files.upload') } },
 
   {
-    path: '/api/v1/projects',
-    methods: {
-      GET: resource('project', 'view', { optional: true }, 'projects.read'),
-      POST: capability('projects.create'),
-      PATCH: resource('project', 'edit', {}, 'projects.edit'),
-      DELETE: resource('project', 'delete', {}, 'projects.delete'),
-    },
-  },
-  {
-    path: '/api/v1/projects/share-directory',
-    methods: { GET: capability('projects.share') },
-  },
-  {
-    path: '/api/v1/projects/grants',
-    methods: {
-      GET: resource('project', 'share', {}, 'projects.share'),
-      POST: resource('project', 'share', {}, 'projects.share'),
-      DELETE: resource('project', 'share', {}, 'projects.share'),
-    },
-  },
-  {
-    // Duplicating reads one project's configuration and creates another, so it
-    // needs view on the source and the ability to create.
-    path: '/api/v1/projects/duplicate',
-    methods: {
-      GET: capability('projects.read'),
-      POST: capability('projects.create', 'projects.read'),
-    },
-  },
-  {
-    path: '/api/v1/projects/export',
-    methods: { GET: resource('project', 'view', {}, 'projects.read') },
-  },
-  {
-    // Promotion writes into a knowledge base and copying reads from one, so both
-    // directions need project edit plus the matching knowledge capability.
-    // projectId is optional so an answer from a project-less chat can still be
-    // captured; the handler verifies ownership whenever one is supplied.
-    path: '/api/v1/projects/knowledge-transfer',
-    methods: {
-      POST: resource('project', 'edit', { optional: true }, 'projects.edit', 'knowledge.read'),
-    },
-  },
-  {
-    // Attaching trusted knowledge changes what a project's chats may cite, so it
-    // is gated as a project edit. Read access to each base is checked separately
-    // by KnowledgeBaseService.
-    path: '/api/v1/projects/knowledge-bases',
-    methods: {
-      GET: resource('project', 'view', {}, 'projects.read', 'knowledge.read'),
-      POST: resource('project', 'edit', {}, 'projects.edit', 'knowledge.read'),
-      DELETE: resource('project', 'edit', {}, 'projects.edit'),
-    },
-  },
-  {
     path: '/api/v1/notes',
     methods: {
       GET: resource('note', 'view', { optional: true }, 'notes.read'),
@@ -581,75 +494,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       DELETE: capability('memory.use'),
     },
   },
-  { path: '/api/v1/knowledge/search', methods: { POST: capability('knowledge.read') } },
-  {
-    path: '/api/v1/knowledge-bases/share-directory',
-    methods: { GET: capability('knowledge.share') },
-  },
-  {
-    path: '/api/v1/knowledge-bases',
-    methods: {
-      GET: resource('knowledge_base', 'view', { optional: true }, 'knowledge.read'),
-      POST: capability('knowledge.create'),
-      PATCH: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
-      DELETE: resource('knowledge_base', 'delete', {}, 'knowledge.delete'),
-    },
-  },
-  {
-    // A personal base is private by ownership; listing and creating your own
-    // needs only the ordinary knowledge capabilities.
-    path: '/api/v1/knowledge-bases/personal',
-    methods: {
-      GET: capability('knowledge.read'),
-      POST: capability('knowledge.create'),
-    },
-  },
-  {
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/sources',
-    methods: {
-      GET: resource('knowledge_base', 'view', {}, 'knowledge.read'),
-      POST: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
-      PATCH: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
-      DELETE: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
-    },
-  },
-  {
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/sources/upload',
-    methods: {
-      POST: resource('knowledge_base', 'edit', {}, 'knowledge.edit', 'files.upload'),
-    },
-  },
-  {
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/search',
-    methods: { POST: resource('knowledge_base', 'view', {}, 'knowledge.read') },
-  },
-  {
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/conversations',
-    methods: { GET: resource('knowledge_base', 'view', {}, 'knowledge.read') },
-  },
-  {
-    // Diagnostics and extraction previews expose source content, so they need the
-    // same read access as retrieval itself.
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/diagnostics',
-    methods: { GET: resource('knowledge_base', 'view', {}, 'knowledge.read') },
-  },
-  {
-    // Re-embedding rewrites the retrieval index, so it is an edit even though it
-    // does not change source content.
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/reindex',
-    methods: {
-      GET: resource('knowledge_base', 'view', {}, 'knowledge.read'),
-      POST: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
-    },
-  },
-  {
-    path: '/api/v1/knowledge-bases/:knowledgeBaseId/grants',
-    methods: {
-      GET: resource('knowledge_base', 'share', {}, 'knowledge.share'),
-      POST: resource('knowledge_base', 'share', {}, 'knowledge.share'),
-      DELETE: resource('knowledge_base', 'share', {}, 'knowledge.share'),
-    },
-  },
+  { path: '/api/v1/knowledge/search', methods: { POST: capability('files.read') } },
   {
     path: '/api/v1/automations',
     methods: {

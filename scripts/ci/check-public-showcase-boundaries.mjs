@@ -19,7 +19,6 @@ const required = [
   'src/features/chat/components/ChatExperience.tsx',
   'src/features/showcase/RootEntryResolver.tsx',
   'src/features/showcase/PublicShowcaseKnowledgeView.tsx',
-  'src/features/showcase/PublicShowcaseProjectsView.tsx',
   'src/features/showcase/PublicShowcaseAutomationsView.tsx',
   'src/features/showcase/PublicShowcaseToolsView.tsx',
   'src/features/showcase/showcase-data.ts',
@@ -87,7 +86,6 @@ const shellSidebar = read('src/app/app/_components/AppShellSidebar.tsx')
 for (const adapter of [
   'SHOWCASE_CHAT_SUMMARIES',
   'PublicShowcaseFilesInlinePanel',
-  'PublicShowcaseProjectsInlinePanel',
   'PublicShowcaseAutomationsInlinePanel',
 ]) {
   if (!shellSidebar.includes(adapter)) violations.push(`the real app sidebar must use ${adapter}`)
@@ -105,10 +103,6 @@ if (!chatExperience.includes('if (!activeChatId || isPublicShowcase) return')) {
 const knowledge = read('src/features/showcase/PublicShowcaseKnowledgeView.tsx')
 if (!knowledge.includes('SharedKnowledgeSurface')) violations.push('public files must use the shared production knowledge surface')
 if (!knowledge.includes('FileViewer')) violations.push('public files must use the shared production file viewer')
-
-const projects = read('src/features/showcase/PublicShowcaseProjectsView.tsx')
-if (!projects.includes('ProjectDetail')) violations.push('public projects must use the production project detail')
-if (projects.includes('ProjectsModuleShell')) violations.push('public projects must not render a second project sidebar')
 
 const automations = read('src/features/showcase/PublicShowcaseAutomationsView.tsx')
 if (!automations.includes('AutomationGraphCanvas') && !automations.includes('AutomationGraphPreview')) {

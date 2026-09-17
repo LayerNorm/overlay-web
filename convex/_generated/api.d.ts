@@ -10,7 +10,6 @@
 
 import type * as admin_administration from "../admin/administration.js";
 import type * as admin_authorization from "../admin/authorization.js";
-import type * as admin_governance from "../admin/governance.js";
 import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
 import type * as agents_connectedAgents from "../agents/connectedAgents.js";
 import type * as agents_environmentControlPlane from "../agents/environmentControlPlane.js";
@@ -62,7 +61,6 @@ import type * as imports_slackRunner from "../imports/slackRunner.js";
 import type * as integrations_mcpServers from "../integrations/mcpServers.js";
 import type * as integrations_skills from "../integrations/skills.js";
 import type * as integrations_workspaceConnectors from "../integrations/workspaceConnectors.js";
-import type * as knowledge_bases from "../knowledge/bases.js";
 import type * as knowledge_knowledge from "../knowledge/knowledge.js";
 import type * as knowledge_memories from "../knowledge/memories.js";
 import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js";
@@ -84,7 +82,6 @@ import type * as platform_rateLimits from "../platform/rateLimits.js";
 import type * as platform_seedDemoAccount from "../platform/seedDemoAccount.js";
 import type * as platform_uiSettings from "../platform/uiSettings.js";
 import type * as platform_usage from "../platform/usage.js";
-import type * as projects_projects from "../projects/projects.js";
 import type * as providers_connections from "../providers/connections.js";
 import type * as search_mentions from "../search/mentions.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
@@ -100,7 +97,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   "admin/administration": typeof admin_administration;
   "admin/authorization": typeof admin_authorization;
-  "admin/governance": typeof admin_governance;
   "agents/artifactCleanup": typeof agents_artifactCleanup;
   "agents/connectedAgents": typeof agents_connectedAgents;
   "agents/environmentControlPlane": typeof agents_environmentControlPlane;
@@ -152,7 +148,6 @@ declare const fullApi: ApiFromModules<{
   "integrations/mcpServers": typeof integrations_mcpServers;
   "integrations/skills": typeof integrations_skills;
   "integrations/workspaceConnectors": typeof integrations_workspaceConnectors;
-  "knowledge/bases": typeof knowledge_bases;
   "knowledge/knowledge": typeof knowledge_knowledge;
   "knowledge/memories": typeof knowledge_memories;
   "knowledge/memoryExtractor": typeof knowledge_memoryExtractor;
@@ -174,7 +169,6 @@ declare const fullApi: ApiFromModules<{
   "platform/seedDemoAccount": typeof platform_seedDemoAccount;
   "platform/uiSettings": typeof platform_uiSettings;
   "platform/usage": typeof platform_usage;
-  "projects/projects": typeof projects_projects;
   "providers/connections": typeof providers_connections;
   "search/mentions": typeof search_mentions;
   "webhooks/deliveries": typeof webhooks_deliveries;

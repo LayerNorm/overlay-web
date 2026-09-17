@@ -5,7 +5,6 @@ import { Boxes, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import type {
   AdminCatalogResource,
   AdminCatalogResourceType,
-  KnowledgeBaseShareDirectoryResponse,
 } from '@overlay/api-client'
 import type {
   AuthorizationPrincipalType,
@@ -15,7 +14,10 @@ import { IconButton, SegmentedControl } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { Select } from '@overlay/ui/primitives'
 
-const EMPTY_DIRECTORY: KnowledgeBaseShareDirectoryResponse = { users: [], groups: [], roles: [] }
+type DirectoryEntry = { email?: string; id: string; name?: string }
+type Directory = { groups: DirectoryEntry[]; roles: DirectoryEntry[]; users: DirectoryEntry[] }
+
+const EMPTY_DIRECTORY: Directory = { users: [], groups: [], roles: [] }
 
 export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
   const [resources, setResources] = useState<AdminCatalogResource[]>([])
@@ -46,12 +48,17 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
   )) ?? null
 
   const load = useCallback(async () => {
-    const [catalog, shareDirectory] = await Promise.all([
+    const [catalog, groups, roles] = await Promise.all([
       overlayAppClient.adminAuthorization.listCatalogResources(),
-      overlayAppClient.knowledgeBases.listShareDirectory(),
+      overlayAppClient.adminAuthorization.listGroups(),
+      overlayAppClient.adminAuthorization.listRoles(),
     ])
     setResources(catalog)
-    setDirectory(shareDirectory)
+    setDirectory({
+      groups: groups.map((group) => ({ id: group.id, name: group.name })),
+      roles: roles.map((role) => ({ id: role.id, name: role.name })),
+      users: [],
+    })
   }, [])
 
   const loadGrants = useCallback(async (
@@ -219,17 +226,27 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                     <option value="group">Group</option>
                     <option value="role">Role</option>
                   </Select>
-                  <Select
-                    aria-label="Catalog policy principal"
-                    value={principalId}
-                    onChange={(event) => setPrincipalId(event.target.value)}
-                    className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
-                  >
-                    <option value="">Select {principalType}</option>
-                    {directoryEntries(directory, principalType).map((entry) => (
-                      <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>
-                    ))}
-                  </Select>
+                  {principalType === 'user' ? (
+                    <input
+                      aria-label="Catalog policy user ID"
+                      value={principalId}
+                      onChange={(event) => setPrincipalId(event.target.value)}
+                      placeholder="User ID"
+                      className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+                    />
+                  ) : (
+                    <Select
+                      aria-label="Catalog policy principal"
+                      value={principalId}
+                      onChange={(event) => setPrincipalId(event.target.value)}
+                      className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+                    >
+                      <option value="">Select {principalType}</option>
+                      {directoryEntries(directory, principalType).map((entry) => (
+                        <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>
+                      ))}
+                    </Select>
+                  )}
                   <IconButton
                     aria-label="Restrict catalog resource to principal"
                     onClick={() => void addGrant()}
@@ -270,7 +287,7 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
 }
 
 function directoryEntries(
-  directory: KnowledgeBaseShareDirectoryResponse,
+  directory: Directory,
   type: AuthorizationPrincipalType,
 ) {
   if (type === 'user') return directory.users
@@ -278,13 +295,13 @@ function directoryEntries(
   return directory.roles
 }
 
-function entryLabel(entry: KnowledgeBaseShareDirectoryResponse['users'][number]): string {
+function entryLabel(entry: DirectoryEntry): string {
   if (entry.email && entry.name && entry.name !== entry.email) return `${entry.name} (${entry.email})`
   return entry.email || entry.name || entry.id
 }
 
 function principalLabel(
-  directory: KnowledgeBaseShareDirectoryResponse,
+  directory: Directory,
   grant: ResourceGrant,
 ): string {
   const entry = directoryEntries(directory, grant.principalType)

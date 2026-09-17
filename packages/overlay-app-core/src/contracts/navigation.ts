@@ -2,9 +2,7 @@ export type AppDestinationId =
   | 'chat'
   | 'files'
   | 'notes'
-  | 'knowledge'
   | 'extensions'
-  | 'projects'
   | 'automations'
   | 'settings'
   | 'account'
@@ -19,8 +17,6 @@ export type SettingsSubview =
   | 'providers'
   | 'models'
   | 'contact'
-export type ProjectSubview = 'chat' | 'note' | 'file'
-
 export interface AppDestinationConfig {
   id: AppDestinationId
   label: string
@@ -42,7 +38,6 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     href: '/app/tools',
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
-  { id: 'projects', label: 'Projects', href: '/app/projects' },
   { id: 'automations', label: 'Automations', href: '/app/automations' },
   {
     id: 'settings',
@@ -56,7 +51,6 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
 export interface AppFeatureFlags {
   canUseVoiceTranscription: boolean
   canUseKnowledge: boolean
-  canUseProjects: boolean
   canUseAutomations: boolean
   canUseExtensions: boolean
 }
