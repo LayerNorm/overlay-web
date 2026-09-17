@@ -21,7 +21,7 @@ import {
   sandboxProviderCostLimitUsd,
 } from '@/server/ai/sandbox/vercel-pricing'
 
-const DEFAULT_RESOURCES = { diskGiB: 20, memoryGiB: 4, vcpus: 2 }
+const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
 const DEFAULT_LOW_BALANCE_CUTOFF_CENTS = 100
 const DEFAULT_BOOTSTRAP_COVERAGE_MS = 10 * 60_000
 const DEFAULT_BOOTSTRAP_EGRESS_BYTES = 1 << 30

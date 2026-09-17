@@ -52,7 +52,7 @@ export function resolveManagedHarnessSandboxProvider(
   if (selected === 'vercel') {
     if (!vercelHarnessCredentialsConfigured()) {
       throw new Error(
-        'Vercel Sandbox is not configured: set VERCEL_TOKEN, VERCEL_TEAM_ID, and VERCEL_PROJECT_ID',
+        'Vercel Sandbox is not configured: set VERCEL_TOKEN, VERCEL_TEAM_ID, and VERCEL_PROJECT_ID, or deploy on Vercel with OIDC enabled',
       )
     }
     return 'vercel'
@@ -100,10 +100,13 @@ export async function loadHarnessSandboxProvider(
  * supported production path and the only one the picker should advertise.
  */
 function vercelHarnessCredentialsConfigured(): boolean {
+  // Explicit static credentials or the platform-injected OIDC token both let
+  // the @vercel/sandbox SDK authenticate; either one is sufficient.
   return Boolean(
-    process.env.VERCEL_TOKEN?.trim()
-      && process.env.VERCEL_TEAM_ID?.trim()
-      && process.env.VERCEL_PROJECT_ID?.trim(),
+    process.env.VERCEL_OIDC_TOKEN?.trim()
+      || (process.env.VERCEL_TOKEN?.trim()
+        && process.env.VERCEL_TEAM_ID?.trim()
+        && process.env.VERCEL_PROJECT_ID?.trim()),
   )
 }
 
