@@ -285,15 +285,16 @@ export function managedSandboxRuntimeFromEnv(providerOverride?: string): Sandbox
     || process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER?.trim().toLowerCase()
     || 'vercel'
   if (provider === 'vercel') {
-    // On Vercel the platform injects a fresh VERCEL_OIDC_TOKEN per function;
-    // prefer it over static VERCEL_TOKEN/TEAM_ID/PROJECT_ID so a stale or
-    // revoked long-lived token cannot take sandbox provisioning down.
-    const hasOidc = Boolean(process.env.VERCEL_OIDC_TOKEN?.trim())
+    // On Vercel the platform issues a fresh OIDC token per request (via the
+    // x-vercel-oidc-token request context, not process.env) — prefer it over
+    // static VERCEL_TOKEN/TEAM_ID/PROJECT_ID so a stale or revoked long-lived
+    // token cannot take sandbox provisioning down.
+    const runningOnVercel = Boolean(process.env.VERCEL?.trim())
     const token = process.env.VERCEL_TOKEN?.trim()
     const teamId = process.env.VERCEL_TEAM_ID?.trim()
     const projectId = process.env.VERCEL_PROJECT_ID?.trim()
     return new VercelSandboxRuntime({
-      ...(!hasOidc && token && teamId && projectId ? { credentials: { token, teamId, projectId } } : {}),
+      ...(!runningOnVercel && token && teamId && projectId ? { credentials: { token, teamId, projectId } } : {}),
       region: process.env.OVERLAY_VERCEL_SANDBOX_REGION?.trim() || 'iad1',
     })
   }
