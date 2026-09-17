@@ -124,6 +124,14 @@ async function ensureHarnessSandboxInstance(args: {
   if (lease.providerReference) {
     const existing = await runtime.reconnect(lease.providerReference).catch((_error) => null)
     if (existing && (await existing.status()) !== 'failed' && (await existing.status()) !== 'deleted') {
+      // Heartbeat: the meter's idle-stop stops a sandbox whose lease shows no
+      // activity for idleTimeoutMs — each acquire proves work is in flight.
+      await connectedAgents.patchSandboxLeaseUsage({
+        workspaceId: args.workspaceId,
+        leaseId: lease.id,
+        patch: { lastActiveAt: Date.now() },
+        now: Date.now(),
+      }).catch((_error) => null)
       return { instance: existing, recreated: false }
     }
   }
@@ -164,6 +172,12 @@ async function ensureHarnessSandboxInstance(args: {
     await instance.delete().catch((_error) => undefined)
     throw harnessTurnError('The managed sandbox lease could not be updated.')
   }
+  await connectedAgents.patchSandboxLeaseUsage({
+    workspaceId: args.workspaceId,
+    leaseId: lease.id,
+    patch: { lastActiveAt: now },
+    now,
+  }).catch((_error) => null)
   logger.warn('[managed-harness] recreated expired managed sandbox', {
     environmentId: args.environmentId,
     workspaceId: args.workspaceId,

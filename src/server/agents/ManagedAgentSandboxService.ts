@@ -139,7 +139,7 @@ export class ManagedAgentSandboxService {
         runtimeStartedAt: now,
         // meteredUsage/meterVersion seed the billing meter's cursor — the
         // first tick bills the full provider-reported lifetime of this lease.
-        usage: { resources: { ...MANAGED_RESOURCES }, meteredUsage: {}, meterVersion: 0 },
+        usage: { resources: { ...MANAGED_RESOURCES }, idleTimeoutMs, lastActiveAt: now, meteredUsage: {}, meterVersion: 0 },
         cleanupAttempts: 0,
         now,
       })
@@ -230,7 +230,7 @@ export class ManagedAgentSandboxService {
         status: 'running',
         reservedUntil: now + hardTimeoutMs,
         runtimeStartedAt: now,
-        usage: { resources: { ...MANAGED_RESOURCES }, meteredUsage: {}, meterVersion: 0 },
+        usage: { resources: { ...MANAGED_RESOURCES }, idleTimeoutMs, lastActiveAt: now, meteredUsage: {}, meterVersion: 0 },
         cleanupAttempts: 0,
         now,
       })

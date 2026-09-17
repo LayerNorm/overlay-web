@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
-import type { SandboxLifecycleState, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
+import type { SandboxInstance, SandboxLifecycleState, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
@@ -14,7 +14,7 @@ import type {
   ConnectedAgentSandboxLeasePayer,
   RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
-import { managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
+import { MANAGED_HARNESS_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
 import {
   calculateVercelSandboxCostUsd,
   estimateVercelSandboxReservationUsd,
@@ -230,6 +230,31 @@ export class ManagedAgentSandboxBilling {
     // wall-clock — see usageDelta for the virtual-cursor rule that keeps the
     // final post-stop total from double-charging.
     const instanceRunning = probe.status !== 'stopped' && probe.status !== 'archived' && probe.status !== 'deleted' && probe.status !== 'failed'
+    // Provider-side idle-stop: Vercel has no equivalent of Daytona's
+    // autoStopInterval, so the meter enforces the lease's idle window itself —
+    // a running sandbox with no activity for idleTimeoutMs is stopped while
+    // the lease stays 'running'; the next turn's acquire resumes it. The tick
+    // still bills the elapsed window it ran through.
+    if (!stopping && instanceRunning && typeof probe.instance.stop === 'function') {
+      const lastActiveAt = idleActivityTimestamp(usage, effectiveLease, now)
+      const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_HARNESS_IDLE_TIMEOUT_MS
+      if (now - lastActiveAt > idleTimeoutMs) {
+        await probe.instance.stop().then(() => {
+          logger.info('Managed sandbox idle-stopped by meter', {
+            environmentId: effectiveLease.environmentId,
+            idleForMs: now - lastActiveAt,
+            leaseId: effectiveLease.id,
+            workspaceId: effectiveLease.workspaceId,
+          })
+        }).catch((error) => {
+          logger.warn('Managed sandbox idle-stop failed', {
+            environmentId: effectiveLease.environmentId,
+            error: error instanceof Error ? error.message : String(error),
+            leaseId: effectiveLease.id,
+          })
+        })
+      }
+    }
     if (probe.usage === null) {
       // Stopped instance with unreadable counters (e.g. Daytona metrics on a
       // stopped sandbox): advance the meter window without charging so the
@@ -350,6 +375,7 @@ export class ManagedAgentSandboxBilling {
           workspaceId: settlement.workspaceId,
           leaseId: billing.leaseId,
           patch: {
+            lastActiveAt: this.now(),
             lastSettlement: {
               agentId: settlement.agentId,
               environmentId: settlement.environmentId,
@@ -412,6 +438,7 @@ export class ManagedAgentSandboxBilling {
         workspaceId: settlement.workspaceId,
         leaseId: billing.leaseId,
         patch: {
+          lastActiveAt: this.now(),
           meteredUsage: serializableUsage(currentUsage),
           meteredProviderReference: providerReference,
           meteredAt: this.now(),
@@ -455,19 +482,19 @@ export class ManagedAgentSandboxBilling {
 
   private async tickLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {
     try {
+      // A running lease past its reserved window has hit the hard runtime
+      // limit — reap it (the reap path captures final usage before delete).
+      if (lease.status === 'running'
+        && typeof lease.reservedUntil === 'number'
+        && this.now() > lease.reservedUntil) {
+        await this.killLease(lease, 'lease_expired')
+        return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
+      }
       const result = await this.meterLease(lease)
       if (!result.applied) {
         if (result.reason === 'insufficient_budget') {
           await this.killLease(lease, 'budget_exhausted')
           return { leaseId: lease.id, outcome: 'killed', reason: 'budget_exhausted', remainingCents: result.remainingCents }
-        }
-        // A lease past its reserved window whose sandbox is unreachable has
-        // hit the provider hard limit — stop billing attempts and reap it.
-        if (result.reason === 'usage_unavailable'
-          && typeof lease.reservedUntil === 'number'
-          && this.now() > lease.reservedUntil) {
-          await this.killLease(lease, 'lease_expired')
-          return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
         }
         return {
           leaseId: lease.id,
@@ -624,14 +651,14 @@ export class ManagedAgentSandboxBilling {
   private async instanceProbe(
     provider: string,
     providerReference: string,
-  ): Promise<{ status: SandboxLifecycleState | undefined; usage: SandboxUsage | null } | null> {
+  ): Promise<{ instance: SandboxInstance; status: SandboxLifecycleState | undefined; usage: SandboxUsage | null } | null> {
     try {
       const instance = await this.runtime(provider).reconnect(providerReference, { resume: false })
       const status = typeof instance.status === 'function'
         ? await instance.status().catch((_error) => undefined)
         : undefined
       const usage = await instance.usage().catch((_error) => null)
-      return { status, usage }
+      return { instance, status, usage }
     } catch (_error) {
       return null
     }
@@ -742,6 +769,17 @@ function sandboxResources(usage: Record<string, unknown>) {
 
 function serializableUsage(usage: SandboxUsage): Record<string, unknown> {
   return Object.fromEntries(Object.entries(usage).filter((entry) => entry[1] !== undefined))
+}
+
+function idleActivityTimestamp(usage: Record<string, unknown>, lease: AgentSandboxLease, fallback: number) {
+  const lastSettlement = usage.lastSettlement && typeof usage.lastSettlement === 'object'
+    ? usage.lastSettlement as Record<string, unknown>
+    : {}
+  return finiteNumber(usage.lastActiveAt)
+    || finiteNumber(lastSettlement.settledAt)
+    || lease.runtimeStartedAt
+    || lease.createdAt
+    || fallback
 }
 
 function finiteNumber(value: unknown) { return typeof value === 'number' && Number.isFinite(value) ? value : 0 }
