@@ -178,14 +178,22 @@ per-step 8,192 output-token ceiling. A tool loop must not reserve only its first
 model call: later completed steps would otherwise exceed the reservation and be
 quarantined even when provider usage is valid.
 
-Vercel Sandbox is the default managed sandbox provider. Its reservation is based on worst-case
-active vCPU time, provisioned-memory wall time, outbound transfer, and sandbox creation, with an
-operator-configured safety buffer and pre-provider per-run cost ceiling. Settlement uses provider
-SDK counters after the session stops; incomplete counters fail into reconciliation instead of an
-estimated charge. The standalone sandbox route always denies outbound network access because a
-user-space polling guard cannot make a byte-exact provider-cost promise. It rejects oversized
-artifacts before provider transfer, and its reservation includes the maximum bounded artifact
-transfer. Networked agent sandboxes use separate metered flows. The default `iad1` region and its
+Vercel Sandbox is the default managed sandbox provider. Agent-environment leases no longer hold a
+worst-case 24-hour reservation: `ManagedAgentSandboxBilling.reserve` takes only a small bootstrap
+hold (the low-balance floor plus a short coverage window), and a per-lease meter debits the wallet
+periodically while the sandbox runs. Each tick reads provider `instance.usage()` counters, computes
+the delta against a cursor persisted on the lease (`usage.meteredUsage` + `meterVersion`), and
+commits debit + cursor atomically through `meterSandboxLease` on the connected-agent repository —
+retries replay as `lease_conflict` instead of double-charging. When the payer's remaining balance
+drops under the floor (`OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS`, default $1) or a tick debit is
+declined, the lease flips to `stopping`, pending commands and queued/running turns are cancelled
+with a `usage_limited` terminal error, and the provider sandbox is deleted by the reaper pass; a
+turn's settle is just the final meter tick plus bootstrap-hold release. The meter driver runs from
+the BFF `agent-environments/operations/reconcile` route (Convex cron calls it) and the Postgres
+`app-data.maintenance` job. The standalone sandbox route keeps the worst-case reservation model
+because it always denies outbound network access and can make a byte-exact provider-cost promise;
+it rejects oversized artifacts before provider transfer, and its reservation includes the maximum
+bounded artifact transfer. The default `iad1` region and its
 configured unit rates must move together. Blank pricing or buffer variables fall back to
 conservative defaults rather than silently becoming zero.
 

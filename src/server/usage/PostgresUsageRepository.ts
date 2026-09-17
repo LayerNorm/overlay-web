@@ -33,7 +33,7 @@ const MICROS_PER_CENT = 10_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
 const UNLIMITED_TOTAL_MICROS = Number.MAX_SAFE_INTEGER
 
-type BudgetAccountRow = {
+export type BudgetAccountRow = {
   allowanceUsedMicros: number | string
   billingAccountId: string
   grantedMicros: number | string
@@ -76,7 +76,7 @@ type SpendLimitRow = {
   usedMicros: number | string
 }
 
-type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
+export type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
 
 export class PostgresUsageRepository implements UsageRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
@@ -390,7 +390,8 @@ export class PostgresUsageRepository implements UsageRepository {
         await applyWorkspaceFinalizedSpend(tx, {
           account: workspaceAccount,
           actualMicros,
-          reservation,
+          spendSubjectKind: reservation.spendSubjectKind,
+          spendSubjectId: reservation.spendSubjectId,
           reservedMicros,
           updatedAt: now,
         })
@@ -703,7 +704,8 @@ export class PostgresUsageRepository implements UsageRepository {
         await applyWorkspaceFinalizedSpend(tx, {
           account: workspaceAccount,
           actualMicros: actualMicros!,
-          reservation,
+          spendSubjectKind: reservation.spendSubjectKind,
+          spendSubjectId: reservation.spendSubjectId,
           reservedMicros,
           updatedAt: now,
         })
@@ -861,7 +863,7 @@ async function ensurePersonalBillingAccountId(tx: Transaction, userId: string): 
   return billingAccountId
 }
 
-async function syncCanonicalBalance(
+export async function syncCanonicalBalance(
   tx: Transaction,
   userId: string,
   billingAccountId: string,
@@ -892,7 +894,7 @@ async function syncCanonicalBalance(
   `)
 }
 
-async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<BudgetAccountRow> {
+export async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<BudgetAccountRow> {
   const billingAccountId = await ensurePersonalBillingAccountId(tx, userId)
   await tx.execute(sql`
     INSERT INTO usage_budget_accounts (user_id, billing_account_id, mode)
@@ -924,7 +926,7 @@ async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<Bud
   return account
 }
 
-async function lockWorkspaceAccount(
+export async function lockWorkspaceAccount(
   tx: Transaction,
   billingAccountId: string,
   expectedWorkspaceId?: string,
@@ -1086,7 +1088,7 @@ async function updateReservationReconcile(
   `)
 }
 
-async function insertEvents(tx: Transaction, args: {
+export async function insertEvents(tx: Transaction, args: {
   billingAccountId: string
   events: UsageEvent[]
   operationId: string
@@ -1123,7 +1125,7 @@ async function insertEvents(tx: Transaction, args: {
   return inserted
 }
 
-async function insertTransaction(tx: Transaction, args: {
+export async function insertTransaction(tx: Transaction, args: {
   amountMicros: number
   billingAccountId: string
   eventId?: string
@@ -1174,12 +1176,12 @@ function entitlementsFromAccount(account: BudgetAccountRow): Entitlements {
   }
 }
 
-function availableMicrosFor(account: BudgetAccountRow): number {
+export function availableMicrosFor(account: BudgetAccountRow): number {
   if (account.mode === 'unlimited') return UNLIMITED_TOTAL_MICROS
   return availableUsageBalance(bucketsFromAccount(account), Number(account.reservedMicros))
 }
 
-function bucketsFromAccount(account: BudgetAccountRow): UsageBuckets {
+export function bucketsFromAccount(account: BudgetAccountRow): UsageBuckets {
   const allowanceTotal = Number(account.includedMicros) + Number(account.institutionalGrantMicros)
   const topUpPurchased = Number(account.topUpPurchasedMicros)
   const storedAllowanceUsed = Number(account.allowanceUsedMicros)
@@ -1231,10 +1233,11 @@ async function applyFinalizedSpend(tx: Transaction, args: {
   `)
 }
 
-async function applyWorkspaceFinalizedSpend(tx: Transaction, args: {
+export async function applyWorkspaceFinalizedSpend(tx: Transaction, args: {
   account: BudgetAccountRow
   actualMicros: number
-  reservation: ReservationRow
+  spendSubjectKind?: string | null
+  spendSubjectId?: string | null
   reservedMicros: number
   updatedAt: Date
 }): Promise<void> {
@@ -1250,15 +1253,15 @@ async function applyWorkspaceFinalizedSpend(tx: Transaction, args: {
         version = version + 1, updated_at = ${args.updatedAt}
     WHERE billing_account_id = ${args.account.billingAccountId}
   `)
-  if (args.reservation.spendSubjectKind && args.reservation.spendSubjectId) {
+  if (args.spendSubjectKind && args.spendSubjectId) {
     await tx.execute(sql`
       UPDATE billing_account_spend_limits
       SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
           used_micros = used_micros + ${args.actualMicros},
           version = version + 1, updated_at = ${args.updatedAt}
       WHERE billing_account_id = ${args.account.billingAccountId}
-        AND subject_kind = ${args.reservation.spendSubjectKind}
-        AND subject_id = ${args.reservation.spendSubjectId}
+        AND subject_kind = ${args.spendSubjectKind}
+        AND subject_id = ${args.spendSubjectId}
     `)
   }
 }
@@ -1287,7 +1290,7 @@ async function releaseWorkspaceReservation(tx: Transaction, args: {
   }
 }
 
-async function applyDirectSpend(tx: Transaction, args: {
+export async function applyDirectSpend(tx: Transaction, args: {
   account: BudgetAccountRow
   amountMicros: number
   userId: string
@@ -1319,7 +1322,7 @@ function percentageUsed(used: number, total: number): number {
   return Math.min(100, Math.max(0, used / total * 100))
 }
 
-function centsToMicros(value: number): number {
+export function centsToMicros(value: number): number {
   if (!Number.isFinite(value) || value < 0) throw new Error('Usage cost must be a finite non-negative number')
   return Math.round(value * MICROS_PER_CENT)
 }
@@ -1329,7 +1332,7 @@ function dollarsToMicros(value: number): number {
   return Math.round(value * 100 * MICROS_PER_CENT)
 }
 
-function microsToCents(value: number): number {
+export function microsToCents(value: number): number {
   return value / MICROS_PER_CENT
 }
 

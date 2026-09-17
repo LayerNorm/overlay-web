@@ -6,6 +6,10 @@ import { requireServerSecret } from '../lib/auth'
 import { projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
 import { markBudgetReservationReconcile } from '../platform/usage'
+import {
+  applyUsageEvents, finalizeWorkspaceLedger, getSubscriptionBudgetState,
+} from '../platform/usage'
+import { ensurePersonalBillingAccount } from '../billing/accountModel'
 
 const anyObject = v.any()
 const MAX_COMMAND_BYTES = 128 * 1024
@@ -819,6 +823,236 @@ export const getActiveSandboxLeaseByServer = query({
     const current = rows.filter(row => ['reserved', 'provisioning', 'running'].includes(row.status))
       .sort((left, right) => right.updatedAt - left.updatedAt)[0]
     return current ? { ...clean(current), id: current.leaseId } : null
+  },
+})
+
+export const getSandboxLeaseByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.query('agentSandboxLeases')
+      .withIndex('by_leaseId', q => q.eq('leaseId', args.leaseId)).unique()
+    if (!row || row.workspaceId !== args.workspaceId) return null
+    return { ...clean(row), id: row.leaseId }
+  },
+})
+
+export const listSandboxLeasesByServer = query({
+  args: {
+    serverSecret: v.string(), statuses: v.array(v.string()),
+    cleanupBefore: v.optional(v.number()), limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.max(1, Math.min(1_000, args.limit ?? 100))
+    const groups = await Promise.all(args.statuses.map(status => ctx.db.query('agentSandboxLeases')
+      .withIndex('by_status_cleanupAfter', q => q.eq('status', status))
+      .collect()))
+    return groups.flat()
+      .filter(row => args.cleanupBefore === undefined || (row.cleanupAfter ?? 0) <= args.cleanupBefore)
+      .sort((left, right) => left.updatedAt - right.updatedAt)
+      .slice(0, limit)
+      .map(row => ({ ...clean(row), id: row.leaseId }))
+  },
+})
+
+export const patchSandboxLeaseUsageByServer = mutation({
+  args: {
+    serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(),
+    patch: anyObject, now: v.number(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const current = await ctx.db.query('agentSandboxLeases')
+      .withIndex('by_leaseId', q => q.eq('leaseId', args.leaseId)).unique()
+    if (!current || current.workspaceId !== args.workspaceId) return null
+    const usage = { ...((current.usage ?? {}) as Record<string, unknown>), ...args.patch }
+    await ctx.db.patch(current._id, { usage, updatedAt: args.now })
+    return { ...clean(current), usage, updatedAt: args.now, id: current.leaseId }
+  },
+})
+
+export const stopSandboxLeaseByServer = mutation({
+  args: {
+    serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(),
+    reason: v.string(), now: v.number(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const lease = await ctx.db.query('agentSandboxLeases')
+      .withIndex('by_leaseId', q => q.eq('leaseId', args.leaseId)).unique()
+    if (!lease || lease.workspaceId !== args.workspaceId) return null
+    if (['released', 'cleanup_failed'].includes(lease.status)) {
+      return { ...clean(lease), id: lease.leaseId }
+    }
+    const usage = {
+      ...((lease.usage ?? {}) as Record<string, unknown>),
+      stopReason: args.reason,
+    }
+    await ctx.db.patch(lease._id, {
+      status: 'stopping',
+      reservedUntil: args.now,
+      runtimeEndedAt: lease.runtimeEndedAt ?? args.now,
+      cleanupAfter: args.now,
+      usage,
+      updatedAt: args.now,
+    })
+    for (const command of await ctx.db.query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', q => q.eq('environmentId', lease.environmentId)).take(1_000)) {
+      if (command.status === 'pending' || command.status === 'claimed') {
+        await ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: args.now, updatedAt: args.now })
+      }
+    }
+    // Managed-harness workflow slices check the run row at slice entry —
+    // cancelling them here is what fails parked turns cleanly.
+    for (const run of await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_environmentId_createdAt', q => q.eq('environmentId', lease.environmentId)).take(1_000)) {
+      if (['queued', 'running', 'waiting_for_approval'].includes(run.status)) {
+        await ctx.db.patch(run._id, {
+          status: 'cancelled',
+          cancelledAt: args.now,
+          terminalError: {
+            code: 'usage_limited',
+            message: 'The sandbox was stopped because the billing balance ran low.',
+            retryable: false,
+          },
+          updatedAt: args.now,
+        })
+      }
+    }
+    return {
+      ...clean(lease), status: 'stopping', reservedUntil: args.now,
+      runtimeEndedAt: lease.runtimeEndedAt ?? args.now, cleanupAfter: args.now,
+      usage, updatedAt: args.now, id: lease.leaseId,
+    }
+  },
+})
+
+const sandboxLeasePayerValidator = v.object({
+  scope: v.union(v.literal('personal'), v.literal('workspace')),
+  billingAccountId: v.optional(v.string()),
+  userId: v.string(),
+  workspaceId: v.optional(v.string()),
+  spendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
+  spendSubjectId: v.optional(v.string()),
+})
+
+export const meterSandboxLeaseDebitByServer = mutation({
+  args: {
+    serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(), now: v.number(),
+    expectedMeterVersion: v.number(),
+    meteredUsage: anyObject,
+    meteredProviderReference: v.optional(v.string()),
+    meteredAt: v.number(),
+    payer: v.optional(sandboxLeasePayerValidator),
+    charge: v.optional(v.object({
+      costCents: v.number(),
+      durationSeconds: v.number(),
+      modelId: v.string(),
+      providerCostUsd: v.number(),
+      metadata: anyObject,
+    })),
+    minRemainingCents: v.number(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const lease = await ctx.db.query('agentSandboxLeases')
+      .withIndex('by_leaseId', q => q.eq('leaseId', args.leaseId)).unique()
+    if (!lease || lease.workspaceId !== args.workspaceId) return { applied: false, reason: 'lease_missing' }
+    if (!['reserved', 'provisioning', 'running', 'stopping'].includes(lease.status)) {
+      return { applied: false, reason: 'lease_not_meterable' }
+    }
+    const usage = (lease.usage ?? {}) as Record<string, unknown>
+    const meterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
+    if (meterVersion !== args.expectedMeterVersion) return { applied: false, reason: 'lease_conflict' }
+    const nextUsage = {
+      ...usage,
+      meteredUsage: args.meteredUsage,
+      meteredAt: args.meteredAt,
+      meterVersion: meterVersion + 1,
+      ...(args.meteredProviderReference === undefined ? {} : { meteredProviderReference: args.meteredProviderReference }),
+      ...(args.payer === undefined ? {} : { lastPayer: args.payer }),
+    }
+    let remainingCents: number | undefined
+    const charge = args.charge && args.charge.costCents > 0 ? args.charge : undefined
+    const payer = args.payer
+    if (payer) {
+      if (payer.scope === 'workspace') {
+        const billingAccountId = payer.billingAccountId?.trim()
+        if (!billingAccountId) throw new Error('workspace_billing_account_missing')
+        const account = await ctx.db.query('billingAccounts')
+          .withIndex('by_billingAccountId', q => q.eq('billingAccountId', billingAccountId)).unique()
+        if (!account || account.scope !== 'workspace' || account.workspaceId !== payer.workspaceId) {
+          throw new Error('workspace_billing_account_mismatch')
+        }
+        const balance = await ctx.db.query('billingAccountBalances')
+          .withIndex('by_billingAccountId', q => q.eq('billingAccountId', billingAccountId)).unique()
+        if (!balance) throw new Error('workspace_billing_balance_missing')
+        const availableMicros = balance.mode === 'unlimited'
+          ? Number.MAX_SAFE_INTEGER
+          : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros - balance.usedMicros - balance.reservedMicros)
+        const chargeMicros = charge ? Math.round(Math.max(0, charge.costCents) * 10_000) : 0
+        const floorMicros = Math.round(Math.max(0, args.minRemainingCents) * 10_000)
+        if (account.status !== 'active' || chargeMicros + floorMicros > availableMicros) {
+          return {
+            applied: false, reason: 'insufficient_budget',
+            remainingCents: Math.round(availableMicros / 10_000 * 100) / 100,
+          }
+        }
+        if (charge) {
+          const limit = payer.spendSubjectKind && payer.spendSubjectId
+            ? await ctx.db.query('billingAccountSpendLimits')
+                .withIndex('by_account_subject', q => q
+                  .eq('billingAccountId', billingAccountId)
+                  .eq('subjectKind', payer.spendSubjectKind!)
+                  .eq('subjectId', payer.spendSubjectId!))
+                .unique()
+            : null
+          await finalizeWorkspaceLedger(ctx, {
+            actualMicros: chargeMicros, balance, limit, reservedMicros: 0,
+          })
+          await ctx.db.insert('usageOperations', {
+            userId: payer.userId,
+            billingAccountId,
+            operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
+            recorded: 1,
+            createdAt: args.now,
+          })
+        }
+        remainingCents = Math.round((availableMicros - chargeMicros) / 10_000 * 100) / 100
+      } else {
+        const budget = await getSubscriptionBudgetState(ctx, payer.userId)
+        const available = budget.budgetRemainingCents
+        const costCents = charge?.costCents ?? 0
+        if (costCents + Math.max(0, args.minRemainingCents) > available + 0.000001) {
+          return { applied: false, reason: 'insufficient_budget', remainingCents: Math.max(0, available) }
+        }
+        if (charge) {
+          const billingAccount = await ensurePersonalBillingAccount(ctx, payer.userId)
+          await applyUsageEvents(ctx, payer.userId, [{
+            type: 'sandbox',
+            modelId: charge.modelId,
+            cost: charge.costCents,
+            providerCostUsd: charge.providerCostUsd,
+            durationSeconds: charge.durationSeconds,
+            timestamp: args.meteredAt,
+          }], { chargeCredits: true })
+          await ctx.db.insert('usageOperations', {
+            userId: payer.userId,
+            billingAccountId: billingAccount.billingAccountId,
+            operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
+            recorded: 1,
+            createdAt: args.now,
+          })
+        }
+        remainingCents = Math.max(0, available - costCents)
+      }
+    }
+    await ctx.db.patch(lease._id, { usage: nextUsage, updatedAt: args.now })
+    return {
+      applied: true, meterVersion: meterVersion + 1,
+      ...(remainingCents === undefined ? {} : { remainingCents }),
+    }
   },
 })
 

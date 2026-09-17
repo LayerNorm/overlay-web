@@ -21,9 +21,15 @@ import {
 import { assertValidElicitationResponse } from '@/shared/agents/elicitation-schema'
 import type {
   ApplyRemoteEventsResult, ConnectedAgentCreateBinding, ConnectedAgentCreateEnvironment,
-  ConnectedAgentCreateSession, ConnectedAgentEnqueueCommand, ConnectedAgentRepository,
-  RemoteAgentUsageSettlement,
+  ConnectedAgentCreateSession, ConnectedAgentEnqueueCommand, ConnectedAgentMeterSandboxLeaseResult,
+  ConnectedAgentRepository, RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
+import {
+  applyDirectSpend, applyWorkspaceFinalizedSpend, availableMicrosFor, centsToMicros,
+  insertEvents, insertTransaction, lockOrCreateAccount, lockWorkspaceAccount, microsToCents,
+  syncCanonicalBalance,
+} from '@/server/usage/PostgresUsageRepository'
+import type { UsageEvent } from '@/server/usage/UsageRepository'
 
 const REMOTE_RUN_LEASE_MS = 30 * 60_000
 
@@ -1380,6 +1386,201 @@ export class PostgresConnectedAgentRepository implements ConnectedAgentRepositor
       inArray(agentSandboxLeases.status, ['reserved', 'provisioning', 'running']),
     )).orderBy(desc(agentSandboxLeases.updatedAt)).limit(1)
     return row ? sandboxLease(row) : null
+  }
+
+  async getSandboxLease(args: { workspaceId: string; leaseId: string }) {
+    const [row] = await this.db.select().from(agentSandboxLeases).where(and(
+      eq(agentSandboxLeases.id, args.leaseId),
+      eq(agentSandboxLeases.workspaceId, args.workspaceId),
+    ))
+    return row ? sandboxLease(row) : null
+  }
+
+  async listSandboxLeases(args: Parameters<ConnectedAgentRepository['listSandboxLeases']>[0]) {
+    const rows = await this.db.select().from(agentSandboxLeases).where(and(
+      inArray(agentSandboxLeases.status, args.statuses),
+      args.cleanupBefore === undefined ? undefined : or(
+        isNull(agentSandboxLeases.cleanupAfter),
+        lte(agentSandboxLeases.cleanupAfter, new Date(args.cleanupBefore)),
+      ),
+    )).orderBy(asc(agentSandboxLeases.updatedAt)).limit(Math.max(1, Math.min(1_000, args.limit ?? 100)))
+    return rows.map(sandboxLease)
+  }
+
+  async patchSandboxLeaseUsage(args: Parameters<ConnectedAgentRepository['patchSandboxLeaseUsage']>[0]) {
+    // jsonb `||` merges the patch keys atomically so concurrent meter cursor
+    // writes (same row, different keys) are not clobbered.
+    const result = await this.db.execute<{ id: string }>(sql`
+      UPDATE agent_sandbox_leases
+      SET usage = COALESCE(usage, '{}'::jsonb) || ${JSON.stringify(args.patch)}::jsonb,
+          updated_at = ${new Date(args.now)}
+      WHERE id = ${args.leaseId} AND workspace_id = ${args.workspaceId}
+      RETURNING id
+    `)
+    if (result.rows.length === 0) return null
+    const [row] = await this.db.select().from(agentSandboxLeases)
+      .where(eq(agentSandboxLeases.id, args.leaseId))
+    return row ? sandboxLease(row) : null
+  }
+
+  async meterSandboxLease(args: Parameters<ConnectedAgentRepository['meterSandboxLease']>[0]) {
+    return await this.db.transaction(async (tx): Promise<ConnectedAgentMeterSandboxLeaseResult> => {
+      const [lease] = await tx.select().from(agentSandboxLeases).where(and(
+        eq(agentSandboxLeases.id, args.leaseId),
+        eq(agentSandboxLeases.workspaceId, args.workspaceId),
+      )).for('update')
+      if (!lease) return { applied: false, reason: 'lease_missing' }
+      if (!['reserved', 'provisioning', 'running', 'stopping'].includes(lease.status)) {
+        return { applied: false, reason: 'lease_not_meterable' }
+      }
+      const usage = (lease.usage ?? {}) as Record<string, unknown>
+      const meterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
+      if (meterVersion !== args.expectedMeterVersion) {
+        return { applied: false, reason: 'lease_conflict' }
+      }
+      const now = new Date(args.now)
+      const nextUsage = {
+        ...usage,
+        meteredUsage: args.meteredUsage,
+        meteredAt: args.meteredAt,
+        meterVersion: meterVersion + 1,
+        ...(args.meteredProviderReference === undefined ? {} : { meteredProviderReference: args.meteredProviderReference }),
+        ...(args.payer === undefined ? {} : { lastPayer: args.payer }),
+      }
+      let remainingCents: number | undefined
+      const charge = args.charge && args.charge.costCents > 0 ? args.charge : undefined
+      const payer = args.payer
+      if (payer) {
+        const chargeMicros = charge ? centsToMicros(charge.costCents) : 0
+        const minRemainingMicros = centsToMicros(args.minRemainingCents)
+        if (payer.scope === 'workspace') {
+          if (!payer.billingAccountId) throw new Error('workspace_billing_account_missing')
+          const account = await lockWorkspaceAccount(tx, payer.billingAccountId, payer.workspaceId)
+          const available = availableMicrosFor(account)
+          if (chargeMicros + minRemainingMicros > available) {
+            return { applied: false, reason: 'insufficient_budget', remainingCents: microsToCents(Math.max(0, available)) }
+          }
+          if (charge) {
+            const event: UsageEvent = {
+              eventId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
+              kind: 'sandbox',
+              modelId: charge.modelId,
+              costCents: charge.costCents,
+              providerCostUsd: charge.providerCostUsd,
+              durationSeconds: charge.durationSeconds,
+              metadata: charge.metadata,
+              occurredAt: args.meteredAt,
+            }
+            const inserted = await insertEvents(tx, {
+              billingAccountId: account.billingAccountId,
+              events: [event],
+              operationId: `sandbox-meter:${args.leaseId}`,
+              userId: payer.userId,
+            })
+            if (inserted.length === 0) return { applied: false, reason: 'lease_conflict' }
+            await applyWorkspaceFinalizedSpend(tx, {
+              account,
+              actualMicros: chargeMicros,
+              spendSubjectKind: payer.spendSubjectKind,
+              spendSubjectId: payer.spendSubjectId,
+              reservedMicros: 0,
+              updatedAt: now,
+            })
+            await insertTransaction(tx, {
+              amountMicros: chargeMicros,
+              billingAccountId: account.billingAccountId,
+              eventId: inserted[0]!.id,
+              type: 'finalize',
+              userId: payer.userId,
+            })
+          }
+          remainingCents = microsToCents(Math.max(0, available - chargeMicros))
+        } else {
+          const account = await lockOrCreateAccount(tx, payer.userId)
+          const available = availableMicrosFor(account)
+          if (chargeMicros + minRemainingMicros > available) {
+            return { applied: false, reason: 'insufficient_budget', remainingCents: microsToCents(Math.max(0, available)) }
+          }
+          if (charge) {
+            const event: UsageEvent = {
+              eventId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
+              kind: 'sandbox',
+              modelId: charge.modelId,
+              costCents: charge.costCents,
+              providerCostUsd: charge.providerCostUsd,
+              durationSeconds: charge.durationSeconds,
+              metadata: charge.metadata,
+              occurredAt: args.meteredAt,
+            }
+            const inserted = await insertEvents(tx, {
+              billingAccountId: account.billingAccountId,
+              events: [event],
+              operationId: `sandbox-meter:${args.leaseId}`,
+              userId: payer.userId,
+            })
+            if (inserted.length === 0) return { applied: false, reason: 'lease_conflict' }
+            await applyDirectSpend(tx, { account, amountMicros: chargeMicros, userId: payer.userId })
+            await insertTransaction(tx, {
+              amountMicros: chargeMicros,
+              billingAccountId: account.billingAccountId,
+              eventId: inserted[0]!.id,
+              type: 'finalize',
+              userId: payer.userId,
+            })
+            await syncCanonicalBalance(tx, payer.userId, account.billingAccountId)
+          }
+          remainingCents = microsToCents(Math.max(0, available - chargeMicros))
+        }
+      }
+      await tx.update(agentSandboxLeases).set({ usage: nextUsage, updatedAt: now })
+        .where(eq(agentSandboxLeases.id, lease.id))
+      return { applied: true, meterVersion: meterVersion + 1, ...(remainingCents === undefined ? {} : { remainingCents }) }
+    })
+  }
+
+  async stopSandboxLease(args: Parameters<ConnectedAgentRepository['stopSandboxLease']>[0]) {
+    return await this.db.transaction(async (tx) => {
+      const [lease] = await tx.select().from(agentSandboxLeases).where(and(
+        eq(agentSandboxLeases.id, args.leaseId),
+        eq(agentSandboxLeases.workspaceId, args.workspaceId),
+      )).for('update')
+      if (!lease) return null
+      if (!['reserved', 'provisioning', 'running', 'stopping'].includes(lease.status)) {
+        return sandboxLease(lease)
+      }
+      const now = new Date(args.now)
+      const usage = { ...((lease.usage ?? {}) as Record<string, unknown>), stopReason: args.reason }
+      const [row] = await tx.update(agentSandboxLeases).set({
+        status: 'stopping',
+        reservedUntil: now,
+        runtimeEndedAt: lease.runtimeEndedAt ?? now,
+        cleanupAfter: now,
+        usage,
+        updatedAt: now,
+      }).where(eq(agentSandboxLeases.id, lease.id)).returning()
+      await tx.update(agentRunCommands).set({
+        status: 'cancelled', claimExpiresAt: null, updatedAt: now,
+      }).where(and(
+        eq(agentRunCommands.environmentId, lease.environmentId),
+        inArray(agentRunCommands.status, ['pending', 'claimed']),
+      ))
+      // Managed-harness workflow slices check the run row at slice entry —
+      // cancelling them here is what fails parked turns cleanly.
+      await tx.update(agentRuns).set({
+        status: 'cancelled',
+        cancelledAt: now,
+        terminalError: {
+          code: 'usage_limited',
+          message: 'The sandbox was stopped because the billing balance ran low.',
+          retryable: false,
+        },
+        updatedAt: now,
+      }).where(and(
+        eq(agentRuns.environmentId, lease.environmentId),
+        inArray(agentRuns.status, ['queued', 'running', 'waiting_for_approval']),
+      ))
+      return row ? sandboxLease(row) : null
+    })
   }
 
   async getHarnessSession(args: { workspaceId: string; bindingId: string; conversationId: string }) {

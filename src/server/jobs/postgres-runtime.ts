@@ -174,6 +174,23 @@ export function createPostgresRuntime(args: {
       }),
       'app-data.maintenance': async () => {
         const summary = await maintenance.runAll()
+        let sandboxMeter = { metered: 0, killed: 0, released: 0, errors: 0 }
+        try {
+          const meter = await connectedAgentSandboxBilling.meterLeases()
+          sandboxMeter = {
+            metered: meter.ticks.filter((tick) => tick.outcome === 'metered' || tick.outcome === 'adopted').length,
+            killed: meter.ticks.filter((tick) => tick.outcome === 'killed').length,
+            released: meter.ticks.filter((tick) => tick.outcome === 'released').length,
+            errors: meter.ticks.filter((tick) => tick.outcome === 'error' || tick.outcome === 'cleanup_failed').length,
+          }
+          for (const tick of meter.ticks) {
+            if (tick.outcome === 'killed') {
+              logger.warn('Connected-agent sandbox stopped by billing meter', tick)
+            }
+          }
+        } catch (error) {
+          logger.error('Connected-agent sandbox metering deferred', { error })
+        }
         for (const settlement of summary.remoteAgentRuns.settlements) {
           if (!settlement.userId) continue
           try {
@@ -211,7 +228,7 @@ export function createPostgresRuntime(args: {
             }
           }
         }
-        return { ...summary, reconciledSandboxSettlements, remoteAgentArtifacts }
+        return { ...summary, reconciledSandboxSettlements, remoteAgentArtifacts, sandboxMeter }
       },
       'coordination.cleanup': async () => {
         const [expiredIdempotencyKeys, expiredReplayNonces] = await Promise.all([
