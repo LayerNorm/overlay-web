@@ -16,6 +16,7 @@ import {
   type AgentEnvironmentCredential,
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
+  type AgentSandboxLease,
   type ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
@@ -92,6 +93,12 @@ export class ConnectedAgentControlPlaneService {
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
     onTerminalMessage?: (input: RemoteAgentUsageSettlement) => Promise<void>
+    /**
+     * Final usage read for a lease whose sandbox is about to be deleted.
+     * Providers publish cumulative counters only after a session stops, so
+     * callers stop the instance first; this meters the tail before teardown.
+     */
+    meterSandboxLease?: (lease: AgentSandboxLease) => Promise<unknown>
     /** Injectable for tests; production resolves the provider from env. */
     managedRuntime?: typeof managedSandboxRuntimeFromEnv
   }) {}
@@ -315,8 +322,17 @@ export class ConnectedAgentControlPlaneService {
     let sandboxDestroyed = false
     if (lease?.providerReference) {
       const runtime = (this.dependencies.managedRuntime ?? managedSandboxRuntimeFromEnv)(lease.provider)
-      sandboxDestroyed = await runtime.reconnect(lease.providerReference)
-        .then((instance) => instance.delete())
+      sandboxDestroyed = await runtime.reconnect(lease.providerReference, { resume: false })
+        .then(async (instance) => {
+          const status = typeof instance.status === 'function'
+            ? await instance.status().catch((_error) => undefined)
+            : undefined
+          if (status !== 'stopped' && status !== 'archived' && status !== 'deleted' && typeof instance.stop === 'function') {
+            await instance.stop().catch((_error) => undefined)
+          }
+          await this.dependencies.meterSandboxLease?.(lease).catch((_error) => undefined)
+          await instance.delete()
+        })
         .then(() => true)
         .catch((error) => {
           logger.warn('[connected-agents] managed harness sandbox destroy failed during reset', {

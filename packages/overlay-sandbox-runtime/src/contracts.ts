@@ -172,7 +172,12 @@ export interface SandboxRuntime {
   readonly provider: SandboxProviderId
   readonly capabilities: SandboxCapabilities
   create(request: SandboxCreateRequest): Promise<SandboxInstance>
-  reconnect(reference: string): Promise<SandboxInstance>
+  /**
+   * Attach to an existing sandbox. `resume: false` returns the instance
+   * without waking a provider-stopped session — metering and cleanup paths
+   * use this so a read never restarts billable runtime.
+   */
+  reconnect(reference: string, options?: { resume?: boolean }): Promise<SandboxInstance>
   restore(snapshotId: string, request: Omit<SandboxCreateRequest, 'snapshotId'>): Promise<SandboxInstance>
   deleteSnapshot(snapshotId: string): Promise<void>
 }

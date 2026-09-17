@@ -348,6 +348,9 @@ export function createOverlayServerContext(
         workspaceId: terminal.workspaceId,
       })
     },
+    meterSandboxLease: async (lease) => {
+      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0 })
+    },
     settleUsage: async (usage) => {
       if (!usage.userId) return
       try {

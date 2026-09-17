@@ -69,9 +69,9 @@ export class DaytonaSandboxRuntime implements SandboxRuntime {
     return new DaytonaSandboxInstance(sandbox)
   }
 
-  async reconnect(reference: string): Promise<SandboxInstance> {
+  async reconnect(reference: string, options?: { resume?: boolean }): Promise<SandboxInstance> {
     const sandbox = await this.client.get(reference)
-    if (sandbox.state !== 'started') await sandbox.start(90)
+    if (sandbox.state !== 'started' && options?.resume !== false) await sandbox.start(90)
     await sandbox.refreshData()
     return new DaytonaSandboxInstance(sandbox)
   }

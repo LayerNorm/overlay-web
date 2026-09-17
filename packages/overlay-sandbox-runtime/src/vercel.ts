@@ -90,8 +90,12 @@ export class VercelSandboxRuntime implements SandboxRuntime {
     return new VercelSandboxInstance(sandbox, request.environment)
   }
 
-  async reconnect(reference: string): Promise<SandboxInstance> {
-    const sandbox = await this.sdk.get({ ...this.options.credentials, name: reference, resume: true })
+  async reconnect(reference: string, options?: { resume?: boolean }): Promise<SandboxInstance> {
+    const sandbox = await this.sdk.get({
+      ...this.options.credentials,
+      name: reference,
+      resume: options?.resume ?? true,
+    })
     return new VercelSandboxInstance(sandbox)
   }
 
