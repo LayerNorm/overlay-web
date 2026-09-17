@@ -376,6 +376,138 @@ test('legacy settle follows a repointed lease and seeds the meter cursor', async
   assert.equal(patches[0]?.meteredProviderReference, 'recreated-sandbox')
 })
 
+test('meterLease bills elapsed wall-clock when provider counters are stalled mid-session', async () => {
+  // Vercel reports zeroed cumulative counters while a session runs — the tick
+  // must bill the elapsed window and advance a virtual cursor so the real
+  // post-stop total nets out instead of double-charging.
+  const meterCalls: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({
+    usage: {
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const reconnectOptions: Array<Record<string, unknown> | undefined> = []
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async (_reference: string, options?: { resume?: boolean }) => {
+      reconnectOptions.push(options)
+      // Provider hides running counters: wall stays at the last reported 60s.
+      return {
+        status: async () => 'running' as const,
+        usage: async () => ({ wallTimeMs: 60_000, activeCpuTimeMs: 30_000 }),
+      } as SandboxInstance
+    },
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 4, remainingCents: 500 }
+      },
+    } as never,
+    runtime: () => runtime,
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  // Meter reads must never resume a stopped session.
+  assert.deepEqual(reconnectOptions, [{ resume: false }])
+  const call = meterCalls[0]!
+  // Stalled counter on a running instance → elapsed window (190s-60s) billed.
+  assert.equal((call.charge as { durationSeconds: number }).durationSeconds, 130)
+  // Cursor advances past the virtual-billed wall time so the post-stop real
+  // total (e.g. 190s) nets to ~zero residual rather than double-charging.
+  assert.equal((call.meteredUsage as { wallTimeMs: number }).wallTimeMs, 190_000)
+})
+
+test('meterLease bills real counter totals on a stopped instance without elapsed fallback', async () => {
+  const meterCalls: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({
+    usage: {
+      meteredUsage: { wallTimeMs: 120_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'stopped' as const,
+      usage: async () => ({ wallTimeMs: 150_000, egressBytes: 1_000_000 }),
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 4, remainingCents: 500 }
+      },
+    } as never,
+    runtime: () => runtime,
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  // Post-stop totals are real: 150s - 120s cursor = 30s — no elapsed top-up
+  // even though 130s passed since the last tick.
+  assert.equal((meterCalls[0]!.charge as { durationSeconds: number }).durationSeconds, 30)
+  assert.equal((meterCalls[0]!.meteredUsage as { wallTimeMs: number }).wallTimeMs, 150_000)
+})
+
+test('reaped leases stop the sandbox before the final usage read and delete', async () => {
+  const events: string[] = []
+  const stoppingLease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
+  const runtime: SandboxRuntime = {
+    provider: 'vercel', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      stop: async () => { events.push('stop') },
+      usage: async () => ({ wallTimeMs: 300_000 }),
+      delete: async () => { events.push('delete') },
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const meterCalls: Array<Record<string, unknown>> = []
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
+        args.statuses.includes('stopping') ? [stoppingLease] : [],
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        events.push('meter')
+        return { applied: true as const, meterVersion: 1 }
+      },
+      updateSandboxLease: async (args: Record<string, unknown>) => ({ ...stoppingLease, status: args.status }),
+    } as never,
+    runtime: () => runtime,
+  })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'released')
+  // stop → final meter read → delete: usage is captured before teardown.
+  assert.deepEqual(events, ['stop', 'meter', 'delete'])
+  // The final tick is charge-free-of-floor: a low-balance wallet still pays
+  // the tail usage it already consumed.
+  assert.equal(meterCalls[0]?.minRemainingCents, 0)
+})
+
 test('provider pricing uses provider-native runtime dimensions', () => {
   assert.equal(sandboxCostUsd({
     provider: 'daytona', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },

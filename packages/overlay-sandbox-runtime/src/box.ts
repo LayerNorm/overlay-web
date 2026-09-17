@@ -187,10 +187,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     return instance
   }
 
-  async reconnect(reference: string): Promise<SandboxInstance> {
+  async reconnect(reference: string, options?: { resume?: boolean }): Promise<SandboxInstance> {
     const instance = new BoxSandboxInstance(this, reference)
     const state = (await instance.info()).state
-    if (state === 'archived') await instance.resume()
+    if (state === 'archived' && options?.resume !== false) await instance.resume()
     return instance
   }
 

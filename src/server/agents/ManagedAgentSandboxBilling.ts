@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
-import type { SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
+import type { SandboxLifecycleState, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
@@ -83,8 +83,10 @@ export class ManagedAgentSandboxBilling {
     // The lease's sandbox may be gone (idle expiry, reset, provider reclaim) —
     // the turn's acquire step recreates it and repoints this same lease. A
     // dead instance still bills correctly: the recreated sandbox starts at
-    // zero usage, so an empty baseline meters its full lifetime.
-    const baselineUsage = await runtime.reconnect(lease.providerReference)
+    // zero usage, so an empty baseline meters its full lifetime. The baseline
+    // read must not resume an idle-stopped sandbox — the acquire step owns
+    // resumption.
+    const baselineUsage = await runtime.reconnect(lease.providerReference, { resume: false })
       .then(async (instance) => await instance.usage())
       .catch((error) => {
         logger.warn('[managed-harness] sandbox baseline unavailable — treating as fresh', {
@@ -191,10 +193,10 @@ export class ManagedAgentSandboxBilling {
     const stopping = lease.status === 'stopping' || lease.status === 'cleanup_failed'
 
     let effectiveLease = lease
-    let currentUsage = lease.providerReference
-      ? await this.instanceUsage(lease.provider, lease.providerReference)
+    let probe = lease.providerReference
+      ? await this.instanceProbe(lease.provider, lease.providerReference)
       : null
-    if (currentUsage === null && lease.providerReference) {
+    if (probe === null && lease.providerReference) {
       // The acquire step may have recreated the sandbox and repointed the
       // lease since this snapshot was read — follow the repoint once.
       const current = await this.dependencies.repository.getActiveSandboxLease({
@@ -202,14 +204,14 @@ export class ManagedAgentSandboxBilling {
         environmentId: lease.environmentId,
       }).catch((_error) => null)
       if (current && current.id === lease.id && current.providerReference && current.providerReference !== lease.providerReference) {
-        const usageAfterRepoint = await this.instanceUsage(current.provider, current.providerReference)
-        if (usageAfterRepoint) {
-          currentUsage = usageAfterRepoint
+        const probeAfterRepoint = await this.instanceProbe(current.provider, current.providerReference)
+        if (probeAfterRepoint) {
+          probe = probeAfterRepoint
           effectiveLease = current
         }
       }
     }
-    if (currentUsage === null) return { applied: false, reason: 'usage_unavailable' }
+    if (probe === null) return { applied: false, reason: 'usage_unavailable' }
 
     const cursorReference = typeof usage.meteredProviderReference === 'string' ? usage.meteredProviderReference : undefined
     const activeReference = effectiveLease.providerReference
@@ -221,7 +223,42 @@ export class ManagedAgentSandboxBilling {
     // adopts current counters without charging pre-meter history.
     const chargeEnabled = !legacyCursor
     const meteredAt = finiteNumber(usage.meteredAt) || effectiveLease.runtimeStartedAt || now
-    const delta = usageDelta(baseline, currentUsage, stopping ? 0 : Math.max(0, now - meteredAt))
+    const elapsedMs = stopping ? 0 : Math.max(0, now - meteredAt)
+    // Meter reads never resume a stopped session. Some providers only publish
+    // cumulative counters after a session ends, so a stopped instance is
+    // billed from its real counters while a running one falls back to elapsed
+    // wall-clock — see usageDelta for the virtual-cursor rule that keeps the
+    // final post-stop total from double-charging.
+    const instanceRunning = probe.status !== 'stopped' && probe.status !== 'archived' && probe.status !== 'deleted' && probe.status !== 'failed'
+    if (probe.usage === null) {
+      // Stopped instance with unreadable counters (e.g. Daytona metrics on a
+      // stopped sandbox): advance the meter window without charging so the
+      // stopped span is never billed as elapsed on the next running tick. A
+      // never-metered lease has no window to advance — its first successful
+      // read adopts counters instead.
+      if (!instanceRunning && storedCursor !== undefined) {
+        const bumped = await this.dependencies.repository.meterSandboxLease({
+          workspaceId: effectiveLease.workspaceId,
+          leaseId: effectiveLease.id,
+          now,
+          expectedMeterVersion,
+          meteredUsage: baseline,
+          meteredProviderReference: activeReference,
+          meteredAt: now,
+          minRemainingCents: Math.max(0, options?.minRemainingCents ?? sandboxLowBalanceCutoffCents()),
+        })
+        if (!bumped.applied) return bumped
+        return { applied: true, usage: {} }
+      }
+      return { applied: false, reason: 'usage_unavailable' }
+    }
+    const currentUsage = probe.usage
+    const delta = usageDelta(baseline, currentUsage, instanceRunning ? elapsedMs : 0)
+    const baselineWallMs = finiteNumber(baseline.wallTimeMs)
+    const virtualWallApplied = currentUsage.wallTimeMs !== undefined
+      && currentUsage.wallTimeMs <= baselineWallMs
+      && instanceRunning
+      && elapsedMs > 0
     const resources = sandboxResources(usage)
     const providerCostUsd = chargeEnabled ? sandboxCostUsd({
       provider: effectiveLease.provider,
@@ -238,12 +275,22 @@ export class ManagedAgentSandboxBilling {
       })
       return { applied: false, reason: 'no_payer' }
     }
+    // The stored cursor records what has been *billed through*, not what the
+    // provider last reported: when a provider hides counters mid-session, the
+    // cursor advances by the elapsed estimate so the post-stop real total
+    // nets out instead of double-charging the whole session.
+    const cursorUsage = {
+      ...serializableUsage(currentUsage),
+      ...(currentUsage.wallTimeMs === undefined
+        ? {}
+        : { wallTimeMs: Math.max(currentUsage.wallTimeMs, baselineWallMs + (virtualWallApplied ? elapsedMs : 0)) }),
+    }
     const result = await this.dependencies.repository.meterSandboxLease({
       workspaceId: effectiveLease.workspaceId,
       leaseId: effectiveLease.id,
       now,
       expectedMeterVersion,
-      meteredUsage: serializableUsage(currentUsage),
+      meteredUsage: cursorUsage,
       meteredProviderReference: activeReference,
       meteredAt: now,
       ...(payer ? { payer } : {}),
@@ -329,9 +376,10 @@ export class ManagedAgentSandboxBilling {
       const runtime = this.runtime(billing.provider)
       // The lease's providerReference may have been repointed mid-turn when
       // the acquire step recreated an expired sandbox — settle against the
-      // lease's current reference, not the dispatch-time snapshot.
+      // lease's current reference, not the dispatch-time snapshot. The read
+      // must not resume an idle-stopped sandbox.
       const providerReference = lease?.providerReference ?? billing.providerReference
-      const instance = await runtime.reconnect(providerReference)
+      const instance = await runtime.reconnect(providerReference, { resume: false })
       const currentUsage = await instance.usage()
       const usage = usageDelta(billing.baselineUsage, currentUsage, this.now() - billing.startedAt)
       const providerCostUsd = sandboxCostUsd({ provider: billing.provider, resources: billing.resources, usage })
@@ -413,6 +461,14 @@ export class ManagedAgentSandboxBilling {
           await this.killLease(lease, 'budget_exhausted')
           return { leaseId: lease.id, outcome: 'killed', reason: 'budget_exhausted', remainingCents: result.remainingCents }
         }
+        // A lease past its reserved window whose sandbox is unreachable has
+        // hit the provider hard limit — stop billing attempts and reap it.
+        if (result.reason === 'usage_unavailable'
+          && typeof lease.reservedUntil === 'number'
+          && this.now() > lease.reservedUntil) {
+          await this.killLease(lease, 'lease_expired')
+          return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
+        }
         return {
           leaseId: lease.id,
           outcome: result.reason === 'lease_conflict' ? 'conflict' : 'skipped',
@@ -457,9 +513,6 @@ export class ManagedAgentSandboxBilling {
   }
 
   private async reapLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {
-    // A stopped lease gets one final charge-free-of-floor tick so tail usage
-    // is still billed before the provider sandbox is deleted.
-    await this.meterLease({ ...lease, status: 'stopping' }, { minRemainingCents: 0 }).catch((_error) => undefined)
     const reference = lease.providerReference
       ?? (lease.usage && typeof lease.usage.meteredProviderReference === 'string' ? lease.usage.meteredProviderReference : undefined)
     const now = this.now()
@@ -482,7 +535,40 @@ export class ManagedAgentSandboxBilling {
     }
     if (!reference) return await finish('released', lease.cleanupAttempts + 1)
     try {
-      const instance = await this.runtime(lease.provider).reconnect(reference)
+      // Providers only publish cumulative usage after a session stops, so a
+      // still-running sandbox must be stopped before the final meter read —
+      // deleting without it would lose the whole session's usage.
+      const instance = await this.runtime(lease.provider).reconnect(reference, { resume: false })
+      const status = typeof instance.status === 'function'
+        ? await instance.status().catch((_error) => undefined)
+        : undefined
+      if (status !== 'stopped' && status !== 'archived' && status !== 'deleted' && typeof instance.stop === 'function') {
+        await instance.stop().catch((stopError) => {
+          logger.warn('Managed sandbox stop before cleanup failed', {
+            error: stopError instanceof Error ? stopError.message : String(stopError),
+            leaseId: lease.id,
+            providerReference: reference,
+          })
+        })
+      }
+    } catch (error) {
+      if (!isMissingSandboxError(error)) {
+        const cleanupAttempts = lease.cleanupAttempts + 1
+        logger.warn('Managed sandbox pre-delete stop failed — cleanup retried on next pass', {
+          cleanupAttempts,
+          error: error instanceof Error ? error.message : String(error),
+          leaseId: lease.id,
+          providerReference: reference,
+        })
+        return await finish('cleanup_failed', cleanupAttempts, now + cleanupRetryDelayMs(cleanupAttempts))
+      }
+      // Sandbox already gone — fall through to the final tick and release.
+    }
+    // A stopped lease gets one final charge-free-of-floor tick so tail usage
+    // is still billed before the provider sandbox is deleted.
+    await this.meterLease({ ...lease, status: 'stopping' }, { minRemainingCents: 0 }).catch((_error) => undefined)
+    try {
+      const instance = await this.runtime(lease.provider).reconnect(reference, { resume: false })
       await instance.delete()
       return await finish('released', lease.cleanupAttempts + 1)
     } catch (error) {
@@ -523,20 +609,29 @@ export class ManagedAgentSandboxBilling {
         }
       }
     }
-    const environment = await this.dependencies.repository.getEnvironment({
-      workspaceId: lease.workspaceId,
-      environmentId: lease.environmentId,
-    }).catch((_error) => null)
+    const environment = typeof this.dependencies.repository.getEnvironment === 'function'
+      ? await this.dependencies.repository.getEnvironment({
+        workspaceId: lease.workspaceId,
+        environmentId: lease.environmentId,
+      }).catch((_error) => null)
+      : null
     const userId = environment?.approvedByUserId
     if (!userId) return undefined
     const resolved = await resolveBillingPayer({ userId, workspaceId: lease.workspaceId }).catch((_error) => null)
     return resolved ? sandboxLeasePayer(resolved, userId) : undefined
   }
 
-  private async instanceUsage(provider: string, providerReference: string): Promise<SandboxUsage | null> {
+  private async instanceProbe(
+    provider: string,
+    providerReference: string,
+  ): Promise<{ status: SandboxLifecycleState | undefined; usage: SandboxUsage | null } | null> {
     try {
-      const instance = await this.runtime(provider).reconnect(providerReference)
-      return await instance.usage()
+      const instance = await this.runtime(provider).reconnect(providerReference, { resume: false })
+      const status = typeof instance.status === 'function'
+        ? await instance.status().catch((_error) => undefined)
+        : undefined
+      const usage = await instance.usage().catch((_error) => null)
+      return { status, usage }
     } catch (_error) {
       return null
     }
@@ -622,7 +717,13 @@ function usageDelta(baseline: Record<string, unknown>, current: SandboxUsage, fa
   const baselineWall = finiteNumber(baseline.wallTimeMs)
   const baselineCpu = finiteNumber(baseline.activeCpuTimeMs)
   return {
-    wallTimeMs: current.wallTimeMs === undefined ? Math.max(0, fallbackWallTimeMs) : Math.max(0, current.wallTimeMs - baselineWall),
+    // Providers that publish cumulative counters only at session end report a
+    // wall time that never advances while running. A stalled counter on a
+    // live instance means "unreported", not "zero burn", so fall back to the
+    // elapsed window — the cursor accounts for it via virtualWallApplied.
+    wallTimeMs: current.wallTimeMs === undefined || current.wallTimeMs <= baselineWall
+      ? Math.max(0, fallbackWallTimeMs)
+      : current.wallTimeMs - baselineWall,
     activeCpuTimeMs: current.activeCpuTimeMs === undefined ? undefined : Math.max(0, current.activeCpuTimeMs - baselineCpu),
     ingressBytes: current.ingressBytes === undefined ? undefined : Math.max(0, current.ingressBytes - finiteNumber(baseline.ingressBytes)),
     egressBytes: current.egressBytes === undefined ? undefined : Math.max(0, current.egressBytes - finiteNumber(baseline.egressBytes)),
