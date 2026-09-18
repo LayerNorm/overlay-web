@@ -32,11 +32,11 @@ When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNor
 
 Do not require separate Reviewer or Release Authority agents. The Integration agent owns those responsibilities so each change normally consumes only one Builder and one Integration agent.
 
-Before Integration acts, it asks the owner: “Should this use a pull request or the owner-only direct-push fast path?”, “Should it target `staging` or `main`?”, and “Should Vercel deploy after integration; if so, staging or production?” If the current request already answers a question, the agent records that choice instead of asking again. The default remains a pull request to `staging` for hosted QA and no production Vercel deployment unless explicitly authorized.
+Before Integration acts, it asks the owner: “Should this use a pull request or the owner-only direct-push fast path?”, “Should it target `staging` or `main`?”, and “Should Vercel deploy after integration; if so, staging or production?” If the current request already answers a question, the agent records that choice instead of asking again. In direct-push mode on `main` under `DevelopedByDev`, the default is a direct push to `main`; otherwise the default remains a pull request to `staging` for hosted QA. Production Vercel deployment always requires explicit authorization.
 
 ## Owner-only direct pushes
 
-Repository rules require pull requests and status checks on `main` and `staging` for every actor except the specific `DevelopedByDev` user. This exception is a release-velocity option for the owner, not the default agent workflow. An agent authenticated as `DevelopedByDev` may use it only when the owner explicitly requests a direct push for the current task; full access, account identity, or an earlier instruction is not authorization.
+Repository rules require pull requests and status checks on `main` and `staging` for every actor except the specific `DevelopedByDev` user. In the current direct-push mode (see the header), when the session operates under that identity and the working branch is already `main`, completed work pushes directly to `main` — do not route it through `staging` first unless the owner explicitly asks for staging first in that task. Outside that mode this exception is a release-velocity option for the owner, not the default agent workflow, and an agent may use it only when the owner explicitly requests a direct push for the current task; full access, account identity, or an earlier instruction is not authorization.
 
 Two stacked rulesets keep the exception narrow:
 
