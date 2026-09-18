@@ -186,7 +186,7 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<AuthLoadingScreen tone="simple" />}>
+    <Suspense fallback={<AuthLoadingScreen />}>
       <ResetPasswordContent />
     </Suspense>
   )

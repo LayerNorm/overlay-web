@@ -4,13 +4,15 @@ import { Suspense, type ReactNode } from 'react'
 import Link from 'next/link'
 import { AuthBoundary } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
+import { OverlayMark } from '@/components/orb/Orb'
+import { MARKETING_LOGO_SIZE } from '@/features/marketing/lib/marketingLayout'
+import { AuthPageSkeleton } from '@/app/_components/RouteLoadingFallbacks'
 
 function AuthBrandMark({ className = '' }: { className?: string }) {
   return (
     <Link href="/" className={`flex items-center gap-2.5 ${className}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/assets/overlay-logo.png" alt="" className="h-7 w-7" />
-      <span className="font-serif text-lg tracking-tight text-[var(--foreground)]">overlay</span>
+      <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
+      <span className="font-serif text-xl font-medium tracking-tight text-[var(--foreground)]">overlay</span>
     </Link>
   )
 }
@@ -57,32 +59,15 @@ export function LandingAuthPageChrome({ children }: { children: ReactNode }) {
   )
 }
 
-export function AuthLoadingScreen({
-  tone = 'landing',
-}: {
-  tone?: 'landing' | 'simple'
-}) {
-  const spinnerClass =
-    tone === 'simple'
-      ? 'w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin mx-auto'
-      : 'mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent'
-  const textClass = 'mt-4 text-[var(--muted)]'
-
-  return (
-    <div className="flex min-h-full items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
-      <div className="relative z-10 text-center">
-        <div className={spinnerClass} />
-        <p className={textClass}>Loading...</p>
-      </div>
-    </div>
-  )
+export function AuthLoadingScreen() {
+  return <AuthPageSkeleton />
 }
 
 export function LandingAuthBoundary({ children }: { children: ReactNode }) {
   return (
     <AuthBoundary>
       <LandingThemeProvider>
-        <Suspense fallback={<AuthLoadingScreen tone="landing" />}>
+        <Suspense fallback={<AuthLoadingScreen />}>
           {children}
         </Suspense>
       </LandingThemeProvider>
