@@ -31,12 +31,13 @@ export function MarketingRouteLoading() {
 
 export function AuthRouteLoading() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-6">
-      <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6">
-        <SkeletonBlock className="mb-6 h-5 w-28" />
-        <SkeletonBlock className="mb-3 h-10 w-full" />
-        <SkeletonBlock className="mb-3 h-10 w-full" />
-        <SkeletonBlock className="h-9 w-full rounded-full" />
+    <main className="flex min-h-screen bg-[var(--background)] px-6">
+      <div className="w-full max-w-sm">
+        <SkeletonBlock className="mb-6 h-7 w-40" />
+        <SkeletonBlock className="mb-8 h-4 w-56" />
+        <SkeletonBlock className="mb-3 h-11 w-full rounded-xl" />
+        <SkeletonBlock className="mb-3 h-11 w-full rounded-xl" />
+        <SkeletonBlock className="h-11 w-full rounded-xl" />
       </div>
     </main>
   )
