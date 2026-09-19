@@ -168,8 +168,8 @@ jobs:
       - name: Verify tenant boundary guard
         run: npm run check:tenant-boundaries
 
-      - name: Verify on-prem parity matrix
-        run: npm run check:on-prem-parity
+      - name: Verify on-prem Convex boundaries
+        run: npm run check:on-prem-convex-boundaries
 
       - name: Verify public documentation health
         run: npm run docs:health
