@@ -148,3 +148,30 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   seam rejects it until egress allowlisting and safe credential forwarding
   exist. Revisit only with a Box rate card (`computeBoxRuntimeCost`) if it's
   ever offered.
+
+## Self-hosting roadmap
+
+Context: Convex is the only app-data provider (Phase 3 done). Enterprise
+self-hosting runs the official `convex-backend` (`examples/customer-deployment/`),
+and the SQL read mirror ships in `docker-compose.mirror.yml` (Phase 4 done).
+Architecture + rationale: `docs/develop/convex-only-self-hosting.md`.
+Frozen escape hatch: `postgres-self-host` branch pinned at `63cf2edb4` — the
+last commit with the full bespoke Postgres provider (deleted on `main`); only
+touch it if a customer explicitly requires a Postgres app-data backend.
+
+- [ ] **Confirm FSL scope with Convex before building** — email/Discord:
+  orchestrating `convex-backend` instances that exist only to serve Overlay
+  deployments (including in customer premises) vs. offering managed Convex as
+  a product. Get the answer in writing; enterprise procurement will ask.
+- [ ] **Big Brain — per-customer lifecycle manager** (Phase 5, build when a
+  concrete enterprise need lands). Scope v1 to single-customer deployments:
+  provision (instance name → schema → `INSTANCE_SECRET` → admin key →
+  container), health-check via `/version`, image upgrades with pre-upgrade
+  `npx convex export`, scheduled export backups, standby promote on lease
+  loss. Written against four portable interfaces — containers, Postgres
+  provisioner, object store, DNS — so it works on any cloud. The OSS repo's
+  `big_brain_client` crate shows the backend is designed for external control.
+- [ ] **Big Brain — central fleet plane** — deferred harder: per-tenant
+  routing, metering (`/metrics`, off by default), and multi-instance scaling
+  only matter if Overlay hosts many tenants itself. Re-read the FSL before
+  any managed-hosting shape; this version is closest to the license line.
