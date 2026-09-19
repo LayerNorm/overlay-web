@@ -284,7 +284,7 @@
     "server-only": "^0.0.1",
     "stripe": "^20.3.1",
     "undici": "7.29.0",
-    "workflow": "4.8.5",
+    "workflow": "4.8.9",
     "zod": "^3.25.76"
   },
   "devDependencies": {
