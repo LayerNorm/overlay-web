@@ -301,6 +301,7 @@
     "convex-test": "^0.0.54",
     "eslint": "10.10.0",
     "eslint-config-next": "16.3.0",
+    "js-yaml": "4.3.2",
     "mintlify": "^4.2.816",
     "playwright": "^1.61.1",
     "postcss": "8.5.26",
