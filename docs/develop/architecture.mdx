@@ -33,17 +33,17 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
   translations. Provider SDK types and raw handles do not cross into public routes, billing, or
   connected-agent persistence.
 
-App-data portability is capability-driven: `src/server/app-data/capabilities.ts`
-and `src/server/app-data/route-support.ts` are the source of truth for what
-Postgres mode exposes. Unsupported routes must return the structured
-`app_data_route_not_supported` response before domain services or Convex are
-called. Workspace collaboration and connector mappings are currently Convex
-only; Postgres must not silently fall back to Convex for them.
+App data lives exclusively in Convex: `src/server/app-data/capabilities.ts`
+publishes the Convex capability set and `src/server/app-data/repositories.ts`
+constructs the Convex repositories every domain service consumes. The bespoke
+Postgres repository layer, Drizzle schema, app-data migrations, and parity
+harness were removed; enterprise self-hosting runs the official
+`convex-backend` binary (see `docs/develop/convex-only-self-hosting.md`).
 
-Connected-agent persistence is provider-neutral through
+Connected-agent persistence goes through the Convex-backed
 `ConnectedAgentRepository`. Environment, binding, command, remote-session,
 approval, sandbox-lease, enrollment, proof-challenge, short-lived credential, and
-request-replay records have matching Convex and PostgreSQL schemas.
+request-replay records live in Convex tables.
 Remote output advances a per-session contiguous event cursor transactionally;
 it projects into the existing conversation and `AgentRun` lifecycle rather than
 creating a second transcript.
@@ -53,7 +53,7 @@ single-agent boundary. Bindings choose an agent and adapter; each command choose
 granted working directory. The host can grant multiple roots or explicit OS-user-wide access.
 Protocol versioning, validation, sequencing, enrollment proof canonicalization, and signed HTTP
 transport remain in the bridge/host
-packages so neither Convex nor PostgreSQL becomes a public host API.
+packages so Convex does not become a public host API.
 
 `ConnectedAgentControlPlaneService` is the server-only policy boundary for enrollment and host
 traffic. Browser management routes use the normal authenticated BFF and active-workspace
@@ -76,12 +76,10 @@ visual fixtures remain standalone by contract.
 
 ## Domain Decomposition
 
-Workspace behavior stays behind the existing provider/repository contracts while
+Workspace behavior stays behind the existing service/repository contracts while
 large seams are split by responsibility. The `WorkspaceSwitcher` controller owns
 navigation and lifecycle state; `WorkspaceSwitcherView` owns the trigger, menu,
-and dialog presentation. Postgres workspace governance writes build their SQL in
-`src/server/workspaces/workspace-sharing-policy-sql.ts`, keeping policy patch
-semantics separate from repository orchestration without changing the contract.
+and dialog presentation.
 
 Personal and organization workspaces use the same collaboration capabilities:
 people, agents, direct messages, channels, teams, invitations, and resource
@@ -96,9 +94,9 @@ audited compliance path.
 Interactive Personal Chat runs use the provider-neutral `AgentRun` contract in
 `src/shared/agents/agent-run.ts`. `AgentRun.status` is the only persisted
 authority for queued, running, approval-waiting, completed, failed, or cancelled
-execution; `conversationMessages.status` is a rendering projection. Convex and
-Postgres create the assistant placeholder and AgentRun together, and complete,
-fail, or cancel both records in one storage transaction.
+execution; `conversationMessages.status` is a rendering projection. Convex
+creates the assistant placeholder and AgentRun together, and completes,
+fails, or cancels both records in one storage transaction.
 
 Chat mode continues to use the AI SDK `ToolLoopAgent`. It streams directly to
 the connected browser, while Next `after()` drains a tee of the stream for a
@@ -110,7 +108,7 @@ the final message; a non-terminal run shows the disconnected generating state.
 
 ToolLoop runs tolerate browser disconnection but not a process crash. Their
 lease expires to a structured `tool_loop_lease_expired` failure through the
-Convex cron or Postgres maintenance worker. Stop first cancels AgentRun, then
+Convex cron. Stop first cancels AgentRun, then
 best-effort aborts the in-process `AbortController`; late completion cannot
 overwrite cancellation.
 
@@ -171,7 +169,7 @@ Migration balance parity sums only active `reserved` and `reconcile_required` ro
 
 The app bootstrap and subscription read use that same resolver. Active members of an eligible organization therefore receive the workspace account's plan and budget for model gating, while mutating billing operations remain restricted to owners and admins. Workspace-scoped clients send the active workspace header explicitly; a member's personal subscription is not treated as the organization's entitlement or payment fallback.
 
-All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Postgres and Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution are bounded to 12 tool steps per agent turn and 50,000 response characters; file ingestion is bounded to 20 requests per user per hour plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
+All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution are bounded to 12 tool steps per agent turn and 50,000 response characters; file ingestion is bounded to 20 requests per user per hour plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
 
 Chat reservations price the full 12-step model-call envelope, including the
 per-step 8,192 output-token ceiling. A tool loop must not reserve only its first
@@ -201,19 +199,19 @@ every turn-slice acquire heartbeats `usage.lastActiveAt`, so an actively working
 cools mid-turn, and the next turn's `resume:true` acquire wakes it again. A `running` lease past
 `reservedUntil` (the 24-hour hard cap) is reaped on the next tick regardless of whether its
 sandbox still answers. The meter driver runs from
-the BFF `agent-environments/operations/reconcile` route (Convex cron calls it) and the Postgres
-`app-data.maintenance` job. The standalone sandbox route keeps the worst-case reservation model
+the BFF `agent-environments/operations/reconcile` route (Convex cron calls it).
+The standalone sandbox route keeps the worst-case reservation model
 because it always denies outbound network access and can make a byte-exact provider-cost promise;
 it rejects oversized artifacts before provider transfer, and its reservation includes the maximum
 bounded artifact transfer. The default `iad1` region and its
 configured unit rates must move together. Blank pricing or buffer variables fall back to
 conservative defaults rather than silently becoming zero.
 
-Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. Both the Next/Postgres webhook and hosted Convex webhook preserve the personal metadata path, deduplicate event IDs, and reject stale subscription state with `providerEventCreatedAt`.
+Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. The Convex Stripe webhook preserves the personal metadata path, deduplicates event IDs, and rejects stale subscription state with `providerEventCreatedAt`.
 
-Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron and Postgres worker expose queue depth and oldest age but never guess an ambiguous charge.
+Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron exposes queue depth and oldest age but never guesses an ambiguous charge.
 
-Finalized usage preserves retail cost and actual provider cost independently. `UsageRepository.getBillingAccountOperationalReport` is implemented by both Convex and PostgreSQL and reports retail credits, actual cost, realized margin, cost coverage, reconcile queue depth, and the count older than the 15-minute response SLA. The workspace billing UI exposes this only to owners and admins.
+Finalized usage preserves retail cost and actual provider cost independently. `UsageRepository.getBillingAccountOperationalReport` reports retail credits, actual cost, realized margin, cost coverage, reconcile queue depth, and the count older than the 15-minute response SLA. The workspace billing UI exposes this only to owners and admins.
 
 Important code:
 
@@ -261,7 +259,7 @@ request or crash the UI.
 ### Server-side metrics
 
 - `src/server/observability/metrics.ts` — typed emission contract for BFF
-  requests, Postgres queries, Convex functions, model token breakdowns,
+  requests, Convex functions, model token breakdowns,
   AgentRun lifecycle, workflow events, uploads, and business rollups.
 - `src/server/observability/business-rollup.ts` — periodic aggregation of
   cost-per-active-user-hour, cost-per-chat-turn, and cost-per-automation.
@@ -269,9 +267,6 @@ request or crash the UI.
   `overlay.metrics.bff_request` event on every exit path (early returns +
   final return) with route, method, status, duration, auth type, workspace,
   payload size, and Retry-After.
-- `src/server/database/postgres/client.ts` — pool wraps each client's
-  `query` method to emit `overlay.metrics.postgres_query` with duration and
-  rows returned.
 - `src/server/conversations/ActContextService.ts` — `emitTokenBreakdown`
   estimates per-source token counts (history, memory, skills, tools,
   attachments, system) and emits `overlay.metrics.model_tokens`.

@@ -56,8 +56,8 @@ Minimum app runtime variables:
 | `OVERLAY_CONFIG_FILE` | Using a JSON runtime config | Absolute or repo-relative path, for example `overlay.config.json`. |
 | `NEXT_PUBLIC_APP_URL` | Always in deployed environments | Public browser URL for the web app. |
 | `NEXT_PUBLIC_CONVEX_URL` | Browser or server talks to Convex | Public Convex deployment URL for the selected environment. Use `DEV_NEXT_PUBLIC_CONVEX_URL` for local dev against a separate dev deployment. |
-| `INTERNAL_API_SECRET` | `database.provider="convex"` | Shared server-to-Convex secret. It is not required by a Postgres-only deployment. |
-| `INTERNAL_SERVICE_AUTH_SECRET` | Automations | Shared by the app runtime and the selected Convex deployment when Convex executes automation callbacks. Keep it distinct from `INTERNAL_API_SECRET` and aligned per environment. Postgres-only deployments keep it on the app and worker runtimes. |
+| `INTERNAL_API_SECRET` | Always | Shared server-to-Convex secret matching the selected Convex deployment. |
+| `INTERNAL_SERVICE_AUTH_SECRET` | Automations | Shared by the app runtime and the selected Convex deployment when Convex executes automation callbacks. Keep it distinct from `INTERNAL_API_SECRET` and aligned per environment. |
 | `SESSION_SECRET` | Cookie sessions | App runtime only. Must be long, random, and environment-specific. |
 | `SESSION_TRANSFER_KEY` | Native/session transfer flows | App runtime only. |
 | `SESSION_COOKIE_ENCRYPTION_KEY` | Encrypted session cookie payloads | App runtime only. |
@@ -123,7 +123,7 @@ The normalized shape is:
 | `billing` | Stripe or disabled billing. |
 | `storage` | R2, S3-compatible storage, or no-op object store. |
 | `llm` | Gateway provider, provider key source, default model, and allowlist. |
-| `database` | Convex or Postgres app-data selection and backend-specific connection settings. |
+| `database` | Convex app-data selection (`convex` only) and backend connection settings. |
 | `capabilities` | Feature booleans consumed by browser UI and server route guards. |
 
 Enterprise config v2 adds these top-level sections while keeping all keys above backward compatible:
@@ -208,9 +208,9 @@ Enterprise provider matrix:
 | Purpose | Provider values | Data processed | Region/residency | Current support |
 | --- | --- | --- | --- | --- |
 | Auth | `workos`, `oidc`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC verifies bearer/access tokens through discovery JWKS, including Keycloak-compatible realm issuers; browser login wiring is deployment-specific. |
-| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports auth-linked users, chat, projects, notes, files and outputs, account deletion, durable maintenance, memory extraction, pgvector retrieval, scheduled automations, webhooks, usage/billing records, scoped API keys, administrative audit, skills, and MCP server persistence/execution audits. Connector account state and integration routes remain explicitly gated until the Postgres parity phase; Postgres must not call Convex as a hidden sidecar. |
+| Database | `convex` | App records, messages, files metadata, usage state | Convex deployment region | `convex` is the only supported app-data provider. Enterprise self-hosting runs the official `convex-backend` binary; see [Self-hosted Convex backend](/deploy-operate/self-hosted-convex). |
 | Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
-| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex`, `pgvector`, and `none` are supported. `pgvector` requires Postgres, the `vector` extension, an embeddings provider, migrations, and the durable worker. `pinecone` is declared but rejected until an adapter exists. |
+| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex` and `none` are supported. `pgvector` was removed with the Postgres app-data provider. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | User prompts, context, tool results | Model provider policy | Supported. Use `features.modelRouting=false` plus `providers.models.provider="none"` to disable. |
 | Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio`, `executor`, and `none` supported. `executor` uses a separate customer-hosted service and provider-managed connections. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
@@ -220,10 +220,10 @@ Enterprise provider matrix:
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
 | Transactional email | `ses`, `smtp`, `none` | Recipient address and transactional account content | Selected email provider region | Supported. Defaults to `none`; SMTP requires TLS in production/on-prem. SES/SMTP delivery uses a durable outbox, stable message key, suppression checks, and audit records. |
-| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` and WorkOS vault-backed provider keys are supported for hosted flows. In Postgres mode, BYOK provider keys use AWS Secrets Manager when `providers.secrets.provider="aws-secrets-manager"`; app-data stores only the opaque secret ARN. Vault remains declared but unsupported. |
+| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` and WorkOS vault-backed provider keys are supported for hosted flows. BYOK provider keys use AWS Secrets Manager when `providers.secrets.provider="aws-secrets-manager"`; Convex stores only the opaque secret ARN. Vault remains declared but unsupported. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | All declared providers are supported. Use Redis with fail-closed behavior for multi-instance production/on-prem deployments; memory is development-only. |
 
-### Postgres app-data setup
+### MCP credential encryption
 
 For MCP servers, generate a separate credential-encryption key:
 
@@ -231,7 +231,7 @@ For MCP servers, generate a separate credential-encryption key:
 openssl rand -hex 32
 ```
 
-Store it as `MCP_CREDENTIAL_ENCRYPTION_KEY` on the web and worker runtimes. During
+Store it as `MCP_CREDENTIAL_ENCRYPTION_KEY` on the web runtime. During
 rotation, place the old value in `MCP_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS`, deploy
 the new primary key, rewrite saved credentials through the management API, then
 remove the previous key. MCP responses expose only `hasAuth`; bearer tokens and
@@ -244,93 +244,51 @@ default when a server contains write-capable tools. Tool name, argument hash,
 policy decision, result status, duration, and request context are persisted for
 audit without storing raw tool arguments.
 
-Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep integrations and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, Daytona artifacts, saved memories, knowledge retrieval, scheduled automations, and signed outbound webhooks are supported.
+### Convex app-data backend
 
-Postgres-native memory and knowledge search uses `pgvector`; do not keep Convex enabled in the browser as a hidden vector sidecar. Confirm `vector` is available before migration, then set:
+Convex is the only app-data provider. For enterprise self-hosting, run the
+official `convex-backend` binary with the reference stack in
+`examples/customer-deployment/` and the operations runbook at
+[Self-hosted Convex backend](/deploy-operate/self-hosted-convex). Scheduled
+automations, memory extraction, knowledge indexing, retention, and signed
+outbound webhooks all execute inside the Convex deployment — no separate worker
+process is required. Automations additionally require
+`INTERNAL_SERVICE_AUTH_SECRET` on both the app and the Convex deployment.
 
-```env
-OVERLAY_PROVIDER_VECTOR_SEARCH=pgvector
-OVERLAY_PROVIDER_EMBEDDINGS=openai
-OVERLAY_EMBEDDING_MODEL_VERSION=text-embedding-3-small-v1
-OVERLAY_MEMORY_EXTRACTION_MODEL_ID=gpt-4.1-mini
-OVERLAY_RETENTION_MEMORY_DAYS=365
-VECTOR_SEARCH_ENABLED=true
-OVERLAY_FEATURE_VECTOR_SEARCH=true
-```
+When changing `OVERLAY_EMBEDDING_MODEL_VERSION`, Convex knowledge maintenance
+crons reindex stored content automatically — let them drain before retiring the
+old embedding model configuration.
 
-Run the durable worker continuously. It executes memory extraction, indexing,
-failed-index recovery, retention, and embedding-model backfills:
+For local setup, point `NEXT_PUBLIC_CONVEX_URL` at a `convex dev` session
+(`npx convex dev`) or a local self-hosted backend from
+`examples/customer-deployment/`.
 
-```bash
-npm run app-db:worker
-```
+For a managed or self-hosted cloud backend, deploy the `convex/` tree once per
+environment with `convex deploy` and set `NEXT_PUBLIC_CONVEX_URL` plus the
+matching `INTERNAL_API_SECRET` / `INTERNAL_SERVICE_AUTH_SECRET` on the app.
 
-When Postgres app-data uses automations or outbound webhooks, declare the
-supervised runtime explicitly in the web, worker, and scheduler environments:
-
-```bash
-OVERLAY_BACKGROUND_RUNTIME_ENABLED=true
-INTERNAL_SERVICE_AUTH_SECRET="replace-with-a-strong-distinct-secret"
-```
-
-The Postgres capability response hides automations and webhooks until the
-background runtime is declared. Automations additionally require
-`INTERNAL_SERVICE_AUTH_SECRET`. Set the declaration only when at least one
-scheduler and one worker are continuously supervised.
-
-When changing `OVERLAY_EMBEDDING_MODEL_VERSION`, deploy the new worker and run:
-
-```bash
-npm run app-db:knowledge-backfill -- --limit=2000
-```
-
-Repeat until `queued` is zero, then allow workers to drain the queue before
-retiring the old embedding model configuration.
-
-For local setup:
-
-```bash
-cp .env.app-data.local.example .env.app-data.local
-npm run app-db:up
-npm run app-db:migrate
-npm run app-db:smoke
-npm run app-db:worker:smoke
-```
-
-For cloud Postgres, set `OVERLAY_DATABASE_URL` and run:
-
-```bash
-OVERLAY_DATABASE_URL="postgres://..." npm run app-db:migrate
-OVERLAY_DATABASE_URL="postgres://..." npm run app-db:smoke
-OVERLAY_DATABASE_URL="postgres://..." npm run app-db:worker:smoke
-```
-
-Do not reuse `BETTER_AUTH_DATABASE_URL` for app data. Better Auth and Overlay app records have separate schemas and migration lifecycles.
+`BETTER_AUTH_DATABASE_URL` is only for Better Auth's own tables — never for
+application data, which lives exclusively in Convex.
 
 ### Billing, API keys, and administrators
 
-Postgres app-data supports Stripe subscription records, exactly-once top-up grants,
-and durable Stripe event deduplication. Register the Postgres deployment webhook as:
+Stripe subscription records, exactly-once top-up grants, and durable Stripe
+event deduplication are handled inside Convex through the
+`@convex-dev/stripe` component. Register the deployment's Convex Stripe
+webhook endpoint (printed by the component setup) as the single Stripe
+webhook; there is no Next.js Stripe webhook route.
 
-```text
-https://overlay.example.com/api/webhooks/stripe
-```
-
-Set `STRIPE_WEBHOOK_SECRET` to that endpoint's signing secret. Convex deployments
-continue to use the Convex Stripe webhook endpoint; do not register both endpoints
-for one deployment.
-
-API key values are returned only on create or rotation. The database stores an
+API key values are returned only on create or rotation. Convex stores an
 HMAC hash using `API_KEY_HASH_SECRET`, plus scopes, expiry, use metadata, and
 revocation state. Rotate the hash secret only through a planned key invalidation
 window because existing API keys cannot be re-hashed without their plaintext.
 
-Bootstrap the first administrator from a trusted maintenance shell after the user
-has signed in once and exists in the app-data `users` table:
+Bootstrap the first administrator from a trusted shell after the user has
+signed in once and exists in the Convex `users` table:
 
 ```bash
-OVERLAY_DATABASE_URL="postgres://..." npm run app-db:admin -- \
-  grant --user-id USER_ID --role admin --reason "initial operator"
+convex run admin/authorization:grantRole \
+  '{"userId":"USER_ID","role":"admin","reason":"initial operator"}'
 ```
 
 Then use `/api/v1/admin/principals` for role grants/revocations and
@@ -346,29 +304,35 @@ complete the [AWS deployment](/deploy-operate/aws),
 [release gate](/deploy-operate/release-gates) procedures for each enabled
 billing profile.
 
-For future vector-search planning, confirm that the managed Postgres provider exposes the `vector` extension:
+Background work runs as Convex crons and scheduled functions inside the
+deployment — maintenance, coordination cleanup, model-catalog refresh, S3
+reconciliation, output retention, knowledge maintenance, due automation scans,
+and Daytona reconciliation. Automation occurrences are idempotent, each attempt
+is audited, overlapping runs obey the configured `skip` or `queue` policy, and
+cancellation is checked before execution. Outbound webhook events are
+deduplicated per subscription/event, signed over `timestamp.payload` with
+HMAC-SHA256, and retain delivery-attempt and dead-letter records. Signing
+secrets are returned only when a subscription is created or rotated; dead-letter
+redrive creates a new immutable delivery record. Daytona reconciliation adopts
+only correctly labeled workspaces, rejects unowned provider records, marks
+missing workspaces, and advances active metering windows idempotently.
+`compliance.retention.fileDays` governs generated media/browser outputs and
+`compliance.retention.sandboxArtifactDays` governs Daytona artifacts.
 
-```bash
-OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
-```
-
-This readiness command is read-only. It does not enable vector search, install extensions, create vector columns, or change the app-data schema.
-
-Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service and set `OVERLAY_BACKGROUND_RUNTIME_ENABLED=true` on every release component. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, output retention, knowledge maintenance, due automation scans, and Daytona reconciliation. Leased workers execute jobs with retry, lease recovery, and dead-letter state. Automation occurrences are idempotent, each attempt is audited, overlapping runs obey the configured `skip` or `queue` policy, and cancellation is checked before execution. Outbound webhook events are deduplicated per subscription/event, signed over `timestamp.payload` with HMAC-SHA256, and retain delivery-attempt and dead-letter records. Signing secrets are returned only when a subscription is created or rotated; dead-letter redrive creates a new immutable delivery record. Daytona reconciliation adopts only correctly labeled workspaces, rejects unowned provider records, marks missing workspaces, and advances active metering windows idempotently. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts.
-
-Postgres chat realtime uses the `conversation_events` table and `/api/v1/conversations/events` long polling. Transactional `pg_notify` wakes one listener connection per web process; notifications are only an optimization because reconnects read from the durable cursor. It does not require sticky load-balancer sessions. Keep the worker running so expired event rows and message deltas are pruned. Each app tab holds at most one HTTP long-poll request, so account for concurrent tabs when setting ECS task count and reverse-proxy timeouts. The route waits up to 15 seconds; configure the ingress idle timeout above that value.
+Chat realtime uses Convex subscriptions end to end — clients subscribe through
+`ConvexReactClient` and receive mutations as they commit. It does not require
+sticky load-balancer sessions, long-poll endpoints, or a separate events
+table; reconnects resync from the Convex query cache automatically.
 
 Chat mode streams directly from the web runtime and persists one final assistant-message snapshot. After a browser disconnect, clients use the authoritative AgentRun status and reload the final response when it appears; exact SSE-frame replay is intentionally not part of the persistence contract.
 
-The migration shape is:
+The migration shape was:
 
 1. Consolidate repository/context boundaries before adding new persistence.
-2. Make Convex optional in the browser for Postgres mode.
-3. Add capability gates and route classification for every app surface.
-4. Implement chat with an explicit usage policy.
-5. Move business invariants into domain services.
-6. Add real backend contract tests for Convex and Postgres.
-7. Add Postgres-native vector search later through `pgvector`, after provider readiness and adapter work.
+2. Add capability gates and route classification for every app surface.
+3. Implement chat with an explicit usage policy.
+4. Move business invariants into domain services.
+5. Replace the bespoke Postgres app-data path with real Convex contract tests.
 
 Capabilities:
 

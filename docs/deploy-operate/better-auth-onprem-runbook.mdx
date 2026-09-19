@@ -10,9 +10,9 @@ Use Better Auth when Overlay should own the web session in the customer deployme
 - A Postgres database dedicated to Better Auth session/account data.
 - A deployed Overlay web origin, for example `https://overlay.example.com`.
 - An OIDC application in the customer's IdP. Direct Google Workspace is the recommended first private-deployment flow.
-- Matching Convex environment variables for Better Auth JWT verification only when Convex is enabled. Postgres-only deployments do not need a Convex client or Convex credentials.
+- Matching Convex environment variables for Better Auth JWT verification, since app data always lives in Convex.
 
-Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data. If the deployment is preparing Postgres app-data support, use `OVERLAY_DATABASE_URL` for app records and `BETTER_AUTH_DATABASE_URL` only for Better Auth state.
+Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data. `BETTER_AUTH_DATABASE_URL` is used only for Better Auth state — application records always live in the Convex deployment.
 
 ## Environment
 

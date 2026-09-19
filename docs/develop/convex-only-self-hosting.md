@@ -1,10 +1,10 @@
 # Convex-only backend & enterprise self-hosting strategy
 
-Status: recommendation (2026-09-17). Supersedes the dual Convex/Postgres direction flagged in `codebase-complexity-audit.md`. Delete nothing until Phase 1 below is proven.
+Status: implemented (2026-09-18). Supersedes the dual Convex/Postgres direction flagged in `codebase-complexity-audit.md`. Convex is the only app-data provider; the bespoke Postgres repository layer is deleted.
 
 ## Decision
 
-Standardize on Convex as the only backend runtime. Convex Cloud serves the hosted product; the open-source `convex-backend` binary serves enterprise self-hosting (BYOC). The bespoke Postgres repository layer, Drizzle schema/migrations, and the parity harness are deprecated and deleted once the self-hosted path is validated end-to-end.
+Standardize on Convex as the only backend runtime. Convex Cloud serves the hosted product; the open-source `convex-backend` binary serves enterprise self-hosting (BYOC). The bespoke Postgres repository layer, Drizzle schema/migrations, and the parity harness are deleted. Postgres survives only as Convex's optional persistence engine and as Better Auth's separate auth-scoped database.
 
 ## Why Convex-only wins
 
@@ -95,7 +95,7 @@ Enterprises integrate at three surfaces — never at the persistence tables.
 
 1. **Prove it:** ✅ **Done (2026-09-18).** Full `convex/` tree deployed unmodified to the official OSS backend on Postgres+S3; crons fired; file-storage round trip passed; WorkOS/HS256 auth path verified; real AI chat persisted. See the proof table above.
 2. **Package it:** ✅ **Done (2026-09-18).** Reference stack in `examples/customer-deployment/` (`docker-compose.convex.yml` + `convex.env.example` + `bin/convex-bootstrap.sh`); operations runbook at `docs/deploy-operate/self-hosted-convex.mdx`. Helm packaging for the backend remains open if a customer needs k8s.
-3. **Delete the Postgres path:** repositories → Drizzle schema/migrations → parity harness → DB-selector config → collapse now-single-impl repository interfaces.
+3. **Delete the Postgres path:** ✅ **Done (2026-09-18).** All `Postgres*` repositories, the Drizzle schema + `migrations/app-data/` SQL, the parity harness and contracts, `src/server/database/postgres/`, Postgres workers/scheduler/maintenance, route-support gating, `provider === 'postgres'` branches, `OVERLAY_DATABASE_URL`/`OVERLAY_BACKGROUND_RUNTIME_ENABLED` env, `app-db:*` scripts, and the Next `/api/webhooks/stripe` route (Convex owns `/stripe/webhook`) are removed. `database.provider` accepts only `convex`. Better Auth's separate `BETTER_AUTH_DATABASE_URL` pool and `@workflow/world-postgres` are untouched.
 4. **Mirror sidecar:** the SQL-access answer; small, high enterprise value.
 5. **Big brain:** only if/when we host many tenants; re-read FSL before any managed-hosting shape.
 
@@ -103,7 +103,7 @@ Enterprises integrate at three surfaces — never at the persistence tables.
 
 - ~~Confirm the Data Sync API is ungated on the OSS binary~~ **Resolved (2026-09-18 proof):** ungated. The route is `GET /api/data/sync?format=json` — a **WebSocket upgrade** endpoint (not the documented cloud `POST /data/sync`). With `Authorization: Convex <admin-key>` + `Convex-Client: npm-1.41.0` + a valid `Upgrade: websocket`/`Sec-WebSocket-Key` handshake the backend returns `101 Switching Protocols` and streams. No plan/feature gate observed on `convex-backend:latest`.
 - Fivetran's connector is hosted SaaS calling the deployment URL — confirm reachability story for locked-down enterprise networks (Airbyte self-hosted fallback). Note the OSS sync endpoint is WebSocket, which may affect connector compatibility — the `fivetran_source` crate in-tree suggests a supported path, but verify against the published connector.
-- Any existing Postgres-path consumers besides the hypothetical enterprise install — **partially answered:** activation is opt-in via `OVERLAY_PROVIDER_DATABASE=postgres` + `OVERLAY_DATABASE_URL`; the default is `convex`. Deletion surface is bounded: ~53 Postgres* source files + 37 tests under `src/server/`, 81 migrations in `migrations/app-data/`, ~15 call sites branching on `capabilities.provider === 'postgres'`, plus `parity-matrix`/contracts harness. Nothing outside that tree consumes the Postgres path.
+- ~~Any existing Postgres-path consumers besides the hypothetical enterprise install~~ **Resolved (Phase 3, 2026-09-18):** the Postgres path is deleted. Better Auth (`BETTER_AUTH_DATABASE_URL`), `@workflow/world-postgres`, and Convex's own persistence engine are the only remaining Postgres touchpoints — none of them implement Overlay app-data repositories.
 
 ## Phase 1 proof results (2026-09-18, local docker compose)
 

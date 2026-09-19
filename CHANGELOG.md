@@ -4,6 +4,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Removed
+
+- **Bespoke Postgres application-data path**: Overlay is now Convex-only for application data. Deleted the `OVERLAY_PROVIDER_DATABASE` selector, all `Postgres*` repositories, the Drizzle app-data schema/migrations (`migrations/`, `drizzle.app-data.config.ts`), the app-data worker/scheduler (`scripts/db/app-data-worker.ts`, `app-db:*` npm scripts, `docker/docker-compose.app-data.yml`), the Postgres contract/parity suites, and the Postgres-only Next.js Stripe webhook (`/api/webhooks/stripe` — the `@convex-dev/stripe` component endpoint is the single webhook). Client-side Postgres long-polling was removed from chat/collaboration providers (Convex subscriptions only). Postgres remains in exactly two infrastructure roles: Better Auth's separate `BETTER_AUTH_DATABASE_URL` database (`pg` driver + `better-auth:db:*` scripts + compose service unchanged), and `@workflow/world-postgres` for durable workflow runs. Self-hosted/enterprise deployments run the official `convex-backend` (see `examples/customer-deployment/`); its persistence engine may itself be Postgres, which is a Convex-backend concern, not an application-data provider. `drizzle-orm`/`drizzle-kit` dependencies removed; `pg` retained for Better Auth.
+
+### Changed
+
+- Enterprise runtime packaging follows the Convex-only topology: `docker/Dockerfile.enterprise-runtime` no longer bundles the app-data worker and now accepts the `NEXT_PUBLIC_CONVEX_URL` build arg (Next.js inlines it at build time, so self-hosted images must be built knowing the customer's Convex URL); `deploy/ec2/docker-compose.yml` drops the worker/scheduler/app-data-migration services, adds the official `convex-backend` service, and runs the web container on host networking so one loopback Convex URL serves both browser (SSH tunnel) and server traffic.
+
 ### Changed
 
 - Branch workflow: `main` and `staging` no longer require parity — either may be ahead, and post-merge staging realignment/host commits now happen only on explicit owner request rather than as bookkeeping (documented in `AGENTS.md` and `docs/develop/`).

@@ -384,8 +384,7 @@ choose between stopping new tenant dispatch and immediately stopping the entire 
 The repeatable local release gate is `npm run check:byo-agents:release`. It covers unit, protocol,
 host crash/reconnect, Convex repository, authorization, billing, route inventory, migration-version,
 no-Convex PostgreSQL bootstrap, bounded command/event/fan-out load, managed sandbox, and cleanup
-tests. `npm run check:byo-agents:release:postgres` runs the migrated PostgreSQL provider contract
-against the configured remote contract database. Host compatibility runs in GitHub Actions on
+tests. Host compatibility runs in GitHub Actions on
 macOS 14, Ubuntu 24.04, and Windows Server 2022. These automated checks do not replace authenticated
 browser QA, live provider conformance, invoice reconciliation, or production soak evidence.
 

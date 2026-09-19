@@ -103,10 +103,10 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
   another owner, and removal, suspension, or demotion of the creating owner.
   Other Personal members may be invited, managed, and removed normally.
 - `POST /api/v1/conversations/message` returns the persisted `messageId`. Agent-invocation callers use that ID directly; transcript refetch state is not an identity source.
-- `POST /api/v1/conversations/message` accepts an optional `memoryEnabled` turn preference. Saving an agent-triggering room message opens the durable agent run server-side; the retired browser-held `/api/v1/conversations/agent-reply` path is not a public contract. Hosted and connected turns load bounded workspace memory and room context only when the preference is enabled. The provider-neutral collaboration repository schedules validated human- and agent-message extraction, while Convex and PostgreSQL enforce the same room, author, owner, and idempotency rules. Extraction-model context is separately bounded to messages from the target human or exact agent principal; other room participants are not sent to that additional provider call.
-- Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Both Convex and Postgres append the replaced body before an edit.
+- `POST /api/v1/conversations/message` accepts an optional `memoryEnabled` turn preference. Saving an agent-triggering room message opens the durable agent run server-side; the retired browser-held `/api/v1/conversations/agent-reply` path is not a public contract. Hosted and connected turns load bounded workspace memory and room context only when the preference is enabled. The provider-neutral collaboration repository schedules validated human- and agent-message extraction, while Convex enforces room, author, owner, and idempotency rules. Extraction-model context is separately bounded to messages from the target human or exact agent principal; other room participants are not sent to that additional provider call.
+- Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
-- Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` is reserved for the Postgres provider and must not be mounted as a Convex fallback.
+- Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member
@@ -162,7 +162,7 @@ credentials are never public contract fields.
 - `@overlay/api-client` exposes `conversations.currentRun()` and
   `conversations.stopResponse()` plus `conversations.submitRunApproval()`,
   `conversations.runMetrics()`, and `conversations.recordRunMetricEvent()` for
-  these contracts. Both Convex and Postgres repositories must preserve identical
+  these contracts. Convex repositories must preserve identical
   strict lifecycle transitions and metric merge behavior.
 - The retired `conversationMessageDeltas` table, delta hydration queries,
   stream-auth route, and Cloudflare relay are not part of the API contract.

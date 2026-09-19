@@ -78,11 +78,9 @@ For every staging QA run, verify the changed flow plus these basics where applic
 
 If staging is broken after a Convex schema or function change, first restore the shared development deployment by checking out the last known-good `staging` commit in the dedicated staging worktree and running `npm run convex:push:dev`. Never use a feature worktree or production deployment as the rollback source.
 
-## Remote Postgres contract QA
+## Convex contract QA
 
-`overlay-web-postgres.vercel.app` is the dedicated Vercel/Neon lane for Postgres checks. When local disk or Docker is unavailable, do not start Postgres or Redis locally. Deploy the reviewed revision with `npm run smoke:remote-postgres` running in the Vercel build environment; the script applies app-data migrations and executes the Postgres repository contract suite using the linked production project environment.
-
-Record the migration schema version, the complete contract count, and the Vercel build result before claiming Postgres parity. This lane currently has no remote Redis resource; Redis checks remain unverified until a remote Redis environment is explicitly configured.
+The app-data repository contract suite runs against the shared development Convex deployment with `npm run test:app-data-contracts:convex`. For self-hosted backend validation, use the reference stack in `examples/customer-deployment/` and the runbook at `docs/deploy-operate/self-hosted-convex.mdx`. Redis-backed rate-limit checks run locally through `npm run test:p1:redis` against the `local-redis` service in `docker/docker-compose.better-auth.yml`.
 
 ## Promote a verified release
 

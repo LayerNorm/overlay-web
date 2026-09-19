@@ -13,7 +13,7 @@ Environment variables override `overlay.config.json`. Put secrets in the runtime
 | `NEXT_PUBLIC_CONVEX_URL` | App talks to Convex | Public Convex deployment URL for the selected environment. |
 | `DEV_NEXT_PUBLIC_CONVEX_URL` | Local dev with separate dev backend | Preferred for local work against the development Convex deployment. |
 | `OVERLAY_CONFIG_FILE` | JSON runtime config | Absolute or repo-relative path, usually `overlay.config.json`; Docker mounts it at `/app/overlay.config.json`. |
-| `INTERNAL_API_SECRET` | Convex app-data provider | Shared app-to-Convex secret. It is not required by a Postgres-only deployment. |
+| `INTERNAL_API_SECRET` | Always | Shared app-to-Convex secret, matching the selected Convex deployment. |
 | `INTERNAL_SERVICE_AUTH_SECRET` | App runtime only | Internal service auth secret. Do not put this in Convex. |
 | `SESSION_SECRET` | Cookie sessions | Long, random, environment-specific app secret. |
 | `SESSION_TRANSFER_KEY` | Native/session transfer flows | App runtime only. |
@@ -62,12 +62,12 @@ OVERLAY_EMAIL_PROVIDER=none
 
 ## Backend-specific placement
 
-When the app-data provider is Convex, configure:
+On the Convex deployment, configure:
 
 - `INTERNAL_API_SECRET`, matching the app runtime.
 - If transactional email is enabled, the same `OVERLAY_EMAIL_*` provider,
   sender, and provider-credential values used by the app runtime. Convex owns
-  the durable delivery action for this backend.
+  the durable delivery action.
 
 Session and crypto secrets belong only on the Next.js app runtime:
 
@@ -84,17 +84,13 @@ npm run convex:push:all
 
 Do not pass `.env.local` to production Convex deploy commands; use the package scripts so production and development deployments receive the right environment.
 
-When the app-data provider is Postgres, omit `NEXT_PUBLIC_CONVEX_URL`,
-`DEV_NEXT_PUBLIC_CONVEX_URL`, `CONVEX_DEPLOYMENT`, and `INTERNAL_API_SECRET`.
-Use `OVERLAY_DATABASE_URL` for application data and
-`BETTER_AUTH_DATABASE_URL` for Better Auth. They must use separate databases,
-roles, and migration lifecycles.
-
-Postgres deployments deliver the same outbox through the supervised
-`npm run app-db:worker` process. Keep `OVERLAY_EMAIL_PROVIDER=none` to disable
-all Overlay transactional email. WorkOS or the selected IdP remains responsible
-for verification and password-reset messages in every mode.
+When `auth.provider="better-auth"`, `BETTER_AUTH_DATABASE_URL` points at a
+separate auth-scoped Postgres database owned by Better Auth. It is unrelated to
+application data, which always lives in Convex.
 
 Convex-backed deployments run transactional delivery from `convex/crons.ts`, so
 the selected provider variables must also exist in the matching Convex deployment;
-setting them only on Vercel does not configure the Convex email worker.
+setting them only on Vercel does not configure the Convex email worker. Keep
+`OVERLAY_EMAIL_PROVIDER=none` to disable all Overlay transactional email. WorkOS
+or the selected IdP remains responsible for verification and password-reset
+messages.

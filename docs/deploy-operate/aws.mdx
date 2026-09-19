@@ -1,6 +1,6 @@
 ---
 title: "Deploy On AWS"
-description: "Build and operate Overlay on ECS with RDS PostgreSQL, ElastiCache Redis, S3, and customer-controlled CI/CD."
+description: "Build and operate Overlay on ECS with a self-hosted Convex backend, RDS PostgreSQL, ElastiCache Redis, S3, and customer-controlled CI/CD."
 ---
 
 This guide describes the customer-controlled AWS deployment used for an Overlay
@@ -22,26 +22,28 @@ Users
   -> WAF or approved edge
   -> Application Load Balancer
   -> ECS Fargate web service (2+ tasks)
-       -> RDS/Aurora PostgreSQL: Overlay app data
+       -> self-hosted convex-backend service (realtime + functions)
        -> RDS/Aurora PostgreSQL: Better Auth data
        -> ElastiCache Redis over TLS
        -> private encrypted S3 bucket
        -> approved OIDC provider and model gateway
 
-ECS worker service (2+ tasks)
-  -> durable jobs, extraction, cleanup, retries, and lease recovery
-
-ECS scheduler service (1 task; 2 during duplicate-scheduler qualification)
-  -> deterministic due-job discovery and enqueueing
+ECS convex-backend service (1 active task + standby)
+  -> RDS/Aurora PostgreSQL in the same AZ (Convex persistence engine)
+  -> S3 buckets for files, modules, exports, snapshot imports, and search
+  -> internal ALB on ports 3210 (client/realtime) and 3211 (HTTP actions)
 
 Customer CI -> ECR immutable digest -> one-off migration -> all ECS roles
 Secrets Manager -> ECS task secret references and BYOK provider-key records
 CloudWatch, Container Insights, and SNS -> logs, metrics, alarms, and operators
 ```
 
-Postgres mode does not require a Convex client or server connection. No Convex
-environment variable, HTTP request, WebSocket, or server call should exist in
-the deployed profile.
+Convex is the application backend. The self-hosted `convex-backend` service
+executes functions, realtime sync, scheduled jobs, and durable work; there are
+no separate worker or scheduler services. Postgres remains only as the Convex
+backend's persistence engine and as Better Auth's separate auth database — the
+app never runs SQL against application data. Deploy and operate the backend per
+[Self-hosted Convex backend](/deploy-operate/self-hosted-convex).
 
 ## Required ownership
 
@@ -67,8 +69,8 @@ access keys.
 | Layer | Minimum pilot requirement |
 | --- | --- |
 | Network | At least two Availability Zones; public ALB subnets; private ECS subnets; isolated RDS/Redis subnets; approved NAT, proxy, or VPC endpoints. |
-| Compute | ECS cluster; web service with at least two tasks; worker service with at least two tasks; scheduler service; one-off migration task. |
-| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer; separate app/auth databases and roles; install `pgvector` before app-data migrations; automated backups and restore test. |
+| Compute | ECS cluster; web service with at least two tasks; convex-backend service (active + standby); one-off migration task. |
+| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer serving the convex-backend persistence engine, plus a separate auth-scoped database and role for Better Auth; automated backups and restore test. Backend and RDS must be in the same region, ideally the same AZ. |
 | Redis | TLS ElastiCache with fail-closed application behavior; Multi-AZ automatic failover for the target pilot. |
 | Objects | Private encrypted, versioned S3 bucket; block public access; lifecycle, logging, backup/recovery, and deletion policy. |
 | Ingress | HTTPS ALB listener, healthy target group, customer DNS, ACM certificate, and WAF/edge controls required by policy. |
@@ -80,14 +82,13 @@ access keys.
 Create separate paths for staging and production. ECS injects application
 secrets as environment variables. For BYOK, the application makes narrowly
 scoped runtime calls to Secrets Manager using its ECS task role; each user API
-key is a separate opaque secret ARN stored in Postgres, never a plaintext
+key is a separate opaque secret ARN stored in Convex, never a plaintext
 database value. Keep non-secret selectors and hostnames in task-definition
 environment variables.
 
 Enable AWS-backed BYOK in the customer runtime configuration:
 
 ```text
-OVERLAY_PROVIDER_DATABASE=postgres
 OVERLAY_PROVIDER_SECRETS=aws-secrets-manager
 AWS_REGION=<customer-region>
 OVERLAY_AWS_SECRETS_PREFIX=jpgs/overlay/byok
@@ -98,8 +99,7 @@ Grant the web ECS task role only `secretsmanager:CreateSecret`,
 `GetSecretValue`, `PutSecretValue`, and `DeleteSecret` for that prefix, plus
 `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` on the customer KMS
 key. Do not grant list, broad read, cross-environment, or wildcard customer
-secret permissions. The worker and scheduler roles do not need BYOK secret
-access.
+secret permissions.
 
 At minimum, create entries for:
 
@@ -115,7 +115,6 @@ PROVIDER_KEYS_SECRET
 HOOKS_TOKEN_SALT
 BETTER_AUTH_SECRET
 BETTER_AUTH_OIDC_CLIENT_SECRET
-OVERLAY_DATABASE_URL
 BETTER_AUTH_DATABASE_URL
 OVERLAY_REDIS_URL
 AI_GATEWAY_API_KEY
@@ -170,9 +169,12 @@ Required network flows are:
 ```text
 Internet/edge -> ALB: HTTPS only
 ALB -> web tasks: application port only
-app/worker/scheduler/migration -> RDS: 5432 by security-group reference
-app/worker/scheduler -> Redis: TLS port by security-group reference
-runtime -> S3/Secrets/ECR/CloudWatch: VPC endpoints or approved egress
+web tasks -> convex-backend internal ALB: 3210 and 3211
+convex-backend -> RDS: 5432 by security-group reference (same AZ)
+migration -> RDS: 5432 by security-group reference (Better Auth database)
+web tasks -> Redis: TLS port by security-group reference
+convex-backend -> S3: VPC endpoints or approved egress
+runtime -> Secrets/ECR/CloudWatch: VPC endpoints or approved egress
 runtime -> OIDC/model/customer APIs: explicit approved HTTPS destinations
 ```
 </Step>
@@ -194,6 +196,8 @@ aws ecr get-login-password --region "$AWS_REGION" | \
 docker buildx build \
   --platform linux/amd64 \
   --file docker/Dockerfile.enterprise-runtime \
+  --build-arg NEXT_PUBLIC_CONVEX_URL="https://<CONVEX_BACKEND_CLOUD_ORIGIN>" \
+  --build-arg NEXT_PUBLIC_APP_URL="https://<OVERLAY_HOST>" \
   --tag "$IMAGE" \
   --push .
 
@@ -208,25 +212,31 @@ printf 'Release %s -> %s@%s\n' "$GIT_SHA" "$ECR_REPOSITORY" "$IMAGE_DIGEST"
 ```
 
 Record the digest and use `repository@sha256:...` in every task definition.
-Do not rebuild the image between staging and production.
+Do not rebuild the image between staging and production. `NEXT_PUBLIC_*`
+values are inlined at build time, so the baked `NEXT_PUBLIC_CONVEX_URL` must
+be the origin web tasks and browsers can both reach — the backend's internal
+ALB hostname works when web tasks, operator browsers, and the backend share
+routable DNS; otherwise use the public backend origin.
 </Step>
 
-<Step title="Define the four ECS roles">
+<Step title="Define the ECS roles">
 All task definitions use the same image digest and configuration family:
 
 | Role | Command | Scaling |
 | --- | --- | --- |
 | Web | `node server.js` | At least two tasks behind the ALB. |
-| Worker | `node dist/app-data-worker.cjs --mode=worker` | At least two tasks. |
-| Scheduler | `node dist/app-data-worker.cjs --mode=scheduler` | One task initially. Test two before pilot qualification. |
+| Convex backend | Official `convex-backend` image | One active task plus a standby; see the self-hosted runbook. |
 | Migration | See the command below | One-off task only; never an ECS service. |
 
 Migration command:
 
 ```bash
-NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/app-data-migrate.ts && \
 NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/better-auth-migrate.ts
 ```
+
+Convex schema and function deployment is a separate `npx convex deploy` step
+against the self-hosted backend; see
+[Self-hosted Convex backend](/deploy-operate/self-hosted-convex).
 
 Configure health checks, log groups, CPU/memory, graceful stop time, read-only
 filesystem exceptions, database pool budgets, and secret ARN references per role.
@@ -234,18 +244,18 @@ filesystem exceptions, database pool budgets, and secret ARN references per role
 
 <Step title="Snapshot and run migrations once">
 Record the current image digest, task-definition revisions, schema version,
-and a pre-deploy RDS snapshot. Quiesce background services when the release
-notes require it.
+a pre-deploy RDS snapshot, and a `npx convex export` of the Convex deployment.
 
-Run the migration task in the private ECS subnets with the direct RDS writer
-endpoint and `OVERLAY_DATABASE_SSL_MODE=verify-full`. Wait for the task to
-stop, inspect its exit code, and retain its redacted logs. Do not deploy the
-services when the migration exit code is nonzero or schema compatibility fails.
+Run the Better Auth migration task in the private ECS subnets with the direct
+RDS writer endpoint. Wait for the task to stop, inspect its exit code, and
+retain its redacted logs. Do not deploy the services when the migration exit
+code is nonzero. Deploy the Convex revision per the self-hosted runbook and
+watch the backend logs for `Executing Migration n/m`.
 </Step>
 
 <Step title="Deploy the same digest to every service">
 Register new task-definition revisions containing the recorded digest, then
-update scheduler, worker, and web services. For web rolling deployments use:
+update the convex-backend and web services. For web rolling deployments use:
 
 ```text
 desiredCount: 2 or more
@@ -256,8 +266,8 @@ ALB idle timeout: at least 60 seconds
 ```
 
 Wait for every ECS service to become stable and every ALB target to become
-healthy. A service must not silently fall back to Convex when a Postgres
-dependency is unavailable.
+healthy. The convex-backend service must hold its persistence lease; a promoted
+standby acquiring the lease is expected HA behavior, not a split brain.
 </Step>
 
 <Step title="Configure DNS, TLS, and OIDC">
@@ -282,13 +292,13 @@ At minimum verify:
 2. OIDC sign-in, refresh, new tab, sign-out, and account deletion.
 3. Chat create, stream, stop, refresh recovery, rename, and delete across two web tasks.
 4. Files, notes, projects, memory, knowledge, and citations when enabled.
-5. Worker lease recovery and scheduler deduplication after task replacement.
+5. Convex cron execution and realtime subscriptions observed in backend logs.
 6. Redis fail-closed behavior and recovery.
-7. RDS failover and automatic web/worker/scheduler recovery.
+7. RDS failover and convex-backend lease recovery; automatic web recovery.
 8. S3 signed URL expiry, ownership checks, deletion, and reconciliation.
 9. Backup restore to a new database and application connection to the restore.
 10. CloudWatch alarms and delivery to the named operator.
-11. No Convex environment variables, browser traffic, server calls, or DNS traffic.
+11. Convex connectivity: web tasks reach the backend on 3210/3211 and no other deployment URL.
 
 Keep the test accounts and data disposable. Run destructive contracts only
 against a separate contract-test database.
@@ -341,10 +351,11 @@ Operating constraints:
 - Use federated access and CI OIDC/CodeBuild roles. Never create static AWS keys.
 - Never print, echo, retrieve into logs, commit, or return secret values.
 - Reference Secrets Manager ARNs from ECS. Return only names and ARNs.
-- Keep RDS, Redis, and ECS private. Expose only the approved HTTPS ingress.
-- Build one immutable image and use its exact digest for migration, web, worker,
-  and scheduler. Run migrations once before service rollout.
-- Postgres mode must contain no Convex environment variables or traffic.
+- Keep RDS, Redis, the convex-backend internal ALB, and ECS private. Expose only
+  the approved HTTPS ingress.
+- Build one immutable image and use its exact digest for migration and web. The
+  convex-backend uses the pinned official image; run migrations and the Convex
+  deploy once before service rollout.
 - Stop and request approval before applying IaC, running migrations, changing
   DNS/OIDC, triggering failover, deleting data, or promoting to production.
 
@@ -354,10 +365,10 @@ Execution checkpoints:
 3. Validate config and tests, build the reviewed commit in CI, push to ECR, scan,
    and record the immutable digest.
 4. Record backup and rollback state; run the one-off migration and verify exit code.
-5. Deploy the digest to app, worker, and scheduler; wait for stable services.
+5. Deploy the digest to the convex-backend and web services; wait for stable services.
 6. Pause for interactive OIDC setup/login where required.
 7. Execute staging product, isolation, recovery, backup, alarm, deletion, and
-   zero-Convex QA from the guide.
+   Convex-connectivity QA from the guide.
 8. Return a redacted deployment report: account/Region, resource IDs, Git SHA,
    image digest, task revisions, schema version, QA results, alarm/restore proof,
    costs, known issues, rollback instructions, and PASS/FAIL. Never return secrets.
@@ -369,7 +380,7 @@ The deployment is not handed over until the customer PoC can:
 
 1. Identify the deployed Git SHA, image digest, schema version, and task revisions.
 2. Redeploy the current digest through CI without changing source.
-3. Find web, worker, scheduler, migration, RDS, Redis, ALB, and S3 telemetry.
+3. Find web, convex-backend, migration, RDS, Redis, ALB, and S3 telemetry.
 4. Trigger and receive a test alarm.
 5. Roll back to the previous digest and roll forward again.
 6. Locate backups, restore instructions, secret rotation ownership, and incident contacts.

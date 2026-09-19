@@ -19,7 +19,7 @@ This checklist covers the required cloud-side controls for an enterprise or mana
 - [ ] Vercel preview deployments cannot access production secrets or production data.
 - [ ] Convex production deployment is targeted by `convex:push:prod` without passing `.env.local`.
 - [ ] Convex auth, authorization, billing, usage, and storage functions are pushed and smoke-tested.
-- [ ] Postgres application data is configured with TLS, `OVERLAY_DATABASE_URL` is a secret, and the app-data migration is current.
+- [ ] Convex application data is deployed to the selected deployment, `INTERNAL_API_SECRET` and `INTERNAL_SERVICE_AUTH_SECRET` are distinct secrets, and the Convex revision is current.
 - [ ] Redis rate-limit endpoint is reachable and partitioned by IP, user, and API key.
 - [ ] Daytona sandbox API credentials are scoped to the deployment and cannot inherit provider keys or cloud admin credentials.
 
@@ -54,7 +54,7 @@ Run these commands before signing off on an enterprise launch:
 ```bash
 npm run check:phase6
 npm run check:p5c:remote
-npm run p5:security:readiness -- --phase=steady
+npm run test:p5c:security
 npm run docs:check
 ```
 

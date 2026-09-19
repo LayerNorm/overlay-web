@@ -39,7 +39,7 @@
       "provider": "better-auth"
     },
     "database": {
-      "provider": "postgres"
+      "provider": "convex"
     },
     "objectStorage": {
       "provider": "none"
@@ -124,15 +124,11 @@
     "apiKeyEnvVar": "AI_GATEWAY_API_KEY"
   },
   "database": {
-    "provider": "postgres",
+    "provider": "convex",
+    "convexUrl": "https://replace-me.convex.example.com:3210",
     "internalApiSecret": "replace_with_internal_api_secret",
     "internalServiceAuthSecret": "replace_with_internal_service_auth_secret",
-    "apiKeyHashSecret": "replace_with_api_key_hash_secret",
-    "postgres": {
-      "connectionString": "postgresql://overlay_app:replace_with_password@db.example.com:5432/overlay_app",
-      "sslMode": "verify-full",
-      "backgroundRuntimeEnabled": true
-    }
+    "apiKeyHashSecret": "replace_with_api_key_hash_secret"
   },
   "rateLimit": {
     "redis": {

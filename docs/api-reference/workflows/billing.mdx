@@ -64,10 +64,9 @@ Workspace reservations use the account-keyed balance and optionally a fixed-peri
 
 The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the same 25% markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Do not enable `workspaceWallets` in a deployment unless `npm run check:owner-funded-boundary` and the coverage test pass.
 
-Convex and PostgreSQL run the same workspace billing contract:
+The workspace billing contract runs against Convex:
 
 ```bash
-npm run test:workspace-billing-contract:postgres
 npm run test:workspace-billing-contract:convex
 ```
 

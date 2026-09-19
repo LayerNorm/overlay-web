@@ -369,7 +369,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 **Deliverables:**
 - ✅ Adopted `@workflow/world-postgres` for on-prem — `world.start()` added to `instrumentation.ts` (gated by `WORKFLOW_TARGET_WORLD` env var). On Vercel, the Vercel World is used automatically.
 - ✅ Migration `0044_workflow_world_postgres.sql` creates the `workflow` schema with all tables required by `@workflow/world-postgres` (consolidated from migrations 0000–0015).
-- ✅ `npm run check:on-prem-parity` passes (20/20 tests, convex boundaries OK).
+- ✅ The on-prem parity check passed at the time (superseded by `check:on-prem-convex-boundaries`).
 - ✅ Removed SVG renderer from editor — ReactFlow canvas is the only path. `AutomationGraphPreview` kept for sidebar thumbnails and showcase page.
 - ✅ Removed `graphSource` as persisted field — `buildAutomationUpdateRequest` no longer sends `graphSource`; it's derived from `graph` on the server side.
 - ✅ Removed fallback coordinator path — the `isDurableAutomationsEnabled()` check and legacy `testAutomation` fallback in the run route are gone. Durable execution via Workflow SDK is the only path.

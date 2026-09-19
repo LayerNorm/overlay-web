@@ -51,7 +51,7 @@ Collaboration realtime is native Convex when `appDataCapabilities.provider === '
 - `watchConversationListVersion` provides a metadata-free invalidation signal for the sidebar.
 - `watchNotifications` is the single app-level notification subscription.
 
-Do not run `/api/v1/conversations/events` long-polls alongside those subscriptions. That endpoint is a Postgres-only fallback; polling it against a Convex repository multiplies one browser connection into repeated Convex queries and authorization calls.
+Do not run `/api/v1/conversations/events` long-polls alongside those subscriptions. That endpoint is a non-realtime fallback; polling it against the Convex repository multiplies one browser connection into repeated Convex queries and authorization calls.
 
 ## Bounded maintenance and list queries
 
@@ -67,10 +67,3 @@ mark generating messages without an active AgentRun as interrupted. Confirm the
 scheduled chain has finished before deploying the following phase-5 cleanup
 revision, which removes the table, queries, and crons. Never skip directly to
 the cleanup revision on a deployment that may still contain delta rows.
-
-Postgres migration `0060_retire_conversation_message_deltas` performs the same
-collapse and table removal transactionally. Migration `0061_agent_run_metrics`
-adds the runner-observation document used for Chat-versus-Work measurement.
-Schema 61 retains minimum compatible runtime 60 because its metrics column is
-nullable; runtimes older than 60 still query the removed delta table. Take a
-database backup and treat migration 0060 as an explicit rollback boundary.
