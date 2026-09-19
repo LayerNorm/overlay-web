@@ -63,7 +63,8 @@ export const list = query({
       url: s.url,
       enabled: s.enabled,
       authType: s.authType,
-      hasAuth: !!s.authConfig || !!s.encryptedAuthConfig,
+      hasAuth:
+        !!s.authConfig || !!s.encryptedAuthConfig || !!s.encryptedOAuthTokens || s.oauthStatus === 'connected',
       timeoutMs: s.timeoutMs,
       toolCatalogCount: s.toolCatalog?.length ?? 0,
       toolCatalogUpdatedAt: s.toolCatalogUpdatedAt,
