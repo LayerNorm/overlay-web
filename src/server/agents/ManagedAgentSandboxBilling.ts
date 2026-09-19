@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { SandboxInstance, SandboxLifecycleState, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
+import type { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
@@ -174,6 +175,12 @@ export class ManagedAgentSandboxBilling {
     const ticks: ManagedSandboxMeterTick[] = []
     for (const lease of active) ticks.push(await this.tickLease(lease))
     for (const lease of reapable) ticks.push(await this.reapLease(lease))
+    // Fleet-level signal once per sweep when box leases exist: box bills from
+    // a shared account pool, so `canStart`/`remainingSeconds` exhaustion would
+    // stall every box environment at once.
+    if (active.concat(reapable).some((lease) => lease.provider === 'box')) {
+      await this.probeBoxLimits()
+    }
     return { ticks }
   }
 
@@ -670,6 +677,29 @@ export class ManagedAgentSandboxBilling {
     return runtime
   }
 
+  private async probeBoxLimits() {
+    try {
+      const runtime = this.runtime('box')
+      const limits = typeof (runtime as BoxSandboxRuntime).limits === 'function'
+        ? await (runtime as BoxSandboxRuntime).limits()
+        : undefined
+      if (!limits) return
+      if (!limits.canStart || limits.remainingSeconds < boxLowRemainingSeconds()) {
+        logger.warn('Box provider balance or capacity low', {
+          activeSandboxes: limits.activeSandboxes,
+          blockedReason: limits.blockedReason,
+          canStart: limits.canStart,
+          maxActiveSandboxes: limits.maxActiveSandboxes,
+          remainingSeconds: limits.remainingSeconds,
+        })
+      }
+    } catch (error) {
+      logger.warn('Box limits probe failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   private now() { return this.dependencies.now?.() ?? Date.now() }
 }
 
@@ -683,7 +713,7 @@ export class ManagedAgentSandboxBudgetError extends Error {
 export function sandboxCostUsd(args: {
   provider: string
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
-  usage: Pick<SandboxUsage, 'activeCpuTimeMs' | 'egressBytes' | 'wallTimeMs'>
+  usage: Pick<SandboxUsage, 'activeCpuTimeMs' | 'egressBytes' | 'wallTimeMs' | 'providerMetrics'>
 }) {
   const wallTimeMs = Math.max(0, args.usage.wallTimeMs ?? 0)
   if (args.provider === 'daytona') return computeDaytonaRuntimeCost({
@@ -696,6 +726,15 @@ export function sandboxCostUsd(args: {
     memoryGb: args.resources.memoryGiB,
     usage: args.usage,
   })
+  if (args.provider === 'box') {
+    // Provider-reported dollars are authoritative — the usage API already
+    // applies the size multiplier and list price, so deltas of it bill exact
+    // spend. Absent only on responses too old to carry it; then fall back to
+    // list price on the metered billable-second delta.
+    const reported = providerReportedUsd(args.usage.providerMetrics)
+    if (reported !== undefined) return reported
+    return wallTimeMs / 1_000 / boxSecondsPerDollar()
+  }
   throw new Error(`MANAGED_SANDBOX_PROVIDER_UNPRICED:${args.provider}`)
 }
 
@@ -754,7 +793,29 @@ function usageDelta(baseline: Record<string, unknown>, current: SandboxUsage, fa
     activeCpuTimeMs: current.activeCpuTimeMs === undefined ? undefined : Math.max(0, current.activeCpuTimeMs - baselineCpu),
     ingressBytes: current.ingressBytes === undefined ? undefined : Math.max(0, current.ingressBytes - finiteNumber(baseline.ingressBytes)),
     egressBytes: current.egressBytes === undefined ? undefined : Math.max(0, current.egressBytes - finiteNumber(baseline.egressBytes)),
+    providerMetrics: providerMetricsDelta(baseline.providerMetrics, current.providerMetrics),
   }
+}
+
+/**
+ * `reportedUsd` is the provider's cumulative lifetime spend for the sandbox —
+ * bill its delta. Other metrics (`secondsPerDollar`, `billingMultiplier`) are
+ * rates, not counters, and non-numeric entries (e.g. `running`) carry the
+ * current reading through unchanged.
+ */
+function providerMetricsDelta(
+  baseline: unknown,
+  current: SandboxUsage['providerMetrics'],
+): SandboxUsage['providerMetrics'] {
+  if (!current || typeof current !== 'object') return undefined
+  const base = baseline && typeof baseline === 'object' ? baseline as Record<string, unknown> : {}
+  const delta: Record<string, number | string | boolean | null> = {}
+  for (const [key, value] of Object.entries(current)) {
+    delta[key] = key === 'reportedUsd' && typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, value - finiteNumber(base[key]))
+      : value
+  }
+  return delta
 }
 
 function sandboxResources(usage: Record<string, unknown>) {
@@ -828,4 +889,24 @@ function sandboxMeterDisabled() {
 function providerSpendAlertThresholdUsd() {
   const configured = Number(process.env.OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD)
   return Number.isFinite(configured) && configured > 0 ? configured : 10
+}
+
+const DEFAULT_BOX_SECONDS_PER_DOLLAR = 100_000
+const DEFAULT_BOX_LOW_REMAINING_SECONDS = 7_200
+
+/** Billable seconds per dollar at list price (`$20` → `2,000,000` seconds). */
+function boxSecondsPerDollar() {
+  const configured = Number(process.env.OVERLAY_BOX_SECONDS_PER_DOLLAR)
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_BOX_SECONDS_PER_DOLLAR
+}
+
+function providerReportedUsd(metrics: SandboxUsage['providerMetrics']) {
+  const value = metrics?.reportedUsd
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : undefined
+}
+
+/** Warn when the box account can't start sandboxes or is low on machine time. */
+function boxLowRemainingSeconds() {
+  const configured = Number(process.env.OVERLAY_BOX_LOW_REMAINING_SECONDS)
+  return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_BOX_LOW_REMAINING_SECONDS
 }

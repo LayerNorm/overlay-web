@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentEnvironment } from '@overlay/workspace-contracts'
 import type { SandboxCommandRequest, SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
-import { ManagedAgentSandboxService, ManagedAgentSandboxError } from './ManagedAgentSandboxService'
+import {
+  ManagedAgentSandboxService,
+  ManagedAgentSandboxError,
+  managedSandboxRuntimeFromEnv,
+} from './ManagedAgentSandboxService'
 
 test('managed provisioning uses normal enrollment, hides provider details, and records a lease', async () => {
   const previousImage = process.env.OVERLAY_AGENT_HOST_IMAGE
@@ -116,6 +120,87 @@ test('harness provisioning skips enrollment, writes an approved overlay_cloud en
   }
 })
 
+test('agent-host provisioning on box skips the image, allows all egress, and bootstraps via npx', async () => {
+  const previousImage = process.env.OVERLAY_AGENT_HOST_IMAGE
+  delete process.env.OVERLAY_AGENT_HOST_IMAGE
+  const environment: AgentEnvironment = {
+    id: 'environment-1', workspaceId: 'workspace-1', kind: 'overlay_cloud', name: 'overlay-cloud-enrollme',
+    status: 'pending', publicKey: 'device-public-key', capabilities: {}, createdAt: 1, updatedAt: 1,
+  }
+  const commands: SandboxCommandRequest[] = []
+  const creates: SandboxCreateRequest[] = []
+  const leases: Array<Record<string, unknown>> = []
+  try {
+    const service = new ManagedAgentSandboxService({
+      runtime: fakeRuntime(commands, creates, 'box'),
+      controlPlane: {
+        createEnrollmentSession: async () => ({ code: 'enrollment-code', expiresAt: 100, enrollmentSessionId: 'enrollment-session' }),
+      } as never,
+      repository: {
+        listEnvironments: async () => [environment],
+        createSandboxLease: async (input: Record<string, unknown>) => {
+          leases.push(input)
+          return { ...input, createdAt: 1, updatedAt: 1 }
+        },
+      } as never,
+      audit: { record: async () => {} } as never,
+      sleep: async () => {},
+    })
+    const result = await service.provision({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', serverUrl: 'https://getoverlay.io', adapterId: 'codex',
+    })
+    assert.equal(result.setup.label, 'Overlay Cloud')
+    // No image requirement, no egress allowlist — box carries no secrets.
+    assert.equal(creates[0]?.image, undefined)
+    assert.equal(creates[0]?.networkPolicy?.mode, 'allow_all')
+    // The host installs via npx and keeps the same connect args.
+    assert.equal(commands[0]?.command, 'npx')
+    assert.equal(commands[0]?.args?.[0], '-y')
+    assert.equal(commands[0]?.args?.[1], '@layernorm/overlay-agent-host')
+    assert.equal(commands[0]?.args?.includes('connect'), true)
+    assert.equal(commands[0]?.args?.includes('enrollment-code'), true)
+    assert.equal(leases[0]?.provider, 'box')
+  } finally {
+    if (previousImage === undefined) delete process.env.OVERLAY_AGENT_HOST_IMAGE
+    else process.env.OVERLAY_AGENT_HOST_IMAGE = previousImage
+  }
+})
+
+test('managedSandboxRuntimeFromEnv resolves box by default when BOX_API_KEY is set', () => {
+  const previous = {
+    BOX_API_KEY: process.env.BOX_API_KEY,
+    OVERLAY_MANAGED_SANDBOX_PROVIDER: process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER,
+  }
+  try {
+    delete process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER
+    process.env.BOX_API_KEY = 'box-key'
+    assert.equal(managedSandboxRuntimeFromEnv().provider, 'box')
+    // The env override still wins, and box can be pinned explicitly.
+    process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER = 'vercel'
+    delete process.env.BOX_API_KEY
+    assert.equal(managedSandboxRuntimeFromEnv().provider, 'vercel')
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})
+
+test('managedSandboxRuntimeFromEnv fails loudly when box lacks credentials', () => {
+  const previous = process.env.BOX_API_KEY
+  delete process.env.BOX_API_KEY
+  try {
+    assert.throws(
+      () => managedSandboxRuntimeFromEnv('box'),
+      (error: unknown) => error instanceof ManagedAgentSandboxError && error.code === 'managed_sandbox_provider_invalid',
+    )
+  } finally {
+    if (previous === undefined) delete process.env.BOX_API_KEY
+    else process.env.BOX_API_KEY = previous
+  }
+})
+
 test('harness provisioning rejects unsupported harnesses and providers loudly', async () => {
   const service = new ManagedAgentSandboxService({
     runtime: fakeRuntime([], []),
@@ -140,9 +225,9 @@ test('harness provisioning rejects unsupported harnesses and providers loudly', 
   )
 })
 
-function fakeRuntime(commands: SandboxCommandRequest[], creates?: SandboxCreateRequest[]): SandboxRuntime {
+function fakeRuntime(commands: SandboxCommandRequest[], creates?: SandboxCreateRequest[], provider = 'vercel'): SandboxRuntime {
   const sandbox: SandboxInstance = {
-    provider: 'vercel', reference: 'provider-reference', name: 'overlay-cloud-enrollme',
+    provider: provider as SandboxInstance['provider'], reference: 'provider-reference', name: 'overlay-cloud-enrollme',
     capabilities: {
       commandStreaming: true, files: true, environmentVariables: true, ports: true,
       snapshots: true, persistence: true, networkPolicy: true, credentialBrokering: true,
@@ -165,7 +250,7 @@ function fakeRuntime(commands: SandboxCommandRequest[], creates?: SandboxCreateR
     rawProviderDiagnosticHandle: () => null,
   }
   return {
-    provider: 'vercel', capabilities: sandbox.capabilities,
+    provider: provider as SandboxRuntime['provider'], capabilities: sandbox.capabilities,
     create: async (request) => {
       creates?.push(request)
       return sandbox

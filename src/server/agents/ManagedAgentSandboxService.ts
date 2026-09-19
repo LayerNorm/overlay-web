@@ -7,6 +7,7 @@ import {
   type SandboxInstance,
   type SandboxRuntime,
 } from '@overlay/sandbox-runtime'
+import { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
 import { DaytonaSandboxRuntime } from '@overlay/sandbox-runtime/daytona'
 import { VercelSandboxRuntime } from '@overlay/sandbox-runtime/vercel'
 import { isManagedHarnessId, type ManagedHarnessId } from '@overlay/workspace-contracts'
@@ -184,11 +185,13 @@ export class ManagedAgentSandboxService {
     adapterId: OverlayManagedAcpAdapterId
   }) {
     const runtime = this.dependencies.runtime ?? managedSandboxRuntimeFromEnv()
+    const onBox = runtime.provider === 'box'
     const limits = await this.dependencies.policyLimits?.({ userId: args.actorUserId, workspaceId: args.workspaceId })
     const idleTimeoutMs = Math.min(MANAGED_HARNESS_IDLE_TIMEOUT_MS, limits?.maxIdleDurationMs ?? MANAGED_HARNESS_IDLE_TIMEOUT_MS)
     const hardTimeoutMs = Math.min(MANAGED_HARNESS_HARD_TIMEOUT_MS, limits?.maxRunTimeMs ?? MANAGED_HARNESS_HARD_TIMEOUT_MS)
     const image = process.env.OVERLAY_AGENT_HOST_IMAGE?.trim()
-    if (!image) throw managedSandboxError('OVERLAY_AGENT_HOST_IMAGE is not configured', 503, 'managed_sandbox_image_missing')
+    // Boxes have no custom-image concept — the host installs via npx at boot.
+    if (!image && !onBox) throw managedSandboxError('OVERLAY_AGENT_HOST_IMAGE is not configured', 503, 'managed_sandbox_image_missing')
     const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
       actorUserId: args.actorUserId,
       workspaceId: args.workspaceId,
@@ -199,20 +202,27 @@ export class ManagedAgentSandboxService {
     try {
       sandbox = await runtime.create({
         name,
-        image,
+        ...(image ? { image } : {}),
         persistent: true,
         environment: { OVERLAY_MANAGED_ENVIRONMENT: '1' },
-        networkPolicy: {
-          mode: 'allowlist',
-          domains: managedAllowedDomains(args.serverUrl),
-          deniedCidrs: [...MANAGED_HARNESS_DENIED_CIDRS],
-        },
+        // Box has no egress-allowlist primitive. allow_all is acceptable here
+        // because the box holds nothing worth exfiltrating: the enrollment
+        // code is single-use and redeemed immediately, model credentials stay
+        // server-side behind the gateway, and customer BYOK is never placed in
+        // the environment. Egress enforcement returns with the Overlay proxy.
+        networkPolicy: onBox
+          ? { mode: 'allow_all' }
+          : {
+            mode: 'allowlist',
+            domains: managedAllowedDomains(args.serverUrl),
+            deniedCidrs: [...MANAGED_HARNESS_DENIED_CIDRS],
+          },
         idleTimeoutMs,
         hardTimeoutMs,
         resources: { ...MANAGED_RESOURCES },
         metadata: { overlay: 'true', kind: 'agent-host', workspace: args.workspaceId },
       })
-      await sandbox.runCommand(managedAgentHostCommand({
+      await sandbox.runCommand(agentHostBootstrapCommand(runtime.provider, {
         enrollmentCode: enrollment.code,
         serverUrl: args.serverUrl,
         name,
@@ -283,7 +293,14 @@ export class ManagedAgentSandboxError extends Error {
 export function managedSandboxRuntimeFromEnv(providerOverride?: string): SandboxRuntime {
   const provider = providerOverride?.trim().toLowerCase()
     || process.env.OVERLAY_MANAGED_SANDBOX_PROVIDER?.trim().toLowerCase()
-    || 'vercel'
+    || defaultManagedSandboxProvider()
+  if (provider === 'box') {
+    const apiKey = process.env.BOX_API_KEY?.trim()
+    if (!apiKey) {
+      throw managedSandboxError('Box is not configured: set BOX_API_KEY', 503, 'managed_sandbox_provider_invalid')
+    }
+    return new BoxSandboxRuntime({ apiKey })
+  }
   if (provider === 'vercel') {
     // On Vercel the platform issues a fresh OIDC token per request (via the
     // x-vercel-oidc-token request context, not process.env) — prefer it over
@@ -304,6 +321,16 @@ export function managedSandboxRuntimeFromEnv(providerOverride?: string): Sandbox
     })
   }
   throw managedSandboxError(`Unsupported managed sandbox provider: ${provider}`, 503, 'managed_sandbox_provider_invalid')
+}
+
+/**
+ * Overlay Cloud environments default to boat boxes when the deployment has
+ * box credentials — persistent VMs at ~1/5 the always-on price, with real
+ * persistence, snapshots, and desktop streaming. Vercel remains the fallback
+ * for box-less deployments; `OVERLAY_MANAGED_SANDBOX_PROVIDER` pins either.
+ */
+function defaultManagedSandboxProvider(): string {
+  return process.env.BOX_API_KEY?.trim() ? 'box' : 'vercel'
 }
 
 function managedAllowedDomains(serverUrl: string) {
@@ -341,4 +368,19 @@ function managedHarnessAllowedDomains(serverUrl: string, modelApiHosts: readonly
 
 function managedSandboxError(message: string, status: number, code: string) {
   return new ManagedAgentSandboxError(message, status, code)
+}
+
+/**
+ * Vercel/Daytona images already contain the `overlay-agent-host` binary.
+ * Boxes have no custom-image parameter, so the published package installs via
+ * `npx` at boot instead of `OVERLAY_AGENT_HOST_IMAGE`.
+ */
+function agentHostBootstrapCommand(
+  provider: string,
+  input: Parameters<typeof managedAgentHostCommand>[0],
+) {
+  const base = managedAgentHostCommand(input)
+  if (provider !== 'box') return base
+  const pkg = process.env.OVERLAY_AGENT_HOST_PACKAGE?.trim() || '@layernorm/overlay-agent-host'
+  return { ...base, command: 'npx', args: ['-y', pkg, ...(base.args ?? [])] }
 }

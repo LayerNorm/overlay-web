@@ -328,6 +328,65 @@ test('create retries once when a box lands in error during provisioning', async 
   assert.ok(calls.some((call) => call.method === 'DELETE' && call.url.includes('bx_bad')))
 })
 
+test('usage reports billable machine seconds as wallTime plus provider dollars', async () => {
+  const { calls, fetch } = recorder((call) => {
+    if (call.url.endsWith('/usage')) {
+      return ok({
+        type: 'box.usage',
+        seconds: 3605,
+        dollars: 0.03605,
+        secondsPerDollar: 100000,
+        billingMultiplier: 0.5,
+        running: false,
+      })
+    }
+    return ok({ box: { id: 'bx_1', state: 'ready' } })
+  })
+  const instance = await runtime(fetch).reconnect('bx_1')
+  const usage = await instance.usage()
+  assert.equal(usage.wallTimeMs, 3_605_000)
+  assert.equal(usage.providerMetrics?.reportedUsd, 0.03605)
+  assert.equal(usage.providerMetrics?.secondsPerDollar, 100000)
+  assert.equal(usage.providerMetrics?.billingMultiplier, 0.5)
+  assert.equal(usage.providerMetrics?.running, false)
+  assert.match(calls.find((call) => call.url.includes('/usage'))!.url, /\/boxes\/bx_1\/usage$/)
+})
+
+test('usage omits reportedUsd when the API predates dollar reporting', async () => {
+  const { fetch } = recorder((call) => {
+    if (call.url.endsWith('/usage')) return ok({ seconds: 120, running: true })
+    return ok({ box: { id: 'bx_1', state: 'ready' } })
+  })
+  const usage = await runtime(fetch).reconnect('bx_1').then((instance) => instance.usage())
+  assert.equal(usage.wallTimeMs, 120_000)
+  assert.equal(usage.providerMetrics?.reportedUsd, undefined)
+  assert.equal(usage.providerMetrics?.running, true)
+})
+
+test('limits reads account capacity and balance', async () => {
+  const { calls, fetch } = recorder((call) => {
+    if (call.url.endsWith('/limits')) {
+      return ok({
+        canStart: true,
+        blockedReason: null,
+        subscriptionRemainingSeconds: 1_966_166,
+        creditBalanceSeconds: 0,
+        last24hUsageSeconds: 3605,
+        activeSandboxes: 2,
+        maxActiveSandboxes: 100,
+      })
+    }
+    return ok()
+  })
+  const limits = await runtime(fetch).limits()
+  assert.equal(limits.canStart, true)
+  assert.equal(limits.remainingSeconds, 1_966_166)
+  assert.equal(limits.last24hUsageSeconds, 3605)
+  assert.equal(limits.activeSandboxes, 2)
+  assert.equal(limits.maxActiveSandboxes, 100)
+  assert.match(calls[0].url, /\/limits$/)
+})
+
 test('constructor refuses a missing api key', () => {
   const saved = process.env.BOX_API_KEY
   delete process.env.BOX_API_KEY

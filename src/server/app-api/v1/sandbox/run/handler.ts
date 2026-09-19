@@ -51,6 +51,15 @@ const SANDBOX_STDERR_PATH = '/sandbox/overlay/.stderr'
 
 const SANDBOX_RESOURCES = { memoryGb: 4, vcpus: 2 }
 
+/**
+ * The ephemeral exec provider. Vercel is the default and the only provider
+ * this surface assumes has deny-all egress; `daytona` remains selectable via
+ * `OVERLAY_EXEC_SANDBOX_PROVIDER` and delegates to the Daytona run route.
+ */
+function execSandboxProvider(): string {
+  return process.env.OVERLAY_EXEC_SANDBOX_PROVIDER?.trim().toLowerCase() || 'vercel'
+}
+
 async function readOverlayFileBuffer(file: OverlayFileRecord): Promise<Buffer> {
   if (file.r2Key) {
     const url = await generatePresignedDownloadUrl(file.r2Key)
@@ -88,7 +97,12 @@ async function waitForSandboxFile(
 }
 
 export async function handleSandboxRunPost(request: NextRequest, context: AppApiRouteContext) {
-  const runtime = managedSandboxRuntimeFromEnv()
+  // Ephemeral exec is pinned to its own provider setting, defaulting to
+  // Vercel: per-request isolation, native deny-all egress, and usage counters
+  // that finalize on stop. This surface must never silently follow the
+  // managed-agent provider default (which may be a provider without egress
+  // control).
+  const runtime = managedSandboxRuntimeFromEnv(execSandboxProvider())
 
   // Delegate to the existing Daytona route for Daytona provider — it has
   // workspace persistence, Daytona-specific pricing, and lifecycle management
@@ -96,6 +110,14 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
   if (runtime.provider === 'daytona') {
     const { POST: daytonaPost } = await import('../../daytona/run/route')
     return daytonaPost(request, context)
+  }
+  // Fail before the budget reservation: ephemeral exec requires per-request
+  // isolation plus deny-all egress, which only Vercel provides today.
+  if (runtime.provider !== 'vercel') {
+    return NextResponse.json({
+      error: 'sandbox_provider_unsupported',
+      message: `Ephemeral sandbox execution does not support provider "${runtime.provider}".`,
+    }, { status: 503 })
   }
 
   // Vercel sandbox path — create a fresh sandbox per request.
@@ -308,6 +330,15 @@ export async function handleSandboxRunPost(request: NextRequest, context: AppApi
         finalUsage = await sandbox.usage()
       } catch (error) {
         usageError = error
+      }
+      // Ephemeral sandboxes must not linger: delete releases the provider
+      // record and any retained snapshots. A delete failure is swept by the
+      // reconcile route's orphan sweep — billing still finalizes from the
+      // captured usage counters.
+      try {
+        await sandbox.delete?.()
+      } catch (error) {
+        logger.error('[Sandbox] Ephemeral sandbox delete failed:', error)
       }
     }
 

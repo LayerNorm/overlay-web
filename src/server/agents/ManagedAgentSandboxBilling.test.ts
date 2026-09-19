@@ -641,6 +641,69 @@ test('provider pricing uses provider-native runtime dimensions', () => {
   }) > 0, true)
 })
 
+test('box pricing prefers provider-reported dollars over the seconds rate card', () => {
+  // Provider-reported delta is authoritative even when it diverges from the
+  // list-price estimate (plan seconds, refused-stop exclusion, rounding).
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 60_000, providerMetrics: { reportedUsd: 0.0123 } },
+  }), 0.0123)
+  // A zero delta is honest: no new billable spend reported (e.g. stopped).
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 0, providerMetrics: { reportedUsd: 0 } },
+  }), 0)
+  // Without providerMetrics (or without dollars in it) the rate card applies:
+  // billable seconds at list price — 100_000 seconds per dollar.
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 100_000_000 },
+  }), 1)
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 50_000_000, providerMetrics: { running: true } },
+  }), 0.5)
+})
+
+test('meterLease bills the provider-reported dollar delta on a box lease', async () => {
+  const meterCalls: Array<Record<string, unknown>> = []
+  const usage = {
+    wallTimeMs: 3_700_000,
+    providerMetrics: { reportedUsd: 0.037, running: true },
+  }
+  const lease = leaseFixture({
+    provider: 'box',
+    usage: {
+      resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+      meteredUsage: {
+        wallTimeMs: 3_600_000,
+        providerMetrics: { reportedUsd: 0.036, running: true },
+      },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 4, remainingCents: 500 }
+      },
+    } as never,
+    runtime: () => ({ ...runtimeWithUsage(() => usage), provider: 'box' }),
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  const charge = meterCalls[0]!.charge as { providerCostUsd: number; durationSeconds: number }
+  // Delta: 100s billable + $0.001 provider-reported — the reported dollars win.
+  assert.ok(Math.abs(charge.providerCostUsd - 0.001) < 1e-9)
+  assert.equal(charge.durationSeconds, 100)
+})
+
 function leaseFixture(overrides: Partial<AgentSandboxLease>): AgentSandboxLease {
   return {
     id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',

@@ -74,76 +74,76 @@ orphan sweeper for crash paths. Ephemeral sandboxes are never leased, never
 `persistent`, never resumable. The sweeper is defense in depth, not the
 primary mechanism.
 
-## Phase 0 — Box billing
+## Phase 0 — Box billing ✅
 
 Goal: `sandboxCostUsd` and the metering pipeline understand `box`, so every
-later phase bills correctly.
+later phase bills correctly. **Landed** — implementation notes:
 
-- Implement `usage()` on `BoxSandboxInstance` via
-  `GET /api/box/v1/sandboxes/{id}/usage?since&until` → `{seconds, dollars,
-  running}`. Map `seconds`→`wallTimeMs`, `dollars`→`providerMetrics.reportedUsd`,
-  `running`→lifecycle hint. The API applies the size multiplier and returns
-  list-price dollars — **no Overlay rate card required**; bill on deltas per
-  metering pass, never absolute reads (stale responses must not double-bill).
-- `sandboxCostUsd` gains a `box` branch: prefer provider-reported `dollars`;
-  fall back to a list-price rate card (`$0.036/hr` default = `$0.00001/s`,
-  `small` 0.5x, `large` 2x) only when the API is unreachable.
-- Reservation estimate for box: `seconds-rate × maxRunTime` with the existing
-  buffer — box has no creation fee or egress metering.
-- Fleet alerting: `GET /limits` poll on the existing provider-spend-alert
-  path (`OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD`) for `canStart` /
-  credit-balance exhaustion.
-- Keep `usage: false` → `usage: true` in `CAPABILITIES` once implemented.
+- `usage()` on `BoxSandboxInstance` calls `GET /boxes/{id}/usage` on our
+  existing `ascii.dev/api/box/v1` base (the docs' `boat.dev/api/v1` +
+  `/sandboxes/*` paths are the same API post-rebrand — both verified live).
+  Response `{seconds, dollars, secondsPerDollar, billingMultiplier, running}`:
+  `seconds` is already size-multiplier-adjusted → mapped to `wallTimeMs`;
+  `dollars` → `providerMetrics.reportedUsd`. Metered as deltas via the new
+  `providerMetricsDelta` — only `reportedUsd` diffs; rate fields pass through.
+- `sandboxCostUsd` `box` branch: provider-reported `dollars` is authoritative;
+  `OVERLAY_BOX_SECONDS_PER_DOLLAR` (default 100,000 = list price) rate card
+  engages only when the response omits `dollars`.
+- Fleet alerting: `probeBoxLimits` runs once per meter sweep when any box
+  lease is active; warns on `canStart === false` or `remainingSeconds` under
+  `OVERLAY_BOX_LOW_REMAINING_SECONDS` (2h default).
+- `CAPABILITIES.usage` flipped to `true`.
 
-Exit gate: unit tests for delta billing and the rate-card fallback; a real
-box created, run for minutes, `usage()` returns dollars matching the CLI.
+Exit gate: unit tests for delta billing and the rate-card fallback — done;
+live-API half verified via real `usage`/`limits` responses against the
+account (a billed e2e meter pass is still the remaining proof).
 
-## Phase 1 — Overlay agent on boat
+## Phase 1 — Overlay agent on boat ✅
 
 Goal: `overlay_cloud` environments default to Box; the agent host runs
-there exactly as it does on user machines.
+there exactly as it does on user machines. **Landed:**
 
-- `managedSandboxRuntimeFromEnv` accepts `box` (`BOX_API_KEY`); provider
-  resolution order becomes `box` default, `vercel`/`daytona` retained.
-- `OVERLAY_AGENT_HOST_IMAGE` bootstrap on box: `noEnv: true` create (already
-  the runtime's behavior), `overlay-agent-host connect --kind overlay_cloud`
-  detached, enrollment ceremony unchanged.
-- Idle-stop: Box has no native idle timer — `enforceSandboxIdleStop` already
-  owns this; `box stop` snapshots the disk and pauses billing, so idle-stop
-  IS the cost control. Wire last-activity tracking to turn boundaries.
-- Egress: nothing sensitive inside the box means `allow_all` is acceptable
-  for v1 (agent host needs Overlay server + bootstrap domains; model calls
-  stay server-side). An Overlay egress CONNECT proxy is a hardening
-  follow-up, not a blocker.
-- Metering: lease-based wall-clock + `usage()` deltas from Phase 0.
+- `managedSandboxRuntimeFromEnv` accepts `box` (`BOX_API_KEY`); default is
+  `box` when the key is set, `vercel` otherwise. `OVERLAY_MANAGED_SANDBOX_PROVIDER`
+  pins either; `daytona` retained.
+- Bootstrap: boxes have no custom-image concept, so the host installs via
+  `npx -y @layernorm/overlay-agent-host` (`OVERLAY_AGENT_HOST_PACKAGE`)
+  instead of `OVERLAY_AGENT_HOST_IMAGE`; enrollment ceremony unchanged.
+- Idle-stop: the meter's provider-agnostic idle pass (`probe.instance.stop`)
+  covers box — `box stop` snapshots the disk and pauses billing.
+- Egress: `allow_all` on box with the justification documented in code —
+  nothing sensitive inside (single-use enrollment code; model keys stay
+  server-side). Harness-mode provisioning still rejects `box`.
+- Metering: Phase-0 `usage()` deltas.
 
 Exit gate: create an `overlay_cloud` env on box, DM an overlay agent,
-turn completes end-to-end, sandbox `stop`s on idle, usage deltas bill.
+turn completes end-to-end, sandbox `stop`s on idle, usage deltas bill —
+**not yet run end-to-end**; needs a live provision against a real backend.
 
-## Phase 2 — Ephemeral exec hardening (chat + automations)
+## Phase 2 — Ephemeral exec hardening (chat + automations) ✅
 
 Goal: the `sandbox/run` surface is airtight on Vercel and provably leaves
-nothing running.
+nothing running. **Landed:**
 
-- Keep provider pinned to `vercel` for this surface regardless of the
-  managed default — exec shape is per-request isolation, not persistence.
-- `finally`: `stop()` → usage capture → **`delete()`** (add the missing
-  delete; stopped non-persistent sandboxes still hold records and snapshots).
-- Orphan sweeper: scheduled job lists Vercel sandboxes tagged
-  `overlay.operation: 'sandbox.run'` older than `SANDBOX_MAX_DURATION_SECONDS`
-  + grace and force-deletes them; alerts on any found (a live orphan means a
-  bug elsewhere). Defense in depth on top of the provider's 300s `timeout`
-  ceiling.
-- Automations: verify `run_daytona_sandbox` exposure through
-  `describePersonalChatWorkTools` + `exposure-policy.ts` for automation
-  turns; the tool id is contract-stable — consider a display rename to
-  "run sandbox" without changing the id.
-- Chat: already wired — no surface change, just inherits the hardened
-  lifecycle.
+- Provider pinned via `OVERLAY_EXEC_SANDBOX_PROVIDER` (default `vercel`),
+  resolved independently of `OVERLAY_MANAGED_SANDBOX_PROVIDER`; a non-vercel/
+  daytona value fails fast with `sandbox_provider_unsupported` before the
+  budget reservation.
+- `finally`: `stop()` → usage capture → billing finalize → **`delete()`**;
+  delete failures log and fall through to the sweeper rather than masking
+  the run result.
+- Orphan sweeper (`src/server/ai/sandbox/ephemeral-sweeper.ts`): lists
+  `overlay-sandbox-*` non-persistent Vercel sandboxes older than
+  `OVERLAY_EPHEMERAL_SANDBOX_STALE_MS` (15m default) and deletes them — wired
+  into the cron-driven reconcile route, reported as `ephemeralSweep` in its
+  response. Name prefix + `persistent === false` are disjoint guards against
+  ever touching `overlay-cloud-*`/`overlay-harness-*`/`computer-*` sandboxes.
+- Automations/chat: unchanged — both already share the tool surface that
+  reaches `sandbox/run`; they inherit the hardened lifecycle.
 
 Exit gate: run exec via chat and an automation; confirm `stop`+`delete` in
 logs, zero sandboxes visible in the sweeper's scope afterward, billing
-finalizes with real Vercel usage counters.
+finalizes with real Vercel usage counters — **not yet run e2e**.
 
 ## Phase 3 — Metaharness v1
 
