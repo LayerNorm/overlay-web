@@ -90,12 +90,18 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/agent-environments/artifacts/cleanup`
 - `POST /api/v1/agent-environments/enroll`
 - `POST /api/v1/agent-environments/enrollment-sessions`
-- `POST /api/v1/agent-environments/managed`
+- `GET, POST /api/v1/agent-environments/managed`
 - `POST /api/v1/agent-environments/operations/reconcile`
+- `POST /api/v1/agent-environments/[environmentId]/reset-harness`
 - `GET /api/v1/agent-environments`
 - `DELETE, GET, PATCH /api/v1/agents/[agentId]`
 - `GET, POST /api/v1/agents`
 - `DELETE, GET, PATCH, POST /api/v1/api-keys`
+- `GET, POST /api/v1/computers`
+- `DELETE, GET /api/v1/computers/[computerId]`
+- `POST /api/v1/computers/[computerId]/desktop`
+- `POST /api/v1/computers/[computerId]/start`
+- `POST /api/v1/computers/[computerId]/stop`
 
 ## Automations
 
