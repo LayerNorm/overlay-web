@@ -1,0 +1,18 @@
+{
+  "name": "overlay-convex-read-mirror",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Convex streaming-export -> Postgres read mirror for enterprise BI/data-lake access",
+  "main": "mirror.mjs",
+  "scripts": {
+    "start": "node mirror.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -54,7 +54,10 @@ echo "    backend healthy"
 
 echo "==> generating admin key"
 ADMIN_KEY=$("${COMPOSE[@]}" exec -T backend ./generate_admin_key.sh 2>/dev/null | tr -d '[:space:]')
-[[ "$ADMIN_KEY" == convex-self-hosted\|* ]] || { echo "unexpected admin key shape" >&2; exit 1; }
+# Key shape is "<INSTANCE_NAME>|<hex>" — derive the expected prefix from the
+# backend env rather than assuming the default instance name.
+EXPECTED_PREFIX=$("${COMPOSE[@]}" exec -T backend sh -c 'echo "${INSTANCE_NAME:-convex-self-hosted}"' | tr -d '[:space:]')
+[[ "$ADMIN_KEY" == "$EXPECTED_PREFIX|"* ]] || { echo "unexpected admin key shape" >&2; exit 1; }
 
 # Resolve the API origin the CLI should target (defaults to local port).
 API_URL=$("${COMPOSE[@]}" exec -T backend sh -c 'echo "${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:3210}"' | tr -d '[:space:]')

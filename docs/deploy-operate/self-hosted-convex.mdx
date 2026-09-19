@@ -137,11 +137,31 @@ Never run floating `:latest` in production — pin tags in `convex.env`.
 
 `documents`/`indexes` are **opaque internal tables**. Integrations must go through:
 
-- **Data Sync API** (`GET /api/data/sync?format=json` — WebSocket, admin-key auth, ungated on OSS) for lake export.
+- **Data Sync API** (`POST /api/v1/data/sync` — infinite paginated stream of snapshot + delta pages, admin-key auth) for lake export.
+- **The read mirror sidecar** (`docker-compose.mirror.yml`) — consumes Data Sync and materializes every Convex table as `mirror.<table>` in Postgres. This is the supported relational read model for BI and data-lake ingestion.
 - The app's public APIs + webhook system for live integration.
-- A future normalized **mirror sidecar** if SQL consumers need a relational read model.
 
 Direct `SELECT` against Convex internals is unsupported — the schema is an implementation detail.
+
+### Read mirror (optional)
+
+`docker-compose.mirror.yml` adds a sidecar that streams `POST /api/v1/data/sync` and writes one Postgres table per Convex table:
+
+```bash
+# after bin/convex-bootstrap.sh produced .env.convex.local
+docker compose \
+  -f docker-compose.convex.yml -f docker-compose.mirror.yml \
+  --env-file convex.env --env-file .env.convex.local \
+  up -d mirror
+```
+
+- **Shape**: `mirror.<table>(id, creation_time, ts, doc jsonb, synced_at)` — component tables prefixed (`stripe_*`). `doc` holds the whole document; extract via `doc->>'field'` or build views.
+- **Durability**: each page commits with its opaque cursor in `mirror._meta`; restarts resume, crashes mid-page replay idempotently.
+- **Truncates**: Data Sync reports bulk table replacements (imports, clears); the mirror `TRUNCATE`s in the same transaction, so wholesale deletes can't drift it.
+- **Admin key scope**: needs a deployment admin key (`deployment:data:view`) — the same key bootstrap writes to `.env.convex.local`. Keep it out of BI consumers' reach; give analysts read-only Postgres grants on `mirror.*` instead.
+- **Managed Postgres**: point `MIRROR_DATABASE_URL` at RDS/Aurora; the mirror only needs a database it owns — it does not have to share the backend's persistence instance.
+- **Resync**: `DROP SCHEMA mirror CASCADE` + restart forces a full re-snapshot. Table allowlist via `MIRROR_TABLES`.
+- **Disable**: simply don't start the `mirror` service — nothing else depends on it.
 
 ---
 
@@ -156,6 +176,7 @@ This exact stack was validated against Overlay's real code path (see `docs/devel
 - HS256 browser-token auth + WorkOS env config on the deployment
 - Real AI chat via Vercel AI Gateway, persisted to Postgres
 - Data Sync WebSocket handshake returns `101` with admin-key auth
+- Read mirror: `POST /api/v1/data/sync` snapshot materializes all 115 deployed tables as `mirror.<table>`; live `--append` inserts and `--replace` truncates replicate into Postgres within seconds
 
 ## Known limitations
 

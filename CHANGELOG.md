@@ -4,6 +4,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Added
+
+- **SQL read mirror for self-hosted deployments** (`examples/customer-deployment/mirror/` + `docker-compose.mirror.yml`): a sidecar that streams the supported Data Sync endpoint (`POST /api/v1/data/sync`) and materializes every Convex table as `mirror.<table>(id, creation_time, ts, doc jsonb, synced_at)` in customer-controlled Postgres — the supported relational surface for BI tools and data lakes (never query Convex's internal `documents`/`indexes`). Durable opaque cursor in `mirror._meta` with per-page transactions, so restarts resume and mid-page crashes replay idempotently; `truncates` events `TRUNCATE` mirror tables in-transaction so bulk replaces can't drift it; component tables prefixed (`stripe_*`); nanosecond `ts` preserved losslessly; optional `MIRROR_TABLES` allowlist and `MIRROR_ADMIN_URL` auto-provisioning. Verified live against a deployed stack (115 tables snapshot, live inserts/replaces replicating in seconds). `npm run test:mirror` runs unit + integration suites (integration needs `MIRROR_TEST_DATABASE_URL`).
+
+### Fixed
+
+- `bin/convex-bootstrap.sh` rejected admin keys for non-default `INSTANCE_NAME` — the key prefix is `<instance-name>|`, not hardcoded `convex-self-hosted|`. Also `convex.env` (which holds real secrets) is now gitignored, as is `examples/*/node_modules/`.
+
 ### Removed
 
 - **Bespoke Postgres application-data path**: Overlay is now Convex-only for application data. Deleted the `OVERLAY_PROVIDER_DATABASE` selector, all `Postgres*` repositories, the Drizzle app-data schema/migrations (`migrations/`, `drizzle.app-data.config.ts`), the app-data worker/scheduler (`scripts/db/app-data-worker.ts`, `app-db:*` npm scripts, `docker/docker-compose.app-data.yml`), the Postgres contract/parity suites, and the Postgres-only Next.js Stripe webhook (`/api/webhooks/stripe` — the `@convex-dev/stripe` component endpoint is the single webhook). Client-side Postgres long-polling was removed from chat/collaboration providers (Convex subscriptions only). Postgres remains in exactly two infrastructure roles: Better Auth's separate `BETTER_AUTH_DATABASE_URL` database (`pg` driver + `better-auth:db:*` scripts + compose service unchanged), and `@workflow/world-postgres` for durable workflow runs. Self-hosted/enterprise deployments run the official `convex-backend` (see `examples/customer-deployment/`); its persistence engine may itself be Postgres, which is a Convex-backend concern, not an application-data provider. `drizzle-orm`/`drizzle-kit` dependencies removed; `pg` retained for Better Auth.

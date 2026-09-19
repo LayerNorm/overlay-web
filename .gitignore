@@ -29,6 +29,7 @@
 packages/*/dist/
 packages/*/node_modules/
 workers/*/node_modules/
+examples/**/node_modules/
 workers/*/.wrangler/
 
 # misc
@@ -48,6 +49,7 @@ yarn-error.log*
 !.env.enterprise.example
 !.env.better-auth.local.example
 !deploy/ec2/.env.example
+examples/customer-deployment/convex.env
 
 # vercel
 .vercel
