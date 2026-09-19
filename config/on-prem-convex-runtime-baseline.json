@@ -180,8 +180,7 @@
     "src/app/api/v1/workspaces/[workspaceId]/teams/[teamId]/members/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/teams/route.ts",
     "src/app/api/v1/workspaces/active/route.ts",
-    "src/app/api/v1/workspaces/route.ts",
-    "src/app/api/webhooks/stripe/route.ts"
+    "src/app/api/v1/workspaces/route.ts"
   ],
   "browserRuntimeFiles": [
     "src/components/providers/AppClientProviders.tsx",

@@ -17,6 +17,18 @@ services:
       retries: 20
     volumes:
       - overlay-better-auth-postgres-data:/var/lib/postgresql/data
+  local-redis:
+    image: redis:7-alpine
+    container_name: overlay-local-redis
+    ports:
+      - "${OVERLAY_LOCAL_REDIS_PORT:-56379}:6379"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli ping
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   overlay-better-auth-postgres-data:

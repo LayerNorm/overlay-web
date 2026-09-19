@@ -4,6 +4,14 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_MODE=standalone
 
+# NEXT_PUBLIC_* values are inlined into the built bundle. Self-hosted
+# deployments must pass their own values at image build time; the image cannot
+# be repointed at a different Convex URL or app origin at runtime.
+ARG NEXT_PUBLIC_CONVEX_URL
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL}
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+
 COPY .npmrc package.json package-lock.json ./
 COPY packages ./packages
 RUN npm ci --include=dev --no-audit --no-fund \
@@ -12,16 +20,8 @@ RUN npm ci --include=dev --no-audit --no-fund \
   --fetch-retry-maxtimeout=120000
 
 COPY . .
-RUN touch .env.app-data.local .env.better-auth.local .env.on-prem-contract-tests.local
+RUN touch .env.better-auth.local
 RUN npm run build
-RUN npx esbuild scripts/db/app-data-worker.ts \
-  --bundle \
-  --platform=node \
-  --format=cjs \
-  --target=node22 \
-  --conditions=react-server \
-  --external:pg-native \
-  --outfile=/app/dist/app-data-worker.cjs
 
 FROM scratch AS rds-ca
 ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /aws-rds-global-bundle.pem
@@ -42,17 +42,15 @@ COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 
-# The worker and one-off migration roles use the same immutable release image.
-# Keep their source, migrations, and build-time dependencies in this enterprise
-# image until the migration runners are emitted as standalone bundles.
+# The one-off Better Auth migration role uses the same immutable release image.
+# Keep its source and build-time dependencies in this enterprise image until the
+# migration runner is emitted as a standalone bundle.
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
-COPY --from=builder --chown=node:node /app/migrations ./migrations
 COPY --from=builder --chown=node:node /app/scripts ./scripts
 COPY --from=builder --chown=node:node /app/src ./src
 COPY --from=builder --chown=node:node /app/tsconfig.json ./tsconfig.json
 COPY --from=builder --chown=node:node /app/package.json ./package.json
-COPY --from=builder --chown=node:node /app/dist ./dist
 
 USER node
 EXPOSE 3000
