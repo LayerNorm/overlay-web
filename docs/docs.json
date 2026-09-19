@@ -91,7 +91,7 @@
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/cloud-managed", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/security", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/release-gates", "deploy-operate/tenancy", "deploy-operate/docs-hosting"]
+        "pages": ["deploy-operate/self-hosting", "deploy-operate/self-hosted-convex", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/cloud-managed", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/security", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/release-gates", "deploy-operate/tenancy", "deploy-operate/docs-hosting"]
       },
       {
         "group": "API Reference",

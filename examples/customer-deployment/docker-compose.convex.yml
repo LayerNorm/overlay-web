@@ -1,0 +1,156 @@
+# Self-hosted Convex backend stack for Overlay.
+#
+# This file runs the official open-source Convex backend with PostgreSQL
+# persistence and S3-compatible object storage — the same backend Convex Cloud
+# runs, so every Overlay feature works identically to the hosted deployment.
+#
+# Usage:
+#   cp convex.env.example convex.env          # fill in secrets + origins
+#   docker compose -f docker-compose.convex.yml --env-file convex.env up -d
+#   ./bin/convex-bootstrap.sh                 # first-run: admin key + deploy
+#
+# Swap freely for managed services: point POSTGRES_URL at RDS/Aurora and the
+# S3_* / AWS_* variables at real S3 (or any S3-compatible store), then delete
+# the postgres/minio services.
+
+services:
+  postgres:
+    # Reference persistence layer. Replace with RDS/Aurora/Cloud SQL in
+    # production — the backend only needs POSTGRES_URL to reach it.
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-convex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in convex.env}
+      POSTGRES_DB: ${POSTGRES_DB:-convex}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U ${POSTGRES_USER:-convex} -d ${POSTGRES_DB:-convex}
+      interval: 5s
+      start_period: 15s
+    restart: unless-stopped
+
+  objectstore:
+    # Reference S3-compatible object store. Replace with real S3/R2 in
+    # production — used for source modules, file storage, search indexes,
+    # exports, and snapshot imports.
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?set in convex.env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?set in convex.env}
+    volumes:
+      - objectstoredata:/data
+    ports:
+      - "${S3_CONSOLE_PORT:-9001}:9001"
+    restart: unless-stopped
+
+  objectstore-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      - objectstore
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://objectstore:9000 $$S3_ACCESS_KEY_ID $$S3_SECRET_ACCESS_KEY; do sleep 2; done;
+      for b in modules files search exports snapshot-imports; do
+        mc mb --ignore-existing local/convex-$$b;
+      done;
+      echo buckets ready;
+      "
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    restart: "no"
+
+  backend:
+    # Pin to a released tag in production, e.g. ghcr.io/get-convex/convex-backend:<sha>
+    image: ${CONVEX_BACKEND_IMAGE:-ghcr.io/get-convex/convex-backend:latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      # Client API + realtime sync — point NEXT_PUBLIC_CONVEX_URL here.
+      - "${CONVEX_API_PORT:-3210}:3210"
+      # Site proxy for HTTP actions.
+      - "${CONVEX_SITE_PORT:-3211}:3211"
+    volumes:
+      - data:/convex/data
+    environment:
+      # Persistence: cluster URL WITHOUT a database name — the backend derives
+      # the db name from INSTANCE_NAME (e.g. "convex-self-hosted" ->
+      # database "convex_self_hosted").
+      POSTGRES_URL: postgres://${POSTGRES_USER:-convex}:${POSTGRES_PASSWORD}@postgres:5432
+      # Set to "false"/remove when POSTGRES_URL points at TLS-managed Postgres.
+      DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-true}
+
+      # Object storage (S3 API shape; MinIO values shown — swap for real S3).
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://objectstore:9000}
+      S3_STORAGE_MODULES_BUCKET: ${S3_STORAGE_MODULES_BUCKET:-convex-modules}
+      S3_STORAGE_FILES_BUCKET: ${S3_STORAGE_FILES_BUCKET:-convex-files}
+      S3_STORAGE_SEARCH_BUCKET: ${S3_STORAGE_SEARCH_BUCKET:-convex-search}
+      S3_STORAGE_EXPORTS_BUCKET: ${S3_STORAGE_EXPORTS_BUCKET:-convex-exports}
+      S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET: ${S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET:-convex-snapshot-imports}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      AWS_REGION: ${S3_REGION:-us-east-1}
+      AWS_S3_FORCE_PATH_STYLE: ${AWS_S3_FORCE_PATH_STYLE:-true}
+      AWS_S3_DISABLE_CHECKSUMS: ${AWS_S3_DISABLE_CHECKSUMS:-true}
+      # Required for MinIO and other stores without KMS-backed SSE.
+      AWS_S3_DISABLE_SSE: ${AWS_S3_DISABLE_SSE:-true}
+
+      # Instance identity + security.
+      INSTANCE_NAME: ${INSTANCE_NAME:-convex-self-hosted}
+      # Root secret for the deployment. Generate once (openssl rand -hex 32)
+      # and store in your secrets manager — rotating it invalidates ALL admin
+      # keys and sessions. If unset the backend self-generates one into the
+      # data volume, which is lost with the volume.
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
+
+      # Public origins (set to the real hostnames customers reach).
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:3210}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://127.0.0.1:3211}
+
+      # Concurrency knobs — raise with instance size.
+      APPLICATION_MAX_CONCURRENT_MUTATIONS: ${APPLICATION_MAX_CONCURRENT_MUTATIONS:-16}
+      APPLICATION_MAX_CONCURRENT_QUERIES: ${APPLICATION_MAX_CONCURRENT_QUERIES:-16}
+      APPLICATION_MAX_CONCURRENT_V8_ACTIONS: ${APPLICATION_MAX_CONCURRENT_V8_ACTIONS:-16}
+      APPLICATION_MAX_CONCURRENT_NODE_ACTIONS: ${APPLICATION_MAX_CONCURRENT_NODE_ACTIONS:-16}
+
+      # Ops.
+      DISABLE_BEACON: ${DISABLE_BEACON:-true}
+      DISABLE_METRICS_ENDPOINT: ${DISABLE_METRICS_ENDPOINT:-true}
+      DOCUMENT_RETENTION_DELAY: ${DOCUMENT_RETENTION_DELAY:-172800}
+      REDACT_LOGS_TO_CLIENT: ${REDACT_LOGS_TO_CLIENT:-true}
+      RUST_LOG: ${RUST_LOG:-info}
+    healthcheck:
+      test: curl -f http://localhost:3210/version
+      interval: 5s
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      objectstore-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  dashboard:
+    # Optional admin UI. NOTE: `latest` images have shipped a broken vendored
+    # module (@radix-ui/react-icons) — pin a known-good tag or leave disabled;
+    # the backend is fully operable via the CLI without it.
+    image: ${CONVEX_DASHBOARD_IMAGE:-ghcr.io/get-convex/convex-dashboard:latest}
+    profiles: ["dashboard"]
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "${DASHBOARD_PORT:-6791}:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:3210}
+      NEXT_PUBLIC_LOAD_MONACO_INTERNALLY: "true"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  data:
+  pgdata:
+  objectstoredata:

@@ -1,0 +1,165 @@
+---
+title: Self-Hosted Convex Backend
+description: Run Overlay on the official open-source Convex backend with PostgreSQL persistence and S3-compatible storage — full feature parity with Convex Cloud.
+---
+
+# Self-Hosted Convex Backend
+
+Overlay can run against the **official open-source Convex backend** instead of Convex Cloud. This is the enterprise path: customers own the infrastructure, data sovereignty stays inside their boundary, and every Overlay feature — realtime sync, crons, file storage, components — works identically to the hosted deployment.
+
+The reference stack lives in `examples/customer-deployment/`:
+
+- `docker-compose.convex.yml` — backend + Postgres + S3-compatible store
+- `convex.env.example` — the complete environment contract
+- `bin/convex-bootstrap.sh` — first-run automation
+
+---
+
+## Architecture
+
+```
+┌────────────┐   queries/mutations + WS sync    ┌─────────────────┐
+│ Overlay web│ ──────────────────────────────►  │ convex-backend  │
+│  (Next.js) │                                  │  (official OSS) │
+└────────────┘                                  └────┬───────┬────┘
+      ▲                                              │       │
+      │ NEXT_PUBLIC_CONVEX_URL                ┌──────▼──┐ ┌──▼─────┐
+      │                                       │Postgres │ │   S3   │
+      └───────────────────────────────────────│documents│ │modules │
+        INTERNAL_API_SECRET / SERVICE_AUTH    │ indexes │ │ files  │
+        (must match on both sides)            └─────────┘ └────────┘
+```
+
+| Service | Role | Default port |
+|---|---|---|
+| `backend` | Convex runtime — functions, realtime sync, crons, storage | `3210` (API+WS), `3211` (site proxy) |
+| `postgres` | Durable persistence — Convex's internal `documents`/`indexes`/`leases` tables | `5432` (internal) |
+| `objectstore` | Bundled S3-compatible object store for modules, user files, search indexes, exports | `9000`, `9001` (console) |
+| `dashboard` | Optional admin UI (`--profile dashboard`) | `6791` |
+
+Swap `postgres` for RDS/Aurora and the bundled `objectstore` service for real S3 by changing only env vars — the backend doesn't care where persistence lives.
+
+---
+
+## Prerequisites
+
+- Docker + Docker Compose (or the equivalent on your container platform)
+- Node.js + `npx` on the operator machine (for the Convex CLI deploy)
+- The Overlay repo checkout (the `convex/` function tree deploys from it)
+- A secrets manager for `INSTANCE_SECRET`, DB password, S3 keys, and the app/backend shared secrets
+
+---
+
+## Bootstrap
+
+```bash
+cd examples/customer-deployment
+cp convex.env.example convex.env
+# Fill in: POSTGRES_PASSWORD, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY,
+#          INSTANCE_SECRET (openssl rand -hex 32), CONVEX_CLOUD_ORIGIN,
+#          CONVEX_SITE_ORIGIN
+
+docker compose -f docker-compose.convex.yml --env-file convex.env up -d
+docker compose -f docker-compose.convex.yml ps   # backend should be healthy
+
+./bin/convex-bootstrap.sh \
+  --api-secret "$(openssl rand -hex 32)" \
+  --service-secret "$(openssl rand -hex 32)"
+```
+
+The bootstrap script generates an admin key inside the backend container, writes `convex.env.local` (gitignored, chmod 600) with `CONVEX_SELF_HOSTED_URL` + `CONVEX_SELF_HOSTED_ADMIN_KEY`, deploys the full `convex/` tree, and sets the two shared secrets on the deployment.
+
+### Point the app at it
+
+In the app's env (`.env.onprem` or your runtime config):
+
+```bash
+NEXT_PUBLIC_CONVEX_URL=<CONVEX_CLOUD_ORIGIN>   # e.g. https://convex-api.acme.com
+INTERNAL_API_SECRET=<same value passed to --api-secret>
+INTERNAL_SERVICE_AUTH_SECRET=<same value passed to --service-secret>
+OVERLAY_BFF_URL=<public app URL>              # required — crons call back into the app
+OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1       # only if using hosted AI providers
+```
+
+`INTERNAL_API_SECRET` and `INTERNAL_SERVICE_AUTH_SECRET` must be **different values** and must match exactly on both sides — they are the app↔backend trust boundary (the app mints Convex session tokens with them).
+
+Set WorkOS/AuthKit on the deployment too, if used:
+
+```bash
+npx convex env set WORKOS_CLIENT_ID <id> --env-file convex.env.local
+npx convex env set WORKOS_API_KEY <key> --env-file convex.env.local
+```
+
+### First user
+
+The first user signs up through the normal app flow (AuthKit/OIDC/Better Auth depending on your `AUTH_PROVIDER`). Normal onboarding seeds the subscription + `system:member` role — a fresh deployment denies everything until that runs.
+
+---
+
+## Operating it
+
+### Health
+
+```bash
+curl http://<backend-host>:3210/version        # 200 = healthy
+docker compose -f docker-compose.convex.yml logs -f backend
+```
+
+Metrics are off by default (`DISABLE_METRICS_ENDPOINT=true`). Enable and scrape `/metrics` on the backend for Prometheus.
+
+### Upgrades
+
+1. `npx convex export --env-file convex.env.local` — snapshot first, always.
+2. Bump `CONVEX_BACKEND_IMAGE` to the new pinned tag; `up -d`.
+3. Watch logs for `Executing Migration n/m` and `MigrationComplete`.
+4. Roll back by restoring the export (`npx convex import`) if needed.
+
+Never run floating `:latest` in production — pin tags in `convex.env`.
+
+### Backups
+
+- **Postgres**: standard snapshots/PITR cover `documents`, `indexes`, `leases`.
+- **Exports**: scheduled `npx convex export` gives a portable archive — also the escape hatch for engine migrations.
+- **Object storage**: the buckets hold user files and modules; snapshot with your S3 tooling (or the bundled store's volume).
+
+### Key rotation
+
+`INSTANCE_SECRET` rotation invalidates **all admin keys and sessions**. Planned rotation only: export first, rotate in `convex.env`, recreate the backend, re-run bootstrap, re-mint app-side tokens. `INTERNAL_*` secrets rotate the same way — update the deployment (`env set`) and app together.
+
+### Scaling & HA
+
+- **Vertical first**: the backend is single-writer; scale CPU/memory and raise the `APPLICATION_MAX_CONCURRENT_*` knobs.
+- **Same-AZ placement** for backend↔Postgres — every function call round-trips the persistence layer.
+- **Active-passive failover**: the `leases` table in Postgres lets a second backend task take over if the first dies — run 1 active + 1 standby, never 2 writers.
+- Read replicas don't help (single-writer sync engine). Horizontal scale is shard-by-tenant if ever needed.
+
+### Data integration — the no-direct-SQL rule
+
+`documents`/`indexes` are **opaque internal tables**. Integrations must go through:
+
+- **Data Sync API** (`GET /api/data/sync?format=json` — WebSocket, admin-key auth, ungated on OSS) for lake export.
+- The app's public APIs + webhook system for live integration.
+- A future normalized **mirror sidecar** if SQL consumers need a relational read model.
+
+Direct `SELECT` against Convex internals is unsupported — the schema is an implementation detail.
+
+---
+
+## Verified end-to-end
+
+This exact stack was validated against Overlay's real code path (see `docs/develop/convex-only-self-hosting.md`):
+
+- Full `convex/` tree deploys unmodified (150+ tables, stripe component)
+- Postgres persistence — all documents in `documents` table
+- 18 cron jobs register and execute on schedule
+- S3 file upload → object store → `getUrl` serve-back round trip
+- HS256 browser-token auth + WorkOS env config on the deployment
+- Real AI chat via Vercel AI Gateway, persisted to Postgres
+- Data Sync WebSocket handshake returns `101` with admin-key auth
+
+## Known limitations
+
+- **`convex-dashboard:latest` image is broken upstream** (missing vendored `@radix-ui/react-icons` — returns HTTP 500). Pin a known-good tag or run without the dashboard; the backend needs only the CLI.
+- The bundled postgres service is a reference — production should point `POSTGRES_URL` at managed Postgres (RDS/Aurora) with TLS (`DO_NOT_REQUIRE_SSL=false`).
+- Object stores without KMS-backed encryption require `AWS_S3_DISABLE_SSE=true`. Real S3 doesn't.
+- Active-active backend HA is not supported — single writer, lease-based failover.
