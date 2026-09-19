@@ -21,10 +21,10 @@
     "showcase:generate-assets": "node scripts/ci/generate-public-showcase-assets.mjs",
     "dev:with-convex": "npm run convex:push:dev && next dev",
     "dev:better-auth": "node --env-file=.env.better-auth.local node_modules/next/dist/bin/next dev",
-    "better-auth:db:up": "docker compose --env-file .env.better-auth.local -f docker/docker-compose.better-auth.yml up -d",
-    "better-auth:db:down": "docker compose --env-file .env.better-auth.local -f docker/docker-compose.better-auth.yml down",
-    "better-auth:db:logs": "docker compose --env-file .env.better-auth.local -f docker/docker-compose.better-auth.yml logs -f better-auth-postgres",
-    "better-auth:migrate": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.better-auth.local scripts/db/better-auth-migrate.ts",
+    "better-auth:db:up": "docker compose -f docker/docker-compose.better-auth.yml up -d --wait",
+    "better-auth:db:down": "docker compose -f docker/docker-compose.better-auth.yml down",
+    "better-auth:db:logs": "docker compose -f docker/docker-compose.better-auth.yml logs -f better-auth-postgres",
+    "better-auth:migrate": "NODE_OPTIONS=--conditions=react-server tsx --env-file-if-exists=.env.better-auth.local scripts/db/better-auth-migrate.ts",
     "test:app-data-contracts:convex": "NODE_ENV=development APP_DATA_CONTRACT_CONVEX=1 NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.development.local --test src/server/app-data/contracts/convex-contract.test.ts",
     "test:app-data-contracts": "npm run test:app-data-contracts:convex",
     "check:on-prem-convex-boundaries": "tsx scripts/ci/check-on-prem-convex-boundaries.ts",
@@ -284,7 +284,7 @@
     "server-only": "^0.0.1",
     "stripe": "^20.3.1",
     "undici": "7.29.0",
-    "workflow": "4.8.5",
+    "workflow": "4.8.9",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -314,7 +314,7 @@
     "follow-redirects": "1.16.0",
     "postcss": "8.5.26",
     "protobufjs": "8.6.6",
-    "sharp": "0.35.3",
+    "sharp": "0.35.4",
     "tar": "7.5.22",
     "@daytona/sdk@0.200.1": {
       "@opentelemetry/sdk-node": "0.221.0"
@@ -329,9 +329,9 @@
       "react": "$react"
     },
     "fast-uri": "3.1.6",
-    "hono": "4.12.34",
+    "hono": "4.13.8",
     "ip-address": "10.3.1",
-    "js-yaml": "4.3.1",
+    "js-yaml": "5.4.2",
     "esbuild@<=0.24.2": "0.25.12",
     "nanoid@<4": "3.3.18",
     "nanoid@>=4 <6": "5.1.16",
@@ -346,8 +346,12 @@
     "glob@13.0.6": {
       "brace-expansion": "5.0.9"
     },
-    "qs": "6.15.3",
+    "qs": "6.16.0",
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4"
+    "@types/react-dom": "19.2.4",
+    "adm-zip": "0.6.1",
+    "@mintlify/scraping": {
+      "puppeteer": "25.11.0"
+    }
   }
 }
