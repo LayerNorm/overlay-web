@@ -6,11 +6,25 @@ ENV NEXT_OUTPUT_MODE=standalone
 
 # NEXT_PUBLIC_* values are inlined into the built bundle. Self-hosted
 # deployments must pass their own values at image build time; the image cannot
-# be repointed at a different Convex URL or app origin at runtime.
-ARG NEXT_PUBLIC_CONVEX_URL
-ARG NEXT_PUBLIC_APP_URL
+# be repointed at a different Convex URL or app origin at runtime. Defaults
+# point the published image at Overlay's hosted backend.
+ARG NEXT_PUBLIC_CONVEX_URL=https://colorful-chickadee-419.convex.cloud
+ARG NEXT_PUBLIC_APP_URL=https://getoverlay.io
 ENV NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL}
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+
+# Build-time placeholder values: the production config schema validates these
+# during static prerendering (sign-in page config resolution). They exist only
+# in the builder stage — the published image's runtime env supplies real values.
+ENV INTERNAL_API_SECRET=build-time-placeholder-api \
+    INTERNAL_SERVICE_AUTH_SECRET=build-time-placeholder-service \
+    STRIPE_SECRET_KEY=sk_live_buildplaceholder \
+    STRIPE_WEBHOOK_SECRET=whsec_buildplaceholder \
+    WORKOS_CLIENT_ID=build-time-placeholder \
+    WORKOS_API_KEY=build-time-placeholder \
+    SESSION_SECRET=build-time-placeholder \
+    SESSION_TRANSFER_KEY=build-time-placeholder \
+    SESSION_COOKIE_ENCRYPTION_KEY=build-time-placeholder
 
 COPY .npmrc package.json package-lock.json ./
 COPY packages ./packages
