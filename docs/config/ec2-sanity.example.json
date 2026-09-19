@@ -19,7 +19,6 @@
     "knowledge": false,
     "automations": false,
     "integrations": false,
-    "projects": true,
     "skills": false,
     "mcpServers": false,
     "browserUse": false,
@@ -36,20 +35,48 @@
     "multiTenant": false
   },
   "providers": {
-    "auth": { "provider": "better-auth" },
-    "database": { "provider": "postgres" },
-    "objectStorage": { "provider": "none" },
-    "vectorSearch": { "provider": "none" },
-    "embeddings": { "provider": "none" },
-    "models": { "provider": "ai-gateway" },
-    "integrations": { "provider": "none" },
-    "browser": { "provider": "none" },
-    "sandbox": { "provider": "none" },
-    "webSearch": { "provider": "none" },
-    "analytics": { "provider": "none" },
-    "errorReporting": { "provider": "none" },
-    "secrets": { "provider": "env" },
-    "rateLimit": { "provider": "redis" }
+    "auth": {
+      "provider": "better-auth"
+    },
+    "database": {
+      "provider": "postgres"
+    },
+    "objectStorage": {
+      "provider": "none"
+    },
+    "vectorSearch": {
+      "provider": "none"
+    },
+    "embeddings": {
+      "provider": "none"
+    },
+    "models": {
+      "provider": "ai-gateway"
+    },
+    "integrations": {
+      "provider": "none"
+    },
+    "browser": {
+      "provider": "none"
+    },
+    "sandbox": {
+      "provider": "none"
+    },
+    "webSearch": {
+      "provider": "none"
+    },
+    "analytics": {
+      "provider": "none"
+    },
+    "errorReporting": {
+      "provider": "none"
+    },
+    "secrets": {
+      "provider": "env"
+    },
+    "rateLimit": {
+      "provider": "redis"
+    }
   },
   "app": {
     "baseUrl": "http://localhost:3000",
@@ -69,7 +96,9 @@
       "basePath": "/api/better-auth",
       "secret": "replace_with_better_auth_secret",
       "databaseUrl": "postgresql://overlay_auth:replace_with_password@db.example.com:5432/overlay_auth",
-      "trustedOrigins": ["http://localhost:3000"],
+      "trustedOrigins": [
+        "http://localhost:3000"
+      ],
       "jwtIssuer": "http://localhost:3000",
       "jwtAudience": "http://localhost:3000",
       "jwksUrl": "http://localhost:3000/api/better-auth/jwks"
@@ -89,7 +118,9 @@
     "gatewayProvider": "ai-gateway",
     "keySource": "env",
     "defaultChatModelId": "openai/gpt-4.1-mini",
-    "modelAllowlist": ["openai/gpt-4.1-mini"],
+    "modelAllowlist": [
+      "openai/gpt-4.1-mini"
+    ],
     "apiKeyEnvVar": "AI_GATEWAY_API_KEY"
   },
   "database": {
