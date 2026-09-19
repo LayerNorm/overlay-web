@@ -20,7 +20,7 @@ Three services: the **backend** (`ghcr.io/get-convex/convex-backend`, a single R
 
 | Port | Purpose |
 | --- | --- |
-| 3210 | Cloud origin — client API, queries/mutations/WS sync (`NEXT_PUBLIC_CONVEX_URL` target) |
+| 3210 | Cloud origin — the client API plus realtime sync; this is the `NEXT_PUBLIC_CONVEX_URL` target |
 | 3211 | Site origin — Convex HTTP actions |
 | 6791 | Dashboard (internal only) |
 

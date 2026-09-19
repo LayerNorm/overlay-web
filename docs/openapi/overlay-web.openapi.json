@@ -35,6 +35,9 @@
       "name": "Chat"
     },
     {
+      "name": "Computers"
+    },
+    {
       "name": "Conversations"
     },
     {
@@ -72,9 +75,6 @@
     },
     {
       "name": "Outputs"
-    },
-    {
-      "name": "Projects"
     },
     {
       "name": "Settings"
@@ -2653,6 +2653,96 @@
         }
       }
     },
+    "/api/v1/agent-environments/{environmentId}/reset-harness": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdResetHarness",
+        "summary": "Reset a managed-harness environment session and destroy its sandbox",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agent-environments/{environmentId}/revoke": {
       "post": {
         "operationId": "postAgentEnvironmentsEnvironmentIdRevoke",
@@ -3212,6 +3302,63 @@
       }
     },
     "/api/v1/agent-environments/managed": {
+      "get": {
+        "operationId": "getAgentEnvironmentsManaged",
+        "summary": "List managed harness runtimes available to the active workspace",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "operationId": "postAgentEnvironmentsManaged",
         "summary": "Provision an Overlay Cloud agent environment",
@@ -3516,15 +3663,6 @@
             }
           },
           {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
             "name": "includeDeleted",
             "in": "query",
             "required": false,
@@ -3634,9 +3772,6 @@
                     "type": "string"
                   },
                   "schedule": {},
-                  "projectId": {
-                    "type": "string"
-                  },
                   "automationId": {
                     "type": "string",
                     "minLength": 1
@@ -3730,10 +3865,7 @@
                   "prompt": {
                     "type": "string"
                   },
-                  "schedule": {},
-                  "projectId": {
-                    "type": "string"
-                  }
+                  "schedule": {}
                 },
                 "additionalProperties": true
               }
@@ -4175,6 +4307,559 @@
         }
       }
     },
+    "/api/v1/computers": {
+      "get": {
+        "operationId": "getComputers",
+        "summary": "List caller-visible workspace computers",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postComputers",
+        "summary": "Provision a workspace computer (idempotent per owner)",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ownerType": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "size": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ownerType",
+                  "ownerId"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/computers/{computerId}": {
+      "delete": {
+        "operationId": "deleteComputersComputerId",
+        "summary": "Destroy a computer and its backing machine",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "computerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getComputersComputerId",
+        "summary": "Read one workspace computer",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "computerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/computers/{computerId}/desktop": {
+      "post": {
+        "operationId": "postComputersComputerIdDesktop",
+        "summary": "Issue a short-lived desktop stream ticket",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "computerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/computers/{computerId}/start": {
+      "post": {
+        "operationId": "postComputersComputerIdStart",
+        "summary": "Resume a stopped computer machine",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "computerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/computers/{computerId}/stop": {
+      "post": {
+        "operationId": "postComputersComputerIdStop",
+        "summary": "Stop a running computer machine",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "computerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/conversations": {
       "delete": {
         "operationId": "deleteConversations",
@@ -4414,15 +5099,6 @@
             }
           },
           {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
             "name": "updatedSince",
             "in": "query",
             "required": false,
@@ -4546,10 +5222,6 @@
                     "minLength": 1,
                     "maxLength": 200
                   },
-                  "projectId": {
-                    "type": "string",
-                    "nullable": true
-                  },
                   "askModelIds": {
                     "type": "array",
                     "items": {
@@ -4662,9 +5334,6 @@
                     "minLength": 1,
                     "maxLength": 200
                   },
-                  "projectId": {
-                    "type": "string"
-                  },
                   "askModelIds": {
                     "type": "array",
                     "items": {
@@ -4773,9 +5442,6 @@
                   "conversationClientId": {
                     "type": "string",
                     "minLength": 1
-                  },
-                  "projectId": {
-                    "type": "string"
                   },
                   "askModelIds": {
                     "type": "array",
@@ -4995,9 +5661,6 @@
                   "conversationClientId": {
                     "type": "string",
                     "minLength": 1
-                  },
-                  "projectId": {
-                    "type": "string"
                   },
                   "askModelIds": {
                     "type": "array",
@@ -6403,15 +7066,6 @@
             }
           },
           {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
             "name": "kind",
             "in": "query",
             "required": false,
@@ -6551,10 +7205,6 @@
                     "type": "number",
                     "minimum": 0
                   },
-                  "projectId": {
-                    "type": "string",
-                    "nullable": true
-                  },
                   "parentId": {
                     "type": "string",
                     "nullable": true
@@ -6660,10 +7310,6 @@
                   "sizeBytes": {
                     "type": "number",
                     "minimum": 0
-                  },
-                  "projectId": {
-                    "type": "string",
-                    "nullable": true
                   },
                   "parentId": {
                     "type": "string",
@@ -7884,9 +8530,6 @@
                     "type": "string",
                     "minLength": 1
                   },
-                  "projectId": {
-                    "type": "string"
-                  },
                   "limit": {
                     "type": "integer",
                     "exclusiveMinimum": true,
@@ -8195,14 +8838,6 @@
             }
           },
           {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "skillId",
             "in": "query",
             "required": false,
@@ -8293,9 +8928,6 @@
                   },
                   "name": {
                     "type": "string"
-                  },
-                  "projectId": {
-                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -8376,9 +9008,6 @@
                     "minLength": 1
                   },
                   "name": {
-                    "type": "string"
-                  },
-                  "projectId": {
                     "type": "string"
                   }
                 },
@@ -8891,15 +9520,6 @@
                 "1",
                 "0"
               ]
-            }
-          },
-          {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
             }
           },
           {
@@ -9486,15 +10106,6 @@
             }
           },
           {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
             "name": "includeDeleted",
             "in": "query",
             "required": false,
@@ -9588,9 +10199,6 @@
                   "content": {
                     "type": "string"
                   },
-                  "projectId": {
-                    "type": "string"
-                  },
                   "noteId": {
                     "type": "string",
                     "minLength": 1
@@ -9681,9 +10289,6 @@
                     "maxLength": 200
                   },
                   "content": {
-                    "type": "string"
-                  },
-                  "projectId": {
                     "type": "string"
                   }
                 },
@@ -10215,480 +10820,6 @@
             }
           }
         ]
-      }
-    },
-    "/api/v1/projects": {
-      "delete": {
-        "operationId": "deleteProjects",
-        "summary": "Delete a project",
-        "tags": [
-          "Projects"
-        ],
-        "security": [
-          {
-            "browserSession": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Unexpected server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "accessToken",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
-            "name": "userId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "accessToken": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "userId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "projectId": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "operationId": "getProjects",
-        "summary": "List projects",
-        "tags": [
-          "Projects"
-        ],
-        "security": [
-          {
-            "browserSession": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Unexpected server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20
-            }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "createdAt",
-                "updatedAt",
-                "name"
-              ],
-              "default": "updatedAt"
-            }
-          },
-          {
-            "name": "order",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "asc",
-                "desc"
-              ],
-              "default": "desc"
-            }
-          },
-          {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
-            "name": "updatedSince",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d+$"
-            }
-          },
-          {
-            "name": "includeDeleted",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "1",
-                "0"
-              ]
-            }
-          },
-          {
-            "name": "archived",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "1",
-                "0"
-              ]
-            }
-          }
-        ]
-      },
-      "patch": {
-        "operationId": "patchProjects",
-        "summary": "Update a project",
-        "tags": [
-          "Projects"
-        ],
-        "security": [
-          {
-            "browserSession": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Unexpected server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "accessToken": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "userId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200
-                  },
-                  "parentId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "nullable": true
-                  },
-                  "instructions": {
-                    "type": "string"
-                  },
-                  "clientId": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "color": {
-                    "type": "string"
-                  },
-                  "projectId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "archived": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "projectId"
-                ],
-                "additionalProperties": true
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "postProjects",
-        "summary": "Create a project",
-        "tags": [
-          "Projects"
-        ],
-        "security": [
-          {
-            "browserSession": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Unexpected server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "accessToken": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "userId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200
-                  },
-                  "parentId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "nullable": true
-                  },
-                  "instructions": {
-                    "type": "string"
-                  },
-                  "clientId": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "color": {
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": true
-              }
-            }
-          }
-        }
       }
     },
     "/api/v1/providers/connections": {
@@ -11635,14 +11766,6 @@
             }
           },
           {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "skillId",
             "in": "query",
             "required": false,
@@ -11733,9 +11856,6 @@
                   },
                   "name": {
                     "type": "string"
-                  },
-                  "projectId": {
-                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -11816,9 +11936,6 @@
                     "minLength": 1
                   },
                   "name": {
-                    "type": "string"
-                  },
-                  "projectId": {
                     "type": "string"
                   }
                 },
