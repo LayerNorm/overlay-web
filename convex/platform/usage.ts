@@ -234,6 +234,29 @@ async function getSucceededTopUpTotalCents(ctx: EntitlementCtx, userId: string, 
   ), 0)
 }
 
+async function activePersonalReservationHoldCents(
+  ctx: EntitlementCtx,
+  userId: string,
+): Promise<{ allowance: number; topUp: number; total: number }> {
+  const rows = await ctx.db
+    .query('budgetReservations')
+    .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+    .collect()
+  let allowance = 0
+  let topUp = 0
+  for (const row of rows) {
+    if (row.status !== 'reserved' && row.status !== 'reconcile_required') continue
+    if (row.spendSubjectKind || row.spendSubjectId) continue
+    if (row.reservedAllowanceCents === undefined) {
+      allowance += row.reservedCents
+      continue
+    }
+    allowance += row.reservedAllowanceCents
+    topUp += row.reservedTopUpCents ?? 0
+  }
+  return { allowance, topUp, total: allowance + topUp }
+}
+
 async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   const subscription = await ctx.db
     .query('subscriptions')
@@ -268,7 +291,12 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   } as const
 
   const defaults = tierDefaults[planKind]
-  const budgetUsedCents = subscription?.creditsUsed ?? 0
+  const committedCents = subscription?.creditsUsed ?? 0
+  const holds = subscription
+    ? await activePersonalReservationHoldCents(ctx, subscription.userId)
+    : { allowance: 0, topUp: 0, total: 0 }
+  const budgetUsedCents = roundCreditAmount(Math.max(0, committedCents - holds.total))
+  const allowanceUsedCents = roundCreditAmount(Math.max(0, buckets.allowanceUsed - holds.allowance))
 
   let weeklyTranscriptionSeconds = 0
   let weeklyUsage = { ask: 0, write: 0, agent: 0 }
@@ -304,10 +332,10 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
     planAmountCents,
     budgetUsedCents,
     budgetTotalCents,
-    budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+    budgetRemainingCents: Math.max(0, budgetTotalCents - committedCents),
     allowanceTotalCents: buckets.allowanceTotal,
-    allowanceUsedCents: buckets.allowanceUsed,
-    allowancePercentUsed: allowancePercentUsed(buckets),
+    allowanceUsedCents,
+    allowancePercentUsed: allowancePercentUsed({ ...buckets, allowanceUsed: allowanceUsedCents }),
     topUpBalanceCents: buckets.topUpBalance,
     autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
     autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
@@ -1069,21 +1097,31 @@ export const listBudgetReservationReconciliationByServer = query({
     serverSecret: v.string(),
     limit: v.optional(v.number()),
     updatedBefore: v.optional(v.number()),
+    userId: v.optional(v.string()),
   },
   returns: v.array(usageReconciliationQueueItemValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const limit = Math.min(Math.max(args.limit ?? 100, 1), 1_000)
-    const rows = await ctx.db
-      .query('budgetReservations')
-      .withIndex('by_status_updatedAt', (q) => {
-        const statusQuery = q.eq('status', 'reconcile_required')
-        return args.updatedBefore === undefined
-          ? statusQuery
-          : statusQuery.lte('updatedAt', args.updatedBefore)
-      })
-      .order('asc')
-      .take(limit)
+    const rows = args.userId === undefined
+      ? await ctx.db
+        .query('budgetReservations')
+        .withIndex('by_status_updatedAt', (q) => {
+          const statusQuery = q.eq('status', 'reconcile_required')
+          return args.updatedBefore === undefined
+            ? statusQuery
+            : statusQuery.lte('updatedAt', args.updatedBefore)
+        })
+        .order('asc')
+        .take(limit)
+      : (await ctx.db
+        .query('budgetReservations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId!))
+        .collect())
+        .filter((row) => row.status === 'reconcile_required' &&
+          (args.updatedBefore === undefined || row.updatedAt <= args.updatedBefore))
+        .sort((a, b) => a.updatedAt - b.updatedAt)
+        .slice(0, limit)
     return rows.map((row) => ({
       createdAt: row.createdAt,
       ...(row.errorMessage === undefined ? {} : { errorMessage: row.errorMessage }),

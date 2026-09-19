@@ -205,6 +205,7 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
         ...args,
         serverSecret: this.serverSecret,
       },
+      { throwOnError: true },
     )
   }
 
@@ -237,7 +238,7 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
     return await convex.mutation('billing/subscriptions:upsertSubscription', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async upsertBillingAccountSubscription(args: Record<string, unknown> & {
@@ -274,7 +275,7 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
     return await convex.mutation('billing/subscriptions:recordBudgetTopUpByServer', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async recordBillingAccountTopUp(args: {
@@ -291,7 +292,7 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
     return await convex.mutation('billing/accountSubscriptions:recordTopUpByServer', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async reverseTopUp(args: {

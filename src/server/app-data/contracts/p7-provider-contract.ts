@@ -275,7 +275,7 @@ export async function runP7ProviderContract(
         reservationId: releaseId,
         userId,
       })
-      const queue = await backend.usage.listReconciliationQueue({ limit: 100 })
+      const queue = await backend.usage.listReconciliationQueue({ limit: 100, userId })
       assert.ok(queue.some((item) => item.reservationId === releaseId))
 
       const evidence = {
@@ -335,7 +335,7 @@ export async function runP7ProviderContract(
         status: 'finalized',
       })
       assert.equal(
-        (await backend.usage.listReconciliationQueue({ limit: 100 }))
+        (await backend.usage.listReconciliationQueue({ limit: 100, userId }))
           .some((item) => item.reservationId === finalizeId || item.reservationId === releaseId),
         false,
       )
