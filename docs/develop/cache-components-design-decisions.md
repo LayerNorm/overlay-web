@@ -85,7 +85,10 @@ two shared-shell group opt-outs below are deleted with the layouts.
 40. `/auth/sign-in`, `/auth/sign-up`, `/auth/forgot-password`,
     `/auth/reset-password`, `/auth/mobile-complete` — client pages that bring
     their own `LandingAuthBoundary` Suspense. The group layout is a plain
-    full-height surface with no session I/O, so no opt-out is needed.
+    full-height surface with no session I/O, so no opt-out is needed. All
+    loading surfaces (`auth/loading.tsx` and the boundary fallbacks) share
+    `AuthPageSkeleton` from `src/app/_components/RouteLoadingFallbacks.tsx`,
+    which mirrors the split auth chrome layout rather than a generic spinner.
 
 `/download` keeps its page-level opt-out for the async release-info fetch and
 is now tracked as item 41 in the medium-risk list below.

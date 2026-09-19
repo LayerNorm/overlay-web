@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Changed
+
+- Redesigned the auth screens (`/auth/sign-in`, `/auth/sign-up`, `/auth/forgot-password`, `/auth/reset-password`) around a split layout — a quiet brand panel with the orb mark and tagline on desktop, a compact brand mark above the form on mobile — replacing the floating card. Auth options and the SSO capability flag are now resolved server-side during page render instead of two client fetches (`/api/auth/options`, `/api/v1/capabilities`), so the full form paints on first load rather than popping in after the heading. Sign-up's explicit Terms/Privacy toggle is now standard implicit-consent fine print ("By continuing, you agree to…"); the legal acceptance payload with document versions is still recorded identically at click time. The column scrolls safely when the form exceeds viewport height. The brand mark renders the canonical inline SVG `OverlayMark` at `MARKETING_LOGO_SIZE` — identical to the landing header — instead of the raster `overlay-logo.png`, and every auth loading surface (`auth/loading.tsx` plus the `LandingAuthBoundary`/reset-password Suspense fallbacks) now renders a shared `AuthPageSkeleton` that mirrors the split layout's real component positions rather than a top-left spinner.
+
 ### Fixed
 
 - Managed sandboxes no longer burn provider budget while idle. Vercel sandboxes have no native idle-stop — they run until the 24-hour `timeout` — so every managed lease provisioned ~96 GB-hours/day of memory whether or not the agent was used. The meter now enforces the lease's idle window itself: a sandbox with no acquire/settle activity for `idleTimeoutMs` (15 minutes) is stopped while the lease stays resumable, turn-slice acquires heartbeat `usage.lastActiveAt` so working sandboxes never cool mid-turn, and `running` leases past their 24-hour `reservedUntil` are reaped instead of lingering forever.
