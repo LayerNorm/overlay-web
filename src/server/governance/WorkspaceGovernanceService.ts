@@ -51,8 +51,6 @@ export class WorkspaceGovernanceService {
     rateLimiter: RateLimiter
     repository: WorkspaceRepository
     workspaces: WorkspaceService
-    appDataProvider: string
-    requiresConvexClient: boolean
     metrics?: {
       outboxPending(workspaceId: string): Promise<{ count: number; oldestAgeMs: number }>
       failedDeliveries(workspaceId: string): Promise<number>
@@ -302,8 +300,8 @@ export class WorkspaceGovernanceService {
       )).length,
       unreadDriftConversations: unreadDrift,
       providerParity: {
-        provider: this.deps.appDataProvider,
-        requiresConvexClient: this.deps.requiresConvexClient,
+        provider: 'convex',
+        requiresConvexClient: true,
       },
     }
   }

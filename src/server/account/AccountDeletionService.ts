@@ -3,10 +3,7 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { OverlayServerContext } from '@/server/bootstrap'
-import type {
-  AccountDataDeletionResult,
-  AccountDataDeletionVerification,
-} from './AccountDataDeletionRepository'
+import type { AccountDataDeletionVerification } from './AccountDataDeletionRepository'
 import {
   getIntegrationProvider,
   getSelectedIntegrationProviderId,
@@ -28,9 +25,6 @@ export class AccountDeletionService {
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
     await this.deleteIntegrationConnectionsBestEffort(args.userId)
-    if (this.ctx.appDataCapabilities.provider === 'postgres') {
-      return await this.deletePostgresAccount(args)
-    }
 
     const { convex } = await import('@/server/database/convex')
     const convexResult = await convex.mutation<AccountDeletionResult>(
@@ -72,54 +66,11 @@ export class AccountDeletionService {
     }
   }
 
-  private async deletePostgresAccount(args: {
-    userId: string
-    request?: Request
-  }): Promise<AccountDeletionResult> {
-    if (!this.ctx.auth.deleteUser) {
-      throw new Error('The selected auth provider does not support account deletion.')
-    }
-    // Delete external provider credentials before removing the Postgres rows
-    // that contain their opaque references. This fails closed: if AWS refuses
-    // the deletion, the account remains intact and the operator can retry.
-    const credentialRefs = await this.ctx.appData.repositories.providerConnections.listCredentialRefs({
-      userId: args.userId,
-    })
-    for (const credentialRef of new Set(credentialRefs)) {
-      await this.ctx.byokCredentialStore.delete(credentialRef)
-    }
-    await this.ctx.auth.deleteUser(args.userId, args.request)
-
-    const result = await this.ctx.appData.repositories.accountDeletion.deleteUserAccount({
-      userId: args.userId,
-    })
-    if (result.verification.orphanedRowCount > 0) {
-      throw new Error(
-        `Postgres account deletion left ${result.verification.orphanedRowCount} orphaned user-owned rows.`,
-      )
-    }
-
-    await this.deleteObjectsBestEffort(result.r2Keys)
-    return postgresDeletionResultToAccountDeletionResult(result)
-  }
-
   private async deleteObjectsBestEffort(keys: string[]): Promise<void> {
     for (const key of keys) {
       await this.ctx.objectStore.deleteObject(key).catch((error) => {
         logger.error(`[account/delete] Object deletion failed for ${key}:`, error)
       })
     }
-  }
-}
-
-function postgresDeletionResultToAccountDeletionResult(
-  result: AccountDataDeletionResult,
-): AccountDeletionResult {
-  return {
-    deletedRowCount: result.deletedRowCount,
-    email: result.email,
-    r2Keys: result.r2Keys,
-    storageIds: result.storageIds,
-    verification: result.verification,
   }
 }

@@ -98,7 +98,6 @@ export async function runAppDataRepositoryContractSuite(
     })
 
     await t.test(`${backend.name}: conversations, messages, and AgentRuns preserve chat behavior`, async () => {
-      const eventCursor = await backend.conversations.getConversationEventCursor({ userId })
       const clientId = `conversation_${randomUUID()}`
       const conversationId = await backend.conversations.createConversation({
         userId,
@@ -365,39 +364,6 @@ export async function runAppDataRepositoryContractSuite(
         conversationId,
         userId,
       })).some((message) => message.turnId === 'turn_delete'), false)
-
-      if (backend.provider === 'postgres') {
-        const events = await backend.conversations.listConversationEvents({
-          afterSequence: eventCursor,
-          limit: 200,
-          userId,
-        })
-        assert.equal(events.length > 0, true)
-        assert.deepEqual(
-          events.map((event) => event.sequence),
-          [...events.map((event) => event.sequence)].sort((a, b) => a - b),
-        )
-        assert.equal(events.some((event) => event.type === 'message.completed'), true)
-        assert.equal(events.some((event) => event.type === 'conversation.shared'), true)
-        assert.equal(events.some((event) => event.type === 'message.deleted'), true)
-
-        const liveCursor = await backend.conversations.getConversationEventCursor({ userId })
-        const waitingForEvents = backend.conversations.waitForConversationEvents({
-          afterSequence: liveCursor,
-          limit: 20,
-          timeoutMs: 2_000,
-          userId,
-        })
-        await backend.conversations.updateConversation({
-          conversationId,
-          userId,
-          title: 'Realtime contract update',
-        })
-        const notifiedEvents = await waitingForEvents
-        assert.equal(notifiedEvents.some((event) => (
-          event.conversationId === conversationId && event.type === 'conversation.updated'
-        )), true)
-      }
 
       await backend.conversations.updateConversation({
         conversationId,

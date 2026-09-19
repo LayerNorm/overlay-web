@@ -68,7 +68,7 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
       assert.equal(channel.participantCount, 1)
     })
 
-    await t.test('organization invitation and ownership lifecycle matches Postgres', async () => {
+    await t.test('organization invitation and ownership lifecycle', async () => {
       const created = await repository.createOrganization({
         workspaceId: orgWorkspaceId,
         ownerPrincipalId,

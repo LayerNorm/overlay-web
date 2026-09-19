@@ -11,7 +11,7 @@ export type WorkspaceBillingContractBackend = {
   cleanupWorkspace?(workspaceId: string): Promise<void>
   cleanupUser?(userId: string): Promise<void>
   prepareUser?(userId: string, email: string): Promise<void>
-  provider: 'convex' | 'postgres'
+  provider: 'convex'
   usage: UsageRepository
   workspaces: WorkspaceService
 }

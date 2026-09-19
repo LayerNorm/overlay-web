@@ -71,9 +71,9 @@ test('idempotency repository stores and replays a JSON response', async () => {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': 'postgres-key-1',
+      'idempotency-key': 'smoke-key-1',
     },
-    body: JSON.stringify({ title: 'Postgres idempotency smoke' }),
+    body: JSON.stringify({ title: 'Idempotency smoke' }),
   })
   const run = async () => {
     calls += 1

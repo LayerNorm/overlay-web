@@ -12,7 +12,7 @@ const enabled = process.env.WORKSPACE_CONTRACT_CONVEX === '1'
 const hasConvexUrl = Boolean(process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL)
 const hasInternalSecret = Boolean(process.env.INTERNAL_API_SECRET?.trim())
 
-test('Convex named agents match the Postgres identity and archive contract', {
+test('Convex named agents match the workspace agent identity and archive contract', {
   skip: enabled && hasConvexUrl && hasInternalSecret
     ? false
     : 'Set WORKSPACE_CONTRACT_CONVEX=1 plus Convex URL and INTERNAL_API_SECRET',

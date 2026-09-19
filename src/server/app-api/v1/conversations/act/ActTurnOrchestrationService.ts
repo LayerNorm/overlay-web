@@ -190,8 +190,7 @@ export async function executeActTurn(
     }
     const uiMessages = messages as UIMessage[]
     const overlayContext = getOverlayServerContext()
-    const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
-    actWebhookSkip = automationExecution === true || isPostgresAppData
+    actWebhookSkip = automationExecution === true
     const { auth } = context
     const userId = auth.userId
     const conversationUserId = getAuthorizedResourceUserId(context)
@@ -410,13 +409,12 @@ export async function executeActTurn(
       // The resource owner, not the caller: a shared conversation loads its
       // owner's context while billing still follows the authenticated caller.
       userId: conversationUserId,
-      externalContextEnabled: !isPostgresAppData,
+      externalContextEnabled: true,
       workspaceId: billingWorkspaceId,
     })
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const mediaIntentTask: Promise<MediaToolIntent> = (() => {
-      if (isPostgresAppData) return Promise.resolve(null)
       if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
       if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
       if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
@@ -921,7 +919,7 @@ export async function executeActTurn(
             })
           }
         }
-        if (!isPostgresAppData) {
+        {
           void import('@/server/tools/tools/record-tool-invocation')
             .then(({ fireAndForgetRecordToolInvocation }) => {
               fireAndForgetRecordToolInvocation({

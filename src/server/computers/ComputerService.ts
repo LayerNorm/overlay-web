@@ -104,7 +104,7 @@ export class ComputerService {
       // Healthy or in-flight rows satisfy the provision call. Dead rows —
       // `error`, or `provisioning` left behind by a crashed create — are
       // reclaimed so the retry below starts clean instead of producing a
-      // second bound row (or tripping the Postgres unique binding).
+      // second bound row (or tripping the unique binding).
       if (existing.status !== 'error' && !staleProvisioning) return existing
       await this.deleteRowAndMachine(existing)
     }

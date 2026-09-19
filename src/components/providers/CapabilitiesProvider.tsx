@@ -13,7 +13,7 @@ import {
 } from '@overlay/app-core'
 
 export type ClientAppDataCapabilities = {
-  provider: 'convex' | 'postgres'
+  provider: 'convex'
   supportsRealtime: boolean
   supportsStreamResume: boolean
   supportsChatPersistence: boolean
@@ -88,7 +88,7 @@ function normalizeCapabilities(value: unknown): CapabilityCheck | null {
 function normalizeAppDataCapabilities(value: unknown): ClientAppDataCapabilities | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<ClientAppDataCapabilities>
-  if (candidate.provider !== 'convex' && candidate.provider !== 'postgres') return null
+  if (candidate.provider !== 'convex') return null
   for (const key of [
     'supportsRealtime',
     'supportsStreamResume',

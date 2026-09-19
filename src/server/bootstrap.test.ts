@@ -175,7 +175,7 @@ test('createOverlayServerContext wires Redis rate limiting when selected', () =>
   )
 })
 
-test('createOverlayServerContext returns Postgres app-data context with chat route capabilities', () => {
+test('createOverlayServerContext returns Convex app-data context with chat route capabilities', () => {
   const base = fixture('saas-staging.json')
   const runtimeConfig = parseOverlayRuntimeConfig({
     ...base,
@@ -190,21 +190,12 @@ test('createOverlayServerContext returns Postgres app-data context with chat rou
     },
     providers: {
       ...base.providers,
-      database: { provider: 'postgres' },
       vectorSearch: { provider: 'none' },
-    },
-    database: {
-      ...base.database,
-      provider: 'postgres',
-      postgres: {
-        connectionString: 'postgres://overlay_app:secret@localhost:54330/overlay_app',
-        sslMode: 'disable',
-      },
     },
   })
   const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
 
-  assert.equal(context.appDataCapabilities.provider, 'postgres')
+  assert.equal(context.appDataCapabilities.provider, 'convex')
   assert.equal(context.appDataCapabilities.supportsRealtime, true)
   assert.equal(context.appDataCapabilities.supportsStreamResume, true)
   assert.equal(context.appDataCapabilities.supportsChatPersistence, true)
@@ -215,33 +206,6 @@ test('createOverlayServerContext returns Postgres app-data context with chat rou
   assert.equal(context.appDataCapabilities.supportsPersistentIdempotency, true)
   assert.equal(context.appDataCapabilities.supportsServiceAuthReplayStore, true)
   assert.equal(context.userService instanceof UserService, true)
-})
-
-test('createOverlayServerContext accepts pgvector for Postgres app-data', () => {
-  const base = fixture('saas-staging.json')
-  const runtimeConfig = parseOverlayRuntimeConfig({
-    ...base,
-    billing: { provider: 'none', stripe: {} },
-    capabilities: { ...base.capabilities, billing: false, vectorSearch: true },
-    providers: {
-      ...base.providers,
-      database: { provider: 'postgres' },
-      embeddings: { provider: 'openai' },
-      vectorSearch: { provider: 'pgvector' },
-    },
-    database: {
-      ...base.database,
-      provider: 'postgres',
-      postgres: {
-        connectionString: 'postgres://overlay_app:secret@localhost:54330/overlay_app',
-        sslMode: 'disable',
-      },
-    },
-  })
-  const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
-
-  assert.equal(context.appDataCapabilities.provider, 'postgres')
-  assert.equal(context.appDataCapabilities.supportsVectorSearch, true)
 })
 
 test('createOverlayServerContext throws typed config error before constructing invalid provider config', () => {

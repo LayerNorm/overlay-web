@@ -5,4 +5,3 @@ export {
   type AccountDataDeletionVerification,
 } from './AccountDataDeletionRepository'
 export { AccountDeletionService } from './AccountDeletionService'
-export { PostgresAccountDataDeletionRepository } from './PostgresAccountDataDeletionRepository'

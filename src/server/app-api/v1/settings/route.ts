@@ -40,15 +40,6 @@ function publicSettingsPayload(settings: AppSettings & { useSecondarySidebar?: b
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
-    if (context.appDataCapabilities.provider === 'postgres') {
-      const settings = await getOverlayServerContext()
-        .appData
-        .repositories
-        .settings
-        .getByUserId(auth.userId)
-      return NextResponse.json(publicSettingsPayload(settings))
-    }
-
     const settings = await convex.query<AppSettings>(
       'platform/uiSettings:getByServer',
       {
@@ -317,15 +308,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.chatStreamingMode !== undefined) {
       settingsPatch.chatStreamingMode = 'token'
-    }
-
-    if (context.appDataCapabilities.provider === 'postgres') {
-      const settings = await getOverlayServerContext()
-        .appData
-        .repositories
-        .settings
-        .updateForUserId(auth.userId, settingsPatch)
-      return NextResponse.json(publicSettingsPayload(settings))
     }
 
     const settings = await convex.mutation<AppSettings>(

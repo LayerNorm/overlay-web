@@ -8,7 +8,7 @@ export type SkillsMcpContractBackend = {
   cleanupUser?(userId: string): Promise<void>
   mcpServers: McpServerRepository
   prepareUser?(userId: string): Promise<void>
-  provider: 'convex' | 'postgres'
+  provider: 'convex'
   skills: SkillRepository
 }
 

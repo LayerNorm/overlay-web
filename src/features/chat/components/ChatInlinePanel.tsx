@@ -39,7 +39,6 @@ import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
 import { isSameChatSurface } from '@/shared/workspaces/routing'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -81,7 +80,6 @@ export function ChatInlinePanel({
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
-  const { appDataCapabilities } = useOverlayCapabilities()
   const {
     conversationListVersion,
     notifications: collaborationNotifications,
@@ -298,7 +296,7 @@ export function ChatInlinePanel({
   }, [workspaceId])
 
   useEffect(() => {
-    if (appDataCapabilities.provider !== 'convex' || conversationListVersion === null) return
+    if (conversationListVersion === null) return
     const previous = lastConversationListVersionRef.current
     lastConversationListVersionRef.current = conversationListVersion
     if (previous === null || previous === conversationListVersion) return
@@ -341,47 +339,7 @@ export function ChatInlinePanel({
       }
     }
     void reconcileDelta()
-  }, [appDataCapabilities.provider, conversationListVersion, loadChats])
-
-  useEffect(() => {
-    if (
-      appDataCapabilities.provider !== 'postgres'
-      || !workspaceId
-      || isPublicShowcase
-      || !user
-    ) return
-    const controller = new AbortController()
-    let cancelled = false
-    const run = async () => {
-      try {
-        let { cursor } = await overlayAppClient.conversations.events(undefined, {
-          signal: controller.signal,
-        })
-        while (!cancelled) {
-          const result = await overlayAppClient.conversations.events(cursor, {
-            signal: controller.signal,
-          })
-          if (cancelled) return
-          cursor = result.cursor
-          if (result.events.some((event) => (
-            event.type === 'conversation.created'
-            || event.type === 'conversation.updated'
-            || event.type === 'conversation.deleted'
-          ))) {
-            await loadChats({ cancelled })
-          }
-        }
-      } catch {
-        // Navigation and workspace switches abort the long poll. The next
-        // mounted panel starts with a fresh durable cursor and full list load.
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [appDataCapabilities.provider, isPublicShowcase, loadChats, user, workspaceId])
+  }, [conversationListVersion, loadChats])
 
   useEffect(() => {
     if (isPublicShowcase) return

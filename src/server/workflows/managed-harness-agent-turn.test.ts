@@ -163,7 +163,7 @@ test('the editor reset path is a dedicated endpoint on the control plane', async
   // the lease row the next turn recreates from.
   const reset = controlPlane.slice(controlPlane.indexOf('async resetHarnessEnvironment'))
   assert.match(reset, /deleteHarnessSessionsForBinding/)
-  assert.match(reset, /reconnect\(lease\.providerReference\)/)
+  assert.match(reset, /reconnect\(lease\.providerReference,/)
   assert.match(reset, /agent_environment\.harness_reset/)
 })
 

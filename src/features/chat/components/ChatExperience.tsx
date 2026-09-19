@@ -27,7 +27,6 @@ import {
 } from '@/shared/chat/tool-requests'
 import { ChatExperienceView } from './ChatExperienceView'
 import { useChatListEventSync } from './chat/useChatListEventSync'
-import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { useChatAttachments } from './useChatAttachments'
 import { useChatBillingControls } from './chat/useChatBillingControls'
 import { useDraftReviewActions } from './chat/useDraftReviewActions'
@@ -183,10 +182,8 @@ export default function ChatExperience({
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
-  const postgresLiveSyncEnabled = !isPublicShowcase &&
-    appDataCapabilities.provider === 'postgres' && appDataCapabilities.supportsRealtime
   const titleGenerationEnabled = !isPublicShowcase && appDataCapabilities.supportsChatPersistence
-  const generatedOutputsEnabled = !isPublicShowcase && appDataCapabilities.provider !== 'postgres'
+  const generatedOutputsEnabled = !isPublicShowcase
   const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
@@ -897,30 +894,6 @@ export default function ChatExperience({
 
   loadChatRef.current = loadChat
 
-  const reloadActivePostgresConversation = useCallback(async (chatId: string) => {
-    if (activeChatIdRef.current !== chatId) return
-    await loadChatRef.current?.(chatId, { replaceUrl: false })
-  }, [activeChatIdRef, loadChatRef])
-
-  const hasActiveLocalStream = useCallback(() => (
-    actChat.status === 'streaming' ||
-    actChat.status === 'submitted' ||
-    chatInstances.some((chat) => chat.status === 'streaming' || chat.status === 'submitted')
-  ), [actChat.status, chatInstances])
-
-  const stopRemotePostgresStream = useCallback(() => {
-    actChat.stop()
-    for (const chat of chatInstances) chat.stop()
-  }, [actChat, chatInstances])
-
-  usePostgresConversationEvents({
-    activeChatIdRef,
-    enabled: postgresLiveSyncEnabled,
-    hasActiveLocalStream,
-    loadChats,
-    onRemoteStop: stopRemotePostgresStream,
-    reloadActiveConversation: reloadActivePostgresConversation,
-  })
   invalidateLoadChatRequestRef.current = invalidateLoadChatRequest
 
   const refreshSelectedAutomation = useCallback(async (options?: {

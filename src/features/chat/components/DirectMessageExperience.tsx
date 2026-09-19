@@ -66,7 +66,6 @@ import { useComposerTextState } from './chat/useComposerTextState'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
-import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
@@ -314,11 +313,6 @@ export function DirectMessageExperience({
     && appDataCapabilities.supportsRealtime
   const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
     && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
-  // Convex uses its native WebSocket subscription exclusively. The BFF event
-  // stream is a Postgres-only fallback; running both caused a request fan-out.
-  const roomEventSyncEnabled = !showcase
-    && appDataCapabilities.supportsRealtime
-    && appDataCapabilities.provider === 'postgres'
   const router = useRouter()
   const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
@@ -652,22 +646,6 @@ export function DirectMessageExperience({
   const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
     setMessages((current) => mergeRoomMessages(liveMessages, current))
   }, [])
-
-  usePostgresConversationEvents({
-    activeChatIdRef: activeConversationRef,
-    enabled: roomEventSyncEnabled,
-    hasActiveLocalStream: () => false,
-    loadChats: async () => {},
-    onRemoteStop: () => {},
-    onEvents: (events) => {
-      if (events.some((event) => event.conversationId === conversationId && (
-        event.type === 'reaction.changed' || event.type === 'pin.changed'
-      ))) {
-        void loadCollaboration().catch(() => undefined)
-      }
-    },
-    reloadActiveConversation: loadMessages,
-  })
 
   useEffect(() => {
     setConversationTitle(null)

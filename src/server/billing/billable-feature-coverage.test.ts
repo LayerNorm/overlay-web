@@ -27,11 +27,8 @@ test('every coverage claim points to a real enforcement marker', () => {
 
 test('workspace-funded provider boundaries resolve resource and subject payer context', () => {
   const files = [
-    'src/server/app-api/v1/conversations/act/route.ts',
+    'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts',
     'src/server/agents/workspace-agent-invocation.ts',
-    'src/server/knowledge/PostgresKnowledgeSearchRepository.ts',
-    'src/server/knowledge/KnowledgeIndexService.ts',
-    'src/server/memory/MemoryExtractionService.ts',
     'src/server/app-api/v1/browser-task/route.ts',
     'src/server/app-api/v1/daytona/run/lifecycle.ts',
     'src/server/app-api/v1/generate-image/route.ts',

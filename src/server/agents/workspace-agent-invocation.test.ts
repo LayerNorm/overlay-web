@@ -123,11 +123,10 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
 })
 
 test('an agent reply is persisted as it is generated, not only when it finishes', async () => {
-  const [service, contract, convexRoom, postgresRoom] = await Promise.all([
+  const [service, contract, convexRoom] = await Promise.all([
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
-    readFile(`${root}/src/server/conversations/PostgresConversationCollaborationRepository.ts`, 'utf8'),
   ])
 
   // The turn writes into a `generating` row rather than holding the reply in
@@ -148,16 +147,13 @@ test('an agent reply is persisted as it is generated, not only when it finishes'
   ]) {
     assert.match(contract, new RegExp(`${method}\\(args`), `contract is missing ${method}`)
     assert.match(convexRoom, new RegExp(`export const ${method} = mutation`), `convex is missing ${method}`)
-    assert.match(postgresRoom, new RegExp(`async ${method}\\(args`), `postgres is missing ${method}`)
   }
 
-  // Both providers open the row idempotently, so a retried or replayed turn
-  // reuses it instead of posting the reply twice.
+  // The row opens idempotently, so a retried or replayed turn reuses it instead
+  // of posting the reply twice.
   assert.match(convexRoom, /message\.clientNonce === args\.clientNonce/)
-  assert.match(postgresRoom, /eq\(conversationMessages\.clientNonce, args\.clientNonce\)/)
   // Agent authorization is not relaxed for the streaming path.
   assert.match(convexRoom, /requireAgentAuthor/)
-  assert.match(postgresRoom, /requireAgentParticipant/)
 })
 
 test('agent turns run the shared act tool pipeline, not a private subset', async () => {
@@ -225,29 +221,24 @@ test('connected agents receive bounded memory and room context without confusing
   assert.match(oversized, /The current request must survive truncation/)
 })
 
-test('room memory ingestion is provider-neutral, owner-scoped, and gated by the message toggle', async () => {
-  const [route, service, contract, convexRoom, postgresRoom, convexExtractor, convexMemoryQuery, postgresMemoryQuery] = await Promise.all([
+test('room memory ingestion is owner-scoped and gated by the message toggle', async () => {
+  const [route, service, contract, convexRoom, convexExtractor, convexMemoryQuery] = await Promise.all([
     readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
-    readFile(`${root}/src/server/conversations/PostgresConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/knowledge/memoryExtractorNode.ts`, 'utf8'),
     readFile(`${root}/convex/knowledge/memoryExtractor.ts`, 'utf8'),
-    readFile(`${root}/src/server/memory/PostgresMemoryExtractionRepository.ts`, 'utf8'),
   ])
 
   assert.match(route, /args\.memoryEnabled && invocations\.length > 0/)
   assert.match(route, /targetActor: 'human'/)
   assert.match(service, /targetActor: 'agent'/)
   assert.match(service, /memoryEnabled: args\.memoryEnabled/)
-  for (const source of [contract, convexRoom, postgresRoom]) {
+  for (const source of [contract, convexRoom]) {
     assert.match(source, /enqueueMemoryExtraction/)
   }
-  assert.match(postgresRoom, /agentIdFromMemoryOwnerId/)
-  assert.match(postgresRoom, /eq\(workspacePrincipals\.agentId, agentId\)/)
   assert.match(convexExtractor, /AGENT_SYSTEM_PROMPT/)
   assert.match(convexExtractor, /memoryOwnerId/)
   assert.match(convexMemoryQuery, /hasSameMemoryExtractionAuthor\(message, validTarget\)/)
-  assert.match(postgresMemoryQuery, /hasSameMemoryExtractionAuthor\(message, target\)/)
 })

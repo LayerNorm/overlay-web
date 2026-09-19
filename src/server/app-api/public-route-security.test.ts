@@ -47,7 +47,6 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/topups/checkout': ['POST'],
   '/api/topups/history': ['GET'],
   '/api/topups/verify': ['POST'],
-  '/api/webhooks/stripe': ['POST'],
 }
 
 function routeFiles(directory: string): string[] {

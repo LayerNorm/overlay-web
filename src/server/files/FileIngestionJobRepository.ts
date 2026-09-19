@@ -22,9 +22,7 @@ export type FileIngestionJobStatusRecord = {
 
 /**
  * Durable document-ingestion jobs created after a direct-to-R2 upload.
- * Only the Convex provider has an ingestion runner today; the Postgres
- * registration is an explicit unsupported sentinel, and routes gate on
- * the provider capability before touching this repository.
+ * The Convex ingestion runner owns these jobs end to end.
  */
 export interface FileIngestionJobRepository {
   createJob(args: {

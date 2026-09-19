@@ -9,8 +9,8 @@ import { logger } from '@/server/observability/logger'
 // POST /api/v1/automations/{id}/start-scheduler
 //
 // DEPRECATED — kept as a backwards-compatible no-op. Scheduled execution is
-// owned by the minute cron (`convex/crons.ts` → claimDueRuns, or the Postgres
-// `automation.schedule-due` job), which claims due runs and dispatches each
+// owned by the minute cron (`convex/crons.ts` → claimDueRuns), which claims due
+// runs and dispatches each
 // through the durable one-shot workflow. The old sleep()-based per-automation
 // scheduler workflow could not survive deployments (no durable workflow world)
 // and would double-fire next to the cron.

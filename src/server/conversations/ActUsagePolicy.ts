@@ -404,13 +404,11 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
 }
 
 export function createActUsagePolicy(args: {
-  appDataProvider: AppDataProvider
   repository: ActConversationRepository
   usageRepository: UsageRepository
   runtimeConfig: OverlayRuntimeConfig | null
 }): ActUsagePolicy {
   return new BillingBackedActUsagePolicy({
-    accountAllUsage: args.appDataProvider === 'postgres',
     repository: args.usageRepository,
   })
 }

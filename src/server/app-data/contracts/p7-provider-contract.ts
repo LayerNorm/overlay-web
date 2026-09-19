@@ -17,7 +17,7 @@ export type P7ProviderContractBackend = {
   cleanupUser?(userId: string): Promise<void>
   deleteUser(userId: string): Promise<void>
   prepareUser?(userId: string): Promise<void>
-  provider: 'convex' | 'postgres'
+  provider: 'convex'
   usage: UsageRepository
 }
 

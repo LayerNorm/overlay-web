@@ -48,12 +48,8 @@ import type { NoteRepository } from '@/server/notes'
 import { MemoryService } from '@/server/memory'
 import {
   KnowledgeSearchService,
-  PostgresKnowledgeSearchRepository,
-  UnavailableKnowledgeSearchRepository,
-  createEmbeddingProvider,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
-import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import {
   resolveWorkspaceBillingRollout,
@@ -66,7 +62,6 @@ import {
   resolveConnectedAgentRollout,
 } from '@/shared/agents/connected-agent-rollout'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
@@ -75,10 +70,8 @@ import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
-import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
 import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
-import { PostgresWorkspaceSharingRepository } from '@/server/sharing/PostgresWorkspaceSharingRepository'
 import { ConvexWorkspaceSharingRepository } from '@/server/sharing/ConvexWorkspaceSharingRepository'
 import { WorkspaceSearchService } from '@/server/search/WorkspaceSearchService'
 import { WorkspaceGovernanceService } from '@/server/governance/WorkspaceGovernanceService'
@@ -87,13 +80,9 @@ import {
 } from '@/server/authorization/AuthorizationService'
 import { FixedRoleAuthorizationBridge } from '@/server/authorization/FixedRoleAuthorizationBridge'
 import { AuthorizationAdministrationService } from '@/server/authorization/AuthorizationAdministrationService'
-import { createPostgresAuthorizationRepositories } from '@/server/authorization/PostgresAuthorizationRepositories'
 import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
 import type { AuthorizationRepositories } from '@overlay/authz-contracts'
 import type { AuthorizationCapability } from '@overlay/authz-contracts'
-import {
-  PostgresConversationCollaborationRepository,
-} from '@/server/conversations/PostgresConversationCollaborationRepository'
 import {
   ConvexConversationCollaborationRepository,
 } from '@/server/conversations/ConvexConversationCollaborationRepository'
@@ -169,13 +158,11 @@ export function createOverlayServerContext(
   const objectStore = appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig)
   const byokCredentialStore = createByokCredentialStore(runtimeConfig)
   const chatUsagePolicy = createActUsagePolicy({
-    appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
     usageRepository: appData.repositories.usage,
     runtimeConfig,
   })
   const generationUsagePolicy = createGenerationUsagePolicy({
-    appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
     usageRepository: appData.repositories.usage,
     runtimeConfig,
@@ -212,12 +199,7 @@ export function createOverlayServerContext(
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   // ── Workspace, authorization, and collaboration services ────────────────
-  const isPostgres = appData.capabilities.provider === 'postgres'
-  const postgresDb = appData.postgres?.db ?? null
-
-  const workspaceRepository = isPostgres && postgresDb
-    ? new PostgresWorkspaceRepository(postgresDb)
-    : new ConvexWorkspaceRepository()
+  const workspaceRepository = new ConvexWorkspaceRepository()
   const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
   const workspaceBillingRollout = workspaceBillingRolloutConfigFromEnv(process.env)
   const billingPayerResolver = new BillingPayerResolver({
@@ -228,9 +210,7 @@ export function createOverlayServerContext(
     workspaces: workspaceService,
   })
 
-  const authorizationRepositories: AuthorizationRepositories = isPostgres && postgresDb
-    ? createPostgresAuthorizationRepositories(postgresDb)
-    : createConvexAuthorizationRepositories()
+  const authorizationRepositories: AuthorizationRepositories = createConvexAuthorizationRepositories()
 
   const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(authorizationRepositories)
 
@@ -255,13 +235,9 @@ export function createOverlayServerContext(
     repositories: authorizationRepositories,
   })
 
-  const conversationCollaboration: ConversationCollaborationRepository = isPostgres && postgresDb
-    ? new PostgresConversationCollaborationRepository(postgresDb)
-    : new ConvexConversationCollaborationRepository()
+  const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
 
-  const workspaceAgentRepository = isPostgres && postgresDb
-    ? new PostgresWorkspaceAgentRepository(postgresDb)
-    : new ConvexWorkspaceAgentRepository()
+  const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
   const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
   // v1 static quotas — entitlement-derived limits arrive with the quota +
   // metering phase of the computers plan.
@@ -347,9 +323,7 @@ export function createOverlayServerContext(
     },
   })
 
-  const workspaceSharingRepository = isPostgres && postgresDb
-    ? new PostgresWorkspaceSharingRepository(postgresDb)
-    : new ConvexWorkspaceSharingRepository()
+  const workspaceSharingRepository = new ConvexWorkspaceSharingRepository()
   const workspaceSharingService = new WorkspaceSharingService({
     agents: workspaceAgentRepository,
     collaboration: conversationCollaboration,
@@ -378,8 +352,6 @@ export function createOverlayServerContext(
     rateLimiter,
     repository: workspaceRepository,
     workspaces: workspaceService,
-    appDataProvider: appData.capabilities.provider,
-    requiresConvexClient: !isPostgres,
   })
 
   return {
@@ -424,21 +396,10 @@ export function createOverlayServerContext(
 }
 
 function createKnowledgeSearchService(
-  appData: AppDataContext,
-  runtimeConfig: OverlayRuntimeConfig | null,
+  _appData: AppDataContext,
+  _runtimeConfig: OverlayRuntimeConfig | null,
 ): KnowledgeSearchService {
-  if (appData.capabilities.provider !== 'postgres') {
-    return new KnowledgeSearchService(new ConvexKnowledgeSearchRepository())
-  }
-  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) {
-    return new KnowledgeSearchService(new UnavailableKnowledgeSearchRepository())
-  }
-  if (!appData.postgres) throw new Error('Postgres knowledge search requires a database context')
-  return new KnowledgeSearchService(new PostgresKnowledgeSearchRepository({
-    db: appData.postgres.db,
-    embeddings: createEmbeddingProvider(runtimeConfig),
-    usageMeter: new ServerProviderUsageMeter(appData.repositories.usage),
-  }))
+  return new KnowledgeSearchService(new ConvexKnowledgeSearchRepository())
 }
 
 let defaultServerContext: OverlayServerContext | null = null
@@ -713,19 +674,14 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
   }
-  if (databaseProvider === 'postgres') {
-    if (!config.database.postgres.connectionString) {
-      issues.push('database.postgres.connectionString is required when database.provider is postgres')
-    }
+  if (databaseProvider !== 'convex') {
+    issues.push(`database.provider=${databaseProvider} is not supported. Overlay application data is Convex-only.`)
   }
-  if (vectorSearchProvider === 'pgvector' && databaseProvider !== 'postgres') {
-    issues.push('providers.vectorSearch.provider=pgvector requires database.provider=postgres')
-  } else if (
+  if (
     vectorSearchProvider !== 'convex' &&
-    vectorSearchProvider !== 'pgvector' &&
     vectorSearchProvider !== 'none'
   ) {
-    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex, pgvector, or none.`)
+    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex or none.`)
   }
   if (rateLimitProvider === 'redis') {
     const redis = config.rateLimit.redis

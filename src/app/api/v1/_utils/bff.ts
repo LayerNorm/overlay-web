@@ -27,10 +27,6 @@ import { parseApiBoundaryInput } from '@/server/app-api/boundary'
 import { getOverlayRuntimeConfig, isOverlayConfigError } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
-  appDataRouteUnsupportedResponse,
-  getAppDataRouteSupport,
-} from '@/server/app-data/route-support'
-import {
   getOwnerFundedOperation,
   ownerFundedOperationRequiresIdempotencyKey,
 } from '@/server/billing/owner-funded-operations'
@@ -135,21 +131,6 @@ export async function handleBffRoute(
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
     const response = runtimeConfigErrorResponse(error)
-    await emitMetric(response)
-    return response
-  }
-  const appDataRouteSupport = getAppDataRouteSupport({
-    appDataCapabilities,
-    method: request.method,
-    pathname: request.nextUrl.pathname,
-  })
-  if (appDataRouteSupport.status === 'unsupported') {
-    const response = appDataRouteUnsupportedResponse({
-      databaseProvider: appDataCapabilities.provider,
-      method: request.method,
-      pathname: request.nextUrl.pathname,
-      support: appDataRouteSupport,
-    })
     await emitMetric(response)
     return response
   }

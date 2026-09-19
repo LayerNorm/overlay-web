@@ -346,38 +346,33 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
   assert.equal(parsed.providers.objectStorage?.provider, 's3')
 })
 
-test('OverlayRuntimeConfigSchema accepts configured Postgres database provider', () => {
-  const parsed = OverlayRuntimeConfigSchema.parse({
-    ...minimalSaasConfig,
-    billing: {
-      provider: 'none',
-      stripe: {},
-    },
-    capabilities: {
-      ...minimalSaasConfig.capabilities,
-      billing: false,
-      vectorSearch: false,
-    },
-    database: {
-      ...minimalSaasConfig.database,
-      provider: 'postgres',
-      postgres: {
-        connectionString: 'postgres://overlay:secret@db.internal/overlay',
-        sslMode: 'require',
-      },
-    },
-    providers: {
-      database: { provider: 'postgres' },
-      vectorSearch: { provider: 'none' },
-    },
-  })
-
-  assert.equal(parsed.database.provider, 'postgres')
-  assert.equal(parsed.providers.database?.provider, 'postgres')
-  assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
+test('OverlayRuntimeConfigSchema rejects the removed Postgres database provider', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+          vectorSearch: false,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+        },
+        providers: {
+          database: { provider: 'postgres' },
+          vectorSearch: { provider: 'none' },
+        },
+      }),
+  )
 })
 
-test('OverlayRuntimeConfigSchema accepts AWS Secrets Manager for Postgres BYOK', () => {
+test('OverlayRuntimeConfigSchema accepts AWS Secrets Manager for customer-managed BYOK', () => {
   const parsed = OverlayRuntimeConfigSchema.parse({
     ...minimalSaasConfig,
     billing: { provider: 'none', stripe: {} },
@@ -386,16 +381,7 @@ test('OverlayRuntimeConfigSchema accepts AWS Secrets Manager for Postgres BYOK',
       billing: false,
       vectorSearch: false,
     },
-    database: {
-      ...minimalSaasConfig.database,
-      provider: 'postgres',
-      postgres: {
-        connectionString: 'postgres://overlay:secret@db.internal/overlay',
-        sslMode: 'require',
-      },
-    },
     providers: {
-      database: { provider: 'postgres' },
       secrets: { provider: 'aws-secrets-manager' },
       vectorSearch: { provider: 'none' },
     },
@@ -443,68 +429,10 @@ test('OverlayRuntimeConfigSchema rejects Redis without connectivity and fail-clo
   )
 })
 
-test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled vector search', () => {
+test('OverlayRuntimeConfigSchema rejects pgvector now that the Postgres provider is removed', () => {
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({
-        ...minimalSaasConfig,
-        billing: {
-          provider: 'none',
-          stripe: {},
-        },
-        capabilities: {
-          ...minimalSaasConfig.capabilities,
-          billing: false,
-        },
-        database: {
-          ...minimalSaasConfig.database,
-          provider: 'postgres',
-          postgres: {
-            connectionString: 'postgres://overlay:secret@db.internal/overlay',
-            sslMode: 'require',
-          },
-        },
-        providers: {
-          database: { provider: 'postgres' },
-        },
-      }),
-    /Postgres vectorSearch requires providers\.vectorSearch\.provider=pgvector/,
-  )
-})
-
-test('OverlayRuntimeConfigSchema rejects Postgres database provider with Convex vector search', () => {
-  assert.throws(
-    () =>
-      OverlayRuntimeConfigSchema.parse({
-        ...minimalSaasConfig,
-        billing: {
-          provider: 'none',
-          stripe: {},
-        },
-        capabilities: {
-          ...minimalSaasConfig.capabilities,
-          billing: false,
-          vectorSearch: false,
-        },
-        database: {
-          ...minimalSaasConfig.database,
-          provider: 'postgres',
-          postgres: {
-            connectionString: 'postgres://overlay:secret@db.internal/overlay',
-            sslMode: 'require',
-          },
-        },
-        providers: {
-          database: { provider: 'postgres' },
-          vectorSearch: { provider: 'convex' },
-        },
-      }),
-    /Postgres vector search supports pgvector or none/,
-  )
-})
-
-test('OverlayRuntimeConfigSchema accepts pgvector with Postgres and an embeddings provider', () => {
-  const parsed = OverlayRuntimeConfigSchema.parse({
         ...minimalSaasConfig,
         billing: {
           provider: 'none',
@@ -515,71 +443,12 @@ test('OverlayRuntimeConfigSchema accepts pgvector with Postgres and an embedding
           billing: false,
           vectorSearch: true,
         },
-        database: {
-          ...minimalSaasConfig.database,
-          provider: 'postgres',
-          postgres: {
-            connectionString: 'postgres://overlay:secret@db.internal/overlay',
-            sslMode: 'require',
-          },
-        },
         providers: {
-          database: { provider: 'postgres' },
           vectorSearch: { provider: 'pgvector' },
           embeddings: { provider: 'openai' },
         },
-      })
-  assert.equal(parsed.providers.vectorSearch?.provider, 'pgvector')
-  assert.equal(parsed.providers.embeddings?.provider, 'openai')
-})
-
-test('OverlayRuntimeConfigSchema accepts Postgres with Stripe billing records', () => {
-  const parsed = OverlayRuntimeConfigSchema.parse({
-    ...minimalSaasConfig,
-    capabilities: {
-      ...minimalSaasConfig.capabilities,
-      vectorSearch: false,
-    },
-    database: {
-      ...minimalSaasConfig.database,
-      provider: 'postgres',
-      postgres: {
-        connectionString: 'postgres://overlay:secret@db.internal/overlay',
-        sslMode: 'require',
-      },
-    },
-    providers: {
-      database: { provider: 'postgres' },
-      vectorSearch: { provider: 'none' },
-    },
-  })
-  assert.equal(parsed.billing.provider, 'stripe')
-})
-
-test('OverlayRuntimeConfigSchema rejects Postgres database provider without a connection string', () => {
-  assert.throws(
-    () =>
-      OverlayRuntimeConfigSchema.parse({
-        ...minimalSaasConfig,
-        billing: {
-          provider: 'none',
-          stripe: {},
-        },
-        capabilities: {
-          ...minimalSaasConfig.capabilities,
-          billing: false,
-          vectorSearch: false,
-        },
-        database: {
-          ...minimalSaasConfig.database,
-          provider: 'postgres',
-        },
-        providers: {
-          database: { provider: 'postgres' },
-          vectorSearch: { provider: 'none' },
-        },
       }),
-    /database\.postgres\.connectionString is required/,
+    /pgvector was removed/,
   )
 })
 

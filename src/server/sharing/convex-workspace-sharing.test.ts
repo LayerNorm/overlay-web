@@ -14,7 +14,7 @@ const hasConvexUrl = Boolean(
 )
 const hasInternalSecret = Boolean(process.env.INTERNAL_API_SECRET?.trim())
 
-test('Convex sharing repository matches the Postgres sharing contract', {
+test('Convex sharing repository matches the workspace sharing contract', {
   skip: enabled && hasConvexUrl && hasInternalSecret
     ? false
     : 'Set WORKSPACE_CONTRACT_CONVEX=1 plus Convex URL and INTERNAL_API_SECRET',

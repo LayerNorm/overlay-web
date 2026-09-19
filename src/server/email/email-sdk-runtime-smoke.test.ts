@@ -4,7 +4,7 @@ import { createEmailProvider } from './createEmailProvider'
 import { mergeOverlayRuntimeConfig, parseOverlayRuntimeConfig } from '@/shared/config'
 import { DEFAULT_OVERLAY_RUNTIME_CONFIG } from '@/shared/config/defaultOverlayRuntimeConfig'
 
-test('Email SDK SES adapter loads in the Postgres worker runtime', async () => {
+test('Email SDK SES adapter loads in the server runtime', async () => {
   const config = parseOverlayRuntimeConfig(mergeOverlayRuntimeConfig(
     DEFAULT_OVERLAY_RUNTIME_CONFIG,
     {

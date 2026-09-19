@@ -48,8 +48,6 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
   {
     category: 'files_search_and_embeddings',
     enforcement: [
-      'src/server/knowledge/PostgresKnowledgeSearchRepository.ts',
-      'src/server/knowledge/KnowledgeIndexService.ts',
       'convex/knowledge/knowledge.ts',
     ],
     id: 'knowledge-search-index-and-memory-extraction',

@@ -15,8 +15,6 @@ import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { COLLABORATION_NOTIFICATIONS_CHANGED_EVENT } from '@/shared/chat/collaboration-events'
 import { api } from '../../../../../convex/_generated/api'
 
 type CollaborationRealtimeContextValue = {
@@ -105,7 +103,6 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
   const [notifications, setNotifications] = useState<WorkspaceNotification[]>([])
   const [notificationsReady, setNotificationsReady] = useState(false)
   const [conversationListVersion, setConversationListVersion] = useState<number | null>(null)
-  const [refreshVersion, setRefreshVersion] = useState(0)
   const convexEnabled = appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
@@ -121,36 +118,7 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
     return () => { alive = false }
   }, [activeWorkspaceId, user?.id])
 
-  const loadPostgresNotifications = useCallback(async () => {
-    if (convexEnabled || !visible || !user?.id || !activeWorkspaceId) return
-    try {
-      const result = await overlayAppClient.conversations.notifications({ filter: 'all', limit: 100 })
-      setNotifications(Array.isArray(result.notifications) ? result.notifications : [])
-      setNotificationsReady(true)
-    } catch {
-      // Badges are best effort. Keep the last valid result while the BFF recovers.
-    }
-  }, [activeWorkspaceId, convexEnabled, user?.id, visible])
-
-  useEffect(() => {
-    if (convexEnabled || !visible || !user?.id || !activeWorkspaceId) return
-    const initial = window.setTimeout(() => void loadPostgresNotifications(), 0)
-    const timer = window.setInterval(() => void loadPostgresNotifications(), 15_000)
-    return () => {
-      window.clearTimeout(initial)
-      window.clearInterval(timer)
-    }
-  }, [activeWorkspaceId, convexEnabled, loadPostgresNotifications, refreshVersion, user?.id, visible])
-
-  useEffect(() => {
-    const refresh = () => setRefreshVersion((value) => value + 1)
-    window.addEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, refresh)
-    return () => window.removeEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, refresh)
-  }, [])
-
-  const refreshNotifications = useCallback(() => {
-    if (!convexEnabled) setRefreshVersion((value) => value + 1)
-  }, [convexEnabled])
+  const refreshNotifications = useCallback(() => {}, [])
 
   const handleNotifications = useCallback((next: WorkspaceNotification[]) => {
     setNotifications(next)

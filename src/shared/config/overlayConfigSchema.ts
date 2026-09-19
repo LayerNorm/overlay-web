@@ -42,7 +42,7 @@ export const OverlayComplianceProfileSchema = z.enum([
   'dpdp-strict',
   'custom',
 ])
-export const OverlayDatabaseProviderSchema = z.enum(['convex', 'postgres'])
+export const OverlayDatabaseProviderSchema = z.enum(['convex'])
 export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
@@ -416,13 +416,6 @@ export const OverlayRuntimeConfigSchema = z
       internalApiSecret: OptionalStringSchema,
       internalServiceAuthSecret: OptionalStringSchema,
       apiKeyHashSecret: OptionalStringSchema,
-      postgres: z
-        .object({
-          connectionString: OptionalStringSchema,
-          sslMode: OptionalStringSchema,
-          backgroundRuntimeEnabled: z.boolean().default(false),
-        })
-        .default({}),
     }),
     rateLimit: z
       .object({
@@ -552,46 +545,8 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['database', 'postgres', 'connectionString'],
-        message: 'database.postgres.connectionString is required when database.provider is postgres',
-      })
-    }
-    if (
-      selectedProviders.database === 'postgres' &&
-      effectiveCapabilities.vectorSearch &&
-      selectedProviders.vectorSearch !== 'pgvector'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['capabilities', 'vectorSearch'],
-        message: 'Postgres vectorSearch requires providers.vectorSearch.provider=pgvector',
-      })
-    }
-    if (
-      selectedProviders.database === 'postgres' &&
-      selectedProviders.vectorSearch !== 'none' &&
-      selectedProviders.vectorSearch !== 'pgvector'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['providers', 'vectorSearch', 'provider'],
-        message: 'Postgres vector search supports pgvector or none',
-      })
-    }
-    if (
-      selectedProviders.vectorSearch === 'pgvector' &&
-      selectedProviders.database !== 'postgres'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['providers', 'vectorSearch', 'provider'],
-        message: 'pgvector requires providers.database.provider=postgres',
-      })
-    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
+      pgvector: 'pgvector was removed with the Postgres app-data provider. Use vectorSearch.provider=convex or none.',
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
@@ -808,13 +763,6 @@ export const OverlayRuntimeConfigSchema = z
           message: 'Production requires the production Convex deployment URL',
         })
       }
-      if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['database', 'postgres', 'connectionString'],
-          message: 'Production Postgres database provider requires database.postgres.connectionString',
-        })
-      }
       if (!config.database.internalApiSecret || !config.database.internalServiceAuthSecret) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -1026,10 +974,6 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       hasInternalApiSecret: Boolean(config.database.internalApiSecret),
       hasInternalServiceAuthSecret: Boolean(config.database.internalServiceAuthSecret),
       hasApiKeyHashSecret: Boolean(config.database.apiKeyHashSecret),
-      postgres: {
-        hasConnectionString: Boolean(config.database.postgres.connectionString),
-        sslMode: config.database.postgres.sslMode,
-      },
     },
     rateLimit: {
       redis: {

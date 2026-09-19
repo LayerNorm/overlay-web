@@ -1,107 +1,73 @@
 import 'server-only'
 
-import {
-  createOverlayPostgresDb,
-  createOverlayPostgresPool,
-} from '@/server/database/postgres/client'
 import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
-import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
 import { ConvexAutomationRepository } from '@/server/automations/ConvexAutomationRepository'
-import { PostgresAutomationRepository } from '@/server/automations/PostgresAutomationRepository'
 import type { AutomationRepository } from '@/server/automations/AutomationRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import type { BillingProviderEventRepository, BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
-import { PostgresBillingProviderEventRepository, PostgresBillingRepository } from '@/server/billing/PostgresBillingRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
-import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
-import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
-import { PostgresConversationCollaborationRepository } from '@/server/conversations/PostgresConversationCollaborationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
 import { ConvexFileIngestionJobRepository } from '@/server/files/ConvexFileIngestionJobRepository'
 import type { FileIngestionJobRepository } from '@/server/files/FileIngestionJobRepository'
-import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
-import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
-import {
-  PostgresMemoryRepository,
-  type MemoryRepository,
-} from '@/server/memory'
+import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
+import { type MemoryRepository } from '@/server/memory'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
-import {
-  PostgresOnboardingRepository,
-  type OnboardingRepository,
-} from '@/server/onboarding'
-import {
-  PostgresAppSettingsRepository,
-  type AppSettingsRepository,
-} from '@/server/settings'
-import { ConvexUserRepository, PostgresUserRepository, type UserRepository } from '@/server/users'
+import { type OnboardingRepository } from '@/server/onboarding'
+import { type AppSettingsRepository } from '@/server/settings'
+import { ConvexUserRepository, type UserRepository } from '@/server/users'
 import {
   ConvexIdempotencyRepository,
-  PostgresIdempotencyRepository,
   type IdempotencyRepository,
 } from '@/server/idempotency'
 import {
   ConvexServiceAuthReplayRepository,
-  PostgresServiceAuthReplayRepository,
   type ServiceAuthReplayRepository,
 } from '@/server/auth/replay'
 import {
-  PostgresDurableJobRepository,
-  PostgresOutboxRepository,
   ConvexOutboxRepository,
   type DurableJobRepository,
   type OutboxRepository,
 } from '@/server/jobs'
 import {
   ConvexModelCatalogRepository,
-  PostgresModelCatalogRepository,
   type ModelCatalogRepository,
 } from '@/server/ai/catalog'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
-import { PostgresChatSuggestionRepository } from '@/server/chat-suggestions/PostgresChatSuggestionRepository'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
 import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
-import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
 import {
   ConvexWebhookRepository,
-  PostgresWebhookRepository,
   type WebhookRepository,
 } from '@/server/webhooks'
 import { unsupportedRepository } from './errors'
 import type { UsageRepository } from '@/server/usage'
-import { ConvexUsageRepository, PostgresUsageRepository } from '@/server/usage'
+import { ConvexUsageRepository } from '@/server/usage'
 import {
   ConvexApiKeyRepository,
-  PostgresApiKeyRepository,
   type ApiKeyRepository,
 } from '@/server/auth/api-keys'
 import {
   ConvexAdministrativeRepository,
   ConvexAuditRepository,
-  PostgresAdministrativeRepository,
-  PostgresAuditRepository,
   type AdministrativeRepository,
   type AuditRepository,
 } from '@/server/admin'
 import {
   ConvexMcpServerRepository,
   ConvexSkillRepository,
-  PostgresMcpServerRepository,
-  PostgresSkillRepository,
   type McpServerRepository,
   type SkillRepository,
 } from '@/server/extensions'
 import type { AuthorizationRepositories } from '@overlay/authz-contracts'
-import { createPostgresAuthorizationRepositories } from '@/server/authorization/PostgresAuthorizationRepositories'
 import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
 import {
   ConvexWorkspaceConnectorRepository,
@@ -109,15 +75,12 @@ import {
 } from '@/server/integrations'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
 import { ConvexConnectedAgentRepository } from '@/server/agents/ConvexConnectedAgentRepository'
-import { PostgresConnectedAgentRepository } from '@/server/agents/PostgresConnectedAgentRepository'
 import {
   ConvexProviderConnectionRepository,
-  PostgresProviderConnectionRepository,
   type ProviderConnectionRepository,
 } from '@/server/ai/provider-connections'
 import type { ComputerRepository } from '@/server/computers/ComputerRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
-import { PostgresComputerRepository } from '@/server/computers/PostgresComputerRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -157,73 +120,11 @@ export interface AppDataRepositories {
 
 export interface AppDataContext {
   capabilities: AppDataCapabilities
-  postgres?: { db: ReturnType<typeof createOverlayPostgresDb> }
   repositories: AppDataRepositories
 }
 
 export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null): AppDataContext {
   const capabilities = deriveAppDataCapabilities(runtimeConfig)
-  if (capabilities.provider === 'postgres') {
-    const connectionString = runtimeConfig?.database.postgres.connectionString
-    if (!connectionString) {
-      throw new Error('database.postgres.connectionString is required for Postgres app-data repositories')
-    }
-    const pool = createOverlayPostgresPool({
-      connectionString,
-      sslMode: runtimeConfig.database.postgres.sslMode,
-    })
-    const db = createOverlayPostgresDb(pool)
-    const conversations = new PostgresActConversationRepository(
-      db,
-      new PostgresConversationEventNotifier(pool),
-      { memoryExtractionEnabled: capabilities.supportsVectorSearch && runtimeConfig.features.memory !== false },
-    )
-    const billing = new PostgresBillingRepository(db)
-    return {
-      capabilities,
-      postgres: { db },
-      repositories: {
-        accountDeletion: new PostgresAccountDataDeletionRepository(db),
-        administration: new PostgresAdministrativeRepository(db),
-        apiKeys: new PostgresApiKeyRepository(db),
-        audit: new PostgresAuditRepository(db),
-        authorization: createPostgresAuthorizationRepositories(db),
-        automations: new PostgresAutomationRepository(db, conversations),
-        billing,
-        billingEvents: new PostgresBillingProviderEventRepository(db),
-        billingWebhooks: billing,
-        chatSuggestions: new PostgresChatSuggestionRepository(db),
-        computers: new PostgresComputerRepository(db),
-        conversationCollaboration: new PostgresConversationCollaborationRepository(db),
-        conversations,
-        durableJobs: new PostgresDurableJobRepository(db),
-        daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
-        files: new PostgresFileRepository(db),
-        // Document ingestion runs on the Convex runner only; Postgres mode
-        // keeps the synchronous ingest path and gates this route to 501.
-        fileIngestionJobs: unsupportedRepository<FileIngestionJobRepository>('FileIngestionJobRepository'),
-        idempotency: new PostgresIdempotencyRepository(db),
-        modelCatalog: new PostgresModelCatalogRepository(db),
-        memories: new PostgresMemoryRepository(db),
-        mcpServers: new PostgresMcpServerRepository(db),
-        notes: new PostgresNoteRepository(db),
-        onboarding: new PostgresOnboardingRepository(db),
-        outbox: new PostgresOutboxRepository(db),
-        providerConnections: new PostgresProviderConnectionRepository(db),
-        settings: new PostgresAppSettingsRepository(db),
-        skills: new PostgresSkillRepository(db),
-        serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
-        users: new PostgresUserRepository(db),
-        webhooks: new PostgresWebhookRepository(db),
-        usage: new PostgresUsageRepository(db),
-        // Connector mappings are intentionally gated in Postgres mode until a
-        // provider-neutral repository and migration are shipped.
-        workspaceConnectors: unsupportedRepository<WorkspaceConnectorRepository>('WorkspaceConnectorRepository'),
-        connectedAgents: new PostgresConnectedAgentRepository(db),
-      },
-    }
-  }
-
   return {
     capabilities,
     repositories: {

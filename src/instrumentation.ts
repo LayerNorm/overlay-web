@@ -18,10 +18,6 @@ function telemetryEnabled(): boolean {
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { assertConfiguredPostgresSchemaCompatible } = await import(
-      './server/database/postgres/schema-compatibility'
-    )
-    await assertConfiguredPostgresSchemaCompatible()
     const { startOnPremOpenTelemetry } = await import('./server/observability/open-telemetry')
     await startOnPremOpenTelemetry()
 

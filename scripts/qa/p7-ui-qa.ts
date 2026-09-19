@@ -38,8 +38,8 @@ try {
     capabilities: { billing?: boolean; apiKeys?: boolean }
     appDataCapabilities: { provider?: string; requiresConvexClient?: boolean; supportsApiKeys?: boolean }
   }
-  assert.equal(capabilities.appDataCapabilities.provider, 'postgres')
-  assert.equal(capabilities.appDataCapabilities.requiresConvexClient, false)
+  assert.equal(capabilities.appDataCapabilities.provider, 'convex')
+  assert.equal(capabilities.appDataCapabilities.requiresConvexClient, true)
   assert.equal(capabilities.appDataCapabilities.supportsApiKeys, true)
 
   await page.goto(`${baseUrl}/app/settings?section=account`, { waitUntil: 'domcontentloaded' })

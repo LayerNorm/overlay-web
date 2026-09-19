@@ -255,7 +255,6 @@ export async function prepareAutomationAgentTurn(
   input: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
 ): Promise<AutomationAgentTurnPlan> {
   const overlayContext = getOverlayServerContext()
-  const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
   const userId = input.userId
   const serverSecret = getInternalApiSecret()
   const cid = asConversationId(input.conversationId)
@@ -396,12 +395,12 @@ export async function prepareAutomationAgentTurn(
     billingUserId: userId,
     serverSecret,
     userId,
-    externalContextEnabled: !isPostgresAppData,
+    externalContextEnabled: true,
     workspaceId: billingWorkspaceId,
   })
 
   const mediaIntentTask = (async () => {
-    if (isPostgresAppData || !paid) return null
+    if (!paid) return null
     if (!mayNeedMediaGenerationTools(userText)) return null
     return await classifyMediaToolIntentForTurn({
       userText,

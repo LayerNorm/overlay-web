@@ -57,7 +57,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const browserSession = await getOverlaySession(request)
     const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
-    const isPostgresAppData = appDataCapabilities.provider === 'postgres'
     const serverContext = getOverlayServerContext()
     const billingPayer = await serverContext.billingPayerResolver.resolve({
       userId: auth.userId,
@@ -69,15 +68,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         }).then((value) => value
           ? toAppEntitlements(value)
           : null)
-      : isPostgresAppData
-        ? serverContext.appData.repositories.usage.getEntitlements({ userId: auth.userId })
-        : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
+      : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
           userId: auth.userId,
           serverSecret,
         })
 
     const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
-      !isPostgresAppData && auth.accessToken
+      auth.accessToken
         ? convex.query<{
             profile?: {
               userId: string
@@ -92,9 +89,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           })
         : Promise.resolve(null),
       entitlementsPromise,
-      isPostgresAppData
-        ? serverContext.appData.repositories.settings.getByUserId(auth.userId)
-        : convex.query<AppSettings>(
+      convex.query<AppSettings>(
           'platform/uiSettings:getByServer',
           {
             userId: auth.userId,

@@ -4,14 +4,15 @@ import test from 'node:test'
 
 const root = process.cwd()
 
-test('Convex collaboration realtime does not mount the BFF event poll', async () => {
+test('Collaboration realtime uses Convex subscriptions and never the removed BFF event poll', async () => {
   const [inlinePanel, room, provider] = await Promise.all([
     readFile(`${root}/src/features/chat/components/ChatInlinePanel.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx`, 'utf8'),
   ])
-  assert.match(inlinePanel, /appDataCapabilities\.provider !== 'postgres'/)
-  assert.match(room, /appDataCapabilities\.provider === 'postgres'/)
+  assert.doesNotMatch(inlinePanel, /conversations\.events\(/)
+  assert.doesNotMatch(room, /conversations\.events\(/)
+  assert.doesNotMatch(provider, /conversations\.events\(/)
   assert.doesNotMatch(room, /provider === 'convex' && !convexRoomSubscriptionEnabled/)
   assert.match(provider, /watchConversationListVersion/)
   assert.match(provider, /watchNotifications/)

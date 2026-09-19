@@ -49,9 +49,8 @@ export type AgentMessageStreamStore = {
 export const AGENT_STREAM_FLUSH_INTERVAL_MS = 250
 export const AGENT_STREAM_FLUSH_CHARS = 200
 /**
- * Durable `message.delta` events drive the polling (Postgres) transcript, where
- * each one costs every viewer a refetch. Convex subscribers re-render from the
- * row patch itself and do not wait for these, so they stay deliberately coarse.
+ * Convex subscribers re-render from the row patch itself rather than waiting
+ * for durable `message.delta` events, so these stay deliberately coarse.
  */
 export const AGENT_STREAM_EVENT_INTERVAL_MS = 1_000
 

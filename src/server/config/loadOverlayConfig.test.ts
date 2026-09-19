@@ -147,7 +147,6 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_PROVIDER_BROWSER: 'none',
     OVERLAY_PROVIDER_WEB_SEARCH: 'none',
     OVERLAY_PROVIDER_ANALYTICS: 'none',
-    OVERLAY_PROVIDER_DATABASE: 'convex',
     OVERLAY_PROVIDER_OBJECT_STORAGE: 's3',
     OVERLAY_PROVIDER_MODELS: 'openai',
   })
@@ -169,7 +168,6 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     overlayCloudEnvironments: true,
   })
   assert.deepEqual(overrides.providers, {
-    database: { provider: 'convex' },
     objectStorage: { provider: 's3' },
     models: { provider: 'openai' },
     browser: { provider: 'none' },
@@ -554,12 +552,9 @@ test('configOverridesFromEnv preserves deployment-specific billing and database 
   })
 })
 
-test('configOverridesFromEnv maps Postgres app-data database env separately from Better Auth', () => {
+test('configOverridesFromEnv maps Better Auth database env separately from app-data config', () => {
   const config = configOverridesFromEnv({
-    OVERLAY_PROVIDER_DATABASE: 'postgres',
-    OVERLAY_DATABASE_URL: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
-    OVERLAY_DATABASE_SSL_MODE: 'verify-full',
-    OVERLAY_BACKGROUND_RUNTIME_ENABLED: 'true',
+    NEXT_PUBLIC_CONVEX_URL: 'https://dev.convex.cloud',
     AUTH_PROVIDER: 'better-auth',
     BETTER_AUTH_DATABASE_URL: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
     BETTER_AUTH_SECRET: 'better_auth_secret',
@@ -567,15 +562,10 @@ test('configOverridesFromEnv maps Postgres app-data database env separately from
 
   assert.deepEqual(config.providers, {
     auth: { provider: 'better-auth' },
-    database: { provider: 'postgres' },
   })
   assert.deepEqual(config.database, {
-    provider: 'postgres',
-    postgres: {
-      connectionString: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
-      sslMode: 'verify-full',
-      backgroundRuntimeEnabled: true,
-    },
+    provider: 'convex',
+    convexUrl: 'https://dev.convex.cloud',
   })
   assert.deepEqual(config.auth, {
     provider: 'better-auth',
