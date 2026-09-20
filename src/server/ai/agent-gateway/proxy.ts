@@ -42,7 +42,9 @@ type GatewayUpstream = {
 
 const UPSTREAMS: Record<GatewayProviderId, GatewayUpstream> = {
   anthropic: {
-    origin: 'https://api.anthropic.com',
+    // Origin is env-overridable so self-hosters can point at an
+    // Anthropic-compatible relay (LiteLLM, internal gateways, …).
+    origin: process.env.OVERLAY_AGENT_GATEWAY_ANTHROPIC_ORIGIN?.trim() || 'https://api.anthropic.com',
     keyProvider: 'anthropic',
     allowedPaths: [
       /^v1\/messages$/,
@@ -52,7 +54,7 @@ const UPSTREAMS: Record<GatewayProviderId, GatewayUpstream> = {
     tokenHeaders: ['x-api-key', 'authorization'],
   },
   openai: {
-    origin: 'https://api.openai.com',
+    origin: process.env.OVERLAY_AGENT_GATEWAY_OPENAI_ORIGIN?.trim() || 'https://api.openai.com',
     keyProvider: 'openai',
     allowedPaths: [
       /^v1\/chat\/completions$/,

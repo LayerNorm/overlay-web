@@ -1,7 +1,6 @@
 import type { NextRequest } from 'next/server'
 
 export const maxDuration = 300
-export const dynamic = 'force-dynamic'
 
 type RouteContext = { params: Promise<{ provider: string; path: string[] }> }
 
