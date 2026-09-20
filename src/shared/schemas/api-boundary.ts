@@ -234,6 +234,12 @@ export const webApiBoundaryDefinitions = [
     summary: 'Upload a validated contiguous batch of remote agent events', tag: 'Agent environments',
   },
   {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/desktop', routePath: '/api/v1/agent-environments/[environmentId]/desktop',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/desktop$/,
+    schema: { json: z.object({ mode: z.enum(['vnc', 'webrtc']).optional() }).passthrough(), response: UnknownResponse },
+    summary: 'Issue a short-lived desktop stream ticket for the environment machine', tag: 'Agent environments',
+  },
+  {
     method: 'GET', path: '/api/v1/computers', schema: { query: EmptyQuery, response: UnknownResponse },
     summary: 'List caller-visible workspace computers', tag: 'Computers',
   },
