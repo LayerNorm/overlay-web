@@ -407,43 +407,7 @@ export class ConnectedAgentControlPlaneService {
       throw controlPlaneError('The selected agent adapter is not installed on this environment', 409, 'adapter_unavailable')
     }
     if (adapter.protocol === 'harness') {
-      // A harness binding declares the agent's runtime — the workspace policy
-      // gate for runtimes applies here too, not only at agents.create.
-      await this.dependencies.workspaces.assertAgentHarnessAllowed({
-        actorUserId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        harness: args.adapterId,
-      })
-      // Managed HarnessAgents are grandfathered: re-saving an existing
-      // (agent, environment) harness binding is always allowed, but binding a
-      // new agent to a harness adapter requires the creation rollout.
-      const existing = await this.dependencies.repository.listBindings({
-        workspaceId: args.workspaceId,
-        agentId: args.agentId,
-      })
-      const isExistingHarnessBinding = existing.some((candidate) =>
-        candidate.environmentId === args.environmentId
-        && candidate.protocolAdapter === 'harness')
-      if (!isExistingHarnessBinding) {
-        const allowed = this.dependencies.harnessCreationAllowed
-          ? await this.dependencies.harnessCreationAllowed({
-              actorUserId: args.actorUserId,
-              workspaceId: args.workspaceId,
-              harnessId: args.adapterId,
-            })
-          : await defaultHarnessCreationAllowed({
-              actorUserId: args.actorUserId,
-              workspaceId: args.workspaceId,
-              harnessId: args.adapterId,
-            })
-        if (!allowed) {
-          throw controlPlaneError(
-            'Managed harness agents are no longer available for new agents — use an Overlay agent instead',
-            403,
-            'harness_creation_disabled',
-          )
-        }
-      }
+      await this.assertHarnessBindingAllowed(args)
     }
     const now = this.now()
     const adapterConfig: Record<string, unknown> = adapter.protocol === 'harness'
@@ -471,6 +435,53 @@ export class ConnectedAgentControlPlaneService {
       workingDirectory: args.workingDirectory,
     }, binding.id, 'agent_binding')
     return binding
+  }
+
+  /**
+   * Harness binding gate. A harness binding declares the agent's runtime — the
+   * workspace policy gate applies here too, not only at agents.create. Managed
+   * HarnessAgents are grandfathered: re-saving an existing (agent, environment)
+   * harness binding is always allowed, but binding a new agent to a harness
+   * adapter requires the creation rollout.
+   */
+  private async assertHarnessBindingAllowed(args: {
+    actorUserId: string
+    workspaceId: string
+    agentId: string
+    environmentId: string
+    adapterId: string
+  }) {
+    await this.dependencies.workspaces.assertAgentHarnessAllowed({
+      actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      harness: args.adapterId,
+    })
+    const existing = await this.dependencies.repository.listBindings({
+      workspaceId: args.workspaceId,
+      agentId: args.agentId,
+    })
+    const isExistingHarnessBinding = existing.some((candidate) =>
+      candidate.environmentId === args.environmentId
+      && candidate.protocolAdapter === 'harness')
+    if (isExistingHarnessBinding) return
+    const allowed = this.dependencies.harnessCreationAllowed
+      ? await this.dependencies.harnessCreationAllowed({
+          actorUserId: args.actorUserId,
+          workspaceId: args.workspaceId,
+          harnessId: args.adapterId,
+        })
+      : await defaultHarnessCreationAllowed({
+          actorUserId: args.actorUserId,
+          workspaceId: args.workspaceId,
+          harnessId: args.adapterId,
+        })
+    if (!allowed) {
+      throw controlPlaneError(
+        'Managed harness agents are no longer available for new agents — use an Overlay agent instead',
+        403,
+        'harness_creation_disabled',
+      )
+    }
   }
 
   /**

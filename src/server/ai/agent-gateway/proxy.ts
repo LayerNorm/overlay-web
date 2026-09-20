@@ -358,22 +358,41 @@ export async function handleAgentGatewayRequest(
     return errorShape(provider, 503, 'api_error', 'Model provider is not configured on this Overlay deployment.')
   }
 
-  const headers = new Headers(request.headers)
+  return respondWithUpstream({
+    request, provider, upstream, path, bodyText, claims, modelId,
+    reservationId: reservation.reservationId, requestedModel, serverKey,
+  })
+}
+
+async function respondWithUpstream(args: {
+  request: Request
+  provider: GatewayProviderId
+  upstream: GatewayUpstream
+  path: string
+  bodyText: string
+  claims: AgentGatewayTokenClaims
+  modelId: string | null
+  reservationId: string | null | undefined
+  requestedModel: string
+  serverKey: string
+}): Promise<Response> {
+  const { provider, upstream, claims, modelId, reservationId, requestedModel } = args
+  const headers = new Headers(args.request.headers)
   for (const name of HOP_BY_HOP_HEADERS) headers.delete(name)
-  if (provider === 'anthropic') headers.set('x-api-key', serverKey)
-  else headers.set('authorization', `Bearer ${serverKey}`)
+  if (provider === 'anthropic') headers.set('x-api-key', args.serverKey)
+  else headers.set('authorization', `Bearer ${args.serverKey}`)
 
   let upstreamResponse: Response
   try {
-    upstreamResponse = await fetch(`${upstream.origin}/${path}`, {
-      method: request.method,
+    upstreamResponse = await fetch(`${upstream.origin}/${args.path}`, {
+      method: args.request.method,
       headers,
-      body: request.method === 'POST' ? bodyText : undefined,
+      body: args.request.method === 'POST' ? args.bodyText : undefined,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     })
   } catch (error) {
     await finalizeProviderBudgetReservation({
-      userId: claims.userId, reservationId: reservation.reservationId, actualProviderCostUsd: 0,
+      userId: claims.userId, reservationId, actualProviderCostUsd: 0,
     }).catch((_error) => undefined)
     return errorShape(provider, 502, 'api_error', `Upstream model call failed: ${error instanceof Error ? error.message : 'unreachable'}`)
   }
@@ -386,14 +405,14 @@ export async function handleAgentGatewayRequest(
 
   const isSse = (upstreamResponse.headers.get('content-type') ?? '').includes('text/event-stream')
   if (!upstreamResponse.body) {
-    await finalizeUsage({ claims, modelId, reservationId: reservation.reservationId, requestedModel, usage: null })
+    await finalizeUsage({ claims, modelId, reservationId, requestedModel, usage: null })
     return new Response(null, { status: upstreamResponse.status, headers: responseHeaders })
   }
 
   if (isSse) {
     const [clientBranch, meterBranch] = upstreamResponse.body.tee()
     void consumeSseUsage(meterBranch, provider).then((usage) => finalizeUsage({
-      claims, modelId, reservationId: reservation.reservationId, requestedModel, usage,
+      claims, modelId, reservationId, requestedModel, usage,
     }))
     return new Response(clientBranch, { status: upstreamResponse.status, headers: responseHeaders })
   }
@@ -403,6 +422,6 @@ export async function handleAgentGatewayRequest(
   const usage = parsed
     ? provider === 'anthropic' ? usageFromAnthropicJson(parsed) : usageFromOpenAiJson(parsed)
     : null
-  await finalizeUsage({ claims, modelId, reservationId: reservation.reservationId, requestedModel, usage })
+  await finalizeUsage({ claims, modelId, reservationId, requestedModel, usage })
   return new Response(raw, { status: upstreamResponse.status, headers: responseHeaders })
 }
