@@ -15,6 +15,8 @@ const v1Root = join(appRoot, 'api', 'v1')
  */
 const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/account/delete': ['POST'],
+  // Scoped bearer-token model proxy for in-box CLIs — not session auth.
+  '/api/agent-gateway/[provider]/[...path]': ['GET', 'POST'],
   '/api/auth/callback': ['GET'],
   '/api/auth/convex-token': ['GET'],
   '/api/auth/desktop-link': ['GET', 'POST'],
