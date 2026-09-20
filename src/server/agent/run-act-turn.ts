@@ -120,6 +120,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
         userId: input.userId,
         automationExecution: true,
         automationId: input.automationId,
+        automationName: input.name,
         actAbortTimeoutMs: SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS,
         // Forward any @mention tokens embedded in the saved instructions so the act
         // route's mention-context resolver can inject the same lightweight metadata

@@ -1485,6 +1485,7 @@ export function DirectMessageExperience({
     // The directory entry is the live name; participant displayName snapshots
     // go stale when an agent is renamed.
     const authorName = authorAgent?.name ?? author?.displayName
+      ?? message.importedAuthorName?.trim()
       ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
     const view = toRoomMessageView({
       message,

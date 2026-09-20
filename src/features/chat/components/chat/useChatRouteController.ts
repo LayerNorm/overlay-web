@@ -62,8 +62,8 @@ export function useChatRouteController({
   const idParam = searchParams?.get('id') ?? null
   const automationIdParam = mode === 'automate' ? searchParams?.get('automationId') ?? null : null
   const automationDetailTab = normalizeAutomationDetailTab(searchParams?.get('tab'))
-  const automationConversationId =
-    selectedAutomation?.sourceConversationId || selectedAutomation?.conversationId || null
+  // Only the automation-owned thread — sourceConversationId is provenance.
+  const automationConversationId = selectedAutomation?.conversationId || null
   const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
   const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
   const showAutomationHeaderControls = mode === 'automate'

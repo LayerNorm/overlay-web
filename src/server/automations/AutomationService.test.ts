@@ -56,7 +56,8 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
         description: 'Old description',
         instructions: 'Old instructions',
         schedule: { kind: 'daily', hourUTC: 9, minuteUTC: 0 },
-        sourceConversationId: 'conversation_1',
+        sourceConversationId: 'conversation_source',
+        conversationId: 'conversation_owned',
       } as never
     },
     async getAutomationRunTarget() {
@@ -75,7 +76,7 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async updateAutomation(args) {
       updatedAutomations.push(args)
     },
-    async attachSourceConversation() {},
+    async attachOwnedConversation() {},
     async pauseAutomation() {},
     async resumeAutomation() {},
     async removeAutomation() {},
@@ -450,16 +451,16 @@ test('AutomationService syncs durable run lifecycle status through the repositor
   }])
 })
 
-test('AutomationService.attachSourceConversation delegates to repository', async () => {
+test('AutomationService.attachOwnedConversation delegates to repository', async () => {
   const links: Array<{ automationId: string; conversationId: string; userId: string }> = []
   const repository = createRepository({
-    async attachSourceConversation(args) {
+    async attachOwnedConversation(args) {
       links.push(args)
     },
   })
   const { service } = createService(repository)
 
-  await service.attachSourceConversation({
+  await service.attachOwnedConversation({
     automationId: 'automation_1',
     conversationId: 'conversation_1',
     userId: 'user_1',
@@ -693,4 +694,143 @@ test('AutomationService.updateSchedulerWorkflowRunId delegates to repository whe
   assert.equal(updates.length, 1)
   assert.equal(updates[0]?.automationId, 'automation_1')
   assert.equal(updates[0]?.schedulerWorkflowRunId, 'wfrun_abc')
+})
+
+// ---------------------------------------------------------------------------
+// Conversation ownership: sourceConversationId is provenance, never deleted;
+// conversationId is the automation-owned thread.
+// ---------------------------------------------------------------------------
+
+test('AutomationService.updateAutomation posts update notes to the owned thread', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+
+  await service.updateAutomation({
+    userId: 'user_1',
+    body: { automationId: 'automation_1', name: 'New name' },
+  })
+
+  assert.equal(repository.updateNotes.length, 1)
+  assert.equal(repository.updateNotes[0]?.conversationId, 'conversation_owned')
+})
+
+test('AutomationService.updateAutomation skips update note when no owned thread exists', async () => {
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Old name',
+        instructions: 'Old instructions',
+        sourceConversationId: 'conversation_source',
+      } as never
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.updateAutomation({
+    userId: 'user_1',
+    body: { automationId: 'automation_1', name: 'New name' },
+  })
+
+  assert.equal(repository.updateNotes.length, 0)
+})
+
+test('AutomationService.deleteAutomation removes only the owned conversation, never the source', async () => {
+  const removedConversations: string[] = []
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Test automation',
+        instructions: 'Do things',
+        sourceConversationId: 'conversation_source',
+        conversationId: 'conversation_owned',
+      } as never
+    },
+    async removeConversation(args) {
+      removedConversations.push(args.conversationId)
+    },
+  })
+  const { service } = createService(repository)
+
+  const result = await service.deleteAutomation({
+    automationId: 'automation_1',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(removedConversations, ['conversation_owned'])
+  assert.deepEqual(result.linkedConversationIds, ['conversation_owned'])
+})
+
+test('AutomationService.deleteAutomation never deletes a shared source thread (legacy hijacked rows)', async () => {
+  const removedConversations: string[] = []
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Test automation',
+        instructions: 'Do things',
+        // Legacy row: the shared source thread was stamped as the run target.
+        sourceConversationId: 'conversation_shared',
+        conversationId: 'conversation_shared',
+      } as never
+    },
+    async removeConversation(args) {
+      removedConversations.push(args.conversationId)
+    },
+  })
+  const { service } = createService(repository)
+
+  const result = await service.deleteAutomation({
+    automationId: 'automation_1',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(removedConversations, [])
+  assert.deepEqual(result.linkedConversationIds, [])
+})
+
+test('AutomationService.testAutomation targets only the owned conversation', async () => {
+  const executorInputs: Array<{ conversationId?: string }> = []
+  const repository = createRepository()
+  const service = new AutomationService({
+    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
+    repository,
+    clock: { now: () => 1_700_000_000_000 },
+    executor: async (input) => {
+      executorInputs.push(input)
+      return { conversationId: 'conversation_result' as never }
+    },
+  })
+
+  await service.testAutomation({ userId: 'user_1', automationId: 'automation_1' })
+
+  // getAutomationRunTarget returns only sourceConversationId — it must NOT
+  // leak into the run target.
+  assert.equal(executorInputs.length, 1)
+  assert.equal(executorInputs[0]?.conversationId, undefined)
+})
+
+test('AutomationService.runAutomation targets only the owned conversation', async () => {
+  const executorInputs: Array<{ conversationId?: string }> = []
+  const repository = createRepository()
+  const service = new AutomationService({
+    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
+    repository,
+    clock: { now: () => 1_700_000_000_000 },
+    executor: async (input) => {
+      executorInputs.push(input)
+      return { conversationId: 'conversation_result' as never }
+    },
+  })
+
+  await service.runAutomation({ runId: 'run_1', serviceUserId: 'user_1' })
+
+  // getRunForExecution returns automation with only sourceConversationId —
+  // it must NOT leak into the run target.
+  assert.equal(executorInputs.length, 1)
+  assert.equal(executorInputs[0]?.conversationId, undefined)
 })

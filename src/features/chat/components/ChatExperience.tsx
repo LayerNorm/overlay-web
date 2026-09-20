@@ -913,8 +913,7 @@ export default function ChatExperience({
         if (conversationId) {
           const page = await overlayAppClient.automations.getPage<AutomationDetail>({ limit: 100 })
           const linked = (Array.isArray(page.data) ? page.data : []).find((automation) => (
-            automation.sourceConversationId === conversationId
-            || automation.conversationId === conversationId
+            automation.conversationId === conversationId
           ))
           if (linked) {
             automationId = linked._id
@@ -937,10 +936,11 @@ export default function ChatExperience({
       })
       if (!res.ok) throw new Error('Failed to load automation')
       const automation = await res.json() as AutomationDetail
-      const candidates = [...new Set([
-        automation.sourceConversationId,
-        automation.conversationId,
-      ].filter((value): value is string => Boolean(value)))]
+      // Only the automation-owned thread is shown — the source conversation is
+      // provenance (the chat the automation was drafted in) and stays a normal
+      // chat for its owner.
+      const candidates = [automation.conversationId]
+        .filter((value): value is string => Boolean(value))
       let resolvedConversationId: string | null = null
       for (const candidate of candidates) {
         const conversationResponse = await overlayAppClient.conversations.getResponse({

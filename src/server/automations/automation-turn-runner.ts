@@ -733,6 +733,7 @@ export async function finalizeAutomationAgentTurn(args: {
     },
     multiModelSlotIndex: 0,
     multiModelTotal: 1,
+    importedAuthorName: input.name,
     sourceCitations: plan.sourceCitations,
     timedOut: false,
     timeoutMs: 0,
@@ -800,6 +801,7 @@ export async function failAutomationAgentTurn(args: {
         ),
         multiModelSlotIndex: 0,
         multiModelTotal: 1,
+        importedAuthorName: input.name,
         timedOut: false,
         timeoutMs: 0,
         toolFailuresByCallId: new Map(

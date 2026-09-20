@@ -415,15 +415,17 @@ export class AutomationService {
       userId: args.userId,
       workspaceId: args.workspaceId,
     })
-    const isDraftPlaceholder =
-      automation?.enabled === false &&
-      automation?.name === 'New automation' &&
-      automation?.description === 'Draft automation. Add a description before enabling it.' &&
-      automation?.instructions === 'Describe what this automation should do.'
-    const linkedConversationIds = [
-      automation?.conversationId,
-      isDraftPlaceholder ? automation?.sourceConversationId : undefined,
-    ].filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
+    // Only the automation-owned thread is deleted. The sourceConversationId
+    // is provenance — the chat the automation was drafted in belongs to the
+    // user (or the agent), and deleting the automation must not destroy it.
+    // Guard: legacy rows can have conversationId === sourceConversationId
+    // (the shared thread was stamped as the run target); never delete those.
+    const ownedConversationId =
+      automation?.conversationId && automation.conversationId !== automation.sourceConversationId
+        ? automation.conversationId
+        : undefined
+    const linkedConversationIds = [ownedConversationId]
+      .filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
 
     // Cancel any active scheduler workflow before deleting the automation
     if (automation?.schedulerWorkflowRunId) {
@@ -486,7 +488,7 @@ export class AutomationService {
 
       const scheduledFor = this.clock.now()
       const turnId = `automation-test-${automationId}-${scheduledFor}`
-      const conversationId = automation.sourceConversationId || automation.conversationId
+      const conversationId = automation.conversationId
 
       runId = await this.deps.repository.createManualRun({
         automationId,
@@ -578,7 +580,7 @@ export class AutomationService {
         serviceError({ error: 'Unauthorized' }, 401)
       }
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
-      const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
+      const conversationId = run.conversationId || automation.conversationId
 
       const result = await withObservabilityContext({
         provider: 'automation',
@@ -676,7 +678,6 @@ export class AutomationService {
       modelId: automation.modelId,
       conversationId:
         run.conversationId ||
-        automation.sourceConversationId ||
         automation.conversationId,
       schedule: automation.schedule ?? { kind: 'interval' as const, intervalMinutes: 60 },
       oneShot: true,
@@ -732,12 +733,12 @@ export class AutomationService {
     })
   }
 
-  async attachSourceConversation(args: {
+  async attachOwnedConversation(args: {
     automationId: string
     conversationId: string
     userId: string
   }): Promise<void> {
-    await this.deps.repository.attachSourceConversation(args)
+    await this.deps.repository.attachOwnedConversation(args)
   }
 
   async updateRunWorkflowRunId(args: {
@@ -854,7 +855,7 @@ export class AutomationService {
     userId: string,
   ): Promise<void> {
     const updateNote = buildAutomationUpdateNote(automation, after)
-    const conversationId = automation.sourceConversationId || automation.conversationId
+    const conversationId = automation.conversationId
     if (!updateNote || !conversationId) return
     await this.deps.repository.appendAutomationUpdateNote({
       automationId: automation._id,

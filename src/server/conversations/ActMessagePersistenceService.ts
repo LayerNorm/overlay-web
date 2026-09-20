@@ -173,6 +173,7 @@ export class ActMessagePersistenceService {
     finishedToolCallIds: Set<string>
     agentRunId?: string
     agentRunMetrics?: Partial<AgentRunMetrics>
+    importedAuthorName?: string
     multiModelSlotIndex: number
     multiModelTotal: number
     routedModelId?: string
@@ -328,6 +329,7 @@ export class ActMessagePersistenceService {
           routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
           variantIndex: args.multiModelSlotIndex,
+          importedAuthorName: args.importedAuthorName,
         })
       }
       if (args.emitWebhook && assistantCompleted) {

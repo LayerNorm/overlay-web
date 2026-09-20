@@ -79,12 +79,12 @@ export class ConvexAutomationRepository implements AutomationRepository {
     }, { throwOnError: true })
   }
 
-  async attachSourceConversation(args: {
+  async attachOwnedConversation(args: {
     automationId: string
     conversationId: string
     userId: string
   }): Promise<void> {
-    await convex.mutation('automations/automations:attachSourceConversationByServer', {
+    await convex.mutation('automations/automations:attachConversationByServer', {
       automationId: args.automationId as Id<'automations'>,
       conversationId: args.conversationId as Id<'conversations'>,
       serverSecret: this.serverSecret,

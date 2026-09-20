@@ -601,7 +601,7 @@ export const markManualRunFailed = mutation({
   },
 })
 
-export const attachSourceConversationByServer = mutation({
+export const attachConversationByServer = mutation({
   args: {
     automationId: v.id('automations'),
     conversationId: v.id('conversations'),
@@ -626,20 +626,26 @@ export const attachSourceConversationByServer = mutation({
     if (automation.workspaceId && conversation.workspaceId !== automation.workspaceId) {
       throw new Error('Unauthorized')
     }
-    const currentSource = automation.sourceConversationId
-      ? await ctx.db.get(automation.sourceConversationId)
+    // The conversation a user chats in on the automation surface IS the
+    // automation's own thread: it is owned by the automation, hidden from
+    // Chats via isAutomation, and becomes the run target.
+    const currentOwned = automation.conversationId
+      ? await ctx.db.get(automation.conversationId)
       : null
-    const currentSourceIsValid = Boolean(
-      currentSource
-      && currentSource.userId === args.userId
-      && !currentSource.deletedAt
-      && (!automation.workspaceId || currentSource.workspaceId === automation.workspaceId),
+    const currentOwnedIsValid = Boolean(
+      currentOwned
+      && currentOwned.userId === args.userId
+      && !currentOwned.deletedAt
+      && (!automation.workspaceId || currentOwned.workspaceId === automation.workspaceId),
     )
-    if (!currentSourceIsValid) {
+    if (!currentOwnedIsValid) {
       await ctx.db.patch(args.automationId, {
-        sourceConversationId: args.conversationId,
+        conversationId: args.conversationId,
         updatedAt: Date.now(),
       })
+      if (!conversation.isAutomation) {
+        await ctx.db.patch(args.conversationId, { isAutomation: true })
+      }
     }
     return null
   },

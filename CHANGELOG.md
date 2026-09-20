@@ -18,6 +18,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Automations no longer hijack the conversation they were created in**: `sourceConversationId` is now provenance only — never a run target, never hidden from Chats, never deleted with the automation. Every automation executes in its own owned thread (`conversationId`, `isAutomation`), created on first run or on the first message in the automation surface, and every run appends to it. Previously, creating an automation inside a chat/agent thread made runs write into that thread, hid it from Chats, and (for drafts) deleted it with the automation — which also bounced an open view back to the chat list. Automation-run messages now carry the automation's name as the author instead of "Someone". A one-off migration (`convex/migrations/backfillAutomationConversations.ts`, server-secret gated, paginated) clears `conversationId` values that point at non-`isAutomation` conversations, restoring hijacked threads to their owners.
 - `bin/convex-bootstrap.sh` rejected admin keys for non-default `INSTANCE_NAME` — the key prefix is `<instance-name>|`, not hardcoded `convex-self-hosted|`. Also `convex.env` (which holds real secrets) is now gitignored, as is `examples/*/node_modules/`.
 
 ### Removed

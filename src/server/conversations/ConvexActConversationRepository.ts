@@ -183,6 +183,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     turnId: string
     userId: string
     variantIndex?: number
+    importedAuthorName?: string
   }): Promise<Id<'conversationMessages'> | null> {
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {
       ...args,

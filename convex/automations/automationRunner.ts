@@ -146,7 +146,9 @@ export const runAutomation = internalAction({
 
     const now = Date.now()
     const turnId = `automation-${args.runId}-${now}`
-    const existingConversationId = (automation.sourceConversationId || automation.conversationId) as
+    // Runs always target the automation-owned thread. sourceConversationId is
+    // provenance only and is never an execution target.
+    const existingConversationId = automation.conversationId as
       | Id<'conversations'>
       | undefined
     await ctx.runMutation(internal.automations.automations.markRunStarted, {

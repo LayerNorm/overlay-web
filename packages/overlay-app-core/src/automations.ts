@@ -152,7 +152,10 @@ export function getAutomationInstructions(
 export function getAutomationConversationId(
   automation: Pick<AutomationSummary, 'sourceConversationId' | 'conversationId'>,
 ): string | undefined {
-  return automation.sourceConversationId || automation.conversationId
+  // Only the automation-owned thread is navigable — the source conversation
+  // is provenance (the chat the automation was drafted in), not the
+  // automation's thread.
+  return automation.conversationId
 }
 
 export function automationHref(automation: Pick<AutomationSummary, '_id' | 'sourceConversationId' | 'conversationId'>): string {

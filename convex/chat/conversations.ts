@@ -165,7 +165,9 @@ async function getLinkedAutomationConversationIds(
   const ids = new Set<string>()
   for (const automation of automations) {
     if (automation.userId !== userId || automation.deletedAt) continue
-    if (automation.sourceConversationId) ids.add(automation.sourceConversationId)
+    // Only the automation-owned thread is hidden from Chats. The
+    // sourceConversationId is provenance (the chat the automation was drafted
+    // in) and must not hide a real conversation.
     if (automation.conversationId) ids.add(automation.conversationId)
   }
   return ids

@@ -175,6 +175,7 @@ export async function executeActTurn(
       automationMode,
       automationExecution,
       automationId,
+      automationName,
       mediaToolIntent,
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
@@ -314,7 +315,7 @@ export async function executeActTurn(
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }
     if (automationMode === true && automationId && cid) {
-      await automationService.attachSourceConversation({
+      await automationService.attachOwnedConversation({
         automationId,
         conversationId: cid,
         userId: conversationUserId,
@@ -991,6 +992,10 @@ export async function executeActTurn(
             ...summarizeAgentToolMetrics(event.steps),
             toolRetryCount: 0,
           },
+          importedAuthorName:
+            automationExecution === true && auth.authType === 'service'
+              ? automationName?.trim() || undefined
+              : undefined,
           multiModelSlotIndex,
           multiModelTotal,
           routedModelId: streamedRoutedModelId,

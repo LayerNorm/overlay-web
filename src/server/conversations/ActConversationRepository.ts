@@ -242,6 +242,7 @@ export interface ActConversationRepository {
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
     clientNonce?: string
+    importedAuthorName?: string
     threadRootMessageId?: string
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {

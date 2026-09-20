@@ -65,7 +65,7 @@ export interface AutomationRepository {
   }): Promise<AutomationRunTarget | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
-  attachSourceConversation(args: {
+  attachOwnedConversation(args: {
     automationId: string
     conversationId: string
     userId: string
