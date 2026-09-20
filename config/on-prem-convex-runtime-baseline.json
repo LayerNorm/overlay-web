@@ -2,6 +2,7 @@
   "version": 2,
   "apiRouteFiles": [
     "src/app/api/account/delete/route.ts",
+    "src/app/api/agent-gateway/[provider]/[...path]/route.ts",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -53,6 +54,7 @@
     "src/app/api/v1/agent-environments/[environmentId]/commands/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/credentials/refresh/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/credentials/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/desktop/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/events/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/heartbeat/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/reset-harness/route.ts",
