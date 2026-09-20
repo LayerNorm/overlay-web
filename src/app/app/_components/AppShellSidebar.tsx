@@ -1,7 +1,7 @@
 'use client'
 
 import AppSidebar from '@/components/layout/AppSidebar'
-import { AgentsInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
+import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
 import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
 import {
   ActivityInlinePanel,

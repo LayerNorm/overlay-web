@@ -26,12 +26,14 @@ import {
   FloatingMenu,
 } from '@overlay/ui/primitives'
 import {
-  AgentsInlinePanel,
-  agentsInlineItems,
   FilesInlinePanel,
   chatsInlineItems,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
+import {
+  AgentsInlinePanel,
+  agentsInlineItems,
+} from '@/components/layout/AppSidebarAgentsPanel'
 import { filesInlineItems, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'
