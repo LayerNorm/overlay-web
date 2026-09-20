@@ -50,7 +50,7 @@ export function NewDirectMessageDialog({
   showcase?: boolean
   excludedPrincipalIds?: string[]
   onOpenChange(open: boolean): void
-  onCreated?(conversation: { id: string; title: string }): void
+  onCreated?(conversation: { id: string; title: string; agentId?: string }): void
   onParticipantsAdded?(): void
 }) {
   const [items, setItems] = useState<WorkspaceManagementItem[]>(showcase ? SHOWCASE_ITEMS : [])
@@ -138,7 +138,11 @@ export function NewDirectMessageDialog({
           : selected,
         sourceConversationId,
       })
-      onCreated?.({ id: directMessage.conversationId, title: directMessage.title })
+      onCreated?.({
+        id: directMessage.conversationId,
+        title: directMessage.title,
+        agentId: directMessage.agentId ?? undefined,
+      })
       onOpenChange(false)
       setSelected([])
       setQuery('')

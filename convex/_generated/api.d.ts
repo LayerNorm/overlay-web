@@ -10,6 +10,7 @@
 
 import type * as admin_administration from "../admin/administration.js";
 import type * as admin_authorization from "../admin/authorization.js";
+import type * as agents_agentThreads from "../agents/agentThreads.js";
 import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
 import type * as agents_connectedAgents from "../agents/connectedAgents.js";
 import type * as agents_environmentControlPlane from "../agents/environmentControlPlane.js";
@@ -72,6 +73,8 @@ import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_metrics from "../lib/metrics.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
+import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
+import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
 import type * as platform_http from "../platform/http.js";
@@ -97,6 +100,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "admin/administration": typeof admin_administration;
   "admin/authorization": typeof admin_authorization;
+  "agents/agentThreads": typeof agents_agentThreads;
   "agents/artifactCleanup": typeof agents_artifactCleanup;
   "agents/connectedAgents": typeof agents_connectedAgents;
   "agents/environmentControlPlane": typeof agents_environmentControlPlane;
@@ -159,6 +163,8 @@ declare const fullApi: ApiFromModules<{
   "lib/logging": typeof lib_logging;
   "lib/metrics": typeof lib_metrics;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
+  "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;
+  "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
   "platform/http": typeof platform_http;

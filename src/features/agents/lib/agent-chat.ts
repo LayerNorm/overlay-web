@@ -9,7 +9,7 @@ import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AVATAR_COLORS } from '../components/AgentEditorForm'
 
-/** Opens (or creates) a one-to-one DM with an agent, then navigates to it. Resolves the DM conversation id (null when it cannot be determined). */
+/** Opens (or creates) the agent's main thread, then navigates to it. Resolves the conversation id (null when it cannot be determined). */
 export async function startAgentChat(args: {
   workspaceId: string | null
   agentId?: string
@@ -27,22 +27,28 @@ export async function startAgentChat(args: {
     return args.agentPrincipalId
   }
   if (!args.workspaceId) return null
-  const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(args.workspaceId, {
-    principalIds: [args.agentPrincipalId],
-  })
+  // Agents open into their main thread. The resolver adopts the legacy DM
+  // when one exists, so pre-thread history is never lost.
+  const { thread } = args.agentId
+    ? await overlayAppClient.agents.resolveMainThread(args.workspaceId, args.agentId)
+    : { thread: null }
+  const conversationId = thread?.conversationId
+    ?? (await overlayAppClient.conversations.createWorkspaceDirectMessage(args.workspaceId, {
+      principalIds: [args.agentPrincipalId],
+    })).directMessage.conversationId
   dispatchChatCreated({
     chat: {
-      _id: directMessage.conversationId,
-      title: directMessage.title,
+      _id: conversationId,
+      title: thread?.title ?? 'Agent thread',
       lastModified: Date.now(),
       conversationType: 'dm',
     },
   })
   const basePath = buildWorkspaceHref(args.workspaceId, surface === 'agents' ? '/app/agents' : '/app/chat')
-  const params = new URLSearchParams({ view: 'dms', id: directMessage.conversationId })
+  const params = new URLSearchParams({ view: 'dms', id: conversationId })
   if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
   args.push(`${basePath}?${params.toString()}`)
-  return directMessage.conversationId
+  return conversationId
 }
 
 /** Canonical workspace-scoped href for the agent editor pages. */

@@ -283,10 +283,14 @@ export class AutomationService {
       if (!automation) serviceError({ error: 'Not found' }, 404)
       return automation
     }
+    // The standalone Automations surface lists only standalone automations;
+    // agent-owned automations (created inside agent threads) nest under their
+    // agent in the sidebar instead.
     return await this.deps.repository.listAutomations({
       userId: args.userId,
       includeDeleted: args.includeDeleted,
       workspaceId: args.workspaceId,
+      excludeAgentBound: true,
     })
   }
 
@@ -578,6 +582,9 @@ export class AutomationService {
       userId = automation.userId
       if (automation.userId !== args.serviceUserId) {
         serviceError({ error: 'Unauthorized' }, 401)
+      }
+      if ((payload as { agentArchived?: boolean }).agentArchived) {
+        serviceError({ error: 'Automation run is not executable' }, 409)
       }
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
       const conversationId = run.conversationId || automation.conversationId

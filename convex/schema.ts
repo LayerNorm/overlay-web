@@ -716,6 +716,11 @@ export default defineSchema({
     graphSource: v.optional(v.string()),
     graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
+    // Set when the automation was created inside an agent thread: the
+    // automation belongs to that agent (nested under it in the sidebar and
+    // hidden from the standalone Automations page) and shares the agent's
+    // instructions, tools, and environment through its thread.
+    agentId: v.optional(v.string()),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
     schedulerWorkflowRunId: v.optional(v.string()),
     // Legacy automation fields kept so existing production rows continue to validate.
@@ -752,6 +757,7 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])
+    .index('by_agentId', ['agentId'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
     .index('by_projectId', ['projectId'])
     .searchIndex('search_name', {
@@ -972,6 +978,11 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
     isAutomation: v.optional(v.boolean()),
+    // Agent-thread binding: conversations created as threads under a
+    // workspace agent carry the agent's public id so the sidebar can nest
+    // them and the chat list can keep them out of Chats. Absent on ordinary
+    // chats and on automation-owned threads.
+    agentId: v.optional(v.string()),
     dmIdentityKey: v.optional(v.string()),
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
@@ -990,6 +1001,7 @@ export default defineSchema({
     .index('by_shareToken', ['shareToken'])
     .index('by_createdAt', ['createdAt'])
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
     .searchIndex('search_title', {

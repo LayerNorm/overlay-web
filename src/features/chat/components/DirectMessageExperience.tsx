@@ -2056,7 +2056,11 @@ export function DirectMessageExperience({
           addToConversationType={conversationType}
           excludedPrincipalIds={participants.map((participant) => participant.principalId)}
           onOpenChange={setAddPeopleOpen}
-          onCreated={({ id, title: createdTitle }) => {
+          onCreated={({ id, title: createdTitle, agentId }) => {
+            if (agentId) {
+              router.push(`/app/agents?${new URLSearchParams({ agent: agentId, view: 'dms', id }).toString()}`)
+              return
+            }
             const view = conversationType === 'channel' ? 'channels' : 'dms'
             router.push(`/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`)
           }}

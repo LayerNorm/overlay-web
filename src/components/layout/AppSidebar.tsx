@@ -27,6 +27,7 @@ import {
 } from '@overlay/ui/primitives'
 import {
   AgentsInlinePanel,
+  agentsInlineItems,
   FilesInlinePanel,
   chatsInlineItems,
   toolsInlineItems,
@@ -340,6 +341,12 @@ export default function AppSidebar({
     return 'connectors'
   })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
+  const agentsView = (() => {
+    const current = currentSearchParams.get('view')
+    if (current === 'workspace') return 'workspace'
+    if (current === 'archived') return 'archived'
+    return 'personal'
+  })() as 'personal' | 'workspace' | 'archived'
   const chatViewParam = currentSearchParams.get('view')
   const chatsView = (() => {
     if (activityOpen) return 'activity'
@@ -808,6 +815,27 @@ export default function AppSidebar({
         },
       }
     }
+    if (panelKind === 'agents') {
+      return {
+        items: agentsInlineItems,
+        activeId: agentsView,
+        pendingId: effectivePendingSecondaryNavId,
+        onSelect: (next) => {
+          closeMobileDrawer()
+          if (next === agentsView) return
+          beginSecondaryNavigation(next)
+          const params = new URLSearchParams(currentSearchParams.toString())
+          if (publicShowcase) params.set('showcase', '1')
+          if (next === 'personal') params.delete('view')
+          else params.set('view', next)
+          const query = params.toString()
+          const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
+            ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')
+            : '/app/agents'
+          router.push(query ? `${agentsHref}?${query}` : agentsHref)
+        },
+      }
+    }
     if (panelKind === 'tools') {
       return {
         items: availableToolsInlineItems,
@@ -881,6 +909,7 @@ export default function AppSidebar({
           : <AgentsInlinePanel
             workspaceId={activeWorkspaceId}
             baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
+            view={agentsView}
             onNavigate={closeMobileDrawer}
           />
       ) : null}

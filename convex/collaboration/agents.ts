@@ -237,11 +237,49 @@ export const archiveByServer = mutation({
       .withIndex('by_workspaceId_principalId_status', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
     for (const participant of participants) {
+      // Threads (agentId-bound conversations) keep the agent as a participant
+      // while archived so the Archived view can render them and unarchive
+      // restores without re-joining.
+      const conversation = await ctx.db.get(participant.conversationId)
+      if (conversation?.agentId === row.agentId) continue
       await ctx.db.patch(participant._id, { status: 'removed', removedAt: args.now, updatedAt: args.now })
     }
     const memberships = await ctx.db.query('workspaceTeamMemberships')
       .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
     for (const teamMembership of memberships) await ctx.db.delete(teamMembership._id)
+    return true
+  },
+})
+
+export const unarchiveByServer = mutation({
+  args: { serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(), now: v.number() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
+    if (!row || row.workspaceId !== args.workspaceId || !row.archivedAt) return false
+    await ctx.db.patch(row._id, { archivedAt: undefined, updatedAt: args.now })
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
+    if (principal) await ctx.db.patch(principal._id, { archivedAt: undefined, updatedAt: args.now })
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId)).unique()
+    if (membership) await ctx.db.patch(membership._id, { status: 'active', updatedAt: args.now })
+    // Restore the agent's participant rows on its own threads if an older
+    // archive removed them (threads written before this change shipped).
+    const threads = await ctx.db.query('conversations')
+      .withIndex('by_workspaceId_agentId', (q) =>
+        q.eq('workspaceId', args.workspaceId).eq('agentId', row.agentId)).collect()
+    for (const thread of threads) {
+      if (thread.deletedAt) continue
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) =>
+          q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()
+      if (participant && participant.status !== 'active') {
+        await ctx.db.patch(participant._id, { status: 'active', removedAt: undefined, updatedAt: args.now })
+      }
+    }
     return true
   },
 })

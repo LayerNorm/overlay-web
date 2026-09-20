@@ -141,10 +141,18 @@ export const runAutomation = internalAction({
     })
     if (!payload) return null
 
-    const { run, automation } = payload
+    const { run, automation, agentArchived } = payload
     if (run.status !== 'queued') return null
 
     const now = Date.now()
+    // Agent-owned automations do not run while their agent is archived.
+    if (agentArchived) {
+      await ctx.runMutation(internal.automations.automations.markRunSkipped, {
+        runId: args.runId,
+        now,
+      })
+      return null
+    }
     const turnId = `automation-${args.runId}-${now}`
     // Runs always target the automation-owned thread. sourceConversationId is
     // provenance only and is never an execution target.

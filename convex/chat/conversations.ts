@@ -280,6 +280,9 @@ export const list = query({
     return all
       .map(normalizeConversationDoc)
       .filter((c) => !c.isAutomation)
+      // Agent threads nest under their agent in the sidebar — they never
+      // appear in the flat Chats/DMs lists.
+      .filter((c) => !c.agentId)
       .filter((c) => !automationConversationIds.has(c._id))
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))

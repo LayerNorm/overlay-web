@@ -20,6 +20,7 @@ export class ConvexAutomationRepository implements AutomationRepository {
   }
 
   async listAutomations(args: {
+    excludeAgentBound?: boolean
     includeDeleted?: boolean
     userId: string
   }): Promise<AutomationRecord[]> {

@@ -6,17 +6,27 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Archive,
+  ArchiveRestore,
   Bell,
+  ChevronRight,
   Hash,
   Loader2,
   Mail,
   MessageSquare,
   Package,
   Plug,
+  Plus,
   Server,
   Sparkles,
+  Trash2,
+  User,
+  Users,
+  Workflow,
 } from 'lucide-react'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import type {
+  WorkspaceAgentBundle,
+  WorkspaceAgentDirectoryItem,
+} from '@overlay/workspace-contracts'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -41,6 +51,7 @@ import { AgentCreature } from '@/components/orb/Creature'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
+  dispatchAgentDirectoryChanged,
   type AgentDirectoryChangedEventDetail,
   type AgentDraftPreviewEventDetail,
   type AgentDraftPreviewPatch,
@@ -214,23 +225,156 @@ export function FilesInlinePanel({
 const resourceRowClass =
   'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
+export type AgentsPanelView = 'personal' | 'workspace' | 'archived'
+
+function agentThreadHref(baseHref: string, agentId: string, conversationId: string) {
+  const params = new URLSearchParams({ agent: agentId, view: 'dms', id: conversationId })
+  return `${baseHref}?${params.toString()}`
+}
+
+function AgentThreadRows({
+  agent,
+  bundle,
+  view,
+  activeConversationId,
+  onOpenThread,
+  onCreateThread,
+  onArchiveThread,
+  onDeleteThread,
+  creatingThread,
+}: {
+  agent: WorkspaceAgentDirectoryItem
+  bundle: WorkspaceAgentBundle | 'loading' | 'error'
+  view: AgentsPanelView
+  activeConversationId: string | null
+  onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
+  onCreateThread(agent: WorkspaceAgentDirectoryItem): void
+  onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
+  onDeleteThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
+  creatingThread: boolean
+}) {
+  if (bundle === 'loading') {
+    return (
+      <div className="flex items-center gap-2 py-1.5 pl-9 text-xs text-[var(--muted-light)]">
+        <Loader2 size={12} className="animate-spin" /> Loading threads...
+      </div>
+    )
+  }
+  if (bundle === 'error') {
+    return <p className="py-1.5 pl-9 text-xs text-[var(--muted-light)]">Could not load threads</p>
+  }
+  // Live tabs show live threads; the Archived tab shows only archived ones.
+  const threads = bundle.threads.filter((thread) => (
+    view === 'archived' ? Boolean(thread.archivedAt) : !thread.archivedAt
+  ))
+  const automations = view === 'archived' && !agent.archivedAt ? [] : bundle.automations
+  return (
+    <div className="space-y-0.5 pb-1">
+      {threads.map((thread) => {
+        const active = activeConversationId === thread.conversationId
+        return (
+          <div key={thread.conversationId} className="group/thread relative">
+            <button
+              type="button"
+              onClick={() => onOpenThread(agent, thread.conversationId)}
+              className={`${resourceRowClass} pl-9 ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+            >
+              <MessageSquare size={13} className="shrink-0" />
+              <span className="flex-1 truncate">{thread.title}</span>
+              {thread.isMain ? (
+                <span className="text-[10px] text-[var(--muted-light)] group-hover/thread:hidden">Main</span>
+              ) : null}
+            </button>
+            <span className="absolute inset-y-0 right-1.5 hidden items-center gap-0.5 group-hover/thread:flex">
+              <button
+                type="button"
+                aria-label={thread.archivedAt ? 'Unarchive thread' : 'Archive thread'}
+                title={thread.archivedAt ? 'Unarchive thread' : 'Archive thread'}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onArchiveThread(agent, thread.conversationId, !thread.archivedAt)
+                }}
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              >
+                {thread.archivedAt ? <ArchiveRestore size={11} /> : <Archive size={11} />}
+              </button>
+              <button
+                type="button"
+                aria-label="Delete thread"
+                title="Delete thread"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDeleteThread(agent, thread.conversationId)
+                }}
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              >
+                <Trash2 size={11} />
+              </button>
+            </span>
+          </div>
+        )
+      })}
+      {automations.map((automation) => {
+        const target = automation.conversationId
+        const active = target != null && activeConversationId === target
+        return (
+          <button
+            key={automation.automationId}
+            type="button"
+            disabled={!target}
+            onClick={() => { if (target) onOpenThread(agent, target) }}
+            className={`${resourceRowClass} pl-9 ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''} ${!target ? 'cursor-default opacity-70' : ''}`}
+          >
+            <Workflow size={13} className="shrink-0" />
+            <span className="flex-1 truncate">{automation.name}</span>
+            {!automation.enabled ? (
+              <span className="text-[10px] text-[var(--muted-light)]">Paused</span>
+            ) : null}
+          </button>
+        )
+      })}
+      {!agent.archivedAt ? (
+        <button
+          type="button"
+          disabled={creatingThread}
+          onClick={() => onCreateThread(agent)}
+          className={`${resourceRowClass} pl-9 text-[var(--muted-light)]`}
+        >
+          {creatingThread
+            ? <Loader2 size={13} className="shrink-0 animate-spin" />
+            : <Plus size={13} className="shrink-0" />}
+          <span className="truncate">New thread</span>
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function AgentsInlinePanel({
   workspaceId,
   baseHref = '/app/agents',
+  view = 'personal',
   onNavigate,
 }: {
   workspaceId: string | null
   baseHref?: string
+  view?: AgentsPanelView
   onNavigate?: () => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
+  const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
+  const [archivedThreadAgentIds, setArchivedThreadAgentIds] = useState<Set<string>>(new Set())
   const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
   const [loading, setLoading] = useState(true)
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [bundles, setBundles] = useState<Record<string, WorkspaceAgentBundle | 'loading' | 'error'>>({})
+  const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
+  const activeConversationId = searchParams?.get('id') ?? null
 
   // Unsaved editor drafts overlay the fetched directory so the row renames and
   // re-skins while the user types; the override clears on save/cancel/close.
@@ -242,26 +386,56 @@ export function AgentsInlinePanel({
     [agents, draftPreviews],
   )
 
+  // Tab bucketing: the Archived tab holds archived agents plus live agents
+  // that own archived threads; live agents split into Personal (created by
+  // me) and Workspace (the rest).
+  const tabAgents = useMemo(
+    () => previewedAgents.filter((agent) => {
+      if (view === 'archived') {
+        return Boolean(agent.archivedAt) || archivedThreadAgentIds.has(agent.id)
+      }
+      if (agent.archivedAt) return false
+      return view === 'personal'
+        ? agent.createdByPrincipalId === viewerPrincipalId
+        : agent.createdByPrincipalId !== viewerPrincipalId
+    }),
+    [previewedAgents, view, viewerPrincipalId, archivedThreadAgentIds],
+  )
+
   // Most recently used first; agents with no recorded use stay alphabetical.
   const sortedAgents = useMemo(
-    () => sortAgentsByRecency(previewedAgents, getAgentOpenedAt(workspaceId)),
-    [previewedAgents, workspaceId],
+    () => sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)),
+    [tabAgents, workspaceId],
   )
 
   const loadAgents = useCallback(async (showLoading = true) => {
     if (!workspaceId) {
       setAgents([])
+      setViewerPrincipalId(null)
       setLoading(false)
       return
     }
     if (showLoading) setLoading(true)
     try {
-      const response = await overlayAppClient.agents.list(workspaceId)
+      const response = await overlayAppClient.agents.list(workspaceId, { includeArchived: true })
       setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
+      setViewerPrincipalId(response.viewerPrincipalId ?? null)
+      setArchivedThreadAgentIds(new Set(response.archivedThreadAgentIds ?? []))
     } catch {
       setAgents([])
     } finally {
       if (showLoading) setLoading(false)
+    }
+  }, [workspaceId])
+
+  const loadBundle = useCallback(async (agentId: string) => {
+    if (!workspaceId) return
+    setBundles((current) => ({ ...current, [agentId]: 'loading' }))
+    try {
+      const bundle = await overlayAppClient.agents.bundle(workspaceId, agentId)
+      setBundles((current) => ({ ...current, [agentId]: bundle }))
+    } catch {
+      setBundles((current) => ({ ...current, [agentId]: 'error' }))
     }
   }, [workspaceId])
 
@@ -274,11 +448,27 @@ export function AgentsInlinePanel({
   useEffect(() => {
     const refreshAgents = (event: Event) => {
       const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
-      if (!changedWorkspaceId || changedWorkspaceId === workspaceId) void loadAgents(false)
+      if (changedWorkspaceId && changedWorkspaceId !== workspaceId) return
+      void loadAgents(false)
+      // Agent lifecycle events (rename/archive/restore) can change what the
+      // expanded bundles contain — refetch them rather than diffing.
+      setBundles((current) => {
+        for (const agentId of Object.keys(current)) {
+          if (expanded.has(agentId)) void loadBundle(agentId)
+        }
+        return current
+      })
     }
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-  }, [loadAgents, workspaceId])
+  }, [expanded, loadAgents, loadBundle, workspaceId])
+
+  // The agent in the URL stays expanded so its threads remain in view.
+  useEffect(() => {
+    if (!activeAgentId || expanded.has(activeAgentId)) return
+    setExpanded((current) => new Set(current).add(activeAgentId))
+    if (!(activeAgentId in bundles)) void loadBundle(activeAgentId)
+  }, [activeAgentId, bundles, expanded, loadBundle])
 
   useEffect(() => {
     setDraftPreviews({})
@@ -296,6 +486,16 @@ export function AgentsInlinePanel({
     return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
   }, [workspaceId])
 
+  const toggleExpanded = useCallback((agentId: string) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (next.has(agentId)) next.delete(agentId)
+      else next.add(agentId)
+      return next
+    })
+    if (!(agentId in bundles)) void loadBundle(agentId)
+  }, [bundles, loadBundle])
+
   const openAgent = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
@@ -304,25 +504,20 @@ export function AgentsInlinePanel({
     setOpeningAgentId(agent.id)
     try {
       if (!workspaceId) return
-      const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
-        principalIds: [agent.principalId],
-      })
+      // Agents open into their main thread; the resolver adopts the legacy
+      // DM or creates the first thread when the agent has none yet.
+      const { thread } = await overlayAppClient.agents.resolveMainThread(workspaceId, agent.id)
       rememberAgentOpened(workspaceId, agent.id)
       setOpenError(null)
       dispatchChatCreated({
         chat: {
-          _id: directMessage.conversationId,
-          title: directMessage.title,
+          _id: thread.conversationId,
+          title: thread.title,
           lastModified: Date.now(),
           conversationType: 'dm',
         },
       })
-      const params = new URLSearchParams({
-        agent: agent.id,
-        view: 'dms',
-        id: directMessage.conversationId,
-      })
-      const href = `${baseHref}?${params.toString()}`
+      const href = agentThreadHref(baseHref, agent.id, thread.conversationId)
       if (navigation === 'replace') router.replace(href)
       else router.push(href)
       if (navigation === 'push') onNavigate?.()
@@ -330,6 +525,151 @@ export function AgentsInlinePanel({
       setOpeningAgentId(null)
     }
   }, [baseHref, onNavigate, openingAgentId, router, workspaceId])
+
+  const openThread = useCallback((
+    agent: WorkspaceAgentDirectoryItem,
+    conversationId: string,
+  ) => {
+    rememberAgentOpened(workspaceId, agent.id)
+    router.push(agentThreadHref(baseHref, agent.id, conversationId))
+    onNavigate?.()
+  }, [baseHref, onNavigate, router, workspaceId])
+
+  const createThread = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
+    if (!workspaceId || creatingThreadFor) return
+    setCreatingThreadFor(agent.id)
+    try {
+      const { thread } = await overlayAppClient.agents.createThread(workspaceId, agent.id, {})
+      rememberAgentOpened(workspaceId, agent.id)
+      setBundles((current) => {
+        const existing = current[agent.id]
+        if (existing === 'loading' || existing === 'error' || !existing) return current
+        return {
+          ...current,
+          [agent.id]: {
+            ...existing,
+            threads: [{
+              conversationId: thread.conversationId,
+              title: thread.title,
+              lastModified: Date.now(),
+              createdAt: Date.now(),
+              isMain: false,
+            }, ...existing.threads],
+          },
+        }
+      })
+      router.push(agentThreadHref(baseHref, agent.id, thread.conversationId))
+      onNavigate?.()
+    } finally {
+      setCreatingThreadFor(null)
+    }
+  }, [baseHref, creatingThreadFor, onNavigate, router, workspaceId])
+
+  const archiveThread = useCallback(async (
+    agent: WorkspaceAgentDirectoryItem,
+    conversationId: string,
+    archived: boolean,
+  ) => {
+    if (!workspaceId) return
+    try {
+      await overlayAppClient.agents.setThreadArchived(workspaceId, agent.id, conversationId, archived)
+      const existing = bundles[agent.id]
+      if (existing && existing !== 'loading' && existing !== 'error') {
+        // The Archived tab shows live agents that still own archived threads;
+        // keep the membership set in step with the local bundle state.
+        const stillArchived = existing.threads.some((thread) => (
+          thread.conversationId === conversationId ? archived : Boolean(thread.archivedAt)
+        ))
+        setArchivedThreadAgentIds((ids) => {
+          const next = new Set(ids)
+          if (stillArchived) next.add(agent.id)
+          else next.delete(agent.id)
+          return next
+        })
+      }
+      setBundles((current) => {
+        const entry = current[agent.id]
+        if (entry === 'loading' || entry === 'error' || !entry) return current
+        return {
+          ...current,
+          [agent.id]: {
+            ...entry,
+            threads: entry.threads.map((thread) => (
+              thread.conversationId === conversationId
+                ? { ...thread, archivedAt: archived ? Date.now() : undefined }
+                : thread
+            )),
+          },
+        }
+      })
+    } catch {
+      void loadBundle(agent.id)
+    }
+  }, [bundles, loadBundle, workspaceId])
+
+  const deleteThread = useCallback(async (
+    agent: WorkspaceAgentDirectoryItem,
+    conversationId: string,
+  ) => {
+    if (!workspaceId) return
+    try {
+      await overlayAppClient.agents.deleteThread(workspaceId, agent.id, conversationId)
+      const existing = bundles[agent.id]
+      if (existing && existing !== 'loading' && existing !== 'error') {
+        const stillArchived = existing.threads.some((thread) => (
+          thread.conversationId !== conversationId && Boolean(thread.archivedAt)
+        ))
+        setArchivedThreadAgentIds((ids) => {
+          const next = new Set(ids)
+          if (stillArchived) next.add(agent.id)
+          else next.delete(agent.id)
+          return next
+        })
+      }
+      setBundles((current) => {
+        const existing = current[agent.id]
+        if (existing === 'loading' || existing === 'error' || !existing) return current
+        let threads = existing.threads.filter((thread) => thread.conversationId !== conversationId)
+        // When the main thread goes away the oldest survivor becomes main.
+        if (threads.length && !threads.some((thread) => thread.isMain)) {
+          const oldest = threads.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b))
+          threads = threads.map((thread) => (
+            thread.conversationId === oldest.conversationId ? { ...thread, isMain: true } : thread
+          ))
+        }
+        return { ...current, [agent.id]: { ...existing, threads } }
+      })
+      // Deleting the thread being viewed must bounce to the surviving main
+      // thread — otherwise the surface keeps rendering a deleted
+      // conversation. Bare `?agent=` is avoided because the surface's live
+      // directory cannot resolve archived agents.
+      if (activeConversationId === conversationId) {
+        const survivors = bundles[agent.id]
+        const next = survivors && survivors !== 'loading' && survivors !== 'error'
+          ? survivors.threads
+            .filter((thread) => thread.conversationId !== conversationId)
+            .sort((a, b) => a.createdAt - b.createdAt)[0]
+          : undefined
+        router.push(
+          next
+            ? agentThreadHref(baseHref, agent.id, next.conversationId)
+            : `${baseHref}?agent=${encodeURIComponent(agent.id)}`,
+        )
+      }
+    } catch {
+      void loadBundle(agent.id)
+    }
+  }, [activeConversationId, baseHref, bundles, loadBundle, router, workspaceId])
+
+  const restoreAgent = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
+    if (!workspaceId) return
+    try {
+      await overlayAppClient.agents.restore(workspaceId, agent.id)
+      dispatchAgentDirectoryChanged(workspaceId)
+    } catch {
+      setOpenError(`Could not restore ${agent.name}. Check your connection and retry.`)
+    }
+  }, [workspaceId])
 
   // Remember agents opened through direct links or refreshes so recency
   // ordering covers every entry path. Initial conversation selection lives
@@ -369,22 +709,81 @@ export function AgentsInlinePanel({
           <Loader2 size={13} className="animate-spin" /> Loading agents...
         </div>
       ) : sortedAgents.length ? (
-        sortedAgents.map((agent) => (
-          <button
-            key={agent.id}
-            type="button"
-            disabled={Boolean(openingAgentId)}
-            className={`${resourceRowClass} ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-            onClick={() => void openAgentById(agent)}
-          >
-            {openingAgentId === agent.id
-              ? <Loader2 size={13} className="shrink-0 animate-spin" />
-              : <AgentCreature agent={agent} size={16} />}
-            <span className="truncate">{agent.name}</span>
-          </button>
-        ))
+        sortedAgents.map((agent) => {
+          const isExpanded = expanded.has(agent.id)
+          return (
+            <div key={agent.id}>
+              <div className="group/agent relative">
+                <button
+                  type="button"
+                  disabled={Boolean(openingAgentId)}
+                  className={`${resourceRowClass} pr-7 ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+                  onClick={() => {
+                    if (!isExpanded) toggleExpanded(agent.id)
+                    void openAgentById(agent)
+                  }}
+                >
+                  {openingAgentId === agent.id
+                    ? <Loader2 size={13} className="shrink-0 animate-spin" />
+                    : <AgentCreature agent={agent} size={16} />}
+                  <span className="truncate">{agent.name}</span>
+                </button>
+                <span className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                  {view === 'archived' && agent.archivedAt ? (
+                    <button
+                      type="button"
+                      aria-label={`Restore ${agent.name}`}
+                      title={`Restore ${agent.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void restoreAgent(agent)
+                      }}
+                      className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                    >
+                      <ArchiveRestore size={12} />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
+                    aria-expanded={isExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      toggleExpanded(agent.id)
+                    }}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <ChevronRight
+                      size={12}
+                      className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+                </span>
+              </div>
+              {isExpanded ? (
+                <AgentThreadRows
+                  agent={agent}
+                  bundle={bundles[agent.id] ?? 'loading'}
+                  view={view}
+                  activeConversationId={activeConversationId}
+                  onOpenThread={openThread}
+                  onCreateThread={(target) => void createThread(target)}
+                  onArchiveThread={(target, conversationId, archived) => {
+                    void archiveThread(target, conversationId, archived)
+                  }}
+                  onDeleteThread={(target, conversationId) => {
+                    void deleteThread(target, conversationId)
+                  }}
+                  creatingThread={creatingThreadFor === agent.id}
+                />
+              ) : null}
+            </div>
+          )
+        })
       ) : (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No agents yet</p>
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
+          {view === 'archived' ? 'No archived agents' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
+        </p>
       )}
       {openError ? (
         <div className="px-2.5 py-2">
@@ -401,6 +800,12 @@ export function AgentsInlinePanel({
     </SidebarResourceList>
   )
 }
+
+export const agentsInlineItems = [
+  { id: 'personal', label: 'Personal', icon: User },
+  { id: 'workspace', label: 'Workspace', icon: Users },
+  { id: 'archived', label: 'Archived', icon: Archive },
+] as const
 
 export const toolsInlineItems = [
   { id: 'connectors', label: 'Connectors', icon: Plug },

@@ -46,6 +46,7 @@ export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'
 
 export interface AutomationRepository {
   listAutomations(args: {
+    excludeAgentBound?: boolean
     includeDeleted?: boolean
     userId: string
     workspaceId?: string

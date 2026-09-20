@@ -255,6 +255,8 @@ export const listAccessibleConversations = query({
     const accessible = rows.filter((conversation) => (
       !conversation.deletedAt
       && !conversation.isAutomation
+      // Agent threads nest under their agent in the sidebar, never in DMs.
+      && !conversation.agentId
       && (
         ((conversation.conversationType ?? 'personal') === 'personal' && conversation.userId === args.actorUserId)
         || shared.has(String(conversation._id))
@@ -316,7 +318,7 @@ export const listArchivedConversations = query({
     )
     return rows
       .filter((conversation): conversation is Doc<'conversations'> => (
-        !!conversation && !conversation.deletedAt
+        !!conversation && !conversation.deletedAt && !conversation.agentId
       ))
       .map((conversation) => ({
         _id: conversation._id,
@@ -994,6 +996,14 @@ export const createDirectMessage = mutation({
       principals.push(principal)
     }
 
+    // A one-to-one DM whose counterpart is an agent principal is that
+    // agent's main thread: it binds the conversation to the agent so it
+    // nests under the agent in the sidebar instead of appearing in Chats.
+    // Group DMs that merely include an agent stay ordinary conversations —
+    // threads are per-user and must not hide the chat from other humans.
+    const agentPrincipal = principals.find((principal) => principal.type === 'agent')
+    const dmAgentId = principalIds.length === 2 ? agentPrincipal?.agentId : undefined
+
     const dmIdentityKey = principalIds.join(':')
     const existing = await ctx.db.query('conversations')
       .withIndex('by_workspaceId_dmIdentityKey', (q) => (
@@ -1002,6 +1012,9 @@ export const createDirectMessage = mutation({
       .filter((q) => q.eq(q.field('deletedAt'), undefined))
       .first()
     if (existing) {
+      if (dmAgentId && !existing.agentId && !existing.isAutomation) {
+        await ctx.db.patch(existing._id, { agentId: dmAgentId, updatedAt: Date.now() })
+      }
       const actorParticipant = await ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_principalId', (q) => (
           q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
@@ -1024,6 +1037,7 @@ export const createDirectMessage = mutation({
         title: existing.title,
         participants: await participantViews(ctx, existing._id),
         created: false,
+        agentId: existing.agentId ?? dmAgentId,
       }
     }
 
@@ -1057,6 +1071,7 @@ export const createDirectMessage = mutation({
       askModelIds: [DEFAULT_MODEL_ID],
       actModelId: DEFAULT_MODEL_ID,
       dmIdentityKey,
+      agentId: dmAgentId,
     })
     for (const principal of principals) {
       await ctx.db.insert('conversationParticipants', {
@@ -1106,6 +1121,7 @@ export const createDirectMessage = mutation({
       title,
       participants: await participantViews(ctx, conversationId),
       created: true,
+      agentId: dmAgentId,
     }
   },
 })
