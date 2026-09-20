@@ -1403,6 +1403,95 @@
         }
       }
     },
+    "/api/v1/agent-environments/{environmentId}/desktop": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdDesktop",
+        "summary": "Issue a short-lived desktop stream ticket for the environment machine",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "vnc",
+                      "webrtc"
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agent-environments/{environmentId}/events": {
       "post": {
         "operationId": "postAgentEnvironmentsEnvironmentIdEvents",
@@ -5509,6 +5598,10 @@
                   "automationId": {
                     "type": "string"
                   },
+                  "automationName": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
                   "mediaToolIntent": {
                     "type": "string",
                     "enum": [
@@ -5727,6 +5820,10 @@
                   },
                   "automationId": {
                     "type": "string"
+                  },
+                  "automationName": {
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "mediaToolIntent": {
                     "type": "string",
