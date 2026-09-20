@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { isOverlayManagedAcpAdapterId } from '@overlay/sandbox-runtime'
-import { isManagedHarnessId } from '@overlay/workspace-contracts'
+import {
+  isManagedHarnessId,
+  parseHarnessAgentBindingConfig,
+} from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getOverlayRuntimeConfig } from '@/server/config'
@@ -9,6 +12,7 @@ import {
   ManagedAgentSandboxService,
 } from '@/server/agents/ManagedAgentSandboxService'
 import { managedHarnessAvailability } from '@/server/agents/harnesses/availability'
+import { MANAGED_HARNESS_CATALOG } from '@/shared/agents/harness-catalog'
 import { managedHarnessSandboxProviders } from '@/server/agents/harnesses/sandbox-providers'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { agentEnvironmentErrorResponse } from '../shared'
@@ -28,7 +32,18 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
     })
     if (!availability.enabled) {
-      return NextResponse.json({ error: 'Managed harness agents are disabled', code: 'capability_disabled' }, { status: 404 })
+      // Grandfathering: creation may be gated while existing bindings still
+      // run. Surface the harnesses this workspace actually has bound — marked
+      // legacy so the editor renders them read-only — instead of a bare 404.
+      const legacy = await legacyBoundHarnesses(context)
+      if (legacy.length === 0) {
+        return NextResponse.json({ error: 'Managed harness agents are disabled', code: 'capability_disabled' }, { status: 404 })
+      }
+      return NextResponse.json({
+        harnesses: legacy,
+        providers: [],
+        workingDirectory: '/workspace',
+      }, { headers: { 'Cache-Control': 'no-store' } })
     }
     return NextResponse.json({
       harnesses: availability.harnesses.map((entry) => ({
@@ -107,4 +122,31 @@ export async function POST(request: Request, context: AppApiRouteContext) {
     }
     return agentEnvironmentErrorResponse(error)
   }
+}
+
+/**
+ * Harness ids with live bindings in this workspace, projected onto the catalog
+ * and flagged `legacy` so the editor can render a bound runtime read-only
+ * without offering it for new agents.
+ */
+async function legacyBoundHarnesses(context: AppApiRouteContext) {
+  const repository = getOverlayServerContext().appData.repositories.connectedAgents
+  const bindings = await repository.listBindings({ workspaceId: context.workspace.workspace.id })
+    .catch((_error) => [] as Awaited<ReturnType<typeof repository.listBindings>>)
+  const boundIds = new Set(
+    bindings
+      .filter((binding) => binding.protocolAdapter === 'harness')
+      .map((binding) => parseHarnessAgentBindingConfig(binding.adapterConfig)?.harnessId)
+      .filter((harnessId): harnessId is NonNullable<typeof harnessId> => Boolean(harnessId)),
+  )
+  return MANAGED_HARNESS_CATALOG
+    .filter((entry) => boundIds.has(entry.id))
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      description: entry.description,
+      byokProviders: entry.byokProviders,
+      models: entry.models,
+      legacy: true as const,
+    }))
 }

@@ -582,7 +582,8 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_exec = tool({
       description:
         'Run a shell command on the bound Overlay Computer — a persistent cloud desktop whose files, apps, and signed-in state survive across conversations. ' +
-        'Use for anything that needs a real machine: builds, scripts, package installs, or driving desktop apps via CLI. ' +
+        'Use for anything that needs a real machine: builds, scripts, package installs, driving desktop apps via CLI, or delegating to other agent CLIs. ' +
+        'Agent CLIs installed on the machine (claude, codex, opencode, pi, hermes, …) are already authenticated through Overlay — just run them; their model usage is metered to the workspace. ' +
         'Output is truncated to ~40k characters; prefer targeted commands over dumps.',
       inputSchema: z.object({
         command: z.string().describe('Full shell command to run on the computer, e.g. "ls -la /home/user" or "python3 script.py"'),

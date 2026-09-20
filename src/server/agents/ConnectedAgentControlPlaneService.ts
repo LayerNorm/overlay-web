@@ -101,6 +101,16 @@ export class ConnectedAgentControlPlaneService {
     meterSandboxLease?: (lease: AgentSandboxLease) => Promise<unknown>
     /** Injectable for tests; production resolves the provider from env. */
     managedRuntime?: typeof managedSandboxRuntimeFromEnv
+    /**
+     * Creation gate for NEW harness bindings — managed HarnessAgents are
+     * grandfathered, so this consults the creation rollout (not the run gate).
+     * Re-saving an existing (agent, environment) harness pair bypasses it.
+     */
+    harnessCreationAllowed?: (args: {
+      actorUserId: string
+      workspaceId: string
+      harnessId: string
+    }) => Promise<boolean>
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
@@ -404,6 +414,36 @@ export class ConnectedAgentControlPlaneService {
         workspaceId: args.workspaceId,
         harness: args.adapterId,
       })
+      // Managed HarnessAgents are grandfathered: re-saving an existing
+      // (agent, environment) harness binding is always allowed, but binding a
+      // new agent to a harness adapter requires the creation rollout.
+      const existing = await this.dependencies.repository.listBindings({
+        workspaceId: args.workspaceId,
+        agentId: args.agentId,
+      })
+      const isExistingHarnessBinding = existing.some((candidate) =>
+        candidate.environmentId === args.environmentId
+        && candidate.protocolAdapter === 'harness')
+      if (!isExistingHarnessBinding) {
+        const allowed = this.dependencies.harnessCreationAllowed
+          ? await this.dependencies.harnessCreationAllowed({
+              actorUserId: args.actorUserId,
+              workspaceId: args.workspaceId,
+              harnessId: args.adapterId,
+            })
+          : await defaultHarnessCreationAllowed({
+              actorUserId: args.actorUserId,
+              workspaceId: args.workspaceId,
+              harnessId: args.adapterId,
+            })
+        if (!allowed) {
+          throw controlPlaneError(
+            'Managed harness agents are no longer available for new agents — use an Overlay agent instead',
+            403,
+            'harness_creation_disabled',
+          )
+        }
+      }
     }
     const now = this.now()
     const adapterConfig: Record<string, unknown> = adapter.protocol === 'harness'
@@ -1220,6 +1260,23 @@ function verificationPhrase() {
   const bytes = randomBytes(3)
   return [...bytes].map((value) => PHRASE_WORDS[value % PHRASE_WORDS.length]).join('-')
 }
+/**
+ * Production creation gate for new harness bindings — lazy import because
+ * availability pulls in bootstrap, which constructs this service.
+ */
+async function defaultHarnessCreationAllowed(args: {
+  actorUserId: string
+  workspaceId: string
+  harnessId: string
+}) {
+  const { managedHarnessAvailability } = await import('./harnesses/availability')
+  const availability = await managedHarnessAvailability({
+    actorUserId: args.actorUserId,
+    workspaceId: args.workspaceId,
+  })
+  return availability.enabled && availability.harnesses.some((entry) => entry.id === args.harnessId)
+}
+
 function controlPlaneError(message: string, statusCode: number, code: string) {
   return new ConnectedAgentControlPlaneError(message, statusCode, code)
 }

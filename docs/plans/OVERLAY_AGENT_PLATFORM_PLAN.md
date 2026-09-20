@@ -145,61 +145,87 @@ Exit gate: run exec via chat and an automation; confirm `stop`+`delete` in
 logs, zero sandboxes visible in the sweeper's scope afterward, billing
 finalizes with real Vercel usage counters — **not yet run e2e**.
 
-## Phase 3 — Metaharness v1
+## Phase 3 — Metaharness v1 ✅
 
 Goal: an overlay agent can invoke other agents and tools on its own computer.
 
-- **Exec tool**: a sandbox-exec tool for overlay agents bound to an
-  `overlay_cloud` environment — run a command on the agent's box, capture
-  stdout/files, fold into the turn. Uses the existing `SandboxRuntime` seam
-  and the lease's `providerReference`.
-- **Sub-agent invocation**: `claude`/`codex`/etc. as exec calls. Scoped
-  credentials: mint a per-agent gateway token, inject
-  `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`→Overlay gateway + token into the
-  exec environment — real provider keys never enter the box, sub-agent model
-  spend meters through the existing gateway path.
+Landed:
+
+- **Exec tool**: the existing `computer_exec`/`computer_read_file`/
+  `computer_write_file`/`computer_list_files`/`computer_open_url` family —
+  for env-bound agents the tools resolve the agent's own Overlay Cloud box
+  (no second machine); for native agents they use the bound computer row.
+- **Scoped credentials** (`src/server/ai/agent-gateway/`): `computer_exec`
+  mints a 15-minute HMAC token (`OVERLAY_AGENT_GATEWAY_SECRET` or
+  `INTERNAL_API_SECRET`) and injects `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`
+  pointed at `POST /api/agent-gateway/{provider}/{v1/*}` plus the token —
+  `claude`/`codex`/etc. inside a box authenticate through Overlay and never
+  see a real provider key.
+- **Metered proxy**: the route allowlists model endpoints, injects the real
+  server key (WorkOS Vault `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` → env
+  fallback), reserves budget before forwarding, taps SSE streams for
+  provider-reported usage, and finalizes through the existing
+  reserve/finalize pipeline billed to `agent:<id>`. Unpriced models bill a
+  conservative fallback (`OVERLAY_AGENT_GATEWAY_FALLBACK_USD`) instead of
+  going unmetered.
 - **Transcript**: sub-agent invocations render as normal tool calls —
-  collapsed, sequential, minimal (per existing UI conventions); output folds
-  into the agent's context for orchestration.
-- **Approvals**: the overlay agent's own approval flow gates the exec —
-  no per-harness approval plumbing.
+  collapsed, sequential, minimal (existing tool-call UI).
+- **Approvals**: the overlay agent's own tool-grant/approval flow gates the
+  exec — no per-harness approval plumbing.
 - **Out of scope for v1**: parallel sub-agent orchestration, sub-agent
   streaming transcripts, `boat prompt` integration (their agent-credential
   model — evaluate later).
 
-Exit gate: an overlay agent asked to "fix this bug with claude code"
-provisions/locates its box, runs `claude`, reports the diff — billed
-correctly, keys never in the box, transcript clean.
+Remaining to verify end-to-end: a real `claude` invocation inside a box
+through the gateway (needs a deployed backend + box).
 
-## Phase 4 — Grandfather managed HarnessAgents
+## Phase 4 — Grandfather managed HarnessAgents ✅
 
 Goal: stop selling foreign runtimes without breaking existing ones.
 
-- Rollout stage → none for **new** creation
-  (`OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` + `managedHarnessAgents` gate —
-  both already exist); picker hides the runtime row for new agents.
-- **Keep alive**: `ManagedHarnessAgentTurnWorkflow`, `agentHarnessSessions`,
-  approvals, BYOK-vault path — until every existing binding is removed.
-- Editor: hosted runtime collapses to Overlay agent (cloud boat | BYO).
-  Existing managed agents keep rendering their runtime read-only.
+Landed:
+
+- **Creation vs run gate split**: `managedHarnessAvailability` (creation)
+  keeps the rollout stage; new `managedHarnessRunAvailability` (turn
+  dispatch in `workspace-agent-invocation`) drops the rollout check —
+  `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=off` now stops new creation while
+  existing bindings keep running. The `managedHarnessAgents` feature flag
+  remains the emergency kill switch for both.
+- **Picker**: `GET /agent-environments/managed` returns bound harnesses as
+  `legacy: true` entries when creation is gated (404 only when the workspace
+  has none), so the editor renders the bound runtime read-only without
+  offering it.
+- **Binding gate**: `upsertBinding` refuses a *new* (agent, environment)
+  harness pair when creation is gated (`harness_creation_disabled`);
+  re-saving an existing pair always passes.
+- **Editor**: legacy entries are filtered out of the create-mode selector;
+  `saveEdit` rebinds a grandfathered agent on its existing environment
+  instead of silently disabling the binding when the picker can't resolve
+  the entry.
 - **Later** (zero live bindings): delete `harnesses/`, the catalog, session
   table, per-harness billing quirks.
 - **Never delete**: the `SandboxRuntime` seam and the `vercel`/`daytona`
   code paths — provider neutrality is the hedge against boat repricing,
   capacity ceilings, or deprecation.
 
-Exit gate: new agents can only be overlay|BYO; existing harness agents still
-turn; no user-facing breakage.
-
-## Phase 5 — Computers consolidation
+## Phase 5 — Computers consolidation ✅
 
 Goal: one primitive, one surface.
 
-- A computer row and an `overlay_cloud` environment converge on the same
-  box-backed primitive; the "Computers" UI becomes the desktop/live view of
-  an agent's environment rather than a separate creation flow.
-- Desktop streaming (`DesktopSandboxInstance.desktop()`) hangs off the
-  agent's environment for support/debug/live-view.
+Landed:
+
+- `machineForAgent`/`machineForEnvironment` (`environment-machine.ts`)
+  resolve an `overlay_cloud` environment's sandbox lease to a live instance
+  — the environment's box doubles as the bound agent's computer, so
+  computer tools work without provisioning a second machine.
+- `POST /api/v1/agent-environments/{id}/desktop` issues a desktop stream
+  ticket on the environment's box (resume-if-stopped, poll until ready,
+  bearer ticket never persisted).
+- Settings → Computers lists Overlay Cloud environment machines alongside
+  computer rows with an "Open" desktop action; the meter owns their
+  lifecycle (no manual start/stop/delete controls).
+- Agent create flow skips provisioning a separate computer when the agent
+  is bound to a managed environment.
 
 ## Open questions
 

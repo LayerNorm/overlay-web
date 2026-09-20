@@ -1,6 +1,8 @@
 import 'server-only'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
+import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
+import { machineForAgent, touchEnvironmentMachine } from '@/server/agents/environment-machine'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   ComputerServiceError,
@@ -922,7 +924,7 @@ function computerErrorResult(err: unknown, fallback: string) {
 async function computerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
-  | { ok: true; computer: Computer; instance: SandboxInstance }
+  | { ok: true; computer: Pick<Computer, 'id' | 'name'>; instance: SandboxInstance }
   | { ok: false; error: string }
 > {
   if (!options.workspaceId) {
@@ -949,6 +951,23 @@ async function computerInstanceFor(
     })
     return { ok: true, computer, instance }
   } catch (err) {
+    // An agent bound to an Overlay Cloud environment already has a machine —
+    // its environment sandbox. Fall back to it before reporting "no computer"
+    // so env-bound agents get machine tools without a second box.
+    if (err instanceof ComputerServiceError && err.code === 'not_found' && options.agentId) {
+      const machine = await machineForAgent({
+        workspaceId: options.workspaceId,
+        agentId: options.agentId,
+      }).catch((_error) => null)
+      if (machine) {
+        await touchEnvironmentMachine(machine)
+        return {
+          ok: true,
+          computer: { id: `env:${machine.environment.id}`, name: machine.environment.name },
+          instance: machine.instance,
+        }
+      }
+    }
     // An unbound owner is terminal — every computer tool hits it, so tell the
     // model to stop retrying and ask the user to bind one instead of looping.
     if (err instanceof ComputerServiceError && err.code === 'not_found') {
@@ -977,6 +996,14 @@ export async function executeComputerExec(
     const handle = await resolved.instance.runCommand({
       command: input.command,
       cwd: input.cwd,
+      // Scoped gateway credentials so agent CLIs on the machine authenticate
+      // through Overlay's metered proxy — no real provider keys in the box.
+      environment: agentGatewayExecEnv({
+        workspaceId: options.workspaceId!,
+        userId: options.userId,
+        agentId: options.agentId,
+        ttlMs: timeoutMs + 60_000,
+      }),
       timeoutMs,
     })
     const result = await handle.wait()

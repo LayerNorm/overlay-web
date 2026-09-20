@@ -8,6 +8,7 @@ import type {
   AgentBinding,
   Computer,
   ComputerSize,
+  ManagedHarnessId,
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
@@ -372,7 +373,7 @@ export function AgentEditorPage({
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
-        if (managedRuntimeSelected && managedHarnessEntry) {
+        if (managedRuntimeSelected && managedHarnessEntry && !managedHarnessEntry.legacy) {
           // Durable identity first, then the managed sandbox, then the binding —
           // a failure after create lands on the edit page so retry never
           // duplicates the agent.
@@ -412,7 +413,9 @@ export function AgentEditorPage({
             throw bindingError
           })
         }
-        if (agentType === 'overlay' && computersAvailable && enabledToolGroups.has('computer')) {
+        // A managed-harness env already is a machine — computer tools resolve
+        // it through the env fallback, so provisioning a second box is waste.
+        if (agentType === 'overlay' && !managedRuntimeSelected && computersAvailable && enabledToolGroups.has('computer')) {
           await overlayAppClient.computers.provision(activeWorkspaceId, {
             ownerType: 'agent',
             ownerId: saved.agent.id,
@@ -453,30 +456,41 @@ export function AgentEditorPage({
         // null unless the managed branch rebinds — any other path means the
         // loaded managed environment (if any) is being retired.
         let nextManagedEnvironment: AgentEnvironmentResource | null = null
-        if (managedRuntimeSelected && managedHarnessEntry) {
+        // Grandfathered binding: the picker is gated off (or unreachable for
+        // this surface) but the loaded binding still points at a managed
+        // harness — rebind on the existing environment so saving never drops it.
+        const grandfatheredHarness = managedRuntimeSelected && !managedHarnessEntry
+          && boundHarnessId === hostedRuntime && Boolean(managedEnvironment)
+        if (managedRuntimeSelected && (managedHarnessEntry || grandfatheredHarness)) {
+          const harnessId = managedHarnessEntry?.id ?? (hostedRuntime as ManagedHarnessId)
           // Same harness → rebind on the existing environment; a runtime switch
           // needs a fresh sandbox since each environment advertises one harness.
-          const reuseEnvironment = managedEnvironment && boundHarnessId === hostedRuntime
+          const reuseEnvironment = grandfatheredHarness
+            || (managedEnvironment && boundHarnessId === hostedRuntime)
           const environment = reuseEnvironment
             ? managedEnvironment
             : (await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId, {
                 mode: 'harness',
-                harnessId: managedHarnessEntry.id,
+                harnessId,
               })).environment
+          if (!environment) throw new Error('This agent’s managed environment is unavailable.')
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
             environmentId: environment.id,
-            adapterId: managedHarnessEntry.id,
+            adapterId: harnessId,
             workingDirectory: managedWorkingDirectory,
-            ...(harnessModelOption?.value ? { model: harnessModelOption.value } : {}),
+            // Without a picker entry (flag off) the catalog can't resolve the
+            // option — fall back to the loaded binding value so re-saving never
+            // silently drops the configured model.
+            ...((harnessModelOption?.value ?? harnessModel) ? { model: harnessModelOption?.value ?? harnessModel } : {}),
             ...(modelAccess !== 'overlay'
               ? { modelBilling: 'byok' as const, byokConnectionId: modelAccess }
               : { modelBilling: 'overlay' as const }),
           })
           nextManagedEnvironment = environment
           setManagedEnvironment(environment)
-          setBoundHarnessId(managedHarnessEntry.id)
-          setBoundHarnessModel(harnessModelOption?.value ?? '')
+          setBoundHarnessId(harnessId)
+          setBoundHarnessModel(harnessModelOption?.value ?? harnessModel ?? '')
           setBoundModelAccess(modelAccess)
         } else if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {

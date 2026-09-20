@@ -21,6 +21,12 @@ export type ManagedHarnessPickerEntry = {
   description: string
   byokProviders: string[]
   models: Array<{ value: string; label: string; harnessModel?: string; billingModelId: string }>
+  /**
+   * `true` when the harness is bound to an existing agent but new creation is
+   * gated off — render it for display of the existing binding only, never as
+   * a selectable runtime for a new agent.
+   */
+  legacy?: boolean
 }
 
 export type ManagedHarnessPicker = {
@@ -107,6 +113,17 @@ export class AgentEnvironmentsClient {
     return this.http.json<{ reset: true; sessionsCleared: number; sandboxDestroyed: boolean; environmentId: string }>(
       `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/reset-harness`,
       workspaceInit(workspaceId, { ...init, method: 'POST' }),
+    )
+  }
+
+  /**
+   * Live desktop ticket for an Overlay Cloud environment's machine — the
+   * environment's sandbox doubles as the bound agent's computer.
+   */
+  openDesktop(workspaceId: string, environmentId: string, mode?: 'webrtc' | 'vnc', init?: RequestInit) {
+    return this.http.json<{ url: string; mode: 'webrtc' | 'vnc' | 'other'; expiresAt: number | null }>(
+      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/desktop`,
+      this.http.jsonRequest({ mode }, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
 

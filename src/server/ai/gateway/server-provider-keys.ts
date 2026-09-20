@@ -10,6 +10,8 @@ const PROVIDER_VAULT_NAMES: Record<string, string> = {
   composio: 'COMPOSIO_API_KEY',
   ai_gateway: 'AI_GATEWAY_API_KEY',
   nvidia: 'NVIDIA_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000

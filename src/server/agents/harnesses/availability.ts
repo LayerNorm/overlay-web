@@ -57,10 +57,35 @@ export function managedHarnessCatalogFor(args: {
     : DISABLED
 }
 
+/**
+ * Creation gate — what the picker may offer and what new bindings/envs may be
+ * provisioned. Managed HarnessAgents are a grandfathered surface: the rollout
+ * stage gates NEW creation only, so existing bindings keep running at `off`.
+ */
 export async function managedHarnessAvailability(args: {
   actorUserId: string
   workspaceId: string
 }): Promise<ManagedHarnessAvailability> {
+  return managedHarnessAvailabilityInternal(args, true)
+}
+
+/**
+ * Run gate — whether an existing harness binding may dispatch a turn. The
+ * rollout stage is intentionally absent: it controls creation, not execution.
+ * The feature flag and workspace policy still apply, so the flag remains the
+ * kill switch for the whole legacy surface.
+ */
+export async function managedHarnessRunAvailability(args: {
+  actorUserId: string
+  workspaceId: string
+}): Promise<ManagedHarnessAvailability> {
+  return managedHarnessAvailabilityInternal(args, false)
+}
+
+async function managedHarnessAvailabilityInternal(args: {
+  actorUserId: string
+  workspaceId: string
+}, requireRolloutEligible: boolean): Promise<ManagedHarnessAvailability> {
   const config = await getOverlayRuntimeConfig()
   const rollout = resolveConnectedAgentRollout(
     managedHarnessRolloutConfigFromEnv(process.env),
@@ -75,7 +100,7 @@ export async function managedHarnessAvailability(args: {
   return managedHarnessCatalogFor({
     featureEnabled: config.features.overlayCloudEnvironments === true
       && config.features.managedHarnessAgents === true,
-    rolloutEligible: rollout.eligible,
+    rolloutEligible: requireRolloutEligible ? rollout.eligible : true,
     providers: managedHarnessSandboxProviders(),
     allowedHarnesses: policy?.allowedAgentHarnesses,
   })

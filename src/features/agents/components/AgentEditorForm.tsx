@@ -502,8 +502,10 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
               <p className="text-[11px] leading-4 text-[var(--muted)]">Fixed at creation — archive and recreate the agent to switch.</p>
             </div>
           </div>
-        ) : managedHarnesses.length > 0 ? (
-          <HostedRuntimeSelector value={hostedRuntime} harnesses={managedHarnesses} onChange={onHostedRuntimeChange} />
+        ) : managedHarnesses.some((entry) => !entry.legacy) ? (
+          // Legacy entries render the bound runtime's label above but are never
+          // selectable for a new runtime — grandfathered, not creatable.
+          <HostedRuntimeSelector value={hostedRuntime} harnesses={managedHarnesses.filter((entry) => !entry.legacy)} onChange={onHostedRuntimeChange} />
         ) : null}
         {managedHarness ? (
           <ManagedHarnessFields

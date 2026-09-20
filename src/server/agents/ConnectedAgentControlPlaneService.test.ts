@@ -318,6 +318,29 @@ test('BYOK harness bindings stamp the validated connection and byok billing', as
   assert.equal(binding.adapterConfig.byokConnectionId, 'connection-1')
 })
 
+test('grandfathered: new harness bindings are refused when creation is gated off', async () => {
+  const setup = harnessEnvironmentFixture({ harnessCreationAllowed: false })
+  await assertControlPlaneError(
+    () => setup.service.upsertBinding({
+      actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-new',
+      environmentId: 'environment-harness', adapterId: 'claude-code',
+      workingDirectory: '/workspace',
+    }),
+    'harness_creation_disabled',
+  )
+})
+
+test('grandfathered: re-saving an existing harness binding bypasses the creation gate', async () => {
+  const setup = harnessEnvironmentFixture({ harnessCreationAllowed: false })
+  const binding = await setup.service.upsertBinding({
+    actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+    environmentId: 'environment-harness', adapterId: 'claude-code',
+    workingDirectory: '/workspace', model: 'opus',
+  })
+  assert.equal(binding.protocolAdapter, 'harness')
+  assert.equal(binding.adapterConfig.model, 'opus')
+})
+
 test('BYOK harness bindings fail closed on missing, foreign, or incompatible connections', async () => {
   const setup = harnessEnvironmentFixture({ connections: [gatewayConnection()] })
   // No connection id at all.
@@ -471,6 +494,7 @@ function harnessEnvironmentFixture(options: {
   reconnectFails?: boolean
   leaseProvider?: string
   connections?: Array<Record<string, unknown>>
+  harnessCreationAllowed?: boolean
 } = {}) {
   const harnessEnvironment: AgentEnvironment = {
     id: 'environment-harness', workspaceId: 'workspace-1', kind: 'overlay_cloud',
@@ -484,8 +508,16 @@ function harnessEnvironmentFixture(options: {
   }
   const environments = [harnessEnvironment, localEnvironment]
   const bindings = [
-    { id: 'binding-1', workspaceId: 'workspace-1', agentId: 'agent-1', environmentId: 'environment-harness' },
-    { id: 'binding-2', workspaceId: 'workspace-1', agentId: 'agent-2', environmentId: 'environment-harness' },
+    {
+      id: 'binding-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+      environmentId: 'environment-harness', protocolAdapter: 'harness',
+      adapterConfig: { harnessId: 'claude-code', workingDirectory: '/workspace' },
+    },
+    {
+      id: 'binding-2', workspaceId: 'workspace-1', agentId: 'agent-2',
+      environmentId: 'environment-harness', protocolAdapter: 'harness',
+      adapterConfig: { harnessId: 'claude-code', workingDirectory: '/workspace' },
+    },
   ]
   const lease = {
     id: 'lease-1', workspaceId: 'workspace-1', environmentId: 'environment-harness',
@@ -502,8 +534,10 @@ function harnessEnvironmentFixture(options: {
         (environment) => environment.id === args.environmentId && environment.workspaceId === args.workspaceId,
       ) ?? null
     },
-    async listBindings(args: { workspaceId: string }) {
-      return bindings.filter((binding) => binding.workspaceId === args.workspaceId)
+    async listBindings(args: { workspaceId: string; agentId?: string }) {
+      return bindings.filter((binding) =>
+        binding.workspaceId === args.workspaceId
+        && (!args.agentId || binding.agentId === args.agentId))
     },
     async deleteHarnessSessionsForBinding(args: { workspaceId: string; bindingId: string }) {
       clearedBindingIds.push(args.bindingId)
@@ -541,6 +575,7 @@ function harnessEnvironmentFixture(options: {
     now: () => NOW,
     isEnabled: () => true,
     managedRuntime: managedRuntime as never,
+    harnessCreationAllowed: async () => options.harnessCreationAllowed ?? true,
   })
   return {
     service, clearedBindingIds, deletedReferences, upserts,

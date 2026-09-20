@@ -37,7 +37,7 @@ import {
 import { isManagedHarnessId, type AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import { managedHarnessAgentTurnWorkflow } from '@/server/workflows/managed-harness-agent-turn'
 import { MANAGED_HARNESS_TIME_SLICE_SECONDS } from '@/server/agents/managed-harness-steps'
-import { managedHarnessAvailability } from '@/server/agents/harnesses/availability'
+import { managedHarnessRunAvailability } from '@/server/agents/harnesses/availability'
 import { managedHarnessModelOption } from '@/shared/agents/harness-catalog'
 
 /**
@@ -708,7 +708,9 @@ export async function startManagedHarnessTurn(args: {
   }
   // The picker gates creation, but a flag flip or policy change can retire a
   // harness while bindings still point at it — fail closed at dispatch too.
-  const availability = await managedHarnessAvailability({
+  // Grandfathering: the rollout stage gates creation only, so this checks the
+  // run gate (feature flag + workspace policy), not the creation rollout.
+  const availability = await managedHarnessRunAvailability({
     actorUserId: args.actorUserId,
     workspaceId: args.workspaceId,
   })
