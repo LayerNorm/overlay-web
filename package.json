@@ -180,7 +180,7 @@
     "@ai-sdk/sandbox-vercel": "1.0.102",
     "@ai-sdk/workflow": "2.0.24",
     "@ai-sdk/workflow-harness": "1.0.102",
-    "@ai-sdk/xai": "^4.0.27",
+    "@ai-sdk/xai": "^4.0.58",
     "@aws-sdk/client-secrets-manager": "3.1019.0",
     "@aws-sdk/client-sesv2": "^3.1106.0",
     "@aws-sdk/s3-request-presigner": "^3.1019.0",
