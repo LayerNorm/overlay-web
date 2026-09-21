@@ -32,6 +32,7 @@ const GATEWAY_TO_APP_MODEL_ID: Record<string, string> = {
   'openai/gpt-4.1': 'gpt-4.1-2025-04-14',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
   'zai/glm-5.1': 'z-ai/glm-5.1',
+  'zai/glm-5.3-flash': 'z-ai/glm-5.3-flash',
 }
 
 function pricePerMillion(value: unknown): number | undefined {

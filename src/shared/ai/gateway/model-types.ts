@@ -58,7 +58,7 @@ export interface VideoModel {
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 /** @deprecated Alias for {@link FREE_TIER_AUTO_MODEL_ID}. */
 export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
-export const PAID_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2.6' as const
+export const PAID_TIER_DEFAULT_MODEL_ID = 'z-ai/glm-5.3-flash' as const
 export const KIMI_K3_MODEL_ID = 'moonshotai/kimi-k3' as const
 
 export function isKimiK3ModelId(modelId: string | undefined): boolean {

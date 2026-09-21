@@ -404,7 +404,7 @@ export function AgentsInlinePanel({
                 <button
                   type="button"
                   disabled={Boolean(openingAgentId)}
-                  className={`${resourceRowClass} pr-7 ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+                  className={`${resourceRowClass} pr-7 ${activeAgentId === agent.id && !activeConversationId ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
                   onClick={() => {
                     if (!isExpanded) toggleExpanded(agent.id)
                     void openAgentById(agent)

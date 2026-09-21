@@ -15,6 +15,7 @@ const GATEWAY_MODEL_ID_ALIASES: Record<string, string> = {
   'gpt-4.1-2025-04-14': 'openai/gpt-4.1',
   'qwen/qwen3.6-plus': 'alibaba/qwen3.6-plus',
   'z-ai/glm-5.1': 'zai/glm-5.1',
+  'z-ai/glm-5.3-flash': 'zai/glm-5.3-flash',
 }
 
 export async function resolveGatewayApiKey(accessToken?: string): Promise<string | null> {
