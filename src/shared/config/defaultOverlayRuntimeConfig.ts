@@ -68,7 +68,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     integrations: { provider: 'composio' },
     browser: { provider: 'browser-use' },
     sandbox: { provider: 'vercel' },
-    webSearch: { provider: 'ai-gateway' },
+    webSearch: { provider: 'elo' },
     analytics: { provider: 'posthog' },
     errorReporting: { provider: 'sentry' },
     email: { provider: 'none' },
