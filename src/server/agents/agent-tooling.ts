@@ -17,7 +17,7 @@ import {
 import type { Entitlements } from '@/shared/app/app-contracts'
 
 /** Web-search tools, which have no overlay tool id to filter on. */
-const WEB_SEARCH_TOOL_IDS = ['perplexity_search', 'parallel_search'] as const
+const WEB_SEARCH_TOOL_IDS = ['web_search', 'deep_search', 'web_fetch'] as const
 /** MCP meta-tools, which stand in for every tool on every connected server. */
 const MCP_TOOL_IDS = ['search_mcp_tools', 'call_mcp_tool'] as const
 /**
@@ -27,8 +27,9 @@ const MCP_TOOL_IDS = ['search_mcp_tools', 'call_mcp_tool'] as const
  * not see the tool at all.
  */
 const FREE_TIER_STUB_TOOL_IDS = [
-  'perplexity_search',
-  'parallel_search',
+  'web_search',
+  'deep_search',
+  'web_fetch',
   'interactive_browser_session',
   'run_daytona_sandbox',
 ] as const
@@ -82,7 +83,7 @@ function applyAgentCapabilityFilter(args: {
   if (!args.capabilities.has('integrations')) args.integrationToolIds.forEach((id) => withheld.add(id))
   const granted = new Set(args.overlayToolIds)
   for (const stubId of FREE_TIER_STUB_TOOL_IDS) {
-    const grantedByCapability = stubId === 'perplexity_search' || stubId === 'parallel_search'
+    const grantedByCapability = (WEB_SEARCH_TOOL_IDS as readonly string[]).includes(stubId)
       ? args.capabilities.has('web_search')
       : granted.has(stubId)
     if (!grantedByCapability) withheld.add(stubId)

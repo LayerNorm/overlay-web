@@ -884,7 +884,7 @@ export async function executeActTurn(
           _tFirstToolCall = performance.now()
         }
         const n = toolCall.toolName
-        if (n !== 'perplexity_search' && n !== 'parallel_search') return
+        if (n !== 'web_search' && n !== 'deep_search' && n !== 'web_fetch') return
         const input = toolCall.input as Record<string, unknown> | undefined
         logger.info(`[conversations/act] ${n} START`, {
           toolCallId: toolCall.toolCallId,
@@ -905,7 +905,7 @@ export async function executeActTurn(
           })
         }
         const n = toolCall.toolName
-        if (n === 'perplexity_search' || n === 'parallel_search') {
+        if (n === 'web_search' || n === 'deep_search' || n === 'web_fetch') {
           if (success) {
             logger.info(`[conversations/act] ${n} OK`, {
               toolCallId: toolCall.toolCallId,

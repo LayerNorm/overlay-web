@@ -74,16 +74,26 @@ export function summarizeToolResultForTranscript(params: {
     return toolMessage || (output?.success === true ? 'Browser task completed successfully.' : toolError || 'Browser task failed.')
   }
 
-  if (toolName === 'perplexity_search') {
+  if (toolName === 'perplexity_search' || toolName === 'web_search') {
     const query = readString(input?.query)
+      ?? (Array.isArray(input?.query)
+        ? input?.query.filter((q): q is string => typeof q === 'string').join('; ')
+        : undefined)
     if (query) return `Searched the web for: ${query}.`
     return 'Completed a web search.'
   }
 
-  if (toolName === 'parallel_search') {
+  if (toolName === 'parallel_search' || toolName === 'deep_search') {
     const objective = readString(input?.objective)
     if (objective) return `Deep web research: ${objective.length > 120 ? `${objective.slice(0, 120)}…` : objective}`
     return 'Completed deep web research.'
+  }
+
+  if (toolName === 'web_fetch') {
+    const urls = Array.isArray(input?.urls) ? input.urls.filter((u): u is string => typeof u === 'string') : []
+    if (urls.length === 1) return `Fetched: ${urls[0]}`
+    if (urls.length > 1) return `Fetched ${urls.length} pages.`
+    return 'Fetched page content.'
   }
 
   if (toolMessage) return toolMessage

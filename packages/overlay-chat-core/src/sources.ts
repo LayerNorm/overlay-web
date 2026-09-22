@@ -175,6 +175,16 @@ function collectSourceCandidatesFromUnknown(
   }
 }
 
+function isWebSearchToolName(name: string): boolean {
+  return (
+    name === 'perplexity_search' ||
+    name === 'parallel_search' ||
+    name === 'web_search' ||
+    name === 'deep_search' ||
+    name === 'web_fetch'
+  )
+}
+
 export function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): WebSourceItem[] {
   const items: WebSourceItem[] = []
   const seen = new Set<string>()
@@ -184,12 +194,15 @@ export function collectWebSourcesFromBlocks(blocks: AssistantVisualBlock[]): Web
     if (
       block.name !== 'perplexity_search' &&
       block.name !== 'parallel_search' &&
+      block.name !== 'web_search' &&
+      block.name !== 'deep_search' &&
+      block.name !== 'web_fetch' &&
       block.name !== 'browser_run_task' &&
       block.name !== 'interactive_browser_session'
     ) continue
     collectSourceCandidatesFromUnknown(
       block.toolOutput,
-      block.name === 'perplexity_search' || block.name === 'parallel_search' ? 'web-search' : 'browser',
+      isWebSearchToolName(block.name) ? 'web-search' : 'browser',
       items,
       seen,
     )
@@ -203,7 +216,7 @@ export function collectWebSourcesFromSingleBlock(block: ToolVisualBlock): WebSou
   const seen = new Set<string>()
   collectSourceCandidatesFromUnknown(
     block.toolOutput,
-    block.name === 'perplexity_search' || block.name === 'parallel_search' ? 'web-search' : 'browser',
+    isWebSearchToolName(block.name) ? 'web-search' : 'browser',
     items,
     seen,
   )

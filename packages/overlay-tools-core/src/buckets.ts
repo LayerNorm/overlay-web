@@ -27,7 +27,13 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
 
 /** Maps tool name -> usage/cost bucket. */
 export function toolCostBucketForId(toolId: string): ToolCostBucket {
-  if (toolId === 'perplexity_search' || toolId === 'parallel_search') return 'perplexity'
+  if (
+    toolId === 'perplexity_search' ||
+    toolId === 'parallel_search' ||
+    toolId === 'web_search' ||
+    toolId === 'deep_search' ||
+    toolId === 'web_fetch'
+  ) return 'perplexity'
   if (toolId === 'generate_image') return 'image'
   if (
     toolId === 'generate_video' ||

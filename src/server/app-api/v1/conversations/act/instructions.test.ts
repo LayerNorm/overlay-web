@@ -16,11 +16,12 @@ const constants: ActInstructionConstants = {
 function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentInstructions>[0]> = {}) {
   return buildActAgentInstructions({
     availableToolIds: [
+      'deep_search',
       'interactive_browser_session',
-      'parallel_search',
-      'perplexity_search',
       'run_daytona_sandbox',
       'save_memory',
+      'web_fetch',
+      'web_search',
     ],
     autoRetrieval: '\nAUTO_RETRIEVAL',
     constants,

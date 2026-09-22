@@ -14,9 +14,10 @@ import {
   deriveAppDataCapabilities,
 } from '@/server/app-data/capabilities'
 import {
-  getGatewayParallelSearchTool,
-  getGatewayPerplexitySearchTool,
-} from '@/server/ai/model-runtime'
+  getDeepSearchTool,
+  getWebFetchTool,
+  getWebSearchTool,
+} from '@/server/tools/tools/web-search'
 import {
   filterGatewayCompatibleToolSet,
   summarizeGatewayToolSchemaViolations,
@@ -57,8 +58,8 @@ export interface ActTooling {
   exposedMediaTools: string[]
   /** Tool names contributed by the connected-app provider, for policy filtering. */
   integrationToolIds: string[]
-  gatewaySearchLog: string
-  missingGatewaySearchTools: boolean
+  searchLog: string
+  missingSearchTools: boolean
   tools: ToolSet
   /** v7 toolApproval function for MCP tools (replaces deprecated per-tool needsApproval). */
   toolApproval?: McpToolApprovalFn
@@ -186,7 +187,7 @@ export async function prepareActTooling(params: {
           turnId: params.turnId,
           modelId: params.effectiveModelId,
         })
-  const [integrationRaw, mcpToolsResult, webToolSet, perplexityTool, parallelTool] = await Promise.all([
+  const [integrationRaw, mcpToolsResult, webToolSet, webSearchTool, deepSearchTool, webFetchTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
     mcpToolsTask,
     Promise.resolve(
@@ -210,7 +211,7 @@ export async function prepareActTooling(params: {
       }),
     ),
     params.paid && capabilities.webSearch
-      ? getGatewayPerplexitySearchTool(params.accessToken, params.effectiveModelId, {
+      ? getWebSearchTool(params.effectiveModelId, {
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
           requestFingerprint: params.requestFingerprint,
@@ -219,7 +220,16 @@ export async function prepareActTooling(params: {
         })
       : Promise.resolve(null),
     params.paid && capabilities.webSearch
-      ? getGatewayParallelSearchTool(params.accessToken, params.effectiveModelId, {
+      ? getDeepSearchTool(params.effectiveModelId, {
+          entitlements: params.entitlements,
+          programmaticSubjectId: params.billingProgrammaticSubjectId,
+          requestFingerprint: params.requestFingerprint,
+          userId: params.userId,
+          workspaceId: params.workspaceId,
+        })
+      : Promise.resolve(null),
+    params.paid && capabilities.webSearch
+      ? getWebFetchTool({
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
           requestFingerprint: params.requestFingerprint,
@@ -242,8 +252,9 @@ export async function prepareActTooling(params: {
     mcpToolApproval: mcpToolsResult.toolApproval,
     mcpToolsContext: mcpToolsResult.toolsContext,
     paid: params.paid,
-    parallelTool,
-    perplexityTool,
+    deepSearchTool,
+    webFetchTool,
+    webSearchTool,
     webToolSet,
     enabledConnectorSlugs: params.accountAllowedConnectorIds?.map(normalizeIntegrationProviderKey),
   })
@@ -303,8 +314,9 @@ export function buildActTooling(params: {
   mcpToolApproval?: McpToolApprovalFn
   mcpToolsContext?: Record<string, unknown>
   paid: boolean
-  parallelTool: ToolDefinition | null
-  perplexityTool: ToolDefinition | null
+  deepSearchTool: ToolDefinition | null
+  webFetchTool: ToolDefinition | null
+  webSearchTool: ToolDefinition | null
   webToolSet: ToolSet
   enabledConnectorSlugs?: readonly string[]
 }): ActTooling {
@@ -322,8 +334,9 @@ export function buildActTooling(params: {
     ...mcpTools,
     ...params.webToolSet,
     ...freeTierGatedStubs,
-    ...(params.perplexityTool ? { perplexity_search: params.perplexityTool } : {}),
-    ...(params.parallelTool ? { parallel_search: params.parallelTool } : {}),
+    ...(params.webSearchTool ? { web_search: params.webSearchTool } : {}),
+    ...(params.deepSearchTool ? { deep_search: params.deepSearchTool } : {}),
+    ...(params.webFetchTool ? { web_fetch: params.webFetchTool } : {}),
   }
 
   return {
@@ -331,11 +344,12 @@ export function buildActTooling(params: {
     composioStrippedForCompareSlot: params.isMultiModelFollowUpSlot,
     exposedMediaTools: exposedMediaToolIds(params.webToolSet),
     integrationToolIds: Object.keys(integrationsForAgent),
-    gatewaySearchLog: [
-      `perplexity:${params.perplexityTool ? 'yes' : 'no'}`,
-      `parallel:${params.parallelTool ? 'yes' : 'no'}`,
+    searchLog: [
+      `web_search:${params.webSearchTool ? 'yes' : 'no'}`,
+      `deep_search:${params.deepSearchTool ? 'yes' : 'no'}`,
+      `web_fetch:${params.webFetchTool ? 'yes' : 'no'}`,
     ].join(' '),
-    missingGatewaySearchTools: !params.perplexityTool || !params.parallelTool,
+    missingSearchTools: !params.webSearchTool || !params.deepSearchTool || !params.webFetchTool,
     tools,
     ...(params.mcpToolApproval && !params.isMultiModelFollowUpSlot
       ? { toolApproval: params.mcpToolApproval }
@@ -349,8 +363,8 @@ export function buildActTooling(params: {
 export function logActTooling(tooling: Pick<ActTooling,
   'allowedOverlayToolIds' |
   'composioStrippedForCompareSlot' |
-  'gatewaySearchLog' |
-  'missingGatewaySearchTools' |
+  'searchLog' |
+  'missingSearchTools' |
   'tools'
 >): void {
   logger.info(
@@ -361,9 +375,9 @@ export function logActTooling(tooling: Pick<ActTooling,
     tooling.composioStrippedForCompareSlot ? '| composio:stripped_for_compare_slot' : '',
     '| allowed_overlay_tools:',
     tooling.allowedOverlayToolIds.join(', ') || '(none)',
-    '| web_search (AI Gateway):',
-    tooling.gatewaySearchLog,
-    tooling.missingGatewaySearchTools ? ' — if missing, check AI_GATEWAY_API_KEY and Gateway logs' : '',
+    '| web search (Elo/TinyFish):',
+    tooling.searchLog,
+    tooling.missingSearchTools ? ' — if missing, check ELO_API_KEY and TINYFISH_API_KEY' : '',
   )
 }
 

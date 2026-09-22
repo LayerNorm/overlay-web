@@ -17,19 +17,7 @@ export {
   getGatewayModelId,
   resolveGatewayProviderToolProxyModelId,
 } from './gateway-runtime'
-export {
-  buildParallelProviderPayload,
-  buildPerplexityProviderPayload,
-  executeGatewayParallelSearch,
-  executeGatewayPerplexitySearch,
-  getGatewayParallelSearchTool,
-  getGatewayPerplexitySearchTool,
-  parallelSearchInputSchema,
-  perplexitySearchInputSchema,
-  runPerplexitySearchDirectForRepair,
-  type GatewayParallelSearchParams,
-  type GatewayPerplexitySearchParams,
-} from './gateway-search-tools'
+
 import type {
   LanguageModel,
   LLMGateway,

@@ -44,7 +44,7 @@ import { assertOverlayToolAllowed } from './policy'
 import type { OverlayToolsOptions } from './types'
 
 /**
- * Overlay-defined tools only (no Composio, no Gateway perplexity). Act agent: full tool surface.
+ * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
  */
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
@@ -515,9 +515,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.interactive_browser_session = tool({
     description:
       'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
-      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search and/or parallel_search (multi-query + domain/recency filters; deep research with long excerpts and includeDomains). ' +
+      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through web_search and/or deep_search (multi-query + domain/recency filters; deep research with long excerpts and includeDomains). ' +
       'Permitted ONLY when ALL of the following are true: (1) the task literally cannot be satisfied by search results + URLs, AND (2) it requires driving a real browser — e.g. logging in with credentials, clicking through a UI flow, submitting a form, scraping a page that actively blocks non-browser clients, operating a JS-heavy SPA, or capturing a screenshot of a specific rendered page. ' +
-      'Forbidden examples (use perplexity_search / parallel_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
+      'Forbidden examples (use web_search / deep_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
       'If both web tools ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than web search tools.',
     inputSchema: z.object({
       task: z.string().describe('What to do in the browser — natural language'),

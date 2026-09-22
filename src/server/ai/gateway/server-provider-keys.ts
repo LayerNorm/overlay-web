@@ -12,6 +12,8 @@ const PROVIDER_VAULT_NAMES: Record<string, string> = {
   nvidia: 'NVIDIA_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
+  elo: 'ELO_API_KEY',
+  tinyfish: 'TINYFISH_API_KEY',
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000

@@ -48,7 +48,7 @@ export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', '
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
 export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'e2b', 'local-firecracker', 'none'])
-export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
+export const OverlayWebSearchProviderSchema = z.enum(['elo', 'ai-gateway', 'perplexity', 'tavily', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
 export const OverlayEmailProviderSchema = z.enum(['resend', 'ses', 'smtp', 'none'])
@@ -460,7 +460,7 @@ export const OverlayRuntimeConfigSchema = z
       // Vercel Sandbox is the hosted default; Daytona remains an explicit opt-in
       // for deployments that have configured its provider and credentials.
       sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'vercel' : 'none'),
-      webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'ai-gateway' : 'none'),
+      webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'elo' : 'none'),
       analytics: config.providers.analytics?.provider ?? (effectiveCapabilities.analytics ? 'posthog' : 'none'),
       errorReporting: config.providers.errorReporting?.provider ?? (effectiveCapabilities.errorReporting ? 'sentry' : 'none'),
       email: config.providers.email?.provider ?? config.email?.provider ?? 'none',
@@ -586,8 +586,9 @@ export const OverlayRuntimeConfigSchema = z
       'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'webSearch', 'provider'], selectedProviders.webSearch, {
-      perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
-      tavily: 'Tavily web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
+      'ai-gateway': 'The AI Gateway web search path was removed. Web search now routes through ELO to Tavily/Parallel. Use webSearch.provider=elo or none.',
+      perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=elo or none.',
+      tavily: 'Direct Tavily web search is declared but not implemented; Tavily is reached through ELO. Use webSearch.provider=elo or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'secrets', 'provider'], selectedProviders.secrets, {
       vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',

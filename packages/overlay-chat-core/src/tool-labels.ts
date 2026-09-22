@@ -171,6 +171,9 @@ export function getDescriptiveToolLabel(
     interactive_browser_session: 'Browsing the web',
     perplexity_search: 'Searching the web',
     parallel_search: 'Deep web research',
+    web_search: 'Searching the web',
+    deep_search: 'Deep web research',
+    web_fetch: 'Fetching page',
     search_knowledge: 'Searching your knowledge',
     list_skills: 'Checking your skills',
     list_notes: 'Listing your notes',
@@ -200,7 +203,7 @@ export function getDescriptiveToolLabel(
     return describeComposioIntegrationTool(toolName, toolInput)
   }
 
-  if (toolName === 'perplexity_search' && toolInput) {
+  if ((toolName === 'perplexity_search' || toolName === 'web_search') && toolInput) {
     const q = pickFirstStringFromInput(toolInput, ['query', 'q'])
     if (q) {
       const clipped = q.length > 72 ? `${q.slice(0, 72)}…` : q
@@ -208,11 +211,26 @@ export function getDescriptiveToolLabel(
     }
   }
 
-  if (toolName === 'parallel_search' && toolInput) {
+  if ((toolName === 'parallel_search' || toolName === 'deep_search') && toolInput) {
     const o = pickFirstStringFromInput(toolInput, ['objective'])
     if (o) {
       const clipped = o.length > 72 ? `${o.slice(0, 72)}…` : o
       return `Researching: “${clipped}”`
+    }
+  }
+
+  if (toolName === 'web_fetch' && toolInput) {
+    const u = pickFirstStringFromInput(toolInput, ['url'])
+    if (u) {
+      const clipped = u.length > 72 ? `${u.slice(0, 72)}…` : u
+      return `Fetching “${clipped}”`
+    }
+    const urls = Array.isArray((toolInput as Record<string, unknown>).urls)
+      ? ((toolInput as Record<string, unknown>).urls as unknown[]).filter((v): v is string => typeof v === 'string')
+      : []
+    if (urls.length > 0) {
+      const clipped = urls[0]!.length > 60 ? `${urls[0]!.slice(0, 60)}…` : urls[0]!
+      return urls.length > 1 ? `Fetching “${clipped}” +${urls.length - 1} more` : `Fetching “${clipped}”`
     }
   }
 

@@ -4,13 +4,9 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   getGatewayImageModel,
   getGatewayModelId,
-  getGatewayParallelSearchTool,
-  getGatewayPerplexitySearchTool,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
   getOpenRouterLanguageModelCapturingRoutedModel,
-  parallelSearchInputSchema,
-  perplexitySearchInputSchema,
 } from '@/server/ai/gateway/ai-gateway'
 import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
 import {
@@ -79,13 +75,9 @@ export async function getLanguageModel(
 export {
   getGatewayImageModel,
   getGatewayModelId,
-  getGatewayParallelSearchTool,
-  getGatewayPerplexitySearchTool,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
   getOpenRouterLanguageModelCapturingRoutedModel,
-  parallelSearchInputSchema,
-  perplexitySearchInputSchema,
   userFacingOpenRouterError,
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,

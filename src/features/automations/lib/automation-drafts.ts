@@ -76,11 +76,11 @@ function buildPointerSteps(input: { userText: string; assistantText?: string }):
 
   if (asksForNewsDigest) {
     return [
-      'Call `perplexity_search` with query "top tech news today"',
-      'Call `perplexity_search` with query "top AI news today"',
-      'Call `perplexity_search` with query "top open source news today"',
-      'Call `perplexity_search` with query "top startup funding news today"',
-      'Call `perplexity_search` with query "top world news today"',
+      'Call `web_search` with query "top tech news today"',
+      'Call `web_search` with query "top AI news today"',
+      'Call `web_search` with query "top open source news today"',
+      'Call `web_search` with query "top startup funding news today"',
+      'Call `web_search` with query "top world news today"',
       'Run all news searches in parallel simultaneously',
       'Take results and format into an email body with one section per category, 3-5 stories each, 2-3 sentence summary per story, and source links inline',
       "Build the subject line: Your Daily News Digest - [Today's Date]",

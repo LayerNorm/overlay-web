@@ -140,7 +140,13 @@ export function AssistantSegmentItem({
           />
         )
       }
-      if (t.name === 'perplexity_search' || t.name === 'parallel_search') {
+      if (
+        t.name === 'perplexity_search' ||
+        t.name === 'parallel_search' ||
+        t.name === 'web_search' ||
+        t.name === 'deep_search' ||
+        t.name === 'web_fetch'
+      ) {
         return (
           <WebSearchToolBlock
             block={t}
