@@ -203,36 +203,8 @@ export function getDescriptiveToolLabel(
     return describeComposioIntegrationTool(toolName, toolInput)
   }
 
-  if ((toolName === 'perplexity_search' || toolName === 'web_search') && toolInput) {
-    const q = pickFirstStringFromInput(toolInput, ['query', 'q'])
-    if (q) {
-      const clipped = q.length > 72 ? `${q.slice(0, 72)}…` : q
-      return `Searching the web for “${clipped}”`
-    }
-  }
-
-  if ((toolName === 'parallel_search' || toolName === 'deep_search') && toolInput) {
-    const o = pickFirstStringFromInput(toolInput, ['objective'])
-    if (o) {
-      const clipped = o.length > 72 ? `${o.slice(0, 72)}…` : o
-      return `Researching: “${clipped}”`
-    }
-  }
-
-  if (toolName === 'web_fetch' && toolInput) {
-    const u = pickFirstStringFromInput(toolInput, ['url'])
-    if (u) {
-      const clipped = u.length > 72 ? `${u.slice(0, 72)}…` : u
-      return `Fetching “${clipped}”`
-    }
-    const urls = Array.isArray((toolInput as Record<string, unknown>).urls)
-      ? ((toolInput as Record<string, unknown>).urls as unknown[]).filter((v): v is string => typeof v === 'string')
-      : []
-    if (urls.length > 0) {
-      const clipped = urls[0]!.length > 60 ? `${urls[0]!.slice(0, 60)}…` : urls[0]!
-      return urls.length > 1 ? `Fetching “${clipped}” +${urls.length - 1} more` : `Fetching “${clipped}”`
-    }
-  }
+  const searchLabel = webSearchToolLabel(toolName, toolInput)
+  if (searchLabel) return searchLabel
 
   if (toolName.startsWith('mcp_')) {
     const rest = toolName.slice(4)
@@ -247,4 +219,32 @@ export function getDescriptiveToolLabel(
   }
 
   return titleCaseUnderscore(toolName)
+}
+
+function webSearchToolLabel(
+  toolName: string,
+  toolInput: Record<string, unknown> | undefined,
+): string | null {
+  if (!toolInput) return null
+  const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max)}…` : value)
+
+  if (toolName === 'perplexity_search' || toolName === 'web_search') {
+    const q = pickFirstStringFromInput(toolInput, ['query', 'q'])
+    return q ? `Searching the web for “${clip(q, 72)}”` : null
+  }
+  if (toolName === 'parallel_search' || toolName === 'deep_search') {
+    const o = pickFirstStringFromInput(toolInput, ['objective'])
+    return o ? `Researching: “${clip(o, 72)}”` : null
+  }
+  if (toolName === 'web_fetch') {
+    const single = pickFirstStringFromInput(toolInput, ['url'])
+    if (single) return `Fetching “${clip(single, 72)}”`
+    const urls = Array.isArray(toolInput.urls)
+      ? toolInput.urls.filter((v): v is string => typeof v === 'string')
+      : []
+    if (urls.length === 0) return null
+    const clipped = clip(urls[0]!, 60)
+    return urls.length > 1 ? `Fetching “${clipped}” +${urls.length - 1} more` : `Fetching “${clipped}”`
+  }
+  return null
 }
