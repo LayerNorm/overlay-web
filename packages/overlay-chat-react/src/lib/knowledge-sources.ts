@@ -9,10 +9,13 @@
 import type { SourceCitation, SourceCitationMap } from './source-citations'
 import type { WebSourceItem } from './web-sources'
 
-/** Canonical in-app destination for a cited file or memory. */
+/** Canonical in-app destination for a cited file, memory, or message. */
 export function knowledgeSourceHref(citation: SourceCitation, appBaseUrl?: string | null): string {
   const base = (appBaseUrl ?? '').replace(/\/$/, '')
   // Memories live in Settings → Memories; `memory` selects and highlights one.
+  // Messages have no per-item route — the citation title (date · speaker)
+  // carries the signal and the link lands on chat.
+  if (citation.kind === 'message') return `${base}/app/chat`
   return citation.kind === 'memory'
     ? `${base}/app/settings?section=memories&memory=${encodeURIComponent(citation.sourceId)}`
     : `${base}/app/files?file=${encodeURIComponent(citation.sourceId)}`
@@ -21,6 +24,7 @@ export function knowledgeSourceHref(citation: SourceCitation, appBaseUrl?: strin
 export function knowledgeSourceTitle(citation: SourceCitation): string {
   const title = citation.title?.trim()
   if (title && title.toLowerCase() !== 'memory') return title
+  if (citation.kind === 'message') return 'Conversation'
   return citation.kind === 'memory' ? 'Memory' : 'File'
 }
 

@@ -1,6 +1,6 @@
 import React, { useRef, useState, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Brain, FileText } from 'lucide-react'
+import { Brain, FileText, MessageSquare } from 'lucide-react'
 import type { WebSourceItem } from '../lib/web-sources'
 import { webSourceDisplayKey } from '../lib/web-sources'
 import { faviconUrl, hostFromUrl } from '@overlay/chat-core'
@@ -130,7 +130,7 @@ export function WebSourceTooltip({
                 const internal = source.origin === 'knowledge'
                 const host = internal ? '' : hostOf(source.url)
                 const shortHost = internal
-                  ? (source.internalKind === 'memory' ? 'Memory' : 'File')
+                  ? (source.internalKind === 'memory' ? 'Memory' : source.internalKind === 'message' ? 'Conversation' : 'File')
                   : webSourceDisplayKey(source.url)
                 const fav = internal ? '' : faviconUrl(source.url)
                 // Snippets arrive as raw document HTML/markdown; keep prose only.
@@ -152,6 +152,8 @@ export function WebSourceTooltip({
                         {internal ? (
                           source.internalKind === 'memory' ? (
                             <Brain size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                          ) : source.internalKind === 'message' ? (
+                            <MessageSquare size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
                           ) : (
                             <FileText size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
                           )
@@ -168,7 +170,7 @@ export function WebSourceTooltip({
                         {titleText}
                       </span>
                       <span className="shrink-0 truncate text-[11px] text-[var(--muted)]" style={{ maxWidth: '40%' }}>
-                        {internal ? (source.internalKind === 'memory' ? 'Memories' : 'Files') : shortHost}
+                        {internal ? (source.internalKind === 'memory' ? 'Memories' : source.internalKind === 'message' ? 'Chat' : 'Files') : shortHost}
                       </span>
                     </a>
                   </li>

@@ -4,6 +4,8 @@ import type { HybridSearchResult } from '@/shared/knowledge/hybrid-search'
 
 export type KnowledgeSearchArgs = {
   accessToken?: string
+  /** Recency half-life on memory chunks; defaults on. */
+  applyRecencyDecay?: boolean
   billing: {
     actorUserId: string
     idempotencyKey: string
@@ -17,7 +19,8 @@ export type KnowledgeSearchArgs = {
   m?: number
   minVecScore?: number
   query: string
-  sourceKind?: 'file' | 'memory'
+  sourceKind?: 'file' | 'memory' | 'message'
+  sourceKinds?: Array<'file' | 'memory' | 'message'>
   userId: string
   workspaceId?: string
 }

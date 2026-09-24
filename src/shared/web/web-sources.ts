@@ -11,7 +11,7 @@ export type WebSourceItem = {
   /** In-app route for knowledge sources (file, note, or memory). */
   internalHref?: string
   /** Which internal resource this is — drives the icon and the row subtitle. */
-  internalKind?: 'file' | 'memory'
+  internalKind?: 'file' | 'memory' | 'message'
 }
 
 /** Hash href for markdown (survives rehype-sanitize; click opens real URL in React). */

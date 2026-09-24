@@ -249,6 +249,11 @@ export interface ActConversationRepository {
     userId: string
     workspaceId?: string
   }): Promise<ActMemoryRow[] | null>
+  /** Compiled owner profile — null when none has been generated yet. Optional: partial test repositories may omit it. */
+  getMemoryProfile?(args: {
+    userId: string
+    workspaceId?: string
+  }): Promise<{ content: string } | null>
   listSkills(args: {
     userId: string
   }): Promise<ActSkillRow[]>

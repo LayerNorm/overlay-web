@@ -5,7 +5,7 @@
  * bundle. Drift is tracked in `sync-manifest.json` via the sync script.
  */
 export type SourceCitation = {
-  kind: 'file' | 'memory'
+  kind: 'file' | 'memory' | 'message'
   sourceId: string
   /** Human label for the source chip / panel row. */
   title?: string

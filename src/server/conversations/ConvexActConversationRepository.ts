@@ -206,6 +206,17 @@ export class ConvexActConversationRepository implements ActConversationRepositor
         })
   }
 
+  async getMemoryProfile(args: {
+    userId: string
+    workspaceId?: string
+  }): Promise<{ content: string } | null> {
+    return await convex.query<{ content: string } | null>('knowledge/memoryProfiles:getProfile', {
+      ownerId: args.userId,
+      workspaceId: args.workspaceId,
+      serverSecret: this.serverSecret,
+    })
+  }
+
   async listSkills(args: {
     userId: string
   }): Promise<ActSkillRow[]> {

@@ -500,6 +500,9 @@ export const addMessage = mutation({
       type: 'message.created',
       messageId,
     })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+      messageId,
+    })
     return messageId
   },
 })
@@ -558,6 +561,9 @@ export const addAgentMessage = mutation({
       workspaceId: args.workspaceId,
       userId: args.actorUserId,
       type: 'message.created',
+      messageId,
+    })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
       messageId,
     })
     await notifyAgentMessage(ctx, { ...args, messageId })
@@ -922,6 +928,9 @@ export const finalizeAgentMessage = mutation({
       workspaceId: args.workspaceId,
       userId: args.actorUserId,
       type: 'message.completed',
+      messageId: args.messageId,
+    })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
       messageId: args.messageId,
     })
     await notifyAgentMessage(ctx, args)
@@ -1420,6 +1429,9 @@ export const deleteConversationForEveryone = mutation({
       type: 'conversation.deleted',
       payload: { scope: 'everyone' },
     })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeConversationMessageChunks, {
+      conversationId: args.conversationId,
+    })
     return true
   },
 })
@@ -1878,6 +1890,10 @@ export const deleteMessage = mutation({
     ) return false
     const now = Date.now()
     await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
+    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+      sourceKind: 'message',
+      sourceId: args.messageId,
+    })
     return true
   },
 })

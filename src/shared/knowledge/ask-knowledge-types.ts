@@ -2,7 +2,7 @@
 
 /** 1-based citation index -> canonical file or memory (for UI links). */
 export type SourceCitation = {
-  kind: 'file' | 'memory'
+  kind: 'file' | 'memory' | 'message'
   sourceId: string
   /** Human label for the source chip / panel row. */
   title?: string

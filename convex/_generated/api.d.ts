@@ -66,6 +66,8 @@ import type * as knowledge_knowledge from "../knowledge/knowledge.js";
 import type * as knowledge_memories from "../knowledge/memories.js";
 import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js";
 import type * as knowledge_memoryExtractorNode from "../knowledge/memoryExtractorNode.js";
+import type * as knowledge_memoryProfileStore from "../knowledge/memoryProfileStore.js";
+import type * as knowledge_memoryProfiles from "../knowledge/memoryProfiles.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
@@ -156,6 +158,8 @@ declare const fullApi: ApiFromModules<{
   "knowledge/memories": typeof knowledge_memories;
   "knowledge/memoryExtractor": typeof knowledge_memoryExtractor;
   "knowledge/memoryExtractorNode": typeof knowledge_memoryExtractorNode;
+  "knowledge/memoryProfileStore": typeof knowledge_memoryProfileStore;
+  "knowledge/memoryProfiles": typeof knowledge_memoryProfiles;
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
   "lib/browserConvexToken": typeof lib_browserConvexToken;

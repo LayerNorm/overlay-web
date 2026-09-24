@@ -532,6 +532,18 @@ export const extractFromTurn = internalAction({
         }
       }
 
+      // M2: memory churn invalidates the owner's compiled profile. The compile
+      // action self-throttles (fresh profiles skip), so scheduling per turn is
+      // cheap — only the first call in a burst actually regenerates.
+      if (inserted + updated + superseded > 0) {
+        await ctx.scheduler.runAfter(0, internal.knowledge.memoryProfiles.compileInternal, {
+          ownerId,
+          workspaceId,
+          billingActorUserId: billingUserId,
+          isPaid,
+        });
+      }
+
       console.log("[memoryExtractorNode] result", {
         extracted: candidates.length,
         inserted,

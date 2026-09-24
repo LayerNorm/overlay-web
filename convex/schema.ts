@@ -1312,12 +1312,25 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
+  // Compiled owner profile — a stable, model-synthesized "who is this" block
+  // regenerated periodically instead of injecting raw top-N memories.
+  memoryProfiles: defineTable({
+    ownerId: v.string(),
+    workspaceId: v.optional(v.string()),
+    content: v.string(),
+    sourceMemoryCount: v.number(),
+    modelId: v.string(),
+    generatedAt: v.number(),
+  })
+    .index('by_ownerId', ['ownerId'])
+    .index('by_workspaceId_ownerId', ['workspaceId', 'ownerId']),
+
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.string()),
     projectId: v.optional(v.string()),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('message')),
     sourceId: v.string(),
     knowledgeSourceId: v.optional(v.string()),
     knowledgeSourceVersionId: v.optional(v.string()),
@@ -1330,6 +1343,8 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
     visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
     createdAt: v.optional(v.number()),
+    /** Last-confirmed time — recency decay keys on this; `touch` keeps it fresh. */
+    updatedAt: v.optional(v.number()),
     superseded: v.optional(v.boolean()),
   })
     .index('by_workspaceId', ['workspaceId'])
@@ -1345,7 +1360,7 @@ export default defineSchema({
   knowledgeChunkEmbeddings: defineTable({
     chunkId: v.id('knowledgeChunks'),
     userId: v.string(),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('message')),
     embedding: v.array(v.float64()),
   })
     .index('by_chunkId', ['chunkId'])

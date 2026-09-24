@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Brain, FileText, PanelRightOpen, Maximize2 } from 'lucide-react'
+import { Brain, FileText, MessageSquare, PanelRightOpen, Maximize2 } from 'lucide-react'
 import {
   faviconUrl,
   plainTextSnippet,
@@ -80,7 +80,7 @@ export function SourcesPanel({
         const safeUrl = internal ? internalHref : safeHttpUrl(source.url)
         if (!safeUrl) return []
         const site = internal
-          ? (source.internalKind === 'memory' ? 'Memory' : 'File')
+          ? (source.internalKind === 'memory' ? 'Memory' : source.internalKind === 'message' ? 'Conversation' : 'File')
           : webSourceDisplayKey(source.url)
         const fav = internal ? '' : faviconUrl(source.url)
         const titleCandidate = plainTextSnippet(source.title)
@@ -102,7 +102,7 @@ export function SourcesPanel({
           ? titleCandidate || site
           : isTitleJustHost ? host : titleCandidate
         const subtext = internal
-          ? snippet || (source.internalKind === 'memory' ? 'Saved memory' : 'Indexed file')
+          ? snippet || (source.internalKind === 'memory' ? 'Saved memory' : source.internalKind === 'message' ? 'Past message' : 'Indexed file')
           : snippet || (isTitleJustHost ? prettyUrlPath(source.url) : host)
         return (
           <li key={`${source.url}-${idx}`}>
@@ -124,6 +124,8 @@ export function SourcesPanel({
                   {internal ? (
                     source.internalKind === 'memory' ? (
                       <Brain size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                    ) : source.internalKind === 'message' ? (
+                      <MessageSquare size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
                     ) : (
                       <FileText size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
                     )

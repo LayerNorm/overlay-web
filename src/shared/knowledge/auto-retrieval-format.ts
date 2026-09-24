@@ -33,8 +33,11 @@ export function formatAutoRetrievalBundle(
   if (chunks.length === 0) return { extension: '', citations: {} }
 
   const citations: SourceCitationMap = {}
+  const hasMessages = chunks.some((c) => c.sourceKind === 'message')
   const sourceLabel = includeMemories
-    ? "from the user's indexed files and saved memories"
+    ? hasMessages
+      ? "from the user's indexed files, saved memories, and past conversation"
+      : "from the user's indexed files and saved memories"
     : "from the user's indexed files"
   const lines: string[] = [
     '---',
@@ -48,7 +51,10 @@ export function formatAutoRetrievalBundle(
 
   let used = 0
   for (const chunk of chunks) {
-    const kind = chunk.sourceKind === 'file' ? 'file' : 'memory'
+    const kind =
+      chunk.sourceKind === 'file' ? 'file'
+      : chunk.sourceKind === 'message' ? 'conversation excerpt'
+      : 'memory'
     const title = (chunk.title && chunk.title.trim()) || (kind === 'file' ? 'Notebook file' : 'Memory')
     const citationNumber = Object.keys(citations).length + 1
     const block = `[${citationNumber}] (${kind}) ${title}\n${chunk.text}`

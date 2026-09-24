@@ -319,7 +319,8 @@ export const remove = mutation({
 
 /**
  * Freshness bump for semantic duplicates: the fact is unchanged, only its
- * recency signal moves. No reindex — content is identical.
+ * recency signal moves. No reindex — content is identical — but the
+ * denormalized chunk `updatedAt` moves too so recency decay honors it.
  */
 export const touch = mutation({
   args: {
@@ -335,7 +336,15 @@ export const touch = mutation({
     if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
-    await ctx.db.patch(memoryId, { updatedAt: Date.now() })
+    const now = Date.now()
+    await ctx.db.patch(memoryId, { updatedAt: now })
+    const chunks = await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memoryId))
+      .collect()
+    for (const chunk of chunks) {
+      await ctx.db.patch(chunk._id, { updatedAt: now })
+    }
   },
 })
 

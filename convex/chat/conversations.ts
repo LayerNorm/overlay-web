@@ -414,6 +414,10 @@ export const remove = mutation({
       userId,
       type: 'conversation.deleted',
     })
+    // Drop the verbatim message index for this conversation.
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeConversationMessageChunks, {
+      conversationId,
+    })
   },
 })
 
@@ -704,6 +708,12 @@ export const addMessage = mutation({
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
 
+    // Verbatim evidence layer (M2): index the saved message text. Idempotent —
+    // edits via the clientNonce match re-embed and replace the old chunks.
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+      messageId: msgId,
+    })
+
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
 	        const subscription = await ctx.db
@@ -928,6 +938,10 @@ export const completeAgentRun = mutation({
       updatedAt: now,
     })
     await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
+    // Index the finalized assistant reply — it only now has real content.
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+      messageId: run.assistantMessageId,
+    })
     return await ctx.db.get(run._id)
   },
 })
@@ -1540,6 +1554,9 @@ export const addMessages = mutation({
         ? (await ctx.db.patch(match._id, payload), match._id)
         : await ctx.db.insert('conversationMessages', payload)
       ids.push(id)
+      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+        messageId: id,
+      })
     }
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })
     return ids
