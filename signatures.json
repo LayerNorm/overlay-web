@@ -1,4 +1,14 @@
 {
   "claVersion": "2026-08-28-draft",
-  "signatures": []
+  "signatures": [
+    {
+      "githubUser": "devin-ai-integration[bot]",
+      "githubUserId": 158243242,
+      "signedAt": "2026-09-24T06:49:15.520Z",
+      "claVersion": "2026-08-28-draft",
+      "repository": "LayerNorm/overlay-web",
+      "pullRequest": 131,
+      "commentUrl": "https://github.com/LayerNorm/overlay-web/pull/131#issuecomment-5809221904"
+    }
+  ]
 }
