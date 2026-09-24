@@ -417,6 +417,7 @@ export function DirectMessageExperience({
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<import('./chat-interface/MentionInput').MentionInputHandle>(null)
+  const threadRenameRequestedRef = useRef(false)
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -1143,13 +1144,13 @@ export function DirectMessageExperience({
     try {
       const mentionedPrincipalIds = resolveMentionTargets(text)
       // One-to-one agent threads take their title from the first human message,
-      // matching personal chats — until then they carry the agent's name.
+      // matching personal chats. Only placeholder titles are replaced — never a
+      // custom name — and the ref stops racing sends from double-renaming.
       const renameAgentThread = soloAgentParticipant
         && !loading
         && text.length > 0
-        && !messagesRef.current.some(
-          (message) => message.authorKind === 'human' && message.clientNonce !== clientNonce,
-        )
+        && !threadRenameRequestedRef.current
+        && (conversationTitle === 'New thread' || conversationTitle === soloAgentParticipant.displayName)
       const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
       const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
       const threadAgentId = threadRootMessageId
@@ -1184,15 +1185,21 @@ export function DirectMessageExperience({
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
       if (renameAgentThread && soloAgentParticipant) {
+        threadRenameRequestedRef.current = true
         const agentName = soloAgentParticipant.displayName
         void generateTitle(text).then(async (aiTitle) => {
-          if (!aiTitle) return
+          if (!aiTitle) {
+            threadRenameRequestedRef.current = false
+            return
+          }
           const title = sanitizeChatTitle(aiTitle, agentName)
           try {
             const res = await overlayAppClient.conversations.updateResponse({ conversationId, title })
             if (res.ok) dispatchChatTitleUpdated({ chatId: conversationId, title })
+            else threadRenameRequestedRef.current = false
           } catch {
             // Keep the placeholder thread title.
+            threadRenameRequestedRef.current = false
           }
         })
       }
