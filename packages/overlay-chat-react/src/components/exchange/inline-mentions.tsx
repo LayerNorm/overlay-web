@@ -13,6 +13,7 @@ import {
 
 const MENTION_ICONS: Record<string, ComponentType<LucideProps>> = {
   person: AtSign,
+  agent: Bot,
   file: FileText,
   knowledge: BookOpen,
   connector: Plug,
@@ -47,7 +48,7 @@ export function renderInlineMentions(
           const Icon = MENTION_ICONS[mention?.type ?? 'person'] ?? AtSign
           return <Icon size={11} strokeWidth={1.75} aria-hidden="true" />
         })()}
-        {match[0]}
+        {match[1]}
       </span>
     )
     lastIndex = regex.lastIndex
