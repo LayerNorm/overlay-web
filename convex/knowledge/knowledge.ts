@@ -29,6 +29,8 @@ export type HybridSearchChunk = {
   sourceId: string
   chunkIndex: number
   score: number
+  /** Raw vector similarity when ranked via vector search (absent for lexical-only hits). `score` is the fused RRF value. */
+  vecScore?: number
 }
 
 /** Larger chunks reduce embedding/storage row counts while preserving retrieval context. */
@@ -241,6 +243,11 @@ export const replaceKnowledgeSource = internalMutation({
         embedding: v.array(v.float64()),
       }),
     ),
+    // Denormalized memory-lifecycle fields (memory chunks only).
+    expiresAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    createdAt: v.optional(v.number()),
+    superseded: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -265,6 +272,10 @@ export const replaceKnowledgeSource = internalMutation({
         startOffset: seg.startOffset,
         text: seg.text,
         title: args.title,
+        expiresAt: args.expiresAt,
+        visibility: args.visibility,
+        createdAt: args.createdAt,
+        superseded: args.superseded,
       })
       await ctx.db.insert('knowledgeChunkEmbeddings', {
         chunkId,
@@ -304,7 +315,16 @@ export const getMemoryForReindex = internalQuery({
   handler: async (ctx, { memoryId }) => {
     const m = await ctx.db.get(memoryId)
     if (!m || m.deletedAt) return null
-    return { userId: m.userId, workspaceId: m.workspaceId, content: m.content }
+    return {
+      userId: m.userId,
+      workspaceId: m.workspaceId,
+      content: m.content,
+      tags: m.tags,
+      expiresAt: m.expiresAt,
+      visibility: m.visibility,
+      createdAt: m.createdAt,
+      superseded: m.supersededBy !== undefined,
+    }
   },
 })
 
@@ -564,7 +584,12 @@ export const reindexMemoryInternal = internalAction({
       })
       return
     }
-    const segments = chunkText(meta.content)
+    // Tags are stored on the row but were never indexed — append them so both
+    // lexical and semantic search can hit them.
+    const indexText = meta.tags?.length
+      ? `${meta.content}\nTags: ${meta.tags.join(', ')}`
+      : meta.content
+    const segments = chunkText(indexText)
     if (segments.length === 0) {
       await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
         sourceKind: 'memory',
@@ -576,7 +601,7 @@ export const reindexMemoryInternal = internalAction({
       userId: meta.userId,
       kind: 'indexing',
       chunkCount: segments.length,
-      bytes: new TextEncoder().encode(meta.content).byteLength,
+      bytes: new TextEncoder().encode(indexText).byteLength,
     })
     if (!indexingReservation.allowed) return
 
@@ -585,7 +610,7 @@ export const reindexMemoryInternal = internalAction({
     const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
     const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
-    const requestFingerprint = await sha256Hex(`memory:${memoryId}:${meta.content}`)
+    const requestFingerprint = await sha256Hex(`memory:${memoryId}:${indexText}`)
     let reservationId: string
     try {
       const reserved = await reserveKnowledgeProviderBudget(ctx, {
@@ -621,6 +646,10 @@ export const reindexMemoryInternal = internalAction({
         sourceKind: 'memory',
         sourceId: memoryId,
         title: 'Memory',
+        expiresAt: meta.expiresAt,
+        visibility: meta.visibility,
+        createdAt: meta.createdAt,
+        superseded: meta.superseded,
         segments: segments.map((s, i) => ({
           text: s.text,
           chunkIndex: s.chunkIndex,
@@ -675,6 +704,7 @@ const PACK_MAX_PER_SOURCE = 3
 function packChunksForContext(
   ordered: Doc<'knowledgeChunks'>[],
   scores: Map<string, number>,
+  vecScores: Map<string, number>,
   maxChunks: number,
 ): HybridSearchChunk[] {
   const perSource = new Map<string, number>()
@@ -695,6 +725,7 @@ function packChunksForContext(
       sourceId: row.sourceId,
       chunkIndex: row.chunkIndex,
       score: scores.get(row._id) ?? 0,
+      vecScore: vecScores.get(row._id),
     })
   }
   return out
@@ -865,9 +896,11 @@ export const hybridSearch = action({
     )).sort((a, b) => b.score - a.score).slice(0, kVec)
 
     const scores = new Map<string, number>()
+    const vecScores = new Map<string, number>()
     for (let i = 0; i < rankedVectorPairs.length; i++) {
       const cid = rankedVectorPairs[i]?.chunkId
       if (!cid) continue
+      vecScores.set(cid, Math.max(vecScores.get(cid) ?? 0, rankedVectorPairs[i]!.score))
       const rank = i + 1
       scores.set(cid, (scores.get(cid) ?? 0) + 1 / (RRF_K + rank))
     }
@@ -908,14 +941,22 @@ export const hybridSearch = action({
     const byId = new Map<Id<'knowledgeChunks'>, Doc<'knowledgeChunks'>>(
       payloads.map((p) => [p._id, p]),
     )
+    const now = Date.now()
     const filtered = rankedIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => !!row)
+      // M1 memory lifecycle: superseded and expired memory chunks are dropped
+      // at retrieval (rows stay in `memories` for audit). Owner-private chunks
+      // only surface in the owner's own scope — other members' expansion
+      // searches must not see them.
+      .filter((row) => !row.superseded)
+      .filter((row) => row.expiresAt === undefined || row.expiresAt > now)
+      .filter((row) => row.userId === args.userId || row.visibility !== 'owner')
     const resorted = [...filtered].sort(
       (a, b) => (scores.get(b._id) ?? 0) - (scores.get(a._id) ?? 0),
     )
 
-    const top = packChunksForContext(resorted, scores, m)
+    const top = packChunksForContext(resorted, scores, vecScores, m)
 
     return { chunks: top }
   },

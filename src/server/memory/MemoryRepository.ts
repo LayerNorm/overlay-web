@@ -19,6 +19,11 @@ export type MemoryRecord = {
   turnId?: string
   tags?: string[]
   actor?: MemoryActor
+  supersededBy?: string
+  supersededAt?: number
+  expiresAt?: number
+  eventAt?: number
+  visibility?: 'owner' | 'workspace'
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -36,6 +41,9 @@ export type MemoryWrite = {
   tags?: string[]
   turnId?: string
   type?: MemoryType
+  expiresAt?: number
+  eventAt?: number
+  visibility?: 'owner' | 'workspace'
   userId: string
   workspaceId?: string
 }
@@ -59,4 +67,6 @@ export interface MemoryRepository {
     workspaceId?: string
   }): Promise<MemoryRecord | null>
   remove(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<{ deletedAt: number; memoryId: string } | null>
+  /** Freshness bump for a semantic-duplicate write — no reindex needed. */
+  touch(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<void>
 }

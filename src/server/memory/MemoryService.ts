@@ -115,6 +115,11 @@ export class MemoryService {
     if (!result) throw new MemoryServiceError('Not found', 404)
     return result
   }
+
+  /** Freshness bump for a semantic-duplicate write — no reindex needed. */
+  async touch(args: { memoryId: string; userId: string; workspaceId?: string }) {
+    return this.repository.touch(args)
+  }
 }
 
 export class MemoryServiceError extends Error {

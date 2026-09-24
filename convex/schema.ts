@@ -1296,6 +1296,12 @@ export default defineSchema({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+    // M1 memory lifecycle: supersession + expiry + visibility + event time.
+    supersededBy: v.optional(v.id('memories')),
+    supersededAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    eventAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
@@ -1319,6 +1325,12 @@ export default defineSchema({
     startOffset: v.number(),
     text: v.string(),
     title: v.optional(v.string()),
+    // Denormalized memory-lifecycle fields so search filters need no join.
+    // Undefined on file chunks and on rows written before M1.
+    expiresAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    createdAt: v.optional(v.number()),
+    superseded: v.optional(v.boolean()),
   })
     .index('by_workspaceId', ['workspaceId'])
     .index('by_source', ['sourceKind', 'sourceId'])

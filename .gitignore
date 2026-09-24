@@ -115,3 +115,7 @@ scripts/composio-slack-smoke/
 
 # Quick UI prototypes / mockups (local artifacts, not shipped)
 /artifacts/
+
+# Memory benchmark datasets + results (large downloaded corpora; never committed)
+benchmarks/memory/datasets/
+benchmarks/memory/results/

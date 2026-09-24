@@ -1,8 +1,9 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { MemoryServiceError, type MemoryActor, type MemorySource, type MemoryType } from '@/server/memory'
+import { MemoryServiceError, type MemoryActor, type MemoryRecord, type MemorySource, type MemoryType } from '@/server/memory'
+import { DEDUP_MIN_VEC_SCORE } from '@/shared/knowledge/memory-extraction-shared'
 import { memoriesToClientListRows } from '@/shared/knowledge/memory-display-segments'
 import { agentIdFromMemoryOwnerId, agentMemoryOwnerId, isAgentMemoryOwnerId } from '@/shared/agents/agent-memory'
 
@@ -151,11 +152,76 @@ type MemoryBody = {
   type?: MemoryType
 }
 
+/**
+ * Semantic-duplicate check for tool writes (save_memory / save_memory_batch,
+ * which POST with source 'chat'). Vector-searches the owner's memory chunks;
+ * a hit in this workspace means the fact is already remembered — return the
+ * existing row instead of inserting a near-duplicate.
+ */
+async function findSemanticDuplicate(
+  context: AppApiRouteContext,
+  ownerUserId: string,
+  content: string,
+): Promise<MemoryRecord | null> {
+  try {
+    const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
+      accessToken: context.auth.accessToken,
+      billing: {
+        actorUserId: context.auth.userId,
+        idempotencyKey: context.requestIdempotencyKey ?? `memory-dedupe:${context.requestFingerprint}`,
+        operationId: 'memory.write-dedupe',
+        programmaticSubjectId: getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context)),
+        requestFingerprint: context.requestFingerprint,
+      },
+      query: content,
+      sourceKind: 'memory',
+      userId: ownerUserId,
+      // No workspaceId — the search stays scoped to the owner's rows; the
+      // workspace match is verified on the returned row below.
+      kVec: 3,
+      kLex: 1,
+      m: 3,
+      minVecScore: DEDUP_MIN_VEC_SCORE,
+    })
+    // Only a vector-scored hit counts as a duplicate — a lexical-only chunk
+    // shares words without stating the same fact.
+    const chunk = result.chunks?.find((c) => (c.vecScore ?? 0) >= DEDUP_MIN_VEC_SCORE)
+    if (!chunk?.sourceId) return null
+    return await getOverlayServerContext().memoryService.get({
+      memoryId: chunk.sourceId,
+      userId: ownerUserId,
+      workspaceId: context.workspace.workspace.id,
+    })
+  } catch (error) {
+    logger.warn('[Memory API] semantic dedupe check failed; proceeding to save', { error })
+    return null
+  }
+}
+
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as MemoryBody
     const { memoryOwnerId: _memoryOwnerId, ...memoryBody } = body
     const owner = await resolveMemoryOwner(context, body.memoryOwnerId)
+    if ((memoryBody.source ?? 'chat') === 'chat' && memoryBody.content?.trim()) {
+      const existing = await findSemanticDuplicate(context, owner.userId, memoryBody.content)
+      if (existing) {
+        await getOverlayServerContext().memoryService.touch({
+          memoryId: existing._id,
+          userId: owner.userId,
+          workspaceId: context.workspace.workspace.id,
+        }).catch((_error) => {
+          // Freshness bump is best-effort — the dedupe response already stands.
+        })
+        return NextResponse.json({
+          count: 1,
+          deduplicated: true,
+          id: existing._id,
+          ids: [existing._id],
+          memory: existing,
+        })
+      }
+    }
     const result = await getOverlayServerContext().memoryService.create({
       ...memoryBody,
       actor: owner.actor ?? memoryBody.actor,
