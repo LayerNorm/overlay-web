@@ -21,7 +21,7 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
-import type { AttachmentPreview } from '@overlay/chat-react'
+import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -69,7 +69,7 @@ export type RoomMessageView = {
   images: RoomMessageAttachment[]
   documentNames: string[]
   /** Room members named in the body, so `@name` renders as a chip. */
-  mentions: Array<{ type: string; id: string; name: string }>
+  mentions: ChatMessageMention[]
   streaming?: boolean
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
@@ -135,6 +135,15 @@ const AUTHOR_STATUS_META = {
   invited: { label: 'Invited', className: 'bg-amber-500/10 text-amber-600' },
   not_invited: { label: 'Not invited', className: 'bg-[var(--surface-subtle)] text-[var(--muted)]' },
 } as const
+
+/** Agent mention chips carry the creature avatar; other types keep their icon. */
+const renderMentionAvatar = (mention: ChatMessageMention) =>
+  mention.type === 'agent' ? (
+    <AgentCreature
+      agent={{ name: mention.name, avatarColor: mention.avatarColor, avatarShape: mention.avatarShape }}
+      size={14}
+    />
+  ) : undefined
 
 type AuthorStatus = keyof typeof AUTHOR_STATUS_META
 
@@ -299,7 +308,7 @@ export function RoomMessageItem({
   /** Human and agent messages share the same safe GFM renderer. */
   const humanBody = message.text ? (
     <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
-      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
+      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} renderMentionAvatar={renderMentionAvatar} />
     </div>
   ) : null
 
@@ -494,7 +503,7 @@ export function RoomMessageItem({
           {attachments}
           {editing ? editor : message.text ? (
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-              <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
+              <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} renderMentionAvatar={renderMentionAvatar} />
             </UserMessageBubble>
           ) : null}
           {message.delivery === 'failed' ? (

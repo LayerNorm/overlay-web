@@ -1,4 +1,11 @@
-export type ChatMessageMention = { type: string; id: string; name: string }
+export type ChatMessageMention = {
+  type: string
+  id: string
+  name: string
+  /** Agent mentions carry creature identity so chips can show the avatar. */
+  avatarColor?: string
+  avatarShape?: string
+}
 
 type MarkdownNode = {
   type: string
@@ -52,7 +59,7 @@ export function createMentionRemarkPlugin(mentions?: ChatMessageMention[]) {
               replacements.push({
                 type: 'link',
                 url: `#overlay-mention-${encodeURIComponent(mention.id)}`,
-                children: [{ type: 'text', value: match[0] }],
+                children: [{ type: 'text', value: match[1] }],
               })
             } else {
               replacements.push({ type: 'text', value: match[0] })
