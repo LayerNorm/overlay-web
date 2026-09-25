@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
+import { deleteChunksForSource } from '../knowledge/knowledge'
 
 const MAX_DIRECTORY_ROWS = 500
 
@@ -1136,9 +1137,16 @@ export const purgeArchivedWorkspaceByServer = mutation({
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
         .collect()
       await deleteRows(savedMessages)
-      await deleteRows(await ctx.db.query('conversationMessages')
+      const convoMessages = await ctx.db.query('conversationMessages')
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
-        .collect())
+        .collect()
+      for (const m of convoMessages) {
+        // Purge knowledge chunks with the row — orphan message chunks would
+        // stay retrievable after the workspace is gone.
+        await deleteChunksForSource(ctx.db, 'message', m._id)
+        await ctx.db.delete(m._id)
+        deletedRows += 1
+      }
       await ctx.db.delete(conversation._id)
       deletedRows += 1
     }

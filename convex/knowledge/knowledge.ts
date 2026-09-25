@@ -5,6 +5,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  type MutationCtx,
 } from '../_generated/server'
 import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
@@ -215,6 +216,35 @@ export async function embedViaGateway(texts: string[]): Promise<{ vectors: numbe
 
 // ─── Internal: purge + replace indexed content ───────────────────────────────
 
+/**
+ * db-level chunk + embedding delete for one source. Plain function (not a
+ * mutation) so other mutations — e.g. `deleteTurn`, workspace teardown — can
+ * purge chunks atomically in the same transaction as the source-row delete.
+ */
+export async function deleteChunksForSource(
+  db: MutationCtx['db'],
+  sourceKind: 'file' | 'memory' | 'message',
+  sourceId: string,
+  userId?: string,
+): Promise<number> {
+  const existing = await db
+    .query('knowledgeChunks')
+    .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
+    .collect()
+  let deleted = 0
+  for (const c of existing) {
+    if (userId && c.userId !== userId) continue
+    const emb = await db
+      .query('knowledgeChunkEmbeddings')
+      .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
+      .first()
+    if (emb) await db.delete(emb._id)
+    await db.delete(c._id)
+    deleted++
+  }
+  return deleted
+}
+
 export const purgeKnowledgeSource = internalMutation({
   args: {
     sourceKind: KNOWLEDGE_SOURCE_KINDS,
@@ -222,19 +252,7 @@ export const purgeKnowledgeSource = internalMutation({
     userId: v.optional(v.string()),
   },
   handler: async (ctx, { sourceKind, sourceId, userId }) => {
-    const existing = await ctx.db
-      .query('knowledgeChunks')
-      .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
-      .collect()
-    for (const c of existing) {
-      if (userId && c.userId !== userId) continue
-      const emb = await ctx.db
-        .query('knowledgeChunkEmbeddings')
-        .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
-        .first()
-      if (emb) await ctx.db.delete(emb._id)
-      await ctx.db.delete(c._id)
-    }
+    await deleteChunksForSource(ctx.db, sourceKind, sourceId, userId)
   },
 })
 
@@ -1009,6 +1027,124 @@ export const purgeMessageContent = action({
       sourceId: args.sourceId,
     })
     return { purged: true }
+  },
+})
+
+// ─── Orphan-chunk sweep ─────────────────────────────────────────────────────
+//
+// `knowledgeChunks` carry no tombstone of their own — a chunk is dead when its
+// backing source row is. The normal paths are atomic (memory remove/supersede
+// purge or flag chunks in the same mutation), but a killed purge or a stray
+// write can still strand chunks that keep retrieving. The sweep deletes only
+// *provable* orphans: source row missing, or memory row tombstoned. Synthetic
+// sourceIds that aren't doc ids (benchmark harness) can't be verified → kept.
+
+async function sourceAliveForChunk(
+  ctx: MutationCtx,
+  chunk: Doc<'knowledgeChunks'>,
+): Promise<boolean> {
+  try {
+    switch (chunk.sourceKind) {
+      case 'memory': {
+        const m = await ctx.db.get(chunk.sourceId as Id<'memories'>)
+        return !!m && !m.deletedAt
+      }
+      case 'message': {
+        const m = await ctx.db.get(chunk.sourceId as Id<'conversationMessages'>)
+        return !!m
+      }
+      case 'file': {
+        const f = await ctx.db.get(chunk.sourceId as Id<'files'>)
+        return !!f
+      }
+    }
+  } catch {
+    // sourceId isn't a doc id — synthetic source, can't prove orphan. Keep it.
+    return true
+  }
+}
+
+/** One page of the orphan sweep; callers chain `cursor` until `isDone`. */
+export const sweepOrphanedChunksPage = internalMutation({
+  args: {
+    userId: v.optional(v.string()),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { userId, sourceKind, cursor, numItems }) => {
+    const page = await (userId
+      ? ctx.db
+          .query('knowledgeChunks')
+          .withIndex('by_userId', (q) => q.eq('userId', userId))
+      : ctx.db.query('knowledgeChunks')
+    )
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 200 })
+    let deleted = 0
+    for (const chunk of page.page) {
+      if (sourceKind !== undefined && chunk.sourceKind !== sourceKind) continue
+      if (await sourceAliveForChunk(ctx, chunk)) continue
+      deleted += await deleteChunksForSource(ctx.db, chunk.sourceKind, chunk.sourceId)
+    }
+    return {
+      scanned: page.page.length,
+      deleted,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})
+
+/** Chains `sweepOrphanedChunksPage` until the scan completes; self-reschedules past the per-call page cap so huge stores don't time out. */
+export const sweepOrphanedChunks = internalAction({
+  args: {
+    userId: v.optional(v.string()),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    totals: v.optional(v.object({ scanned: v.number(), deleted: v.number() })),
+  },
+  handler: async (
+    ctx,
+    { userId, sourceKind, cursor, totals },
+  ): Promise<{ scanned: number; deleted: number; done: boolean }> => {
+    let scanned = totals?.scanned ?? 0
+    let deleted = totals?.deleted ?? 0
+    let next = cursor ?? null
+    for (let i = 0; i < 50; i++) {
+      const page = await ctx.runMutation(internal.knowledge.knowledge.sweepOrphanedChunksPage, {
+        userId,
+        sourceKind,
+        cursor: next,
+      })
+      scanned += page.scanned
+      deleted += page.deleted
+      if (page.isDone) return { scanned, deleted, done: true }
+      next = page.continueCursor
+    }
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.sweepOrphanedChunks, {
+      userId,
+      sourceKind,
+      cursor: next,
+      totals: { scanned, deleted },
+    })
+    return { scanned, deleted, done: false }
+  },
+})
+
+/** Server-secret entry point (bench cleanup, admin remediation). */
+export const sweepOrphanedKnowledgeChunks = action({
+  args: {
+    userId: v.optional(v.string()),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ scanned: number; deleted: number; done: boolean }> => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    return await ctx.runAction(internal.knowledge.knowledge.sweepOrphanedChunks, {
+      userId: args.userId,
+      sourceKind: args.sourceKind,
+    })
   },
 })
 

@@ -4,7 +4,7 @@ import { answerQuestionAgentic, type AgenticSearchStep } from './agentic'
 import { answerQuestion } from './answer'
 import { Checkpoint } from './checkpoint'
 import { assertBenchConfig, benchUserId, config, fingerprint } from './config'
-import { addMemory, hybridSearch, indexMessage, listMemories, purgeBenchUser, purgeMessageSource } from './convex-client'
+import { addMemory, hybridSearch, indexMessage, listMemories, purgeBenchUser, purgeMessageSource, sweepOrphanedChunks } from './convex-client'
 import { extractAndStore, formatDate } from './extractor'
 import { judgeAnswer, judgeLongMemEval, type Verdict } from './judge'
 import { retrieveMemoryContext } from './retrieve'
@@ -40,6 +40,8 @@ type QaRow = {
   evidenceRecalled: boolean | null
   /** Agentic mode: the search trace (prefetch + each reformulation). */
   searches?: AgenticSearchStep[]
+  /** Agentic mode: false when the sufficiency gate forced the abstention. */
+  sufficient?: boolean
   latencyMs: { retrieve: number; answer: number; judge: number }
   truncated: boolean
 }
@@ -262,6 +264,7 @@ async function runQuestion(
   const t0 = Date.now()
   let chunks: Awaited<ReturnType<typeof retrieveMemoryContext>>['chunks']
   let searches: AgenticSearchStep[] | undefined
+  let sufficient: boolean | undefined
   let modelAnswer: string
   let tRetrieve: number
   let tAnswer: number
@@ -273,6 +276,7 @@ async function runQuestion(
     })
     chunks = res.chunks
     searches = res.searches
+    sufficient = res.sufficient
     modelAnswer = res.answer
     tRetrieve = res.searchMs
     tAnswer = res.answerMs
@@ -326,6 +330,7 @@ async function runQuestion(
     retrievedChunkCount: chunks.length,
     evidenceRecalled,
     ...(searches ? { searches } : {}),
+    ...(sufficient !== undefined ? { sufficient } : {}),
     latencyMs: { retrieve: tRetrieve, answer: tAnswer, judge: tJudge },
     truncated: benchCase.truncated ?? false,
   }
@@ -433,7 +438,8 @@ async function runCase(
       for (const sourceId of messageSourceIds) {
         await purgeMessageSource({ userId, sourceId }).then(() => messagesPurged++).catch(() => {})
       }
-      console.log(`[cleanup] ${benchCase.caseId}: purged ${removed} memories, ${messagesPurged}/${messageSourceIds.length} message sources`)
+      const swept = await sweepOrphanedChunks({ userId }).catch(() => null)
+      console.log(`[cleanup] ${benchCase.caseId}: purged ${removed} memories, ${messagesPurged}/${messageSourceIds.length} message sources${swept ? `, swept ${swept.deleted} orphan chunks` : ''}`)
     } else {
       console.log(`[cleanup] ${benchCase.caseId}: purged ${removed} memories`)
     }

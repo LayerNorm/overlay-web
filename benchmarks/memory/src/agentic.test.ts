@@ -12,6 +12,8 @@ function baseDeps(overrides: Partial<AgenticDeps> = {}): AgenticDeps {
     retrieve: async () => ({ extension: '', chunks: [chunk('seed')] }),
     search: async () => [chunk('s1')],
     decide: async () => ({ action: 'answer' as const }),
+    // Tests stub the gate by default — gate-specific tests override it.
+    checkEvidence: async () => true,
     synthesize: async () => 'the answer',
     maxRounds: 4,
     ...overrides,
@@ -126,4 +128,62 @@ test('search_all rounds hit both surfaces when the message index is on', async (
     },
   }))
   assert.deepEqual(kinds, [['memory', 'message']])
+})
+
+test('sufficiency gate abstains without calling synthesis when evidence does not answer', async () => {
+  let synthesized = 0
+  let gatePrompt = ''
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    checkEvidence: async (p) => {
+      gatePrompt = p
+      return false
+    },
+    synthesize: async () => {
+      synthesized++
+      return 'guessed anyway'
+    },
+  }))
+  assert.equal(res.answer, "I don't have that information.")
+  assert.equal(res.sufficient, false)
+  assert.equal(synthesized, 0)
+  // The gate sees the question and the accumulated evidence digest.
+  assert.match(gatePrompt, /what did the user say\?/)
+  assert.match(gatePrompt, /chunk seed/)
+})
+
+test('sufficiency gate passes strong evidence through to synthesis', async () => {
+  let gates = 0
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    checkEvidence: async () => {
+      gates++
+      return true
+    },
+  }))
+  assert.equal(gates, 1)
+  assert.equal(res.answer, 'the answer')
+  assert.equal(res.sufficient, undefined)
+})
+
+test('a failing gate fails open — never forces abstention', async () => {
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    checkEvidence: async () => {
+      throw new Error('gate unavailable')
+    },
+  }))
+  assert.equal(res.answer, 'the answer')
+})
+
+test('the gate runs after the loop, not per round', async () => {
+  let gates = 0
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    decide: async () => ({ action: 'search_memory' as const, query: 'more' }),
+    search: async () => [chunk('s1')],
+    checkEvidence: async () => {
+      gates++
+      return true
+    },
+    maxRounds: 2,
+  }))
+  assert.equal(gates, 1)
+  assert.equal(res.searches.length, 3) // prefetch + 2 rounds
 })

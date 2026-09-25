@@ -24,6 +24,8 @@ export async function retrieveMemoryContext(args: {
     kVec: config.retrieval.kVec,
     kLex: config.retrieval.kLex,
     m: config.retrieval.m,
+    applyRecencyDecay: config.retrieval.applyRecencyDecay,
+    ...(config.retrieval.minVecScore !== undefined ? { minVecScore: config.retrieval.minVecScore } : {}),
   })
   const bundle = formatAutoRetrievalBundle(chunks)
   return { extension: bundle.extension, chunks }

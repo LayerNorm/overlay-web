@@ -13,9 +13,15 @@ import { retrieveMemoryContext } from './retrieve'
  * (search_memory | search_messages) and query, then a synthesis step that runs
  * the identical fixed answering prompt over the accumulated evidence.
  *
- * The loop is the only protocol delta — same seed retrieval, same answer
+ * The loop is the only retrieval delta — same seed retrieval, same answer
  * prompt, same judge — so agentic-vs-passive isolates retrieval depth. This is
  * the shape multi-step memory systems (Honcho et al.) actually measure.
+ *
+ * One bounded addition between loop and synthesis: a sufficiency gate. The
+ * bigger evidence pool tempts the answer model into answering no-evidence
+ * questions (adversarial/abstention categories regressed under agentic), so a
+ * cheap verdict call abstains when nothing retrieved actually answers the
+ * question. It never triggers another search round and fails open.
  */
 
 export type AgenticSearchStep = {
@@ -88,6 +94,8 @@ export type AgenticDeps = {
   retrieve: typeof retrieveMemoryContext
   search: typeof hybridSearch
   decide: (prompt: string, roundsLeft: number) => Promise<Decision>
+  /** Sufficiency gate — false abstains without calling synthesize. Optional so tests can omit it. */
+  checkEvidence?: (prompt: string) => Promise<boolean>
   synthesize: typeof answerQuestion
   maxRounds: number
 }
@@ -164,11 +172,88 @@ async function decideViaModel(prompt: string): Promise<Decision> {
   return normalizeDecision(raw)
 }
 
+// ─── Sufficiency gate ────────────────────────────────────────────────────────
+//
+// Post-loop, pre-synthesis verdict: does anything retrieved actually answer
+// the question? The loop accumulates tangential hits (same entities, adjacent
+// events) that a bigger evidence pool then tempts the answer model into
+// stitching into a guess — measured as the adversarial/abstention regression.
+// The gate is bounded (one call, no further searches) and fails OPEN: a broken
+// gate call must not force abstention on well-supported questions.
+
+export const ABSTAIN_ANSWER = "I don't have that information."
+
+const rawGateSchema = z
+  .object({
+    sufficient: z.unknown().optional(),
+    enough: z.unknown().optional(),
+    answerable: z.unknown().optional(),
+    has_answer: z.unknown().optional(),
+    covered: z.unknown().optional(),
+    verdict: z.unknown().optional(),
+  })
+  .passthrough()
+
+function gateFieldToBool(v: unknown): boolean | undefined {
+  if (typeof v === 'boolean') return v
+  const s = text(v).toLowerCase()
+  if (/^(yes|true|sufficient|enough|answerable|covered)/.test(s)) return true
+  if (/^(no|false|insufficient|not)/.test(s)) return false
+  return undefined
+}
+
+function normalizeSufficiency(raw: z.infer<typeof rawGateSchema>): boolean {
+  for (const v of [raw.sufficient, raw.enough, raw.answerable, raw.has_answer, raw.covered, raw.verdict]) {
+    const b = gateFieldToBool(v)
+    if (b !== undefined) return b
+  }
+  return true // unparseable shape → fail open
+}
+
+const SUFFICIENCY_SYSTEM = [
+  'You are an evidence checker for a personal-assistant memory system.',
+  'Decide whether the retrieved evidence directly answers the question.',
+  'Verbatim mentions, same-entity facts, and adjacent events that do not answer the specific question are NOT sufficient.',
+  'Evidence that answers only part of a multi-part question is not sufficient.',
+  'Return only {"sufficient": true} or {"sufficient": false}.',
+].join(' ')
+
+export function buildSufficiencyPrompt(args: {
+  question: string
+  questionDate?: string
+  evidence: HybridChunk[]
+}): string {
+  const digest = args.evidence
+    .slice(0, 30)
+    .map((c, i) => `[${i + 1}] (${c.sourceKind}${c.title ? ` · ${c.title}` : ''}) ${truncate(plainTextSnippet(c.text), 280)}`)
+    .join('\n')
+  return [
+    `Question${args.questionDate ? ` (asked on ${args.questionDate})` : ''}: ${args.question}`,
+    '',
+    'Retrieved evidence:',
+    digest || '(none)',
+    '',
+    'Does any of this evidence directly answer the question? Related-but-off-topic evidence does not count.',
+  ].join('\n')
+}
+
+async function sufficientViaModel(prompt: string): Promise<boolean> {
+  const raw = await benchObject({
+    modelId: config.answerModel,
+    schema: rawGateSchema,
+    system: SUFFICIENCY_SYSTEM,
+    prompt,
+    maxOutputTokens: 80,
+  })
+  return normalizeSufficiency(raw)
+}
+
 function realDeps(): AgenticDeps {
   return {
     retrieve: retrieveMemoryContext,
     search: hybridSearch,
     decide: decideViaModel,
+    checkEvidence: sufficientViaModel,
     synthesize: answerQuestion,
     maxRounds: config.maxSearchRounds,
   }
@@ -187,6 +272,8 @@ export async function answerQuestionAgentic(
   searches: AgenticSearchStep[]
   searchMs: number
   answerMs: number
+  /** Present only when the sufficiency gate abstained. */
+  sufficient?: boolean
 }> {
   const d: AgenticDeps = { ...realDeps(), ...deps }
   // Round 0 is the identical prefetch passive mode performs — the loop below
@@ -238,6 +325,8 @@ export async function answerQuestionAgentic(
       query,
       ...scope,
       m: config.retrieval.m,
+      applyRecencyDecay: config.retrieval.applyRecencyDecay,
+      ...(config.retrieval.minVecScore !== undefined ? { minVecScore: config.retrieval.minVecScore } : {}),
     })
     const fresh = chunks.filter((c) => !seen.has(chunkKey(c)))
     for (const c of fresh) {
@@ -248,11 +337,38 @@ export async function answerQuestionAgentic(
   }
   const searchMs = Date.now() - t0
 
-  // Synthesis reuses the fixed answering prompt verbatim — only the evidence
-  // pool changed. Score-sorted so the bundle's char budget keeps the best
-  // chunks regardless of which round surfaced them.
+  // Score-sorted so the bundle's char budget keeps the best chunks regardless
+  // of which round surfaced them.
   const t1 = Date.now()
   const ranked = [...evidence].sort((a, b) => b.score - a.score)
+
+  // Sufficiency gate — abstain when nothing retrieved directly answers the
+  // question instead of letting a large tangential pool tempt a guess.
+  // Bounded: one verdict call, no extra search round, fails open.
+  if (d.checkEvidence) {
+    const sufficient = await d
+      .checkEvidence(
+        buildSufficiencyPrompt({
+          question: args.question,
+          questionDate: args.questionDate,
+          evidence: ranked,
+        }),
+      )
+      .catch(() => true)
+    if (!sufficient) {
+      return {
+        answer: ABSTAIN_ANSWER,
+        chunks: ranked,
+        searches,
+        searchMs,
+        answerMs: Date.now() - t1,
+        sufficient: false,
+      }
+    }
+  }
+
+  // Synthesis reuses the fixed answering prompt verbatim — only the evidence
+  // pool changed.
   const { extension } = formatAutoRetrievalBundle(ranked)
   const answer = await d.synthesize({
     question: args.question,

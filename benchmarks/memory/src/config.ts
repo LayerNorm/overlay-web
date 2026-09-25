@@ -42,8 +42,17 @@ export const config = {
    * stay under the bench userId.
    */
   billingUserId: process.env.BENCH_BILLING_USER_ID ?? '',
-  /** Retrieval params mirror production auto-retrieval defaults. */
-  retrieval: { kVec: 40, kLex: 40, m: 10, sourceKind: 'memory' as const },
+  /** Retrieval params mirror production auto-retrieval defaults. Env overrides enable post-M2b ablations (raise m, drop recency decay, vector floor) without code edits. */
+  retrieval: {
+    kVec: Number(process.env.BENCH_RETRIEVAL_KVEC ?? 40),
+    kLex: Number(process.env.BENCH_RETRIEVAL_KLEX ?? 40),
+    m: Number(process.env.BENCH_RETRIEVAL_M ?? 10),
+    sourceKind: 'memory' as const,
+    /** Set BENCH_RECENCY_DECAY=0 to ablate the M2 memory-chunk half-life. */
+    applyRecencyDecay: process.env.BENCH_RECENCY_DECAY !== '0',
+    /** Optional vector-similarity floor passed through to hybridSearch. */
+    minVecScore: process.env.BENCH_MIN_VEC_SCORE ? Number(process.env.BENCH_MIN_VEC_SCORE) : undefined,
+  },
   /**
    * M2 verbatim-message index. Off for runs against a pre-M2 deployment —
    * indexMessageContent doesn't exist there and `sourceKinds` fails arg

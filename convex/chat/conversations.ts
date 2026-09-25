@@ -7,6 +7,7 @@ import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 import { recordConversationEvent } from '../collaboration/events'
+import { deleteChunksForSource } from '../knowledge/knowledge'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -1468,6 +1469,9 @@ export const deleteTurn = mutation({
     let deletedMessages = 0
     for (const m of messages) {
       if (m.turnId === tid) {
+        // Purge the message's knowledge chunks in the same transaction —
+        // orphaned sourceKind:'message' chunks would stay retrievable.
+        await deleteChunksForSource(ctx.db, 'message', m._id)
         await ctx.db.delete(m._id)
         deletedMessages++
       }

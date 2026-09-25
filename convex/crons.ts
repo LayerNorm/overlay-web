@@ -152,4 +152,17 @@ crons.interval(
   {},
 )
 
+// knowledgeChunks have no tombstone — a chunk is dead when its source row is.
+// Interrupted purges can strand retrievable chunks; a daily whole-table scan
+// deletes provable orphans (missing source row, tombstoned memory). The action
+// pages the table and self-reschedules until done, so one tick kicks a
+// resumable chain rather than timing out on large stores.
+crons.daily(
+  'knowledge orphan-chunk sweep',
+  { hourUTC: 4, minuteUTC: 30 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).knowledge.knowledge.sweepOrphanedChunks,
+  {},
+)
+
 export default crons

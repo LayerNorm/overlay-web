@@ -250,6 +250,18 @@ export async function purgeMessageSource(args: {
   )
 }
 
+/** Post-purge safety net: delete chunks whose source rows are gone. */
+export async function sweepOrphanedChunks(args: { userId: string }): Promise<{ scanned: number; deleted: number }> {
+  return (await withRetry(
+    () =>
+      benchConvex().action('knowledge/knowledge:sweepOrphanedKnowledgeChunks' as never, {
+        userId: args.userId,
+        serverSecret: config.serverSecret,
+      } as never),
+    'sweepOrphanedKnowledgeChunks',
+  )) as { scanned: number; deleted: number }
+}
+
 export async function hybridSearch(args: {
   userId: string
   query: string
