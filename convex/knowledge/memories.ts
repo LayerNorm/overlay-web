@@ -39,6 +39,7 @@ const memoryDocValidator = v.object({
   messageId: v.optional(v.string()),
   noteId: v.optional(v.string()),
   source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
+  sourceCount: v.optional(v.number()),
   supersededAt: v.optional(v.number()),
   supersededBy: v.optional(v.id('memories')),
   tags: v.optional(v.array(v.string())),
