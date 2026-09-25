@@ -1302,6 +1302,8 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
     eventAt: v.optional(v.number()),
     visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    /** Times an independent source corroborated this memory (dedup hits). */
+    sourceCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
@@ -1346,11 +1348,26 @@ export default defineSchema({
     /** Last-confirmed time — recency decay keys on this; `touch` keeps it fresh. */
     updatedAt: v.optional(v.number()),
     superseded: v.optional(v.boolean()),
+    /**
+     * Conversation turn the content came from — message chunks get the
+     * conversationMessages.turnId, memory chunks the memory's. Enables
+     * provenance: attach a memory hit's source-turn verbatim chunks.
+     */
+    turnId: v.optional(v.string()),
+    /**
+     * Effective event time — memory.eventAt when the extractor dated the fact,
+     * else createdAt. Temporal retrieval windows key on this.
+     */
+    eventAt: v.optional(v.number()),
+    /** Denormalized memory.sourceCount for ranking (undefined on non-memory). */
+    sourceCount: v.optional(v.number()),
   })
     .index('by_workspaceId', ['workspaceId'])
     .index('by_source', ['sourceKind', 'sourceId'])
     .index('by_userId', ['userId'])
     .index('by_knowledgeSourceId', ['knowledgeSourceId'])
+    .index('by_userId_eventAt', ['userId', 'eventAt'])
+    .index('by_sourceKind_turnId', ['sourceKind', 'turnId'])
     .searchIndex('search_text', {
       searchField: 'text',
       filterFields: ['userId', 'sourceKind', 'workspaceId'],

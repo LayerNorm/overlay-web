@@ -220,6 +220,8 @@ export async function indexMessage(args: {
   speaker?: string
   createdAt?: number
   conversationId?: string
+  /** Source-turn id — memory hits attach this turn's verbatim chunks. */
+  turnId?: string
   workspaceId?: string
   /** Per-ingest nonce: purge+re-ingest must bypass the stale budget reservation. */
   reservationNonce?: string
@@ -272,6 +274,10 @@ export async function hybridSearch(args: {
   m?: number
   minVecScore?: number
   applyRecencyDecay?: boolean
+  /** Anchor ms for relative date expressions in the query ("last week"). */
+  asOfMs?: number
+  temporalQuery?: boolean
+  includeProvenance?: boolean
 }): Promise<HybridChunk[]> {
   const billingUserId = config.billingUserId || args.userId
   const res = await withRetry(
@@ -291,6 +297,9 @@ export async function hybridSearch(args: {
         m: args.m ?? config.retrieval.m,
         ...(args.minVecScore !== undefined ? { minVecScore: args.minVecScore } : {}),
         ...(args.applyRecencyDecay !== undefined ? { applyRecencyDecay: args.applyRecencyDecay } : {}),
+        ...(args.asOfMs !== undefined ? { asOfMs: args.asOfMs } : {}),
+        ...(args.temporalQuery !== undefined ? { temporalQuery: args.temporalQuery } : {}),
+        ...(args.includeProvenance !== undefined ? { includeProvenance: args.includeProvenance } : {}),
       } as never),
     'hybridSearch',
   )

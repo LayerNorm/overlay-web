@@ -22,6 +22,7 @@ import {
   KNOWLEDGE_CHUNK_OVERLAP,
   chunkKnowledgeText,
 } from '../../src/shared/knowledge/chunking'
+import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 
 export type HybridSearchChunk = {
   text: string
@@ -277,6 +278,11 @@ export const replaceKnowledgeSource = internalMutation({
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
     superseded: v.optional(v.boolean()),
+    /** Source turn for provenance joins; effective event time for temporal windows. */
+    turnId: v.optional(v.string()),
+    eventAt: v.optional(v.number()),
+    /** Denormalized memory.sourceCount corroboration for ranking. */
+    sourceCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -306,6 +312,9 @@ export const replaceKnowledgeSource = internalMutation({
         createdAt: args.createdAt,
         updatedAt: args.updatedAt,
         superseded: args.superseded,
+        turnId: args.turnId,
+        eventAt: args.eventAt,
+        sourceCount: args.sourceCount,
       })
       await ctx.db.insert('knowledgeChunkEmbeddings', {
         chunkId,
@@ -355,6 +364,9 @@ export const getMemoryForReindex = internalQuery({
       createdAt: m.createdAt,
       updatedAt: m.updatedAt ?? m.createdAt,
       superseded: m.supersededBy !== undefined,
+      turnId: m.turnId,
+      eventAt: m.eventAt ?? m.createdAt,
+      sourceCount: m.sourceCount ?? 1,
     }
   },
 })
@@ -465,6 +477,58 @@ export const fetchChunkPayloads = internalQuery({
       if (row) out.push(row)
     }
     return out
+  },
+})
+
+/**
+ * Temporal candidate list for the RRF fusion: chunks of one owner whose
+ * effective event time (`eventAt` = memory.eventAt ?? createdAt) falls inside
+ * a parsed query window, newest first. Only rows written with `eventAt` —
+ * post-dating the index — appear; that is the whole signal anyway.
+ */
+export const temporalChunksInRange = internalQuery({
+  args: {
+    userId: v.string(),
+    sourceKinds: v.optional(v.array(KNOWLEDGE_SOURCE_KINDS)),
+    fromMs: v.number(),
+    toMs: v.number(),
+    limit: v.number(),
+  },
+  handler: async (ctx, { userId, sourceKinds, fromMs, toMs, limit }) => {
+    const rows = await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_userId_eventAt', (q) =>
+        q.eq('userId', userId).gte('eventAt', fromMs).lt('eventAt', toMs))
+      .order('desc')
+      .take(limit * 4)
+    return (sourceKinds ? rows.filter((r) => sourceKinds.includes(r.sourceKind)) : rows)
+      .slice(0, limit)
+      .map((r) => r._id)
+  },
+})
+
+/** Memory sourceIds → their turnIds, for provenance expansion. */
+export const memoryProvenanceTurnIds = internalQuery({
+  args: { memoryIds: v.array(v.id('memories')) },
+  handler: async (ctx, { memoryIds }) => {
+    const out: Array<{ memoryId: string; turnId: string }> = []
+    for (const id of memoryIds) {
+      const m = await ctx.db.get(id)
+      if (m?.turnId) out.push({ memoryId: id, turnId: m.turnId })
+    }
+    return out
+  },
+})
+
+/** Verbatim message chunks for a set of source turns (provenance attach). */
+export const messageChunksByTurn = internalQuery({
+  args: { turnId: v.string(), limit: v.number() },
+  handler: async (ctx, { turnId, limit }) => {
+    return await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_sourceKind_turnId', (q) =>
+        q.eq('sourceKind', 'message').eq('turnId', turnId))
+      .take(limit)
   },
 })
 
@@ -625,6 +689,10 @@ async function indexSourceTextBilled(
     createdAt?: number
     updatedAt?: number
     superseded?: boolean
+    /** Source turn + effective event time — denormalized onto each chunk. */
+    turnId?: string
+    eventAt?: number
+    sourceCount?: number
     /** Stable per-source string making the budget reservation idempotent. */
     operationId: string
     /**
@@ -705,6 +773,9 @@ async function indexSourceTextBilled(
       createdAt: args.createdAt,
       updatedAt: args.updatedAt,
       superseded: args.superseded,
+      turnId: args.turnId,
+      eventAt: args.eventAt,
+      sourceCount: args.sourceCount,
       segments: segments.map((s, i) => ({
         text: s.text,
         chunkIndex: s.chunkIndex,
@@ -780,6 +851,9 @@ export const reindexMemoryInternal = internalAction({
       createdAt: meta.createdAt,
       updatedAt: meta.updatedAt,
       superseded: meta.superseded,
+      turnId: meta.turnId,
+      eventAt: meta.eventAt,
+      sourceCount: meta.sourceCount,
       operationId: 'knowledge.reindex-memory',
       trustedInternal,
     })
@@ -859,6 +933,8 @@ export const reindexMessageInternal = internalAction({
       indexText: messageIndexText(meta.createdAt, meta.speaker, meta.text),
       createdAt: meta.createdAt,
       updatedAt: meta.createdAt,
+      turnId: meta.turnId,
+      eventAt: meta.createdAt,
       // Workspace conversations are shared context; personal chats are not.
       visibility: meta.workspaceId ? 'workspace' : 'owner',
       operationId: 'knowledge.reindex-message',
@@ -891,6 +967,7 @@ export const listConversationMessagesPage = internalQuery({
           speaker: messageSpeakerLabel(m),
           text: messageTextForIndex(m),
           createdAt: m.createdAt,
+          turnId: m.turnId,
         }))
         .filter((m) => m.text.length >= MIN_MESSAGE_INDEX_CHARS),
     }
@@ -922,6 +999,8 @@ export const backfillConversationMessages = internalAction({
         indexText: messageIndexText(m.createdAt, m.speaker, m.text),
         createdAt: m.createdAt,
         updatedAt: m.createdAt,
+        turnId: m.turnId,
+        eventAt: m.createdAt,
         visibility: page.workspaceId ? 'workspace' : 'owner',
         operationId: 'knowledge.backfill-message',
       })
@@ -980,6 +1059,8 @@ export const indexMessageContent = action({
     speaker: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     conversationId: v.optional(v.string()),
+    /** Source-turn id for provenance joins (memory hit → verbatim context). */
+    turnId: v.optional(v.string()),
     workspaceId: v.optional(v.string()),
     reservationNonce: v.optional(v.string()),
   },
@@ -1001,6 +1082,8 @@ export const indexMessageContent = action({
       indexText: messageIndexText(createdAt, speaker, text),
       createdAt,
       updatedAt: createdAt,
+      turnId: args.turnId,
+      eventAt: createdAt,
       visibility: args.workspaceId ? 'workspace' : 'owner',
       operationId: 'knowledge.index-message-content',
       trustedInternal,
@@ -1202,6 +1285,19 @@ export const hybridSearch = action({
     sourceKinds: v.optional(v.array(KNOWLEDGE_SOURCE_KINDS)),
     /** Recency decay on memory chunks (default on); dedup callers disable it. */
     applyRecencyDecay: v.optional(v.boolean()),
+    /**
+     * Temporal dual-search (default on): when the query names a date window,
+     * chunks whose eventAt falls inside it enter the fusion as a third ranked
+     * list. `asOfMs` anchors relative expressions ("last week") — defaults to
+     * now; benchmarks pass the question's asked-on date.
+     */
+    temporalQuery: v.optional(v.boolean()),
+    asOfMs: v.optional(v.number()),
+    /**
+     * Attach up to `provenancePerHit` verbatim chunks from a memory hit's
+     * source turn — distilled fact plus the raw wording it came from.
+     */
+    includeProvenance: v.optional(v.boolean()),
     workspaceId: v.optional(v.string()),
     kVec: v.optional(v.number()),
     kLex: v.optional(v.number()),
@@ -1394,6 +1490,32 @@ export const hybridSearch = action({
       scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + rank))
     }
 
+    // Temporal dual-search: a question naming a window ("last week", "in
+    // March", "two days ago") contributes a third RRF list — chunks whose
+    // effective event time lands in the window, ranked newest first. A boost,
+    // not a filter: chunks outside the window keep their vec/lex scores.
+    if (args.temporalQuery !== false) {
+      const window = parseTemporalRange(q, args.asOfMs ?? Date.now())
+      if (window) {
+        const temporalGroups = await Promise.all(
+          [args.userId, ...additionalMemoryUserIds].map((userId, index) =>
+            ctx.runQuery(internal.knowledge.knowledge.temporalChunksInRange, {
+              userId,
+              sourceKinds: index === 0 ? callerKinds : [...expansionKinds],
+              fromMs: window.fromMs,
+              toMs: window.toMs,
+              limit: 24,
+            })),
+        )
+        const temporalIds = interleaveRankedLists(temporalGroups, 48)
+        for (let i = 0; i < temporalIds.length; i++) {
+          const id = temporalIds[i]!
+          const rank = i + 1
+          scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + rank))
+        }
+      }
+    }
+
     const rankedIds = [...scores.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([id]) => id as Id<'knowledgeChunks'>)
@@ -1417,25 +1539,73 @@ export const hybridSearch = action({
       .filter((row) => row.expiresAt === undefined || row.expiresAt > now)
       .filter((row) => row.userId === args.userId || row.visibility !== 'owner')
 
-    // Recency decay on memory chunks: fused score halves every 30 days since
-    // the fact was last confirmed (updatedAt, which `touch` bumps). Message
-    // and file chunks don't decay — verbatim evidence stays findable.
-    const ranked = args.applyRecencyDecay === false
-      ? scores
-      : new Map<string, number>(
-          [...scores.entries()].map(([id, score]): [string, number] => {
-            const row = byId.get(id as Id<'knowledgeChunks'>)
-            const recency = row?.sourceKind === 'memory' ? (row.updatedAt ?? row.createdAt) : undefined
-            if (recency === undefined) return [id, score]
-            const ageDays = Math.max(0, (now - recency) / DAY_MS)
-            return [id, score * Math.pow(0.5, ageDays / MEMORY_HALF_LIFE_DAYS)]
-          }),
-        )
+    // Recency decay × corroboration on memory chunks: the fused score halves
+    // every 30 days since the fact was last confirmed (updatedAt, which
+    // `touch` bumps), and memories corroborated by multiple sources get a
+    // log-scaled lift (sourceCount — bumped on each dedup hit). Message and
+    // file chunks don't decay — verbatim evidence stays findable.
+    const decayOn = args.applyRecencyDecay !== false
+    const ranked = new Map<string, number>(
+      [...scores.entries()].map(([id, score]): [string, number] => {
+        const row = byId.get(id as Id<'knowledgeChunks'>)
+        if (row?.sourceKind !== 'memory') return [id, score]
+        const recency = row.updatedAt ?? row.createdAt
+        const decayed =
+          decayOn && recency !== undefined
+            ? score * Math.pow(0.5, Math.max(0, (now - recency) / DAY_MS) / MEMORY_HALF_LIFE_DAYS)
+            : score
+        return [id, decayed * (1 + 0.15 * Math.log1p(row.sourceCount ?? 1))]
+      }),
+    )
     const resorted = [...filtered].sort(
       (a, b) => (ranked.get(b._id) ?? 0) - (ranked.get(a._id) ?? 0),
     )
 
     const top = packChunksForContext(resorted, ranked, vecScores, m)
+
+    // Provenance attach: each memory hit's source turn contributes its
+    // verbatim message chunks — the distilled fact arrives with the raw
+    // wording behind it. Attached below parent score, capped, and held to the
+    // same visibility/expiry rules as ranked hits.
+    if (args.includeProvenance === true) {
+      const memoryHits = top.filter((c) => c.sourceKind === 'memory').slice(0, 8)
+      if (memoryHits.length > 0) {
+        const links = await ctx.runQuery(internal.knowledge.knowledge.memoryProvenanceTurnIds, {
+          memoryIds: memoryHits.map((c) => c.sourceId as Id<'memories'>),
+        })
+        const turnByMemory = new Map(links.map((l) => [l.memoryId as string, l.turnId]))
+        const have = new Set(top.map((c) => `${c.sourceKind}:${c.sourceId}:${c.chunkIndex}`))
+        const perTurn = new Map<string, number>()
+        let attached = 0
+        for (const hit of memoryHits) {
+          if (attached >= 4) break
+          const turnId = turnByMemory.get(hit.sourceId)
+          if (!turnId) continue
+          const rows = await ctx.runQuery(internal.knowledge.knowledge.messageChunksByTurn, {
+            turnId,
+            limit: 8,
+          })
+          for (const row of rows) {
+            if (attached >= 4 || (perTurn.get(turnId) ?? 0) >= 2) break
+            const key = `message:${row.sourceId}:${row.chunkIndex}`
+            if (have.has(key) || row.superseded) continue
+            if (row.expiresAt !== undefined && row.expiresAt <= now) continue
+            if (row.userId !== args.userId && row.visibility === 'owner') continue
+            have.add(key)
+            perTurn.set(turnId, (perTurn.get(turnId) ?? 0) + 1)
+            attached++
+            top.push({
+              text: row.text,
+              title: row.title ? `${row.title} · source` : 'source',
+              sourceKind: 'message',
+              sourceId: row.sourceId,
+              chunkIndex: row.chunkIndex,
+              score: hit.score * 0.9,
+            })
+          }
+        }
+      }
+    }
 
     return { chunks: top }
   },

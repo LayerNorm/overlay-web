@@ -12,8 +12,9 @@ function baseDeps(overrides: Partial<AgenticDeps> = {}): AgenticDeps {
     retrieve: async () => ({ extension: '', chunks: [chunk('seed')] }),
     search: async () => [chunk('s1')],
     decide: async () => ({ action: 'answer' as const }),
-    // Tests stub the gate by default — gate-specific tests override it.
-    checkEvidence: async () => true,
+    // Tests stub the triage/verifier by default — gate-specific tests override them.
+    triageEvidence: async () => 'sufficient' as const,
+    verifyAnswer: async () => true,
     synthesize: async () => 'the answer',
     maxRounds: 4,
     ...overrides,
@@ -130,60 +131,106 @@ test('search_all rounds hit both surfaces when the message index is on', async (
   assert.deepEqual(kinds, [['memory', 'message']])
 })
 
-test('sufficiency gate abstains without calling synthesis when evidence does not answer', async () => {
-  let synthesized = 0
-  let gatePrompt = ''
+test('verifier replaces an ungrounded draft with the abstention string', async () => {
+  let verifyPrompt = ''
   const res = await answerQuestionAgentic(ARGS, baseDeps({
-    checkEvidence: async (p) => {
-      gatePrompt = p
+    synthesize: async () => 'the user said forty-two', // a concrete guess
+    verifyAnswer: async (p) => {
+      verifyPrompt = p
       return false
-    },
-    synthesize: async () => {
-      synthesized++
-      return 'guessed anyway'
     },
   }))
   assert.equal(res.answer, "I don't have that information.")
   assert.equal(res.sufficient, false)
-  assert.equal(synthesized, 0)
-  // The gate sees the question and the accumulated evidence digest.
-  assert.match(gatePrompt, /what did the user say\?/)
-  assert.match(gatePrompt, /chunk seed/)
+  // The verifier sees the question, the evidence digest, AND the draft.
+  assert.match(verifyPrompt, /what did the user say\?/)
+  assert.match(verifyPrompt, /chunk seed/)
+  assert.match(verifyPrompt, /forty-two/)
 })
 
-test('sufficiency gate passes strong evidence through to synthesis', async () => {
-  let gates = 0
+test('verifier passes grounded drafts through unchanged', async () => {
+  let verifications = 0
   const res = await answerQuestionAgentic(ARGS, baseDeps({
-    checkEvidence: async () => {
-      gates++
+    verifyAnswer: async () => {
+      verifications++
       return true
     },
   }))
-  assert.equal(gates, 1)
+  assert.equal(verifications, 1)
   assert.equal(res.answer, 'the answer')
   assert.equal(res.sufficient, undefined)
 })
 
-test('a failing gate fails open — never forces abstention', async () => {
+test('a failing verifier fails open — never forces abstention', async () => {
   const res = await answerQuestionAgentic(ARGS, baseDeps({
-    checkEvidence: async () => {
-      throw new Error('gate unavailable')
+    verifyAnswer: async () => {
+      throw new Error('verifier unavailable')
     },
   }))
   assert.equal(res.answer, 'the answer')
 })
 
-test('the gate runs after the loop, not per round', async () => {
-  let gates = 0
+test('drafts that already abstain skip verification entirely', async () => {
+  let verifications = 0
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    synthesize: async () => "I don't have that information.",
+    verifyAnswer: async () => {
+      verifications++
+      return false // would flip if called — must not be
+    },
+  }))
+  assert.equal(verifications, 0)
+  assert.match(res.answer, /don't have that information/)
+})
+
+test('triage "absent" abstains without synthesizing or verifying', async () => {
+  let syntheses = 0
+  let verifications = 0
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    triageEvidence: async () => 'absent',
+    synthesize: async () => {
+      syntheses++
+      return 'a fabricated answer'
+    },
+    verifyAnswer: async () => {
+      verifications++
+      return false
+    },
+  }))
+  assert.equal(res.answer, "I don't have that information.")
+  assert.equal(res.sufficient, false)
+  assert.equal(syntheses, 0) // no draft on absent evidence
+  assert.equal(verifications, 0)
+})
+
+test('triage "partial" still synthesizes — combinable evidence is not gated', async () => {
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    triageEvidence: async () => 'partial',
+  }))
+  assert.equal(res.answer, 'the answer')
+  assert.equal(res.sufficient, undefined)
+})
+
+test('a failing triage call fails open — never forces abstention', async () => {
+  const res = await answerQuestionAgentic(ARGS, baseDeps({
+    triageEvidence: async () => {
+      throw new Error('triage unavailable')
+    },
+  }))
+  assert.equal(res.answer, 'the answer')
+})
+
+test('the verifier runs once after synthesis, not per round', async () => {
+  let verifications = 0
   const res = await answerQuestionAgentic(ARGS, baseDeps({
     decide: async () => ({ action: 'search_memory' as const, query: 'more' }),
     search: async () => [chunk('s1')],
-    checkEvidence: async () => {
-      gates++
+    verifyAnswer: async () => {
+      verifications++
       return true
     },
     maxRounds: 2,
   }))
-  assert.equal(gates, 1)
+  assert.equal(verifications, 1)
   assert.equal(res.searches.length, 3) // prefetch + 2 rounds
 })

@@ -19,6 +19,7 @@ import { loadLongMemEval } from './datasets/longmemeval'
  *   npx tsx benchmarks/memory/src/runner.ts <locomo|convomem|longmemeval>
  *       [--limit-cases N] [--limit-questions N] [--max-messages N]
  *       [--run-id ID] [--keep] [--bulk-only] [--case-concurrency N]
+ *       [--categories a,b,c]
  *
  * Per case: synthetic bench owner → real extraction over the corpus (or
  * bulk-ingest transcript blocks) → wait for indexing → per question: real
@@ -71,6 +72,8 @@ type Opts = {
   keep: boolean
   bulkOnly: boolean
   caseConcurrency: number
+  /** QA only these categories; cases with no matching question are skipped entirely (no ingest). */
+  categories?: Set<string>
 }
 
 function parseArgs(): Opts {
@@ -94,6 +97,9 @@ function parseArgs(): Opts {
     keep: argv.includes('--keep'),
     bulkOnly: argv.includes('--bulk-only'),
     caseConcurrency: num('case-concurrency') ?? Number(process.env.BENCH_CASE_CONCURRENCY ?? 2),
+    categories: opt('categories')
+      ? new Set(opt('categories')!.split(',').map((s) => s.trim()).filter(Boolean))
+      : undefined,
   }
 }
 
@@ -159,6 +165,7 @@ async function ingestCase(
                 speaker: turn.speaker,
                 createdAt: turn.timestamp ? new Date(turn.timestamp).getTime() : undefined,
                 conversationId: benchCase.caseId,
+                turnId: turn.turnId,
                 reservationNonce: indexNonce,
               }).catch(() => false)
             }
@@ -190,6 +197,7 @@ async function ingestCase(
           speaker: turn.speaker,
           createdAt: turn.timestamp ? new Date(turn.timestamp).getTime() : undefined,
           conversationId: benchCase.caseId,
+          turnId: turn.turnId,
           reservationNonce: indexNonce,
         }).catch(() => false)
       }
@@ -214,6 +222,7 @@ async function ingestCase(
         speaker: turn.speaker,
         createdAt: turn.timestamp ? new Date(turn.timestamp).getTime() : undefined,
         conversationId: `${benchCase.caseId}-bulk`,
+        turnId: turn.turnId,
         reservationNonce: indexNonce,
       }).catch(() => false)
     }
@@ -281,7 +290,7 @@ async function runQuestion(
     tRetrieve = res.searchMs
     tAnswer = res.answerMs
   } else {
-    const { extension, chunks: passiveChunks } = await retrieveMemoryContext({ userId, query: question.question })
+    const { extension, chunks: passiveChunks } = await retrieveMemoryContext({ userId, query: question.question, questionDate: question.questionDate })
     tRetrieve = Date.now() - t0
     const t1 = Date.now()
     modelAnswer = await answerQuestion({
@@ -343,7 +352,9 @@ async function runCase(
   qaCkpt: Checkpoint<QaRow>,
 ): Promise<void> {
   const userId = benchUserId(opts.dataset, benchCase.caseId, opts.runId)
-  const pending = benchCase.questions.slice(0, opts.limitQuestions).filter((q) => !qaCkpt.has(q.questionId))
+  const pending = benchCase.questions
+    .slice(0, opts.limitQuestions)
+    .filter((q) => (!opts.categories || opts.categories.has(q.category)) && !qaCkpt.has(q.questionId))
   if (!pending.length && ingestCkpt.has(benchCase.caseId)) return
 
   if (ingestCkpt.has(benchCase.caseId) && pending.length) {
@@ -457,8 +468,12 @@ async function main(): Promise<void> {
   const started = Date.now()
 
   // Case-level pool — each case owns a distinct bench user, so parallel is safe.
+  // With --categories, cases holding no matching question are dropped before
+  // ingest (per-category datasets like ConvoMem skip whole ingest units).
   const queue = dataset.cases.filter(
-    (c) => !ingestCkpt.has(c.caseId) || c.questions.some((q) => !qaCkpt.has(q.questionId)),
+    (c) =>
+      (!opts.categories || c.questions.some((q) => opts.categories!.has(q.category))) &&
+      (!ingestCkpt.has(c.caseId) || c.questions.some((q) => !qaCkpt.has(q.questionId))),
   )
   let cursor = 0
   await Promise.all(

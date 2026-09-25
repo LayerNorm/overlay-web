@@ -52,7 +52,17 @@ export const config = {
     applyRecencyDecay: process.env.BENCH_RECENCY_DECAY !== '0',
     /** Optional vector-similarity floor passed through to hybridSearch. */
     minVecScore: process.env.BENCH_MIN_VEC_SCORE ? Number(process.env.BENCH_MIN_VEC_SCORE) : undefined,
+    /** Set BENCH_TEMPORAL=0 to ablate the temporal-window dual-search list. */
+    temporalQuery: process.env.BENCH_TEMPORAL !== '0',
+    /** Set BENCH_PROVENANCE=0 to ablate source-turn chunk attachment. */
+    includeProvenance: process.env.BENCH_PROVENANCE !== '0',
   },
+  /**
+   * Passive-mode query expansion: one call rewrites the question into ≤3
+   * alternate phrasings and unions their hits — captures much of the agentic
+   * loop's gain at ~1/3 its latency. Opt-in: BENCH_QUERY_EXPANSION=1.
+   */
+  queryExpansion: process.env.BENCH_QUERY_EXPANSION === '1',
   /**
    * M2 verbatim-message index. Off for runs against a pre-M2 deployment —
    * indexMessageContent doesn't exist there and `sourceKinds` fails arg

@@ -200,8 +200,17 @@ export const add = mutation({
         if (candidate.deletedAt) continue
         const candNorm = candidate.content.toLowerCase().replace(/\s+/g, ' ').trim()
         if (candNorm === normalized) {
-          // Update freshness on exact duplicate
-          await ctx.db.patch(candidate._id, { updatedAt: Date.now() })
+          // Exact duplicate = another corroborating source: bump freshness
+          // and sourceCount on the row and its chunks.
+          const sourceCount = (candidate.sourceCount ?? 1) + 1
+          await ctx.db.patch(candidate._id, { updatedAt: Date.now(), sourceCount })
+          const chunks = await ctx.db
+            .query('knowledgeChunks')
+            .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', candidate._id))
+            .collect()
+          for (const chunk of chunks) {
+            await ctx.db.patch(chunk._id, { updatedAt: Date.now(), sourceCount })
+          }
           return candidate._id
         }
       }
@@ -225,6 +234,7 @@ export const add = mutation({
       expiresAt: args.expiresAt,
       eventAt: args.eventAt,
       visibility: args.visibility,
+      sourceCount: 1,
       createdAt: now,
       updatedAt: now,
     })
@@ -324,9 +334,10 @@ export const remove = mutation({
 })
 
 /**
- * Freshness bump for semantic duplicates: the fact is unchanged, only its
- * recency signal moves. No reindex — content is identical — but the
- * denormalized chunk `updatedAt` moves too so recency decay honors it.
+ * Freshness + corroboration bump for semantic duplicates: the fact is
+ * unchanged, but an independent source just confirmed it — sourceCount feeds
+ * retrieval ranking and recency decay keys off the denormalized chunk
+ * `updatedAt`, so both move together. No reindex — content is identical.
  */
 export const touch = mutation({
   args: {
@@ -343,13 +354,14 @@ export const touch = mutation({
       throw new Error('Unauthorized')
     }
     const now = Date.now()
-    await ctx.db.patch(memoryId, { updatedAt: now })
+    const sourceCount = (existing.sourceCount ?? 1) + 1
+    await ctx.db.patch(memoryId, { updatedAt: now, sourceCount })
     const chunks = await ctx.db
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memoryId))
       .collect()
     for (const chunk of chunks) {
-      await ctx.db.patch(chunk._id, { updatedAt: now })
+      await ctx.db.patch(chunk._id, { updatedAt: now, sourceCount })
     }
   },
 })
