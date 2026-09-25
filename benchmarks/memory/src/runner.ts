@@ -5,6 +5,7 @@ import { answerQuestion } from './answer'
 import { Checkpoint } from './checkpoint'
 import { assertBenchConfig, benchUserId, config, fingerprint } from './config'
 import { addMemory, hybridSearch, indexMessage, listMemories, purgeBenchUser, purgeMessageSource, sweepOrphanedChunks } from './convex-client'
+import { consolidateUser } from './consolidator'
 import { extractAndStore, formatDate } from './extractor'
 import { judgeAnswer, judgeLongMemEval, type Verdict } from './judge'
 import { retrieveMemoryContext } from './retrieve'
@@ -399,6 +400,22 @@ async function runCase(
     ingestCkpt.record({ ...ingestRow, indexed: true, indexWaitMs: waitMs })
     ingestRow = { ...ingestRow, indexed: true, indexWaitMs: waitMs }
     console.log(`[ingest] ${benchCase.caseId}: index confirmed on re-wait (${waitMs}ms)`)
+  }
+  if (config.consolidation && pending.length) {
+    // Stage 2 "dreaming": derive cross-memory inferences into `inferred`
+    // memory rows before QA — the flag measures whether derived evidence
+    // exists at retrieval time. Dedup-gated, so a resumed case's second
+    // pass mostly noops.
+    try {
+      const outcome = await consolidateUser({ userId, caseId: benchCase.caseId })
+      console.log(`[consolidate] ${benchCase.caseId}: ${outcome.inserted} inferred (${outcome.proposed} proposed, ${outcome.duplicates} dup, ${outcome.sources} sources${outcome.reason ? `, ${outcome.reason}` : ''})`)
+      if (outcome.probe) {
+        const waitMs = await waitForIndex(userId, outcome.probe).catch(() => -1)
+        if (waitMs < 0) console.warn(`  WARNING: inferred-memory index not confirmed — QA may miss derived rows`)
+      }
+    } catch (err) {
+      console.error(`[consolidate] ${benchCase.caseId} FAILED: ${err instanceof Error ? err.message : err}`)
+    }
   }
   const turnMemory = ingestRow?.turnMemory ?? {}
 

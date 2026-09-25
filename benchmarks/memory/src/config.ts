@@ -64,6 +64,12 @@ export const config = {
    */
   queryExpansion: process.env.BENCH_QUERY_EXPANSION === '1',
   /**
+   * Stage 2 consolidation ("dreaming"): after each case's ingest completes,
+   * derive cross-memory inferences into `inferred` memory rows with
+   * `derivedFrom` edges. Opt-in: BENCH_CONSOLIDATION=1.
+   */
+  consolidation: process.env.BENCH_CONSOLIDATION === '1',
+  /**
    * M2 verbatim-message index. Off for runs against a pre-M2 deployment —
    * indexMessageContent doesn't exist there and `sourceKinds` fails arg
    * validation — and for A/B isolating the message layer's contribution.

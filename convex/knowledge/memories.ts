@@ -33,6 +33,8 @@ const memoryDocValidator = v.object({
   conversationId: v.optional(v.string()),
   createdAt: v.number(),
   deletedAt: v.optional(v.number()),
+  derivedFrom: v.optional(v.array(v.id('memories'))),
+  inferred: v.optional(v.boolean()),
   eventAt: v.optional(v.number()),
   expiresAt: v.optional(v.number()),
   importance: v.optional(v.number()),
@@ -158,6 +160,9 @@ export const add = mutation({
     expiresAt: v.optional(v.number()),
     eventAt: v.optional(v.number()),
     visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    /** Consolidation-pass writes: cross-memory inference + its `derives` edge. */
+    inferred: v.optional(v.boolean()),
+    derivedFrom: v.optional(v.array(v.id('memories'))),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -236,6 +241,8 @@ export const add = mutation({
       eventAt: args.eventAt,
       visibility: args.visibility,
       sourceCount: 1,
+      inferred: args.inferred,
+      derivedFrom: args.derivedFrom,
       createdAt: now,
       updatedAt: now,
     })

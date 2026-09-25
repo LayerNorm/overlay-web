@@ -26,6 +26,9 @@ export type BenchMemoryRow = {
   turnId?: string
   conversationId?: string
   type?: string
+  /** Consolidation-pass rows: cross-memory inference + its `derives` edge. */
+  inferred?: boolean
+  derivedFrom?: string[]
 }
 
 export async function addMemory(args: {
@@ -40,6 +43,8 @@ export async function addMemory(args: {
   tags?: string[]
   expiresAt?: number
   eventAt?: number
+  inferred?: boolean
+  derivedFrom?: string[]
 }): Promise<string> {
   const id = await withRetry(
     () =>

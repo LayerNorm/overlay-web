@@ -1304,6 +1304,10 @@ export default defineSchema({
     visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
     /** Times an independent source corroborated this memory (dedup hits). */
     sourceCount: v.optional(v.number()),
+    /** Written by the consolidation pass — a cross-memory inference, not a stated fact. */
+    inferred: v.optional(v.boolean()),
+    /** The `derives` edge: memory ids this inference was derived from. */
+    derivedFrom: v.optional(v.array(v.id('memories'))),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
