@@ -36,6 +36,7 @@ import {
   executeSearchInFiles,
   executeSearchKnowledge,
   executeSearchMemory,
+  executeSearchMessages,
   executeUpdateAutomation,
   executeUpdateAgent,
   executeUpdateMemory,
@@ -414,6 +415,23 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('search_memory')
         return executeSearchMemory(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('search_messages')) {
+    tools.search_messages = tool({
+      description:
+        'Search the raw conversation record — the exact words the user or others actually said. ' +
+        'Use this when search_memory is not enough: when you need precise wording, what was literally said, a date, or who said it. ' +
+        'Memories are distilled and can lose detail; past messages are verbatim. ' +
+        'Returns dated excerpts labeled by speaker.',
+      inputSchema: z.object({
+        query: z.string().describe('What to find in past messages — e.g. "what the user said about the pricing deadline" or a distinctive phrase.'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('search_messages')
+        return executeSearchMessages(options, input)
       },
     })
   }

@@ -609,6 +609,18 @@ async function indexSourceTextBilled(
     superseded?: boolean
     /** Stable per-source string making the budget reservation idempotent. */
     operationId: string
+    /**
+     * Server-secret-authenticated callers (benchmarks, internal tooling) skip
+     * the per-user daily background-work cap — that gate bounds real-account
+     * embedding spend, not synthetic harness users.
+     */
+    trustedInternal?: boolean
+    /**
+     * Optional discriminator mixed into the reservation idempotency key.
+     * Purge-then-reindex of identical content would otherwise hit the stale
+     * reservation and skip before chunks are rewritten.
+     */
+    reservationNonce?: string
   },
 ): Promise<'indexed' | 'skipped'> {
   const segments = chunkText(args.indexText)
@@ -619,13 +631,15 @@ async function indexSourceTextBilled(
     })
     return 'skipped'
   }
-  const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
-    userId: args.userId,
-    kind: 'indexing',
-    chunkCount: segments.length,
-    bytes: new TextEncoder().encode(args.indexText).byteLength,
-  })
-  if (!indexingReservation.allowed) return 'skipped'
+  if (!args.trustedInternal) {
+    const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
+      userId: args.userId,
+      kind: 'indexing',
+      chunkCount: segments.length,
+      bytes: new TextEncoder().encode(args.indexText).byteLength,
+    })
+    if (!indexingReservation.allowed) return 'skipped'
+  }
 
   const serverSecret = getServerSecretForBackground()
   if (!serverSecret) return 'skipped'
@@ -636,7 +650,7 @@ async function indexSourceTextBilled(
   let reservationId: string
   try {
     const reserved = await reserveKnowledgeProviderBudget(ctx, {
-      idempotencyKey: `${args.sourceKind}:${args.sourceId}`,
+      idempotencyKey: `${args.sourceKind}:${args.sourceId}${args.reservationNonce ? `:${args.reservationNonce}` : ''}`,
       kind: 'embedding',
       modelId: EMBEDDING_MODEL,
       operationId: args.operationId,
@@ -721,8 +735,8 @@ async function indexSourceTextBilled(
 }
 
 export const reindexMemoryInternal = internalAction({
-  args: { memoryId: v.id('memories') },
-  handler: async (ctx, { memoryId }) => {
+  args: { memoryId: v.id('memories'), trustedInternal: v.optional(v.boolean()) },
+  handler: async (ctx, { memoryId, trustedInternal }) => {
     const meta = await ctx.runQuery(internal.knowledge.knowledge.getMemoryForReindex, { memoryId })
     if (!meta) {
       await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
@@ -749,6 +763,7 @@ export const reindexMemoryInternal = internalAction({
       updatedAt: meta.updatedAt,
       superseded: meta.superseded,
       operationId: 'knowledge.reindex-memory',
+      trustedInternal,
     })
   },
 })
@@ -948,9 +963,11 @@ export const indexMessageContent = action({
     createdAt: v.optional(v.number()),
     conversationId: v.optional(v.string()),
     workspaceId: v.optional(v.string()),
+    reservationNonce: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) {
+    const trustedInternal = validateServerSecret(args.serverSecret)
+    if (!trustedInternal) {
       await requireAccessToken(args.accessToken ?? '', args.userId)
     }
     const text = args.text.trim()
@@ -968,6 +985,8 @@ export const indexMessageContent = action({
       updatedAt: createdAt,
       visibility: args.workspaceId ? 'workspace' : 'owner',
       operationId: 'knowledge.index-message-content',
+      trustedInternal,
+      reservationNonce: trustedInternal ? args.reservationNonce : undefined,
     })
     return { indexed: result === 'indexed' }
   },

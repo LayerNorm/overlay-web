@@ -228,7 +228,10 @@ export const add = mutation({
       createdAt: now,
       updatedAt: now,
     })
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
+      memoryId,
+      trustedInternal: validateServerSecret(args.serverSecret),
+    })
     return memoryId
   },
 })
@@ -287,7 +290,10 @@ export const update = mutation({
     if (updates.eventAt !== undefined) patch.eventAt = updates.eventAt
     if (updates.visibility !== undefined) patch.visibility = updates.visibility
     await ctx.db.patch(memoryId, patch)
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
+      memoryId,
+      trustedInternal: validateServerSecret(serverSecret),
+    })
   },
 })
 
@@ -424,7 +430,10 @@ export const supersede = mutation({
     for (const chunk of oldChunks) {
       await ctx.db.patch(chunk._id, { superseded: true })
     }
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId: newId })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
+      memoryId: newId,
+      trustedInternal: validateServerSecret(args.serverSecret),
+    })
     return newId
   },
 })

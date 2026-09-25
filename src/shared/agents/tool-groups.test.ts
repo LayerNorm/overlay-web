@@ -48,6 +48,7 @@ test('a memory grant saved before recall existed still counts as memory', () => 
   const legacy = ['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory']
   assert.equal(enabledAgentToolGroupIds(legacy).has('memory'), true)
   assert.equal(normalizeAgentToolGrant(legacy).includes('search_memory'), true)
+  assert.equal(normalizeAgentToolGrant(legacy).includes('search_messages'), true)
 })
 
 test('normalization does not invent a memory grant that was never given', () => {

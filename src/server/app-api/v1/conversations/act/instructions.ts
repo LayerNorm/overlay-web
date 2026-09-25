@@ -177,7 +177,10 @@ function knowledgeNote(params: {
   }
   const hasMemoryWrites = availableTools.has('save_memory') || availableTools.has('save_memory_batch')
   const recallNote = availableTools.has('search_memory')
-    ? '\n\nCall search_memory to recall what was remembered earlier when the answer could depend on it, rather than assuming the supplied context is everything you know.'
+    ? '\n\nCall search_memory to recall what was remembered earlier when the answer could depend on it, rather than assuming the supplied context is everything you know.' +
+      (availableTools.has('search_messages')
+        ? ' Call search_messages when you need the exact wording, date, or speaker of something said in a past conversation.'
+        : '')
     : ''
   return '\n' + base + recallNote + (hasMemoryWrites
     ? '\n\nYou also have save_memory, update_memory, and delete_memory.\n\n' + params.constants.MEMORY_SAVE_PROTOCOL

@@ -40,7 +40,7 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'memory',
     label: 'Persistent memory',
     description: 'Recall and remember facts across conversations, including the agent\'s own memories.',
-    toolIds: ['search_memory', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
+    toolIds: ['search_memory', 'search_messages', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
   },
   {
     id: 'knowledge',
@@ -176,6 +176,7 @@ export function normalizeAgentToolGrant(allowedToolIds: readonly string[]): stri
   const granted = new Set(allowedToolIds)
   if (!granted.has('search_memory') && LEGACY_MEMORY_WRITE_TOOL_IDS.some((id) => granted.has(id))) {
     granted.add('search_memory')
+    granted.add('search_messages')
   }
   return [...granted]
 }

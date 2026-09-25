@@ -400,6 +400,7 @@ function withRequestedOverlayToolIds(
   const allowed = new Set(baseToolIds)
   if (!memoryEnabled) {
     allowed.delete('search_memory')
+    allowed.delete('search_messages')
     allowed.delete('save_memory')
     allowed.delete('save_memory_batch')
     allowed.delete('update_memory')
@@ -410,6 +411,7 @@ function withRequestedOverlayToolIds(
     if (toolId === 'memory' && memoryEnabled) {
       allowed.add('search_knowledge')
       allowed.add('search_memory')
+      allowed.add('search_messages')
       allowed.add('save_memory')
       allowed.add('save_memory_batch')
     }
@@ -432,6 +434,7 @@ export function applyRuntimeToolGates(
   if (!capabilities.memory || !capabilities.vectorSearch) {
     allowed.delete('search_knowledge')
     allowed.delete('search_memory')
+    allowed.delete('search_messages')
     allowed.delete('save_memory')
     allowed.delete('save_memory_batch')
     allowed.delete('update_memory')

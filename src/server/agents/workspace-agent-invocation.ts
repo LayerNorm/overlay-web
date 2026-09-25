@@ -1366,7 +1366,10 @@ export function buildAgentSystemPrompt(args: {
       ? [
           'Use your available tools when they genuinely help, and prefer checking over guessing.',
           canRecall
-            ? 'Before answering a question about the user, the workspace, or past work, call search_memory rather than assuming you know nothing.'
+            ? 'Before answering a question about the user, the workspace, or past work, call search_memory rather than assuming you know nothing.' +
+              (args.exposedToolIds.includes('search_messages')
+                ? ' When you need exact wording, a date, or who said something, call search_messages for the verbatim record.'
+                : '')
             : '',
           'Never claim to have used a tool or changed a resource unless the tool call actually ran and returned success. If a requested action has no available tool, say that plainly and offer the result as a draft instead.',
         ].filter(Boolean).join(' ')

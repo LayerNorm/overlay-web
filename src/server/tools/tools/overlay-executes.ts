@@ -230,6 +230,57 @@ export async function executeSearchMemory(
   }
 }
 
+/**
+ * Verbatim transcript layer: raw messages indexed under sourceKind 'message'.
+ * Chunks carry a `YYYY-MM-DD · Speaker` title, so each hit is citation-ready
+ * (when it was said, who said it) without a second lookup.
+ */
+export async function executeSearchMessages(
+  options: OverlayToolsOptions,
+  input: { query: string },
+) {
+  if (options.memoryEnabled === false) {
+    return { success: false, error: 'Memory is off for this turn.' }
+  }
+  const query = input.query?.trim()
+  if (!query) return { success: false, error: 'A query is required to search messages.' }
+  try {
+    const res = await callInternalApi(
+      '/api/v1/knowledge/search',
+      {
+        query,
+        sourceKind: 'message',
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch((_error) => ({ error: 'Message search failed' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Message search failed' }
+    }
+    const data = (await res.json()) as { chunks?: Array<Record<string, unknown>> }
+    const messages = (data.chunks ?? []).map((chunk) => ({
+      content: chunk.text,
+      messageId: chunk.sourceId,
+      title: chunk.title,
+    }))
+    return {
+      success: true,
+      messages,
+      ...(messages.length === 0
+        ? { note: 'No past messages matched. Try search_memory for distilled facts, or a different phrasing.' }
+        : {}),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Message search failed',
+    }
+  }
+}
+
 export async function executeSaveMemoryBatch(
   options: OverlayToolsOptions,
   input: {

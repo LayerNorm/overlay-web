@@ -166,6 +166,12 @@ export function getDescriptiveToolLabel(
     return describeMcpToolSearch(toolInput, phase)
   }
 
+  if (toolName === 'search_memory' || toolName === 'search_messages') {
+    const base = toolName === 'search_memory' ? 'Searching memory' : 'Searching past messages'
+    const query = clippedInputValue(toolInput, 'query', 56)
+    return query ? `${base} for “${query}”` : base
+  }
+
   const map: Record<string, string> = {
     browser_run_task: 'Browsing the web',
     interactive_browser_session: 'Browsing the web',

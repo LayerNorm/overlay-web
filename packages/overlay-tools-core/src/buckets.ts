@@ -6,6 +6,7 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'search_knowledge',
   'search_in_files',
   'search_memory',
+  'search_messages',
   'save_memory',
   'save_memory_batch',
   'update_memory',
