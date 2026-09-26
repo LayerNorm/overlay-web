@@ -16,7 +16,7 @@ import {
   type BenchMemoryRow,
 } from './convex-client'
 import { config } from './config'
-import { benchObject, withRetry } from './gateway'
+import { benchObject, normalizeDedupJson, withRetry } from './gateway'
 
 /**
  * Stage 2 "dreaming" pass — derive cross-memory inferences after ingest.
@@ -43,6 +43,44 @@ const DerivationSchema = z.object({
   ).max(20),
 })
 type Derivation = z.infer<typeof DerivationSchema>
+
+const DERIVATION_TYPES = new Set(['preference', 'fact', 'project', 'decision', 'agent'])
+
+/**
+ * Free models emit `inferences` under misspelled keys, as plain strings, or
+ * with supports under alias names (supports/sources/evidence). An inference
+ * without ≥2 resolvable supports can't satisfy the derivation rule — drop it
+ * here (same outcome as the post-parse support check).
+ */
+const normalizeDerivationJson = (json: unknown): unknown => {
+  if (!json || typeof json !== 'object') return json
+  const rec = json as Record<string, unknown>
+  const items = Array.isArray(rec.inferences)
+    ? rec.inferences
+    : Object.values(rec).find((v) => Array.isArray(v))
+  if (!Array.isArray(items)) return json
+
+  const SUPPORT_KEYS = ['supportIndexes', 'supports', 'support', 'sourceIndexes', 'supportingIndexes', 'evidence']
+  const parseSupport = (v: unknown): number[] => {
+    const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,\s]+/) : v === undefined || v === null ? [] : [v]
+    return list.map((x) => (typeof x === 'number' ? x : parseInt(String(x), 10))).filter((n) => Number.isInteger(n) && n >= 0)
+  }
+
+  const cleaned = items
+    .map((i): Record<string, unknown> | null => {
+      if (!i || typeof i !== 'object') return null // plain strings carry no supports — always <2
+      const r = i as Record<string, unknown>
+      if (typeof r.content !== 'string' || !r.content.trim()) return null
+      const supportIndexes = [...new Set(SUPPORT_KEYS.flatMap((k) => parseSupport(r[k])))]
+      if (supportIndexes.length < 2) return null
+      const out: Record<string, unknown> = { content: r.content, supportIndexes }
+      if (typeof r.type === 'string' && DERIVATION_TYPES.has(r.type)) out.type = r.type
+      return out
+    })
+    .filter((x): x is Record<string, unknown> => x !== null)
+
+  return { inferences: cleaned }
+}
 
 const DERIVATION_SYSTEM_PROMPT = `You are the memory consolidation pass for an agent memory system. Given a digest of facts already extracted from a user's conversations, derive ONLY non-obvious inferences that are strongly supported by at least two stated facts.
 
@@ -100,6 +138,7 @@ export async function consolidateUser(args: {
           system: DERIVATION_SYSTEM_PROMPT,
           prompt: `Digest of stated memories:\n\n${digest}`,
           maxOutputTokens: 2000,
+          normalize: normalizeDerivationJson,
         }),
       `consolidate:${args.caseId ?? args.userId}`,
     )
@@ -171,6 +210,7 @@ export async function consolidateUser(args: {
               system: MEMORY_DEDUP_DECISION_SYSTEM_PROMPT,
               prompt: buildMemoryDedupDecisionPrompt(content, neighbors.map((n) => ({ content: n.content }))),
               maxOutputTokens: 400,
+              normalize: normalizeDedupJson,
             }),
           `consolidate-dedup:${args.caseId ?? args.userId}:${inserted + duplicates}`,
         )

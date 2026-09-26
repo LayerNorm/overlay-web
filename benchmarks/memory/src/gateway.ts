@@ -9,6 +9,12 @@ function gateway() {
     name: 'gateway',
     apiKey: config.gatewayApiKey,
     baseURL: config.gatewayUrl,
+    // Hidden reasoning burns the whole output budget on ling-*-free models
+    // (reasoning_tokens count against max_tokens, leaving empty/truncated
+    // content). `reasoning:{enabled:false}` disables it — verified against the
+    // gateway. Injected via transformRequestBody because the openai-compatible
+    // provider strips unknown providerOptions keys.
+    transformRequestBody: (body) => ({ ...body, reasoning: { enabled: false } }),
   })
 }
 
@@ -25,11 +31,38 @@ export function benchModel(modelId: string): LanguageModel {
  */
 const assertFreeModel = (modelId: string) => {
   if (process.env.BENCH_PAID_MODELS === '1') return
-  if (!modelId.endsWith(':free')) {
+  if (!modelId.endsWith(':free') && !modelId.endsWith('-free')) {
     throw new Error(
-      `Bench model "${modelId}" is not a :free id — it bills at list price. ` +
-      `Use an openrouter/*:free id or set BENCH_PAID_MODELS=1 to spend on purpose.`,
+      `Bench model "${modelId}" is not a :free/-free id — it bills at list price. ` +
+      `Use a catalog-verified $0 id or set BENCH_PAID_MODELS=1 to spend on purpose.`,
     )
+  }
+}
+
+/**
+ * Authoritative cost check: fetch the gateway catalog once and verify every
+ * configured bench model prices at $0. Suffix checks catch accidents; this
+ * catches ids that look free but are billed. Skipped under BENCH_PAID_MODELS.
+ */
+export async function assertFreePricing(): Promise<void> {
+  if (process.env.BENCH_PAID_MODELS === '1') return
+  const ids = [config.extractorModel, config.answerModel, config.judgeModel]
+  try {
+    const res = await fetch(`${config.gatewayUrl}/models`, {
+      headers: { Authorization: `Bearer ${config.gatewayApiKey}` },
+    })
+    const data = (await res.json()) as { data?: { id: string; pricing?: { input?: string; output?: string } }[] }
+    const priced = new Map((data.data ?? []).map((m) => [m.id, m.pricing]))
+    for (const id of new Set(ids)) {
+      const p = priced.get(id)
+      if (!p) throw new Error(`Bench model "${id}" not in gateway catalog — would 404 or bill unexpectedly`)
+      if (Number(p.input ?? 1) !== 0 || Number(p.output ?? 1) !== 0) {
+        throw new Error(`Bench model "${id}" catalog price ${p.input}/${p.output} — not free. Refusing to run.`)
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Bench model')) throw err
+    console.warn(`[bench] catalog price check failed (${String(err).slice(0, 120)}) — relying on suffix guard only`)
   }
 }
 
@@ -53,6 +86,8 @@ export async function benchObject<T extends z.ZodType>(args: {
   system: string
   prompt: string
   maxOutputTokens?: number
+  /** Last-chance repair applied to the parsed JSON before safeParse — e.g. coerce out-of-enum values rather than failing the whole call. */
+  normalize?: (json: unknown) => unknown
 }): Promise<z.infer<T>> {
   try {
     const res = await generateObject({
@@ -72,12 +107,34 @@ export async function benchObject<T extends z.ZodType>(args: {
       args.system,
     )
     const json = extractJson(text)
-    const parsed = args.schema.safeParse(json)
+    const parsed = args.schema.safeParse(args.normalize ? args.normalize(json) : json)
     if (!parsed.success) {
       throw new Error(`Model returned unparseable object: ${text.slice(0, 200)}`)
     }
     return parsed.data as z.infer<T>
   }
+}
+
+/**
+ * Dedup-decision tolerance: free models emit `mergedContent: null`,
+ * `"targetIndex": "0"`, or off-enum decisions ("add_new", "no_op"). Coerce
+ * the parseable parts; a missing/unknown decision fails safe to 'add' at the
+ * caller's catch.
+ */
+export const normalizeDedupJson = (json: unknown): unknown => {
+  if (!json || typeof json !== 'object') return json
+  const rec = json as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  const d = typeof rec.decision === 'string' ? rec.decision.toLowerCase() : ''
+  out.decision = ['add', 'noop', 'update', 'supersede'].includes(d)
+    ? d
+    : d.startsWith('no') ? 'noop' : d.startsWith('add') ? 'add' : d.startsWith('upd') ? 'update' : d.startsWith('sup') ? 'supersede' : 'add'
+  const ti = rec.targetIndex ?? rec.index ?? rec.target
+  const tiN = typeof ti === 'number' ? ti : parseInt(String(ti), 10)
+  if (Number.isInteger(tiN) && tiN >= 0) out.targetIndex = tiN
+  const mc = rec.mergedContent ?? rec.merged ?? rec.content
+  if (typeof mc === 'string' && mc.trim()) out.mergedContent = mc
+  return out
 }
 
 function extractJson(text: string): unknown {

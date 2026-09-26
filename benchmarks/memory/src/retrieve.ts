@@ -24,6 +24,15 @@ const expansionSchema = z.object({
   queries: z.array(z.string()).max(3).optional(),
 })
 
+/** Accept the first array-of-strings under any key — free models rename it. */
+const normalizeExpansionJson = (json: unknown): unknown => {
+  if (!json || typeof json !== 'object') return json
+  const rec = json as Record<string, unknown>
+  if (Array.isArray(rec.alternates) || Array.isArray(rec.queries)) return json
+  const found = Object.values(rec).find((v) => Array.isArray(v) && v.every((s) => typeof s === 'string'))
+  return found ? { alternates: found } : json
+}
+
 async function expandQueries(question: string, questionDate?: string): Promise<string[]> {
   try {
     const raw = await benchObject({
@@ -35,6 +44,7 @@ async function expandQueries(question: string, questionDate?: string): Promise<s
         'or facets. Do not answer the question. Return {"alternates": [...]}.',
       prompt: `Question${questionDate ? ` (asked on ${questionDate})` : ''}: ${question}`,
       maxOutputTokens: 200,
+      normalize: normalizeExpansionJson,
     })
     const alts = [...(raw.alternates ?? []), ...(raw.queries ?? [])]
       .map((s) => s.trim())

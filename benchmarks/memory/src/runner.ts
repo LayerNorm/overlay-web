@@ -5,6 +5,7 @@ import { answerQuestion } from './answer'
 import { Checkpoint } from './checkpoint'
 import { assertBenchConfig, benchUserId, config, fingerprint } from './config'
 import { addMemory, hybridSearch, indexMessage, listMemories, purgeBenchUser, purgeMessageSource, sweepOrphanedChunks } from './convex-client'
+import { assertFreePricing } from './gateway'
 import { consolidateUser } from './consolidator'
 import { extractAndStore, formatDate } from './extractor'
 import { judgeAnswer, judgeLongMemEval, type Verdict } from './judge'
@@ -476,6 +477,7 @@ async function runCase(
 
 async function main(): Promise<void> {
   assertBenchConfig()
+  await assertFreePricing()
   const opts = parseArgs()
   const dataset = await loadDataset(opts.dataset, opts.limitCases)
   const ingestCkpt = new Checkpoint<IngestRow>(opts.runId, `${opts.dataset}-ingest`)

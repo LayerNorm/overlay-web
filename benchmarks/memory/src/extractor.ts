@@ -18,7 +18,7 @@ import {
 } from '../../../src/shared/knowledge/memory-extraction-shared'
 import { addMemory, getMemoriesByIds, hybridSearch, supersedeMemory, touchMemory, updateMemory } from './convex-client'
 import { config } from './config'
-import { benchObject, withRetry } from './gateway'
+import { benchObject, normalizeDedupJson, withRetry } from './gateway'
 
 /**
  * Faithful replica of convex/knowledge/memoryExtractorNode.ts extractFromTurn.
@@ -47,6 +47,41 @@ export type ExtractionOutcome = {
   /** memoryIds written for this turn — enables turnId→memory recall checks. */
   writtenIds: string[]
   reason?: string
+}
+
+const EXTRACTION_TYPES = new Set(['preference', 'fact', 'project', 'decision', 'agent'])
+
+/**
+ * Free models occasionally emit off-enum candidate types ("habit", "routine").
+ * A strict safeParse would drop the whole turn's extraction — coerce unknown
+ * types to 'fact' and strip empty-string optionals instead.
+ */
+const normalizeExtractionJson = (json: unknown): unknown => {
+  if (!json || typeof json !== 'object') return json
+  // Free models misspell the wrapper key ("cactors") — accept the first
+  // array-of-candidate-objects regardless of its key name.
+  const rec = json as Record<string, unknown>
+  const candidates = Array.isArray(rec.candidates)
+    ? rec.candidates
+    : Object.values(rec).find((v) => Array.isArray(v) && v.some((i) => i && typeof i === 'object' && 'content' in i))
+  if (!Array.isArray(candidates)) return json
+  const cleaned = candidates.filter((c) => c && typeof c === 'object' && typeof (c as Record<string, unknown>).content === 'string')
+  for (const c of cleaned) {
+    const cand = c as Record<string, unknown>
+    if (typeof cand.type === 'string' && !EXTRACTION_TYPES.has(cand.type)) cand.type = 'fact'
+    for (const k of ['eventAt', 'expiresOn']) {
+      if (cand[k] !== undefined && typeof cand[k] !== 'string') delete cand[k]
+      else if (cand[k] === '') delete cand[k]
+    }
+    if (typeof cand.confidence === 'string') {
+      const n = Number(cand.confidence)
+      cand.confidence = Number.isFinite(n) ? n : 0.8
+    } else if (typeof cand.confidence !== 'number') {
+      cand.confidence = 0.8
+    }
+    if (typeof cand.rationale !== 'string') cand.rationale = ''
+  }
+  return { ...(json as object), candidates: cleaned }
 }
 
 export async function extractAndStore(args: {
@@ -84,6 +119,7 @@ export async function extractAndStore(args: {
           system,
           prompt,
           maxOutputTokens: 1200,
+          normalize: normalizeExtractionJson,
         }),
       `extract:${args.target.turnId}`,
     )
@@ -174,6 +210,7 @@ export async function extractAndStore(args: {
             system: MEMORY_DEDUP_DECISION_SYSTEM_PROMPT,
             prompt: buildMemoryDedupDecisionPrompt(content, neighbors.map((n) => ({ content: n.content }))),
             maxOutputTokens: 400,
+            normalize: normalizeDedupJson,
           }),
         `dedupe:${args.target.turnId}`,
       )
