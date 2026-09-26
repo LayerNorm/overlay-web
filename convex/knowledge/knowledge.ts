@@ -1231,6 +1231,95 @@ export const sweepOrphanedKnowledgeChunks = action({
   },
 })
 
+/**
+ * Post-M3 denormalization backfill: stamps `turnId`/`eventAt`/`sourceCount`/
+ * `visibility` onto existing memory chunks from the parent row — the fields
+ * only land at index time otherwise, so rows written before this build never
+ * get them. Pure patches (no re-embedding); self-chains past the page cap.
+ */
+export const backfillMemoryChunkFieldsPage = internalMutation({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { cursor, numItems }) => {
+    const page = await ctx.db
+      .query('memories')
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 50 })
+    let patched = 0
+    for (const memory of page.page) {
+      const chunks = await ctx.db
+        .query('knowledgeChunks')
+        .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
+        .collect()
+      for (const chunk of chunks) {
+        const fields = {
+          turnId: memory.turnId,
+          eventAt: memory.eventAt ?? memory.createdAt,
+          sourceCount: memory.sourceCount,
+          visibility: memory.visibility,
+        } as const
+        const needs =
+          (fields.turnId !== undefined && chunk.turnId !== fields.turnId) ||
+          chunk.eventAt !== fields.eventAt ||
+          (fields.sourceCount !== undefined && chunk.sourceCount !== fields.sourceCount) ||
+          (fields.visibility !== undefined && chunk.visibility !== fields.visibility)
+        if (!needs) continue
+        await ctx.db.patch(chunk._id, {
+          ...(fields.turnId !== undefined ? { turnId: fields.turnId } : {}),
+          eventAt: fields.eventAt,
+          ...(fields.sourceCount !== undefined ? { sourceCount: fields.sourceCount } : {}),
+          ...(fields.visibility !== undefined ? { visibility: fields.visibility } : {}),
+        })
+        patched++
+      }
+    }
+    return {
+      memories: page.page.length,
+      patched,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})
+
+/** Chains `backfillMemoryChunkFieldsPage` until the scan completes. */
+export const backfillMemoryChunkFields = internalAction({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    totals: v.optional(v.object({ memories: v.number(), patched: v.number() })),
+  },
+  handler: async (ctx, { cursor, totals }): Promise<{ memories: number; patched: number; done: boolean }> => {
+    let memories = totals?.memories ?? 0
+    let patched = totals?.patched ?? 0
+    let next = cursor ?? null
+    for (let i = 0; i < 50; i++) {
+      const page = await ctx.runMutation(internal.knowledge.knowledge.backfillMemoryChunkFieldsPage, {
+        cursor: next,
+      })
+      memories += page.memories
+      patched += page.patched
+      if (page.isDone) return { memories, patched, done: true }
+      next = page.continueCursor
+    }
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.backfillMemoryChunkFields, {
+      cursor: next,
+      totals: { memories, patched },
+    })
+    return { memories, patched, done: false }
+  },
+})
+
+/** Server-secret entry point for the memory-chunk field backfill. */
+export const backfillMemoryChunks = action({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, args): Promise<{ memories: number; patched: number; done: boolean }> => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    return await ctx.runAction(internal.knowledge.knowledge.backfillMemoryChunkFields, {})
+  },
+})
+
 /** Post-processing after RRF: cap total injected characters and diversity per source (step 6). */
 const PACK_MAX_TOTAL_CHARS = 12_000
 const PACK_MAX_PER_SOURCE = 3

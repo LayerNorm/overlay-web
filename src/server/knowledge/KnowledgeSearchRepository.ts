@@ -14,13 +14,19 @@ export type KnowledgeSearchArgs = {
     requestFingerprint: string
   }
   canonicalSourceIds?: string[]
+  /** Attach up-to-2 verbatim source-turn chunks to each memory hit. */
+  includeProvenance?: boolean
   kLex?: number
   kVec?: number
   m?: number
   minVecScore?: number
+  /** Anchor ms for temporal query parsing ("last week") — defaults to now. */
+  asOfMs?: number
   query: string
   sourceKind?: 'file' | 'memory' | 'message'
   sourceKinds?: Array<'file' | 'memory' | 'message'>
+  /** Parse a time window out of the query and fuse in-window chunks. */
+  temporalQuery?: boolean
   userId: string
   workspaceId?: string
 }

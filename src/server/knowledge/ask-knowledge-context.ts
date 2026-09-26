@@ -45,6 +45,10 @@ export async function buildAutoRetrievalBundle(args: {
       m: 10,
       kVec: 40,
       kLex: 40,
+      // Date-aware retrieval + verbatim backing for distilled memory facts.
+      temporalQuery: true,
+      asOfMs: Date.now(),
+      includeProvenance: true,
     })
     return formatAutoRetrievalBundle(result.chunks, args.includeMemories)
   } catch (e) {
