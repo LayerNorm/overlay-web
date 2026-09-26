@@ -23,9 +23,11 @@ for (const file of ['.env.local', '.env.development.local', '.env']) {
 }
 
 /** All benchmark LLM traffic goes through this free gateway model unless overridden. */
-// The `-free` alias was retired on the gateway; the paid id +
-// providerOptions.gateway.has:['free'] routes to free-tier providers only.
-export const FREE_MODEL_ID = 'inclusionai/ling-3.0-flash-vl'
+// Genuinely free model ids on this gateway are `openrouter/<provider>/<model>:free`
+// (routes to the provider's $0 endpoint) — a bare paid id bills at list price.
+// `providerOptions.gateway.has` only supports 'implicit-caching'|'vision'; it is
+// NOT a free-tier filter and is ignored for cost purposes.
+export const FREE_MODEL_ID = 'openrouter/deepseek/deepseek-v4-flash:free'
 
 export const config = {
   convexUrl: process.env.BENCH_CONVEX_URL ?? process.env.DEV_NEXT_PUBLIC_CONVEX_URL ?? '',

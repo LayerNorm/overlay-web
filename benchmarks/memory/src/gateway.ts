@@ -13,16 +13,29 @@ function gateway() {
 }
 
 export function benchModel(modelId: string): LanguageModel {
+  assertFreeModel(modelId)
   return gateway()(modelId)
 }
 
-/** Free-tier-only routing — errors instead of falling back to paid providers. */
-const FREE_ONLY = { gateway: { has: ['free'] } }
+/**
+ * Cost guard: refuse to send bench traffic at any model id that does not end
+ * in `:free` unless BENCH_PAID_MODELS=1 is set explicitly (the paid-model pass).
+ * The previous `providerOptions.gateway.has:['free']` was not a real routing
+ * constraint — the gateway ignored it and billed list price.
+ */
+const assertFreeModel = (modelId: string) => {
+  if (process.env.BENCH_PAID_MODELS === '1') return
+  if (!modelId.endsWith(':free')) {
+    throw new Error(
+      `Bench model "${modelId}" is not a :free id — it bills at list price. ` +
+      `Use an openrouter/*:free id or set BENCH_PAID_MODELS=1 to spend on purpose.`,
+    )
+  }
+}
 
 export async function benchText(modelId: string, prompt: string, system?: string): Promise<string> {
   const res = await generateText({
     model: benchModel(modelId),
-    providerOptions: FREE_ONLY,
     ...(system ? { system } : {}),
     messages: [{ role: 'user', content: prompt }],
     maxOutputTokens: 2000,
@@ -44,7 +57,6 @@ export async function benchObject<T extends z.ZodType>(args: {
   try {
     const res = await generateObject({
       model: benchModel(args.modelId),
-      providerOptions: FREE_ONLY,
       // erased to FlexibleSchema — a generic zod param breaks InferSchema
       // overload resolution in ai@7
       schema: args.schema as FlexibleSchema<unknown>,
