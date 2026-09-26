@@ -26,6 +26,8 @@ export type BenchMemoryRow = {
   turnId?: string
   conversationId?: string
   type?: string
+  expiresAt?: number
+  eventAt?: number
   /** Consolidation-pass rows: cross-memory inference + its `derives` edge. */
   inferred?: boolean
   derivedFrom?: string[]
