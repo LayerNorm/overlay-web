@@ -122,7 +122,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   /** Set when a chat source citation deep-links here via `?memory=<id>`. */
   const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(null)
   const jumpedMemoryIdRef = useRef<string | null>(null)
-  const [members, setMembers] = useState<Array<{ name: string; principalId: string }>>([])
+  const [members, setMembers] = useState<Array<{ name: string; principalId: string; isAgent?: boolean }>>([])
   const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const loadRequestIdRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -168,24 +168,44 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   useEffect(() => {
     if (!activeWorkspaceId) return
     let cancelled = false
-    setSelectedMemberPrincipalId('all')
+    // `?owner=<principalId>` deep-links from an agent profile's memories section.
+    const requestedOwner = typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('owner')?.trim() || null
     setSelectedIds(new Set())
     setSelectionMode(false)
     void Promise.all([
       overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
       overlayAppClient.workspaces.management(activeWorkspaceId, 'guests'),
-      loadMemories('all'),
-    ]).then(([people, guests]) => {
+      overlayAppClient.agents.list(activeWorkspaceId).catch(() => ({ agents: [] })),
+      requestedOwner ? Promise.resolve() : loadMemories('all'),
+    ]).then(([people, guests, agentDirectory]) => {
       if (cancelled) return
-      const byPrincipalId = new Map<string, { name: string; principalId: string }>()
+      const byPrincipalId = new Map<string, { name: string; principalId: string; isAgent?: boolean }>()
       for (const item of [...people.items, ...guests.items]) {
         if (item.kind === 'member' && item.principalId && item.status === 'active') {
           byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
         }
       }
-      setMembers([...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name)))
+      // Agents appear after humans — they own memories in their own right and
+      // the same member filter resolves them server-side.
+      const humans = [...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name))
+      const agents = (agentDirectory.agents ?? [])
+        .filter((agent) => agent.principalId)
+        .map((agent) => ({ name: agent.name, principalId: agent.principalId, isAgent: true as const }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+      const options = [...humans, ...agents]
+      setMembers(options)
+      const initial = requestedOwner && options.some((m) => m.principalId === requestedOwner)
+        ? requestedOwner
+        : 'all'
+      setSelectedMemberPrincipalId(initial)
+      if (requestedOwner) void loadMemories(initial)
     }).catch(() => {
-      if (!cancelled) setMembers([])
+      if (!cancelled) {
+        setMembers([])
+        setSelectedMemberPrincipalId('all')
+      }
     })
     return () => { cancelled = true }
   }, [activeWorkspaceId, loadMemories])
@@ -285,7 +305,10 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         }}
         options={[
           { value: 'all', label: 'All' },
-          ...members.map((member) => ({ value: member.principalId, label: member.name })),
+          ...members.map((member) => ({
+            value: member.principalId,
+            label: member.isAgent ? `${member.name} · agent` : member.name,
+          })),
         ]}
         aria-label="Filter memories by workspace member"
         className="w-40"
@@ -450,7 +473,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
             <p className="text-sm">
               {selectedMemberPrincipalId === 'all'
                 ? 'No memories yet'
-                : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this member'}`}
+                : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this owner'}`}
             </p>
             <button
               onClick={() => setShowAdd(true)}

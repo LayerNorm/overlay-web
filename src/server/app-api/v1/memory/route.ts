@@ -88,17 +88,29 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
     })).filter(({ principal }) => principal.type === 'human' && principal.userId)
+    // Agent-owned memories are attributed to the agent. Without this they read
+    // as written by a "Former member", since no workspace member owns them.
+    const agentDirectory = await server.workspaceAgentService.list({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    }).catch((_error) => ({ agents: [] as Array<{ id: string; name: string; principalId: string }> }))
     const requestedMemberPrincipalId = request.nextUrl.searchParams.get('memberPrincipalId')?.trim()
     const requestedMember = requestedMemberPrincipalId
       ? members.find(({ principal }) => principal.id === requestedMemberPrincipalId)
       : undefined
-    if (requestedMemberPrincipalId && !requestedMember?.principal.userId) {
+    // memberPrincipalId may also name a workspace agent — resolves to the
+    // agent's memory owner id so `creatorUserId` picks out its rows.
+    const requestedAgent = requestedMemberPrincipalId
+      ? agentDirectory.agents.find((agent) => agent.principalId === requestedMemberPrincipalId)
+      : undefined
+    if (requestedMemberPrincipalId && !requestedMember?.principal.userId && !requestedAgent) {
       return NextResponse.json({ error: 'Workspace member not found' }, { status: 400 })
     }
     const updatedSinceValue = Number(request.nextUrl.searchParams.get('updatedSince'))
     const rows = await service.list({
       conversationId: request.nextUrl.searchParams.get('conversationId') ?? undefined,
-      creatorUserId: requestedMember?.principal.userId,
+      creatorUserId: requestedMember?.principal.userId
+        ?? (requestedAgent ? agentMemoryOwnerId(requestedAgent.id) : undefined),
       includeDeleted,
       noteId: request.nextUrl.searchParams.get('noteId') ?? undefined,
       scope: 'workspace',
@@ -106,12 +118,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
-    // Agent-owned memories are attributed to the agent. Without this they read
-    // as written by a "Former member", since no workspace member owns them.
-    const agentDirectory = await server.workspaceAgentService.list({
-      actorUserId: context.auth.userId,
-      workspaceId: context.workspace.workspace.id,
-    }).catch((_error) => ({ agents: [] as Array<{ id: string; name: string; principalId: string }> }))
     const attributionsByUserId = new Map<string, { email?: string; name: string; principalId?: string }>([
       ...members.map(({ principal }) => [
         principal.userId!,

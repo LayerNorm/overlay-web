@@ -1,6 +1,7 @@
 'use client'
 
-import { Fragment, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Laptop, Loader2, Lock, Monitor, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
 import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
@@ -9,6 +10,8 @@ import type { AgentEnvironmentResource, ManagedHarnessPickerEntry } from '@overl
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
 
 export const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 export type AgentType = 'overlay' | 'byo'
@@ -96,6 +99,97 @@ export function AgentTypeSelector({ value, onChange, hidden }: {
           description="Run Codex, Claude Code, or Hermes on your own machines and VPSs."
         />
       </div>
+    </div>
+  )
+}
+
+interface AgentMemoryRow {
+  memoryId: string
+  content: string
+  fullContent?: string
+  type?: string
+  canDelete?: boolean
+  createdAt: number
+}
+
+const MEMORY_PREVIEW_COUNT = 5
+
+/**
+ * What this agent remembers — the rows it owns in the workspace memory store.
+ * Edit mode only; rows delete through the same endpoint as the Memories page,
+ * and "view all" deep-links into that page pre-filtered to this agent.
+ */
+export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: string }) {
+  const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void overlayAppClient.memory.getResponse({ memberPrincipalId: agentPrincipalId })
+      .then(async (res) => {
+        if (cancelled) return
+        setRows(res.ok ? unwrapPaginatedData<AgentMemoryRow>(await res.json()) : [])
+      })
+      .catch(() => { if (!cancelled) setRows([]) })
+    return () => { cancelled = true }
+  }, [agentPrincipalId])
+
+  const remove = async (memoryId: string) => {
+    if (deletingId) return
+    setDeletingId(memoryId)
+    try {
+      const res = await overlayAppClient.memory.deleteResponse({ memoryId })
+      if (res.ok) setRows((current) => current?.filter((row) => row.memoryId !== memoryId) ?? [])
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  if (rows === null) {
+    return (
+      <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
+        <Loader2 size={12} className="animate-spin" /> Loading memories…
+      </div>
+    )
+  }
+  if (rows.length === 0) return null
+
+  const preview = rows.slice(0, MEMORY_PREVIEW_COUNT)
+  return (
+    <div>
+      <p className="text-xs font-medium">Memories <span className="font-normal text-[var(--muted-light)]">{rows.length}</span></p>
+      <div className="mt-1.5 overflow-hidden rounded-xl border border-[var(--border)]">
+        {preview.map((row) => (
+          <div
+            key={row.memoryId}
+            className="group flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5 last:border-b-0"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs text-[var(--foreground)]">{row.fullContent ?? row.content}</p>
+              <p className="mt-0.5 text-[11px] text-[var(--muted-light)]">
+                {row.type ?? 'fact'} · {new Date(row.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </p>
+            </div>
+            {row.canDelete && (
+              <button
+                type="button"
+                onClick={() => void remove(row.memoryId)}
+                disabled={deletingId === row.memoryId}
+                aria-label="Delete memory"
+                className="shrink-0 text-[var(--muted-light)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
+              >
+                {deletingId === row.memoryId ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <Link
+        href={`/app/settings?section=memories&owner=${encodeURIComponent(agentPrincipalId)}`}
+        className="mt-1.5 inline-block text-[11px] text-[var(--muted)] underline underline-offset-2 transition-colors hover:text-[var(--foreground)]"
+      >
+        {rows.length > MEMORY_PREVIEW_COUNT ? `View all ${rows.length} in Memories` : 'View in Memories'}
+      </Link>
     </div>
   )
 }

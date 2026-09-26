@@ -40,6 +40,7 @@ import {
   AccessSelector,
   AgentAvatar,
   AgentBehaviorFields,
+  AgentMemoriesSection,
   AgentTypeSelector,
   AVATAR_COLORS,
   DangerZone,
@@ -823,6 +824,10 @@ export function AgentEditorPage({
                 />
 
                 <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
+
+                {mode === 'edit' && agent?.principalId ? (
+                  <AgentMemoriesSection agentPrincipalId={agent.principalId} />
+                ) : null}
 
                 <DangerZone
                   mode={mode}
