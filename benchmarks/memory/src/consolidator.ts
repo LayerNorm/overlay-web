@@ -116,7 +116,7 @@ export async function consolidateUser(args: {
   const all = await listAllMemories({ userId: args.userId })
   const now = Date.now()
   const live = all
-    .filter((m) => !m.deletedAt && !m.inferred)
+    .filter((m) => !m.deletedAt && !m.inferred && (!m.expiresAt || m.expiresAt > now))
     .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
     .slice(0, maxSources)
 
