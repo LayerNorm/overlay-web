@@ -72,6 +72,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
+import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_metrics from "../lib/metrics.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
@@ -164,6 +165,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authDebug": typeof lib_authDebug;
   "lib/browserConvexToken": typeof lib_browserConvexToken;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
+  "lib/gatewayCredits": typeof lib_gatewayCredits;
   "lib/logging": typeof lib_logging;
   "lib/metrics": typeof lib_metrics;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
