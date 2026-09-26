@@ -79,3 +79,19 @@ export function getChatModelFallbackCandidates(params: FallbackParams): string[]
     : freeFallbackCandidates(params)
   return candidates.slice(0, params.maxCandidates ?? 4)
 }
+
+/**
+ * Attempt order when the global AI Gateway key is below its credit threshold:
+ * free models first (the OpenRouter free router, then quality-ordered free
+ * candidates), then the requested model and its normal paid fallbacks as a last
+ * resort — the balance is low, not necessarily zero, so a paid retry still helps
+ * when the free pool is saturated.
+ */
+export function getLowCreditFallbackAttemptModelIds(params: FallbackParams & {
+  paidFallbackModelIds?: readonly string[]
+}): string[] {
+  const freeIds = [FREE_TIER_AUTO_MODEL_ID, ...freeFallbackCandidates(params)]
+    .filter((modelId) => supportsRequiredInputs(modelId, params))
+  const merged = [...freeIds, params.modelId, ...(params.paidFallbackModelIds ?? [])]
+  return [...new Set(merged)].slice(0, params.maxCandidates ?? 4)
+}

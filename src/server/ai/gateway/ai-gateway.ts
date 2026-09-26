@@ -6,7 +6,17 @@ import {
   registerGatewayCatalogModels,
 } from '@/shared/ai/gateway/model-data'
 import { calculateGatewayLanguageTokenCostOrNull } from '@/shared/ai/gateway/model-pricing'
+import {
+  FREE_TIER_AUTO_MODEL_ID,
+  NVIDIA_NIM_MODEL_IDS,
+} from '@/shared/ai/gateway/model-types'
+import { logger } from '@/server/observability/logger'
+import {
+  createNvidiaNimChatLanguageModel,
+  resolveNvidiaApiKey,
+} from '@/server/ai/gateway/nvidia-nim-openai'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/server/ai/gateway/openrouter-service'
+import { isGatewayCreditLow } from './gateway-credits'
 import { getGatewayCatalogModel, getGatewayLanguageCatalog } from './gateway-catalog'
 import {
   getGatewayModelId,
@@ -121,15 +131,42 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
   return openrouter.chat(toOpenRouterApiModelId(modelId))
 }
 
+/**
+ * When the global gateway key is nearly out of credit, serve chat from the
+ * OpenRouter free router (or the NVIDIA NIM free model when OpenRouter has no
+ * key). Returns null when no free transport is configured.
+ */
+async function getLowBalanceFallbackLanguageModel(accessToken?: string) {
+  if (await resolveOpenRouterApiKey(accessToken)) {
+    return getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
+  }
+  const nvidiaKey = await resolveNvidiaApiKey(accessToken)
+  if (nvidiaKey) {
+    return createNvidiaNimChatLanguageModel(NVIDIA_NIM_MODEL_IDS[0], nvidiaKey)
+  }
+  return null
+}
+
 export async function getGatewayLanguageModel(
   modelId: string,
   accessToken?: string,
+  options?: { allowLowBalanceFallback?: boolean },
 ) {
   const model = getModel(modelId)
 
   // Route OpenRouter models to OpenRouter API
   if (model?.provider === 'openrouter') {
     return getOpenRouterLanguageModel(modelId, accessToken)
+  }
+
+  if (options?.allowLowBalanceFallback !== false && (await isGatewayCreditLow())) {
+    const fallback = await getLowBalanceFallbackLanguageModel(accessToken)
+    if (fallback) {
+      logger.warn('[ai-gateway] low gateway credit — resolving to a free model', {
+        requestedModelId: modelId,
+      })
+      return fallback
+    }
   }
 
   const gateway = await getOrCreateGateway(accessToken)
@@ -175,7 +212,9 @@ export class OpenRouterGateway implements LLMGateway {
     options: ModelOptions = {},
   ): Promise<LanguageModel> {
     const model = getModel(modelId)
-    const implementation = await getGatewayLanguageModel(modelId, options.accessToken)
+    const implementation = await getGatewayLanguageModel(modelId, options.accessToken, {
+      allowLowBalanceFallback: options.allowLowBalanceFallback,
+    })
     return {
       id: modelId,
       provider: model?.provider,

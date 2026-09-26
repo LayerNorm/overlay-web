@@ -43,6 +43,7 @@ export async function getLanguageModel(
   modelId: string,
   accessToken?: string,
   userId?: string,
+  options?: { allowLowBalanceFallback?: boolean },
 ): Promise<LanguageModel> {
   const parsed = parseByokModelId(modelId)
   if (isByokModelId(modelId) && !parsed) throw new Error('Invalid BYOK model id.')
@@ -67,7 +68,10 @@ export async function getLanguageModel(
 
   const model = await getOverlayServerContext().llmGateway.createLanguageModel(
     modelId,
-    { accessToken },
+    {
+      accessToken,
+      allowLowBalanceFallback: options?.allowLowBalanceFallback,
+    },
   )
   return model.implementation as LanguageModel
 }

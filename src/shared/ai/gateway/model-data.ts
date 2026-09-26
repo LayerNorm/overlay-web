@@ -4,6 +4,7 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
+  isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import {
   gatewayCatalogModelToChatModel,
@@ -346,6 +347,17 @@ export function intelligenceToBarFill5(m: ChatModel): number {
 export function modelUsesOpenRouterTransport(modelId: string): boolean {
   const p = getModel(modelId)?.provider
   return p === 'openrouter'
+}
+
+/**
+ * True when completions are served via the Vercel AI Gateway on the global
+ * `AI_GATEWAY_API_KEY` — the metered path that runs out of credit. OpenRouter
+ * (free router), NVIDIA NIM, and BYOK models use separate credentials.
+ */
+export function modelUsesAiGatewayTransport(modelId: string): boolean {
+  if (isByokModelId(modelId)) return false
+  if (isNvidiaNimChatModelId(modelId)) return false
+  return !modelUsesOpenRouterTransport(modelId)
 }
 
 export function modelSupportsZeroDataRetention(modelId: string): boolean {
