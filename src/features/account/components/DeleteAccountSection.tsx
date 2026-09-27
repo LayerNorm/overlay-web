@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
 import { useDialogFocus, usePresence } from '@overlay/ui'
@@ -134,7 +134,7 @@ function DeleteAccountDialog({
   onConfirm,
 }: {
   visible: boolean
-  dialogRef: ReturnType<typeof useDialogFocus>
+  dialogRef: RefObject<HTMLDivElement | null>
   isLandingDark: boolean
   confirmInput: string
   submitting: boolean

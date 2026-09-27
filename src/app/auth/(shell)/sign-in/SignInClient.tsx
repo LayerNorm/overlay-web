@@ -344,7 +344,7 @@ export function SignInClient({
   const forceLogin = searchParams?.get("force") === "true";
   const isDesktopAuth = redirectUrl.startsWith("overlay://");
 
-  const [seenSearchParams, setSeenSearchParams] = useState<ReturnType<typeof useSearchParams>>(null);
+  const [seenSearchParams, setSeenSearchParams] = useState<ReturnType<typeof useSearchParams> | null>(null);
   if (seenSearchParams !== searchParams) {
     setSeenSearchParams(searchParams);
     const errorParam = searchParams?.get("error");
