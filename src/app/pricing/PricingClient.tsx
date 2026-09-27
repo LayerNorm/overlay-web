@@ -602,7 +602,9 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     if (!isAuthenticated || !user?.id) return
 
     let active = true
-    setSubscriptionLoading(true)
+    void Promise.resolve().then(() => {
+      if (active) setSubscriptionLoading(true)
+    })
 
     void Promise.all([
       fetch(`/api/subscription?userId=${encodeURIComponent(user.id)}`).then(async (response) => {
