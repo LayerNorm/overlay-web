@@ -432,6 +432,7 @@ function PdfViewer({
         <iframe
           src={iframeSrc}
           referrerPolicy="no-referrer"
+          sandbox=""
           className="min-h-0 flex-1 w-full border-none"
           title={name}
           onError={() => setPreviewFailed(true)}
