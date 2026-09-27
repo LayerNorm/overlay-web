@@ -209,9 +209,12 @@ async function emitToolContent(
   content: acp.ToolCallContent[] | null | undefined,
   emit: EmitAgentEvent,
 ) {
+  // Sequential on purpose: emitted events form an ordered stream the consumer
+  // renders in order, so they must not be reordered by parallel emission.
   for (const [index, item] of (content ?? []).entries()) {
     if (item.type === 'diff') {
       const oldText = item.oldText ?? ''
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       await emit({ type: 'diff', payload: {
         diffId: `${toolCallId}-diff-${index}`,
         title: item.path.slice(0, 2_000),

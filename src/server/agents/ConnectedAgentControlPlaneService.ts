@@ -315,14 +315,15 @@ export class ConnectedAgentControlPlaneService {
     }
     const now = this.now()
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId })
-    let sessionsCleared = 0
-    for (const binding of bindings.filter((candidate) => candidate.environmentId === args.environmentId)) {
-      sessionsCleared += await this.dependencies.repository.deleteHarnessSessionsForBinding({
-        workspaceId: args.workspaceId,
-        bindingId: binding.id,
-        now,
-      })
-    }
+    const clearedCounts = await Promise.all(
+      bindings
+        .filter((candidate) => candidate.environmentId === args.environmentId)
+        .map((binding) => this.dependencies.repository.deleteHarnessSessionsForBinding({
+          workspaceId: args.workspaceId,
+          bindingId: binding.id,
+          now,
+        })))
+    const sessionsCleared = clearedCounts.reduce((total, count) => total + count, 0)
     // Deleting the provider sandbox is best-effort: the next turn reconciles a
     // missing or expired instance into a fresh one either way.
     const lease = await this.dependencies.repository.getActiveSandboxLease({
@@ -701,7 +702,7 @@ export class ConnectedAgentControlPlaneService {
     const now = this.now()
     const artifacts = await this.dependencies.repository.listArtifactsForCleanup({ now, limit })
     let failed = 0
-    for (const artifact of artifacts) {
+    await Promise.all(artifacts.map(async (artifact) => {
       try {
         await this.requireObjectStore().deleteObject(artifact.objectKey)
         await this.dependencies.repository.markArtifactDeleted({ artifactId: artifact.id, now })
@@ -721,7 +722,7 @@ export class ConnectedAgentControlPlaneService {
             runId: artifact.runId, remoteSessionId: artifact.remoteSessionId },
         }).catch((_error) => undefined)
       }
-    }
+    }))
     return { deleted: artifacts.length - failed, ...(failed > 0 ? { failed } : {}) }
   }
 
@@ -730,20 +731,20 @@ export class ConnectedAgentControlPlaneService {
     const result = await this.dependencies.repository.sweepRemoteRuns({
       now, hostOfflineBefore: now - 90_000, limit: 100,
     })
-    if (this.dependencies.settleUsage) for (const settlement of result.settlements) {
-      if (settlement.reservationId || settlement.sandboxBilling?.reservationId) {
-        await this.settleWithAudit(settlement).catch((_error) => undefined)
-      }
+    if (this.dependencies.settleUsage) {
+      await Promise.all(result.settlements
+        .filter((settlement) => settlement.reservationId || settlement.sandboxBilling?.reservationId)
+        .map((settlement) => this.settleWithAudit(settlement).catch((_error) => undefined)))
     }
-    for (const alert of result.alerts) {
+    await Promise.all(result.alerts.map((alert) => {
       logger.warn('Connected-agent operational alert', alert)
-      await this.dependencies.audit.record({
+      return this.dependencies.audit.record({
         action: `agent_operations.${alert.code}`, actorType: 'service', outcome: 'failure',
         resourceType: alert.runId ? 'agent_run' : 'agent_environment',
         resourceId: alert.runId ?? alert.environmentId ?? alert.workspaceId,
         metadata: alert,
       }).catch((_error) => undefined)
-    }
+    }))
     return result
   }
 
@@ -752,16 +753,16 @@ export class ConnectedAgentControlPlaneService {
     const pending = await this.dependencies.repository.listPendingSandboxSettlements({
       limit: Math.max(1, Math.min(100, Math.floor(limit))),
     })
-    let failed = 0
-    let settled = 0
-    for (const settlement of pending) {
+    const outcomes = await Promise.all(pending.map(async (settlement) => {
       try {
         await this.settleWithAudit(settlement)
-        settled += 1
+        return true
       } catch (_error) {
-        failed += 1
+        return false
       }
-    }
+    }))
+    const settled = outcomes.filter(Boolean).length
+    const failed = pending.length - settled
     return { attempted: pending.length, failed, settled }
   }
 

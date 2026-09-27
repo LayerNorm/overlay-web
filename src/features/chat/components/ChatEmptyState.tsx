@@ -1,6 +1,6 @@
 'use client'
 
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion'
 import { Globe2, Image as ImageIcon, PenLine, Zap, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -35,9 +35,10 @@ export function ChatEmptyHero({
   greetingLine: string
 }) {
   return (
+    <LazyMotion features={domAnimation}>
     <AnimatePresence initial={false}>
       {visible && (
-        <motion.div
+        <m.div
           key="chat-empty-hero"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -47,9 +48,10 @@ export function ChatEmptyHero({
           <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
             {greetingLine}
           </p>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
+    </LazyMotion>
   )
 }
 
@@ -64,9 +66,10 @@ export function ChatEmptyState({
 
   return (
     <>
+      <LazyMotion features={domAnimation}>
       <AnimatePresence initial={false}>
         {visible && (
-          <motion.div
+          <m.div
             key="chat-suggestions"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -92,9 +95,10 @@ export function ChatEmptyState({
                 </button>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
+      </LazyMotion>
       {visible && belowComposer ? (
         <div className="mx-auto mt-8 w-full max-w-[36rem] min-w-0 px-0">
           {belowComposer}

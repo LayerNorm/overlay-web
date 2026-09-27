@@ -158,8 +158,8 @@ export const runMinuteTick = internalAction({
     )
 
     const allJobs = [...queuedJobs, ...stuckJobs]
-    for (const job of allJobs) {
-      await ctx.scheduler.runAfter(
+    await Promise.all(allJobs.map((job) =>
+      ctx.scheduler.runAfter(
         0,
         internal.imports.slackRunner.processJob,
         {
@@ -170,8 +170,7 @@ export const runMinuteTick = internalAction({
           selectedChannelIds: job.selectedChannelIds,
           createdAt: job.createdAt,
         },
-      )
-    }
+      )))
 
     return null
   },

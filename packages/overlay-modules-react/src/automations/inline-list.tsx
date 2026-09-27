@@ -53,6 +53,7 @@ export function AutomationsInlineList({
   if (automations.length === 0) {
     return <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No automations yet</p>
   }
+  const deletingAutomationIdSet = new Set(deletingAutomationIds)
 
   return (
     <div className="space-y-0.5">
@@ -67,7 +68,7 @@ export function AutomationsInlineList({
         const automationLabel = getAutomationDisplayName(automation)
         const isActive = activeAutomationId === automation._id || activeId === automation._id || activeId === conversationId
         const isEditing = editingAutomationId === automation._id
-        const isDeleting = deletingAutomationIds.includes(automation._id)
+        const isDeleting = deletingAutomationIdSet.has(automation._id)
         const isConfirmingDelete = pendingDeleteAutomationId === automation._id
         const href = automationHref(automation)
         return (

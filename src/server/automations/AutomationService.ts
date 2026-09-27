@@ -141,6 +141,16 @@ function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
   return `monthly:${schedule.dayOfMonthUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
 }
 
+const UTC_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+const UTC_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  weekday: 'long',
+})
+
 function formatLocalTime(date: Date, timezone: string): string {
   try {
     return new Intl.DateTimeFormat('en-US', {
@@ -149,11 +159,7 @@ function formatLocalTime(date: Date, timezone: string): string {
       minute: '2-digit',
     }).format(date)
   } catch (_error) {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
+    return UTC_TIME_FORMATTER.format(date)
   }
 }
 
@@ -164,10 +170,7 @@ function weekdayName(date: Date, timezone: string): string {
       weekday: 'long',
     }).format(date)
   } catch (_error) {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
-      weekday: 'long',
-    }).format(date)
+    return UTC_WEEKDAY_FORMATTER.format(date)
   }
 }
 
@@ -454,14 +457,13 @@ export class AutomationService {
       workspaceId: args.workspaceId,
     })
 
-    for (const conversationId of linkedConversationIds) {
-      await this.deps.repository.removeConversation({
+    await Promise.all(linkedConversationIds.map((conversationId) =>
+      this.deps.repository.removeConversation({
         conversationId,
         userId: args.userId,
       }).catch((error) => {
         logger.warn('[automations DELETE] Failed to delete linked conversation', error)
-      })
-    }
+      })))
 
     return { success: true, linkedConversationIds }
   }

@@ -204,7 +204,9 @@ async function writeWorkStreamParts(parts: Array<Record<string, unknown>>) {
   if (parts.length === 0) return
   const writer = getWritable<ModelCallStreamPart<ToolSet>>().getWriter()
   try {
+    // Sequential on purpose: stream parts must reach the client in order.
     for (const part of parts) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       await writer.write(part as ModelCallStreamPart<ToolSet>)
     }
   } finally {
@@ -319,33 +321,36 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
         const outcomes = new Map<string, WorkToolOutcome>()
         const pending: PendingApproval[] = []
 
-        for (const toolCall of call.toolCalls) {
+        const contexts = call.toolCalls.map((toolCall) => ({
+          ...input.toolingContext,
+          agentRunId: input.agentRunId,
+          toolName: toolCall.toolName,
+        }))
+        const definitions = call.toolCalls.map((toolCall) =>
+          input.toolDefinitions.find((entry) => entry.name === toolCall.toolName))
+        const approvalDecisions = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
+          const definition = definitions[i]
+          if (!definition?.needsApproval) return false
+          return personalChatWorkToolNeedsApproval(toolCall.input, {
+            context: contexts[i]!,
+            messages,
+            toolCallId: toolCall.toolCallId,
+          })
+        }))
+        const immediateParts = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
           stepContent.push({ type: 'tool-call', ...toolCall })
-          const definition = input.toolDefinitions.find(
-            (entry) => entry.name === toolCall.toolName,
-          )
-          const context = {
-            ...input.toolingContext,
-            agentRunId: input.agentRunId,
-            toolName: toolCall.toolName,
-          }
+          const definition = definitions[i]
+          const context = contexts[i]!
           if (!definition) {
             outcomes.set(
               toolCall.toolCallId,
               workToolErrorOutcome(toolCall, `Tool ${toolCall.toolName} is not available for this run.`),
             )
-            continue
+            return null
           }
-          if (
-            definition.needsApproval
-            && await personalChatWorkToolNeedsApproval(toolCall.input, {
-              context,
-              messages,
-              toolCallId: toolCall.toolCallId,
-            })
-          ) {
+          if (approvalDecisions[i]) {
             pending.push({ context, toolCall })
-            continue
+            return null
           }
           try {
             const output = await executePersonalChatWorkTool(toolCall.input, {
@@ -365,26 +370,27 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
                 output,
               },
             })
-            await writeWorkStreamParts([{
+            return {
               type: 'tool-result',
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
               input: toolCall.input,
               output,
-            }])
+            } as Record<string, unknown>
           } catch (toolError) {
             // A failed tool is fed back to the model (streamText parity) —
             // it does not fail the turn.
             const reason = toolError instanceof Error ? toolError.message : 'Tool execution failed'
             outcomes.set(toolCall.toolCallId, workToolErrorOutcome(toolCall, reason))
-            await writeWorkStreamParts([{
+            return {
               type: 'tool-error',
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
               error: reason,
-            }])
+            } as Record<string, unknown>
           }
-        }
+        }))
+        await writeWorkStreamParts(immediateParts.filter((part): part is Record<string, unknown> => part !== null))
 
         if (pending.length > 0) {
           if (approvalCycle >= MAX_WORK_APPROVAL_CYCLES) {
@@ -412,18 +418,16 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
             resourceUserId: input.resourceUserId,
           })
           stepsSinceApproval = 0
-          const resolvedParts: Array<Record<string, unknown>> = []
-          for (const { context, toolCall } of pending) {
+          const resolvedParts = await Promise.all(pending.map(async ({ context, toolCall }) => {
             if (!decision.approved) {
               outcomes.set(
                 toolCall.toolCallId,
                 workToolErrorOutcome(toolCall, decision.reason ?? WORK_TOOL_APPROVAL_DENIAL),
               )
-              resolvedParts.push({
+              return {
                 type: 'tool-output-denied',
                 toolCallId: toolCall.toolCallId,
-              })
-              continue
+              } as Record<string, unknown>
             }
             try {
               const output = await executePersonalChatWorkTool(toolCall.input, {
@@ -443,24 +447,24 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
                   output,
                 },
               })
-              resolvedParts.push({
+              return {
                 type: 'tool-result',
                 toolCallId: toolCall.toolCallId,
                 toolName: toolCall.toolName,
                 input: toolCall.input,
                 output,
-              })
+              } as Record<string, unknown>
             } catch (toolError) {
               const reason = toolError instanceof Error ? toolError.message : 'Tool execution failed'
               outcomes.set(toolCall.toolCallId, workToolErrorOutcome(toolCall, reason))
-              resolvedParts.push({
+              return {
                 type: 'tool-error',
                 toolCallId: toolCall.toolCallId,
                 toolName: toolCall.toolName,
                 error: reason,
-              })
+              } as Record<string, unknown>
             }
-          }
+          }))
           await writeWorkStreamParts(resolvedParts)
         }
 

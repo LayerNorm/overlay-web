@@ -92,7 +92,8 @@ function createConversationRuntime(
 
 export function useChatRuntimes(activeChatId: string | null) {
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
-  const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
+  const emptyRuntimeRef = useRef<ConversationRuntime>(null!)
+  emptyRuntimeRef.current ??= createConversationRuntime('__empty__')
 
   const ensureConversationRuntime = useCallback((chatId: string, uiOverrides?: Partial<ConversationUiState>) => {
     const existing = runtimesRef.current.get(chatId)

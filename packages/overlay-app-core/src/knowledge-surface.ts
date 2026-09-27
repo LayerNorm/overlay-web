@@ -587,7 +587,7 @@ export class KnowledgeSurfaceController {
         ids,
         expectedRevisions: Object.fromEntries(
           previous
-            .filter((node) => ids.includes(node.id) && node.revision)
+            .filter((node) => deleted.has(node.id) && node.revision)
             .map((node) => [node.id, node.revision!.revision]),
         ),
       })

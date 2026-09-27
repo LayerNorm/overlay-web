@@ -207,16 +207,16 @@ export const add = mutation({
         const candNorm = candidate.content.toLowerCase().replace(/\s+/g, ' ').trim()
         if (candNorm === normalized) {
           // Exact duplicate = another corroborating source: bump freshness
-          // and sourceCount on the row and its chunks.
+          // and sourceCount on the row and its chunks. Sequential: returns on
+          // the first match, so later candidates are never touched.
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop
           const sourceCount = (candidate.sourceCount ?? 1) + 1
           await ctx.db.patch(candidate._id, { updatedAt: Date.now(), sourceCount })
           const chunks = await ctx.db
             .query('knowledgeChunks')
             .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', candidate._id))
             .collect()
-          for (const chunk of chunks) {
-            await ctx.db.patch(chunk._id, { updatedAt: Date.now(), sourceCount })
-          }
+          await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { updatedAt: Date.now(), sourceCount })))
           return candidate._id
         }
       }
@@ -368,9 +368,7 @@ export const touch = mutation({
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memoryId))
       .collect()
-    for (const chunk of chunks) {
-      await ctx.db.patch(chunk._id, { updatedAt: now, sourceCount })
-    }
+    await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { updatedAt: now, sourceCount })))
   },
 })
 
@@ -447,9 +445,7 @@ export const supersede = mutation({
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', old._id))
       .collect()
-    for (const chunk of oldChunks) {
-      await ctx.db.patch(chunk._id, { superseded: true })
-    }
+    await Promise.all(oldChunks.map((chunk) => ctx.db.patch(chunk._id, { superseded: true })))
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
       memoryId: newId,
       trustedInternal: validateServerSecret(args.serverSecret),
@@ -478,11 +474,8 @@ export const getByIds = query({
     } catch {
       return []
     }
-    const out = []
-    for (const id of memoryIds.slice(0, 50)) {
-      const m = await ctx.db.get(id)
-      if (m && m.userId === userId && (includeDeleted || !m.deletedAt)) out.push(normalizeMemoryDoc(m))
-    }
-    return out
+    const docs = await Promise.all(memoryIds.slice(0, 50).map((id) => ctx.db.get(id)))
+    return docs.filter((m) => m && m.userId === userId && (includeDeleted || !m.deletedAt))
+      .map((m) => normalizeMemoryDoc(m!))
   },
 })

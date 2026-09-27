@@ -154,8 +154,10 @@ function BrandMark({ logoSrc, logoAlt, size, className }: {
   )
 }
 
+const NO_COLLABORATION_NOTIFICATIONS: AppSidebarProps['collaborationNotifications'] & never[] = []
+
 export default function AppSidebar({
-  collaborationNotifications = [],
+  collaborationNotifications = NO_COLLABORATION_NOTIFICATIONS,
   publicShowcase = false,
   renderChatPanel,
   renderAutomationsPanel,

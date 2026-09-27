@@ -46,6 +46,14 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
   const [testResult, setTestResult] = useState<{ ok: boolean; models: DiscoveredModel[]; error?: string } | null>(null)
   const [testing, setTesting] = useState(false)
   const [enabledModelIds, setEnabledModelIds] = useState<string[]>(existing?.enabledModelIds ?? [])
+  const enabledModelIdSet = useMemo(() => new Set(enabledModelIds), [enabledModelIds])
+  const toggleEnabledModel = (modelId: string) =>
+    setEnabledModelIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(modelId)) next.delete(modelId)
+      else next.add(modelId)
+      return [...next]
+    })
   const [showApiKey, setShowApiKey] = useState(false)
 
   const preset = getByokPreset(providerId)
@@ -347,14 +355,8 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                       >
                         <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
                         <Toggle
-                          checked={enabledModelIds.includes(model.id)}
-                          onCheckedChange={() => {
-                            setEnabledModelIds((prev) =>
-                              prev.includes(model.id)
-                                ? prev.filter((id) => id !== model.id)
-                                : [...prev, model.id],
-                            )
-                          }}
+                          checked={enabledModelIdSet.has(model.id)}
+                          onCheckedChange={() => toggleEnabledModel(model.id)}
                           aria-label={formatByokModelDisplayName(model.id, model.name)}
                         />
                       </div>
@@ -385,14 +387,8 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                 >
                   <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
                   <Toggle
-                    checked={enabledModelIds.includes(model.id)}
-                    onCheckedChange={() => {
-                      setEnabledModelIds((prev) =>
-                        prev.includes(model.id)
-                          ? prev.filter((id) => id !== model.id)
-                          : [...prev, model.id],
-                      )
-                    }}
+                    checked={enabledModelIdSet.has(model.id)}
+                    onCheckedChange={() => toggleEnabledModel(model.id)}
                     aria-label={formatByokModelDisplayName(model.id, model.name)}
                   />
                 </div>

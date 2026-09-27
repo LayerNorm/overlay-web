@@ -205,18 +205,28 @@ export async function runAutomationAgentTurn(
       const toolResultContent: Array<Record<string, unknown>> = []
       const stepToolResults: Array<Record<string, unknown>> = []
       const stepContent: Array<Record<string, unknown>> = []
-      for (const toolCall of call.toolCalls) {
-        stepContent.push({ type: 'tool-call', ...toolCall })
-        const definition = resolvedPlan.toolDefinitions.find(
-          (entry) => entry.name === toolCall.toolName,
-        )
-        const context = {
-          ...resolvedPlan.toolingContext,
-          automationRunId,
-          toolName: toolCall.toolName,
-        }
+      const toolContexts = call.toolCalls.map((toolCall) => ({
+        ...resolvedPlan.toolingContext,
+        automationRunId,
+        toolName: toolCall.toolName,
+      }))
+      const toolCallDefinitions = call.toolCalls.map((toolCall) =>
+        resolvedPlan.toolDefinitions.find((entry) => entry.name === toolCall.toolName))
+      const toolCallApprovals = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
+        const definition = toolCallDefinitions[i]
+        if (!definition?.needsApproval) return false
+        return personalChatWorkToolNeedsApproval(toolCall.input, {
+          context: toolContexts[i]!,
+          messages,
+          toolCallId: toolCall.toolCallId,
+        })
+      }))
+      const toolCallResults = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
+        const definition = toolCallDefinitions[i]
+        const context = toolContexts[i]!
         let output: Record<string, unknown>
         let transcriptResult: Record<string, unknown>
+        let failure: { toolCallId: string; toolName: string; error: string } | null = null
         if (!definition) {
           const reason = `Tool ${toolCall.toolName} is not available for this run.`
           output = { type: 'error-text', value: reason }
@@ -228,19 +238,12 @@ export async function runAutomationAgentTurn(
             error: reason,
             output: { error: reason },
           }
-          turnToolFailures.push({
+          failure = {
             toolCallId: toolCall.toolCallId,
             toolName: toolCall.toolName,
             error: reason,
-          })
-        } else if (
-          definition.needsApproval
-          && await personalChatWorkToolNeedsApproval(toolCall.input, {
-            context,
-            messages,
-            toolCallId: toolCall.toolCallId,
-          })
-        ) {
+          }
+        } else if (toolCallApprovals[i]) {
           output = { type: 'execution-denied', reason: AUTOMATION_TOOL_APPROVAL_DENIAL }
           transcriptResult = {
             type: 'tool-error',
@@ -250,11 +253,11 @@ export async function runAutomationAgentTurn(
             error: AUTOMATION_TOOL_APPROVAL_DENIAL,
             output: { error: AUTOMATION_TOOL_APPROVAL_DENIAL },
           }
-          turnToolFailures.push({
+          failure = {
             toolCallId: toolCall.toolCallId,
             toolName: toolCall.toolName,
             error: AUTOMATION_TOOL_APPROVAL_DENIAL,
-          })
+          }
         } else {
           try {
             const result = await executePersonalChatWorkTool(toolCall.input, {
@@ -285,13 +288,19 @@ export async function runAutomationAgentTurn(
               error: reason,
               output: { error: reason },
             }
-            turnToolFailures.push({
+            failure = {
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
               error: reason,
-            })
+            }
           }
         }
+        return { failure, output, transcriptResult }
+      }))
+      for (const [i, toolCall] of call.toolCalls.entries()) {
+        const { failure, output, transcriptResult } = toolCallResults[i]!
+        stepContent.push({ type: 'tool-call', ...toolCall })
+        if (failure) turnToolFailures.push(failure)
         stepToolResults.push(transcriptResult)
         stepContent.push(transcriptResult)
         toolResultContent.push({

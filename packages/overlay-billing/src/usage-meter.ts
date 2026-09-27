@@ -14,8 +14,6 @@ export class UsageMeter {
   }
 
   async recordUsageBatch(events: readonly UsageArgs[]): Promise<void> {
-    for (const event of events) {
-      await this.recordUsage(event)
-    }
+    await Promise.all(events.map((event) => this.recordUsage(event)))
   }
 }

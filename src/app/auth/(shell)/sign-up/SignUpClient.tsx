@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { LandingAuthPageChrome } from '../../_components/AuthPageChrome'
@@ -45,7 +45,7 @@ export function SignUpClient({
   const [ssoLoading, setSsoLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [verificationTicket, setVerificationTicket] = useState<string | null>(null)
+  const verificationTicketRef = useRef<string | null>(null)
   const [verificationCode, setVerificationCode] = useState('')
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
@@ -99,7 +99,7 @@ export function SignUpClient({
 
       // Store userId for verification and show verification UI
       if (typeof data.verificationTicket === 'string' && data.verificationTicket.trim()) {
-        setVerificationTicket(data.verificationTicket)
+        verificationTicketRef.current = data.verificationTicket
       }
       setSuccess(true)
     } catch {
@@ -111,6 +111,7 @@ export function SignUpClient({
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault()
+    const verificationTicket = verificationTicketRef.current
     if (!verificationTicket || !verificationCode) return
 
     setVerifying(true)
@@ -139,6 +140,7 @@ export function SignUpClient({
   }
 
   const handleResendCode = async () => {
+    const verificationTicket = verificationTicketRef.current
     if (!verificationTicket) return
 
     setResending(true)

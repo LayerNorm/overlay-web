@@ -44,11 +44,12 @@ export const runProjectionTick = internalAction({
       return null
     }
 
-    for (const run of activeRuns) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await Promise.all((activeRuns as any[]).map(async (run: any) => {
       try {
         const workflowRun = getRun(run.workflowRunId)
         const exists = await workflowRun.exists
-        if (!exists) continue
+        if (!exists) return
 
         // Get the latest projected event timestamp for this run
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,7 +89,10 @@ export const runProjectionTick = internalAction({
           const stack = eventData?.stack as string | undefined
           const attempt = eventData?.attempt as number | undefined
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // Step events are ordered (created → completed); a parallel batch
+          // could commit them out of order, so keep this loop sequential.
+          /* eslint-disable @typescript-eslint/no-explicit-any */
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop
           await ctx.runMutation((internal as any).automations.workflowEventProjector.recordStepEventInternal, {
             userId: run.userId,
             workflowRunId: run.workflowRunId,
@@ -104,7 +108,8 @@ export const runProjectionTick = internalAction({
       } catch (_error) {
         // Skip this run on error, continue with the next one
       }
-    }
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    }))
 
     return null
   },

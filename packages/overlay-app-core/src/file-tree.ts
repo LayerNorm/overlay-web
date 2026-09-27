@@ -44,13 +44,14 @@ export function filterFilesForTreeSearch<T extends Pick<FileTreeEntry, '_id' | '
   const q = query.trim().toLowerCase()
   if (!q) return [...files]
   const keep = new Set<string>()
+  const byId = new Map(files.map((file) => [file._id, file]))
   for (const file of files) {
     if (file.name.toLowerCase().includes(q)) {
       keep.add(file._id)
       let parentId = file.parentId
       while (parentId) {
         keep.add(parentId)
-        parentId = files.find((candidate) => candidate._id === parentId)?.parentId ?? null
+        parentId = byId.get(parentId)?.parentId ?? null
       }
     }
   }

@@ -30,6 +30,8 @@ const SHOWCASE_ITEMS: WorkspaceManagementItem[] = [
   },
 ]
 
+const NO_EXCLUDED_PRINCIPAL_IDS: string[] = []
+
 export function NewDirectMessageDialog({
   open,
   workspaceId,
@@ -37,7 +39,7 @@ export function NewDirectMessageDialog({
   addToConversationId,
   addToConversationType = 'channel',
   showcase = false,
-  excludedPrincipalIds = [],
+  excludedPrincipalIds = NO_EXCLUDED_PRINCIPAL_IDS,
   onOpenChange,
   onCreated,
   onParticipantsAdded,
@@ -91,11 +93,12 @@ export function NewDirectMessageDialog({
 
   const candidates = useMemo(() => {
     const needle = query.trim().toLowerCase()
+    const excludedPrincipalIdSet = new Set(excludedPrincipalIds)
     return items
       .filter((item) => (
         item.principalId !== currentPrincipalId
         && item.status === 'active'
-        && !excludedPrincipalIds.includes(item.principalId ?? '')
+        && !excludedPrincipalIdSet.has(item.principalId ?? '')
       ))
       .filter((item) => !needle || `${item.name} ${item.description ?? ''}`.toLowerCase().includes(needle))
   }, [currentPrincipalId, excludedPrincipalIds, items, query])
@@ -216,9 +219,11 @@ export function NewDirectMessageDialog({
                 <div key={row} className="h-11 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
               ))}
             </div>
-          ) : candidates.length > 0 ? candidates.map((item) => {
+          ) : candidates.length > 0 ? (() => {
+            const selectedSet = new Set(selected)
+            return candidates.map((item) => {
             const principalId = item.principalId!
-            const checked = selected.includes(principalId)
+            const checked = selectedSet.has(principalId)
             const AgentIcon = item.principalType === 'agent' ? Bot : UserRound
             return (
               <button
@@ -245,7 +250,8 @@ export function NewDirectMessageDialog({
                 </span>
               </button>
             )
-          }) : emailQuery ? (
+          })
+          })() : emailQuery ? (
             <button
               type="button"
               disabled={busy || inviteSent}

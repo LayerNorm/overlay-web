@@ -5,6 +5,7 @@ function cloneStructured<T>(value: T): T {
   try {
     return structuredClone(value)
   } catch {
+    // react-doctor-disable-next-line react-doctor/no-json-parse-stringify-clone
     return JSON.parse(JSON.stringify(value)) as T
   }
 }

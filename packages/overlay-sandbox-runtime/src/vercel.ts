@@ -110,8 +110,10 @@ export class VercelSandboxRuntime implements SandboxRuntime {
 
   private async credentialPlaceholders(request: SandboxCreateRequest) {
     const values: Record<string, string> = {}
-    for (const binding of request.credentials ?? []) {
-      const material = await requiredBroker(this.options).resolve(binding)
+    const materials = await Promise.all((request.credentials ?? []).map((binding) =>
+      requiredBroker(this.options).resolve(binding)))
+    for (const [i, binding] of (request.credentials ?? []).entries()) {
+      const material = materials[i]!
       values[binding.environmentVariable] = material.placeholder ?? `overlay-broker://${binding.brokerRef}`
     }
     return values
@@ -126,8 +128,10 @@ export class VercelSandboxRuntime implements SandboxRuntime {
     if (policy.mode === 'allowlist') {
       for (const domain of policy.domains ?? []) allowed.set(domain, [])
     }
-    for (const binding of credentials) {
-      const material = await requiredBroker(this.options).resolve(binding)
+    const materials = await Promise.all(credentials.map((binding) =>
+      requiredBroker(this.options).resolve(binding)))
+    for (const [i, binding] of credentials.entries()) {
+      const material = materials[i]!
       for (const domain of binding.allowedDomains) {
         const rules = allowed.get(domain) ?? []
         rules.push({ transform: [{ headers: material.headers }] })

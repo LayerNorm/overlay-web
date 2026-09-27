@@ -265,8 +265,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   // paint a full-screen click shield that made Accept invitation unclickable.
   const showTourChrome = (active || isClosing) && !onInvitationRoute
 
+  const onboardingContextValue = useMemo(() => ({ startTour }), [startTour])
+
   return (
-    <OnboardingContext.Provider value={{ startTour }}>
+    <OnboardingContext.Provider value={onboardingContextValue}>
       {children}
       {showTourChrome && isMobile && (
         <MobileWelcomeCard onDismiss={closeTour} />

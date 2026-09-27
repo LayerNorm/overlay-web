@@ -246,6 +246,9 @@ export function ChatExperienceHeader({
   reasoning,
   onReasoningChange,
 }: ChatExperienceHeaderProps) {
+  const selectedImageModelSet = new Set(selectedImageModels)
+  const selectedVideoModelSet = new Set(selectedVideoModels)
+  const selectedModelSet = new Set(selectedModels)
   return (
     <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
       <div
@@ -519,7 +522,7 @@ export function ChatExperienceHeader({
                     ) : null}
                     {generationMode === 'image'
                       ? imageModels.map((m) => {
-                          const isSel = selectedImageModels.includes(m.id)
+                          const isSel = selectedImageModelSet.has(m.id)
                           const isDisabled =
                             imageModelSelectionMode === 'multiple' && !isSel && selectedImageModels.length >= 4
                           return (
@@ -541,7 +544,7 @@ export function ChatExperienceHeader({
                         })
                       : generationMode === 'video'
                         ? videoModels.map((m) => {
-                            const isSel = selectedVideoModels.includes(m.id)
+                            const isSel = selectedVideoModelSet.has(m.id)
                             const isDisabled =
                               videoModelSelectionMode === 'multiple' && !isSel && selectedVideoModels.length >= 4
                             return (
@@ -565,7 +568,7 @@ export function ChatExperienceHeader({
                             const isSel =
                               askModelSelectionMode === 'single'
                                 ? m.id === selectedActModel
-                                : selectedModels.includes(m.id)
+                                : selectedModelSet.has(m.id)
                             const isDisabled =
                               askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
                             const isFreeModelRow = isFreeTierChatModelId(m.id)

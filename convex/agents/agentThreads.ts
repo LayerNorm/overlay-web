@@ -117,20 +117,18 @@ async function insertThread(
     { principal: actor, role: 'moderator' as const },
     { principal: agentPrincipal, role: 'member' as const },
   ]
-  for (const { principal, role } of participants) {
-    await ctx.db.insert('conversationParticipants', {
-      conversationId,
-      workspaceId: args.workspaceId,
-      principalId: principal.principalId,
-      principalType: principal.type as 'human' | 'agent',
-      role,
-      status: 'active',
-      notificationLevel: 'all',
-      joinedAt: now,
-      updatedAt: now,
-      lastReadAt: principal.principalId === actor.principalId ? now : undefined,
-    })
-  }
+  await Promise.all(participants.map(({ principal, role }) => ctx.db.insert('conversationParticipants', {
+    conversationId,
+    workspaceId: args.workspaceId,
+    principalId: principal.principalId,
+    principalType: principal.type as 'human' | 'agent',
+    role,
+    status: 'active',
+    notificationLevel: 'all',
+    joinedAt: now,
+    updatedAt: now,
+    lastReadAt: principal.principalId === actor.principalId ? now : undefined,
+  })))
   await ctx.db.insert('workspaceResourceScopes', {
     workspaceId: args.workspaceId,
     resourceType: 'conversation',
@@ -201,8 +199,10 @@ export const resolveMainThreadByServer = mutation({
   returns: v.object({ conversationId: v.id('conversations'), title: v.string() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const actor = await requireActorMembership(ctx, args)
-    const agent = await requireAgentDefinition(ctx, args)
+    const [actor, agent] = await Promise.all([
+      requireActorMembership(ctx, args),
+      requireAgentDefinition(ctx, args),
+    ])
 
     // Archived agents still resolve their existing main thread so history
     // stays viewable from the Archived tab; they just cannot adopt or create.
@@ -295,9 +295,10 @@ export const listArchivedAgentsByServer = query({
       ))
       .collect()
     const agentIds = new Set<string>()
-    for (const row of participantRows) {
-      if (!row.archivedAt) continue
-      const conversation = await ctx.db.get(row.conversationId)
+    const archivedConversations = await Promise.all(
+      participantRows.filter((row) => row.archivedAt).map((row) => ctx.db.get(row.conversationId)),
+    )
+    for (const conversation of archivedConversations) {
       if (conversation?.agentId && !conversation.deletedAt && !conversation.isAutomation) {
         agentIds.add(conversation.agentId)
       }

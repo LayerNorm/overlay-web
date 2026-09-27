@@ -232,17 +232,19 @@ export async function deleteChunksForSource(
     .query('knowledgeChunks')
     .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
     .collect()
-  let deleted = 0
-  for (const c of existing) {
-    if (userId && c.userId !== userId) continue
-    const emb = await db
+  const targets = existing.filter((c) => !userId || c.userId === userId)
+  const embeddings = await Promise.all(targets.map((c) =>
+    db
       .query('knowledgeChunkEmbeddings')
       .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
-      .first()
-    if (emb) await db.delete(emb._id)
-    await db.delete(c._id)
-    deleted++
-  }
+      .first()))
+  await Promise.all(targets.flatMap((c, i) => {
+    const emb = embeddings[i]
+    return emb
+      ? [db.delete(emb._id), db.delete(c._id)]
+      : [db.delete(c._id)]
+  }))
+  const deleted = targets.length
   return deleted
 }
 
@@ -289,15 +291,18 @@ export const replaceKnowledgeSource = internalMutation({
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', args.sourceKind).eq('sourceId', args.sourceId))
       .collect()
-    for (const c of existing) {
-      const emb = await ctx.db
+    const existingEmbeddings = await Promise.all(existing.map((c) =>
+      ctx.db
         .query('knowledgeChunkEmbeddings')
         .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
-        .first()
-      if (emb) await ctx.db.delete(emb._id)
-      await ctx.db.delete(c._id)
-    }
-    for (const seg of args.segments) {
+        .first()))
+    await Promise.all(existing.flatMap((c, i) => {
+      const emb = existingEmbeddings[i]
+      return emb
+        ? [ctx.db.delete(emb._id), ctx.db.delete(c._id)]
+        : [ctx.db.delete(c._id)]
+    }))
+    await Promise.all(args.segments.map(async (seg) => {
       const chunkId = await ctx.db.insert('knowledgeChunks', {
         userId: args.userId,
         workspaceId: args.workspaceId,
@@ -322,7 +327,7 @@ export const replaceKnowledgeSource = internalMutation({
         sourceKind: args.sourceKind,
         embedding: seg.embedding,
       })
-    }
+    }))
   },
 })
 
@@ -444,26 +449,21 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
   },
   handler: async (ctx, { embeddingIds, sourceKind, sourceKinds, workspaceId }) => {
     const kinds = sourceKinds ?? (sourceKind !== undefined ? [sourceKind] : undefined)
-    const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = []
-    for (const id of embeddingIds) {
-      const row = await ctx.db.get(id)
-      if (!row) {
-        ordered.push({ chunkId: null })
-        continue
+    const kindSet = kinds === undefined ? undefined : new Set(kinds)
+    const embeddingRows = await Promise.all(embeddingIds.map((id) => ctx.db.get(id)))
+    const kindChecked = embeddingRows.map((row) =>
+      row && (kindSet === undefined || kindSet.has(row.sourceKind)) ? row : null)
+    const chunks = workspaceId !== undefined
+      ? await Promise.all(kindChecked.map((row) => (row ? ctx.db.get(row.chunkId) : null)))
+      : null
+    const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = kindChecked.map((row, i) => {
+      if (!row) return { chunkId: null }
+      if (chunks) {
+        const chunk = chunks[i]
+        if (!chunk || chunk.workspaceId !== workspaceId) return { chunkId: null }
       }
-      if (kinds !== undefined && !kinds.includes(row.sourceKind)) {
-        ordered.push({ chunkId: null })
-        continue
-      }
-      if (workspaceId !== undefined) {
-        const chunk = await ctx.db.get(row.chunkId)
-        if (!chunk || chunk.workspaceId !== workspaceId) {
-          ordered.push({ chunkId: null })
-          continue
-        }
-      }
-      ordered.push({ chunkId: row.chunkId })
-    }
+      return { chunkId: row.chunkId }
+    })
     return ordered
   },
 })
@@ -471,12 +471,8 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
 export const fetchChunkPayloads = internalQuery({
   args: { ids: v.array(v.id('knowledgeChunks')) },
   handler: async (ctx, { ids }) => {
-    const out = []
-    for (const id of ids) {
-      const row = await ctx.db.get(id)
-      if (row) out.push(row)
-    }
-    return out
+    const rows = await Promise.all(ids.map((id) => ctx.db.get(id)))
+    return rows.filter((row) => row !== null)
   },
 })
 
@@ -501,7 +497,8 @@ export const temporalChunksInRange = internalQuery({
         q.eq('userId', userId).gte('eventAt', fromMs).lt('eventAt', toMs))
       .order('desc')
       .take(limit * 4)
-    return (sourceKinds ? rows.filter((r) => sourceKinds.includes(r.sourceKind)) : rows)
+    const sourceKindSet = sourceKinds === undefined ? undefined : new Set(sourceKinds)
+    return (sourceKindSet ? rows.filter((r) => sourceKindSet.has(r.sourceKind)) : rows)
       .slice(0, limit)
       .map((r) => r._id)
   },
@@ -511,10 +508,10 @@ export const temporalChunksInRange = internalQuery({
 export const memoryProvenanceTurnIds = internalQuery({
   args: { memoryIds: v.array(v.id('memories')) },
   handler: async (ctx, { memoryIds }) => {
+    const memories = await Promise.all(memoryIds.map((id) => ctx.db.get(id)))
     const out: Array<{ memoryId: string; turnId: string }> = []
-    for (const id of memoryIds) {
-      const m = await ctx.db.get(id)
-      if (m?.turnId) out.push({ memoryId: id, turnId: m.turnId })
+    for (const [i, m] of memories.entries()) {
+      if (m?.turnId) out.push({ memoryId: memoryIds[i]!, turnId: m.turnId })
     }
     return out
   },
@@ -1030,12 +1027,11 @@ export const purgeConversationMessageChunks = internalMutation({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
       .paginate({ cursor: cursor ?? null, numItems: 200 })
-    for (const m of page.page) {
-      await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+    await Promise.all(page.page.map((m) =>
+      ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
         sourceKind: 'message',
         sourceId: m._id,
-      })
-    }
+      })))
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeConversationMessageChunks, {
         conversationId,
@@ -1247,12 +1243,15 @@ export const backfillMemoryChunkFieldsPage = internalMutation({
       .query('memories')
       .order('asc')
       .paginate({ cursor: cursor ?? null, numItems: numItems ?? 50 })
-    let patched = 0
-    for (const memory of page.page) {
-      const chunks = await ctx.db
+    const chunksByMemory = await Promise.all(page.page.map((memory) =>
+      ctx.db
         .query('knowledgeChunks')
         .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
-        .collect()
+        .collect()))
+    let patched = 0
+    const chunkPatches = []
+    for (const [i, memory] of page.page.entries()) {
+      const chunks = chunksByMemory[i]!
       for (const chunk of chunks) {
         const fields = {
           turnId: memory.turnId,
@@ -1266,15 +1265,16 @@ export const backfillMemoryChunkFieldsPage = internalMutation({
           (fields.sourceCount !== undefined && chunk.sourceCount !== fields.sourceCount) ||
           (fields.visibility !== undefined && chunk.visibility !== fields.visibility)
         if (!needs) continue
-        await ctx.db.patch(chunk._id, {
+        chunkPatches.push(ctx.db.patch(chunk._id, {
           ...(fields.turnId !== undefined ? { turnId: fields.turnId } : {}),
           eventAt: fields.eventAt,
           ...(fields.sourceCount !== undefined ? { sourceCount: fields.sourceCount } : {}),
           ...(fields.visibility !== undefined ? { visibility: fields.visibility } : {}),
-        })
+        }))
         patched++
       }
     }
+    await Promise.all(chunkPatches)
     return {
       memories: page.page.length,
       patched,
@@ -1666,14 +1666,21 @@ export const hybridSearch = action({
         const have = new Set(top.map((c) => `${c.sourceKind}:${c.sourceId}:${c.chunkIndex}`))
         const perTurn = new Map<string, number>()
         let attached = 0
+        const hitTurnIds = memoryHits
+          .map((hit) => turnByMemory.get(hit.sourceId))
+          .filter((turnId): turnId is string => Boolean(turnId))
+        const rowsByTurn = new Map(await Promise.all([...new Set(hitTurnIds)].map(async (turnId) => [
+          turnId,
+          await ctx.runQuery(internal.knowledge.knowledge.messageChunksByTurn, {
+            turnId,
+            limit: 8,
+          }),
+        ] as const)))
         for (const hit of memoryHits) {
           if (attached >= 4) break
           const turnId = turnByMemory.get(hit.sourceId)
           if (!turnId) continue
-          const rows = await ctx.runQuery(internal.knowledge.knowledge.messageChunksByTurn, {
-            turnId,
-            limit: 8,
-          })
+          const rows = rowsByTurn.get(turnId) ?? []
           for (const row of rows) {
             if (attached >= 4 || (perTurn.get(turnId) ?? 0) >= 2) break
             const key = `message:${row.sourceId}:${row.chunkIndex}`

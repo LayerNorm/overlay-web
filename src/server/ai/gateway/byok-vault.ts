@@ -66,6 +66,9 @@ async function vaultRequest<T>(
 
   if (response.status === 204) return null
 
+  // The body must be read before it can be parsed — nothing else can run
+  // concurrently, so the await is inherent.
+  // react-doctor-disable-next-line react-doctor/async-defer-await
   const text = await response.text()
   const payload = text
     ? (() => {

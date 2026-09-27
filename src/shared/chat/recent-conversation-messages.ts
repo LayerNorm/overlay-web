@@ -17,16 +17,14 @@ export type RecentConversationMessageCandidate = {
 export function selectRecentConversationMessages<
   T extends RecentConversationMessageCandidate,
 >(recentScan: readonly T[], limit: number): T[] {
-  const selectedTurnIds: string[] = []
+  const selectedTurnIdSet = new Set<string>()
   for (const message of recentScan) {
     if (message.role !== 'user') continue
     const turnId = message.turnId?.trim() || message._id
-    if (selectedTurnIds.includes(turnId)) continue
-    selectedTurnIds.push(turnId)
-    if (selectedTurnIds.length >= limit) break
+    if (selectedTurnIdSet.has(turnId)) continue
+    selectedTurnIdSet.add(turnId)
+    if (selectedTurnIdSet.size >= limit) break
   }
-
-  const selectedTurnIdSet = new Set(selectedTurnIds)
   const selectedHumanMessageIds = recentScan
     .filter((message) => (
       message.role === 'user'

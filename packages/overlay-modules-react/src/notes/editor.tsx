@@ -274,7 +274,8 @@ export function CanonicalNotebookEditor({
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [agentItems, setAgentItems] = useState<NotebookAgentUiItem[]>([])
   const [agentInput, setAgentInput] = useState('')
-  const [agentMentions, setAgentMentions] = useState<NotebookEditorMention[]>([])
+  const agentMentionsRef = useRef<NotebookEditorMention[]>([])
+  const setAgentMentions = useCallback((value: NotebookEditorMention[]) => { agentMentionsRef.current = value }, [])
   const [agentRunning, setAgentRunning] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState(initialModelId)
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -969,7 +970,7 @@ export function CanonicalNotebookEditor({
     const modelId = selectedModelId
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
-    const mentionsForRequest = createNotebookAgentMentions(agentMentions)
+    const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
     setAgentInput('')
     setAgentMentions([])
 
@@ -1040,7 +1041,7 @@ export function CanonicalNotebookEditor({
       notebookAgentAbortRef.current = null
       setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentMentions, agentRunning, editor, runAgent, selectedModelId, title])
+  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, title])
 
   async function createNote(input?: { title?: string; content?: string }) {
     const created = await repository.create(input)

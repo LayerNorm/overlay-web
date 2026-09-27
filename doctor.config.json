@@ -1,0 +1,17 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": [
+      "benchmarks/**",
+      "overlay-desktop/**",
+      "scripts/**",
+      "convex/_generated/**",
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/__tests__/**",
+      "**/*fixture*",
+      "**/fixtures/**",
+      "src/file-parity-fixture.tsx"
+    ]
+  }
+}

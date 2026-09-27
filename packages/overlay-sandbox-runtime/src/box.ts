@@ -205,9 +205,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
   /** Poll an instance until it reaches one of the target box states. */
   async pollBox(boxId: string, targets: BoxState[], timeoutMs: number): Promise<BoxInfo> {
     const deadline = Date.now() + timeoutMs
+    const targetStates = new Set(targets)
     for (;;) {
       const info = await this.getBox(boxId)
-      if (targets.includes(info.state)) return info
+      if (targetStates.has(info.state)) return info
       if (info.state === 'error') {
         throw new BoxApiError(409, 'box_error', `box ${boxId} entered error state`)
       }
@@ -388,11 +389,10 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
-    for (const file of files) {
-      await this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
+    await Promise.all(files.map((file) =>
+      this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })
-    }
+      })))
   }
 
   async readFile(path: string): Promise<Uint8Array | null> {

@@ -212,12 +212,13 @@ export function useChatConversationLoader({
       })
 
       const exchangeModesFromServer = exchanges.map((e) => e.mode)
-      const uniqueModels: string[] = []
+      const uniqueModelSet = new Set<string>()
       for (const ex of exchanges) {
         for (const { model } of ex.responses) {
-          if (!uniqueModels.includes(model)) uniqueModels.push(model)
+          uniqueModelSet.add(model)
         }
       }
+      const uniqueModels = [...uniqueModelSet]
 
       if (requestId !== loadChatRequestRef.current) return
 

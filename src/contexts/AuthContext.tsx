@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
 import { trackSessionRefresh } from '@/shared/observability/client-metrics'
 
@@ -192,15 +192,17 @@ export function AuthProvider({
     }
   }, [checkSession, initialSessionResolved, initialUser])
 
+  const authValue = useMemo(() => ({
+    user,
+    isLoading,
+    isAuthenticated: !!user,
+    signOut,
+    refreshSession,
+  }), [user, isLoading, signOut, refreshSession])
+
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        signOut,
-        refreshSession,
-      }}
+      value={authValue}
     >
       {children}
     </AuthContext.Provider>

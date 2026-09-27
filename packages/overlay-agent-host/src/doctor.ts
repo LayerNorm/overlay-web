@@ -28,12 +28,13 @@ export async function diagnoseHost(config: AgentHostConfig, adapters: AgentAdapt
     store.close()
     checks.push({ name: 'sqlite', ok: true, detail: 'SQLite state and outbox are writable' })
   } catch (error) { checks.push({ name: 'sqlite', ok: false, detail: safeError(error) }) }
-  for (const adapter of adapters) {
+  const adapterChecks = await Promise.all(adapters.map(async (adapter) => {
     try {
       const capability = await adapter.discover()
-      checks.push({ name: `adapter:${capability.id}`, ok: true, detail: `${capability.protocol} adapter discovered` })
-    } catch (error) { checks.push({ name: `adapter:${adapter.capability.id}`, ok: false, detail: safeError(error) }) }
-  }
+      return { name: `adapter:${capability.id}`, ok: true, detail: `${capability.protocol} adapter discovered` }
+    } catch (error) { return { name: `adapter:${adapter.capability.id}`, ok: false, detail: safeError(error) } }
+  }))
+  checks.push(...adapterChecks)
   return checks
 }
 

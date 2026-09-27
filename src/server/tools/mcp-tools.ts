@@ -192,9 +192,15 @@ function buildAuthHeaders(config: McpServerConfig): Record<string, string> {
  */
 async function createRuntimeAuthProvider(config: McpServerConfig) {
   if (config.authType !== 'oauth') return undefined
-  const { McpOAuthProvider } = await import('@/server/extensions/McpOAuthProvider')
-  const { ensureFreshMcpOAuthTokens, mcpOAuthRedirectUri } = await import('./mcp-oauth')
-  const { getBaseUrl } = await import('@/server/web/app-url')
+  const [
+    { McpOAuthProvider },
+    { ensureFreshMcpOAuthTokens, mcpOAuthRedirectUri },
+    { getBaseUrl },
+  ] = await Promise.all([
+    import('@/server/extensions/McpOAuthProvider'),
+    import('./mcp-oauth'),
+    import('@/server/web/app-url'),
+  ])
   const baseUrl = getBaseUrl()
 
   // Refresh ahead of expiry so a long tool call does not die mid-flight; the transport still
@@ -867,29 +873,37 @@ async function buildMcpToolSet(args: {
   const allTools: ToolSet = {}
   const globalSeen = new Set<string>()
 
-  for (const config of configs) {
+  const discovered = await Promise.all(configs.map(async (config) => {
     try {
       logger.info(`[MCP] Discovering tools from server: ${config.name} (${config.transport} ${config.url})`)
       const serverTools = await discoverToolsForServer(config)
       logger.info(`[MCP] Discovered ${Object.keys(serverTools).length} tools from server: ${config.name}`)
-      for (const [id, def] of Object.entries(serverTools)) {
-        if (globalSeen.has(id)) {
-          // Global collision: suffix the server name
-          let suffix = 1
-          let newId = `${id}_${suffix}`
-          while (globalSeen.has(newId)) {
-            suffix++
-            newId = `${id}_${suffix}`
-          }
-          globalSeen.add(newId)
-          allTools[newId] = def
-        } else {
-          globalSeen.add(id)
-          allTools[id] = def
-        }
-      }
+      return serverTools
     } catch (err) {
       logger.warn(`[MCP] Skipping server ${config.name} due to error: ${err instanceof Error ? err.message : String(err)}`)
+      return null
+    }
+  }))
+
+  // Collision naming below is intentionally sequential: the first server to
+  // claim a tool id keeps it and later servers get suffixed aliases.
+  for (const serverTools of discovered) {
+    if (serverTools === null) continue
+    for (const [id, def] of Object.entries(serverTools)) {
+      if (globalSeen.has(id)) {
+        // Global collision: suffix the server name
+        let suffix = 1
+        let newId = `${id}_${suffix}`
+        while (globalSeen.has(newId)) {
+          suffix++
+          newId = `${id}_${suffix}`
+        }
+        globalSeen.add(newId)
+        allTools[newId] = def
+      } else {
+        globalSeen.add(id)
+        allTools[id] = def
+      }
     }
   }
 

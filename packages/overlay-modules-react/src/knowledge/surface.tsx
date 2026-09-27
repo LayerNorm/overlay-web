@@ -650,6 +650,9 @@ export function SharedKnowledgeSurface({
             const folderPath = parts.slice(0, index + 1).join('/')
             if (folders.has(folderPath)) continue
             const parentPath = index === 0 ? null : parts.slice(0, index).join('/')
+            // Sequential on purpose: nested folders need their parent's id,
+            // which only exists after the earlier create resolves.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const created = await adapters.repository.create({
               name: parts[index] ?? 'Folder',
               kind: 'folder',
@@ -715,6 +718,9 @@ export function SharedKnowledgeSurface({
           if (!folders.has(folderPath)) {
             const parentPath = i === 0 ? null : parts.slice(0, i).join('/')
             const parentId = parentPath ? (folders.get(parentPath) ?? null) : null
+            // Sequential on purpose: nested folders need their parent's id,
+            // which only exists after the earlier create resolves.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const created = await adapters.repository.create({
               name: parts[i] ?? 'Folder',
               kind: 'folder',

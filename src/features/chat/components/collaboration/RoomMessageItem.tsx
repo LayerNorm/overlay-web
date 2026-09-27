@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- room attachments mirror the chat transcript renderer */
 
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bookmark,
   Check,
@@ -602,6 +602,7 @@ function RemoteRequestControls({ request, onResolve }: {
   const required = Array.isArray(request.requestedSchema?.required)
     ? request.requestedSchema.required.filter((key): key is string => typeof key === 'string') : []
   const [values, setValues] = useState<Record<string, unknown>>(() => initialElicitationValues(properties, required))
+  const requiredKeySet = useMemo(() => new Set(required), [required])
   return (
     <div className="mt-3 max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
       <p className="text-xs font-medium text-[var(--foreground)]">{request.kind === 'permission' ? 'Permission requested' : 'Input requested'}</p>
@@ -610,7 +611,7 @@ function RemoteRequestControls({ request, onResolve }: {
         property.type === 'boolean' ? (
           <div key={key} className="mt-2 flex items-center gap-3">
             <span className="flex-1 text-[11px] text-[var(--muted)]">
-              {property.title ?? key}{required.includes(key) ? ' *' : ''}
+              {property.title ?? key}{requiredKeySet.has(key) ? ' *' : ''}
             </span>
             <Toggle
               checked={values[key] === true}
@@ -620,7 +621,7 @@ function RemoteRequestControls({ request, onResolve }: {
           </div>
         ) : (
           <div key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
-            <span>{property.title ?? key}{required.includes(key) ? ' *' : ''}</span>
+            <span>{property.title ?? key}{requiredKeySet.has(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
               <select value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
@@ -758,7 +759,7 @@ function RoomMessageToolbar({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const buttonClass =
-    'rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
+    'rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform,opacity] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
 
   const railClass = floating
     ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
