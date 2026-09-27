@@ -49,6 +49,10 @@ function catalogErrorMessage(error: unknown): string {
     : 'Failed to load integrations'
 }
 
+// The workspaceConnectors.insert calls below are an idempotent lazy backfill of
+// legacy connector→workspace mappings (insert-if-missing). TODO: replace with a
+// one-time data migration so GET has no writes.
+// react-doctor-disable-next-line react-doctor/nextjs-no-side-effect-in-get-handler
 export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,

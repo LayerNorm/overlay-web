@@ -45,14 +45,7 @@ export function useChatPreferences() {
   const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(undefined)
-  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
-    try {
-      const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
-      return (saved as VideoSubMode | null) ?? 'text-to-video'
-    } catch {
-      return 'text-to-video'
-    }
-  })
+  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>('text-to-video')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -64,6 +57,9 @@ export function useChatPreferences() {
       if (savedPersonalChatMode === 'chat' || savedPersonalChatMode === 'work') {
         setPersonalChatMode(savedPersonalChatMode)
       }
+
+      const savedVideoSubMode = localStorage.getItem(VIDEO_SUB_MODE_KEY)
+      if (savedVideoSubMode) setVideoSubMode(savedVideoSubMode as VideoSubMode)
 
       // Restore last text chat model selection if present
       try {

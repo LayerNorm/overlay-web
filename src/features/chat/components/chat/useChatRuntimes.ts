@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Chat, useChat } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
@@ -144,11 +144,13 @@ export function useChatRuntimes(activeChatId: string | null) {
   const chat2Ref = useRef(chat2)
   const chat3Ref = useRef(chat3)
   const actChatRef = useRef(actChat)
-  chat0Ref.current = chat0
-  chat1Ref.current = chat1
-  chat2Ref.current = chat2
-  chat3Ref.current = chat3
-  actChatRef.current = actChat
+  useEffect(() => {
+    chat0Ref.current = chat0
+    chat1Ref.current = chat1
+    chat2Ref.current = chat2
+    chat3Ref.current = chat3
+    actChatRef.current = actChat
+  })
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
 
   return {

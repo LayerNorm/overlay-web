@@ -18,13 +18,7 @@ function CallbackContent() {
       posthog.capture('integration_connect_completed')
       notifyOpenerIntegrationsChanged()
       const interval = setInterval(() => {
-        setCountdown((n) => {
-          if (n <= 1) {
-            clearInterval(interval)
-            window.close()
-          }
-          return n - 1
-        })
+        setCountdown((n) => (n <= 1 ? 0 : n - 1))
       }, 1000)
       return () => clearInterval(interval)
     } else {
@@ -33,6 +27,10 @@ function CallbackContent() {
       })
     }
   }, [isSuccess, error])
+
+  useEffect(() => {
+    if (isSuccess && countdown <= 0) window.close()
+  }, [countdown, isSuccess])
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-white">
