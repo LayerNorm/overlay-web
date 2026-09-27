@@ -147,9 +147,6 @@ export function AgentsInlinePanel({
         if (expanded.has(agentId)) void loadBundle(agentId)
       }
     }
-  })
-
-  useEffect(() => {
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
   }, [bundles, expanded, loadAgents, loadBundle, workspaceId])
