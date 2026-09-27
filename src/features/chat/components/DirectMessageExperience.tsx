@@ -456,25 +456,25 @@ export function DirectMessageExperience({
   const [attachOpen, setAttachOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   /** Latest messages for callbacks that must not close over a stale render. */
-  const messagesRef = useRef<OptimisticMessage[]>(messages);
+  const messagesRef = useRef<OptimisticMessage[]>(messages)
   useEffect(() => {
-    messagesRef.current = messages;
-  });
-  const sessionIdRef = useRef<string | null>(null);
-  const activeConversationRef = useRef<string | null>(conversationId);
-  const stickToBottomRef = useRef(true);
-  const unreadBoundaryInitializedRef = useRef(false);
-  const previousMessageCountRef = useRef(messages.length);
-  const prependScrollRef = useRef<{ height: number; top: number } | null>(null);
-  const skipNextMessageGrowthRef = useRef(false);
-  const permalinkJumpedRef = useRef<string | null>(null);
-  const readMarkInFlightRef = useRef(false);
+    messagesRef.current = messages
+  }, [messages])
+  const sessionIdRef = useRef<string | null>(null)
+  const activeConversationRef = useRef<string | null>(conversationId)
+  const stickToBottomRef = useRef(true)
+  const unreadBoundaryInitializedRef = useRef(false)
+  const previousMessageCountRef = useRef(messages.length)
+  const prependScrollRef = useRef<{ height: number; top: number } | null>(null)
+  const skipNextMessageGrowthRef = useRef(false)
+  const permalinkJumpedRef = useRef<string | null>(null)
+  const readMarkInFlightRef = useRef(false)
   useEffect(() => {
-    activeConversationRef.current = conversationId;
-  });
-  const lastTypingSentAt = useRef(0);
-  const pendingCollaborationMessageSentRef = useRef(false);
-  const draftCommittedRef = useRef(!draft);
+    activeConversationRef.current = conversationId
+  }, [conversationId])
+  const lastTypingSentAt = useRef(0)
+  const pendingCollaborationMessageSentRef = useRef(false)
+  const draftCommittedRef = useRef(!draft)
 
   // ── composer state (identical wiring to the personal chat composer) ─────────
   const [composerNotice, setComposerNotice] = useState<string | null>(null);

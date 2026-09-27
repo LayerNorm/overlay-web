@@ -38,33 +38,14 @@ export function useChatPreferences() {
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
   const [hasStoredTextModelSelection, setHasStoredTextModelSelection] = useState(false)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
-  const [personalChatMode, setPersonalChatMode] =
-    useState<PersonalChatMode>('chat')
-  const [generationChip, setGenerationChip] = useState<
-    'image' | 'video' | null
-  >(null)
-  const [selectedImageModels, setSelectedImageModels] = useState<string[]>([
-    DEFAULT_IMAGE_MODEL_ID,
-  ])
-  const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([
-    DEFAULT_VIDEO_MODEL_ID,
-  ])
-  const [imageModelSelectionMode, setImageModelSelectionMode] =
-    useState<AskModelSelectionMode>('single')
-  const [videoModelSelectionMode, setVideoModelSelectionMode] =
-    useState<AskModelSelectionMode>('single')
-  const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(
-    undefined,
-  )
-  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
-    try {
-      if (typeof window === 'undefined') return 'text-to-video'
-      const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
-      return (saved as VideoSubMode | null) ?? 'text-to-video'
-    } catch {
-      return 'text-to-video'
-    }
-  })
+  const [personalChatMode, setPersonalChatMode] = useState<PersonalChatMode>('chat')
+  const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
+  const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
+  const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
+  const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
+  const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
+  const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(undefined)
+  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>('text-to-video')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -76,6 +57,9 @@ export function useChatPreferences() {
       if (savedPersonalChatMode === 'chat' || savedPersonalChatMode === 'work') {
         setPersonalChatMode(savedPersonalChatMode)
       }
+
+      const savedVideoSubMode = localStorage.getItem(VIDEO_SUB_MODE_KEY)
+      if (savedVideoSubMode) setVideoSubMode(savedVideoSubMode as VideoSubMode)
 
       // Restore last text chat model selection if present
       try {

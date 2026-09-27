@@ -145,11 +145,11 @@ export function useChatRuntimes(activeChatId: string | null) {
   const chat3Ref = useRef(chat3)
   const actChatRef = useRef(actChat)
   useEffect(() => {
-  chat0Ref.current = chat0
-  chat1Ref.current = chat1
-  chat2Ref.current = chat2
-  chat3Ref.current = chat3
-  actChatRef.current = actChat
+    chat0Ref.current = chat0
+    chat1Ref.current = chat1
+    chat2Ref.current = chat2
+    chat3Ref.current = chat3
+    actChatRef.current = actChat
   })
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
 

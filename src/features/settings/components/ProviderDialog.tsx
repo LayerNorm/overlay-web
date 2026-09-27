@@ -63,7 +63,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
   // The name users see in the providers list and model picker. Pre-filled from
   // the preset label, or derived from the endpoint host for custom providers —
   // never overwrites a name the user typed.
-  const [derivedName, setDerivedName] = useState('')
+  const [autoDisplayName, setAutoDisplayName] = useState('')
   const endpointHost = useMemo(() => {
     try {
       return new URL(endpoint.trim()).hostname.replace(/^www\./, '')
@@ -71,27 +71,13 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
       return ''
     }
   }, [endpoint])
-  const [prevDeriveInputs, setPrevDeriveInputs] = useState<{
-    preset: typeof preset
-    endpointHost: string
-  } | null>(null)
-  if (
-    preset &&
-    !isEdit &&
-    (prevDeriveInputs?.preset !== preset ||
-      prevDeriveInputs?.endpointHost !== endpointHost)
-  ) {
-    setPrevDeriveInputs({ preset, endpointHost })
-    if (
-      !displayName ||
-      displayName === preset.label ||
-      displayName === derivedName
-    ) {
-      const nextDerived = preset.allowsCustomEndpoint ? endpointHost : ''
-      setDerivedName(nextDerived)
-      setDisplayName(nextDerived || preset.label)
-    }
-  }
+  useEffect(() => {
+    if (!preset || isEdit) return
+    const next = preset.allowsCustomEndpoint && endpointHost ? endpointHost : preset.label
+    setDisplayName((current) =>
+      current && current !== preset.label && current !== autoDisplayName ? current : next)
+    setAutoDisplayName(preset.allowsCustomEndpoint ? endpointHost : '')
+  }, [preset, endpointHost, isEdit, autoDisplayName])
 
   const handleTest = useCallback(async () => {
     if (testing) return

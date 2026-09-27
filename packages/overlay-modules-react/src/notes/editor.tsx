@@ -337,7 +337,7 @@ export function CanonicalNotebookEditor({
   }), [lifecycleController])
 
   useEffect(() => {
-  flushSaveRef.current = () => lifecycleController.flush()
+    flushSaveRef.current = () => lifecycleController.flush()
   }, [lifecycleController])
 
   useEffect(() => {
@@ -1071,7 +1071,7 @@ export function CanonicalNotebookEditor({
 
   const createNoteRef = useRef(createNote)
   useEffect(() => {
-  createNoteRef.current = createNote
+    createNoteRef.current = createNote
   })
   useEffect(() => {
     if (createNoteRequest === undefined) return

@@ -191,25 +191,21 @@ export default function ChatExperience({
         )
         .join("|")}`,
     [byokConnections, gatewayCatalogRevision],
-  );
-  const billingEnabled = capabilities.billing;
-  const convexLiveSyncEnabled =
-    !isPublicShowcase &&
-    appDataCapabilities.requiresConvexClient &&
-    appDataCapabilities.supportsRealtime;
-  const titleGenerationEnabled =
-    !isPublicShowcase && appDataCapabilities.supportsChatPersistence;
-  const generatedOutputsEnabled = !isPublicShowcase;
-  const convexAccessToken = useConvexAuthToken();
-  const { startSession, completeSession, markRead, setActiveViewer, sessions } =
-    useAsyncSessions();
-  const activeChatIdRef = useRef<string | null>(null);
-  const [isTemporaryChat, setIsTemporaryChat] = useState(false);
-  const isTemporaryChatRef = useRef(false);
+  )
+  const billingEnabled = capabilities.billing
+  const convexLiveSyncEnabled = !isPublicShowcase &&
+    appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
+  const titleGenerationEnabled = !isPublicShowcase && appDataCapabilities.supportsChatPersistence
+  const generatedOutputsEnabled = !isPublicShowcase
+  const convexAccessToken = useConvexAuthToken()
+  const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
+  const activeChatIdRef = useRef<string | null>(null)
+  const [isTemporaryChat, setIsTemporaryChat] = useState(false)
+  const isTemporaryChatRef = useRef(false)
   useEffect(() => {
-    isTemporaryChatRef.current = isTemporaryChat;
-  });
-  const composerMode: "chat" | "automate" = isTemporaryChat ? "chat" : mode;
+    isTemporaryChatRef.current = isTemporaryChat
+  }, [isTemporaryChat])
+  const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
 
   useEffect(() => {
     window.dispatchEvent(
@@ -323,15 +319,13 @@ export default function ChatExperience({
     lastGeneratedImageUrlRef,
     reasoning,
     setReasoning,
-  } = useChatPreferences();
-  const askModelSelectionModeRef = useRef(askModelSelectionMode);
+  } = useChatPreferences()
+  const askModelSelectionModeRef = useRef(askModelSelectionMode)
   useEffect(() => {
-    askModelSelectionModeRef.current = askModelSelectionMode;
-  });
-  const [, setIsSwitchingChat] = useState(false);
-  const generatedUiConnectorActions = useGeneratedUiConnectorActions({
-    enabled: !isPublicShowcase,
-  });
+    askModelSelectionModeRef.current = askModelSelectionMode
+  }, [askModelSelectionMode])
+  const [, setIsSwitchingChat] = useState(false)
+  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: !isPublicShowcase })
 
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
@@ -1842,10 +1836,10 @@ export default function ChatExperience({
     [focusComposer, setInput],
   );
 
-  const isActiveLoadingRef = useRef(isActiveLoading);
+  const isActiveLoadingRef = useRef(isActiveLoading)
   useEffect(() => {
-    isActiveLoadingRef.current = isActiveLoading;
-  });
+    isActiveLoadingRef.current = isActiveLoading
+  }, [isActiveLoading])
 
   useEffect(() => {
     function onGlobalKeyDown(e: KeyboardEvent) {
@@ -1956,10 +1950,10 @@ export default function ChatExperience({
     setInterruptedExchangeIdx,
   });
 
-  const handleSendRef = useRef(effectiveHandleSend);
+  const handleSendRef = useRef(effectiveHandleSend)
   useEffect(() => {
-    handleSendRef.current = effectiveHandleSend;
-  });
+    handleSendRef.current = effectiveHandleSend
+  })
 
   const handleCreateAutomationDraftViaChat = useCallback(async () => {
     if (isActiveLoadingRef.current) return;
