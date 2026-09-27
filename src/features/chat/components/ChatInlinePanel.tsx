@@ -569,7 +569,9 @@ function useChatArchive({
     }
   }
 
-  return { pendingArchiveChat, archiveBusy, archiveError, requestArchive, archiveChat }
+  const closeArchiveDialog = () => setPendingArchiveChat(null)
+
+  return { pendingArchiveChat, archiveBusy, archiveError, requestArchive, archiveChat, closeArchiveDialog }
 }
 
 function ChatListRow({
@@ -804,6 +806,7 @@ export function ChatInlinePanel({
   } = useChatRename({ chats, setChats })
   const {
     pendingArchiveChat,
+    closeArchiveDialog,
     archiveBusy,
     archiveError,
     requestArchive,
@@ -906,7 +909,7 @@ export function ChatInlinePanel({
       busy={archiveBusy}
       error={archiveError}
       onOpenChange={(open) => {
-        if (!open && !archiveBusy) setPendingArchiveChat(null)
+        if (!open && !archiveBusy) closeArchiveDialog()
       }}
       onSelect={(scope) => {
         if (pendingArchiveChat) void archiveChat(pendingArchiveChat, scope)

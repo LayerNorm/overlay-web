@@ -965,7 +965,7 @@ export function useRoomViewModels({
       ? directoryAgentsByPrincipal.get(participant.principalId)
       : undefined
     return {
-      type: participant.principalType === 'agent' ? 'agent' : 'person',
+      type: (participant.principalType === 'agent' ? 'agent' : 'person') as 'agent' | 'person',
       id: participant.principalId,
       name: participant.displayName,
       avatarColor: agent?.avatarColor,
