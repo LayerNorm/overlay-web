@@ -3,7 +3,7 @@ import HomeMarketingPage from '@/features/marketing/pages/MarketingOverviewPage'
 import '@/features/marketing/landing.css'
 
 export const metadata: Metadata = {
-  title: 'Overlay — The control panel for your AI workforce',
+  title: 'Overlay — The control plane for your workspace',
   description:
     'Create, deploy, and manage agents in one workspace. Bring your own agents — Codex, Claude Code, Hermes — and put them to work on any platform.',
   alternates: {

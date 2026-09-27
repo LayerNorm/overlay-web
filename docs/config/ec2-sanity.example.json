@@ -19,7 +19,6 @@
     "knowledge": false,
     "automations": false,
     "integrations": false,
-    "projects": true,
     "skills": false,
     "mcpServers": false,
     "browserUse": false,
@@ -117,7 +116,6 @@
     "webhooks": false,
     "vectorSearch": false,
     "automations": false,
-    "projects": true,
     "skills": false,
     "mcpServers": false,
     "multiTenant": false

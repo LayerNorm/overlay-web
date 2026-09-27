@@ -156,8 +156,18 @@ export const webApiBoundaryDefinitions = [
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
   },
   {
+    method: 'GET', path: '/api/v1/agent-environments/managed', schema: { query: EmptyQuery, response: UnknownResponse },
+    summary: 'List managed harness runtimes available to the active workspace', tag: 'Agent environments',
+  },
+  {
     method: 'POST', path: '/api/v1/agent-environments/managed', schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Provision an Overlay Cloud agent environment', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/reset-harness', routePath: '/api/v1/agent-environments/[environmentId]/reset-harness',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/reset-harness$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Reset a managed-harness environment session and destroy its sandbox', tag: 'Agent environments',
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
@@ -222,6 +232,53 @@ export const webApiBoundaryDefinitions = [
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/events$/,
     schema: { json: eventBatchSchema, response: UnknownResponse },
     summary: 'Upload a validated contiguous batch of remote agent events', tag: 'Agent environments',
+  },
+  {
+    method: 'GET', path: '/api/v1/computers', schema: { query: EmptyQuery, response: UnknownResponse },
+    summary: 'List caller-visible workspace computers', tag: 'Computers',
+  },
+  {
+    method: 'POST', path: '/api/v1/computers',
+    schema: {
+      json: z.object({
+        ownerType: z.string().min(1),
+        ownerId: z.string().trim().min(1),
+        size: z.string().optional(),
+        name: z.string().optional(),
+      }).passthrough(),
+      response: UnknownResponse,
+    },
+    summary: 'Provision a workspace computer (idempotent per owner)', tag: 'Computers',
+  },
+  {
+    method: 'GET', path: '/api/v1/computers/{computerId}', routePath: '/api/v1/computers/[computerId]',
+    pattern: /^\/api\/v1\/computers\/[^/]+$/,
+    schema: { query: EmptyQuery, response: UnknownResponse },
+    summary: 'Read one workspace computer', tag: 'Computers',
+  },
+  {
+    method: 'DELETE', path: '/api/v1/computers/{computerId}', routePath: '/api/v1/computers/[computerId]',
+    pattern: /^\/api\/v1\/computers\/[^/]+$/,
+    schema: { response: UnknownResponse },
+    summary: 'Destroy a computer and its backing machine', tag: 'Computers',
+  },
+  {
+    method: 'POST', path: '/api/v1/computers/{computerId}/desktop', routePath: '/api/v1/computers/[computerId]/desktop',
+    pattern: /^\/api\/v1\/computers\/[^/]+\/desktop$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Issue a short-lived desktop stream ticket', tag: 'Computers',
+  },
+  {
+    method: 'POST', path: '/api/v1/computers/{computerId}/start', routePath: '/api/v1/computers/[computerId]/start',
+    pattern: /^\/api\/v1\/computers\/[^/]+\/start$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Resume a stopped computer machine', tag: 'Computers',
+  },
+  {
+    method: 'POST', path: '/api/v1/computers/{computerId}/stop', routePath: '/api/v1/computers/[computerId]/stop',
+    pattern: /^\/api\/v1\/computers\/[^/]+\/stop$/,
+    schema: { json: EmptyRequest, response: UnknownResponse },
+    summary: 'Stop a running computer machine', tag: 'Computers',
   },
   {
     method: 'GET',
