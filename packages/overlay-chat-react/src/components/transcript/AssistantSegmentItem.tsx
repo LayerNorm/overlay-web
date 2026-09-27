@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import type {
   AssistantVisualSegment,
   DraftModalState,
@@ -35,6 +35,15 @@ const GeneratedUiCard = lazy(() =>
 
 type AutomationDraftModalState = Extract<DraftModalState, { kind: 'automation' }>
 
+const WEB_SEARCH_TOOL_NAMES = new Set([
+  'perplexity_search',
+  'parallel_search',
+  'web_search',
+  'deep_search',
+  'web_fetch',
+])
+const MEMORY_TOOL_NAMES = new Set(['save_memory', 'save_memory_batch', 'update_memory'])
+
 /** Everything a segment needs that does not vary per segment. */
 export interface AssistantSegmentRenderContext {
   /** Stable prefix for React keys — exchange index in a transcript, message id elsewhere. */
@@ -60,6 +69,13 @@ export interface AssistantSegmentRenderContext {
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
 }
 
+type SegmentItemProps<K extends AssistantVisualSegment['kind']> = {
+  seg: Extract<AssistantVisualSegment, { kind: K }>
+  chainTop: boolean
+  chainBottom: boolean
+  ctx: AssistantSegmentRenderContext
+}
+
 /**
  * One visual segment of an assistant message. Single source for the
  * segment-switch so the transcript, room items, and the expanded "Worked"
@@ -77,18 +93,8 @@ export function AssistantSegmentItem({
   ctx: AssistantSegmentRenderContext
 }) {
   if (seg.kind === 'reasoning') {
-    // Actively streaming = still emitting reasoning deltas (or message-level stream and
-    // this part has not been explicitly marked `done`). Everything else collapses.
-    const active =
-      (ctx.isStreaming && seg.block.state === 'streaming') ||
-      (ctx.isStreaming && seg.block.state !== 'done' && seg.originIndex === ctx.blockCount - 1)
     return (
-      <ReasoningBlock
-        text={seg.block.text}
-        streaming={active}
-        connectTop={chainTop}
-        connectBottom={chainBottom}
-      />
+      <ReasoningSegmentItem seg={seg} chainTop={chainTop} chainBottom={chainBottom} ctx={ctx} />
     )
   }
   if (seg.kind === 'browser') {
@@ -101,138 +107,197 @@ export function AssistantSegmentItem({
     )
   }
   if (seg.kind === 'tools') {
-    const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
-    if (onlyTools && seg.items.length === 1) {
-      const t = seg.items[0] as ToolVisualBlock
-      // Only promote a draft to its card once the turn is finished. Mid-stream
-      // this segment is a lone tool block, so the card mounts, then unmounts the
-      // moment the next tool call regroups the segment, then remounts at the end
-      // — reading as a card that flickers in and collapses. While streaming, let
-      // it render as an ordinary tool block instead.
-      const draft = ctx.isStreaming ? null : getDraftFromToolBlock(t)
-      if (draft) {
-        const isAutomationDraft = draft.kind === 'automation'
-        return (
-          <DraftSuggestionCard
-            title={draft.draft.name}
-            description={draft.draft.description}
-            badge={isAutomationDraft ? 'Automation Draft' : 'Skill Draft'}
-            reason={draft.draft.reason}
-            primaryLabel="Review draft"
-            secondaryLabel={isAutomationDraft ? 'Create automation' : 'Save skill'}
-            onPrimary={() => ctx.onOpenDraft(draft)}
-            onSecondary={() => {
-              if (draft.kind === 'automation') {
-                void ctx.onCreateAutomationDraft(draft)
-              } else {
-                ctx.onOpenDraft(draft)
-              }
-            }}
-          />
-        )
-      }
-      if (isOverlayGatedToolOutput(t.toolOutput)) {
-        return (
-          <GatedPaidFeatureCallout
-            block={t}
-            connectTop={chainTop}
-            connectBottom={chainBottom}
-          />
-        )
-      }
-      if (
-        t.name === 'perplexity_search' ||
-        t.name === 'parallel_search' ||
-        t.name === 'web_search' ||
-        t.name === 'deep_search' ||
-        t.name === 'web_fetch'
-      ) {
-        return (
-          <WebSearchToolBlock
-            block={t}
-            connectTop={chainTop}
-            connectBottom={chainBottom}
-          />
-        )
-      }
-      if (t.name === 'save_memory' || t.name === 'save_memory_batch' || t.name === 'update_memory') {
-        return (
-          <MemoryToolBlock
-            block={t}
-            connectTop={chainTop}
-            connectBottom={chainBottom}
-          />
-        )
-      }
-      return (
-        <SingleToolCallRow
-          block={t}
-          connectTop={chainTop}
-          connectBottom={chainBottom}
-        />
-      )
-    }
     return (
-      <ToolCallsCollapsedGroup
-        items={seg.items}
+      <ToolsSegmentItem seg={seg} chainTop={chainTop} chainBottom={chainBottom} ctx={ctx} />
+    )
+  }
+  if (seg.kind === 'file') {
+    return <FileSegmentItem seg={seg} chainTop={chainTop} chainBottom={chainBottom} ctx={ctx} />
+  }
+  if (seg.kind === 'generated-ui') {
+    return <GeneratedUiSegmentItem seg={seg} chainTop={chainTop} chainBottom={chainBottom} ctx={ctx} />
+  }
+  return <TextSegmentItem seg={seg} chainTop={chainTop} chainBottom={chainBottom} ctx={ctx} />
+}
+
+function ReasoningSegmentItem({ seg, chainTop, chainBottom, ctx }: SegmentItemProps<'reasoning'>) {
+  // Actively streaming = still emitting reasoning deltas (or message-level stream and
+  // this part has not been explicitly marked `done`). Everything else collapses.
+  const active =
+    (ctx.isStreaming && seg.block.state === 'streaming') ||
+    (ctx.isStreaming && seg.block.state !== 'done' && seg.originIndex === ctx.blockCount - 1)
+  return (
+    <ReasoningBlock
+      text={seg.block.text}
+      streaming={active}
+      connectTop={chainTop}
+      connectBottom={chainBottom}
+    />
+  )
+}
+
+function ToolsSegmentItem({ seg, chainTop, chainBottom, ctx }: SegmentItemProps<'tools'>) {
+  const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
+  if (onlyTools && seg.items.length === 1) {
+    return (
+      <SingleToolSegmentItem
+        block={seg.items[0] as ToolVisualBlock}
+        chainTop={chainTop}
+        chainBottom={chainBottom}
+        ctx={ctx}
+      />
+    )
+  }
+  return (
+    <ToolCallsCollapsedGroup
+      items={seg.items}
+      connectTop={chainTop}
+      connectBottom={chainBottom}
+    />
+  )
+}
+
+function SingleToolSegmentItem({
+  block,
+  chainTop,
+  chainBottom,
+  ctx,
+}: {
+  block: ToolVisualBlock
+  chainTop: boolean
+  chainBottom: boolean
+  ctx: AssistantSegmentRenderContext
+}) {
+  // Only promote a draft to its card once the turn is finished. Mid-stream
+  // this segment is a lone tool block, so the card mounts, then unmounts the
+  // moment the next tool call regroups the segment, then remounts at the end
+  // — reading as a card that flickers in and collapses. While streaming, let
+  // it render as an ordinary tool block instead.
+  const draft = ctx.isStreaming ? null : getDraftFromToolBlock(block)
+  if (draft) {
+    const isAutomationDraft = draft.kind === 'automation'
+    return (
+      <DraftSuggestionCard
+        title={draft.draft.name}
+        description={draft.draft.description}
+        badge={isAutomationDraft ? 'Automation Draft' : 'Skill Draft'}
+        reason={draft.draft.reason}
+        primaryLabel="Review draft"
+        secondaryLabel={isAutomationDraft ? 'Create automation' : 'Save skill'}
+        onPrimary={() => ctx.onOpenDraft(draft)}
+        onSecondary={() => {
+          if (draft.kind === 'automation') {
+            void ctx.onCreateAutomationDraft(draft)
+          } else {
+            ctx.onOpenDraft(draft)
+          }
+        }}
+      />
+    )
+  }
+  if (isOverlayGatedToolOutput(block.toolOutput)) {
+    return (
+      <GatedPaidFeatureCallout
+        block={block}
         connectTop={chainTop}
         connectBottom={chainBottom}
       />
     )
   }
-  if (seg.kind === 'file') {
-    const block = seg.block
-    const isImg = (block.mediaType?.startsWith('image/') ?? true)
-    const isVideo = block.mediaType?.startsWith('video/') ?? false
-    if (!isImg && !isVideo) return null
-    const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
+  if (WEB_SEARCH_TOOL_NAMES.has(block.name)) {
     return (
-      <div className="w-full px-1 py-1">
-        {isImg ? (
-          <button
-            type="button"
-            onClick={() => ctx.onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
-            className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-            title="Open attachment"
-          >
-            <img
-              src={block.url}
-              alt="Generated"
-              className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
-            />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => ctx.onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
-            className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-            title="Open attachment"
-          >
-            <video
-              src={block.url}
-              preload="metadata"
-              playsInline
-              aria-hidden="true"
-              className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
-            />
-          </button>
-        )}
-      </div>
+      <WebSearchToolBlock
+        block={block}
+        connectTop={chainTop}
+        connectBottom={chainBottom}
+      />
     )
   }
-  if (seg.kind === 'generated-ui') {
+  if (MEMORY_TOOL_NAMES.has(block.name)) {
     return (
-      <Suspense
-        fallback={<div className="ui-skeleton-line min-h-24 w-full rounded-lg" aria-busy="true" />}
-      >
-        <GeneratedUiCard
-          part={seg.block.part}
-          connectorActions={ctx.generatedUiConnectorActions}
-          onDataChange={ctx.onGeneratedUiChange}
-        />
-      </Suspense>
+      <MemoryToolBlock
+        block={block}
+        connectTop={chainTop}
+        connectBottom={chainBottom}
+      />
     )
   }
+  return (
+    <SingleToolCallRow
+      block={block}
+      connectTop={chainTop}
+      connectBottom={chainBottom}
+    />
+  )
+}
+
+function FilePreviewButton({
+  onOpen,
+  children,
+}: {
+  onOpen: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+      title="Open attachment"
+    >
+      {children}
+    </button>
+  )
+}
+
+function FileSegmentItem({ seg, ctx }: SegmentItemProps<'file'>) {
+  const block = seg.block
+  const isImg = (block.mediaType?.startsWith('image/') ?? true)
+  const isVideo = block.mediaType?.startsWith('video/') ?? false
+  if (!isImg && !isVideo) return null
+  const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
+  const openPreview = () =>
+    ctx.onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })
+  return (
+    <div className="w-full px-1 py-1">
+      {isImg ? (
+        <FilePreviewButton onOpen={openPreview}>
+          <img
+            src={block.url}
+            alt="Generated"
+            className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+          />
+        </FilePreviewButton>
+      ) : (
+        <FilePreviewButton onOpen={openPreview}>
+          <video
+            src={block.url}
+            preload="metadata"
+            playsInline
+            aria-hidden="true"
+            className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+          />
+        </FilePreviewButton>
+      )}
+    </div>
+  )
+}
+
+function GeneratedUiSegmentItem({ seg, ctx }: SegmentItemProps<'generated-ui'>) {
+  return (
+    <Suspense
+      fallback={<div className="ui-skeleton-line min-h-24 w-full rounded-lg" aria-busy="true" />}
+    >
+      <GeneratedUiCard
+        part={seg.block.part}
+        connectorActions={ctx.generatedUiConnectorActions}
+        onDataChange={ctx.onGeneratedUiChange}
+      />
+    </Suspense>
+  )
+}
+
+function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
   const block = seg.block
   const isLastText = seg.originIndex === ctx.lastTextBlockIndex
   return (
