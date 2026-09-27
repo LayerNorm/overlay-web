@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
@@ -85,11 +86,16 @@ export function GuestGateProvider({
     }, FADE_MS)
   }, [])
 
+  const guestGateValue = useMemo(
+    () => ({ requireAuth, isModalOpen: Boolean(modalReason) }),
+    [requireAuth, modalReason],
+  )
+
   const showCorner =
     !suppressPrompts && authSettled && !isAuthenticated && !cornerDismissed && !modalReason
 
   return (
-    <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>
+    <GuestGateContext.Provider value={guestGateValue}>
       {children}
       {!isAuthenticated && (((authSettled && !!modalReason) || modalClosing)) ? (
         <SignInFullScreenModal

@@ -90,6 +90,8 @@ export function NewChannelDialog({
     }
   }
 
+  const selectedSet = new Set(selected)
+
   return (
     <DialogFrame
       open={open}
@@ -140,7 +142,7 @@ export function NewChannelDialog({
             <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
               {candidates.map((item) => {
                 const principalId = item.principalId!
-                const active = selected.includes(principalId)
+                const active = selectedSet.has(principalId)
                 const Icon = item.principalType === 'agent' ? Bot : UserRound
                 return (
                   <button key={principalId} type="button" onClick={() => setSelected((current) => active ? current.filter((id) => id !== principalId) : [...current, principalId])} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-[var(--surface-subtle)]">

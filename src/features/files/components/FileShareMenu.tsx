@@ -77,7 +77,7 @@ export function FileShareMenu({
       <button
         type="button"
         onClick={() => setShowMenu((v) => !v)}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-all duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90"
+        className="rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform] duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90"
         aria-label="More options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />

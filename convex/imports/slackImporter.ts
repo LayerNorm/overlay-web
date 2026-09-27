@@ -329,8 +329,8 @@ export const getWorkspacePrincipalsByEmail = query({
   })),
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) return []
-    const normalizedEmails = [...new Set(args.emails.map((e) => e.toLowerCase().trim()))].filter(Boolean)
-    if (normalizedEmails.length === 0) return []
+    const normalizedEmails = new Set(args.emails.map((e) => e.toLowerCase().trim()).filter(Boolean))
+    if (normalizedEmails.size === 0) return []
 
     const allPrincipals = await ctx.db
       .query('workspacePrincipals')
@@ -338,7 +338,7 @@ export const getWorkspacePrincipalsByEmail = query({
       .collect()
 
     const matches = allPrincipals.filter((p) =>
-      p.email && normalizedEmails.includes(p.email.toLowerCase().trim()),
+      p.email && normalizedEmails.has(p.email.toLowerCase().trim()),
     )
 
     const results = []

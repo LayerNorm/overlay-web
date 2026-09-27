@@ -524,6 +524,8 @@ export function ChatInlinePanel({
     all: 'No chats yet',
   }[chatView]
 
+  const deletingChatIdSet = new Set(deletingChatIds)
+
   return (
     <>
     <SidebarResourceList>
@@ -540,7 +542,7 @@ export function ChatInlinePanel({
             const unread = Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)
             const active = activeId === chat._id
             const isEditing = editingChatId === chat._id
-            const isDeleting = deletingChatIds.includes(chat._id)
+            const isDeleting = deletingChatIdSet.has(chat._id)
             const ConversationIcon = chat.conversationType === 'channel'
               ? Hash
               : chat.conversationType === 'dm'

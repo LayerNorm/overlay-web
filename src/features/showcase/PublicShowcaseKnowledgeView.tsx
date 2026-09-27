@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import {
   createFixtureKnowledgeSurfaceAdapters,
   type KnowledgeSurfaceAdapters,
@@ -15,7 +15,6 @@ import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { SHOWCASE_KNOWLEDGE_NODES } from './showcase-data'
 
 export function PublicShowcaseKnowledgeView() {
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const { requireAuth } = useGuestGate()
 
@@ -60,7 +59,7 @@ export function PublicShowcaseKnowledgeView() {
           if (value === null || value === undefined || value === '') params.delete(key)
           else params.set(key, value)
         }
-        window.history.pushState(null, '', `${pathname}?${params.toString()}`)
+        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`)
       }}
       adapters={adapters}
       memories={{
