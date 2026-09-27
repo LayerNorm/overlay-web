@@ -318,12 +318,11 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
         }
         const outcomes = new Map<string, WorkToolOutcome>()
         const pending: PendingApproval[] = []
+        const toolDefinitionsByName = new Map(input.toolDefinitions.map((entry) => [entry.name, entry]))
 
         for (const toolCall of call.toolCalls) {
           stepContent.push({ type: 'tool-call', ...toolCall })
-          const definition = input.toolDefinitions.find(
-            (entry) => entry.name === toolCall.toolName,
-          )
+          const definition = toolDefinitionsByName.get(toolCall.toolName)
           const context = {
             ...input.toolingContext,
             agentRunId: input.agentRunId,

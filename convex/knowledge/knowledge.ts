@@ -444,6 +444,7 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
   },
   handler: async (ctx, { embeddingIds, sourceKind, sourceKinds, workspaceId }) => {
     const kinds = sourceKinds ?? (sourceKind !== undefined ? [sourceKind] : undefined)
+    const kindsSet = kinds === undefined ? undefined : new Set(kinds)
     const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = []
     for (const id of embeddingIds) {
       const row = await ctx.db.get(id)
@@ -451,7 +452,7 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
         ordered.push({ chunkId: null })
         continue
       }
-      if (kinds !== undefined && !kinds.includes(row.sourceKind)) {
+      if (kindsSet !== undefined && !kindsSet.has(row.sourceKind)) {
         ordered.push({ chunkId: null })
         continue
       }
@@ -501,7 +502,8 @@ export const temporalChunksInRange = internalQuery({
         q.eq('userId', userId).gte('eventAt', fromMs).lt('eventAt', toMs))
       .order('desc')
       .take(limit * 4)
-    return (sourceKinds ? rows.filter((r) => sourceKinds.includes(r.sourceKind)) : rows)
+    const sourceKindsSet = sourceKinds === undefined ? undefined : new Set(sourceKinds)
+    return (sourceKindsSet ? rows.filter((r) => sourceKindsSet.has(r.sourceKind)) : rows)
       .slice(0, limit)
       .map((r) => r._id)
   },

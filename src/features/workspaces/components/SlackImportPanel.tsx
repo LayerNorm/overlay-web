@@ -1053,7 +1053,7 @@ function JobProgressView({
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
             <div
-              className="h-full rounded-full bg-[var(--foreground)] transition-all duration-500"
+              className="h-full rounded-full bg-[var(--foreground)] transition-[width] duration-500"
               style={{ width: `${progressPct}%` }}
             />
           </div>

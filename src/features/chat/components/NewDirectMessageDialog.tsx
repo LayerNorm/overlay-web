@@ -30,6 +30,8 @@ const SHOWCASE_ITEMS: WorkspaceManagementItem[] = [
   },
 ]
 
+const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
+
 export function NewDirectMessageDialog({
   open,
   workspaceId,
@@ -37,7 +39,7 @@ export function NewDirectMessageDialog({
   addToConversationId,
   addToConversationType = 'channel',
   showcase = false,
-  excludedPrincipalIds = [],
+  excludedPrincipalIds = EMPTY_EXCLUDED_PRINCIPAL_IDS,
   onOpenChange,
   onCreated,
   onParticipantsAdded,
@@ -91,14 +93,16 @@ export function NewDirectMessageDialog({
 
   const candidates = useMemo(() => {
     const needle = query.trim().toLowerCase()
+    const excludedSet = new Set(excludedPrincipalIds)
     return items
       .filter((item) => (
         item.principalId !== currentPrincipalId
         && item.status === 'active'
-        && !excludedPrincipalIds.includes(item.principalId ?? '')
+        && !excludedSet.has(item.principalId ?? '')
       ))
       .filter((item) => !needle || `${item.name} ${item.description ?? ''}`.toLowerCase().includes(needle))
   }, [currentPrincipalId, excludedPrincipalIds, items, query])
+  const selectedSet = new Set(selected)
   const emailQuery = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query.trim())
     ? query.trim().toLowerCase()
     : null
@@ -218,7 +222,7 @@ export function NewDirectMessageDialog({
             </div>
           ) : candidates.length > 0 ? candidates.map((item) => {
             const principalId = item.principalId!
-            const checked = selected.includes(principalId)
+            const checked = selectedSet.has(principalId)
             const AgentIcon = item.principalType === 'agent' ? Bot : UserRound
             return (
               <button

@@ -688,6 +688,7 @@ function RemoteRequestControls({ request, onResolve }: {
     }),
     [request],
   )
+  const requiredSet = new Set(required)
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     initialElicitationValues(properties, required),
   )
@@ -707,7 +708,7 @@ function RemoteRequestControls({ request, onResolve }: {
           <div key={key} className="mt-2 flex items-center gap-3">
             <span className="flex-1 text-[11px] text-[var(--muted)]">
                   {property.title ?? key}
-                  {required.includes(key) ? ' *' : ''}
+                  {requiredSet.has(key) ? ' *' : ''}
             </span>
             <Toggle
               checked={values[key] === true}
@@ -728,7 +729,7 @@ function RemoteRequestControls({ request, onResolve }: {
               >
                 <span>
                   {property.title ?? key}
-                  {required.includes(key) ? ' *' : ''}
+                  {requiredSet.has(key) ? ' *' : ''}
                 </span>
             {elicitationOptions(property).length > 0 ? (
                   <select
@@ -948,7 +949,7 @@ function RoomMessageToolbar({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const buttonClass =
-    'rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
+    'rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
 
   const railClass = floating
     ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
@@ -1103,7 +1104,6 @@ function EmojiPickerButton({
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers are stable useEffectEvents
   }, [open])
 
   return (

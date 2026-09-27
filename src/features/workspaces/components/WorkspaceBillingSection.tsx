@@ -476,6 +476,8 @@ function Metric({
   )
 }
 
+const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+
 function formatCredits(value: number): string {
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)} credits`
+  return `${CREDITS_FORMATTER.format(value)} credits`
 }

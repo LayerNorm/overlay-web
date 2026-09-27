@@ -483,18 +483,18 @@ export function DirectMessageExperience({
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
-  );
-  const [mentions, setMentions] = useState<MentionItem[]>([]);
-  const [replyContext, setReplyContext] = useState<{
-    snippet: string;
-    bodyForModel: string;
-    replyToTurnId?: string;
-  } | null>(null);
-  const attachMenuRef = useRef<HTMLDivElement>(null);
-  const modeMenuRef = useRef<HTMLDivElement>(null);
-  const composerRef =
-    useRef<import("./chat-interface/MentionInput").MentionInputHandle>(null);
-  const threadRenameRequestedRef = useRef(false);
+  )
+  const mentionsRef = useRef<MentionItem[]>([])
+  const setMentions = useCallback((next: MentionItem[]) => {
+    mentionsRef.current = next
+  }, [])
+  const [replyContext, setReplyContext] = useState<
+    { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
+  >(null)
+  const attachMenuRef = useRef<HTMLDivElement>(null)
+  const modeMenuRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<import('./chat-interface/MentionInput').MentionInputHandle>(null)
+  const threadRenameRequestedRef = useRef(false)
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -1372,18 +1372,15 @@ export function DirectMessageExperience({
   }, [currentPrincipalId, participants]);
 
   function resolveMentionTargets(text: string): string[] {
-    const fromChips = mentions
-      .filter((mention) => mention.type === "person")
-      .map((mention) => mention.id);
-    const fromText = resolveMentionedPrincipalIds(
-      text,
-      participants.map((participant) => ({
-        principalId: participant.principalId,
-        displayName: participant.displayName,
-        principalType: participant.principalType,
-      })),
-    );
-    return Array.from(new Set([...fromChips, ...fromText]));
+    const fromChips = mentionsRef.current
+      .filter((mention) => mention.type === 'person')
+      .map((mention) => mention.id)
+    const fromText = resolveMentionedPrincipalIds(text, participants.map((participant) => ({
+      principalId: participant.principalId,
+      displayName: participant.displayName,
+      principalType: participant.principalType,
+    })))
+    return Array.from(new Set([...fromChips, ...fromText]))
   }
 
   async function sendMessage(
@@ -1461,20 +1458,14 @@ export function DirectMessageExperience({
         (participant) => participant.principalType === "human",
       );
       const threadAgentId = threadRootMessageId
-        ? messages.find(
-            (message) =>
-              message.id === threadRootMessageId &&
-              message.authorKind === "agent",
-          )?.authorPrincipalId
-        : undefined;
-      const invokedAgents = agentParticipants.filter(
-        (participant) =>
-          (conversationType === "dm" &&
-            agentParticipants.length === 1 &&
-            humanParticipants.length === 1) ||
-          mentionedPrincipalIds.includes(participant.principalId) ||
-          threadAgentId === participant.principalId,
-      );
+        ? messages.find((message) => message.id === threadRootMessageId && message.authorKind === 'agent')?.authorPrincipalId
+        : undefined
+      const mentionedPrincipalIdSet = new Set(mentionedPrincipalIds)
+      const invokedAgents = agentParticipants.filter((participant) => (
+        (conversationType === 'dm' && agentParticipants.length === 1 && humanParticipants.length === 1)
+        || mentionedPrincipalIdSet.has(participant.principalId)
+        || threadAgentId === participant.principalId
+      ))
       if (invokedAgents.length) {
         setAgentResponding(
           invokedAgents.length === 1 ? invokedAgents[0]!.displayName : "Agents",
@@ -1589,7 +1580,7 @@ export function DirectMessageExperience({
       text,
       attachedImages,
       pendingChatDocuments,
-      mentions,
+      mentions: mentionsRef.current,
       replyContext,
       turnId,
     });

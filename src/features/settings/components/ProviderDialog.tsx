@@ -189,6 +189,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
       onBusyChange(false)
     }
   }, [isEdit, existing, displayName, enabledModelIds, apiKey, providerId, endpoint, preset, testResult, onSaved, onBusyChange])
+  const enabledModelIdSet = new Set(enabledModelIds)
 
   const hasRequiredEndpoint = !preset?.allowsCustomEndpoint || endpoint.trim().length > 0
   const hasRequiredApiKey = !preset?.requiresApiKey || Boolean(apiKey) || isEdit
@@ -370,10 +371,10 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                           {formatByokModelDisplayName(model.id, model.name)}
                         </span>
                         <Toggle
-                          checked={enabledModelIds.includes(model.id)}
+                          checked={enabledModelIdSet.has(model.id)}
                           onCheckedChange={() => {
                             setEnabledModelIds((prev) =>
-                              prev.includes(model.id)
+                              new Set(prev).has(model.id)
                                 ? prev.filter((id) => id !== model.id)
                                 : [...prev, model.id],
                             )
@@ -413,10 +414,10 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                       {formatByokModelDisplayName(model.id, model.name)}
                     </span>
                   <Toggle
-                    checked={enabledModelIds.includes(model.id)}
+                    checked={enabledModelIdSet.has(model.id)}
                     onCheckedChange={() => {
                       setEnabledModelIds((prev) =>
-                        prev.includes(model.id)
+                        new Set(prev).has(model.id)
                           ? prev.filter((id) => id !== model.id)
                           : [...prev, model.id],
                       )

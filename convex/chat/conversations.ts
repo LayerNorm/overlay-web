@@ -526,15 +526,14 @@ export const getRecentMessages = query({
       })
       .order('desc')
       .take(scanLimit)
-    const selectedTurnIds: string[] = []
+    const selectedTurnIdSet = new Set<string>()
     for (const message of recentScan) {
       if (message.role !== 'user') continue
       const turnId = message.turnId?.trim() || message._id
-      if (selectedTurnIds.includes(turnId)) continue
-      selectedTurnIds.push(turnId)
-      if (selectedTurnIds.length >= safeLimit) break
+      if (selectedTurnIdSet.has(turnId)) continue
+      selectedTurnIdSet.add(turnId)
+      if (selectedTurnIdSet.size >= safeLimit) break
     }
-    const selectedTurnIdSet = new Set(selectedTurnIds)
     const messages = recentScan
       .filter((message) => selectedTurnIdSet.has(message.turnId?.trim() || message._id))
       .sort((a, b) => a.createdAt - b.createdAt)

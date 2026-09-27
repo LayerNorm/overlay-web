@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
@@ -26,8 +27,6 @@ const GuestGateContext = createContext<GuestGateContextType | undefined>(undefin
 const CORNER_DISMISSED_KEY = 'overlay:corner-dismissed'
 
 function readCornerDismissed(): boolean {
-  // Window-guarded; sessionStorage can also throw under private browsing.
-  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   if (typeof window === 'undefined') return false
   try {
     return sessionStorage.getItem(CORNER_DISMISSED_KEY) === '1'
@@ -57,8 +56,6 @@ export function GuestGateProvider({
   const [cornerDismissed, setCornerDismissed] = useState(false)
   const [cornerClosing, setCornerClosing] = useState(false)
 
-  // One-shot transition trigger: reads window.location when auth settles —
-  // not a per-render prop mirror, so it stays an effect.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- read sessionStorage after mount
     setCornerDismissed(readCornerDismissed())
@@ -66,13 +63,9 @@ export function GuestGateProvider({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (
-      !suppressPrompts &&
-      authSettled &&
-      !isAuthenticated &&
-      params.get('signin') === 'nav'
-    ) {
-      queueMicrotask(() => setModalReason('nav'))
+    if (!suppressPrompts && authSettled && !isAuthenticated && params.get('signin') === 'nav') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setModalReason('nav')
     }
   }, [authSettled, isAuthenticated, pathname, suppressPrompts])
 
@@ -100,15 +93,18 @@ export function GuestGateProvider({
     }, FADE_MS)
   }, [])
 
+  const guestGateValue = useMemo(
+    () => ({ requireAuth, isModalOpen: Boolean(modalReason) }),
+    [requireAuth, modalReason],
+  )
+
   const showCorner =
     !suppressPrompts && authSettled && !isAuthenticated && !cornerDismissed && !modalReason
 
   return (
-    <GuestGateContext.Provider
-      value={{ requireAuth, isModalOpen: !!modalReason }}
-    >
+    <GuestGateContext.Provider value={guestGateValue}>
       {children}
-      {!isAuthenticated && ((authSettled && !!modalReason) || modalClosing) ? (
+      {!isAuthenticated && (((authSettled && !!modalReason) || modalClosing)) ? (
         <SignInFullScreenModal
           reason={modalReason ?? 'nav'}
           onClose={closeModal}
@@ -116,7 +112,7 @@ export function GuestGateProvider({
           ssoEnabled={capabilities.sso}
         />
       ) : null}
-      {showCorner || cornerClosing ? (
+      {(showCorner || cornerClosing) ? (
         <SignInCornerPopover
           onDismiss={dismissCorner}
           isClosing={cornerClosing}
