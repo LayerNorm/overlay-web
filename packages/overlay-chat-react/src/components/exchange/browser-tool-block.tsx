@@ -134,7 +134,7 @@ function BrowserToolDetailsPanel({
             <iframe
               src={details.liveUrl}
               title="Browser Use live browser"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts"
               className="h-[280px] w-full rounded-xl border border-[var(--border)] bg-[var(--background)]"
             />
           ) : null}
