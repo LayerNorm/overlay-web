@@ -874,15 +874,23 @@ function RemoteRequestControls({ request, onResolve }: {
           <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
             <span>{property.title ?? key}{requiredSet.has(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
-              <select aria-label={key} value={String(values[key] ?? '')}
-                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
+              <select
+                aria-label={key}
+                value={String(values[key] ?? '')}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    [key]: elicitationFieldValue(property.type, event.target.value),
+                  }))
+                }
+                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]"
+              >
                 <option value="">Select…</option>
-                    {elicitationOptions(property).map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                {elicitationOptions(property).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             ) : (
               <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
@@ -892,6 +900,7 @@ function RemoteRequestControls({ request, onResolve }: {
                 className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
             )}
           </label>
+        ),
         )
         : null}
       <div className="mt-3 flex flex-wrap gap-2">

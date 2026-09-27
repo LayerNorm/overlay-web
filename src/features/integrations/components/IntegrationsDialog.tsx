@@ -237,7 +237,7 @@ export function IntegrationsDialog({
             </p>
           </div>
           <button
-            type='button'
+            type="button"
             aria-label="Close"
             onClick={onClose}
             className='rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
