@@ -33,12 +33,14 @@ import type {
   WorkspaceMembershipRole,
   WorkspaceOperationalMetrics,
   WorkspaceRolloutStage,
+  WorkspaceSummary,
 } from '@overlay/workspace-contracts'
 import { describeRolloutStage } from '@/shared/workspaces/collaboration-rollout'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { workspaceManagementClient } from '../lib/workspace-client'
 import { WORKSPACE_SETTINGS_TABS as TABS, isWorkspaceSettingsTab } from '../lib/workspace-settings-tabs'
 import type {
+  WorkspaceLifecycleStatus,
   WorkspaceManagementClient,
   WorkspaceSettingsTab,
 } from '@/shared/workspaces/types'
@@ -430,94 +432,146 @@ function WorkspaceItemActions({
   onArchiveTeam?(item: WorkspaceManagementItem): void
 }) {
   if (item.kind === 'invitation' && state.canManage) {
-    return (
-      <span className="flex shrink-0 items-center gap-1">
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={`Resend invitation to ${item.name}`}
-          onClick={() => onInvitationAction?.(item, 'resend')}
-        >
-          <RotateCw size={12} />
-          Resend
-        </Button>
-        {item.status === 'pending' ? (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            aria-label={`Cancel invitation to ${item.name}`}
-            onClick={() => onInvitationAction?.(item, 'cancel')}
-          >
-            <Trash2 size={13} />
-          </Button>
-        ) : null}
-      </span>
-    )
+    return <InvitationItemActions item={item} onInvitationAction={onInvitationAction} />
   }
 
   if (item.kind === 'member' && item.principalType === 'human') {
-    const isSelf = item.principalId === state.currentPrincipalId
     return (
-      <span className="flex shrink-0 items-center gap-1.5">
-        {state.canManage && item.role ? (
-          <Select
-            aria-label={`Role for ${item.name}`}
-            className="h-8 w-28 py-0 text-xs capitalize"
-            value={item.role}
-            disabled={isSelf}
-            onChange={(event) => onMemberRoleChange?.(
-              item,
-              event.target.value as WorkspaceMembershipRole,
-            )}
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-            <option value="guest">Guest</option>
-            {state.currentRole === 'owner' && state.workspaceKind === 'organization' ? (
-              <option value="owner">Owner</option>
-            ) : null}
-          </Select>
-        ) : (
-          <span className="text-xs capitalize text-[var(--muted-light)]">{item.role}</span>
-        )}
-        {state.canManage && !isSelf ? (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            aria-label={`Remove ${item.name}`}
-            onClick={() => onRemoveMember?.(item)}
-          >
-            <Trash2 size={13} />
-          </Button>
-        ) : null}
-      </span>
+      <MemberItemActions
+        item={item}
+        state={state}
+        onMemberRoleChange={onMemberRoleChange}
+        onRemoveMember={onRemoveMember}
+      />
     )
   }
 
   if (item.kind === 'team') {
     return (
-      <span className="flex shrink-0 items-center gap-1">
-        <Button size="sm" variant="ghost" onClick={() => onManageTeam?.(item)}>
-          Manage
-        </Button>
-        {state.currentRole !== 'guest' ? (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            aria-label={`Archive ${item.name}`}
-            onClick={() => onArchiveTeam?.(item)}
-          >
-            <Archive size={13} />
-          </Button>
-        ) : null}
-      </span>
+      <TeamItemActions
+        item={item}
+        canArchive={state.currentRole !== 'guest'}
+        onManageTeam={onManageTeam}
+        onArchiveTeam={onArchiveTeam}
+      />
     )
   }
 
   return null
+}
+
+function InvitationItemActions({
+  item,
+  onInvitationAction,
+}: {
+  item: WorkspaceManagementItem
+  onInvitationAction?(item: WorkspaceManagementItem, action: 'cancel' | 'resend'): void
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={`Resend invitation to ${item.name}`}
+        onClick={() => onInvitationAction?.(item, 'resend')}
+      >
+        <RotateCw size={12} />
+        Resend
+      </Button>
+      {item.status === 'pending' ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          aria-label={`Cancel invitation to ${item.name}`}
+          onClick={() => onInvitationAction?.(item, 'cancel')}
+        >
+          <Trash2 size={13} />
+        </Button>
+      ) : null}
+    </span>
+  )
+}
+
+function MemberItemActions({
+  item,
+  state,
+  onMemberRoleChange,
+  onRemoveMember,
+}: {
+  item: WorkspaceManagementItem
+  state: Extract<WorkspaceManagementState, { status: 'ready' }>
+  onMemberRoleChange?(item: WorkspaceManagementItem, role: WorkspaceMembershipRole): void
+  onRemoveMember?(item: WorkspaceManagementItem): void
+}) {
+  const isSelf = item.principalId === state.currentPrincipalId
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {state.canManage && item.role ? (
+        <Select
+          aria-label={`Role for ${item.name}`}
+          className="h-8 w-28 py-0 text-xs capitalize"
+          value={item.role}
+          disabled={isSelf}
+          onChange={(event) => onMemberRoleChange?.(
+            item,
+            event.target.value as WorkspaceMembershipRole,
+          )}
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+          <option value="guest">Guest</option>
+          {state.currentRole === 'owner' && state.workspaceKind === 'organization' ? (
+            <option value="owner">Owner</option>
+          ) : null}
+        </Select>
+      ) : (
+        <span className="text-xs capitalize text-[var(--muted-light)]">{item.role}</span>
+      )}
+      {state.canManage && !isSelf ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          aria-label={`Remove ${item.name}`}
+          onClick={() => onRemoveMember?.(item)}
+        >
+          <Trash2 size={13} />
+        </Button>
+      ) : null}
+    </span>
+  )
+}
+
+function TeamItemActions({
+  item,
+  canArchive,
+  onManageTeam,
+  onArchiveTeam,
+}: {
+  item: WorkspaceManagementItem
+  canArchive: boolean
+  onManageTeam?(item: WorkspaceManagementItem): void
+  onArchiveTeam?(item: WorkspaceManagementItem): void
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <Button size="sm" variant="ghost" onClick={() => onManageTeam?.(item)}>
+        Manage
+      </Button>
+      {canArchive ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          aria-label={`Archive ${item.name}`}
+          onClick={() => onArchiveTeam?.(item)}
+        >
+          <Archive size={13} />
+        </Button>
+      ) : null}
+    </span>
+  )
 }
 
 function unavailableActionTitle(tab: WorkspaceSettingsTab): string {
@@ -525,6 +579,16 @@ function unavailableActionTitle(tab: WorkspaceSettingsTab): string {
   if (tab === 'chats-agents') return 'Named agents are created and configured from Agents in the app sidebar.'
   return 'Only workspace owners and administrators can perform this action.'
 }
+
+type WorkspacePanelAction =
+  | { type: 'invite'; guest: boolean }
+  | { type: 'create-team' }
+  | { type: 'manage-team'; team: WorkspaceManagementItem }
+  | { type: 'remove-member'; item: WorkspaceManagementItem }
+  | { type: 'archive-team'; item: WorkspaceManagementItem }
+  | { type: 'transfer-ownership'; item: WorkspaceManagementItem }
+  | { type: 'archive-workspace' }
+  | null
 
 export function WorkspaceSettingsPanel({
   client = workspaceManagementClient,
@@ -546,16 +610,7 @@ export function WorkspaceSettingsPanel({
   const [policyState, setPolicyState] = useState<WorkspaceSharingPolicyState>({ status: 'loading' })
   const [policyBusy, setPolicyBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [action, setAction] = useState<
-    | { type: 'invite'; guest: boolean }
-    | { type: 'create-team' }
-    | { type: 'manage-team'; team: WorkspaceManagementItem }
-    | { type: 'remove-member'; item: WorkspaceManagementItem }
-    | { type: 'archive-team'; item: WorkspaceManagementItem }
-    | { type: 'transfer-ownership'; item: WorkspaceManagementItem }
-    | { type: 'archive-workspace' }
-    | null
-  >(null)
+  const [action, setAction] = useState<WorkspacePanelAction>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [busyItemId, setBusyItemId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -668,34 +723,75 @@ export function WorkspaceSettingsPanel({
     return `${activeWorkspace.kind === 'personal' ? 'Personal workspace' : 'Organization workspace'}${memberLabel}`
   }, [activeWorkspace])
 
-  if (workspaceStatus === 'loading' || workspaceStatus === 'idle') {
-    return (
-      <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Loading workspace…
-      </div>
+  function openPrimaryAction() {
+    setActionError(null)
+    setInvitePath(null)
+    setAction(
+      activeTab === 'teams'
+        ? { type: 'create-team' }
+        : { type: 'invite', guest: activeTab === 'guests' },
     )
   }
 
-  if (workspaceStatus === 'error') {
-    return (
-      <EmptyState
-        className="min-h-72 px-6 py-12"
-        icon={<CircleAlert size={28} />}
-        title="Workspace settings are unavailable"
-        description={workspaceError ?? 'Could not load your workspace.'}
-        action={<Button size="sm" onClick={() => void refreshWorkspaces()}>Try again</Button>}
-      />
-    )
+  function openArchiveWorkspace() {
+    setActionError(null)
+    setAction({ type: 'archive-workspace' })
   }
 
-  if (!activeWorkspace) {
+  function openRemoveMember(item: WorkspaceManagementItem) {
+    setActionError(null)
+    setAction({ type: 'remove-member', item })
+  }
+
+  function openManageTeam(item: WorkspaceManagementItem) {
+    setActionError(null)
+    setTeamCandidates([])
+    setAction({ type: 'manage-team', team: item })
+  }
+
+  function openArchiveTeam(item: WorkspaceManagementItem) {
+    setActionError(null)
+    setAction({ type: 'archive-team', item })
+  }
+
+  function handleTabChange(tab: WorkspaceSettingsTab) {
+    setActiveTab(tab)
+    setActionError(null)
+  }
+
+  function handleMemberRoleChange(item: WorkspaceManagementItem, role: WorkspaceMembershipRole) {
+    if (!item.principalId || !activeWorkspace) return
+    if (role === 'owner') {
+      setActionError(null)
+      setAction({ type: 'transfer-ownership', item })
+      return
+    }
+    void runItemAction(item.id, async () => {
+      await client.updateMember(activeWorkspace.id, {
+        action: 'set-role',
+        principalId: item.principalId!,
+        role,
+      })
+    })
+  }
+
+  function handleInvitationAction(item: WorkspaceManagementItem, invitationAction: 'cancel' | 'resend') {
+    if (!item.invitationId || !activeWorkspace) return
+    void runItemAction(item.id, async () => {
+      if (invitationAction === 'resend') {
+        await client.resendInvitation(activeWorkspace.id, item.invitationId!)
+      } else {
+        await client.cancelInvitation(activeWorkspace.id, item.invitationId!)
+      }
+    })
+  }
+
+  if (workspaceStatus !== 'ready' || !activeWorkspace) {
     return (
-      <EmptyState
-        className="min-h-72 px-6 py-12"
-        icon={<UsersRound size={30} strokeWidth={1.5} />}
-        title="Create your first workspace"
-        description="Use the workspace menu in the sidebar to create a collaboration boundary."
+      <WorkspaceSettingsGate
+        status={workspaceStatus}
+        error={workspaceError}
+        onRetry={refreshWorkspaces}
       />
     )
   }
@@ -707,183 +803,428 @@ export function WorkspaceSettingsPanel({
       || ((activeTab === 'people' || activeTab === 'guests') && state.canManage)
     )
   const headerPrimaryLabel = TABS.find((tab) => tab.id === activeTab)?.action
+  const refresh = () => setRefreshKey((current) => current + 1)
 
   return (
     <>
-      <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]">
-        <header className="flex items-center gap-3 px-5 py-4">
-          <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{activeWorkspace.name}</h2>
-            <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{workspaceLabel}</p>
-          </div>
-          {showHeaderPrimaryAction ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                setActionError(null)
-                setInvitePath(null)
-                setAction(
-                  activeTab === 'teams'
-                    ? { type: 'create-team' }
-                    : { type: 'invite', guest: activeTab === 'guests' },
-                )
-              }}
-            >
-              {headerPrimaryLabel}
-            </Button>
-          ) : null}
-          {activeWorkspace.kind === 'organization' && activeWorkspace.role === 'owner' ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setActionError(null)
-                setAction({ type: 'archive-workspace' })
-              }}
-            >
-              <Archive size={13} />
-              Archive
-            </Button>
-          ) : null}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-medium capitalize text-[var(--muted)]">
-            <KeyRound size={11} />
-            {activeWorkspace.role}
-          </span>
-        </header>
-        <WorkspaceSettingsTabs
-          activeTab={activeTab}
-          onTabChange={(tab) => {
-            setActiveTab(tab)
-            setActionError(null)
-          }}
-        />
-        {actionError && !action ? (
-          <div role="alert" className="border-b border-[var(--border)] bg-red-500/5 px-5 py-2.5 text-xs text-red-500">
-            {actionError}
-          </div>
-        ) : null}
-        {activeTab === 'billing' ? (
-          <WorkspaceBillingSection client={client} workspace={activeWorkspace} />
-        ) : activeTab === 'import' ? (
-          <ImportPanel />
-        ) : activeTab === 'sharing' ? (
-          <WorkspaceSharingPolicySection
-            state={policyState}
-            busy={policyBusy}
-            onRetry={() => setRefreshKey((current) => current + 1)}
-            onToggle={(key, value) => {
-              if (!activeWorkspace) return
-              setPolicyBusy(true)
-              setActionError(null)
-              void client.setSharingPolicy(activeWorkspace.id, { [key]: value })
-                .then((result) => setPolicyState((current) => ({
-                  ...(current.status === 'ready' ? current : {}),
-                  status: 'ready',
-                  canManage: result.canManage,
-                  updatedAt: result.policy.updatedAt,
-                  publicLinksEnabled: result.policy.publicLinksEnabled,
-                  memberCanCreateChannels: result.policy.memberCanCreateChannels,
-                  memberCanCreateAgents: result.policy.memberCanCreateAgents,
-                  memberCanInvite: result.policy.memberCanInvite,
-                  legalHold: result.policy.legalHold,
-                  rolloutStage: result.policy.rolloutStage,
-                  guestExpirationDays: result.policy.guestExpirationDays,
-                  channelRetentionDays: result.policy.channelRetentionDays,
-                  metrics: current.status === 'ready' ? current.metrics : undefined,
-                })))
-                .catch((error) => setActionError(
-                  error instanceof Error ? error.message : 'Could not update workspace policy.',
-                ))
-                .finally(() => setPolicyBusy(false))
-            }}
-          />
-        ) : (
-        <WorkspaceManagementContent
-          tab={activeTab}
-          state={state}
-          busyItemId={busyItemId}
-          onRetry={() => setRefreshKey((current) => current + 1)}
-          onPrimaryAction={() => {
-            setActionError(null)
-            setInvitePath(null)
-            setAction(
-              activeTab === 'teams'
-                ? { type: 'create-team' }
-                : { type: 'invite', guest: activeTab === 'guests' },
-            )
-          }}
-          onMemberRoleChange={(item, role) => {
-            if (!item.principalId || !activeWorkspace) return
-            if (role === 'owner') {
-              setActionError(null)
-              setAction({ type: 'transfer-ownership', item })
-              return
-            }
-            void runItemAction(item.id, async () => {
-              await client.updateMember(activeWorkspace.id, {
-                action: 'set-role',
-                principalId: item.principalId!,
-                role,
-              })
-            })
-          }}
-          onRemoveMember={(item) => {
-            setActionError(null)
-            setAction({ type: 'remove-member', item })
-          }}
-          onInvitationAction={(item, invitationAction) => {
-            if (!item.invitationId || !activeWorkspace) return
-            void runItemAction(item.id, async () => {
-              if (invitationAction === 'resend') {
-                await client.resendInvitation(activeWorkspace.id, item.invitationId!)
-              } else {
-                await client.cancelInvitation(activeWorkspace.id, item.invitationId!)
-              }
-            })
-          }}
-          onManageTeam={(item) => {
-            setActionError(null)
-            setTeamCandidates([])
-            setAction({ type: 'manage-team', team: item })
-          }}
-          onArchiveTeam={(item) => {
-            setActionError(null)
-            setAction({ type: 'archive-team', item })
-          }}
-        />
-        )}
-        {activeTab === 'chats-agents' ? (
-          <footer className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3 text-[11px] text-[var(--muted-light)]">
-            <MessageSquareText size={12} />
-            Personal chats stay private; shared rooms and named agents belong to this workspace.
-          </footer>
-        ) : null}
-      </section>
+      <WorkspacePanelBody
+        activeWorkspace={activeWorkspace}
+        workspaceLabel={workspaceLabel}
+        showPrimaryAction={showHeaderPrimaryAction}
+        primaryActionLabel={headerPrimaryLabel}
+        onPrimaryAction={openPrimaryAction}
+        onArchiveWorkspace={openArchiveWorkspace}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        actionError={actionError}
+        hasAction={action !== null}
+        client={client}
+        policyState={policyState}
+        policyBusy={policyBusy}
+        setPolicyState={setPolicyState}
+        setPolicyBusy={setPolicyBusy}
+        setActionError={setActionError}
+        onRefresh={refresh}
+        state={state}
+        busyItemId={busyItemId}
+        onMemberRoleChange={handleMemberRoleChange}
+        onRemoveMember={openRemoveMember}
+        onInvitationAction={handleInvitationAction}
+        onManageTeam={openManageTeam}
+        onArchiveTeam={openArchiveTeam}
+      />
+      <WorkspaceActionDialogs
+        action={action}
+        actionBusy={actionBusy}
+        actionError={actionError}
+        invitePath={invitePath}
+        teamCandidates={teamCandidates}
+        teamCandidateBusyId={teamCandidateBusyId}
+        workspaceId={activeWorkspace.id}
+        client={client}
+        refreshWorkspaces={refreshWorkspaces}
+        onRefresh={refresh}
+        onCloseAction={closeAction}
+        setAction={setAction}
+        setActionBusy={setActionBusy}
+        setActionError={setActionError}
+        setInvitePath={setInvitePath}
+        setTeamCandidateBusyId={setTeamCandidateBusyId}
+      />
+    </>
+  )
+}
 
+function WorkspaceSettingsGate({
+  status,
+  error,
+  onRetry,
+}: {
+  status: WorkspaceLifecycleStatus
+  error: string | null
+  onRetry(): Promise<void>
+}) {
+  if (status === 'loading' || status === 'idle') {
+    return (
+      <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]">
+        <Loader2 size={16} className="mr-2 animate-spin" />
+        Loading workspace…
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <EmptyState
+        className="min-h-72 px-6 py-12"
+        icon={<CircleAlert size={28} />}
+        title="Workspace settings are unavailable"
+        description={error ?? 'Could not load your workspace.'}
+        action={<Button size="sm" onClick={() => void onRetry()}>Try again</Button>}
+      />
+    )
+  }
+
+  return (
+    <EmptyState
+      className="min-h-72 px-6 py-12"
+      icon={<UsersRound size={30} strokeWidth={1.5} />}
+      title="Create your first workspace"
+      description="Use the workspace menu in the sidebar to create a collaboration boundary."
+    />
+  )
+}
+
+function WorkspaceSharingTab({
+  client,
+  workspaceId,
+  policyState,
+  policyBusy,
+  onRefresh,
+  setPolicyState,
+  setPolicyBusy,
+  setActionError,
+}: {
+  client: WorkspaceManagementClient
+  workspaceId: string
+  policyState: WorkspaceSharingPolicyState
+  policyBusy: boolean
+  onRefresh(): void
+  setPolicyState: React.Dispatch<React.SetStateAction<WorkspaceSharingPolicyState>>
+  setPolicyBusy(busy: boolean): void
+  setActionError(error: string | null): void
+}) {
+  function handleToggle(key: PolicyToggleKey, value: boolean) {
+    setPolicyBusy(true)
+    setActionError(null)
+    void client.setSharingPolicy(workspaceId, { [key]: value })
+      .then((result) => setPolicyState((current) => ({
+        ...(current.status === 'ready' ? current : {}),
+        status: 'ready',
+        canManage: result.canManage,
+        updatedAt: result.policy.updatedAt,
+        publicLinksEnabled: result.policy.publicLinksEnabled,
+        memberCanCreateChannels: result.policy.memberCanCreateChannels,
+        memberCanCreateAgents: result.policy.memberCanCreateAgents,
+        memberCanInvite: result.policy.memberCanInvite,
+        legalHold: result.policy.legalHold,
+        rolloutStage: result.policy.rolloutStage,
+        guestExpirationDays: result.policy.guestExpirationDays,
+        channelRetentionDays: result.policy.channelRetentionDays,
+        metrics: current.status === 'ready' ? current.metrics : undefined,
+      })))
+      .catch((error) => setActionError(
+        error instanceof Error ? error.message : 'Could not update workspace policy.',
+      ))
+      .finally(() => setPolicyBusy(false))
+  }
+
+  return (
+    <WorkspaceSharingPolicySection
+      state={policyState}
+      busy={policyBusy}
+      onRetry={onRefresh}
+      onToggle={handleToggle}
+    />
+  )
+}
+
+function WorkspacePanelBody({
+  activeWorkspace,
+  workspaceLabel,
+  showPrimaryAction,
+  primaryActionLabel,
+  onPrimaryAction,
+  onArchiveWorkspace,
+  activeTab,
+  onTabChange,
+  actionError,
+  hasAction,
+  client,
+  policyState,
+  policyBusy,
+  setPolicyState,
+  setPolicyBusy,
+  setActionError,
+  onRefresh,
+  state,
+  busyItemId,
+  onMemberRoleChange,
+  onRemoveMember,
+  onInvitationAction,
+  onManageTeam,
+  onArchiveTeam,
+}: {
+  activeWorkspace: WorkspaceSummary
+  workspaceLabel: string | null
+  showPrimaryAction: boolean
+  primaryActionLabel: string | undefined
+  onPrimaryAction(): void
+  onArchiveWorkspace(): void
+  activeTab: WorkspaceSettingsTab
+  onTabChange(tab: WorkspaceSettingsTab): void
+  actionError: string | null
+  hasAction: boolean
+  client: WorkspaceManagementClient
+  policyState: WorkspaceSharingPolicyState
+  policyBusy: boolean
+  setPolicyState: React.Dispatch<React.SetStateAction<WorkspaceSharingPolicyState>>
+  setPolicyBusy(busy: boolean): void
+  setActionError(error: string | null): void
+  onRefresh(): void
+  state: WorkspaceManagementState
+  busyItemId: string | null
+  onMemberRoleChange(item: WorkspaceManagementItem, role: WorkspaceMembershipRole): void
+  onRemoveMember(item: WorkspaceManagementItem): void
+  onInvitationAction(item: WorkspaceManagementItem, action: 'cancel' | 'resend'): void
+  onManageTeam(item: WorkspaceManagementItem): void
+  onArchiveTeam(item: WorkspaceManagementItem): void
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]">
+      <header className="flex items-center gap-3 px-5 py-4">
+        <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{activeWorkspace.name}</h2>
+          <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{workspaceLabel}</p>
+        </div>
+        {showPrimaryAction ? (
+          <Button size="sm" onClick={onPrimaryAction}>
+            {primaryActionLabel}
+          </Button>
+        ) : null}
+        {activeWorkspace.kind === 'organization' && activeWorkspace.role === 'owner' ? (
+          <Button size="sm" variant="ghost" onClick={onArchiveWorkspace}>
+            <Archive size={13} />
+            Archive
+          </Button>
+        ) : null}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-medium capitalize text-[var(--muted)]">
+          <KeyRound size={11} />
+          {activeWorkspace.role}
+        </span>
+      </header>
+      <WorkspaceSettingsTabs activeTab={activeTab} onTabChange={onTabChange} />
+      {actionError && !hasAction ? (
+        <div role="alert" className="border-b border-[var(--border)] bg-red-500/5 px-5 py-2.5 text-xs text-red-500">
+          {actionError}
+        </div>
+      ) : null}
+      {activeTab === 'billing' ? (
+        <WorkspaceBillingSection client={client} workspace={activeWorkspace} />
+      ) : activeTab === 'import' ? (
+        <ImportPanel />
+      ) : activeTab === 'sharing' ? (
+        <WorkspaceSharingTab
+          client={client}
+          workspaceId={activeWorkspace.id}
+          policyState={policyState}
+          policyBusy={policyBusy}
+          onRefresh={onRefresh}
+          setPolicyState={setPolicyState}
+          setPolicyBusy={setPolicyBusy}
+          setActionError={setActionError}
+        />
+      ) : (
+      <WorkspaceManagementContent
+        tab={activeTab}
+        state={state}
+        busyItemId={busyItemId}
+        onRetry={onRefresh}
+        onPrimaryAction={onPrimaryAction}
+        onMemberRoleChange={onMemberRoleChange}
+        onRemoveMember={onRemoveMember}
+        onInvitationAction={onInvitationAction}
+        onManageTeam={onManageTeam}
+        onArchiveTeam={onArchiveTeam}
+      />
+      )}
+      {activeTab === 'chats-agents' ? (
+        <footer className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3 text-[11px] text-[var(--muted-light)]">
+          <MessageSquareText size={12} />
+          Personal chats stay private; shared rooms and named agents belong to this workspace.
+        </footer>
+      ) : null}
+    </section>
+  )
+}
+
+function WorkspaceActionDialogs({
+  action,
+  actionBusy,
+  actionError,
+  invitePath,
+  teamCandidates,
+  teamCandidateBusyId,
+  workspaceId,
+  client,
+  refreshWorkspaces,
+  onRefresh,
+  onCloseAction,
+  setAction,
+  setActionBusy,
+  setActionError,
+  setInvitePath,
+  setTeamCandidateBusyId,
+}: {
+  action: WorkspacePanelAction
+  actionBusy: boolean
+  actionError: string | null
+  invitePath: string | null
+  teamCandidates: WorkspaceManagementItem[]
+  teamCandidateBusyId: string | null
+  workspaceId: string
+  client: WorkspaceManagementClient
+  refreshWorkspaces(): Promise<void>
+  onRefresh(): void
+  onCloseAction(): void
+  setAction: React.Dispatch<React.SetStateAction<WorkspacePanelAction>>
+  setActionBusy(busy: boolean): void
+  setActionError(error: string | null): void
+  setInvitePath(path: string | null): void
+  setTeamCandidateBusyId(id: string | null): void
+}) {
+  async function runDialogAction(operation: () => Promise<void>, failureMessage: string) {
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      await operation()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : failureMessage)
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function handleInvite(input: {
+    email: string
+    role: Exclude<WorkspaceMembershipRole, 'owner'>
+  }) {
+    await runDialogAction(async () => {
+      const response = await client.invite(workspaceId, input)
+      setInvitePath(response.invitePath)
+      onRefresh()
+    }, 'Could not create invitation.')
+  }
+
+  async function handleCreateTeam(input: { name: string; description?: string }) {
+    await runDialogAction(async () => {
+      await client.createTeam(workspaceId, input)
+      onRefresh()
+      setAction(null)
+    }, 'Could not create team.')
+  }
+
+  async function handleTeamMemberToggle(principalId: string, member: boolean) {
+    if (action?.type !== 'manage-team') return
+    setTeamCandidateBusyId(principalId)
+    setActionError(null)
+    try {
+      if (member) {
+        await client.addTeamMember(workspaceId, action.team.id, principalId)
+      } else {
+        await client.removeTeamMember(workspaceId, action.team.id, principalId)
+      }
+      setAction((current) => {
+        if (current?.type !== 'manage-team') return current
+        const ids = new Set(current.team.teamMemberPrincipalIds ?? [])
+        if (member) ids.add(principalId)
+        else ids.delete(principalId)
+        return {
+          ...current,
+          team: { ...current.team, teamMemberPrincipalIds: [...ids] },
+        }
+      })
+      onRefresh()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update team.')
+    } finally {
+      setTeamCandidateBusyId(null)
+    }
+  }
+
+  async function handleRemoveMember() {
+    if (action?.type !== 'remove-member' || !action.item.principalId) return
+    const { principalId } = action.item
+    await runDialogAction(async () => {
+      await client.removeMember(workspaceId, principalId)
+      setAction(null)
+      onRefresh()
+    }, 'Could not remove member.')
+  }
+
+  async function handleTransferOwnership() {
+    if (action?.type !== 'transfer-ownership' || !action.item.principalId) return
+    const { principalId } = action.item
+    await runDialogAction(async () => {
+      await client.updateMember(workspaceId, {
+        action: 'transfer-ownership',
+        principalId,
+      })
+      setAction(null)
+      await refreshWorkspaces()
+      onRefresh()
+    }, 'Could not transfer ownership.')
+  }
+
+  async function handleArchiveTeam() {
+    if (action?.type !== 'archive-team') return
+    const { item } = action
+    await runDialogAction(async () => {
+      await client.archiveTeam(workspaceId, item.id)
+      setAction(null)
+      onRefresh()
+    }, 'Could not archive team.')
+  }
+
+  async function handleArchiveWorkspace() {
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      await client.archiveWorkspace(workspaceId)
+      setAction(null)
+      await refreshWorkspaces()
+      window.location.assign('/app/chat')
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not archive workspace.')
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  return (
+    <>
       {action?.type === 'invite' ? (
       <InviteWorkspaceDialog
         open
-        guest={action?.type === 'invite' ? action.guest : false}
+        guest={action.guest}
         busy={actionBusy}
         error={actionError}
         invitePath={invitePath}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onInvite={async (input) => {
-          setActionBusy(true)
-          setActionError(null)
-          try {
-            const response = await client.invite(activeWorkspace.id, input)
-            setInvitePath(response.invitePath)
-            setRefreshKey((current) => current + 1)
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not create invitation.')
-          } finally {
-            setActionBusy(false)
-          }
-        }}
+        onInvite={handleInvite}
       />
       ) : null}
 
@@ -893,21 +1234,9 @@ export function WorkspaceSettingsPanel({
         busy={actionBusy}
         error={actionError}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onCreate={async (input) => {
-          setActionBusy(true)
-          setActionError(null)
-          try {
-            await client.createTeam(activeWorkspace.id, input)
-            setRefreshKey((current) => current + 1)
-            setAction(null)
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not create team.')
-          } finally {
-            setActionBusy(false)
-          }
-        }}
+        onCreate={handleCreateTeam}
       />
       ) : null}
 
@@ -918,35 +1247,9 @@ export function WorkspaceSettingsPanel({
         busyPrincipalId={teamCandidateBusyId}
         error={actionError}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onToggle={async (principalId, member) => {
-          if (action?.type !== 'manage-team') return
-          setTeamCandidateBusyId(principalId)
-          setActionError(null)
-          try {
-            if (member) {
-              await client.addTeamMember(activeWorkspace.id, action.team.id, principalId)
-            } else {
-              await client.removeTeamMember(activeWorkspace.id, action.team.id, principalId)
-            }
-            setAction((current) => {
-              if (current?.type !== 'manage-team') return current
-              const ids = new Set(current.team.teamMemberPrincipalIds ?? [])
-              if (member) ids.add(principalId)
-              else ids.delete(principalId)
-              return {
-                ...current,
-                team: { ...current.team, teamMemberPrincipalIds: [...ids] },
-              }
-            })
-            setRefreshKey((current) => current + 1)
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not update team.')
-          } finally {
-            setTeamCandidateBusyId(null)
-          }
-        }}
+        onToggle={handleTeamMemberToggle}
       />
 
       <ConfirmWorkspaceActionDialog
@@ -960,22 +1263,9 @@ export function WorkspaceSettingsPanel({
         busy={actionBusy}
         error={actionError}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onConfirm={async () => {
-          if (action?.type !== 'remove-member' || !action.item.principalId) return
-          setActionBusy(true)
-          setActionError(null)
-          try {
-            await client.removeMember(activeWorkspace.id, action.item.principalId)
-            setAction(null)
-            setRefreshKey((current) => current + 1)
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not remove member.')
-          } finally {
-            setActionBusy(false)
-          }
-        }}
+        onConfirm={handleRemoveMember}
       />
 
       <ConfirmWorkspaceActionDialog
@@ -988,26 +1278,9 @@ export function WorkspaceSettingsPanel({
         busy={actionBusy}
         error={actionError}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onConfirm={async () => {
-          if (action?.type !== 'transfer-ownership' || !action.item.principalId) return
-          setActionBusy(true)
-          setActionError(null)
-          try {
-            await client.updateMember(activeWorkspace.id, {
-              action: 'transfer-ownership',
-              principalId: action.item.principalId,
-            })
-            setAction(null)
-            await refreshWorkspaces()
-            setRefreshKey((current) => current + 1)
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not transfer ownership.')
-          } finally {
-            setActionBusy(false)
-          }
-        }}
+        onConfirm={handleTransferOwnership}
       />
 
       <ConfirmWorkspaceActionDialog
@@ -1021,22 +1294,9 @@ export function WorkspaceSettingsPanel({
         busy={actionBusy}
         error={actionError}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onConfirm={async () => {
-          if (action?.type !== 'archive-team') return
-          setActionBusy(true)
-          setActionError(null)
-          try {
-            await client.archiveTeam(activeWorkspace.id, action.item.id)
-            setAction(null)
-            setRefreshKey((current) => current + 1)
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not archive team.')
-          } finally {
-            setActionBusy(false)
-          }
-        }}
+        onConfirm={handleArchiveTeam}
       />
 
       <ConfirmWorkspaceActionDialog
@@ -1048,22 +1308,9 @@ export function WorkspaceSettingsPanel({
         busy={actionBusy}
         error={actionError}
         onOpenChange={(open) => {
-          if (!open) closeAction()
+          if (!open) onCloseAction()
         }}
-        onConfirm={async () => {
-          setActionBusy(true)
-          setActionError(null)
-          try {
-            await client.archiveWorkspace(activeWorkspace.id)
-            setAction(null)
-            await refreshWorkspaces()
-            window.location.assign('/app/chat')
-          } catch (error) {
-            setActionError(error instanceof Error ? error.message : 'Could not archive workspace.')
-          } finally {
-            setActionBusy(false)
-          }
-        }}
+        onConfirm={handleArchiveWorkspace}
       />
     </>
   )
