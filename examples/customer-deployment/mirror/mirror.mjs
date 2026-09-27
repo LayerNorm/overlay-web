@@ -160,7 +160,9 @@ async function applyRows(client, cfg, rows) {
     if (cfg.tableAllowlist && !cfg.tableAllowlist.has(row.table)) continue
     await ensureTable(client, cfg.schema, row.table)
     const t = qi(cfg.schema, row.table)
+    // Identifiers are quoted by qi(); all row values are bound parameters.
     if (row.deleted) {
+      // react-doctor-disable-next-line react-doctor/raw-sql-injection-risk
       await client.query(`DELETE FROM ${t} WHERE id = $1`, [row.id])
     } else {
       await client.query(

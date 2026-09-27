@@ -31,6 +31,7 @@ export function NavigationProgressProvider({ children }: { children: React.React
   const pathnameRef = useRef<string | null>(null)
   const startedAtRef = useRef<number>(0)
   const doneTimeoutRef = useRef<number | null>(null)
+  const tokenCounterRef = useRef(0)
 
   const begin = useCallback((scope: NavigationProgressScope) => {
     if (doneTimeoutRef.current != null) {
@@ -38,7 +39,8 @@ export function NavigationProgressProvider({ children }: { children: React.React
       doneTimeoutRef.current = null
     }
     startedAtRef.current = performance.now()
-    const token = Date.now() + Math.floor(Math.random() * 1000)
+    tokenCounterRef.current += 1
+    const token = tokenCounterRef.current
     setState({ active: true, scope, token })
     return token
   }, [])
