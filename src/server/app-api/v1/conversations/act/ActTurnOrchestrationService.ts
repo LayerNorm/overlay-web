@@ -18,9 +18,13 @@ import {
   getGatewayModelId,
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
-import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
-import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
+import {
+  getChatModelFallbackCandidates,
+  getLowCreditFallbackAttemptModelIds,
+} from '@/shared/ai/gateway/model-fallbacks'
+import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
@@ -1243,7 +1247,12 @@ export async function executeActTurn(
         )
       }
 
-      return getLanguageModel(attemptModelId, accessToken, userId)
+      return getLanguageModel(attemptModelId, accessToken, userId, {
+        // The attempt list already leads with free models when credit is low;
+        // remaining paid entries are deliberate last resorts, so they must
+        // reach the gateway rather than being swapped back to a free model.
+        allowLowBalanceFallback: !gatewayCreditLow,
+      })
     }
 
     const fallbackModelIds = (byokRequest ? [] : getChatModelFallbackCandidates({
@@ -1253,12 +1262,37 @@ export async function executeActTurn(
       requiresVision: messagesRequireVision(uiMessages),
       maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
     })).filter((candidateId) => authorizedModelIds.chat.has(candidateId))
-    const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
+    // Preserve remaining AI Gateway credit: when the global key drops below the
+    // low-balance threshold, try free models before spending on the paid path.
+    const gatewayCreditLow =
+      !byokRequest &&
+      modelUsesAiGatewayTransport(effectiveModelId) &&
+      !(paid && appSettings?.onlyAllowZdrModels === true) &&
+      (await isGatewayCreditLow())
+    if (gatewayCreditLow) {
+      logger.info('[conversations/act] low gateway credit — free models attempted first', {
+        requestId,
+        effectiveModelId,
+      })
+    }
+    const attemptModelIds = (
+      gatewayCreditLow
+        ? getLowCreditFallbackAttemptModelIds({
+            modelId: effectiveModelId,
+            paid,
+            onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
+            requiresVision: messagesRequireVision(uiMessages),
+            paidFallbackModelIds: fallbackModelIds,
+            maxCandidates: MAX_ACT_MODEL_ATTEMPTS,
+          }).filter((candidateId) => candidateId === effectiveModelId || authorizedModelIds.chat.has(candidateId))
+        : [...new Set([effectiveModelId, ...fallbackModelIds])]
+    ).slice(0, MAX_ACT_MODEL_ATTEMPTS)
     logger.info('[conversations/act] model attempts planned', {
       requestId,
       requestedModelId: modelId ?? null,
       effectiveModelId,
       attemptModelIds,
+      gatewayCreditLow,
       paid,
       onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
     })

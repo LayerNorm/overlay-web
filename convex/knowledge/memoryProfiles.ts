@@ -17,6 +17,7 @@ import { internalAction } from '../_generated/server'
 import { v } from 'convex/values'
 import { api, internal } from '../_generated/api'
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
+import { isGatewayCreditLow } from '../lib/gatewayCredits'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 import { normalizeOpenAiCompatibleBaseUrl } from '../../src/shared/ai/gateway/openai-compatible-base-url'
 
@@ -92,9 +93,17 @@ export const compileInternal = internalAction({
     })
     if (memories.length === 0) return { compiled: false, reason: 'empty' }
 
+    const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim()
+    const lowCredit =
+      !configuredModelId &&
+      (args.isPaid ?? false) &&
+      (await isGatewayCreditLow(
+        process.env.AI_GATEWAY_API_KEY,
+        normalizeOpenAiCompatibleBaseUrl(process.env.AI_GATEWAY_URL),
+      ))
     const modelId =
-      process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim() ||
-      ((args.isPaid ?? false) ? 'google/gemini-2.5-flash-lite' : 'openrouter/free')
+      configuredModelId ||
+      ((args.isPaid ?? false) && !lowCredit ? 'google/gemini-2.5-flash-lite' : 'openrouter/free')
     const serverSecret = getServerSecretForBackground()
     const billingUserId = args.billingActorUserId?.trim() || args.ownerId
 

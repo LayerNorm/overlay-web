@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createGateway } from 'ai'
 import { getModel } from '@/shared/ai/gateway/model-data'
+import { createGatewayCreditTrackingFetch } from '@/server/ai/gateway/gateway-credits'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 
 let cachedGateway: ReturnType<typeof createGateway> | null = null
@@ -58,7 +59,7 @@ export async function getOrCreateGateway(
     )
   }
   if (!cachedGateway || cachedApiKey !== apiKey) {
-    cachedGateway = createGateway({ apiKey })
+    cachedGateway = createGateway({ apiKey, fetch: createGatewayCreditTrackingFetch(apiKey) })
     cachedApiKey = apiKey
   }
   return cachedGateway
