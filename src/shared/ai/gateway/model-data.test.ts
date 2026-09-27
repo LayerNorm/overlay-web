@@ -160,7 +160,5 @@ test('active BYOK models register without replacing hosted models and respect ex
 test('modelUsesAiGatewayTransport only flags models served by the metered gateway key', () => {
   assert.equal(modelUsesAiGatewayTransport('anthropic/claude-opus-4.7'), true)
   assert.equal(modelUsesAiGatewayTransport('openrouter/free'), false)
-  assert.equal(modelUsesAiGatewayTransport('openrouter/nvidia/nemotron-3-super-120b-a12b:free'), false)
-  assert.equal(modelUsesAiGatewayTransport('stepfun-ai/step-3.5-flash'), false)
   assert.equal(modelUsesAiGatewayTransport('byok/connection_1/vendor/model-a'), false)
 })

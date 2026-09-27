@@ -24,8 +24,8 @@ test('lists model info without package-internal ranking fields', () => {
 test('maps Overlay OpenRouter registry ids to OpenRouter API ids', () => {
   assert.equal(toOpenRouterApiModelId('openrouter/free'), 'openrouter/free')
   assert.equal(
-    toOpenRouterApiModelId('openrouter/nvidia/nemotron-3-super-120b-a12b:free'),
-    'nvidia/nemotron-3-super-120b-a12b:free',
+    toOpenRouterApiModelId('openrouter/vendor/example:free'),
+    'vendor/example:free',
   )
 })
 
@@ -38,7 +38,7 @@ test('paid users keep unknown premium models above the free section', () => {
   const models = [
     { id: 'openrouter/free' },
     { id: 'openai/gpt-5.6-luna' },
-    { id: 'stepfun-ai/step-3.5-flash' },
+    { id: 'openrouter/vendor/spotlight:free' },
     { id: 'google/gemma-4-26b-a4b-it' },
     { id: 'minimax/minimax-m3' },
   ]
@@ -49,7 +49,7 @@ test('paid users keep unknown premium models above the free section', () => {
       'openai/gpt-5.6-luna',
       'minimax/minimax-m3',
       'openrouter/free',
-      'stepfun-ai/step-3.5-flash',
+      'openrouter/vendor/spotlight:free',
     ],
   )
 })
@@ -59,13 +59,13 @@ test('free-tier users hoist free models above premium', () => {
     { id: 'google/gemma-4-26b-a4b-it' },
     { id: 'openrouter/free' },
     { id: 'openai/gpt-5.6-luna' },
-    { id: 'stepfun-ai/step-3.5-flash' },
+    { id: 'openrouter/vendor/spotlight:free' },
   ]
   assert.deepEqual(
     getModelsByIntelligence(models, true).map((model) => model.id),
     [
       'openrouter/free',
-      'stepfun-ai/step-3.5-flash',
+      'openrouter/vendor/spotlight:free',
       'google/gemma-4-26b-a4b-it',
       'openai/gpt-5.6-luna',
     ],

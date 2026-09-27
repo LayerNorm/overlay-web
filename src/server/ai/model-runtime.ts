@@ -9,10 +9,6 @@ import {
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/gateway/ai-gateway'
 import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
-import {
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
-} from '@/server/ai/gateway/nvidia-nim-openai'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { ByokGateway, type ByokConnection } from '@overlay/llm-gateway'
 import type { ProviderConnectionRecord } from '@/server/ai/provider-connections'
@@ -83,6 +79,4 @@ export {
   getOpenRouterLanguageModel,
   getOpenRouterLanguageModelCapturingRoutedModel,
   userFacingOpenRouterError,
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
 }
