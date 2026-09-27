@@ -28,7 +28,11 @@ import {
   rememberAgentOpened,
   sortAgentsByRecency,
 } from '@/shared/agents/last-agent-by-workspace'
-import { dispatchChatCreated } from '@/shared/chat/chat-title'
+import {
+  CHAT_TITLE_UPDATED_EVENT,
+  dispatchChatCreated,
+  type ChatTitleUpdatedDetail,
+} from '@/shared/chat/chat-title'
 import { arrayOrEmpty } from './AppSidebarInlinePanels'
 import {
   AgentThreadRows,
@@ -149,6 +153,33 @@ export function AgentsInlinePanel({
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
   }, [expanded, loadAgents, loadBundle, workspaceId])
+
+  // A first-message rename applies the generated title to the thread row it
+  // belongs to without refetching the whole bundle.
+  useEffect(() => {
+    const onTitleUpdated = (event: Event) => {
+      const { chatId, title } = (event as CustomEvent<ChatTitleUpdatedDetail>).detail ?? {}
+      if (!chatId || !title) return
+      setBundles((current) => {
+        let touched = false
+        const next = { ...current }
+        for (const agentId of Object.keys(next)) {
+          const bundle = next[agentId]
+          if (!bundle || typeof bundle !== 'object') continue
+          if (!bundle.threads.some((thread) => thread.conversationId === chatId)) continue
+          next[agentId] = {
+            ...bundle,
+            threads: bundle.threads.map((thread) =>
+              thread.conversationId === chatId ? { ...thread, title } : thread),
+          }
+          touched = true
+        }
+        return touched ? next : current
+      })
+    }
+    window.addEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
+    return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
+  }, [])
 
   // The agent in the URL stays expanded so its threads remain in view.
   useEffect(() => {

@@ -183,7 +183,7 @@ export function toRoomMessageView({
   authorName: string
   authorColor?: string
   authorShape?: string
-  mentions?: Array<{ type: string; id: string; name: string }>
+  mentions?: Array<{ type: string; id: string; name: string; avatarColor?: string; avatarShape?: string }>
   streaming?: boolean
 }): RoomMessageView {
   const mine = isOwnRoomMessage(message, currentPrincipalId)
