@@ -29,7 +29,7 @@ When assigning work, tag [`BUILDER_AGENT_PROMPT.md`](https://github.com/LayerNor
 
 | Role | Responsibility |
 | --- | --- |
-| Builder | Owns one worktree and branch, implements one coherent change, runs focused validation, updates documentation and `CHANGELOG.md`, and opens a pull request against `staging`. The Builder stops at PR submission. |
+| Builder | Owns one worktree and branch, implements one coherent change, runs focused validation, updates documentation and `CHANGELOG.md`, and opens a pull request — against `main` by default for agents acting under the owner's `DevelopedByDev`/`LayerNorm` identity, or `staging` when the task needs hosted pre-production QA. The Builder stops at PR submission. |
 | Integration agent | Reviews the change, resolves integration conflicts, merges it into `staging`, runs staging QA, promotes the tested `staging` revision to `main`, and verifies production. |
 
 Do not require separate Reviewer or Release Authority agents. The Integration agent owns those responsibilities so each change normally consumes only one Builder and one Integration agent.

@@ -123,11 +123,12 @@
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 70%, transparent),
     0 1px 2px var(--scrim), 0 32px 90px -28px var(--scrim);
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .landing .appshell {
   display: grid; grid-template-columns: 56px 240px minmax(0, 1fr);
-  aspect-ratio: 16/10; min-height: 600px; max-height: 800px;
+  aspect-ratio: 16/10; min-width: 660px; min-height: 600px; max-height: 800px;
   text-align: left;
 }
 
@@ -329,16 +330,7 @@
 .landing .figure p { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
 
 .landing .visual { position: relative; }
-.landing .visual-mask {
-  position: relative; overflow: hidden; border-radius: 12px;
-  border: var(--hairline); background: var(--surface-muted);
-  padding: 44px 44px 0;
-}
-.landing .visual-mask::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 140px;
-  background: linear-gradient(to bottom, transparent, var(--surface-muted) 95%);
-  pointer-events: none; z-index: 3;
-}
+.landing .visual-mask { position: relative; overflow: hidden; }
 .landing .card {
   background: var(--surface-elevated); border: var(--hairline); border-radius: 10px;
   box-shadow:
@@ -457,13 +449,37 @@
 @media (max-width: 960px) {
   .landing .hero-grid { grid-template-columns: 1fr; }
   .landing .agent-field { display: none; }
-  .landing .appshell { grid-template-columns: 56px 190px minmax(0, 1fr); }
+  .landing .appshell { grid-template-columns: 56px 190px minmax(0, 1fr); min-width: 600px; }
   .landing .section-head { grid-template-columns: 1fr; gap: 20px; }
   .landing .section-head .desc { justify-self: start; }
   .landing .figures { grid-template-columns: 1fr; gap: 40px; }
   .landing .figure + .figure { border-left: none; }
   .landing .agents-visual, .landing .auto-visual, .landing .split { grid-template-columns: 1fr; }
   .landing .plat-telegram { display: none; }
+}
+
+@media (max-width: 720px) {
+  .landing .hero { padding-top: 56px; }
+  .landing .hero-shot { margin-top: 40px; }
+  .landing section.band { padding-top: 72px; }
+  .landing .statement { padding-top: 84px; }
+  .landing .figures { margin-top: 56px; }
+  .landing .figure { padding: 0; }
+  .landing .desktop-body { grid-template-columns: 1fr; }
+  .landing .desktop-browser { border-right: none; border-bottom: var(--hairline); }
+  .landing .desktop-terminal { min-height: 180px; }
+}
+
+@media (max-width: 560px) {
+  /* drop the secondary panel so the DM stays readable on phones */
+  .landing .appshell { grid-template-columns: 56px minmax(0, 1fr); min-width: 0; }
+  .landing .panel { display: none; }
+  /* stacked platform cards instead of the layered composition */
+  .landing .platforms-visual { height: auto; display: flex; flex-direction: column; gap: 12px; }
+  .landing .plat-card { position: static; width: 100%; }
+  .landing .plat-telegram { display: block; }
+  .landing .thread { padding: 18px 16px; }
+  .landing .composer-wrap { padding: 0 16px 16px; }
 }
 
 /* demo toast */

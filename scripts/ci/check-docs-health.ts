@@ -42,6 +42,7 @@ const exportedHttpMethods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST'
 const allowedDocsEntries = new Set([
   'README.md',
   'api-reference',
+  'assets',
   'changelog.mdx',
   'config',
   'configure',
@@ -56,6 +57,7 @@ const allowedDocsEntries = new Set([
   'plans',
   'snippets',
   'start',
+  'style.css',
 ])
 
 /** docs/plans/ holds internal point-in-time plans, not public pages. */
