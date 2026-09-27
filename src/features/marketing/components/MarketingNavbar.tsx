@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 import { Github, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import { OverlayMark } from "@/components/orb/Orb";
 import Link from "next/link";
@@ -158,9 +158,10 @@ export function MarketingNavbar() {
         </nav>
       </div>
 
+      <LazyMotion features={domAnimation} strict>
       <AnimatePresence initial={false}>
         {mobileMenuOpen ? (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
@@ -246,9 +247,10 @@ export function MarketingNavbar() {
                 </Link>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         ) : null}
       </AnimatePresence>
+      </LazyMotion>
     </header>
   );
 }

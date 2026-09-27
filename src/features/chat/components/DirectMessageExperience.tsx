@@ -414,7 +414,10 @@ export function DirectMessageExperience({
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
   )
-  const [mentions, setMentions] = useState<MentionItem[]>([])
+  const mentionsRef = useRef<MentionItem[]>([])
+  const setMentions = useCallback((next: MentionItem[]) => {
+    mentionsRef.current = next
+  }, [])
   const [replyContext, setReplyContext] = useState<
     { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
   >(null)
@@ -1088,7 +1091,7 @@ export function DirectMessageExperience({
   }, [currentPrincipalId, participants])
 
   function resolveMentionTargets(text: string): string[] {
-    const fromChips = mentions
+    const fromChips = mentionsRef.current
       .filter((mention) => mention.type === 'person')
       .map((mention) => mention.id)
     const fromText = resolveMentionedPrincipalIds(text, participants.map((participant) => ({
@@ -1160,9 +1163,10 @@ export function DirectMessageExperience({
       const threadAgentId = threadRootMessageId
         ? messages.find((message) => message.id === threadRootMessageId && message.authorKind === 'agent')?.authorPrincipalId
         : undefined
+      const mentionedPrincipalIdSet = new Set(mentionedPrincipalIds)
       const invokedAgents = agentParticipants.filter((participant) => (
         (conversationType === 'dm' && agentParticipants.length === 1 && humanParticipants.length === 1)
-        || mentionedPrincipalIds.includes(participant.principalId)
+        || mentionedPrincipalIdSet.has(participant.principalId)
         || threadAgentId === participant.principalId
       ))
       if (invokedAgents.length) {
@@ -1249,7 +1253,7 @@ export function DirectMessageExperience({
       text,
       attachedImages,
       pendingChatDocuments,
-      mentions,
+      mentions: mentionsRef.current,
       replyContext,
       turnId,
     })

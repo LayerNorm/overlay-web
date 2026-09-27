@@ -204,10 +204,11 @@ export class BoxSandboxRuntime implements SandboxRuntime {
 
   /** Poll an instance until it reaches one of the target box states. */
   async pollBox(boxId: string, targets: BoxState[], timeoutMs: number): Promise<BoxInfo> {
+    const targetStates = new Set(targets)
     const deadline = Date.now() + timeoutMs
     for (;;) {
       const info = await this.getBox(boxId)
-      if (targets.includes(info.state)) return info
+      if (targetStates.has(info.state)) return info
       if (info.state === 'error') {
         throw new BoxApiError(409, 'box_error', `box ${boxId} entered error state`)
       }

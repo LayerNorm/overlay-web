@@ -240,5 +240,6 @@ function sameCapabilities(
   left: readonly AuthorizationCapability[],
   right: readonly AuthorizationCapability[],
 ): boolean {
-  return left.length === right.length && left.every((capability) => right.includes(capability))
+  const rightSet = new Set(right)
+  return left.length === right.length && left.every((capability) => rightSet.has(capability))
 }

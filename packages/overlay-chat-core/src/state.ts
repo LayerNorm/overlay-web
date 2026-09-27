@@ -5,6 +5,9 @@ function cloneStructured<T>(value: T): T {
   try {
     return structuredClone(value)
   } catch {
+    // Last-resort fallback for values structuredClone rejects (functions,
+    // symbols): the JSON round-trip strips them rather than throwing.
+    // react-doctor-disable-next-line react-doctor/no-json-parse-stringify-clone
     return JSON.parse(JSON.stringify(value)) as T
   }
 }
