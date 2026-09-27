@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type ClipboardEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import {
   LARGE_PASTE_MAX_BYTES,
   pastedTextFileName,
@@ -86,6 +86,10 @@ export function useChatAttachments({
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const attachedImagesRef = useRef<AttachedImage[]>(attachedImages)
+  useEffect(() => {
+    attachedImagesRef.current = attachedImages
+  }, [attachedImages])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
@@ -162,19 +166,15 @@ export function useChatAttachments({
           setAttachmentError(`"${file.name}" is too large to attach. Try a smaller or cropped image.`)
           return
         }
-        setAttachedImages((prev) => {
-          const totalChars = attachedImagesTotalDataUrlChars(prev) + image.dataUrl.length
-          // Side-effects from updaters must be idempotent (StrictMode may re-run
-          // them) — queuing the error write satisfies that.
-          if (totalChars > IMAGE_ATTACHMENTS_MAX_TOTAL_DATA_URL_CHARS) {
-            queueMicrotask(() =>
-              setAttachmentError('Too much image data attached. Remove an image or use smaller ones.'),
-            )
-            return prev
-          }
-          queueMicrotask(() => setAttachmentError(null))
-          return [...prev, image]
-        })
+        if (
+          attachedImagesTotalDataUrlChars(attachedImagesRef.current) + image.dataUrl.length >
+          IMAGE_ATTACHMENTS_MAX_TOTAL_DATA_URL_CHARS
+        ) {
+          setAttachmentError('Too much image data attached. Remove an image or use smaller ones.')
+          return
+        }
+        setAttachedImages((prev) => [...prev, image])
+        setAttachmentError(null)
       })
     })
   }

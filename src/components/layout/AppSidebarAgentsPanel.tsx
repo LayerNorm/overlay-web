@@ -143,16 +143,13 @@ export function AgentsInlinePanel({
       void loadAgents(false)
       // Agent lifecycle events (rename/archive/restore) can change what the
       // expanded bundles contain — refetch them rather than diffing.
-      setBundles((current) => {
-        for (const agentId of Object.keys(current)) {
-          if (expanded.has(agentId)) void loadBundle(agentId)
-        }
-        return current
-      })
+      for (const agentId of Object.keys(bundles)) {
+        if (expanded.has(agentId)) void loadBundle(agentId)
+      }
     }
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-  }, [expanded, loadAgents, loadBundle, workspaceId])
+  }, [bundles, expanded, loadAgents, loadBundle, workspaceId])
 
   // A first-message rename applies the generated title to the thread row it
   // belongs to without refetching the whole bundle.

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface SlashMenuItem {
@@ -26,6 +26,14 @@ const SECTION_ORDER: Array<{ category: SlashMenuItem['category']; label: string 
   { category: 'marks', label: 'Formatting' },
 ]
 
+const subscribeToViewportResize = (onStoreChange: () => void) => {
+  window.addEventListener('resize', onStoreChange)
+  return () => window.removeEventListener('resize', onStoreChange)
+}
+const getViewportWidth = () => window.innerWidth
+const getViewportHeight = () => window.innerHeight
+const getServerViewportSize = () => Number.POSITIVE_INFINITY
+
 export function SlashMenu({
   showSlashMenu,
   slashMenuPosition,
@@ -37,6 +45,14 @@ export function SlashMenu({
   onClose,
 }: SlashMenuProps): React.ReactElement | null {
   const slashMenuRef = useRef<HTMLDivElement>(null)
+  const viewportWidth = useSyncExternalStore(subscribeToViewportResize, getViewportWidth, getServerViewportSize)
+  const viewportHeight = useSyncExternalStore(subscribeToViewportResize, getViewportHeight, getServerViewportSize)
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-time portal host
+    setPortalHost(document.body)
+  }, [])
 
   useEffect(() => {
     if (!showSlashMenu) return
@@ -49,15 +65,15 @@ export function SlashMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showSlashMenu, onClose])
 
-  if (!showSlashMenu) return null
+  if (!showSlashMenu || !portalHost) return null
 
   const menu = (
     <div
       ref={slashMenuRef}
       style={{
         position: 'fixed',
-        top: Math.max(8, Math.min(slashMenuPosition.top, window.innerHeight - 340)),
-        left: Math.max(8, Math.min(slashMenuPosition.left, window.innerWidth - 296)),
+        top: Math.max(8, Math.min(slashMenuPosition.top, viewportHeight - 340)),
+        left: Math.max(8, Math.min(slashMenuPosition.left, viewportWidth - 296)),
         width: 280,
         maxHeight: 320,
         background: 'var(--surface-elevated)',
@@ -170,5 +186,5 @@ export function SlashMenu({
     </div>
   )
 
-  return createPortal(menu, document.body)
+  return createPortal(menu, portalHost)
 }
