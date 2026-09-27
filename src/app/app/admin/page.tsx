@@ -422,8 +422,10 @@ export default function AdminPage() {
   )
 }
 
+const USD_FORMATTER = new Intl.NumberFormat(undefined, { currency: 'USD', style: 'currency' })
+
 function money(cents: number): string {
-  return new Intl.NumberFormat(undefined, { currency: 'USD', style: 'currency' }).format(cents / 100)
+  return USD_FORMATTER.format(cents / 100)
 }
 
 function message(error: unknown): string {

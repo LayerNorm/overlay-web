@@ -782,7 +782,10 @@ export function useNotebookAgent({
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [agentItems, setAgentItems] = useState<NotebookAgentUiItem[]>([])
   const [agentInput, setAgentInput] = useState('')
-  const [agentMentions, setAgentMentions] = useState<NotebookEditorMention[]>([])
+  const agentMentionsRef = useRef<NotebookEditorMention[]>([])
+  const setAgentMentions = useCallback((next: NotebookEditorMention[]) => {
+    agentMentionsRef.current = next
+  }, [])
   const [agentRunning, setAgentRunning] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState(initialModelId)
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -843,7 +846,7 @@ export function useNotebookAgent({
     const modelId = selectedModelId
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
-    const mentionsForRequest = createNotebookAgentMentions(agentMentions)
+    const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
     setAgentInput('')
     setAgentMentions([])
 
@@ -885,14 +888,13 @@ export function useNotebookAgent({
       notebookAgentAbortRef.current = null
       setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentMentions, agentRunning, editor, runAgent, selectedModelId, title])
+  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, setAgentMentions, title])
 
   return {
     agentPanelOpen,
     agentItems,
     agentInput,
     setAgentInput,
-    agentMentions,
     setAgentMentions,
     agentRunning,
     selectedModelId,

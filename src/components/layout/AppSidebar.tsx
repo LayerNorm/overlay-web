@@ -15,7 +15,7 @@ import {
 } from './sidebar/AppSidebarChrome'
 import { signOutToLanding } from './sidebar/appSidebarNav'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
-import type { AppSidebarProps } from './appSidebarTypes'
+import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
 
 export type {
@@ -26,7 +26,7 @@ export type {
 } from './appSidebarTypes'
 
 export default function AppSidebar({
-  collaborationNotifications = [],
+  collaborationNotifications = EMPTY_COLLABORATION_NOTIFICATIONS,
   publicShowcase = false,
   renderChatPanel,
   renderAutomationsPanel,

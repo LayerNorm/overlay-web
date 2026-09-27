@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AgentBinding, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ApiRequestError, type AgentEnvironmentResource, type ManagedHarnessPicker } from '@overlay/api-client'
@@ -38,11 +38,11 @@ export function useAgentRuntime({
   const [managedEnvironment, setManagedEnvironment] = useState<AgentEnvironmentResource | null>(null)
   // The binding as loaded — the baseline a save compares against to detect a
   // runtime switch and to restore on cancel.
-  const [boundHarnessId, setBoundHarnessId] = useState<string | null>(null)
-  const [boundHarnessModel, setBoundHarnessModel] = useState('')
+  const boundHarnessIdRef = useRef<string | null>(null)
+  const boundHarnessModelRef = useRef('')
   /** `'overlay'` or a provider-connection id — who funds the harness's model usage. */
   const [modelAccess, setModelAccess] = useState('overlay')
-  const [boundModelAccess, setBoundModelAccess] = useState('overlay')
+  const boundModelAccessRef = useRef('overlay')
   const [managedResetBusy, setManagedResetBusy] = useState(false)
   const [managedPickerFailed, setManagedPickerFailed] = useState(false)
   const [managedPickerRetry, setManagedPickerRetry] = useState(0)
@@ -52,16 +52,16 @@ export function useAgentRuntime({
     const harnessId = typeof binding.adapterConfig.harnessId === 'string' ? binding.adapterConfig.harnessId : ''
     if (harnessId) {
       setHostedRuntime(harnessId)
-      setBoundHarnessId(harnessId)
+      boundHarnessIdRef.current = harnessId
     }
     const model = typeof binding.adapterConfig.model === 'string' ? binding.adapterConfig.model : ''
     setHarnessModel(model)
-    setBoundHarnessModel(model)
+    boundHarnessModelRef.current = model
     const boundConnection = typeof binding.adapterConfig.byokConnectionId === 'string'
       ? binding.adapterConfig.byokConnectionId : ''
     const access = binding.adapterConfig.modelBilling === 'byok' && boundConnection ? boundConnection : 'overlay'
     setModelAccess(access)
-    setBoundModelAccess(access)
+    boundModelAccessRef.current = access
     setManagedEnvironment(environment ?? null)
   }, [])
 
@@ -104,13 +104,14 @@ export function useAgentRuntime({
   // BYOK "Model access" options: the actor's active provider connections whose
   // provider the selected harness can authenticate (`byokProviders`).
   const { connections: byokConnections } = useByokModels({ enabled: managedRuntimeSelected })
-  const managedByokConnections = useMemo(() => (
-    !managedHarnessEntry || managedHarnessEntry.byokProviders.length === 0 ? [] :
-      byokConnections
-        .filter((connection) => connection.status === 'active'
-          && managedHarnessEntry.byokProviders.includes(connection.providerId))
-        .map((connection) => ({ id: connection._id, label: connection.displayName }))
-  ), [byokConnections, managedHarnessEntry])
+  const managedByokConnections = useMemo(() => {
+    if (!managedHarnessEntry || managedHarnessEntry.byokProviders.length === 0) return []
+    const byokProviderIds = new Set(managedHarnessEntry.byokProviders)
+    return byokConnections
+      .filter((connection) => connection.status === 'active'
+        && byokProviderIds.has(connection.providerId))
+      .map((connection) => ({ id: connection._id, label: connection.displayName }))
+  }, [byokConnections, managedHarnessEntry])
 
   const resetManagedHarness = async () => {
     if (!activeWorkspaceId || !managedEnvironment || managedResetBusy) return
@@ -139,14 +140,11 @@ export function useAgentRuntime({
     setManagedPickerRetry,
     managedEnvironment,
     setManagedEnvironment,
-    boundHarnessId,
-    setBoundHarnessId,
-    boundHarnessModel,
-    setBoundHarnessModel,
+    boundHarnessIdRef,
+    boundHarnessModelRef,
     modelAccess,
     setModelAccess,
-    boundModelAccess,
-    setBoundModelAccess,
+    boundModelAccessRef,
     managedResetBusy,
     resetManagedHarness,
     onManagedBinding,

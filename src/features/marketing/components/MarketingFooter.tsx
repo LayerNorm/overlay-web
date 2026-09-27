@@ -84,7 +84,7 @@ export function MarketingFooter() {
               </span>
             </Link>
             <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
-              The control panel for your AI workforce.
+              The control plane for your workspace.
             </p>
           </div>
 

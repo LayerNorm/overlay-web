@@ -380,10 +380,11 @@ function MediaModelList({
   selectionMode: AskModelSelectionMode
   onToggleModel: (modelId: string) => void
 }) {
+  const selectedModelIdSet = new Set(selectedModelIds)
   return (
     <>
       {models.map((m) => {
-        const isSel = selectedModelIds.includes(m.id)
+        const isSel = selectedModelIdSet.has(m.id)
         const isDisabled =
           selectionMode === 'multiple' && !isSel && selectedModelIds.length >= 4
         return (
@@ -746,6 +747,7 @@ function ChatModelPickerDropdown({
   | 'onHoveredModelChange'
   | 'hasAutomationContext'
 >) {
+  const selectedModelSet = new Set(selectedModels)
   return (
     <div
       data-tour="model-picker"
@@ -795,7 +797,7 @@ function ChatModelPickerDropdown({
             isSelected={(m) =>
               askModelSelectionMode === 'single'
                 ? m.id === selectedActModel
-                : selectedModels.includes(m.id)
+                : selectedModelSet.has(m.id)
             }
             isDisabled={(m, isSel) =>
               askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4

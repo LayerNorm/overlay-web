@@ -423,7 +423,7 @@ export function SignUpClient({
   const [ssoLoading, setSsoLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [verificationTicket, setVerificationTicket] = useState<string | null>(null)
+  const verificationTicketRef = useRef<string | null>(null)
   const [verificationCode, setVerificationCode] = useState('')
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
@@ -461,7 +461,7 @@ export function SignUpClient({
       setError(result.error)
     } else {
       if (result.verificationTicket) {
-        setVerificationTicket(result.verificationTicket)
+        verificationTicketRef.current = result.verificationTicket
       }
       setSuccess(true)
     }
@@ -470,13 +470,13 @@ export function SignUpClient({
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!verificationTicket || !verificationCode) return
+    if (!verificationTicketRef.current || !verificationCode) return
 
     setVerifying(true)
     setError(null)
 
     const result = await postVerifyEmail(
-      { ticket: verificationTicket, code: verificationCode },
+      { ticket: verificationTicketRef.current, code: verificationCode },
       'Invalid verification code',
     )
     if (result.error) {
@@ -488,13 +488,13 @@ export function SignUpClient({
   }
 
   const handleResendCode = async () => {
-    if (!verificationTicket) return
+    if (!verificationTicketRef.current) return
 
     setResending(true)
     setError(null)
 
     const result = await postVerifyEmail(
-      { ticket: verificationTicket, action: 'resend' },
+      { ticket: verificationTicketRef.current, action: 'resend' },
       'Failed to resend code',
     )
     if (result.error) {

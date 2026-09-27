@@ -419,9 +419,10 @@ function deleteEdgesFromGraph(
   edgeIds: string[],
   edges: Edge[],
 ): AutomationGraph {
+  const edgesById = new Map(edges.map((e) => [e.id, e]))
   let nextGraph = graph
   for (const id of edgeIds) {
-    const edge = edges.find((e) => e.id === id)
+    const edge = edgesById.get(id)
     if (edge) {
       nextGraph = deleteEdgeFromGraph(nextGraph, edge.source, edge.target)
     }
@@ -434,9 +435,10 @@ function applyPositionChanges(
   positionChanges: Extract<NodeChange<Node>, { type: 'position' }>[],
   nextNodes: Node[],
 ): AutomationGraph {
+  const nodesById = new Map(nextNodes.map((n) => [n.id, n]))
   let nextGraph = graph
   for (const change of positionChanges) {
-    const updatedNode = nextNodes.find((n) => n.id === change.id)
+    const updatedNode = nodesById.get(change.id)
     if (updatedNode) {
       nextGraph = updateNodePositionInGraph(nextGraph, change.id, updatedNode.position)
     }
@@ -493,7 +495,8 @@ function useGraphCanvasState({
   const [validationErrors, setValidationErrors] = useState<AutomationGraphValidationError[]>([])
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
-  const historyRef = useRef(new GraphHistory())
+  const [historyInstance] = useState(() => new GraphHistory())
+  const historyRef = useRef(historyInstance)
   const currentGraphRef = useRef<AutomationGraph>(graph)
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => autoLayout(graph), [graph])

@@ -10,9 +10,9 @@ export const LOGO: Record<string, LogoSpec> = {
     light: "https://svgl.app/library/cursor_light.svg",
     dark: "https://svgl.app/library/cursor_dark.svg",
   },
-  windsurf: {
-    light: "https://svgl.app/library/windsurf-light.svg",
-    dark: "https://svgl.app/library/windsurf-dark.svg",
+  devin: {
+    light: "/assets/svg/devin.svg",
+    dark: "/assets/svg/devin_dark.svg",
   },
   apple: {
     light: "https://svgl.app/library/apple.svg",

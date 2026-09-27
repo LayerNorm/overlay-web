@@ -7,6 +7,7 @@ import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 const SHOWCASE_CURRENT_PRINCIPAL_ID = 'showcase-divyansh'
+const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
 const SHOWCASE_ITEMS: WorkspaceManagementItem[] = [
   {
     id: 'showcase-member-priya',
@@ -77,11 +78,12 @@ function filterCandidates(
   query: string,
 ) {
   const needle = query.trim().toLowerCase()
+  const excludedSet = new Set(excludedPrincipalIds)
   return items
     .filter((item) => (
       item.principalId !== currentPrincipalId
       && item.status === 'active'
-      && !excludedPrincipalIds.includes(item.principalId ?? '')
+      && !excludedSet.has(item.principalId ?? '')
     ))
     .filter((item) => !needle || `${item.name} ${item.description ?? ''}`.toLowerCase().includes(needle))
 }
@@ -242,6 +244,7 @@ function CandidateListBody({
   onInvite: (email: string) => Promise<void>
   query: string
 }) {
+  const selectedSet = new Set(selected)
   return (
     <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
       {loading ? (
@@ -254,7 +257,7 @@ function CandidateListBody({
         <MemberListItem
           key={item.principalId}
           item={item}
-          checked={selected.includes(item.principalId!)}
+          checked={selectedSet.has(item.principalId!)}
           onToggle={onToggle}
         />
       )) : emailQuery ? (
@@ -292,7 +295,7 @@ export function NewDirectMessageDialog({
   addToConversationId,
   addToConversationType = 'channel',
   showcase = false,
-  excludedPrincipalIds = [],
+  excludedPrincipalIds = EMPTY_EXCLUDED_PRINCIPAL_IDS,
   onOpenChange,
   onCreated,
   onParticipantsAdded,

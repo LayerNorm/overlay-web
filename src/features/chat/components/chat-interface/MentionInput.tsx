@@ -28,6 +28,8 @@ import {
 export type { MentionInputFormatCommand } from './mention-input-dom'
 export type { MentionInputHandle }
 
+const EMPTY_MENTION_CATEGORIES: MentionCategory[] = []
+
 interface MentionInputProps {
   value: string
   valueRevision?: number
@@ -108,7 +110,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       onKeyDown,
       onPaste,
       onUploadFile,
-      mentionCategories = [],
+      mentionCategories = EMPTY_MENTION_CATEGORIES,
       placeholder,
       className,
       disabled,

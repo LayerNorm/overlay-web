@@ -253,7 +253,8 @@ function useMediaModelSelection({
     safeSetLocalStorage(VIDEO_SUB_MODE_KEY, subMode)
     const models = getVideoModelsBySubMode(subMode)
     const first = models[0]?.id
-    if (first && !models.some((model) => selectedVideoModels.includes(model.id))) {
+    const selectedVideoModelSet = new Set(selectedVideoModels)
+    if (first && !models.some((model) => selectedVideoModelSet.has(model.id))) {
       setSelectedVideoModels([first])
       safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify([first]))
     }

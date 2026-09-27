@@ -747,6 +747,7 @@ function ChatListBody({
     channels: 'No channels yet',
     all: 'No chats yet',
   }[chatView]
+  const deletingChatIdSet = new Set(deletingChatIds)
   if (loading) {
     return (
       <SidebarResourceList>
@@ -772,7 +773,7 @@ function ChatListBody({
               chat={chat}
               active={activeId === chat._id}
               isEditing={editingChatId === chat._id}
-              isDeleting={deletingChatIds.includes(chat._id)}
+              isDeleting={deletingChatIdSet.has(chat._id)}
               isStreaming={sessions[chat._id]?.status === 'streaming'}
               unread={Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
               editingTitle={editingTitle}

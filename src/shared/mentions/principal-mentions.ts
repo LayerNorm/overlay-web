@@ -26,6 +26,7 @@ export function resolveMentionedPrincipalIds(
   const haystack = text.toLowerCase()
   const ordered = [...principals].sort((a, b) => b.displayName.length - a.displayName.length)
   const mentioned: string[] = []
+  const mentionedSet = new Set<string>()
   const consumed: Array<[number, number]> = []
   for (const principal of ordered) {
     const needle = `@${principal.displayName.toLowerCase()}`
@@ -40,7 +41,10 @@ export function resolveMentionedPrincipalIds(
       if (!endsOnBoundary(haystack, end)) continue
       if (consumed.some(([start, stop]) => index < stop && end > start)) continue
       consumed.push([index, end])
-      if (!mentioned.includes(principal.principalId)) mentioned.push(principal.principalId)
+      if (!mentionedSet.has(principal.principalId)) {
+        mentionedSet.add(principal.principalId)
+        mentioned.push(principal.principalId)
+      }
       break
     }
   }

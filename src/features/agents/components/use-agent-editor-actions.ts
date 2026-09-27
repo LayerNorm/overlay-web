@@ -71,14 +71,11 @@ export function useAgentEditorActions({
     managedEnvironment,
     managedWorkingDirectory,
     managedRuntimeSelected,
-    boundHarnessId,
-    boundHarnessModel,
-    boundModelAccess,
+    boundHarnessIdRef,
+    boundHarnessModelRef,
+    boundModelAccessRef,
     modelAccess,
     setManagedEnvironment,
-    setBoundHarnessId,
-    setBoundHarnessModel,
-    setBoundModelAccess,
     setModelAccess,
     setHostedRuntime,
     setHarnessModel,
@@ -187,12 +184,12 @@ export function useAgentEditorActions({
     // surface) but the loaded binding still points at a managed harness —
     // rebind on the existing environment so saving never drops it.
     const grandfatheredHarness = !managedHarnessEntry
-      && boundHarnessId === hostedRuntime && Boolean(managedEnvironment)
+      && boundHarnessIdRef.current === hostedRuntime && Boolean(managedEnvironment)
     if (!managedHarnessEntry && !grandfatheredHarness) return null
     const harnessId = managedHarnessEntry?.id ?? (hostedRuntime as ManagedHarnessId)
     // Same harness → rebind on the existing environment; a runtime switch needs
     // a fresh sandbox since each environment advertises one harness.
-    const environment = (grandfatheredHarness || (managedEnvironment && boundHarnessId === hostedRuntime))
+    const environment = (grandfatheredHarness || (managedEnvironment && boundHarnessIdRef.current === hostedRuntime))
       ? managedEnvironment
       : (await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId!, {
           mode: 'harness',
@@ -213,9 +210,9 @@ export function useAgentEditorActions({
         : { modelBilling: 'overlay' as const }),
     })
     setManagedEnvironment(environment)
-    setBoundHarnessId(harnessId)
-    setBoundHarnessModel(harnessModelOption?.value ?? harnessModel ?? '')
-    setBoundModelAccess(modelAccess)
+    boundHarnessIdRef.current = harnessId
+    boundHarnessModelRef.current = harnessModelOption?.value ?? harnessModel ?? ''
+    boundModelAccessRef.current = modelAccess
     return environment
   }
 
@@ -234,7 +231,7 @@ export function useAgentEditorActions({
         // loaded managed environment (if any) is being retired.
         let nextManagedEnvironment: AgentEnvironmentResource | null = null
         if (managedRuntimeSelected
-          && (managedHarnessEntry || (boundHarnessId === hostedRuntime && managedEnvironment))) {
+          && (managedHarnessEntry || (boundHarnessIdRef.current === hostedRuntime && managedEnvironment))) {
           nextManagedEnvironment = await saveManagedHarnessBinding(saved.agent.id)
         } else if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
@@ -247,9 +244,9 @@ export function useAgentEditorActions({
             .catch(() => undefined)
           nextManagedEnvironment = null
           setManagedEnvironment(null)
-          setBoundHarnessId(null)
-          setBoundHarnessModel('')
-          setBoundModelAccess('overlay')
+          boundHarnessIdRef.current = null
+          boundHarnessModelRef.current = ''
+          boundModelAccessRef.current = 'overlay'
           setModelAccess('overlay')
         }
         // An environment this agent no longer uses keeps no sandbox: clearing
@@ -304,9 +301,9 @@ export function useAgentEditorActions({
     setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-    setHostedRuntime(boundHarnessId ?? 'overlay')
-    setHarnessModel(boundHarnessModel)
-    setModelAccess(boundModelAccess)
+    setHostedRuntime(boundHarnessIdRef.current ?? 'overlay')
+    setHarnessModel(boundHarnessModelRef.current)
+    setModelAccess(boundModelAccessRef.current)
     setDirty(false)
     setError(null)
     closeEditor()

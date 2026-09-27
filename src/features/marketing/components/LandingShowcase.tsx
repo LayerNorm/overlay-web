@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { Creature, type CreatureShape } from "@/components/orb/Creature";
 import { OverlayMark } from "@/components/orb/Orb";
-import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
 import { LANDING_TOAST_EVENT, landingToast } from "@/features/marketing/lib/landing-toast";
 import { BrandLogo } from "@/features/marketing/components/BrandLogo";
 import { LOGO } from "@/features/marketing/lib/logos";
@@ -205,6 +204,7 @@ const BYO: Array<
   { name: "Codex", logo: "openai", sub: "This Mac · Connected" },
   { name: "Claude Code", logo: "claude", sub: "This Mac · Connected" },
   { name: "Cursor", logo: "cursor", sub: "This Mac · Connected" },
+  { name: "Devin", logo: "devin", sub: "This Mac · Connected" },
   { name: "Hermes", shape: "cloud", color: "#0284c7", sub: "Cloud · Idle" },
 ];
 
@@ -826,7 +826,8 @@ export function LandingAgentField() {
   ];
   const pills: Array<{
     name: string;
-    logo: keyof typeof LOGO;
+    logo?: keyof typeof LOGO;
+    creature?: { shape: CreatureShape; color: string };
     className: string;
     style: React.CSSProperties;
     toast: string;
@@ -846,6 +847,13 @@ export function LandingAgentField() {
       toast: "Codex — connected from this Mac",
     },
     {
+      name: "Devin",
+      logo: "devin",
+      className: "af-pill af-float",
+      style: { left: 96, top: 148, transform: "rotate(2deg)", "--rot": "2deg" } as React.CSSProperties,
+      toast: "Devin — connected from this Mac",
+    },
+    {
       name: "Cursor",
       logo: "cursor",
       className: "af-pill",
@@ -853,11 +861,11 @@ export function LandingAgentField() {
       toast: "Cursor — connected",
     },
     {
-      name: "Windsurf",
-      logo: "windsurf",
+      name: "Hermes",
+      creature: { shape: "cloud", color: "#0284c7" },
       className: "af-pill af-float",
       style: { right: 150, top: 330, transform: "rotate(-3deg)", "--rot": "-3deg" } as React.CSSProperties,
-      toast: "Windsurf — connected",
+      toast: "Hermes — connected",
     },
   ];
 
@@ -891,7 +899,16 @@ export function LandingAgentField() {
           style={p.style}
           onClick={() => landingToast(p.toast)}
         >
-          <BrandLogo light={LOGO[p.logo].light} dark={LOGO[p.logo].dark} />
+          {p.creature ? (
+            <Creature
+              shape={p.creature.shape}
+              color={p.creature.color}
+              size={15}
+              animated={false}
+            />
+          ) : (
+            <BrandLogo light={LOGO[p.logo!].light} dark={LOGO[p.logo!].dark} />
+          )}
           {p.name}
         </button>
       ))}

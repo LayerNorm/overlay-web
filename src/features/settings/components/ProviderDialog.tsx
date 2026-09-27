@@ -335,6 +335,7 @@ function ModelToggleList({
   enabledModelIds: string[]
   onToggleModel: (modelId: string) => void
 }) {
+  const enabledModelIdSet = new Set(enabledModelIds)
   return (
     <>
       {models.map((model) => (
@@ -344,7 +345,7 @@ function ModelToggleList({
         >
           <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
           <Toggle
-            checked={enabledModelIds.includes(model.id)}
+            checked={enabledModelIdSet.has(model.id)}
             onCheckedChange={() => onToggleModel(model.id)}
             aria-label={formatByokModelDisplayName(model.id, model.name)}
           />

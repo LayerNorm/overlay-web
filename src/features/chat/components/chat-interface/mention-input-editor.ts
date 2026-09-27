@@ -60,6 +60,9 @@ export function syncEditorValue({
     onMentionsChange([])
     emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(true))
   } else if (value !== lastValueRef.current || el.innerHTML === '') {
+    // markdownToEditorHtml escapes all user text via escapeHtml before
+    // emitting markup, so this innerHTML cannot contain attacker HTML.
+    // react-doctor-disable-next-line react-doctor/dangerous-html-sink
     el.innerHTML = markdownToEditorHtml(value)
     emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(false))
     moveCaretToEnd(el)
@@ -117,6 +120,9 @@ export function createMentionInputHandle({
           markEditorEmpty(editorRef.current)
           setIsEditorEmpty(true)
         } else {
+          // markdownToEditorHtml escapes all user text via escapeHtml before
+          // emitting markup, so this innerHTML cannot contain attacker HTML.
+          // react-doctor-disable-next-line react-doctor/dangerous-html-sink
           editorRef.current.innerHTML = markdownToEditorHtml(text)
           setIsEditorEmpty(false)
           moveCaretToEnd(editorRef.current)

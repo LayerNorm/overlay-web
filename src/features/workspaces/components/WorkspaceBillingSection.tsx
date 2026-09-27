@@ -334,6 +334,8 @@ function Metric({ danger, label, value }: { danger?: boolean; label: string; val
   return <div><dt className="text-[var(--muted-light)]">{label}</dt><dd className={`mt-1 font-medium ${danger ? 'text-red-500' : 'text-[var(--foreground)]'}`}>{value}</dd></div>
 }
 
+const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+
 function formatCredits(value: number): string {
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)} credits`
+  return `${CREDITS_FORMATTER.format(value)} credits`
 }

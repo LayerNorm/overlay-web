@@ -52,7 +52,7 @@ import {
   useTemporaryChatUiHidden,
   useUnreadChatRedirect,
 } from './useSidebarEffects'
-import type { AppSidebarProps, AppSidebarWorkspaceAdapter } from '../appSidebarTypes'
+import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps, type AppSidebarWorkspaceAdapter } from '../appSidebarTypes'
 
 type SidebarNavConfigArgs = {
   appShell: ReturnType<typeof resolveOverlayAppShellConfig>
@@ -679,7 +679,7 @@ function useSidebarDerivedPanels(args: {
 }
 
 export function useAppSidebarState({
-  collaborationNotifications = [],
+  collaborationNotifications = EMPTY_COLLABORATION_NOTIFICATIONS,
   publicShowcase = false,
   workspace,
 }: Pick<AppSidebarProps, 'collaborationNotifications' | 'publicShowcase' | 'workspace'>) {
