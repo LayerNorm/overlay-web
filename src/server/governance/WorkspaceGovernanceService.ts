@@ -78,6 +78,9 @@ export class WorkspaceGovernanceService {
           'forbidden',
         )
       }
+      // Sequential on purpose: each check consumes quota, and a denial must
+      // not let later rules consume theirs on a request that already fails.
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const result = await this.deps.rateLimiter.check(resolved.key, resolved.limits)
       if (!result.allowed) {
         throw new WorkspaceServiceError(

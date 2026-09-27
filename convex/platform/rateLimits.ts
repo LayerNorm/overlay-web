@@ -48,6 +48,9 @@ export const takeManyByServer = mutation({
         continue
       }
 
+      // Sequential on purpose: two rules may share a bucketKey, and each must
+      // consume one quota — parallel increments would read the same window.
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const existing = await ctx.db
         .query('rateLimitWindows')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,9 +128,7 @@ export const pruneExpiredWindowsInternal = internalMutation({
       .withIndex('by_resetAt', (q: any) => q.lt('resetAt', now))
       .take(PRUNE_BATCH_SIZE)
 
-    for (const row of expired) {
-      await ctx.db.delete(row._id)
-    }
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)))
 
     return expired.length
   },

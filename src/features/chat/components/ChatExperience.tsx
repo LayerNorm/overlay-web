@@ -1319,6 +1319,9 @@ export default function ChatExperience({
           .map((part) => part.text!.trim())
           .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
         const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
+        // Sequential on purpose: branch messages must be appended in order —
+        // parallel copies could interleave the conversation history.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const res = await overlayAppClient.conversations.addMessageResponse(
           {
             conversationId: branchChatId,

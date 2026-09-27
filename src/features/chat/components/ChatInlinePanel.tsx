@@ -537,7 +537,9 @@ export function ChatInlinePanel({
         </p>
       ) : (
         <>
-          {filteredChats.map((chat) => {
+          {(() => {
+            const deletingChatIdSet = new Set(deletingChatIds)
+            return filteredChats.map((chat) => {
             const isStreaming = sessions[chat._id]?.status === 'streaming'
             const unread = Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)
             const active = activeId === chat._id
@@ -627,7 +629,8 @@ export function ChatInlinePanel({
                 )}
               </SidebarResourceRow>
             )
-          })}
+          })
+          })()}
           {hasMore ? (
             <button
               type="button"

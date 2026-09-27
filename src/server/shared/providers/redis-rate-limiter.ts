@@ -140,6 +140,9 @@ export class RedisRateLimiter implements RateLimiter {
           continue
         }
 
+        // Sequential on purpose: each take() consumes quota, and a denial on
+        // one limit must not consume quota for the limits that follow it.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const result = await this.options.store.take(bucketKey, limit.windowMs)
         const allowed = result.count <= limit.limit
         decisions.push({

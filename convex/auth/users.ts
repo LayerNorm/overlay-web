@@ -434,10 +434,8 @@ export const deleteUserAccountByServer = mutation({
       runQuery: () => Promise<Array<{ _id: Id<TableNames> }>>,
     ): Promise<void> {
       const rows = await runQuery()
-      for (const row of rows) {
-        await ctx.db.delete(row._id)
-        deletedRowCount += 1
-      }
+      await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
+      deletedRowCount += rows.length
     }
 
     // 1. Tables with a `by_userId` (or compound) index — single-key lookup.
@@ -511,9 +509,7 @@ export const deleteUserAccountByServer = mutation({
       .query('auditEvents')
       .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))
       .collect()
-    for (const row of actorAuditRows) {
-      await ctx.db.patch(row._id, { actorUserId: undefined })
-    }
+    await Promise.all(actorAuditRows.map((row) => ctx.db.patch(row._id, { actorUserId: undefined })))
     await deleteIndexed(() =>
       ctx.db
         .query('projects')
@@ -602,9 +598,9 @@ export const deleteUserAccountByServer = mutation({
     for (const file of fileRows) {
       if (file.r2Key) r2Keys.push(file.r2Key)
       if (file.storageId) storageIds.push(file.storageId)
-      await ctx.db.delete(file._id)
-      deletedRowCount += 1
     }
+    await Promise.all(fileRows.map((file) => ctx.db.delete(file._id)))
+    deletedRowCount += fileRows.length
 
     // 3. Large user-scoped tables. These must use indexes; full scans can exceed
     //    Convex's per-function read limit on production-sized deployments.

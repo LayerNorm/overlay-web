@@ -252,7 +252,7 @@ export const remove = mutation({
       .query('mcpToolExecutions')
       .withIndex('by_mcpServerId_createdAt', (q) => q.eq('mcpServerId', mcpServerId))
       .collect()
-    for (const execution of executions) await ctx.db.delete(execution._id)
+    await Promise.all(executions.map((execution) => ctx.db.delete(execution._id)))
     await ctx.db.delete(mcpServerId)
     return null
   },
@@ -453,7 +453,7 @@ export const deleteExpiredOAuthSessions = mutation({
       .query('mcpOAuthSessions')
       .withIndex('by_expiresAt', (q) => q.lt('expiresAt', cutoff))
       .take(200)
-    for (const row of expired) await ctx.db.delete(row._id)
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)))
     return expired.length
   },
 })

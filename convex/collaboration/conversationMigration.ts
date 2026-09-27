@@ -16,14 +16,14 @@ export const auditBatchByServer = query({
     if (args.table === 'conversations') {
       const page = await ctx.db.query('conversations').paginate(args.paginationOpts)
       let missingResourceScope = 0
-      for (const conversation of page.page) {
-        const scope = await ctx.db.query('workspaceResourceScopes')
+      const scopes = await Promise.all(page.page.map((conversation) =>
+        ctx.db.query('workspaceResourceScopes')
           .withIndex('by_resource', (q) => (
             q.eq('resourceType', 'conversation').eq('resourceId', conversation._id)
           ))
-          .unique()
-        if (!scope || scope.workspaceId !== conversation.workspaceId) missingResourceScope++
-      }
+          .unique()))
+      missingResourceScope = scopes.filter((scope, i) =>
+        !scope || scope.workspaceId !== page.page[i]!.workspaceId).length
       return {
         rows: page.page.length,
         missingConversationScope: page.page.filter((conversation) => (

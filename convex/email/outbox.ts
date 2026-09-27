@@ -223,18 +223,14 @@ export const claimDueInternal = internalMutation({
         q.eq('status', 'pending').lte('availableAt', args.now),
       )
       .take(limit)
-    const ids: Id<'emailOutbox'>[] = []
-    for (const row of rows) {
-      await ctx.db.patch(row._id, {
-        attempts: row.attempts + 1,
-        leaseExpiresAt: args.now + 60_000,
-        leaseOwner: args.workerId,
-        status: 'publishing',
-        updatedAt: args.now,
-      })
-      ids.push(row._id)
-    }
-    return ids
+    await Promise.all(rows.map((row) => ctx.db.patch(row._id, {
+      attempts: row.attempts + 1,
+      leaseExpiresAt: args.now + 60_000,
+      leaseOwner: args.workerId,
+      status: 'publishing',
+      updatedAt: args.now,
+    })))
+    return rows.map((row) => row._id)
   },
 })
 
@@ -435,31 +431,27 @@ async function recoverExpired(ctx: MutationCtx, now: number, requestedLimit?: nu
       q.eq('status', 'publishing').lte('leaseExpiresAt', now),
     )
     .take(limit)
-  let deadLettered = 0
-  let requeued = 0
-  for (const row of rows) {
-    if (row.attempts >= row.maxAttempts) {
-      await ctx.db.patch(row._id, {
+  const expired = rows.map((row) => row.attempts >= row.maxAttempts)
+  await Promise.all(rows.map((row, i) => ctx.db.patch(row._id,
+    expired[i]
+      ? {
         deadLetteredAt: now,
         lastError: row.lastError ?? 'Outbox publisher lease expired',
         leaseExpiresAt: undefined,
         leaseOwner: undefined,
-        status: 'dead_letter',
+        status: 'dead_letter' as const,
         updatedAt: now,
-      })
-      deadLettered += 1
-    } else {
-      await ctx.db.patch(row._id, {
+      }
+      : {
         availableAt: now,
         lastError: row.lastError ?? 'Outbox publisher lease expired',
         leaseExpiresAt: undefined,
         leaseOwner: undefined,
-        status: 'pending',
+        status: 'pending' as const,
         updatedAt: now,
-      })
-      requeued += 1
-    }
-  }
+      })))
+  const deadLettered = expired.filter(Boolean).length
+  const requeued = rows.length - deadLettered
   return { deadLettered, requeued }
 }
 

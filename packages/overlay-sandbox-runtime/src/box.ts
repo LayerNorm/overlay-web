@@ -389,11 +389,10 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
-    for (const file of files) {
-      await this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
+    await Promise.all(files.map((file) =>
+      this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })
-    }
+      })))
   }
 
   async readFile(path: string): Promise<Uint8Array | null> {

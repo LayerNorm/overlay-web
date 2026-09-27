@@ -404,16 +404,18 @@ export async function resolveWorkspaceAgentInvocations(args: {
   const remoteRunsEnabled = runtime.features.connectedAgentControlPlane === true
     && runtime.features.remoteAgentRuns === true
     && connectedAgentRollout.eligible
-  const invocations: WorkspaceAgentInvocation[] = []
-  for (const agent of invocableAgents) {
-    const target = remoteRunsEnabled
-      ? await server.appData.repositories.connectedAgents.findInvocationTarget({
+  const targets = await Promise.all(invocableAgents.map((agent) =>
+    remoteRunsEnabled
+      ? server.appData.repositories.connectedAgents.findInvocationTarget({
           workspaceId: args.workspaceId,
           agentId: agent.id,
           now: Date.now(),
           onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
         })
-      : null
+      : null))
+  const invocations: WorkspaceAgentInvocation[] = []
+  for (const [agentIndex, agent] of invocableAgents.entries()) {
+    const target = targets[agentIndex]
     const configuredAdapterId = target?.binding.adapterConfig.adapterId ?? target?.binding.adapterConfig.harnessId
     const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
     const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'

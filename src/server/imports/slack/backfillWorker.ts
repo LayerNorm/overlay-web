@@ -411,14 +411,16 @@ export class SlackBackfillWorker {
 
         // Download files
         if (normalized.files.length > 0) {
-          for (const file of normalized.files) {
+          const outcomes = await Promise.all(normalized.files.map(async (file) => {
             try {
               await this.client.downloadFile(connectedAccountId, userId, file.sourceFileId)
-              filesDownloaded++
+              return true
             } catch (err) {
               logger.warn(`[SlackBackfill] Failed to download file ${file.sourceFileId}:`, err)
+              return false
             }
-          }
+          }))
+          filesDownloaded += outcomes.filter(Boolean).length
         }
 
         // Fetch thread replies for thread parents

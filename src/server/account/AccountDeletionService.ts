@@ -67,10 +67,9 @@ export class AccountDeletionService {
   }
 
   private async deleteObjectsBestEffort(keys: string[]): Promise<void> {
-    for (const key of keys) {
-      await this.ctx.objectStore.deleteObject(key).catch((error) => {
+    await Promise.all(keys.map((key) =>
+      this.ctx.objectStore.deleteObject(key).catch((error) => {
         logger.error(`[account/delete] Object deletion failed for ${key}:`, error)
-      })
-    }
+      })))
   }
 }

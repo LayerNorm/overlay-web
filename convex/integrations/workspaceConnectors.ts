@@ -129,7 +129,7 @@ export const remove = mutation({
       .withIndex('by_workspaceId_userId_providerKey', (q) =>
         q.eq('workspaceId', workspaceId).eq('userId', userId).eq('providerKey', providerKey))
       .collect()
-    for (const row of rows) await ctx.db.delete(row._id)
+    await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
   },
 })
 
@@ -145,9 +145,7 @@ export const removeByUser = mutation({
       .query('workspaceConnectors')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .collect()
-    for (const row of rows) {
-      await ctx.db.delete(row._id)
-    }
+    await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
     return rows.length
   },
 })

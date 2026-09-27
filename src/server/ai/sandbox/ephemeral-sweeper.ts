@@ -47,23 +47,25 @@ export async function sweepEphemeralSandboxes(args?: {
   const swept: string[] = []
   let errors = 0
   for await (const page of list()) {
-    for (const item of page.sandboxes) {
-      // Vercel-created timestamps are ms since epoch. The persistent check is
-      // belt-and-suspenders: managed-agent and harness sandboxes use other
-      // name prefixes AND are created persistent, so either guard alone
-      // excludes them — together they cannot match.
-      if (item.persistent !== false || item.createdAt >= staleBefore) continue
+    // Vercel-created timestamps are ms since epoch. The persistent check is
+    // belt-and-suspenders: managed-agent and harness sandboxes use other
+    // name prefixes AND are created persistent, so either guard alone
+    // excludes them — together they cannot match.
+    const stale = page.sandboxes.filter((item) => !(item.persistent !== false || item.createdAt >= staleBefore))
+    const results = await Promise.all(stale.map(async (item) => {
       try {
         await remove(item.name)
-        swept.push(item.name)
+        return item.name
       } catch (error) {
         errors += 1
         logger.warn('[Sandbox] Ephemeral sandbox sweep delete failed', {
           error: error instanceof Error ? error.message : String(error),
           sandbox: item.name,
         })
+        return null
       }
-    }
+    }))
+    swept.push(...results.filter((name): name is string => name !== null))
   }
   if (swept.length > 0 || errors > 0) {
     logger.warn('[Sandbox] Ephemeral sandbox sweep', { deleted: swept.length, errors })

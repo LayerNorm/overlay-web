@@ -164,40 +164,44 @@ export const ensurePersonalWorkspaceByServer = mutation({
       return access
     }
 
-    await requireUnusedId(ctx, 'workspace', args.workspaceId)
-    await requireUnusedId(ctx, 'principal', args.principalId)
-    await requireUnusedId(ctx, 'membership', args.membershipId)
+    await Promise.all([
+      requireUnusedId(ctx, 'workspace', args.workspaceId),
+      requireUnusedId(ctx, 'principal', args.principalId),
+      requireUnusedId(ctx, 'membership', args.membershipId),
+    ])
     const now = args.now
-    const workspace = await insertAndRead(ctx, 'workspaces', {
-      workspaceId: args.workspaceId,
-      kind: 'personal',
-      name: requiredName(args.workspaceName, 'Workspace'),
-      slug: `personal-${slugify(args.workspaceId)}`,
-      status: 'active',
-      createdByPrincipalId: args.principalId,
-      personalOwnerUserId: args.userId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    const principal = await insertAndRead(ctx, 'workspacePrincipals', {
-      principalId: args.principalId,
-      workspaceId: args.workspaceId,
-      type: 'human',
-      userId: args.userId,
-      displayName: args.displayName.trim(),
-      email: optionalEmail(args.email),
-      createdAt: now,
-      updatedAt: now,
-    })
-    const membership = await insertAndRead(ctx, 'workspaceMemberships', {
-      membershipId: args.membershipId,
-      workspaceId: args.workspaceId,
-      principalId: args.principalId,
-      role: 'owner',
-      status: 'active',
-      joinedAt: now,
-      updatedAt: now,
-    })
+    const [workspace, principal, membership] = await Promise.all([
+      insertAndRead(ctx, 'workspaces', {
+        workspaceId: args.workspaceId,
+        kind: 'personal',
+        name: requiredName(args.workspaceName, 'Workspace'),
+        slug: `personal-${slugify(args.workspaceId)}`,
+        status: 'active',
+        createdByPrincipalId: args.principalId,
+        personalOwnerUserId: args.userId,
+        createdAt: now,
+        updatedAt: now,
+      }),
+      insertAndRead(ctx, 'workspacePrincipals', {
+        principalId: args.principalId,
+        workspaceId: args.workspaceId,
+        type: 'human',
+        userId: args.userId,
+        displayName: args.displayName.trim(),
+        email: optionalEmail(args.email),
+        createdAt: now,
+        updatedAt: now,
+      }),
+      insertAndRead(ctx, 'workspaceMemberships', {
+        membershipId: args.membershipId,
+        workspaceId: args.workspaceId,
+        principalId: args.principalId,
+        role: 'owner',
+        status: 'active',
+        joinedAt: now,
+        updatedAt: now,
+      }),
+    ])
     return {
       workspace: workspaceValue(workspace),
       principal: principalValue(principal),
@@ -222,9 +226,11 @@ export const createOrganizationByServer = mutation({
   returns: workspaceAccessValidator,
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    await requireUnusedId(ctx, 'workspace', args.workspaceId)
-    await requireUnusedId(ctx, 'principal', args.principalId)
-    await requireUnusedId(ctx, 'membership', args.membershipId)
+    await Promise.all([
+      requireUnusedId(ctx, 'workspace', args.workspaceId),
+      requireUnusedId(ctx, 'principal', args.principalId),
+      requireUnusedId(ctx, 'membership', args.membershipId),
+    ])
     const now = args.now
     const slug = slugify(args.slug ?? args.name)
     const duplicateSlug = await ctx.db.query('workspaces')
@@ -688,22 +694,23 @@ export const acceptInvitationByServer = mutation({
         q.eq(q.field('channelVisibility'), 'public'),
         q.eq(q.field('deletedAt'), undefined),
       )).collect()
-    for (const channel of publicChannels) {
-      const existingParticipant = await ctx.db.query('conversationParticipants')
+    const existingParticipants = await Promise.all(publicChannels.map((channel) =>
+      ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_principalId', (q) => (
           q.eq('conversationId', channel._id).eq('principalId', principal.principalId)
-        )).unique()
-      const role = invitation.role === 'admin' ? 'moderator' : 'member'
-      if (existingParticipant) {
-        await ctx.db.patch(existingParticipant._id, {
+        )).unique()))
+    const role = invitation.role === 'admin' ? 'moderator' : 'member'
+    await Promise.all(publicChannels.map((channel, i) => {
+      const existingParticipant = existingParticipants[i]
+      return existingParticipant
+        ? ctx.db.patch(existingParticipant._id, {
           role,
           status: 'active',
           removedAt: undefined,
           archivedAt: undefined,
           updatedAt: now,
         })
-      } else {
-        await ctx.db.insert('conversationParticipants', {
+        : ctx.db.insert('conversationParticipants', {
           conversationId: channel._id,
           workspaceId: workspace.workspaceId,
           principalId: principal.principalId,
@@ -714,8 +721,7 @@ export const acceptInvitationByServer = mutation({
           joinedAt: now,
           updatedAt: now,
         })
-      }
-    }
+    }))
     await ctx.db.patch(invitation._id, {
       status: 'accepted',
       acceptedByPrincipalId: principal.principalId,
@@ -859,9 +865,8 @@ export const expireInvitationsByServer = mutation({
         .withIndex('by_status_expiresAt', (q) =>
           q.eq('status', 'pending').lte('expiresAt', args.now))
         .take(MAX_DIRECTORY_ROWS)
-    for (const invitation of pending) {
-      await ctx.db.patch(invitation._id, { status: 'expired', updatedAt: args.now })
-    }
+    await Promise.all(pending.map((invitation) =>
+      ctx.db.patch(invitation._id, { status: 'expired', updatedAt: args.now })))
     return { expired: pending.length }
   },
 })
@@ -1110,46 +1115,46 @@ export const purgeArchivedWorkspaceByServer = mutation({
     const deleteRows = async (
       rows: Array<{ _id: Parameters<typeof ctx.db.delete>[0] }>,
     ) => {
-      for (const row of rows) {
-        await ctx.db.delete(row._id)
-        deletedRows += 1
-      }
+      await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
+      deletedRows += rows.length
     }
     const teams = await ctx.db.query('workspaceTeams')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
-    for (const team of teams) {
-      await deleteRows(await ctx.db.query('workspaceTeamMemberships')
+    const teamMembershipLists = await Promise.all(teams.map((team) =>
+      ctx.db.query('workspaceTeamMemberships')
         .withIndex('by_teamId', (q) => q.eq('teamId', team.teamId))
-        .collect())
-    }
+        .collect()))
+    await deleteRows(teamMembershipLists.flat())
     const workspaceConversations = await ctx.db.query('conversations')
       .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
-    for (const conversation of workspaceConversations) {
-      await deleteRows(await ctx.db.query('conversationMessageReactions')
-        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
-        .collect())
-      await deleteRows(await ctx.db.query('conversationPins')
-        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
-        .collect())
-      const savedMessages = await ctx.db.query('conversationSavedMessages')
-        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
-        .collect()
-      await deleteRows(savedMessages)
-      const convoMessages = await ctx.db.query('conversationMessages')
-        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
-        .collect()
-      for (const m of convoMessages) {
-        // Purge knowledge chunks with the row — orphan message chunks would
-        // stay retrievable after the workspace is gone.
-        await deleteChunksForSource(ctx.db, 'message', m._id)
-        await ctx.db.delete(m._id)
-        deletedRows += 1
-      }
+    const perConversationCounts = await Promise.all(workspaceConversations.map(async (conversation) => {
+      const [reactions, pins, savedMessages, convoMessages] = await Promise.all([
+        ctx.db.query('conversationMessageReactions')
+          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
+          .collect(),
+        ctx.db.query('conversationPins')
+          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
+          .collect(),
+        ctx.db.query('conversationSavedMessages')
+          .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
+          .collect(),
+        ctx.db.query('conversationMessages')
+          .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
+          .collect(),
+      ])
+      await Promise.all([...reactions, ...pins, ...savedMessages].map((row) => ctx.db.delete(row._id)))
+      // Purge knowledge chunks with the row — orphan message chunks would
+      // stay retrievable after the workspace is gone.
+      await Promise.all(convoMessages.flatMap((m) => [
+        deleteChunksForSource(ctx.db, 'message', m._id),
+        ctx.db.delete(m._id),
+      ]))
       await ctx.db.delete(conversation._id)
-      deletedRows += 1
-    }
+      return reactions.length + pins.length + savedMessages.length + convoMessages.length + 1
+    }))
+    deletedRows += perConversationCounts.reduce((total, count) => total + count, 0)
     await deleteRows(await ctx.db.query('workspaceResourceGuests')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect())
@@ -1179,10 +1184,10 @@ export const purgeArchivedWorkspaceByServer = mutation({
       .collect())
     const environmentCredentials = await ctx.db.query('agentEnvironmentCredentials')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect()
-    for (const credential of environmentCredentials) {
-      await deleteRows(await ctx.db.query('agentEnvironmentCredentialNonces')
-        .withIndex('by_credentialId_expiresAt', (q) => q.eq('credentialId', credential.credentialId)).collect())
-    }
+    const credentialNonces = await Promise.all(environmentCredentials.map((credential) =>
+      ctx.db.query('agentEnvironmentCredentialNonces')
+        .withIndex('by_credentialId_expiresAt', (q) => q.eq('credentialId', credential.credentialId)).collect()))
+    await deleteRows(credentialNonces.flat())
     await deleteRows(environmentCredentials)
     await deleteRows(await ctx.db.query('agentEnvironmentProofChallenges')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
@@ -1301,7 +1306,7 @@ export const deleteTeamByServer = mutation({
     if (memberships.length > MAX_DIRECTORY_ROWS) {
       throw new Error('WORKSPACE_TEAM_TOO_LARGE_TO_DELETE')
     }
-    for (const membership of memberships) await ctx.db.delete(membership._id)
+    await Promise.all(memberships.map((membership) => ctx.db.delete(membership._id)))
     await ctx.db.delete(team._id)
     return { removed: true }
   },

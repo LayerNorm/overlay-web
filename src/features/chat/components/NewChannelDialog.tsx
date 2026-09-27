@@ -140,7 +140,9 @@ export function NewChannelDialog({
               <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Add people or agents" />
             </div>
             <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-              {candidates.map((item) => {
+              {(() => {
+                const selectedSet = new Set(selected)
+                return candidates.map((item) => {
                 const principalId = item.principalId!
                 const active = selectedSet.has(principalId)
                 const Icon = item.principalType === 'agent' ? Bot : UserRound
@@ -151,7 +153,8 @@ export function NewChannelDialog({
                     <span className={`flex h-4 w-4 items-center justify-center rounded border ${active ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{active ? <Check size={10} /> : null}</span>
                   </button>
                 )
-              })}
+              })
+              })()}
             </div>
           </div>
         ) : null}
