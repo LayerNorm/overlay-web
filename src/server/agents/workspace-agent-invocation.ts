@@ -244,14 +244,14 @@ async function loadRoomTurnContext(args: {
 }) {
   const server = getOverlayServerContext()
   const collaboration = server.appData.repositories.conversationCollaboration
-  const conversation = await loadAccessibleConversation({
+  const [conversation, participants, history, directory] = await Promise.all([
+    loadAccessibleConversation({
     actorUserId: args.actorUserId,
     collaboration,
     conversationId: args.conversationId,
     messageId: args.messageId,
     workspaceId: args.workspaceId,
-  })
-  const [participants, history, directory] = await Promise.all([
+    }),
     collaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     }),

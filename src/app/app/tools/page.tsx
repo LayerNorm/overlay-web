@@ -18,7 +18,13 @@ async function ToolsRouteContent({
   const params = await searchParams
   const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
 
-  if (showcaseParam === '1') return <PublicShowcaseToolsView />
+  if (showcaseParam === '1') {
+    return (
+      <Suspense fallback={null}>
+        <PublicShowcaseToolsView />
+      </Suspense>
+    )
+  }
   if (!session) {
     redirect('/app/chat?signin=nav')
   }

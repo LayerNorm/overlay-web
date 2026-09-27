@@ -806,14 +806,16 @@ export const startAgentTurn = mutation({
   },
   handler: async (ctx, args) => {
     await requireAgentAuthor(ctx, args)
-    const { messageId, resumed } = await openAgentMessageRow(ctx, args)
     // A room turn carries no variant index, so the turn prefix of this index
     // identifies at most one run.
-    const existingRun = await ctx.db.query('conversationAgentRuns')
+    const [{ messageId, resumed }, existingRun] = await Promise.all([
+      openAgentMessageRow(ctx, args),
+      ctx.db.query('conversationAgentRuns')
       .withIndex('by_turn_variant', (q) => (
         q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
       ))
-      .first()
+        .first(),
+    ])
     if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
 
     const now = Date.now()
@@ -1143,16 +1145,18 @@ export const accessibleConversationIds = query({
   },
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args)
-    const conversations = await ctx.db.query('conversations')
+    const [conversations, participantRows] = await Promise.all([
+      ctx.db.query('conversations')
       .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
-      .collect()
-    const participantRows = await ctx.db.query('conversationParticipants')
+        .collect(),
+      ctx.db.query('conversationParticipants')
       .withIndex('by_workspaceId_principalId_status', (q) => (
         q.eq('workspaceId', args.workspaceId)
           .eq('principalId', actor.principalId)
           .eq('status', 'active')
       ))
-      .collect()
+        .collect(),
+    ])
     const shared = new Set(participantRows.filter((row) => !row.archivedAt).map((row) => String(row.conversationId)))
     return conversations.filter((conversation) => (
       !conversation.deletedAt
@@ -1201,13 +1205,15 @@ export const addParticipant = mutation({
     if (access.conversation?.conversationType === 'dm') {
       throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
     }
-    const principal = await ctx.db.query('workspacePrincipals')
+    const [principal, membership] = await Promise.all([
+      ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
-      .unique()
-    const membership = await ctx.db.query('workspaceMemberships')
+        .unique(),
+      ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId)
-      )).unique()
+        )).unique(),
+    ])
     if (
       !principal
       || principal.workspaceId !== args.workspaceId
@@ -1752,15 +1758,17 @@ export const getConversationEventCursor = query({
   },
   handler: async (ctx, args) => {
     if (!args.workspaceId) return 0
-    const accessible = await accessibleConversationIdsForEvents(ctx, {
+    const [accessible, events] = await Promise.all([
+      accessibleConversationIdsForEvents(ctx, {
       actorUserId: args.actorUserId,
       workspaceId: args.workspaceId,
       serverSecret: args.serverSecret,
-    })
-    const events = await ctx.db.query('conversationEvents')
+      }),
+      ctx.db.query('conversationEvents')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .order('desc')
-      .take(500)
+        .take(500),
+    ])
     return events
       .filter((event) => accessible.has(event.conversationId))
       .reduce((max, event) => Math.max(max, event._creationTime), 0)
@@ -1777,17 +1785,19 @@ export const listConversationEvents = query({
   },
   handler: async (ctx, args) => {
     if (!args.workspaceId) return []
-    const accessible = await accessibleConversationIdsForEvents(ctx, {
+    const [accessible, events] = await Promise.all([
+      accessibleConversationIdsForEvents(ctx, {
       actorUserId: args.actorUserId,
       workspaceId: args.workspaceId,
       serverSecret: args.serverSecret,
-    })
-    const events = await ctx.db.query('conversationEvents')
+      }),
+      ctx.db.query('conversationEvents')
       .withIndex('by_workspaceId', (q) => (
         q.eq('workspaceId', args.workspaceId).gt('_creationTime', args.afterSequence)
       ))
       .order('asc')
-      .take(Math.max(1, Math.min(200, Math.floor(args.limit))))
+        .take(Math.max(1, Math.min(200, Math.floor(args.limit)))),
+    ])
     return events
       .filter((event) => accessible.has(event.conversationId) && event._creationTime > args.afterSequence)
       .sort((left, right) => left._creationTime - right._creationTime)
@@ -1925,11 +1935,13 @@ async function listNotificationRows(
   const conversationIds = [...new Set(notifications.map((row) => row.conversationId))]
   const conversationStateById = new Map<string, 'archived' | 'deleted'>()
   await Promise.all(conversationIds.map(async (conversationId) => {
-    const conversation = await ctx.db.get(conversationId)
-    const participant = await ctx.db.query('conversationParticipants')
+    const [conversation, participant] = await Promise.all([
+      ctx.db.get(conversationId),
+      ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_principalId', (q) => (
         q.eq('conversationId', conversationId).eq('principalId', actor.principalId)
-      )).unique()
+        )).unique(),
+    ])
     const state = resolveConversationActivityState({
       archivedAt: participant?.archivedAt,
       conversation: conversation ? { deletedAt: conversation.deletedAt } : null,

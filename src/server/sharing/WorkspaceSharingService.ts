@@ -212,13 +212,15 @@ export class WorkspaceSharingService {
     resourceType: WorkspaceShareResourceType
     resourceId: string
   }): Promise<{ allowed: boolean; accessRole?: WorkspaceShareAccessRole; ownerUserId?: string }> {
-    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    const scope = await this.deps.workspaceRepository.getResourceWorkspace({
+    const [access, scope, ownerUserId] = await Promise.all([
+      this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId),
+      this.deps.workspaceRepository.getResourceWorkspace({
       resourceType: args.resourceType,
       resourceId: args.resourceId,
-    })
+      }),
+      this.deps.resourceOwners.getOwner(args),
+    ])
     if (!scope || scope.workspaceId !== access.workspace.id) return { allowed: false }
-    const ownerUserId = await this.deps.resourceOwners.getOwner(args)
     if (ownerUserId === args.actorUserId) return { allowed: true, accessRole: 'editor', ownerUserId }
     const targets = await this.effectiveTargets(args.actorUserId, access.workspace.id, access.principal.id)
     const grants = await this.deps.repository.listForTargets({
@@ -316,13 +318,15 @@ export class WorkspaceSharingService {
     resourceType: WorkspaceShareResourceType
     resourceId: string
   }) {
-    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const [access, ownerUserId] = await Promise.all([
+      this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId),
+      this.deps.resourceOwners.getOwner({
+        resourceType: args.resourceType,
+        resourceId: args.resourceId,
+      }),
+    ])
     const resourceId = required(args.resourceId, 'resourceId')
     let scope = await this.deps.workspaceRepository.getResourceWorkspace({
-      resourceType: args.resourceType,
-      resourceId,
-    })
-    const ownerUserId = await this.deps.resourceOwners.getOwner({
       resourceType: args.resourceType,
       resourceId,
     })
@@ -411,15 +415,17 @@ export class WorkspaceSharingService {
         })),
       }
     }
-    const participants = await this.deps.collaboration.listParticipants({
+    const [participants, conversations] = await Promise.all([
+      this.deps.collaboration.listParticipants({
       actorUserId: args.actorUserId,
       conversationId: args.targetId,
       workspaceId: args.workspaceId,
-    })
-    const conversations = await this.deps.conversations.listConversations({
+      }),
+      this.deps.conversations.listConversations({
       userId: args.actorUserId,
       workspaceId: args.workspaceId,
-    })
+      }),
+    ])
     const room = conversations.find((conversation) => conversation._id === args.targetId)
     const name = room?.title ?? 'Room'
     return {

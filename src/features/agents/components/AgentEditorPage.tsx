@@ -104,20 +104,28 @@ export function AgentEditorPage({
   const [instructions, setInstructions] = useState(initial.instructions)
   const [modelId, setModelId] = useState<string>(initial.modelId)
   const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
-  const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>(initial.avatarShape)
-  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
-  const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => (showcaseAgent
+  const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>(
+    initial.avatarShape,
+  )
+  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(
+    initial.visibility,
+  )
+  const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() =>
+    showcaseAgent
     ? enabledAgentToolGroupIds(showcaseAgent.allowedToolIds)
-    : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS)))
+      : new Set(DEFAULT_AGENT_TOOL_GROUP_IDS),
+  )
   const [advanced, setAdvanced] = useState(false)
-  const [agentType, setAgentType] = useState<AgentType>(() => (
-    workspaceAgentUsesByo(showcaseAgent) ? 'byo' : 'overlay'
-  ))
+  const [agentType, setAgentType] = useState<AgentType>(() =>
+    workspaceAgentUsesByo(showcaseAgent) ? 'byo' : 'overlay',
+  )
   // Hosted-branch runtime: 'overlay' is the native agent; a managed harness id
   // selects a HarnessAgent running in an Overlay Cloud sandbox.
-  const [hostedRuntime, setHostedRuntime] = useState<string>(() => (
-    showcaseAgent && workspaceAgentUsesManagedHarness(showcaseAgent) ? showcaseAgent.harness : 'overlay'
-  ))
+  const [hostedRuntime, setHostedRuntime] = useState<string>(() =>
+    showcaseAgent && workspaceAgentUsesManagedHarness(showcaseAgent)
+      ? showcaseAgent.harness
+      : 'overlay',
+  )
   const [harnessModel, setHarnessModel] = useState('')
   const [managedPicker, setManagedPicker] = useState<ManagedHarnessPicker | null>(null)
   const [managedEnvironment, setManagedEnvironment] = useState<AgentEnvironmentResource | null>(null)
@@ -161,7 +169,9 @@ export function AgentEditorPage({
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
-  const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | null>(null)
+  const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<
+    'start' | 'stop' | 'delete' | null
+  >(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -197,10 +207,17 @@ export function AgentEditorPage({
   useEffect(() => {
     if (showcase || !activeWorkspaceId) return
     let cancelled = false
-    void overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId)
-      .then(() => { if (!cancelled) setConnectedAgentsEnabled(true) })
-      .catch(() => { if (!cancelled) setConnectedAgentsEnabled(false) })
-    return () => { cancelled = true }
+    void overlayAppClient.agentEnvironments
+      .listBindings(activeWorkspaceId)
+      .then(() => {
+        if (!cancelled) setConnectedAgentsEnabled(true)
+      })
+      .catch(() => {
+        if (!cancelled) setConnectedAgentsEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [activeWorkspaceId, showcase])
 
   // Managed-harness picker: the server applies every gate (feature, rollout,
@@ -215,8 +232,15 @@ export function AgentEditorPage({
   useEffect(() => {
     if (showcase || !activeWorkspaceId || !managedHarnessAgentsEnabled) return
     let cancelled = false
-    void overlayAppClient.agentEnvironments.managedHarnesses(activeWorkspaceId).then(
-      (picker) => { if (!cancelled) { setManagedPicker(picker); setManagedPickerFailed(false) } },
+    void overlayAppClient.agentEnvironments
+      .managedHarnesses(activeWorkspaceId)
+      .then(
+        (picker) => {
+          if (!cancelled) {
+            setManagedPicker(picker)
+            setManagedPickerFailed(false)
+          }
+        },
       (error) => {
         if (cancelled) return
         setManagedPicker(null)
@@ -244,14 +268,27 @@ export function AgentEditorPage({
 
   // BYOK "Model access" options: the actor's active provider connections whose
   // provider the selected harness can authenticate (`byokProviders`).
-  const { connections: byokConnections } = useByokModels({ enabled: managedRuntimeSelected })
-  const managedByokConnections = useMemo(() => (
-    !managedHarnessEntry || managedHarnessEntry.byokProviders.length === 0 ? [] :
-      byokConnections
-        .filter((connection) => connection.status === 'active'
-          && managedHarnessEntry.byokProviders.includes(connection.providerId))
-        .map((connection) => ({ id: connection._id, label: connection.displayName }))
-  ), [byokConnections, managedHarnessEntry])
+  const { connections: byokConnections } = useByokModels({
+    enabled: managedRuntimeSelected,
+  })
+  const managedByokConnections = useMemo(
+    () =>
+      !managedHarnessEntry || managedHarnessEntry.byokProviders.length === 0
+        ? []
+        : byokConnections
+            .filter(
+              (connection) =>
+                connection.status === 'active' &&
+                managedHarnessEntry.byokProviders.includes(
+                  connection.providerId,
+                ),
+            )
+            .map((connection) => ({
+              id: connection._id,
+              label: connection.displayName,
+            })),
+    [byokConnections, managedHarnessEntry],
+  )
 
   // Load this agent's computer (edit mode, Overlay agents, capability on).
   // A bound machine implies the Computer tool group: force it on so the merged
@@ -304,7 +341,7 @@ export function AgentEditorPage({
   }
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
-  const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
+  const closeEditor = () => (onClose ? onClose() : router.push(directoryHref))
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => {
     const harnessLabel = selectedHarness?.label ?? adapterId
@@ -342,6 +379,8 @@ export function AgentEditorPage({
   // Stream unsaved identity drafts so the sidebar roster and the conversation
   // header update while typing; a clean form or an unmounted editor clears the
   // override.
+  // Draft preview stream intentionally propagates editor state to siblings.
+  // react-doctor-disable-next-line react-doctor/no-effect-chain
   useEffect(() => {
     if (showcase || !agent || !activeWorkspaceId) return
     dispatchAgentDraftPreview({
@@ -401,10 +440,14 @@ export function AgentEditorPage({
             throw bindingError
           })
         } else if (agentType === 'byo') {
-          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
+          await overlayAppClient.agentEnvironments
+            .upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
-            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-          }).catch(async (bindingError) => {
+              environmentId,
+              adapterId,
+              workingDirectory: workingDirectory.trim(),
+            })
+            .catch(async (bindingError) => {
             // Agent identity may already be durable even if its remote binding
             // fails. Land on the edit page so a retry never creates a duplicate.
             setAgent(saved.agent)
@@ -416,13 +459,20 @@ export function AgentEditorPage({
         }
         // A managed-harness env already is a machine — computer tools resolve
         // it through the env fallback, so provisioning a second box is waste.
-        if (agentType === 'overlay' && !managedRuntimeSelected && computersAvailable && enabledToolGroups.has('computer')) {
-          await overlayAppClient.computers.provision(activeWorkspaceId, {
+        if (
+          agentType === 'overlay' &&
+          !managedRuntimeSelected &&
+          computersAvailable &&
+          enabledToolGroups.has('computer')
+        ) {
+          await overlayAppClient.computers
+            .provision(activeWorkspaceId, {
             ownerType: 'agent',
             ownerId: saved.agent.id,
             size: computerSize,
             name: `${saved.agent.name} computer`,
-          }).catch(async (computerError) => {
+            })
+            .catch(async (computerError) => {
             // The agent is durable even if its computer fails to provision —
             // land on the edit page so a retry never creates a duplicate agent.
             setAgent(saved.agent)
@@ -456,7 +506,9 @@ export function AgentEditorPage({
     const harnessId = managedHarnessEntry?.id ?? (hostedRuntime as ManagedHarnessId)
     // Same harness → rebind on the existing environment; a runtime switch needs
     // a fresh sandbox since each environment advertises one harness.
-    const environment = (grandfatheredHarness || (managedEnvironment && boundHarnessId === hostedRuntime))
+    const environment =
+      grandfatheredHarness ||
+      (managedEnvironment && boundHarnessId === hostedRuntime)
       ? managedEnvironment
       : (await overlayAppClient.agentEnvironments.createManaged(activeWorkspaceId!, {
           mode: 'harness',
@@ -507,7 +559,8 @@ export function AgentEditorPage({
           })
         } else if (workspaceAgentUsesByo(agent) || managedEnvironment) {
           // Switched a connected agent back to Overlay: drop its binding once.
-          await overlayAppClient.agentEnvironments.disableBindings(activeWorkspaceId, saved.agent.id)
+          await overlayAppClient.agentEnvironments
+            .disableBindings(activeWorkspaceId, saved.agent.id)
             .catch(() => undefined)
           nextManagedEnvironment = null
           setManagedEnvironment(null)
@@ -518,8 +571,12 @@ export function AgentEditorPage({
         }
         // An environment this agent no longer uses keeps no sandbox: clearing
         // sessions + deleting the instance now beats waiting out the idle timeout.
-        if (managedEnvironment && managedEnvironment.id !== nextManagedEnvironment?.id) {
-          await overlayAppClient.agentEnvironments.resetHarness(activeWorkspaceId, managedEnvironment.id)
+        if (
+          managedEnvironment &&
+          managedEnvironment.id !== nextManagedEnvironment?.id
+        ) {
+          await overlayAppClient.agentEnvironments
+            .resetHarness(activeWorkspaceId, managedEnvironment.id)
             .catch(() => undefined)
         }
         if (agentType === 'overlay' && computersAvailable) {
@@ -693,12 +750,17 @@ export function AgentEditorPage({
       header={presentation === 'page' ? (
         <AppScreenHeader
           title={title}
-          leading={(
-            <Button variant="ghost" size="sm" onClick={closeEditor} aria-label="Back to agents">
+            leading={
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={closeEditor}
+                aria-label='Back to agents'
+              >
               <ArrowLeft size={14} /> Agents
             </Button>
-          )}
-          actions={(
+            }
+            actions={
             <SayHelloButton
               mode={mode}
               hasAgent={Boolean(agent)}
@@ -706,28 +768,58 @@ export function AgentEditorPage({
               showcase={showcase}
               onSayHello={sayHello}
             />
-          )}
+            }
         />
       ) : undefined}
     >
-      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full" style={inPanel ? { background: 'transparent' } : undefined}>
+      <AppScreenBody
+        padding='lg'
+        maxWidth='xl'
+        className='min-h-full'
+        style={inPanel ? { background: 'transparent' } : undefined}
+      >
         {loading ? (
-          <div className="mx-auto w-full max-w-2xl space-y-4" aria-label="Loading agent">
+          <div
+            className='mx-auto w-full max-w-2xl space-y-4'
+            aria-label='Loading agent'
+          >
             <div className="h-9 w-48 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
             <div className="h-28 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
             <div className="h-36 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
           </div>
         ) : loadFailed || (mode === 'edit' && !agent) ? (
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
-            <p className="text-sm font-medium text-[var(--foreground)]">Agent not found</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">It may have been archived, or you may not have access to it.</p>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
+            <p className='text-sm font-medium text-[var(--foreground)]'>
+              Agent not found
+            </p>
+            <p className='mt-1 text-xs leading-5 text-[var(--muted)]'>
+              It may have been archived, or you may not have access to it.
+            </p>
+            <Button
+              variant='secondary'
+              size='sm'
+              className='mt-4'
+              onClick={closeEditor}
+            >
+              Back to agents
+            </Button>
           </div>
         ) : mode === 'new' && !canCreate ? (
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
-            <p className="text-sm font-medium text-[var(--foreground)]">You cannot create agents in this workspace</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Guests can chat with agents but cannot create new ones.</p>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
+            <p className='text-sm font-medium text-[var(--foreground)]'>
+              You cannot create agents in this workspace
+            </p>
+            <p className='mt-1 text-xs leading-5 text-[var(--muted)]'>
+              Guests can chat with agents but cannot create new ones.
+            </p>
+            <Button
+              variant='secondary'
+              size='sm'
+              className='mt-4'
+              onClick={closeEditor}
+            >
+              Back to agents
+            </Button>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-2xl pb-24">
@@ -838,10 +930,16 @@ export function AgentEditorPage({
                   onArchive={() => void archiveAgent()}
                 />
 
-                {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-                {savedFlash && mode === 'edit'
-                  ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
-                  : null}
+                {error ? (
+                  <p role='alert' className='text-xs text-red-500'>
+                    {error}
+                  </p>
+                ) : null}
+                {savedFlash && mode === 'edit' ? (
+                  <p role='status' className='text-xs text-[var(--muted)]'>
+                    Saved.
+                  </p>
+                ) : null}
                 {mode === 'new' ? (
                   <>
                     <Button
@@ -851,7 +949,12 @@ export function AgentEditorPage({
                     >
                       {busy ? 'Creating…' : 'Create agent'}
                     </Button>
-                    <Button variant="ghost" className="w-full" disabled={busy} onClick={closeEditor}>
+                    <Button
+                      variant='ghost'
+                      className='w-full'
+                      disabled={busy}
+                      onClick={closeEditor}
+                    >
                       Cancel
                     </Button>
                   </>
@@ -864,7 +967,12 @@ export function AgentEditorPage({
                     >
                       {busy ? 'Saving…' : 'Save changes'}
                     </Button>
-                    <Button variant="ghost" className="w-full" disabled={busy} onClick={cancelEdit}>
+                    <Button
+                      variant='ghost'
+                      className='w-full'
+                      disabled={busy}
+                      onClick={cancelEdit}
+                    >
                       Cancel
                     </Button>
                   </>

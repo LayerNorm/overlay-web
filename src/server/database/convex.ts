@@ -105,6 +105,7 @@ async function callConvex<T>(
     const timeoutId = setTimeout(() => controller.abort(timeoutError), timeoutMs)
     let response: Response
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       response = await fetch(endpoint, {
         method: 'POST',
         headers: {

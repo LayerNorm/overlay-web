@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
 import { usePresence } from '@overlay/ui'
 
@@ -18,7 +18,6 @@ import { usePresence } from '@overlay/ui'
  * out.
  */
 export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean }) {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const autoOpenedRef = useRef(false)
 
@@ -38,8 +37,8 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
     const next = new URLSearchParams(searchParams.toString())
     next.delete('delete')
     const qs = next.toString()
-    router.replace(qs ? `/account?${qs}` : '/account', { scroll: false })
-  }, [router, searchParams])
+    window.history.replaceState(null, '', qs ? `/account?${qs}` : '/account')
+  }, [searchParams])
 
   function close(): void {
     if (submitting) return

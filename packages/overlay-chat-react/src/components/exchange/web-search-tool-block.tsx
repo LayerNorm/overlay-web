@@ -104,7 +104,7 @@ export function WebSearchToolBlock({
                         titleCandidate.toLowerCase() === site.toLowerCase()
                       const displayTitle = isTitleJustHost ? host : titleCandidate
                       return (
-                        <li key={`${source.url}-${idx}`}>
+                        <li key={source.url}>
                           <a
                             href={safeUrl}
                             target="_blank"

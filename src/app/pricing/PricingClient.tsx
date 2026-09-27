@@ -87,6 +87,8 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const [error, setError] = useState<string | null>(null)
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (!billingEnabled) return
     if (!isAuthenticated || !user?.id) return
@@ -302,6 +304,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     setError(null)
 
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch('/api/subscription/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

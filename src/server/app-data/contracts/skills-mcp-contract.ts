@@ -56,6 +56,8 @@ export async function runSkillsMcpContract(
         url: 'https://mcp.example.test/api',
         userId,
       })
+      // Read-your-write: the list must observe the create above.
+      // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
       const summaries = await backend.mcpServers.list({ userId })
       assert.equal(summaries.length, 1)
       assert.equal('authConfig' in summaries[0]!, false)

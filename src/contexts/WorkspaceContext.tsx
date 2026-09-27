@@ -53,9 +53,11 @@ export function WorkspaceProvider({
   const statusRef = useRef(status)
   const workspacesRef = useRef(workspaces)
   const activeWorkspaceIdRef = useRef(activeWorkspaceId)
+  useEffect(() => {
   statusRef.current = status
   workspacesRef.current = workspaces
   activeWorkspaceIdRef.current = activeWorkspaceId
+  })
 
   const load = useCallback(async (signal?: AbortSignal, options?: { force?: boolean }) => {
     if (!enabled) {

@@ -4,7 +4,7 @@
 // while this web container keeps current billing flows and redirects unchanged.
 import { useState, useEffect, Suspense, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { Download, MonitorDown, RefreshCw, ArrowRight } from 'lucide-react'
 import { AccountBillingPanel } from '@/features/billing/components/AccountBillingPanel'
 import { DeleteAccountSection } from '@/features/account/components/DeleteAccountSection'
@@ -376,7 +376,9 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
                   >
                     {signingOut ? 'Signing out…' : 'Sign out'}
                   </button>
+                  <Suspense fallback={null}>
                   <DeleteAccountSection isLandingDark={isLandingDark} />
+                  </Suspense>
                 </div>
               }
             />
@@ -436,14 +438,10 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
 }
 
 function AccountPageRedirect() {
-  const router = useRouter()
   const searchParams = useSearchParams()
-
-  useEffect(() => {
     const params = new URLSearchParams(searchParams?.toString() ?? '')
     params.set('section', 'account')
-    router.replace(`/app/settings?${params.toString()}`, { scroll: false })
-  }, [router, searchParams])
+  redirect(`/app/settings?${params.toString()}`)
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">

@@ -30,7 +30,9 @@ export function KnowledgeMemoryList({
             key={memory.key}
             role="button"
             tabIndex={0}
-            onClick={() => (selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory))}
+            onClick={() =>
+              selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory)
+            }
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
@@ -42,8 +44,15 @@ export function KnowledgeMemoryList({
               bulkSel ? 'border-[var(--border)] bg-[var(--surface-muted)]' : ''
             }`}
           >
-            {selectMode ? <BulkSelectMarker selected={bulkSel} className="mt-0.5 shrink-0" /> : null}
-            <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
+            {selectMode ? (
+              <BulkSelectMarker
+                selected={bulkSel}
+                className='mt-0.5 shrink-0'
+              />
+            ) : null}
+            <p className='min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]'>
+              {memory.content}
+            </p>
             {!selectMode ? (
               <button
                 type="button"
@@ -81,18 +90,31 @@ export function KnowledgeMemoryCards({
           <button
             key={memory.key}
             type="button"
-            onClick={() => (selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory))}
+            onClick={() =>
+              selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory)
+            }
             className={`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-[var(--surface-elevated)] p-4 text-left transition-shadow hover:shadow-md ${
               bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
             }`}
             style={{ breakInside: 'avoid' }}
           >
-            {selectMode ? <BulkSelectMarker selected={bulkSel} className="absolute left-3 top-3 z-10" /> : null}
-            <p className={`line-clamp-6 text-xs leading-relaxed text-[var(--foreground)] ${selectMode ? 'pl-7' : ''}`}>
+            {selectMode ? (
+              <BulkSelectMarker
+                selected={bulkSel}
+                className='absolute left-3 top-3 z-10'
+              />
+            ) : null}
+            <p
+              className={`line-clamp-6 text-xs leading-relaxed text-[var(--foreground)] ${selectMode ? 'pl-7' : ''}`}
+            >
               {memory.content}
             </p>
             <p className="mt-3 text-[10px] text-[var(--muted-light)]">
-              {new Date(memory.createdAt).toLocaleDateString()}
+              {
+                // Locale pinned to 'en-US'.
+                // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                new Date(memory.createdAt).toLocaleDateString('en-US')
+              }
             </p>
           </button>
         )

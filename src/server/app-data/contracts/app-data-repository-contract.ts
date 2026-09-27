@@ -107,6 +107,8 @@ export async function runAppDataRepositoryContractSuite(
         actModelId: 'openrouter/free',
         lastMode: 'act',
       })
+      // Idempotency contract: the duplicate create must run after the first.
+      // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
       const repeatedConversationId = await backend.conversations.createConversation({
         userId,
         clientId,
@@ -708,18 +710,20 @@ export async function runAppDataRepositoryContractSuite(
 
     await t.test(`${backend.name}: workspace memories are shared and filterable by creator`, async () => {
       const workspaceId = `contract_workspace_${randomUUID()}`
-      const ownerMemory = await backend.memories.create({
+      const [ownerMemory, memberMemory] = await Promise.all([
+        backend.memories.create({
         content: 'Owner workspace memory.',
         source: 'manual',
         userId,
         workspaceId,
-      })
-      const memberMemory = await backend.memories.create({
+        }),
+        backend.memories.create({
         content: 'Member workspace memory.',
         source: 'manual',
         userId: foreignUserId,
         workspaceId,
-      })
+        }),
+      ])
       foreignUserCreated = true
 
       const all = await backend.memories.list({

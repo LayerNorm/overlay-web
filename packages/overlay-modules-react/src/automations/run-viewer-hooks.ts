@@ -41,7 +41,9 @@ export function useRunStatus({
   const runKey = useMemo(() => {
     if (!enabled || !workflowRunId || !graph) return null
     const nodeIds = graph.nodes.map((node) => node.id).join(',')
-    const edgeIds = graph.edges.map((edge) => `${edge.from}>${edge.to}`).join(',')
+    const edgeIds = graph.edges
+      .map((edge) => `${edge.from}>${edge.to}`)
+      .join(',')
     return `${workflowRunId}:${nodeIds}:${edgeIds}`
   }, [enabled, workflowRunId, graph])
   const [state, setState] = useState<{
@@ -193,19 +195,28 @@ export function useReplayStatus({
     graphRef.current = graph
   }, [graph])
 
-  useEffect(() => {
-    if (!workflowRunId || !graph) {
+  const [prevRunGraphKey, setPrevRunGraphKey] = useState<string | false>(
+    workflowRunId && graph ? workflowRunId : false,
+  )
+  const runGraphKey = workflowRunId && graph ? workflowRunId : false
+  if (prevRunGraphKey !== runGraphKey) {
+    setPrevRunGraphKey(runGraphKey)
       setEvents([])
       setCurrentIndexState(0)
       setError(null)
+    setIsLoading(Boolean(runGraphKey))
+  }
+
+  // Event log load — keyed to run+graph; retries replace prior results wholesale.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
+  useEffect(() => {
+    if (!workflowRunId || !graph) {
       return
     }
 
-    setIsLoading(true)
-    setError(null)
-
     async function loadEvents() {
       try {
+        // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
         const runId = workflowRunId as string
         const url = `/api/v1/automations/${encodeURIComponent(runId)}/events`
         const response = await fetchImpl(url)
@@ -223,7 +234,7 @@ export function useReplayStatus({
           if (done) break
 
           buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
+          const lines = buffer.split("\n")
           buffer = lines.pop() ?? ''
 
           for (const line of lines) {
@@ -259,7 +270,7 @@ export function useReplayStatus({
     }
 
     void loadEvents()
-  }, [workflowRunId, graph])
+  }, [workflowRunId, graph, fetchImpl])
 
   const snapshot = useMemo(() => {
     if (!graph || !workflowRunId || events.length === 0) return null

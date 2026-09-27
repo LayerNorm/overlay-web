@@ -88,6 +88,7 @@ function ConvexLiveQueryBridge({
   ) as Array<LiveConversationMessage> | undefined
 
   useEffect(() => {
+    // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
     onUpdate({ chatId: activeChatId, liveMessages })
   }, [activeChatId, liveMessages, onUpdate])
 

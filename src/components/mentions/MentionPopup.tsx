@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import {
   BookOpen,
   ChevronRight,
@@ -15,7 +15,10 @@ import {
 } from 'lucide-react'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
-const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
+const ICON_MAP: Record<
+  string,
+  React.FC<{ size?: number; className?: string; strokeWidth?: number }>
+> = {
   FileText,
   BookOpen,
   Plug,
@@ -133,11 +136,13 @@ export function MentionPopup({
   }, [activeIndex])
 
   useEffect(() => {
-    onActiveOptionChange?.(rows[activeIndex] ? `mention-option-${activeIndex}` : null)
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent, react-doctor/no-prop-callback-in-effect
+    onActiveOptionChange?.(
+      rows[activeIndex] ? `mention-option-${activeIndex}` : null,
+    )
   }, [activeIndex, rows, onActiveOptionChange])
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         e.stopPropagation()
@@ -168,11 +173,13 @@ export function MentionPopup({
           onClose()
         }
       }
-    }
+  })
 
+  useEffect(() => {
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [activeIndex, rows, onSelect, onUploadFile, onClose, onSelectedCategoryChange, selectedCategory])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleKeyDown is a stable useEffectEvent
+  }, [])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -184,7 +191,9 @@ export function MentionPopup({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [onClose])
 
-  if (!position) return null
+  // Position is only set after client interaction; the window guard covers SSR.
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
+  if (!position || typeof window === 'undefined') return null
 
   const popupWidth = 288
   const popupHeight = 320
@@ -230,9 +239,18 @@ export function MentionPopup({
         </div>
       )}
 
-      <div className="overflow-y-auto" role="listbox" id="mention-listbox" aria-label="Mention suggestions">
+      <div
+        className='overflow-y-auto'
+        role='listbox'
+        id='mention-listbox'
+        aria-label='Mention suggestions'
+      >
         {loading && isEmptyResults ? (
-          <div className="flex items-center justify-center gap-2 py-6 text-xs text-[var(--muted-light)]" role="status" aria-live="polite">
+          <div
+            className='flex items-center justify-center gap-2 py-6 text-xs text-[var(--muted-light)]'
+            role='status'
+            aria-live='polite'
+          >
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent" />
             <span>Loading mentions...</span>
           </div>
@@ -347,7 +365,9 @@ export function MentionPopup({
                 ) : (
                   <CategoryIcon icon={item.icon || fallbackIcon} className="shrink-0 opacity-70" />
                 )}
-                <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
+                <span className='min-w-0 flex-1 truncate font-medium'>
+                  {item.name}
+                </span>
                 {item.description && (
                   <span className="shrink-0 truncate text-[10px] text-[var(--muted-light)] max-w-[100px]">
                     {item.description}

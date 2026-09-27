@@ -225,12 +225,31 @@ export async function exerciseKnowledgeAdapterContract(
   const eventTypes: string[] = []
   const unsubscribe = adapters.repository.subscribe((event) => eventTypes.push(event.type))
   const before = await adapters.repository.list()
-  const folder = await adapters.repository.create({ name: 'Contract folder', kind: 'folder', parentId: null })
-  const file = await adapters.repository.create({ name: 'draft.txt', kind: 'file', parentId: null, content: 'draft' })
-  const renamed = await adapters.repository.rename({ id: file.id, name: 'final.txt' })
-  if (renamed.name !== 'final.txt') throw new Error('Knowledge repository did not persist rename')
-  const moved = await adapters.repository.move({ id: file.id, parentId: folder.id })
-  if (moved.parentId !== folder.id) throw new Error('Knowledge repository did not persist move')
+  // Ordered probe steps — each verifies the adapter's write semantics in sequence.
+  // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
+  const folder = await adapters.repository.create({
+    name: 'Contract folder',
+    kind: 'folder',
+    parentId: null,
+  })
+  const file = await adapters.repository.create({
+    name: 'draft.txt',
+    kind: 'file',
+    parentId: null,
+    content: 'draft',
+  })
+  const renamed = await adapters.repository.rename({
+    id: file.id,
+    name: 'final.txt',
+  })
+  if (renamed.name !== 'final.txt')
+    throw new Error('Knowledge repository did not persist rename')
+  const moved = await adapters.repository.move({
+    id: file.id,
+    parentId: folder.id,
+  })
+  if (moved.parentId !== folder.id)
+    throw new Error('Knowledge repository did not persist move')
   const loaded = await adapters.repository.get(file.id)
   if (!loaded || loaded.parentId !== folder.id) throw new Error('Knowledge repository get does not reflect mutations')
   await adapters.repository.delete({ ids: [folder.id] })

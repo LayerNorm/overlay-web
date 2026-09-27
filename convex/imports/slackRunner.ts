@@ -146,16 +146,17 @@ export const runMinuteTick = internalAction({
     if (!serverSecret) return null
 
     // Pick up newly queued jobs
-    const queuedJobs = await ctx.runQuery(
+    const [queuedJobs, stuckJobs] = await Promise.all([
+      ctx.runQuery(
       internal.imports.slackRunner.listQueuedJobsInternal,
       { serverSecret, limit: 3 },
-    )
-
+      ),
     // Pick up stuck jobs (importing but not updated in 2+ minutes)
-    const stuckJobs = await ctx.runQuery(
+      ctx.runQuery(
       internal.imports.slackRunner.listStuckJobsInternal,
       { serverSecret, limit: 2 },
-    )
+      ),
+    ])
 
     const allJobs = [...queuedJobs, ...stuckJobs]
     for (const job of allJobs) {

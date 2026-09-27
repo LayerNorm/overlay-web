@@ -56,6 +56,8 @@ export function useAccountBillingState({
   const [capabilitiesLoaded, setCapabilitiesLoaded] = useState(false)
   const billingEnabled = capabilities.billing
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     let active = true
     void fetch('/api/v1/capabilities', { cache: 'no-store' })
@@ -92,7 +94,7 @@ export function useAccountBillingState({
     }
 
     if (settingsResponse.ok) {
-      const settingsData = await settingsResponse.json() as BillingSettings
+      const settingsData = (await settingsResponse.json()) as BillingSettings
       const draft = normalizeTopUpDraft(settingsData)
       setBillingSettings(settingsData)
       setTopUpAmountDraftCents(draft.topUpAmountCents)
@@ -105,6 +107,8 @@ export function useAccountBillingState({
     }
   }, [billingEnabled])
 
+  // Checkout-return fetch+param cleanup; runs once per params change.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     if (!billingEnabled) return
     const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
@@ -136,7 +140,7 @@ export function useAccountBillingState({
           console.error('[Account] Checkout verification error:', error)
           setMessage({ type: 'success', text: 'Subscription activated successfully!' })
         } finally {
-          router.replace(nextUrl)
+          window.history.replaceState(null, '', nextUrl)
         }
       }
 
@@ -157,14 +161,16 @@ export function useAccountBillingState({
           console.error('[Account] Top-up verification error:', error)
           setMessage({ type: 'error', text: 'We could not verify your top-up. Refresh and check again.' })
         } finally {
-          router.replace(nextUrl)
+          window.history.replaceState(null, '', nextUrl)
         }
       }
 
       void verifyTopUp()
     } else if (canceledParam) {
+      // Reflects the canceled checkout URL param into the banner — param-driven.
+      // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
       setMessage({ type: 'error', text: 'Checkout was canceled.' })
-      router.replace(nextUrl)
+      window.history.replaceState(null, '', nextUrl)
     }
   }, [
     billingEnabled,
@@ -178,20 +184,25 @@ export function useAccountBillingState({
     topUpSuccessParam,
   ])
 
-  useEffect(() => {
-    if (authLoading || !capabilitiesLoaded) return
-
-    if (!isAuthenticated || !currentUserId) {
-      setLoading(false)
-      return
-    }
-
-    if (!billingEnabled) {
+  const billingActive =
+    isAuthenticated && Boolean(currentUserId) && billingEnabled
+  const [prevBillingActive, setPrevBillingActive] = useState(billingActive)
+  if (prevBillingActive !== billingActive) {
+    setPrevBillingActive(billingActive)
+    if (!billingActive) {
       setEntitlements(null)
       setEntitlementsError(null)
       setBillingSettings(null)
       setTopUpHistory([])
-      setLoading(false)
+    }
+  }
+
+  // Entitlement fetch guarded by billingActive; latest settled values win.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
+  useEffect(() => {
+    if (authLoading || !capabilitiesLoaded) return
+
+    if (!billingActive) {
       return
     }
 
@@ -208,7 +219,9 @@ export function useAccountBillingState({
           const data = await entitlementsResponse.json()
           setEntitlements(data)
         } else {
-          const errBody = await entitlementsResponse.json().catch(() => ({})) as { error?: string }
+          const errBody = (await entitlementsResponse
+            .json()
+            .catch(() => ({}))) as { error?: string }
           setEntitlements(null)
           setEntitlementsError(
             errBody.error ||
@@ -219,7 +232,8 @@ export function useAccountBillingState({
         }
 
         if (settingsResponse.ok) {
-          const settingsData = await settingsResponse.json() as BillingSettings
+          const settingsData =
+            (await settingsResponse.json()) as BillingSettings
           const draft = normalizeTopUpDraft(settingsData)
           setBillingSettings(settingsData)
           setTopUpAmountDraftCents(draft.topUpAmountCents)
@@ -240,7 +254,7 @@ export function useAccountBillingState({
     }
 
     void fetchEntitlements()
-  }, [authLoading, billingEnabled, capabilitiesLoaded, currentUserId, isAuthenticated])
+  }, [authLoading, billingActive, capabilitiesLoaded])
 
   const handleManageBilling = useCallback(async () => {
     if (!billingEnabled) {
@@ -328,13 +342,16 @@ export function useAccountBillingState({
   const retryEntitlements = useCallback(() => {
     if (!billingEnabled) return
     setLoading(true)
-    void overlayAppClient.account.entitlementsResponse()
+    void overlayAppClient.account
+      .entitlementsResponse()
       .then(async (res) => {
         if (res.ok) {
           setEntitlements(await res.json())
           setEntitlementsError(null)
         } else {
-          const body = await res.json().catch(() => ({})) as { error?: string }
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string
+          }
           setEntitlements(null)
           setEntitlementsError(body.error || 'Still could not load your plan.')
         }
@@ -356,7 +373,7 @@ export function useAccountBillingState({
     handleManageBilling,
     handleStartTopUp,
     handleTopUpPreferenceSave,
-    loading,
+    loading: loading && billingActive,
     message,
     refreshBillingState,
     retryEntitlements,

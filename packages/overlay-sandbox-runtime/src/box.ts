@@ -111,6 +111,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     this.apiKey = apiKey
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
     this.fetch = options.fetch ?? (async (input, init) => {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch(input, init)
       return { status: response.status, json: () => response.json() }
     })

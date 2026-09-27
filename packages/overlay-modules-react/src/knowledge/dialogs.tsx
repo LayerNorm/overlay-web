@@ -2,7 +2,16 @@
 
 import type { MemoryRow } from '@overlay/app-core'
 import { IMPORT_MEMORY_PROMPT } from '@overlay/app-core'
-import { Brain,Check,Copy,FileText,Loader2,Search,Trash2,X } from 'lucide-react'
+import {
+  Brain,
+  Check,
+  Copy,
+  FileText,
+  Loader2,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { type ReactNode } from 'react'
 
 const DIALOG_ACTION_BUTTON_CLASS =
@@ -24,7 +33,9 @@ export function KnowledgePendingNotice({
       <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-[var(--foreground)]">{title}</p>
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">{preview}</p>
+        <p className='mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]'>
+          {preview}
+        </p>
       </div>
     </div>
   )
@@ -83,7 +94,9 @@ export function AddMemoryDialog({
     >
       <div className="overlay-dialog-in w-[480px] max-w-[90vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
+          <h3 className='text-sm font-medium text-[var(--foreground)]'>
+            Add memory
+          </h3>
           <button
             onClick={onClose}
             className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
@@ -103,9 +116,15 @@ export function AddMemoryDialog({
         <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">
           Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
         </p>
-        {error ? <p className="mt-3 text-xs text-red-400" role="alert">{error}</p> : null}
+        {error ? (
+          <p className='mt-3 text-xs text-red-400' role='alert'>
+            {error}
+          </p>
+        ) : null}
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+            Cancel
+          </button>
           <button
             onClick={onSave}
             disabled={!value.trim() || saving}
@@ -147,7 +166,9 @@ export function ImportMemoryDialog({
     >
       <div className="overlay-dialog-in w-[540px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
         <div className="mb-6 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-[var(--foreground)]">Import memory</h3>
+          <h3 className='text-sm font-medium text-[var(--foreground)]'>
+            Import memory
+          </h3>
           <button
             onClick={onClose}
             className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
@@ -156,11 +177,17 @@ export function ImportMemoryDialog({
           </button>
         </div>
         <div className="mb-5 flex gap-3">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">1</span>
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]'>
+            1
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Copy this prompt into a chat with your other AI provider</p>
+            <p className='mb-2 text-xs font-medium text-[var(--foreground)]'>
+              Copy this prompt into a chat with your other AI provider
+            </p>
             <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pb-10 pt-3">
-              <p className="text-xs leading-relaxed text-[var(--foreground)]">{IMPORT_MEMORY_PROMPT}</p>
+              <p className='text-xs leading-relaxed text-[var(--foreground)]'>
+                {IMPORT_MEMORY_PROMPT}
+              </p>
               <button
                 type="button"
                 onClick={onCopyPrompt}
@@ -173,9 +200,13 @@ export function ImportMemoryDialog({
           </div>
         </div>
         <div className="mb-5 flex gap-3">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">2</span>
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]'>
+            2
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Paste results below to add to your memory</p>
+            <p className='mb-2 text-xs font-medium text-[var(--foreground)]'>
+              Paste results below to add to your memory
+            </p>
             <textarea
               value={value}
               onChange={(event) => onChange(event.target.value)}
@@ -185,9 +216,15 @@ export function ImportMemoryDialog({
             />
           </div>
         </div>
-        {error ? <p className="mb-3 text-xs text-red-400" role="alert">{error}</p> : null}
+        {error ? (
+          <p className='mb-3 text-xs text-red-400' role='alert'>
+            {error}
+          </p>
+        ) : null}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+            Cancel
+          </button>
           <button
             onClick={onSave}
             disabled={!value.trim() || saving}
@@ -226,7 +263,10 @@ export function CreateKnowledgeItemDialog({
           <h3 className="text-sm font-medium text-[var(--foreground)]">
             New {type === 'folder' ? 'folder' : 'file'}
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+          <button
+            onClick={onClose}
+            className='rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+          >
             <X size={14} />
           </button>
         </div>
@@ -239,7 +279,9 @@ export function CreateKnowledgeItemDialog({
           className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
         />
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+            Cancel
+          </button>
           <button
             onClick={onCreate}
             disabled={!value.trim() || creating}
@@ -272,10 +314,20 @@ export function MemoryDetailDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <span className="text-sm font-medium text-[var(--foreground)]">Memory</span>
+          <span className='text-sm font-medium text-[var(--foreground)]'>
+            Memory
+          </span>
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--muted-light)]">
-              {new Date(memory.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {
+                // Locale is pinned to 'en-US', so SSR and client output are identical.
+                // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                new Date(memory.createdAt).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              }
             </span>
             <button
               type="button"
@@ -294,8 +346,14 @@ export function MemoryDetailDialog({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">{memory.fullContent}</p>
-          {memory.source ? <p className="mt-4 text-xs text-[var(--muted-light)]">Source: {memory.source}</p> : null}
+          <p className='whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]'>
+            {memory.fullContent}
+          </p>
+          {memory.source ? (
+            <p className='mt-4 text-xs text-[var(--muted-light)]'>
+              Source: {memory.source}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

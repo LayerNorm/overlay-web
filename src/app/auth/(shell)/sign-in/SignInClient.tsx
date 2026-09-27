@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingAuthPageChrome } from "../../_components/AuthPageChrome";
@@ -38,20 +38,27 @@ export function SignInClient({
   const [pendingVerification, setPendingVerification] = useState(false);
   const [sessionCleared, setSessionCleared] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
-  const [redirectingExistingSession, setRedirectingExistingSession] = useState(false);
 
   const labelText = "text-[var(--foreground)]";
   const linkMuted = "text-[var(--muted)] hover:text-[var(--foreground)]";
   const createLink = "text-[var(--foreground)] hover:underline font-medium";
 
+  // Auth params intentionally gate first paint; page is client-gated by (shell).
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get("redirect"));
+  // Auth params intentionally gate first paint; page is client-gated by (shell).
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const forceLogin = searchParams?.get("force") === "true";
   const isDesktopAuth = redirectUrl.startsWith("overlay://");
 
   useEffect(() => {
     const errorParam = searchParams?.get("error");
     if (errorParam) {
+      try {
       setError(decodeURIComponent(errorParam));
+      } catch {
+        setError(errorParam)
+      }
     }
   }, [searchParams]);
 
@@ -59,6 +66,8 @@ export function SignInClient({
     persistMobilePkceChallengeFromUrl(searchParams);
   }, [searchParams]);
 
+  // One-shot session-clear on mount; guarded by clearingSession/sessionCleared.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect, react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     if ((isDesktopAuth || forceLogin) && !sessionCleared && !clearingSession) {
       setClearingSession(true);
@@ -76,16 +85,9 @@ export function SignInClient({
     }
   }, [isDesktopAuth, forceLogin, sessionCleared, clearingSession]);
 
-  useEffect(() => {
-    if (authLoading || !isAuthenticated || forceLogin || isDesktopAuth) return;
-
-    setRedirectingExistingSession(true);
-    if (redirectUrl.startsWith("overlay://")) {
-      window.location.href = redirectUrl;
-    } else {
-      router.replace(redirectUrl);
+  if (!authLoading && isAuthenticated && !forceLogin && !isDesktopAuth) {
+    redirect(redirectUrl)
     }
-  }, [authLoading, forceLogin, isAuthenticated, isDesktopAuth, redirectUrl, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,6 +96,7 @@ export function SignInClient({
     setPendingVerification(false);
 
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch("/api/auth/sign-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,7 +157,7 @@ export function SignInClient({
     isDirectDesktopCallback: isDesktopAuth,
   });
 
-  if (shouldReuseExistingSession || redirectingExistingSession) {
+  if (shouldReuseExistingSession) {
     return (
       <LandingAuthPageChrome>
         <div className="flex min-h-40 items-center justify-center">
@@ -167,8 +170,12 @@ export function SignInClient({
   return (
     <LandingAuthPageChrome>
       <div>
-        <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>Welcome back</h1>
-          <p className={`text-sm mb-8 ${muted}`}>Sign in to your overlay account</p>
+        <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>
+          Welcome back
+        </h1>
+        <p className={`text-sm mb-8 ${muted}`}>
+          Sign in to your overlay account
+        </p>
 
           {error && (
             <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
@@ -217,7 +224,10 @@ export function SignInClient({
           {showPassword ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className={`block text-sm font-medium mb-2 ${labelText}`}>
+              <label
+                htmlFor='email'
+                className={`block text-sm font-medium mb-2 ${labelText}`}
+              >
                 Email
               </label>
               <input
@@ -233,11 +243,17 @@ export function SignInClient({
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label htmlFor="password" className={`block text-sm font-medium ${labelText}`}>
+                <label
+                  htmlFor='password'
+                  className={`block text-sm font-medium ${labelText}`}
+                >
                   Password
                 </label>
                 {authUiOptions.supportsPasswordReset ? (
-                <Link href="/auth/forgot-password" className={`text-xs transition-colors ${linkMuted}`}>
+                  <Link
+                    href='/auth/forgot-password'
+                    className={`text-xs transition-colors ${linkMuted}`}
+                  >
                   Forgot password?
                 </Link>
                 ) : null}

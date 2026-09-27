@@ -46,8 +46,10 @@ export async function loadOverlayConfig(
 ): Promise<OverlayRuntimeConfig> {
   const env = options.env ?? process.env
   const defaultConfig = options.defaultConfig ?? overlayRuntimeConfigDefaults
-  const fileConfig = await readJsonConfigFile(resolveConfigFilePath(options, env), options.cwd)
-  const remoteConfig = await readRemoteConfig(resolveRemoteConfigUrl(options, env), options.fetcher)
+  const [fileConfig, remoteConfig] = await Promise.all([
+    readJsonConfigFile(resolveConfigFilePath(options, env), options.cwd),
+    readRemoteConfig(resolveRemoteConfigUrl(options, env), options.fetcher),
+  ])
   const envConfig = configOverridesFromEnv(env)
 
   return parseConfigOrThrow(

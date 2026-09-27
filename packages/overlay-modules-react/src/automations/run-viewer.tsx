@@ -91,9 +91,16 @@ export function AutomationRunViewer({
               className="text-xs"
             >
               <option value="">Select a run…</option>
-              {runs.filter((r) => r.workflowRunId).map((run) => (
+            {runs
+              .filter((r) => r.workflowRunId)
+              .map((run) => (
                 <option key={run._id} value={run.workflowRunId!}>
-                  {run.status} — {new Date(run.scheduledFor).toLocaleString()}
+                  {run.status} —{' '}
+                  {
+                    // Locale pinned to 'en-US'.
+                    // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                    new Date(run.scheduledFor).toLocaleString('en-US')
+                  }
                 </option>
               ))}
             </Select>
@@ -139,13 +146,20 @@ function LiveCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workflow
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 text-xs">
-        <span className={`flex items-center gap-1.5 ${isConnected ? 'text-green-500' : 'text-[var(--muted)]'}`}>
-          <span className={`size-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-[var(--muted)]'}`} />
+        <span
+          className={`flex items-center gap-1.5 ${isConnected ? 'text-green-500' : 'text-[var(--muted)]'}`}
+        >
+          <span
+            className={`size-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-[var(--muted)]'}`}
+          />
           {isConnected ? 'Connected' : 'Disconnected'}
         </span>
         {snapshot && (
           <span className="text-[var(--muted)]">
-            Run status: <span className="font-medium text-[var(--foreground)]">{snapshot.runStatus}</span>
+            Run status:{' '}
+            <span className='font-medium text-[var(--foreground)]'>
+              {snapshot.runStatus}
+            </span>
           </span>
         )}
         {error && <span className="text-red-500">{error}</span>}
@@ -191,7 +205,9 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
   if (events.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
-        <p className="text-sm text-[var(--muted)]">No events found for this run.</p>
+        <p className='text-sm text-[var(--muted)]'>
+          No events found for this run.
+        </p>
       </div>
     )
   }
@@ -209,7 +225,9 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
       {/* Scrubber */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-          <span>Step {currentIndex} of {events.length}</span>
+          <span>
+            Step {currentIndex} of {events.length}
+          </span>
           {snapshot && <span>Run: {snapshot.runStatus}</span>}
         </div>
         <input

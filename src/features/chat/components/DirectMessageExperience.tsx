@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import {
   useCallback,
@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from 'react'
+} from "react";
 import {
   Archive,
   Bell,
@@ -22,13 +22,17 @@ import {
   UserRound,
   UsersRound,
   X,
-} from 'lucide-react'
-import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
-import { AgentCreature } from '@/components/orb/Creature'
-import dynamic from 'next/dynamic'
-import { useRouter } from 'next/navigation'
-import { AttachmentPreviewDialog } from '@overlay/chat-react'
+} from "lucide-react";
+import {
+  AppScreenBody,
+  AppScreenHeader,
+  AppScreenShell,
+} from "@overlay/modules-react/shell";
+import { FloatingMenu, MenuItem } from "@overlay/ui/primitives";
+import { AgentCreature } from "@/components/orb/Creature";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { AttachmentPreviewDialog } from "@overlay/chat-react";
 import type {
   ChannelSummary,
   Computer,
@@ -37,45 +41,60 @@ import type {
   ConversationPresence,
   ConversationSavedMessage,
   MessageReaction,
-} from '@overlay/workspace-contracts'
-import type { AttachmentPreview } from '@overlay/chat-react'
-import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { LinkOpenInterceptor } from './LinkOpenInterceptor'
-import { NewDirectMessageDialog } from './NewDirectMessageDialog'
-import { ShareDialog } from '@/components/share/ShareDialog'
-import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
-import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
-import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
-import { dispatchChatArchived, dispatchChatCreated, dispatchChatTitleUpdated, sanitizeChatTitle } from '@/shared/chat/chat-title'
+} from "@overlay/workspace-contracts";
+import type { AttachmentPreview } from "@overlay/chat-react";
+import type {
+  MentionCategory,
+  MentionItem,
+} from "@/shared/knowledge/mention-types";
+import { overlayAppClient } from "@/shared/app/overlay-app-client";
+import { useAppSettings } from "@/components/providers/AppSettingsProvider";
+import { LinkOpenInterceptor } from "./LinkOpenInterceptor";
+import { NewDirectMessageDialog } from "./NewDirectMessageDialog";
+import { ShareDialog } from "@/components/share/ShareDialog";
+import { AttachResourceDialog } from "@/components/share/AttachResourceDialog";
+import { resolveMentionedPrincipalIds } from "@/shared/mentions/principal-mentions";
+import {
+  clearDraft,
+  readDraft,
+  writeDraft,
+} from "@/shared/chat/conversation-drafts";
+import {
+  dispatchChatArchived,
+  dispatchChatCreated,
+  dispatchChatTitleUpdated,
+  sanitizeChatTitle,
+} from "@/shared/chat/chat-title";
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
   type AgentDraftPreviewEventDetail,
-} from '@/shared/workspace/sidebar-events'
-import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { buildWorkspaceHref } from '@/shared/workspaces/routing'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
-import { useAuth } from '@/contexts/AuthContext'
-import { ChatComposer } from './ChatComposer'
-import { ChatDropOverlay } from './ChatDropOverlay'
-import { useChatAttachments } from './useChatAttachments'
-import { useComposerTextState } from './chat/useComposerTextState'
-import { useChatPanels } from './chat/useChatPanels'
-import { useChatShellPanels } from './chat/useChatShellPanels'
-import { buildTextTurnPayload } from './chat/chat-send-body-builders'
-import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
-import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
-import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
-import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
-import { useQuery } from '@/components/providers/convex-hooks'
-import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
-import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
-import { generateTitle } from '@/features/chat/lib/generate-title'
-import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
+} from "@/shared/workspace/sidebar-events";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { buildWorkspaceHref } from "@/shared/workspaces/routing";
+import { useOverlayCapabilities } from "@/components/providers/CapabilitiesProvider";
+import { useConvexAuthToken } from "@/components/providers/ConvexAuthProvider";
+import { useAuth } from "@/contexts/AuthContext";
+import { ChatComposer } from "./ChatComposer";
+import { ChatDropOverlay } from "./ChatDropOverlay";
+import { useChatAttachments } from "./useChatAttachments";
+import { useComposerTextState } from "./chat/useComposerTextState";
+import { useChatPanels } from "./chat/useChatPanels";
+import { useChatShellPanels } from "./chat/useChatShellPanels";
+import { buildTextTurnPayload } from "./chat/chat-send-body-builders";
+import {
+  RoomMessageItem,
+  roomMessageDomId,
+} from "./collaboration/RoomMessageItem";
+import { ConversationScopeActionDialog } from "./collaboration/ConversationScopeActionDialog";
+import { ConvexRoomMessageSubscription } from "./collaboration/ConvexRoomMessageSubscription";
+import { useCollaborationRealtime } from "./collaboration/CollaborationRealtimeProvider";
+import { useQuery } from "@/components/providers/convex-hooks";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
+import { takePendingCollaborationMessage } from "../lib/pending-collaboration-message";
+import { generateTitle } from "@/features/chat/lib/generate-title";
+import { defaultMemoryEnabled } from "@/shared/chat/tool-requests";
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -84,170 +103,183 @@ import {
   toRoomMessageView,
   type RemoteAgentCommand,
   type RoomMessageRecord,
-} from './collaboration/room-message-view'
+} from "./collaboration/room-message-view";
 import {
   RoomPeoplePanel,
   RoomPinnedPanel,
   RoomThreadPanel,
   type RoomPanelKind,
-} from './collaboration/RoomSidePanels'
+} from "./collaboration/RoomSidePanels";
 
 const FileViewerPanel = dynamic(
-  () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
+  () =>
+    import("@overlay/modules-react/knowledge").then((mod) => ({
+      default: mod.FileViewerPanel,
+    })),
   { loading: () => null },
-)
+);
 
-type OptimisticMessage = RoomMessageRecord
+type OptimisticMessage = RoomMessageRecord;
 
-const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
-const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
-const SHOWCASE_CURRENT_PRINCIPAL_ID = 'showcase-divyansh'
+const SHOWCASE_CONVERSATION_ID = "showcase-dm";
+const SHOWCASE_WORKSPACE_ID = "showcase-acme";
+const SHOWCASE_CURRENT_PRINCIPAL_ID = "showcase-divyansh";
 const SHOWCASE_PARTICIPANTS: ConversationParticipant[] = [
-  ['showcase-divyansh', 'Divyansh', 'moderator'],
-  ['showcase-maya', 'Maya Chen', 'member'],
-  ['showcase-rahul', 'Rahul Shah', 'member'],
+  ["showcase-divyansh", "Divyansh", "moderator"],
+  ["showcase-maya", "Maya Chen", "member"],
+  ["showcase-rahul", "Rahul Shah", "member"],
 ].map(([principalId, displayName, role], index) => ({
   conversationId: SHOWCASE_CONVERSATION_ID,
   workspaceId: SHOWCASE_WORKSPACE_ID,
   principalId,
-  principalType: 'human',
+  principalType: "human",
   displayName,
-  role: role as ConversationParticipant['role'],
-  status: 'active',
-  notificationLevel: 'all',
-  joinedAt: Date.parse('2026-07-29T17:00:00.000Z') + index,
-  updatedAt: Date.parse('2026-07-29T17:00:00.000Z') + index,
-}))
-const SHOWCASE_PRESENCE: ConversationPresence[] = SHOWCASE_PARTICIPANTS.map((participant, index) => ({
-  workspaceId: SHOWCASE_WORKSPACE_ID,
-  principalId: participant.principalId,
-  conversationId: SHOWCASE_CONVERSATION_ID,
-  status: index < 2 ? 'online' : 'away',
-  typing: false,
-  lastSeenAt: Date.parse('2026-07-29T18:10:00.000Z') - index * 60_000,
-}))
+  role: role as ConversationParticipant["role"],
+  status: "active",
+  notificationLevel: "all",
+  joinedAt: Date.parse("2026-07-29T17:00:00.000Z") + index,
+  updatedAt: Date.parse("2026-07-29T17:00:00.000Z") + index,
+}));
+const SHOWCASE_PRESENCE: ConversationPresence[] = SHOWCASE_PARTICIPANTS.map(
+  (participant, index) => ({
+    workspaceId: SHOWCASE_WORKSPACE_ID,
+    principalId: participant.principalId,
+    conversationId: SHOWCASE_CONVERSATION_ID,
+    status: index < 2 ? "online" : "away",
+    typing: false,
+    lastSeenAt: Date.parse("2026-07-29T18:10:00.000Z") - index * 60_000,
+  }),
+);
 const SHOWCASE_MESSAGES: OptimisticMessage[] = [
   {
-    id: 'showcase-dm-message-1',
-    turnId: 'showcase-dm-turn-1',
-    authorKind: 'human',
-    authorPrincipalId: 'showcase-maya',
-    content: 'I pulled the customer feedback into the launch project. The onboarding gap is still the clearest pattern.',
-    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
+    id: "showcase-dm-message-1",
+    turnId: "showcase-dm-turn-1",
+    authorKind: "human",
+    authorPrincipalId: "showcase-maya",
+    content:
+      "I pulled the customer feedback into the launch project. The onboarding gap is still the clearest pattern.",
+    createdAt: Date.parse("2026-07-29T18:02:00.000Z"),
   },
   {
-    id: 'showcase-dm-message-2',
-    turnId: 'showcase-dm-turn-2',
-    authorKind: 'human',
+    id: "showcase-dm-message-2",
+    turnId: "showcase-dm-turn-2",
+    authorKind: "human",
     authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    content: 'Agreed. Let’s make the first useful outcome happen before we introduce the rest of the workspace.',
-    createdAt: Date.parse('2026-07-29T18:05:00.000Z'),
+    content:
+      "Agreed. Let’s make the first useful outcome happen before we introduce the rest of the workspace.",
+    createdAt: Date.parse("2026-07-29T18:05:00.000Z"),
   },
   {
-    id: 'showcase-dm-message-3',
-    turnId: 'showcase-dm-turn-3',
-    authorKind: 'human',
-    authorPrincipalId: 'showcase-rahul',
-    content: '@Divyansh I can have the revised flow ready for review this afternoon.',
-    createdAt: Date.parse('2026-07-29T18:08:00.000Z'),
+    id: "showcase-dm-message-3",
+    turnId: "showcase-dm-turn-3",
+    authorKind: "human",
+    authorPrincipalId: "showcase-rahul",
+    content:
+      "@Divyansh I can have the revised flow ready for review this afternoon.",
+    createdAt: Date.parse("2026-07-29T18:08:00.000Z"),
   },
   {
-    id: 'showcase-thread-reply-1',
-    turnId: 'showcase-thread-turn-1',
-    authorKind: 'human',
-    authorPrincipalId: 'showcase-rahul',
-    content: 'I can turn that pattern into the first-run checklist today.',
-    createdAt: Date.parse('2026-07-29T18:09:00.000Z'),
-    threadRootMessageId: 'showcase-dm-message-1',
+    id: "showcase-thread-reply-1",
+    turnId: "showcase-thread-turn-1",
+    authorKind: "human",
+    authorPrincipalId: "showcase-rahul",
+    content: "I can turn that pattern into the first-run checklist today.",
+    createdAt: Date.parse("2026-07-29T18:09:00.000Z"),
+    threadRootMessageId: "showcase-dm-message-1",
   },
-]
+];
 
-const SHOWCASE_AGENT_CONVERSATION_ID = 'showcase-agent-welcome'
-const SHOWCASE_AGENT_PRINCIPAL_ID = 'showcase-research-principal'
+const SHOWCASE_AGENT_CONVERSATION_ID = "showcase-agent-welcome";
+const SHOWCASE_AGENT_PRINCIPAL_ID = "showcase-research-principal";
 const SHOWCASE_AGENT_IDENTITY = {
-  name: 'Research partner',
-  avatarColor: '#2563eb',
-  avatarShape: 'droplet',
-} as const
+  name: "Research partner",
+  avatarColor: "#2563eb",
+  avatarShape: "droplet",
+} as const;
 const SHOWCASE_AGENT_PARTICIPANTS: ConversationParticipant[] = [
   {
     conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
     workspaceId: SHOWCASE_WORKSPACE_ID,
     principalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    principalType: 'human',
-    displayName: 'Divyansh',
-    role: 'moderator',
-    status: 'active',
-    notificationLevel: 'all',
-    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    principalType: "human",
+    displayName: "Divyansh",
+    role: "moderator",
+    status: "active",
+    notificationLevel: "all",
+    joinedAt: Date.parse("2026-07-29T17:00:00.000Z"),
+    updatedAt: Date.parse("2026-07-29T17:00:00.000Z"),
   },
   {
     conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
     workspaceId: SHOWCASE_WORKSPACE_ID,
     principalId: SHOWCASE_AGENT_PRINCIPAL_ID,
-    principalType: 'agent',
+    principalType: "agent",
     displayName: SHOWCASE_AGENT_IDENTITY.name,
-    role: 'member',
-    status: 'active',
-    notificationLevel: 'all',
-    joinedAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    role: "member",
+    status: "active",
+    notificationLevel: "all",
+    joinedAt: Date.parse("2026-07-29T17:00:00.000Z"),
+    updatedAt: Date.parse("2026-07-29T17:00:00.000Z"),
   },
-]
-const SHOWCASE_AGENT_PRESENCE: ConversationPresence[] = SHOWCASE_AGENT_PARTICIPANTS.map((participant) => ({
-  workspaceId: SHOWCASE_WORKSPACE_ID,
-  principalId: participant.principalId,
-  conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
-  status: 'online',
-  typing: false,
-  lastSeenAt: Date.parse('2026-07-29T18:10:00.000Z'),
-}))
+];
+const SHOWCASE_AGENT_PRESENCE: ConversationPresence[] =
+  SHOWCASE_AGENT_PARTICIPANTS.map((participant) => ({
+    workspaceId: SHOWCASE_WORKSPACE_ID,
+    principalId: participant.principalId,
+    conversationId: SHOWCASE_AGENT_CONVERSATION_ID,
+    status: "online",
+    typing: false,
+    lastSeenAt: Date.parse("2026-07-29T18:10:00.000Z"),
+  }));
 const SHOWCASE_AGENT_MESSAGES: OptimisticMessage[] = [
   {
-    id: 'showcase-agent-message-1',
-    turnId: 'showcase-agent-turn-1',
-    authorKind: 'human',
+    id: "showcase-agent-message-1",
+    turnId: "showcase-agent-turn-1",
+    authorKind: "human",
     authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    content: 'Can you pull together what customers keep saying about onboarding?',
-    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
+    content:
+      "Can you pull together what customers keep saying about onboarding?",
+    createdAt: Date.parse("2026-07-29T18:02:00.000Z"),
   },
   {
-    id: 'showcase-agent-message-2',
-    turnId: 'showcase-agent-turn-2',
-    authorKind: 'agent',
+    id: "showcase-agent-message-2",
+    turnId: "showcase-agent-turn-2",
+    authorKind: "agent",
     authorPrincipalId: SHOWCASE_AGENT_PRINCIPAL_ID,
-    content: 'I read through the latest 23 feedback notes. The clearest pattern is the first-run gap — it shows up in 9 of them, mostly around workspace setup. Want me to turn this into a checklist for the team?',
-    createdAt: Date.parse('2026-07-29T18:05:00.000Z'),
+    content:
+      "I read through the latest 23 feedback notes. The clearest pattern is the first-run gap — it shows up in 9 of them, mostly around workspace setup. Want me to turn this into a checklist for the team?",
+    createdAt: Date.parse("2026-07-29T18:05:00.000Z"),
   },
   {
-    id: 'showcase-agent-message-3',
-    turnId: 'showcase-agent-turn-3',
-    authorKind: 'human',
+    id: "showcase-agent-message-3",
+    turnId: "showcase-agent-turn-3",
+    authorKind: "human",
     authorPrincipalId: SHOWCASE_CURRENT_PRINCIPAL_ID,
-    content: 'Yes — draft it, and flag anything that needs a human decision.',
-    createdAt: Date.parse('2026-07-29T18:08:00.000Z'),
+    content: "Yes — draft it, and flag anything that needs a human decision.",
+    createdAt: Date.parse("2026-07-29T18:08:00.000Z"),
   },
-]
-
+];
 
 function roomDayKey(timestamp: number): string {
-  const date = new Date(timestamp)
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 function roomDayLabel(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString([], {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  // Locale pinned to 'en-US' — SSR and client output are identical.
+  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+  return new Date(timestamp).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function requireArray<T>(value: T[] | undefined, label: string): T[] {
-  if (!Array.isArray(value)) throw new Error(`${label} returned an invalid response`)
-  return value
+  if (!Array.isArray(value))
+    throw new Error(`${label} returned an invalid response`);
+  return value;
 }
 
 function ConvexPresenceSubscription({
@@ -257,33 +289,33 @@ function ConvexPresenceSubscription({
   onPresence,
   workspaceId,
 }: {
-  accessToken: string
-  actorUserId: string
-  conversationId: string
-  onPresence: (presence: ConversationPresence[]) => void
-  workspaceId: string
+  accessToken: string;
+  actorUserId: string;
+  conversationId: string;
+  onPresence: (presence: ConversationPresence[]) => void;
+  workspaceId: string;
 }) {
-  const result = useQuery(
-    api.collaboration.directMessages.watchPresence,
-    {
-      accessToken,
-      actorUserId,
-      conversationId: conversationId as Id<'conversations'>,
-      workspaceId,
-    },
-  ) as { ok: boolean; presence: ConversationPresence[] } | undefined
+  const result = useQuery(api.collaboration.directMessages.watchPresence, {
+    accessToken,
+    actorUserId,
+    conversationId: conversationId as Id<"conversations">,
+    workspaceId,
+  }) as { ok: boolean; presence: ConversationPresence[] } | undefined;
 
   useEffect(() => {
-    if (result?.ok && Array.isArray(result.presence)) onPresence(result.presence)
-  }, [onPresence, result])
+    if (result?.ok && Array.isArray(result.presence))
+      // Presence snapshots propagate upward by design.
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent, react-doctor/no-prop-callback-in-effect
+      onPresence(result.presence);
+  }, [onPresence, result]);
 
-  return null
+  return null;
 }
 
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
-  conversationType = 'dm',
+  conversationType = "dm",
   draft = false,
   draftTitle,
   headerActions,
@@ -292,132 +324,177 @@ export function DirectMessageExperience({
   externalRightPanelMode,
   onExternalRightPanelClose,
 }: {
-  conversationId: string
-  showcase?: boolean
-  conversationType?: 'dm' | 'channel'
-  draft?: boolean
-  draftTitle?: string
-  headerActions?: ReactNode
-  externalRightPanel?: ReactNode
-  externalRightPanelLabel?: string
-  externalRightPanelMode?: 'docked' | 'floating'
-  onExternalRightPanelClose?: () => void
+  conversationId: string;
+  showcase?: boolean;
+  conversationType?: "dm" | "channel";
+  draft?: boolean;
+  draftTitle?: string;
+  headerActions?: ReactNode;
+  externalRightPanel?: ReactNode;
+  externalRightPanelLabel?: string;
+  externalRightPanelMode?: "docked" | "floating";
+  onExternalRightPanelClose?: () => void;
 }) {
-  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
-  const { user: authUser } = useAuth()
-  const convexAccessToken = useConvexAuthToken()
-  const { refreshNotifications } = useCollaborationRealtime()
-  const convexLiveSyncEnabled = !showcase
-    && appDataCapabilities.provider === 'convex'
-    && appDataCapabilities.requiresConvexClient
-    && appDataCapabilities.supportsRealtime
-  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
-    && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
-  const router = useRouter()
-  const isAgentShowcase = showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities();
+  const { user: authUser } = useAuth();
+  const convexAccessToken = useConvexAuthToken();
+  const { refreshNotifications } = useCollaborationRealtime();
+  const convexLiveSyncEnabled =
+    !showcase &&
+    appDataCapabilities.provider === "convex" &&
+    appDataCapabilities.requiresConvexClient &&
+    appDataCapabilities.supportsRealtime;
+  const convexRoomSubscriptionEnabled =
+    convexLiveSyncEnabled &&
+    Boolean(authUser?.id && convexAccessToken && activeWorkspaceId);
+  const router = useRouter();
+  const isAgentShowcase =
+    showcase && conversationId === SHOWCASE_AGENT_CONVERSATION_ID;
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
-    isAgentShowcase ? SHOWCASE_AGENT_PARTICIPANTS : showcase ? SHOWCASE_PARTICIPANTS : [],
-  )
+    isAgentShowcase
+      ? SHOWCASE_AGENT_PARTICIPANTS
+      : showcase
+        ? SHOWCASE_PARTICIPANTS
+        : [],
+  );
   const [currentPrincipalId, setCurrentPrincipalId] = useState(
-    showcase ? SHOWCASE_CURRENT_PRINCIPAL_ID : '',
-  )
+    showcase ? SHOWCASE_CURRENT_PRINCIPAL_ID : "",
+  );
   const [presence, setPresence] = useState<ConversationPresence[]>(
-    isAgentShowcase ? SHOWCASE_AGENT_PRESENCE : showcase ? SHOWCASE_PRESENCE : [],
-  )
+    isAgentShowcase
+      ? SHOWCASE_AGENT_PRESENCE
+      : showcase
+        ? SHOWCASE_PRESENCE
+        : [],
+  );
   const applyConvexPresence = useCallback((next: ConversationPresence[]) => {
-    setPresence(next)
-  }, [])
+    setPresence(next);
+  }, []);
   const [messages, setMessages] = useState<OptimisticMessage[]>(
-    isAgentShowcase ? SHOWCASE_AGENT_MESSAGES : showcase ? SHOWCASE_MESSAGES : [],
-  )
-  const [loading, setLoading] = useState(!showcase)
-  const [hasMoreMessages, setHasMoreMessages] = useState(false)
-  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuTriggerRef = useRef<HTMLButtonElement>(null)
-  const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
-  const [addPeopleOpen, setAddPeopleOpen] = useState(false)
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingContent, setEditingContent] = useState('')
-  const [notice, setNotice] = useState<string | null>(null)
-  const [pendingArchiveScope, setPendingArchiveScope] = useState(false)
-  const [scopeDialogBusy, setScopeDialogBusy] = useState(false)
-  const [scopeDialogError, setScopeDialogError] = useState<string | null>(null)
-  const [pendingDeleteScope, setPendingDeleteScope] = useState(false)
-  const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<number | null>(null)
-  const [newMessageCount, setNewMessageCount] = useState(0)
-  const [channel, setChannel] = useState<ChannelSummary | null>(showcase && conversationType === 'channel' ? {
-    conversationId,
-    workspaceId: SHOWCASE_WORKSPACE_ID,
-    name: 'product-launch',
-    slug: 'product-launch',
-    topic: 'Launch decisions, customer feedback, and rollout coordination',
-    visibility: 'public',
-    participantCount: SHOWCASE_PARTICIPANTS.length,
-    createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T18:10:00.000Z'),
-  } : null)
-  const [conversationTitle, setConversationTitle] = useState<string | null>(null)
-  const [reactions, setReactions] = useState<MessageReaction[]>(showcase ? [{
-    conversationId,
-    messageId: 'showcase-dm-message-1',
-    emoji: '👍',
-    principalIds: ['showcase-divyansh', 'showcase-rahul'],
-    count: 2,
-    reactedByCurrentPrincipal: true,
-  }] : [])
-  const [pins, setPins] = useState<ConversationPin[]>([])
-  const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
-  const [threadRootId, setThreadRootId] = useState<string | null>(null)
-  const [threadFollowing, setThreadFollowing] = useState(false)
-  const [threadInput, setThreadInput] = useState('')
-  const [agentResponding, setAgentResponding] = useState<string | null>(null)
+    isAgentShowcase
+      ? SHOWCASE_AGENT_MESSAGES
+      : showcase
+        ? SHOWCASE_MESSAGES
+        : [],
+  );
+  const [loading, setLoading] = useState(!showcase);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null);
+  const [addPeopleOpen, setAddPeopleOpen] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pendingArchiveScope, setPendingArchiveScope] = useState(false);
+  const [scopeDialogBusy, setScopeDialogBusy] = useState(false);
+  const [scopeDialogError, setScopeDialogError] = useState<string | null>(null);
+  const [pendingDeleteScope, setPendingDeleteScope] = useState(false);
+  const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<
+    number | null
+  >(null);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+  const [channel, setChannel] = useState<ChannelSummary | null>(
+    showcase && conversationType === "channel"
+      ? {
+          conversationId,
+          workspaceId: SHOWCASE_WORKSPACE_ID,
+          name: "product-launch",
+          slug: "product-launch",
+          topic:
+            "Launch decisions, customer feedback, and rollout coordination",
+          visibility: "public",
+          participantCount: SHOWCASE_PARTICIPANTS.length,
+          createdAt: Date.parse("2026-07-29T17:00:00.000Z"),
+          updatedAt: Date.parse("2026-07-29T18:10:00.000Z"),
+        }
+      : null,
+  );
+  const [conversationTitle, setConversationTitle] = useState<string | null>(
+    null,
+  );
+  const [reactions, setReactions] = useState<MessageReaction[]>(
+    showcase
+      ? [
+          {
+            conversationId,
+            messageId: "showcase-dm-message-1",
+            emoji: "👍",
+            principalIds: ["showcase-divyansh", "showcase-rahul"],
+            count: 2,
+            reactedByCurrentPrincipal: true,
+          },
+        ]
+      : [],
+  );
+  const [pins, setPins] = useState<ConversationPin[]>([]);
+  const [savedMessages, setSavedMessages] = useState<
+    ConversationSavedMessage[]
+  >([]);
+  const [threadRootId, setThreadRootId] = useState<string | null>(null);
+  const [threadFollowing, setThreadFollowing] = useState(false);
+  const [threadInput, setThreadInput] = useState("");
+  const [agentResponding, setAgentResponding] = useState<string | null>(null);
   /**
    * A reply in flight is a `generating` row in the transcript, not local state.
    * That is what lets it survive a reload and what lets every other participant
    * watch the agent work instead of only the person who summoned it.
    */
-  const generatingMessages = messages.filter((message) => message.status === 'generating')
-  const generatingTextLength = generatingMessages
-    .reduce((length, message) => length + message.content.length, 0)
-  const [shareOpen, setShareOpen] = useState(false)
-  const [attachOpen, setAttachOpen] = useState(false)
-  const listRef = useRef<HTMLDivElement>(null)
+  const generatingMessages = messages.filter(
+    (message) => message.status === "generating",
+  );
+  const generatingTextLength = generatingMessages.reduce(
+    (length, message) => length + message.content.length,
+    0,
+  );
+  const [shareOpen, setShareOpen] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
   /** Latest messages for callbacks that must not close over a stale render. */
-  const messagesRef = useRef<OptimisticMessage[]>(messages)
-  messagesRef.current = messages
-  const sessionIdRef = useRef<string | null>(null)
-  const activeConversationRef = useRef<string | null>(conversationId)
-  const stickToBottomRef = useRef(true)
-  const unreadBoundaryInitializedRef = useRef(false)
-  const previousMessageCountRef = useRef(messages.length)
-  const prependScrollRef = useRef<{ height: number; top: number } | null>(null)
-  const skipNextMessageGrowthRef = useRef(false)
-  const permalinkJumpedRef = useRef<string | null>(null)
-  const readMarkInFlightRef = useRef(false)
-  activeConversationRef.current = conversationId
-  const lastTypingSentAt = useRef(0)
-  const pendingCollaborationMessageSentRef = useRef(false)
-  const draftCommittedRef = useRef(!draft)
+  const messagesRef = useRef<OptimisticMessage[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  });
+  const sessionIdRef = useRef<string | null>(null);
+  const activeConversationRef = useRef<string | null>(conversationId);
+  const stickToBottomRef = useRef(true);
+  const unreadBoundaryInitializedRef = useRef(false);
+  const previousMessageCountRef = useRef(messages.length);
+  const prependScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const skipNextMessageGrowthRef = useRef(false);
+  const permalinkJumpedRef = useRef<string | null>(null);
+  const readMarkInFlightRef = useRef(false);
+  useEffect(() => {
+    activeConversationRef.current = conversationId;
+  });
+  const lastTypingSentAt = useRef(0);
+  const pendingCollaborationMessageSentRef = useRef(false);
+  const draftCommittedRef = useRef(!draft);
 
   // ── composer state (identical wiring to the personal chat composer) ─────────
-  const [composerNotice, setComposerNotice] = useState<string | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [showAttachMenu, setShowAttachMenu] = useState(false)
-  const [showModeMenu, setShowModeMenu] = useState(false)
+  const [composerNotice, setComposerNotice] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
-  )
-  const [mentions, setMentions] = useState<MentionItem[]>([])
-  const [replyContext, setReplyContext] = useState<
-    { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
-  >(null)
-  const attachMenuRef = useRef<HTMLDivElement>(null)
-  const modeMenuRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<import('./chat-interface/MentionInput').MentionInputHandle>(null)
-  const threadRenameRequestedRef = useRef(false)
+  );
+  const [mentions, setMentions] = useState<MentionItem[]>([]);
+  const [replyContext, setReplyContext] = useState<{
+    snippet: string;
+    bodyForModel: string;
+    replyToTurnId?: string;
+  } | null>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
+  const composerRef =
+    useRef<import("./chat-interface/MentionInput").MentionInputHandle>(null);
+  const threadRenameRequestedRef = useRef(false);
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -425,7 +502,7 @@ export function DirectMessageExperience({
     inputRef,
     inputRevision,
     setInput,
-  } = useComposerTextState()
+  } = useComposerTextState();
   const {
     attachedImages,
     setAttachedImages,
@@ -441,8 +518,8 @@ export function DirectMessageExperience({
     addDocumentsFromPicker,
     addImages,
     handlePaste,
-  } = useChatAttachments({ setComposerNotice })
-  const { settings: appSettings } = useAppSettings()
+  } = useChatAttachments({ setComposerNotice });
+  const { settings: appSettings } = useAppSettings();
   const {
     attachmentPreview,
     attachmentPreviewMode,
@@ -459,448 +536,612 @@ export function DirectMessageExperience({
     setPanelWidth,
     setAttachmentPreviewMode,
     sourcesPanel,
-  } = useChatPanels()
+  } = useChatPanels();
 
   const loadParticipants = useCallback(async () => {
-    const result = await overlayAppClient.conversations.participants(conversationId)
-    const nextParticipants = requireArray(result.participants, 'Conversation participants')
-    if (typeof result.currentPrincipalId !== 'string' || !result.currentPrincipalId) {
-      throw new Error('Conversation participants returned an invalid principal')
+    const result =
+      await overlayAppClient.conversations.participants(conversationId);
+    const nextParticipants = requireArray(
+      result.participants,
+      "Conversation participants",
+    );
+    if (
+      typeof result.currentPrincipalId !== "string" ||
+      !result.currentPrincipalId
+    ) {
+      throw new Error(
+        "Conversation participants returned an invalid principal",
+      );
     }
-    setParticipants(nextParticipants)
-    setCurrentPrincipalId(result.currentPrincipalId)
+    setParticipants(nextParticipants);
+    setCurrentPrincipalId(result.currentPrincipalId);
     if (!unreadBoundaryInitializedRef.current) {
-      unreadBoundaryInitializedRef.current = true
-      const current = nextParticipants.find((participant) => participant.principalId === result.currentPrincipalId)
-      setUnreadBoundarySequence(current?.lastReadSequence ?? null)
+      unreadBoundaryInitializedRef.current = true;
+      const current = nextParticipants.find(
+        (participant) => participant.principalId === result.currentPrincipalId,
+      );
+      setUnreadBoundarySequence(current?.lastReadSequence ?? null);
     }
-  }, [conversationId])
+  }, [conversationId]);
 
   const loadMessages = useCallback(async () => {
-    const permalinkMessageId = typeof window === 'undefined'
-      ? undefined
-      : new URLSearchParams(window.location.search).get('message')?.trim() || undefined
+    const permalinkMessageId =
+      typeof window === "undefined"
+        ? undefined
+        : new URLSearchParams(window.location.search).get("message")?.trim() ||
+          undefined;
     const result = await overlayAppClient.conversations.get<{
-      title?: string
-      conversationType?: 'personal' | 'dm' | 'channel'
+      title?: string;
+      conversationType?: "personal" | "dm" | "channel";
       messages: Array<{
-        id: string
-        authorKind: RoomMessageRecord['authorKind']
-        authorPrincipalId?: string
-        importedAuthorName?: string
-        importedAuthorEmail?: string
-        importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-        content?: string
-        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
-        createdAt: number
-        updatedAt?: number
-        eventSequence?: number
-        editedAt?: number
-        deletedAt?: number
-        clientNonce?: string
-        threadRootMessageId?: string
-        status?: 'generating' | 'completed' | 'error'
-      }>
-      hasMore?: boolean
+        id: string;
+        authorKind: RoomMessageRecord["authorKind"];
+        authorPrincipalId?: string;
+        importedAuthorName?: string;
+        importedAuthorEmail?: string;
+        importedAuthorStatus?: RoomMessageRecord["importedAuthorStatus"];
+        content?: string;
+        parts?: Array<{
+          type?: string;
+          text?: string;
+          url?: string;
+          mediaType?: string;
+          fileName?: string;
+          data?: Record<string, unknown>;
+        }>;
+        createdAt: number;
+        updatedAt?: number;
+        eventSequence?: number;
+        editedAt?: number;
+        deletedAt?: number;
+        clientNonce?: string;
+        threadRootMessageId?: string;
+        status?: "generating" | "completed" | "error";
+      }>;
+      hasMore?: boolean;
     }>({
       conversationId,
       messages: true,
       limit: 100,
-      ...(permalinkMessageId ? { messageId: permalinkMessageId } : { mainOnly: true }),
-    })
+      ...(permalinkMessageId
+        ? { messageId: permalinkMessageId }
+        : { mainOnly: true }),
+    });
     const threadResult = threadRootId
       ? await overlayAppClient.conversations.get<{
           messages: Array<{
-            id: string
-            authorKind: RoomMessageRecord['authorKind']
-            authorPrincipalId?: string
-            importedAuthorName?: string
-            importedAuthorEmail?: string
-            importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-            content?: string
-            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
-            createdAt: number
-            updatedAt?: number
-            eventSequence?: number
-            editedAt?: number
-            deletedAt?: number
-            clientNonce?: string
-            threadRootMessageId?: string
-            status?: 'generating' | 'completed' | 'error'
-          }>
-        }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
-      : null
-    setConversationTitle(result.title?.trim() || null)
-    setHasMoreMessages(result.hasMore === true)
-    const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
+            id: string;
+            authorKind: RoomMessageRecord["authorKind"];
+            authorPrincipalId?: string;
+            importedAuthorName?: string;
+            importedAuthorEmail?: string;
+            importedAuthorStatus?: RoomMessageRecord["importedAuthorStatus"];
+            content?: string;
+            parts?: Array<{
+              type?: string;
+              text?: string;
+              url?: string;
+              mediaType?: string;
+              fileName?: string;
+              data?: Record<string, unknown>;
+            }>;
+            createdAt: number;
+            updatedAt?: number;
+            eventSequence?: number;
+            editedAt?: number;
+            deletedAt?: number;
+            clientNonce?: string;
+            threadRootMessageId?: string;
+            status?: "generating" | "completed" | "error";
+          }>;
+        }>({
+          conversationId,
+          messages: true,
+          limit: 100,
+          threadRootMessageId: threadRootId,
+        })
+      : null;
+    setConversationTitle(result.title?.trim() || null);
+    setHasMoreMessages(result.hasMore === true);
+    const persisted = [
+      ...(result.messages ?? []),
+      ...(threadResult?.messages ?? []),
+    ].map((message) => ({
       ...message,
-      content: message.content
-        ?? message.parts?.find((part) => part.type === 'text')?.text
-        ?? '',
+      content:
+        message.content ??
+        message.parts?.find((part) => part.type === "text")?.text ??
+        "",
       turnId: message.id,
-    }))
-    setMessages((current) => mergeRoomMessages(persisted, current))
-  }, [conversationId, threadRootId])
+    }));
+    setMessages((current) => mergeRoomMessages(persisted, current));
+  }, [conversationId, threadRootId]);
 
   const loadOlderMessages = useCallback(async () => {
-    if (showcase || loadingOlderMessages || !hasMoreMessages) return
+    if (showcase || loadingOlderMessages || !hasMoreMessages) return;
     const earliest = messagesRef.current
       .filter((message) => !message.threadRootMessageId)
-      .reduce<number | undefined>((value, message) => value === undefined ? message.createdAt : Math.min(value, message.createdAt), undefined)
-    if (earliest === undefined) return
-    const node = listRef.current
+      .reduce<
+        number | undefined
+      >((value, message) => (value === undefined ? message.createdAt : Math.min(value, message.createdAt)), undefined);
+    if (earliest === undefined) return;
+    const node = listRef.current;
     if (node) {
-      prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
-      skipNextMessageGrowthRef.current = true
+      prependScrollRef.current = {
+        height: node.scrollHeight,
+        top: node.scrollTop,
+      };
+      skipNextMessageGrowthRef.current = true;
     }
-    setLoadingOlderMessages(true)
+    setLoadingOlderMessages(true);
     try {
       const result = await overlayAppClient.conversations.get<{
         messages: Array<{
-          id: string
-          authorKind: RoomMessageRecord['authorKind']
-          authorPrincipalId?: string
-          importedAuthorName?: string
-          importedAuthorEmail?: string
-          importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-          content?: string
-          parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
-          createdAt: number
-          updatedAt?: number
-          eventSequence?: number
-          editedAt?: number
-          deletedAt?: number
-          clientNonce?: string
-          threadRootMessageId?: string
-          status?: 'generating' | 'completed' | 'error'
-        }>
-        hasMore?: boolean
-      }>({ conversationId, messages: true, limit: 100, beforeCreatedAt: earliest, mainOnly: true })
-      setHasMoreMessages(result.hasMore === true)
+          id: string;
+          authorKind: RoomMessageRecord["authorKind"];
+          authorPrincipalId?: string;
+          importedAuthorName?: string;
+          importedAuthorEmail?: string;
+          importedAuthorStatus?: RoomMessageRecord["importedAuthorStatus"];
+          content?: string;
+          parts?: Array<{
+            type?: string;
+            text?: string;
+            url?: string;
+            mediaType?: string;
+            fileName?: string;
+          }>;
+          createdAt: number;
+          updatedAt?: number;
+          eventSequence?: number;
+          editedAt?: number;
+          deletedAt?: number;
+          clientNonce?: string;
+          threadRootMessageId?: string;
+          status?: "generating" | "completed" | "error";
+        }>;
+        hasMore?: boolean;
+      }>({
+        conversationId,
+        messages: true,
+        limit: 100,
+        beforeCreatedAt: earliest,
+        mainOnly: true,
+      });
+      setHasMoreMessages(result.hasMore === true);
       const older = (result.messages ?? []).map((message) => ({
         ...message,
-        content: message.content
-          ?? message.parts?.find((part) => part.type === 'text')?.text
-          ?? '',
+        content:
+          message.content ??
+          message.parts?.find((part) => part.type === "text")?.text ??
+          "",
         turnId: message.id,
-      }))
-      setMessages((current) => mergeRoomMessages(older, current))
+      }));
+      setMessages((current) => mergeRoomMessages(older, current));
     } catch {
-      setNotice('Older messages could not be loaded.')
-      prependScrollRef.current = null
-      skipNextMessageGrowthRef.current = false
+      setNotice("Older messages could not be loaded.");
+      prependScrollRef.current = null;
+      skipNextMessageGrowthRef.current = false;
     } finally {
-      setLoadingOlderMessages(false)
+      setLoadingOlderMessages(false);
     }
-  }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase])
+  }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase]);
 
   const clearCollaborationNotifications = useCallback(async () => {
-    if (showcase) return
+    if (showcase) return;
     try {
-      await overlayAppClient.conversations.markConversationNotificationsRead(conversationId)
-      refreshNotifications()
+      await overlayAppClient.conversations.markConversationNotificationsRead(
+        conversationId,
+      );
+      refreshNotifications();
     } catch {
       // Badge clear is best-effort; the room transcript still works.
     }
-    window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
-      detail: { conversationId },
-    }))
-  }, [conversationId, refreshNotifications, showcase])
+    window.dispatchEvent(
+      new CustomEvent("overlay:collaboration-read", {
+        detail: { conversationId },
+      }),
+    );
+  }, [conversationId, refreshNotifications, showcase]);
 
   const markVisibleRead = useCallback(async () => {
-    if (showcase || document.visibilityState !== 'visible') return
-    if (readMarkInFlightRef.current) return
-    readMarkInFlightRef.current = true
+    if (showcase || document.visibilityState !== "visible") return;
+    if (readMarkInFlightRef.current) return;
+    readMarkInFlightRef.current = true;
     try {
       // Opening a room should clear unread immediately (Slack-style). Do not
       // wait for the transcript to settle at the bottom — that race left
       // badges stuck after the user switched into a DM or channel.
-      await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
-      setUnreadBoundarySequence(null)
-      setNewMessageCount(0)
-      await clearCollaborationNotifications()
+      await overlayAppClient.conversations.updateParticipantState(
+        conversationId,
+        { markRead: true },
+      );
+      setUnreadBoundarySequence(null);
+      setNewMessageCount(0);
+      await clearCollaborationNotifications();
     } finally {
-      readMarkInFlightRef.current = false
+      readMarkInFlightRef.current = false;
     }
-  }, [clearCollaborationNotifications, conversationId, showcase])
+  }, [clearCollaborationNotifications, conversationId, showcase]);
 
   const loadPresence = useCallback(async () => {
-    const result = await overlayAppClient.conversations.presence(conversationId)
-    setPresence(requireArray(result.presence, 'Conversation presence'))
-  }, [conversationId])
+    const result =
+      await overlayAppClient.conversations.presence(conversationId);
+    setPresence(requireArray(result.presence, "Conversation presence"));
+  }, [conversationId]);
 
   const loadCollaboration = useCallback(async () => {
-    const [reactionResult, pinResult, savedResult, channelResult] = await Promise.all([
-      overlayAppClient.conversations.reactions(conversationId),
-      overlayAppClient.conversations.pins(conversationId),
-      overlayAppClient.conversations.savedMessages(),
-      conversationType === 'channel' ? overlayAppClient.conversations.channels() : Promise.resolve({ channels: [] }),
-    ])
-    setReactions(requireArray(reactionResult.reactions, 'Conversation reactions'))
-    setPins(requireArray(pinResult.pins, 'Conversation pins'))
-    setSavedMessages(requireArray(savedResult.savedMessages, 'Saved messages'))
-    if (conversationType === 'channel') {
-      const channels = requireArray(channelResult.channels, 'Workspace channels')
-      setChannel(channels.find((item) => item.conversationId === conversationId) ?? null)
+    const [reactionResult, pinResult, savedResult, channelResult] =
+      await Promise.all([
+        overlayAppClient.conversations.reactions(conversationId),
+        overlayAppClient.conversations.pins(conversationId),
+        overlayAppClient.conversations.savedMessages(),
+        conversationType === "channel"
+          ? overlayAppClient.conversations.channels()
+          : Promise.resolve({ channels: [] }),
+      ]);
+    setReactions(
+      requireArray(reactionResult.reactions, "Conversation reactions"),
+    );
+    setPins(requireArray(pinResult.pins, "Conversation pins"));
+    setSavedMessages(requireArray(savedResult.savedMessages, "Saved messages"));
+    if (conversationType === "channel") {
+      const channels = requireArray(
+        channelResult.channels,
+        "Workspace channels",
+      );
+      setChannel(
+        channels.find((item) => item.conversationId === conversationId) ?? null,
+      );
     }
-  }, [conversationId, conversationType])
+  }, [conversationId, conversationType]);
 
-  const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
-    setMessages((current) => mergeRoomMessages(liveMessages, current))
-  }, [])
+  const applyLiveRoomMessages = useCallback(
+    (liveMessages: RoomMessageRecord[]) => {
+      setMessages((current) => mergeRoomMessages(liveMessages, current));
+    },
+    [],
+  );
+
+  const [prevConversationId, setPrevConversationId] = useState(conversationId);
+  if (prevConversationId !== conversationId) {
+    setPrevConversationId(conversationId);
+    setConversationTitle(null);
+  }
 
   useEffect(() => {
-    setConversationTitle(null)
-  }, [conversationId])
-
-  useEffect(() => {
-    if (showcase) return
-    let cancelled = false
+    if (showcase) return;
+    let cancelled = false;
     // When Convex realtime presence subscription is active, skip the initial
     // HTTP presence load — the subscription will deliver presence state.
-    const skipPresencePolling = convexRoomSubscriptionEnabled
+    const skipPresencePolling = convexRoomSubscriptionEnabled;
     const initialLoadTimer = window.setTimeout(() => {
       // Presence, reactions, pins, and saved state enrich a room, but must not
       // decide whether its critical transcript can open.
       void Promise.allSettled([
         skipPresencePolling ? Promise.resolve() : loadPresence(),
         loadCollaboration(),
-      ])
+      ]);
       void Promise.all([loadParticipants(), loadMessages()])
         // A room can receive its transcript through the realtime transport
         // while one of these initial BFF reads is transiently unavailable.
         // Do not turn that recoverable race into a false access failure.
         .catch(() => undefined)
         .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    }, 0)
-    const sessionId = sessionIdRef.current ?? crypto.randomUUID()
-    sessionIdRef.current = sessionId
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
+    const sessionId = sessionIdRef.current ?? crypto.randomUUID();
+    sessionIdRef.current = sessionId;
     void overlayAppClient.conversations
-      .updatePresence(conversationId, { status: 'online', sessionId })
-      .catch(() => undefined)
+      .updatePresence(conversationId, { status: "online", sessionId })
+      .catch(() => undefined);
     // Only poll presence via HTTP when Convex subscription is unavailable.
     const presenceTimer = skipPresencePolling
       ? undefined
-      : window.setInterval(() => void loadPresence().catch(() => undefined), 15_000)
+      : window.setInterval(
+          () => void loadPresence().catch(() => undefined),
+          15_000,
+        );
     const heartbeatTimer = window.setInterval(() => {
       void overlayAppClient.conversations
-        .updatePresence(conversationId, { status: 'online', sessionId })
-        .catch(() => undefined)
-    }, 45_000)
+        .updatePresence(conversationId, { status: "online", sessionId })
+        .catch(() => undefined);
+    }, 45_000);
     return () => {
-      cancelled = true
-      window.clearTimeout(initialLoadTimer)
-      if (presenceTimer !== undefined) window.clearInterval(presenceTimer)
-      window.clearInterval(heartbeatTimer)
+      cancelled = true;
+      window.clearTimeout(initialLoadTimer);
+      if (presenceTimer !== undefined) window.clearInterval(presenceTimer);
+      window.clearInterval(heartbeatTimer);
       void overlayAppClient.conversations
-        .updatePresence(conversationId, { status: 'offline', sessionId })
-        .catch(() => undefined)
-    }
-  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, showcase])
+        .updatePresence(conversationId, { status: "offline", sessionId })
+        .catch(() => undefined);
+    };
+  }, [
+    conversationId,
+    convexRoomSubscriptionEnabled,
+    loadCollaboration,
+    loadMessages,
+    loadParticipants,
+    loadPresence,
+    showcase,
+  ]);
 
   useEffect(() => {
-    if (loading) return
-    void markVisibleRead()
-  }, [loading, markVisibleRead, messages.length])
+    if (loading) return;
+    void markVisibleRead();
+  }, [loading, markVisibleRead, messages.length]);
 
   useEffect(() => {
-    const previousCount = previousMessageCountRef.current
+    const previousCount = previousMessageCountRef.current;
     if (messages.length > previousCount) {
       if (skipNextMessageGrowthRef.current) {
-        skipNextMessageGrowthRef.current = false
+        skipNextMessageGrowthRef.current = false;
       } else if (!stickToBottomRef.current && !loading) {
-        setNewMessageCount((count) => count + (messages.length - previousCount))
+        setNewMessageCount(
+          (count) => count + (messages.length - previousCount),
+        );
       }
     }
-    previousMessageCountRef.current = messages.length
-  }, [loading, messages.length])
+    previousMessageCountRef.current = messages.length;
+  }, [loading, messages.length]);
 
   useLayoutEffect(() => {
-    const node = listRef.current
-    const anchor = prependScrollRef.current
-    if (!node || !anchor) return
-    node.scrollTop = anchor.top + (node.scrollHeight - anchor.height)
-    prependScrollRef.current = null
-  }, [messages.length])
+    const node = listRef.current;
+    const anchor = prependScrollRef.current;
+    if (!node || !anchor) return;
+    node.scrollTop = anchor.top + (node.scrollHeight - anchor.height);
+    prependScrollRef.current = null;
+  }, [messages.length]);
 
   // Pin to latest after the initial transcript paint (and when stick-to-bottom).
   // Double rAF waits for layout of markdown/images so open-room no longer starts
   // mid-history at the top of a long channel.
   useLayoutEffect(() => {
-    if (loading) return
-    if (!stickToBottomRef.current) return
-    const node = listRef.current
-    if (!node) return
+    if (loading) return;
+    if (!stickToBottomRef.current) return;
+    const node = listRef.current;
+    if (!node) return;
     const pin = () => {
-      node.scrollTop = node.scrollHeight
-    }
-    pin()
+      node.scrollTop = node.scrollHeight;
+    };
+    pin();
     const frame = window.requestAnimationFrame(() => {
-      pin()
-      window.requestAnimationFrame(pin)
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength])
+      pin();
+      window.requestAnimationFrame(pin);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    agentResponding,
+    conversationId,
+    loading,
+    messages.length,
+    generatingTextLength,
+  ]);
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
   useEffect(() => {
-    if (showcase) return
-    setInput(readDraft({ workspaceId: activeWorkspaceId, conversationId }))
-  }, [activeWorkspaceId, conversationId, setInput, showcase])
+    if (showcase) return;
+    setInput(readDraft({ workspaceId: activeWorkspaceId, conversationId }));
+  }, [activeWorkspaceId, conversationId, setInput, showcase]);
 
   useEffect(() => {
-    if (!showAttachMenu) return
+    if (!showAttachMenu) return;
     function handleOutside(event: MouseEvent) {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(event.target as Node)) {
-        setShowAttachMenu(false)
+      if (
+        attachMenuRef.current &&
+        !attachMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowAttachMenu(false);
       }
     }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [showAttachMenu])
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showAttachMenu]);
 
-  const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
-  const HeaderIcon = conversationType === 'channel'
-    ? Hash
-    : otherParticipants.length <= 1
-      ? UserRound
-      : UsersRound
+  const otherParticipants = participants.filter(
+    (participant) => participant.principalId !== currentPrincipalId,
+  );
+  const HeaderIcon =
+    conversationType === "channel"
+      ? Hash
+      : otherParticipants.length <= 1
+        ? UserRound
+        : UsersRound;
   // Agent identity (creature color + shape) resolves from the directory once
   // per conversation: the header for one-to-one agent DMs and every agent
   // message avatar read from the same map. Falls back to neutral while
   // loading; chat-list rows keep their Lucide icons because they carry no
   // agent identity data.
-  const soloAgentParticipant = conversationType !== 'channel'
-    && otherParticipants.length === 1
-    && otherParticipants[0]?.principalType === 'agent'
-    ? otherParticipants[0]
-    : null
-  const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, {
-    id?: string
-    name: string
-    avatarColor?: string
-    avatarShape?: string
-  }>>(new Map())
+  const soloAgentParticipant =
+    conversationType !== "channel" &&
+    otherParticipants.length === 1 &&
+    otherParticipants[0]?.principalType === "agent"
+      ? otherParticipants[0]
+      : null;
+  const [agentsByPrincipal, setAgentsByPrincipal] = useState<
+    ReadonlyMap<
+      string,
+      {
+        id?: string;
+        name: string;
+        avatarColor?: string;
+        avatarShape?: string;
+      }
+    >
+  >(new Map());
   // Unsaved editor drafts overlay the fetched directory so the header renames
   // and re-skins while the user types; cleared by a null patch on save/cancel.
-  const [agentDrafts, setAgentDrafts] = useState<ReadonlyMap<string, {
-    name: string
-    avatarColor?: string
-    avatarShape?: string
-  }>>(new Map())
+  const [agentDrafts, setAgentDrafts] = useState<
+    ReadonlyMap<
+      string,
+      {
+        name: string;
+        avatarColor?: string;
+        avatarShape?: string;
+      }
+    >
+  >(new Map());
   const directoryAgentsByPrincipal = useMemo(() => {
-    if (agentDrafts.size === 0) return agentsByPrincipal
-    const merged = new Map(agentsByPrincipal)
+    if (agentDrafts.size === 0) return agentsByPrincipal;
+    const merged = new Map(agentsByPrincipal);
     for (const [principalId, draft] of agentDrafts) {
-      const existing = merged.get(principalId)
+      const existing = merged.get(principalId);
       merged.set(principalId, {
         id: existing?.id,
         name: draft.name,
         avatarColor: draft.avatarColor ?? existing?.avatarColor,
         avatarShape: draft.avatarShape ?? existing?.avatarShape,
-      })
+      });
     }
-    return merged
-  }, [agentsByPrincipal, agentDrafts])
+    return merged;
+  }, [agentsByPrincipal, agentDrafts]);
   useEffect(() => {
     if (showcase) {
-      setAgentsByPrincipal(isAgentShowcase ? new Map([[SHOWCASE_AGENT_PRINCIPAL_ID, {
-        name: SHOWCASE_AGENT_IDENTITY.name,
-        avatarColor: SHOWCASE_AGENT_IDENTITY.avatarColor,
-        avatarShape: SHOWCASE_AGENT_IDENTITY.avatarShape,
-      }]]) : new Map())
-      return
+      setAgentsByPrincipal(
+        isAgentShowcase
+          ? new Map([
+              [
+                SHOWCASE_AGENT_PRINCIPAL_ID,
+                {
+                  name: SHOWCASE_AGENT_IDENTITY.name,
+                  avatarColor: SHOWCASE_AGENT_IDENTITY.avatarColor,
+                  avatarShape: SHOWCASE_AGENT_IDENTITY.avatarShape,
+                },
+              ],
+            ])
+          : new Map(),
+      );
+      return;
     }
     if (!activeWorkspaceId) {
-      setAgentsByPrincipal(new Map())
-      setAgentDrafts(new Map())
-      return
+      setAgentsByPrincipal(new Map());
+      setAgentDrafts(new Map());
+      return;
     }
-    let cancelled = false
+    let cancelled = false;
     const load = () => {
-      overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-        if (cancelled) return
-        setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
-          id: agent.id,
-          name: agent.name,
-          avatarColor: agent.avatarColor,
-          avatarShape: agent.avatarShape,
-        }])))
-      }).catch(() => undefined)
-    }
-    load()
+      overlayAppClient.agents
+        .list(activeWorkspaceId)
+        .then((response) => {
+          if (cancelled) return;
+          setAgentsByPrincipal(
+            new Map(
+              response.agents.map((agent) => [
+                agent.principalId,
+                {
+                  id: agent.id,
+                  name: agent.name,
+                  avatarColor: agent.avatarColor,
+                  avatarShape: agent.avatarShape,
+                },
+              ]),
+            ),
+          );
+        })
+        .catch(() => undefined);
+    };
+    load();
     // Renames and avatar changes save through the editor and dispatch this
     // event; refetching keeps the header and message identity in sync without
     // a reload.
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load);
     const onDraftPreview = (event: Event) => {
-      const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
-      if (!detail?.principalId || detail.workspaceId !== activeWorkspaceId) return
+      const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>)
+        .detail;
+      if (!detail?.principalId || detail.workspaceId !== activeWorkspaceId)
+        return;
       setAgentDrafts((current) => {
-        const next = new Map(current)
-        if (detail.patch) next.set(detail.principalId!, detail.patch)
-        else next.delete(detail.principalId!)
-        return next
-      })
-    }
-    window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
+        const next = new Map(current);
+        if (detail.patch) next.set(detail.principalId!, detail.patch);
+        else next.delete(detail.principalId!);
+        return next;
+      });
+    };
+    window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview);
     return () => {
-      cancelled = true
-      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
-      window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
-    }
-  }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase])
+      cancelled = true;
+      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load);
+      window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview);
+    };
+  }, [activeWorkspaceId, showcase, conversationId, isAgentShowcase]);
   const headerAgent = soloAgentParticipant
-    ? (directoryAgentsByPrincipal.get(soloAgentParticipant.principalId) ?? { name: soloAgentParticipant.displayName })
-    : null
+    ? (directoryAgentsByPrincipal.get(soloAgentParticipant.principalId) ?? {
+        name: soloAgentParticipant.displayName,
+      })
+    : null;
   // The bound computer behind a one-to-one agent DM — surfaced as a subtle
   // "Desktop" affordance in the header (Grokbot-style) when one is usable.
-  const headerAgentId = headerAgent?.id
-  const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
-  const [desktopOpenBusy, setDesktopOpenBusy] = useState(false)
+  const headerAgentId = headerAgent?.id;
+  const [agentComputer, setAgentComputer] = useState<Computer | null>(null);
+  const [desktopOpenBusy, setDesktopOpenBusy] = useState(false);
   useEffect(() => {
-    if (showcase || !capabilities.computers || !activeWorkspaceId || !headerAgentId) {
-      setAgentComputer(null)
-      return
+    if (
+      showcase ||
+      !capabilities.computers ||
+      !activeWorkspaceId ||
+      !headerAgentId
+    ) {
+      setAgentComputer(null);
+      return;
     }
-    let cancelled = false
-    void overlayAppClient.computers.list(activeWorkspaceId).then((result) => {
-      if (cancelled) return
-      setAgentComputer(result.computers.find(
-        (computer) => computer.ownerType === 'agent' && computer.ownerId === headerAgentId,
-      ) ?? null)
-    }, () => undefined)
-    return () => { cancelled = true }
-  }, [showcase, capabilities.computers, activeWorkspaceId, headerAgentId])
+    let cancelled = false;
+    void overlayAppClient.computers.list(activeWorkspaceId).then(
+      (result) => {
+        if (cancelled) return;
+        setAgentComputer(
+          result.computers.find(
+            (computer) =>
+              computer.ownerType === "agent" &&
+              computer.ownerId === headerAgentId,
+          ) ?? null,
+        );
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [showcase, capabilities.computers, activeWorkspaceId, headerAgentId]);
   const openAgentDesktop = useCallback(() => {
-    if (!activeWorkspaceId || !agentComputer || desktopOpenBusy) return
-    setDesktopOpenBusy(true)
-    void overlayAppClient.computers.openDesktop(activeWorkspaceId, agentComputer.id)
+    if (!activeWorkspaceId || !agentComputer || desktopOpenBusy) return;
+    setDesktopOpenBusy(true);
+    void overlayAppClient.computers
+      .openDesktop(activeWorkspaceId, agentComputer.id)
       .then((ticket) => {
-        if (ticket.url) window.open(ticket.url, '_blank', 'noopener')
+        if (ticket.url) window.open(ticket.url, "_blank", "noopener");
       })
       .catch(() => undefined)
-      .finally(() => setDesktopOpenBusy(false))
-  }, [activeWorkspaceId, agentComputer, desktopOpenBusy])
-  const title = conversationType === 'channel'
-    ? channel?.name ?? draftTitle ?? 'Channel'
-    : soloAgentParticipant
-      // A one-to-one agent DM's title is the agent's name; the stored
-      // conversation title and participant displayName are snapshots from when
-      // the DM was created and go stale on rename, so the directory wins.
-      ? (headerAgent?.name ?? conversationTitle ?? draftTitle ?? 'Direct message')
-      : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
-  const online = presence.filter((row) => (
-    row.principalId !== currentPrincipalId && row.status === 'online'
-  )).length
-  const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
+      .finally(() => setDesktopOpenBusy(false));
+  }, [activeWorkspaceId, agentComputer, desktopOpenBusy]);
+  const title =
+    conversationType === "channel"
+      ? (channel?.name ?? draftTitle ?? "Channel")
+      : soloAgentParticipant
+        ? // A one-to-one agent DM's title is the agent's name; the stored
+          // conversation title and participant displayName are snapshots from when
+          // the DM was created and go stale on rename, so the directory wins.
+          (headerAgent?.name ??
+          conversationTitle ??
+          draftTitle ??
+          "Direct message")
+        : (conversationTitle ??
+          draftTitle ??
+          (otherParticipants
+            .map((participant) => participant.displayName)
+            .join(", ") ||
+            "Direct message"));
+  const online = presence.filter(
+    (row) => row.principalId !== currentPrincipalId && row.status === "online",
+  ).length;
+  const currentParticipant = participants.find(
+    (participant) => participant.principalId === currentPrincipalId,
+  );
 
   const commitDraftConversation = useCallback(() => {
-    if (!draft || draftCommittedRef.current) return
-    draftCommittedRef.current = true
+    if (!draft || draftCommittedRef.current) return;
+    draftCommittedRef.current = true;
     dispatchChatCreated({
       chat: {
         _id: conversationId,
@@ -908,85 +1149,115 @@ export function DirectMessageExperience({
         lastModified: Date.now(),
         conversationType,
       },
-    })
-    const url = new URL(window.location.href)
-    url.searchParams.delete('draft')
-    url.searchParams.delete('title')
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
-  }, [conversationId, conversationType, draft, title])
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("draft");
+    url.searchParams.delete("title");
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [conversationId, conversationType, draft, title]);
 
-  useEffect(() => () => {
-    if (!draft || draftCommittedRef.current || showcase || messagesRef.current.length > 0) return
-    void (async () => {
-      const removed = await overlayAppClient.conversations.deleteResponse({
-        conversationId,
-        scope: 'self',
-      })
-      if (!removed.ok) {
-        await overlayAppClient.conversations.updateParticipantState(conversationId, {
-          archived: true,
-          archiveScope: 'self',
-        }).catch(() => undefined)
-      }
-    })()
-  }, [conversationId, draft, showcase])
+  useEffect(
+    () => () => {
+      if (
+        !draft ||
+        draftCommittedRef.current ||
+        showcase ||
+        messagesRef.current.length > 0
+      )
+        return;
+      void (async () => {
+        const removed = await overlayAppClient.conversations.deleteResponse({
+          conversationId,
+          scope: "self",
+        });
+        if (!removed.ok) {
+          await overlayAppClient.conversations
+            .updateParticipantState(conversationId, {
+              archived: true,
+              archiveScope: "self",
+            })
+            .catch(() => undefined);
+        }
+      })();
+    },
+    [conversationId, draft, showcase],
+  );
 
   useEffect(() => {
-    if (draft && messages.some((message) => !message.id.startsWith('optimistic_'))) {
-      commitDraftConversation()
+    if (
+      draft &&
+      messages.some((message) => !message.id.startsWith("optimistic_"))
+    ) {
+      commitDraftConversation();
     }
-  }, [commitDraftConversation, draft, messages])
-  const mainMessages = messages.filter((message) => !message.threadRootMessageId)
+  }, [commitDraftConversation, draft, messages]);
+  const mainMessages = messages.filter(
+    (message) => !message.threadRootMessageId,
+  );
   const agentCommands = useMemo<RemoteAgentCommand[]>(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const commands = remoteAgentCommands(messages[index]?.parts)
-      if (commands.length > 0) return commands
+      const commands = remoteAgentCommands(messages[index]?.parts);
+      if (commands.length > 0) return commands;
     }
-    return []
-  }, [messages])
-  const threadRoot = messages.find((message) => message.id === threadRootId)
-  const threadReplies = messages.filter((message) => (
-    Boolean(threadRootId) && message.threadRootMessageId === threadRootId
-  ))
-  const unreadBoundaryMessageId = unreadBoundarySequence === null
-    ? null
-    : mainMessages.find((message) => (
-      message.eventSequence !== undefined && message.eventSequence > unreadBoundarySequence
-    ))?.id ?? null
+    return [];
+  }, [messages]);
+  const threadRoot = messages.find((message) => message.id === threadRootId);
+  const threadReplies = messages.filter(
+    (message) =>
+      Boolean(threadRootId) && message.threadRootMessageId === threadRootId,
+  );
+  const unreadBoundaryMessageId =
+    unreadBoundarySequence === null
+      ? null
+      : (mainMessages.find(
+          (message) =>
+            message.eventSequence !== undefined &&
+            message.eventSequence > unreadBoundarySequence,
+        )?.id ?? null);
   const replyCounts = useMemo(() => {
-    const counts = new Map<string, number>()
+    const counts = new Map<string, number>();
     for (const message of messages) {
-      const root = message.threadRootMessageId
-      if (!root) continue
-      counts.set(root, (counts.get(root) ?? 0) + 1)
+      const root = message.threadRootMessageId;
+      if (!root) continue;
+      counts.set(root, (counts.get(root) ?? 0) + 1);
     }
-    return counts
-  }, [messages])
+    return counts;
+  }, [messages]);
 
   /** Latest reply per root for Slack-style thread teasers under the parent row. */
   const threadTeasers = useMemo(() => {
-    const latest = new Map<string, OptimisticMessage>()
+    const latest = new Map<string, OptimisticMessage>();
     for (const message of messages) {
-      const root = message.threadRootMessageId
-      if (!root || message.deletedAt) continue
-      const existing = latest.get(root)
-      if (!existing || message.createdAt >= existing.createdAt) latest.set(root, message)
+      const root = message.threadRootMessageId;
+      if (!root || message.deletedAt) continue;
+      const existing = latest.get(root);
+      if (!existing || message.createdAt >= existing.createdAt)
+        latest.set(root, message);
     }
-    return latest
-  }, [messages])
+    return latest;
+  }, [messages]);
 
-  const participantMentions = useMemo(() => participants.map((participant) => {
-    const agent = participant.principalType === 'agent'
-      ? directoryAgentsByPrincipal.get(participant.principalId)
-      : undefined
-    return {
-      type: participant.principalType === 'agent' ? 'agent' : 'person',
-      id: participant.principalId,
-      name: participant.displayName,
-      avatarColor: agent?.avatarColor,
-      avatarShape: agent?.avatarShape,
-    }
-  }), [directoryAgentsByPrincipal, participants])
+  const participantMentions = useMemo(
+    () =>
+      participants.map((participant) => {
+        const agent =
+          participant.principalType === "agent"
+            ? directoryAgentsByPrincipal.get(participant.principalId)
+            : undefined;
+        return {
+          type: participant.principalType === "agent" ? "agent" : "person",
+          id: participant.principalId,
+          name: participant.displayName,
+          avatarColor: agent?.avatarColor,
+          avatarShape: agent?.avatarShape,
+        };
+      }),
+    [directoryAgentsByPrincipal, participants],
+  );
 
   /**
    * Scrolls a pinned message back into view and flashes it. A reply only exists
@@ -994,237 +1265,305 @@ export function DirectMessageExperience({
    * there instead of in the main transcript.
    */
   const jumpToMessage = useCallback((messageId: string) => {
-    const target = messagesRef.current.find((message) => message.id === messageId)
-    const root = target?.threadRootMessageId
+    const target = messagesRef.current.find(
+      (message) => message.id === messageId,
+    );
+    const root = target?.threadRootMessageId;
     if (root) {
-      setThreadRootId(root)
-      setRoomPanel('thread')
+      setThreadRootId(root);
+      setRoomPanel("thread");
     } else {
-      setThreadRootId(null)
-      setRoomPanel(null)
+      setThreadRootId(null);
+      setRoomPanel(null);
     }
-    setHighlightedMessageId(messageId)
+    setHighlightedMessageId(messageId);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         document.getElementById(roomMessageDomId(messageId))?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        })
-      })
-    })
-  }, [])
+          behavior: "smooth",
+          block: "center",
+        });
+      });
+    });
+  }, []);
 
   const jumpToLatest = useCallback(() => {
-    const node = listRef.current
-    if (!node) return
-    stickToBottomRef.current = true
-    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
-    setNewMessageCount(0)
-    void markVisibleRead()
-  }, [markVisibleRead])
+    const node = listRef.current;
+    if (!node) return;
+    stickToBottomRef.current = true;
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    setNewMessageCount(0);
+    void markVisibleRead();
+  }, [markVisibleRead]);
 
   useEffect(() => {
-    const target = typeof window === 'undefined'
-      ? null
-      : new URLSearchParams(window.location.search).get('message')?.trim() || null
-    if (!target || permalinkJumpedRef.current === target || !messagesRef.current.some((message) => message.id === target)) return
-    permalinkJumpedRef.current = target
-    jumpToMessage(target)
-  }, [jumpToMessage, messages.length])
+    const target =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("message")?.trim() ||
+          null;
+    if (
+      !target ||
+      permalinkJumpedRef.current === target ||
+      !messagesRef.current.some((message) => message.id === target)
+    )
+      return;
+    permalinkJumpedRef.current = target;
+    jumpToMessage(target);
+  }, [jumpToMessage, messages.length]);
 
   useEffect(() => {
-    if (!highlightedMessageId) return
-    const timer = window.setTimeout(() => setHighlightedMessageId(null), 2_000)
-    return () => window.clearTimeout(timer)
-  }, [highlightedMessageId])
+    if (!highlightedMessageId) return;
+    const timer = window.setTimeout(() => setHighlightedMessageId(null), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedMessageId]);
 
   useEffect(() => {
     if (!threadRootId || showcase) {
-      setThreadFollowing(false)
-      return
+      setThreadFollowing(false);
+      return;
     }
-    let cancelled = false
-    void overlayAppClient.conversations.threadFollow(conversationId, threadRootId)
+    let cancelled = false;
+    void overlayAppClient.conversations
+      .threadFollow(conversationId, threadRootId)
       .then((result) => {
-        if (!cancelled) setThreadFollowing(result.following)
+        if (!cancelled) setThreadFollowing(result.following);
       })
       .catch(() => {
-        if (!cancelled) setThreadFollowing(false)
-      })
+        if (!cancelled) setThreadFollowing(false);
+      });
     return () => {
-      cancelled = true
-    }
-  }, [conversationId, showcase, threadRootId])
+      cancelled = true;
+    };
+  }, [conversationId, showcase, threadRootId]);
 
   const toggleThreadFollow = useCallback(() => {
-    if (!threadRootId || showcase) return
-    const next = !threadFollowing
-    setThreadFollowing(next)
-    void overlayAppClient.conversations.setThreadFollow(conversationId, threadRootId, next)
+    if (!threadRootId || showcase) return;
+    const next = !threadFollowing;
+    setThreadFollowing(next);
+    void overlayAppClient.conversations
+      .setThreadFollow(conversationId, threadRootId, next)
       .then((result) => setThreadFollowing(result.followed))
-      .catch(() => setThreadFollowing(!next))
-  }, [conversationId, showcase, threadFollowing, threadRootId])
+      .catch(() => setThreadFollowing(!next));
+  }, [conversationId, showcase, threadFollowing, threadRootId]);
 
   const openThread = useCallback((messageId: string) => {
-    setThreadRootId(messageId)
-    setRoomPanel('thread')
-  }, [])
+    setThreadRootId(messageId);
+    setRoomPanel("thread");
+  }, []);
 
   const mentionCategories: MentionCategory[] = useMemo(() => {
     const items = participants
-      .filter((participant) => participant.status === 'active' && participant.principalId !== currentPrincipalId)
+      .filter(
+        (participant) =>
+          participant.status === "active" &&
+          participant.principalId !== currentPrincipalId,
+      )
       .map((participant) => ({
-        type: 'person' as const,
+        type: "person" as const,
         id: participant.principalId,
         name: participant.displayName,
-        description: participant.principalType === 'agent' ? 'Agent' : 'Member',
-        icon: 'UsersRound',
-      }))
-    return items.length ? [{ type: 'person', label: 'Members', icon: 'UsersRound', items }] : []
-  }, [currentPrincipalId, participants])
+        description: participant.principalType === "agent" ? "Agent" : "Member",
+        icon: "UsersRound",
+      }));
+    return items.length
+      ? [{ type: "person", label: "Members", icon: "UsersRound", items }]
+      : [];
+  }, [currentPrincipalId, participants]);
 
   function resolveMentionTargets(text: string): string[] {
     const fromChips = mentions
-      .filter((mention) => mention.type === 'person')
-      .map((mention) => mention.id)
-    const fromText = resolveMentionedPrincipalIds(text, participants.map((participant) => ({
-      principalId: participant.principalId,
-      displayName: participant.displayName,
-      principalType: participant.principalType,
-    })))
-    return Array.from(new Set([...fromChips, ...fromText]))
+      .filter((mention) => mention.type === "person")
+      .map((mention) => mention.id);
+    const fromText = resolveMentionedPrincipalIds(
+      text,
+      participants.map((participant) => ({
+        principalId: participant.principalId,
+        displayName: participant.displayName,
+        principalType: participant.principalType,
+      })),
+    );
+    return Array.from(new Set([...fromChips, ...fromText]));
   }
 
   async function sendMessage(
     content: string,
     options?: {
-      existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
-      threadRootMessageId?: string
-      parts?: RoomMessageRecord['parts']
-      attachmentNames?: string[]
-      reply?: { replyToTurnId?: string; snippet: string } | null
+      existing?: Pick<
+        OptimisticMessage,
+        "clientNonce" | "turnId" | "createdAt" | "parts"
+      >;
+      threadRootMessageId?: string;
+      parts?: RoomMessageRecord["parts"];
+      attachmentNames?: string[];
+      reply?: { replyToTurnId?: string; snippet: string } | null;
     },
   ) {
-    const text = content.trim()
-    const parts = options?.parts ?? options?.existing?.parts
-    if (!text && !parts?.length) return
-    const clientNonce = options?.existing?.clientNonce ?? crypto.randomUUID()
-    const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`
-    const optimisticId = `optimistic_${clientNonce}`
-    const threadRootMessageId = options?.threadRootMessageId
+    const text = content.trim();
+    const parts = options?.parts ?? options?.existing?.parts;
+    if (!text && !parts?.length) return;
+    const clientNonce = options?.existing?.clientNonce ?? crypto.randomUUID();
+    const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`;
+    const optimisticId = `optimistic_${clientNonce}`;
+    const threadRootMessageId = options?.threadRootMessageId;
     if (showcase) {
-    setMessages((current) => [...current, {
-        id: optimisticId,
-        turnId,
-        authorKind: 'human',
-        authorPrincipalId: currentPrincipalId,
-        content: text,
-        parts,
-        createdAt: options?.existing?.createdAt ?? Date.now(),
-        clientNonce,
-        threadRootMessageId,
-      } satisfies OptimisticMessage].sort(compareRoomMessageRecords))
-      return
+      setMessages((current) =>
+        [
+          ...current,
+          {
+            id: optimisticId,
+            turnId,
+            authorKind: "human",
+            authorPrincipalId: currentPrincipalId,
+            content: text,
+            parts,
+            createdAt: options?.existing?.createdAt ?? Date.now(),
+            clientNonce,
+            threadRootMessageId,
+          } satisfies OptimisticMessage,
+        ].sort(compareRoomMessageRecords),
+      );
+      return;
     }
-    setMessages((current) => [
-      ...current.filter((message) => message.clientNonce !== clientNonce),
-      {
-        id: optimisticId,
-        turnId,
-        authorKind: 'human',
-        authorPrincipalId: currentPrincipalId,
-        content: text,
-        parts,
-        createdAt: options?.existing?.createdAt ?? Date.now(),
-        clientNonce,
-        delivery: 'sending',
-        threadRootMessageId,
-      } satisfies OptimisticMessage,
-    ].sort(compareRoomMessageRecords))
+    setMessages((current) =>
+      [
+        ...current.filter((message) => message.clientNonce !== clientNonce),
+        {
+          id: optimisticId,
+          turnId,
+          authorKind: "human",
+          authorPrincipalId: currentPrincipalId,
+          content: text,
+          parts,
+          createdAt: options?.existing?.createdAt ?? Date.now(),
+          clientNonce,
+          delivery: "sending",
+          threadRootMessageId,
+        } satisfies OptimisticMessage,
+      ].sort(compareRoomMessageRecords),
+    );
     try {
-      const mentionedPrincipalIds = resolveMentionTargets(text)
+      const mentionedPrincipalIds = resolveMentionTargets(text);
       // One-to-one agent threads take their title from the first human message,
       // matching personal chats. Only placeholder titles are replaced — never a
       // custom name — and the ref stops racing sends from double-renaming.
-      const renameAgentThread = soloAgentParticipant
-        && !loading
-        && text.length > 0
-        && !threadRenameRequestedRef.current
-        && (conversationTitle === 'New thread' || conversationTitle === soloAgentParticipant.displayName)
-      const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
-      const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
+      const renameAgentThread =
+        soloAgentParticipant &&
+        !loading &&
+        text.length > 0 &&
+        !threadRenameRequestedRef.current &&
+        (conversationTitle === "New thread" ||
+          conversationTitle === soloAgentParticipant.displayName);
+      const agentParticipants = participants.filter(
+        (participant) => participant.principalType === "agent",
+      );
+      const humanParticipants = participants.filter(
+        (participant) => participant.principalType === "human",
+      );
       const threadAgentId = threadRootMessageId
-        ? messages.find((message) => message.id === threadRootMessageId && message.authorKind === 'agent')?.authorPrincipalId
-        : undefined
-      const invokedAgents = agentParticipants.filter((participant) => (
-        (conversationType === 'dm' && agentParticipants.length === 1 && humanParticipants.length === 1)
-        || mentionedPrincipalIds.includes(participant.principalId)
-        || threadAgentId === participant.principalId
-      ))
+        ? messages.find(
+            (message) =>
+              message.id === threadRootMessageId &&
+              message.authorKind === "agent",
+          )?.authorPrincipalId
+        : undefined;
+      const invokedAgents = agentParticipants.filter(
+        (participant) =>
+          (conversationType === "dm" &&
+            agentParticipants.length === 1 &&
+            humanParticipants.length === 1) ||
+          mentionedPrincipalIds.includes(participant.principalId) ||
+          threadAgentId === participant.principalId,
+      );
       if (invokedAgents.length) {
-        setAgentResponding(invokedAgents.length === 1 ? invokedAgents[0]!.displayName : 'Agents')
+        setAgentResponding(
+          invokedAgents.length === 1 ? invokedAgents[0]!.displayName : "Agents",
+        );
       }
       const saved = await overlayAppClient.conversations.addMessage({
         conversationId,
         turnId,
-        role: 'user',
-        mode: 'act',
+        role: "user",
+        mode: "act",
         content: text,
-        contentType: 'text',
+        contentType: "text",
         clientNonce,
         mentionedPrincipalIds,
         memoryEnabled,
         threadRootMessageId,
-        ...(parts?.length ? { parts: parts as Array<Record<string, unknown>> } : {}),
-        ...(options?.attachmentNames?.length ? { attachmentNames: options.attachmentNames } : {}),
-        ...(options?.reply?.replyToTurnId
-          ? { replyToTurnId: options.reply.replyToTurnId, replySnippet: options.reply.snippet }
+        ...(parts?.length
+          ? { parts: parts as Array<Record<string, unknown>> }
           : {}),
-      })
+        ...(options?.attachmentNames?.length
+          ? { attachmentNames: options.attachmentNames }
+          : {}),
+        ...(options?.reply?.replyToTurnId
+          ? {
+              replyToTurnId: options.reply.replyToTurnId,
+              replySnippet: options.reply.snippet,
+            }
+          : {}),
+      });
       // Saving the message is what starts the agent turn; the server owns it
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
       if (renameAgentThread && soloAgentParticipant) {
-        threadRenameRequestedRef.current = true
-        const agentName = soloAgentParticipant.displayName
+        threadRenameRequestedRef.current = true;
+        const agentName = soloAgentParticipant.displayName;
         void generateTitle(text).then(async (aiTitle) => {
           if (!aiTitle) {
-            threadRenameRequestedRef.current = false
-            return
+            threadRenameRequestedRef.current = false;
+            return;
           }
-          const title = sanitizeChatTitle(aiTitle, agentName)
+          const title = sanitizeChatTitle(aiTitle, agentName);
           try {
-            const res = await overlayAppClient.conversations.updateResponse({ conversationId, title })
-            if (res.ok) dispatchChatTitleUpdated({ chatId: conversationId, title })
-            else threadRenameRequestedRef.current = false
+            const res = await overlayAppClient.conversations.updateResponse({
+              conversationId,
+              title,
+            });
+            if (res.ok)
+              dispatchChatTitleUpdated({ chatId: conversationId, title });
+            else threadRenameRequestedRef.current = false;
           } catch {
             // Keep the placeholder thread title.
-            threadRenameRequestedRef.current = false
+            threadRenameRequestedRef.current = false;
           }
-        })
+        });
       }
-      if (!convexRoomSubscriptionEnabled) await loadMessages()
-      commitDraftConversation()
-      void saved
+      if (!convexRoomSubscriptionEnabled) await loadMessages();
+      commitDraftConversation();
+      void saved;
     } catch {
-      setMessages((current) => current.map((message) => (
-        message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
-      )))
+      setMessages((current) =>
+        current.map((message) =>
+          message.clientNonce === clientNonce
+            ? { ...message, delivery: "failed" }
+            : message,
+        ),
+      );
+      // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
     } finally {
-      setAgentResponding(null)
+      setAgentResponding(null);
     }
   }
 
+  // One-shot pending-message send; pendingCollaborationMessageSentRef guards it.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
-    if (showcase || !currentPrincipalId || pendingCollaborationMessageSentRef.current) return
-    const pending = takePendingCollaborationMessage(conversationId)
-    if (!pending) return
-    pendingCollaborationMessageSentRef.current = true
-    void sendMessage(pending.content)
-  // `sendMessage` is intentionally omitted: it is recreated while room state
-  // changes, whereas a pending conversion must be consumed exactly once.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, currentPrincipalId, showcase])
+    if (
+      showcase ||
+      !currentPrincipalId ||
+      pendingCollaborationMessageSentRef.current
+    )
+      return;
+    const pending = takePendingCollaborationMessage(conversationId);
+    if (!pending) return;
+    pendingCollaborationMessageSentRef.current = true;
+    void sendMessage(pending.content);
+    // `sendMessage` is intentionally omitted: it is recreated while room state
+    // changes, whereas a pending conversion must be consumed exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, currentPrincipalId, showcase]);
 
   /**
    * Reads the agent's reply as it is written. The server persists the finished
@@ -1232,15 +1571,20 @@ export function DirectMessageExperience({
    * replaces with the stored row.
    */
   async function handleSend() {
-    const text = (inputRef.current ?? input).trim()
-    const readyDocuments = pendingChatDocuments.filter((document) => document.status === 'ready')
-    if (pendingChatDocuments.some((document) => document.status === 'uploading')) {
-      setComposerNotice('Attachments are still uploading.')
-      return
+    const text = (inputRef.current ?? input).trim();
+    const readyDocuments = pendingChatDocuments.filter(
+      (document) => document.status === "ready",
+    );
+    if (
+      pendingChatDocuments.some((document) => document.status === "uploading")
+    ) {
+      setComposerNotice("Attachments are still uploading.");
+      return;
     }
-    if (!text && attachedImages.length === 0 && readyDocuments.length === 0) return
+    if (!text && attachedImages.length === 0 && readyDocuments.length === 0)
+      return;
 
-    const turnId = `human_${crypto.randomUUID()}`
+    const turnId = `human_${crypto.randomUUID()}`;
     const payload = buildTextTurnPayload({
       text,
       attachedImages,
@@ -1248,94 +1592,152 @@ export function DirectMessageExperience({
       mentions,
       replyContext,
       turnId,
-    })
+    });
     // Document names ride along in the body using the same marker the chat
     // transcript already understands, so the room renders them as file chips.
     const documentMarker = payload.indexedFileNames.length
-      ? `${text ? '\n\n' : ''}[Indexed documents: ${payload.indexedFileNames.join(', ')}]`
-      : ''
-    const replySnippet = replyContext?.snippet
+      ? `${text ? "\n\n" : ""}[Indexed documents: ${payload.indexedFileNames.join(", ")}]`
+      : "";
+    const replySnippet = replyContext?.snippet;
 
-    setInput('')
-    composerRef.current?.clear()
-    setMentions([])
-    setAttachedImages([])
-    setPendingChatDocuments([])
-    setAttachmentError(null)
-    setComposerNotice(null)
-    setReplyContext(null)
-    clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+    setInput("");
+    composerRef.current?.clear();
+    setMentions([]);
+    setAttachedImages([]);
+    setPendingChatDocuments([]);
+    setAttachmentError(null);
+    setComposerNotice(null);
+    setReplyContext(null);
+    clearDraft({ workspaceId: activeWorkspaceId, conversationId });
 
     await sendMessage(`${text}${documentMarker}`, {
-      existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
+      existing: {
+        turnId,
+        clientNonce: crypto.randomUUID(),
+        createdAt: Date.now(),
+        parts: payload.partsForModel,
+      },
       parts: payload.partsForModel,
       attachmentNames: payload.indexedFileNames,
-      ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
-    })
+      ...(replyContext
+        ? {
+            reply: {
+              replyToTurnId: replyContext.replyToTurnId,
+              snippet: replySnippet ?? "",
+            },
+          }
+        : {}),
+    });
   }
 
   function onComposerInput(text: string) {
-    handleComposerInputChange(text)
-    if (showcase) return
-    writeDraft({ workspaceId: activeWorkspaceId, conversationId }, text)
-    const now = Date.now()
+    handleComposerInputChange(text);
+    if (showcase) return;
+    writeDraft({ workspaceId: activeWorkspaceId, conversationId }, text);
+    const now = Date.now();
     if (now - lastTypingSentAt.current > 2_500) {
-      lastTypingSentAt.current = now
-      void overlayAppClient.conversations.updatePresence(conversationId, {
-        status: 'online',
-        typing: Boolean(text.trim()),
-        sessionId: sessionIdRef.current ?? undefined,
-      }).catch(() => undefined)
+      lastTypingSentAt.current = now;
+      void overlayAppClient.conversations
+        .updatePresence(conversationId, {
+          status: "online",
+          typing: Boolean(text.trim()),
+          sessionId: sessionIdRef.current ?? undefined,
+        })
+        .catch(() => undefined);
     }
   }
 
   function beginQuoteReply(message: OptimisticMessage) {
-    const snippet = message.content.trim()
-    if (!snippet) return
+    const snippet = message.content.trim();
+    if (!snippet) return;
     setReplyContext({
       snippet: snippet.length > 160 ? `${snippet.slice(0, 160)}…` : snippet,
       bodyForModel: snippet.slice(0, 16000),
       replyToTurnId: message.turnId,
-    })
-    composerRef.current?.focus()
+    });
+    composerRef.current?.focus();
   }
 
   async function copyMessagePermalink(messageId: string) {
-    const url = new URL(window.location.href)
-    url.searchParams.set('message', messageId)
+    const url = new URL(window.location.href);
+    url.searchParams.set("message", messageId);
     try {
-      await navigator.clipboard.writeText(url.toString())
-      setNotice('Message link copied.')
+      await navigator.clipboard.writeText(url.toString());
+      setNotice("Message link copied.");
     } catch {
-      setNotice('Could not copy the message link.')
+      setNotice("Could not copy the message link.");
     }
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
-    const current = reactions.find((reaction) => reaction.messageId === messageId && reaction.emoji === emoji)
+    const current = reactions.find(
+      (reaction) =>
+        reaction.messageId === messageId && reaction.emoji === emoji,
+    );
     if (showcase) {
-      setReactions((rows) => current
-        ? rows.map((row) => row === current ? { ...row, count: Math.max(0, row.count + (row.reactedByCurrentPrincipal ? -1 : 1)), reactedByCurrentPrincipal: !row.reactedByCurrentPrincipal } : row)
-        : [...rows, { conversationId, messageId, emoji, principalIds: [currentPrincipalId], count: 1, reactedByCurrentPrincipal: true }])
-      return
+      setReactions((rows) =>
+        current
+          ? rows.map((row) =>
+              row === current
+                ? {
+                    ...row,
+                    count: Math.max(
+                      0,
+                      row.count + (row.reactedByCurrentPrincipal ? -1 : 1),
+                    ),
+                    reactedByCurrentPrincipal: !row.reactedByCurrentPrincipal,
+                  }
+                : row,
+            )
+          : [
+              ...rows,
+              {
+                conversationId,
+                messageId,
+                emoji,
+                principalIds: [currentPrincipalId],
+                count: 1,
+                reactedByCurrentPrincipal: true,
+              },
+            ],
+      );
+      return;
     }
-    const result = await overlayAppClient.conversations.setReaction(conversationId, {
-      messageId,
-      emoji,
-      enabled: !current?.reactedByCurrentPrincipal,
-    })
-    setReactions(requireArray(result.reactions, 'Conversation reactions'))
+    const result = await overlayAppClient.conversations.setReaction(
+      conversationId,
+      {
+        messageId,
+        emoji,
+        enabled: !current?.reactedByCurrentPrincipal,
+      },
+    );
+    setReactions(requireArray(result.reactions, "Conversation reactions"));
   }
 
   async function togglePinned(messageId: string) {
-    const pinned = pins.some((pin) => pin.messageId === messageId)
+    const pinned = pins.some((pin) => pin.messageId === messageId);
     if (showcase) {
-      setPins((rows) => pinned ? rows.filter((row) => row.messageId !== messageId) : [...rows, { conversationId, messageId, pinnedByPrincipalId: currentPrincipalId, createdAt: Date.now() }])
-      return
+      setPins((rows) =>
+        pinned
+          ? rows.filter((row) => row.messageId !== messageId)
+          : [
+              ...rows,
+              {
+                conversationId,
+                messageId,
+                pinnedByPrincipalId: currentPrincipalId,
+                createdAt: Date.now(),
+              },
+            ],
+      );
+      return;
     }
-    await overlayAppClient.conversations.setPinned(conversationId, { messageId, pinned: !pinned })
-    const result = await overlayAppClient.conversations.pins(conversationId)
-    setPins(requireArray(result.pins, 'Conversation pins'))
+    await overlayAppClient.conversations.setPinned(conversationId, {
+      messageId,
+      pinned: !pinned,
+    });
+    const result = await overlayAppClient.conversations.pins(conversationId);
+    setPins(requireArray(result.pins, "Conversation pins"));
   }
 
   /**
@@ -1344,84 +1746,126 @@ export function DirectMessageExperience({
    * moderation.
    */
   async function reportMessage(messageId: string) {
-    if (showcase) return
+    if (showcase) return;
     try {
       await overlayAppClient.conversations.reportMessage(conversationId, {
         messageId,
-        reason: 'other',
-      })
-      setNotice('Report sent to the workspace owners.')
+        reason: "other",
+      });
+      setNotice("Report sent to the workspace owners.");
     } catch {
-      setNotice('Could not send the report.')
+      setNotice("Could not send the report.");
     }
   }
 
   async function toggleSaved(messageId: string) {
-    const saved = savedMessages.some((row) => row.conversationId === conversationId && row.messageId === messageId)
+    const saved = savedMessages.some(
+      (row) =>
+        row.conversationId === conversationId && row.messageId === messageId,
+    );
     if (showcase) {
-      setSavedMessages((rows) => saved ? rows.filter((row) => row.messageId !== messageId) : [...rows, { conversationId, messageId, principalId: currentPrincipalId, createdAt: Date.now() }])
-      return
+      setSavedMessages((rows) =>
+        saved
+          ? rows.filter((row) => row.messageId !== messageId)
+          : [
+              ...rows,
+              {
+                conversationId,
+                messageId,
+                principalId: currentPrincipalId,
+                createdAt: Date.now(),
+              },
+            ],
+      );
+      return;
     }
-    await overlayAppClient.conversations.setSaved({ conversationId, messageId, saved: !saved })
-    const result = await overlayAppClient.conversations.savedMessages()
-    setSavedMessages(requireArray(result.savedMessages, 'Saved messages'))
+    await overlayAppClient.conversations.setSaved({
+      conversationId,
+      messageId,
+      saved: !saved,
+    });
+    const result = await overlayAppClient.conversations.savedMessages();
+    setSavedMessages(requireArray(result.savedMessages, "Saved messages"));
   }
 
   async function saveEdit(messageId: string) {
-    const content = editingContent.trim()
-    if (!content) return
+    const content = editingContent.trim();
+    if (!content) return;
     if (showcase) {
-      setMessages((current) => current.map((message) => (
-        message.id === messageId ? { ...message, content, editedAt: Date.now() } : message
-      )))
-      setEditingId(null)
-      return
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? { ...message, content, editedAt: Date.now() }
+            : message,
+        ),
+      );
+      setEditingId(null);
+      return;
     }
-    await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
-    setEditingId(null)
-    await loadMessages()
+    await overlayAppClient.conversations.editCollaborativeMessage(
+      conversationId,
+      messageId,
+      content,
+    );
+    setEditingId(null);
+    await loadMessages();
   }
 
   async function deleteMessage(messageId: string) {
     if (showcase) {
-      setMessages((current) => current.map((message) => (
-        message.id === messageId ? { ...message, deletedAt: Date.now(), content: '' } : message
-      )))
-      return
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? { ...message, deletedAt: Date.now(), content: "" }
+            : message,
+        ),
+      );
+      return;
     }
-    await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
-    await loadMessages()
+    await overlayAppClient.conversations.deleteCollaborativeMessage(
+      conversationId,
+      messageId,
+    );
+    await loadMessages();
   }
 
   async function updateState(
-    state: Parameters<typeof overlayAppClient.conversations.updateParticipantState>[1],
+    state: Parameters<
+      typeof overlayAppClient.conversations.updateParticipantState
+    >[1],
     confirmation: string,
   ) {
     if (showcase) {
-      setNotice(confirmation)
-      setMenuOpen(false)
-      return
+      setNotice(confirmation);
+      setMenuOpen(false);
+      return;
     }
-    await overlayAppClient.conversations.updateParticipantState(conversationId, state)
-    setNotice(confirmation)
-    setMenuOpen(false)
-    await loadParticipants()
+    await overlayAppClient.conversations.updateParticipantState(
+      conversationId,
+      state,
+    );
+    setNotice(confirmation);
+    setMenuOpen(false);
+    await loadParticipants();
   }
 
-  async function archiveConversation(scope: 'self' | 'everyone') {
+  async function archiveConversation(scope: "self" | "everyone") {
     if (showcase) {
-      setNotice('Conversation archived')
-      setMenuOpen(false)
-      setPendingArchiveScope(false)
-      return
+      setNotice("Conversation archived");
+      setMenuOpen(false);
+      setPendingArchiveScope(false);
+      return;
     }
-    setScopeDialogBusy(true)
-    setScopeDialogError(null)
+    setScopeDialogBusy(true);
+    setScopeDialogError(null);
     try {
-      await overlayAppClient.conversations.updateParticipantState(conversationId, {
-        archived: true,
-        archiveScope: scope,
-      })
+      await overlayAppClient.conversations.updateParticipantState(
+        conversationId,
+        {
+          archived: true,
+          archiveScope: scope,
+        },
+      );
       dispatchChatArchived({
         chat: {
           _id: conversationId,
@@ -1429,19 +1873,28 @@ export function DirectMessageExperience({
           lastModified: Date.now(),
           conversationType,
         },
-      })
-      setPendingArchiveScope(false)
+      });
+      setPendingArchiveScope(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Conversation could not be archived'
-      if (pendingArchiveScope) setScopeDialogError(message)
-      else setNotice(message)
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Conversation could not be archived";
+      if (pendingArchiveScope) setScopeDialogError(message);
+      else setNotice(message);
     } finally {
-      setScopeDialogBusy(false)
+      setScopeDialogBusy(false);
     }
   }
 
   const renderAttachmentViewer = useCallback(
-    ({ preview, headerRight }: { preview: AttachmentPreview; headerRight: React.ReactNode }) => (
+    ({
+      preview,
+      headerRight,
+    }: {
+      preview: AttachmentPreview;
+      headerRight: React.ReactNode;
+    }) => (
       <FileViewerPanel
         name={preview.name}
         content={preview.content}
@@ -1450,7 +1903,7 @@ export function DirectMessageExperience({
       />
     ),
     [],
-  )
+  );
 
   const {
     shellRightPanel,
@@ -1472,57 +1925,88 @@ export function DirectMessageExperience({
     setAttachmentPreviewMode,
     sourcesPanel,
     renderAttachmentViewer,
-  })
+  });
 
-  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') {
-    if (!activeWorkspaceId) return
+  async function controlRemoteQueue(
+    runId: string,
+    action: "cancel" | "retry" | "resume" | "start_fresh",
+  ) {
+    if (!activeWorkspaceId) return;
     try {
       await overlayAppClient.conversations.controlRemoteQueue({
         workspaceId: activeWorkspaceId,
         conversationId,
         runId,
         action,
-      })
-      await loadMessages()
+      });
+      await loadMessages();
     } catch (value) {
-      setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
+      setAttachmentError(
+        value instanceof Error
+          ? value.message
+          : "Could not update the connected agent run.",
+      );
     }
   }
 
   async function resolveRemoteRequest(
-    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
+    request: NonNullable<
+      import("./collaboration/RoomMessageItem").RoomMessageView["remoteRequest"]
+    >,
     decision: string,
     response?: Record<string, unknown>,
   ) {
-    if (!activeWorkspaceId) return
+    if (!activeWorkspaceId) return;
     try {
-      await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
-        conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
-      await loadMessages()
+      await overlayAppClient.conversations.resolveRemoteRequest({
+        workspaceId: activeWorkspaceId,
+        conversationId,
+        runId: request.runId,
+        requestKey: request.requestKey,
+        decision,
+        response,
+      });
+      await loadMessages();
     } catch (value) {
-      setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
+      setAttachmentError(
+        value instanceof Error
+          ? value.message
+          : "Could not resolve the connected agent request.",
+      );
     }
   }
 
   async function stopAgentResponse(messageId: string) {
     try {
-      await overlayAppClient.conversations.stopResponse({ conversationId, messageId })
+      await overlayAppClient.conversations.stopResponse({
+        conversationId,
+        messageId,
+      });
     } catch {
       // The run may have already finished; the live row refresh settles either way.
     }
-    await loadMessages().catch(() => undefined)
+    await loadMessages().catch(() => undefined);
   }
 
-  function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
-    const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
+  function renderMessage(
+    message: OptimisticMessage,
+    options?: { inThread?: boolean; grouped?: boolean },
+  ) {
+    const author = participants.find(
+      (participant) => participant.principalId === message.authorPrincipalId,
+    );
     const authorAgent = message.authorPrincipalId
       ? directoryAgentsByPrincipal.get(message.authorPrincipalId)
-      : undefined
+      : undefined;
     // The directory entry is the live name; participant displayName snapshots
     // go stale when an agent is renamed.
-    const authorName = authorAgent?.name ?? author?.displayName
-      ?? message.importedAuthorName?.trim()
-      ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
+    const authorName =
+      authorAgent?.name ??
+      author?.displayName ??
+      message.importedAuthorName?.trim() ??
+      (message.authorKind === "agent" || message.authorKind === "model"
+        ? "Agent"
+        : "Someone");
     const view = toRoomMessageView({
       message,
       currentPrincipalId,
@@ -1530,136 +2014,176 @@ export function DirectMessageExperience({
       authorColor: authorAgent?.avatarColor,
       authorShape: authorAgent?.avatarShape,
       mentions: participantMentions,
-      streaming: message.status === 'generating',
-    })
-    const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
+      streaming: message.status === "generating",
+    });
+    const teaserMessage = options?.inThread
+      ? null
+      : (threadTeasers.get(message.id) ?? null);
     const teaserAuthor = teaserMessage
-      ? teaserMessage.importedAuthorName?.trim()
-        ?? (teaserMessage.authorPrincipalId ? directoryAgentsByPrincipal.get(teaserMessage.authorPrincipalId)?.name : undefined)
-        ?? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
-        ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
-      : null
+      ? (teaserMessage.importedAuthorName?.trim() ??
+        (teaserMessage.authorPrincipalId
+          ? directoryAgentsByPrincipal.get(teaserMessage.authorPrincipalId)
+              ?.name
+          : undefined) ??
+        participants.find(
+          (participant) =>
+            participant.principalId === teaserMessage.authorPrincipalId,
+        )?.displayName ??
+        (teaserMessage.authorKind === "agent" ||
+        teaserMessage.authorKind === "model"
+          ? "Agent"
+          : "Someone"))
+      : null;
     return (
       <RoomMessageItem
         key={message.clientNonce ? `nonce-${message.clientNonce}` : message.id}
         message={view}
         reactions={reactions
-          .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
+          .filter(
+            (reaction) =>
+              reaction.messageId === message.id && reaction.count > 0,
+          )
           .map((reaction) => ({
             emoji: reaction.emoji,
             count: reaction.count,
             reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
           }))}
-        replyCount={options?.inThread ? 0 : replyCounts.get(message.id) ?? 0}
-        threadTeaser={teaserMessage && teaserAuthor ? {
-          authorName: teaserAuthor,
-          text: teaserMessage.content.trim().slice(0, 120),
-          createdAt: teaserMessage.createdAt,
-        } : null}
+        replyCount={options?.inThread ? 0 : (replyCounts.get(message.id) ?? 0)}
+        threadTeaser={
+          teaserMessage && teaserAuthor
+            ? {
+                authorName: teaserAuthor,
+                text: teaserMessage.content.trim().slice(0, 120),
+                createdAt: teaserMessage.createdAt,
+              }
+            : null
+        }
         pinned={pins.some((pin) => pin.messageId === message.id)}
-        saved={savedMessages.some((row) => (
-          row.conversationId === conversationId && row.messageId === message.id
-        ))}
+        saved={savedMessages.some(
+          (row) =>
+            row.conversationId === conversationId &&
+            row.messageId === message.id,
+        )}
         editing={editingId === message.id}
         editingContent={editingContent}
         onEditingContentChange={setEditingContent}
         onSaveEdit={() => void saveEdit(message.id)}
         onCancelEdit={() => setEditingId(null)}
         onStartEdit={() => {
-          setEditingId(message.id)
-          setEditingContent(message.content)
+          setEditingId(message.id);
+          setEditingContent(message.content);
         }}
         onDelete={() => void deleteMessage(message.id)}
         onReport={() => void reportMessage(message.id)}
         onToggleReaction={(emoji) => void toggleReaction(message.id, emoji)}
         onTogglePinned={() => void togglePinned(message.id)}
         onToggleSaved={() => void toggleSaved(message.id)}
-        onOpenThread={() => openThread(options?.inThread ? threadRootId ?? message.id : message.id)}
+        onOpenThread={() =>
+          openThread(
+            options?.inThread ? (threadRootId ?? message.id) : message.id,
+          )
+        }
         onQuoteReply={() => beginQuoteReply(message)}
-        onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
+        onRetrySend={() =>
+          void sendMessage(message.content, {
+            existing: message,
+            threadRootMessageId: message.threadRootMessageId,
+          })
+        }
         onOpenAttachmentPreview={openAttachmentPreview}
         onCopyPermalink={() => void copyMessagePermalink(message.id)}
         onStopResponse={
-          message.status === 'generating' && !message.id.startsWith('optimistic_')
+          message.status === "generating" &&
+          !message.id.startsWith("optimistic_")
             ? () => void stopAgentResponse(message.id)
             : undefined
         }
-        onControlRemoteQueue={(runId, action) => void controlRemoteQueue(runId, action)}
-        onResolveRemoteRequest={(request, decision, response) => void resolveRemoteRequest(request, decision, response)}
+        onControlRemoteQueue={(runId, action) =>
+          void controlRemoteQueue(runId, action)
+        }
+        onResolveRemoteRequest={(request, decision, response) =>
+          void resolveRemoteRequest(request, decision, response)
+        }
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
-        personalChatStyle={conversationType !== 'channel'}
+        personalChatStyle={conversationType !== "channel"}
       />
-    )
+    );
   }
 
   const pinnedSummaries = pins
     .map((pin) => {
-      const message = messages.find((row) => row.id === pin.messageId)
-      if (!message) return null
-      const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
+      const message = messages.find((row) => row.id === pin.messageId);
+      if (!message) return null;
+      const author = participants.find(
+        (participant) => participant.principalId === message.authorPrincipalId,
+      );
       return {
         messageId: pin.messageId,
-        authorName: message.authorPrincipalId === currentPrincipalId
-          ? 'You'
-          : author?.displayName ?? 'Someone',
-        preview: message.content.trim() || 'Attachment',
+        authorName:
+          message.authorPrincipalId === currentPrincipalId
+            ? "You"
+            : (author?.displayName ?? "Someone"),
+        preview: message.content.trim() || "Attachment",
         createdAt: message.createdAt,
-      }
+      };
     })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  const roomPanelContent = roomPanel === 'people' ? (
-    <RoomPeoplePanel
-      participants={participants}
-      presence={presence}
-      currentPrincipalId={currentPrincipalId}
-      onAddPeople={showcase ? undefined : () => setAddPeopleOpen(true)}
-      onClose={() => setRoomPanel(null)}
-    />
-  ) : roomPanel === 'pinned' ? (
-    <RoomPinnedPanel
-      pinned={pinnedSummaries}
-      onJump={jumpToMessage}
-      onUnpin={(messageId) => void togglePinned(messageId)}
-      onClose={() => setRoomPanel(null)}
-    />
-  ) : roomPanel === 'thread' && threadRoot ? (
-    <RoomThreadPanel
-      roomLabel={conversationType === 'channel' ? `#${title}` : title}
-      replyCount={threadReplies.length}
-      following={threadFollowing}
-      onToggleFollow={toggleThreadFollow}
-      input={threadInput}
-      onInputChange={setThreadInput}
-      onSubmit={() => {
-        const text = threadInput
-        setThreadInput('')
-        void sendMessage(text, { threadRootMessageId: threadRoot.id })
-      }}
-      onClose={() => {
-        setRoomPanel(null)
-        setThreadRootId(null)
-      }}
-      messages={[
-        ...[threadRoot, ...threadReplies].map((message) => renderMessage(message, { inThread: true })),
-      ]}
-    />
-  ) : null
+  const roomPanelContent =
+    roomPanel === "people" ? (
+      <RoomPeoplePanel
+        participants={participants}
+        presence={presence}
+        currentPrincipalId={currentPrincipalId}
+        onAddPeople={showcase ? undefined : () => setAddPeopleOpen(true)}
+        onClose={() => setRoomPanel(null)}
+      />
+    ) : roomPanel === "pinned" ? (
+      <RoomPinnedPanel
+        pinned={pinnedSummaries}
+        onJump={jumpToMessage}
+        onUnpin={(messageId) => void togglePinned(messageId)}
+        onClose={() => setRoomPanel(null)}
+      />
+    ) : roomPanel === "thread" && threadRoot ? (
+      <RoomThreadPanel
+        roomLabel={conversationType === "channel" ? `#${title}` : title}
+        replyCount={threadReplies.length}
+        following={threadFollowing}
+        onToggleFollow={toggleThreadFollow}
+        input={threadInput}
+        onInputChange={setThreadInput}
+        onSubmit={() => {
+          const text = threadInput;
+          setThreadInput("");
+          void sendMessage(text, { threadRootMessageId: threadRoot.id });
+        }}
+        onClose={() => {
+          setRoomPanel(null);
+          setThreadRootId(null);
+        }}
+        messages={[
+          ...[threadRoot, ...threadReplies].map((message) =>
+            renderMessage(message, { inThread: true }),
+          ),
+        ]}
+      />
+    ) : null;
 
   // The attachment preview wins the slot while it is open; otherwise the room's
   // own panels share the shell surface the sources sidebar already uses.
-  const rightPanel = shellRightPanel ?? externalRightPanel ?? roomPanelContent
+  const rightPanel = shellRightPanel ?? externalRightPanel ?? roomPanelContent;
   const rightPanelClose = shellRightPanel
     ? shellRightPanelClose
     : externalRightPanel
       ? onExternalRightPanelClose
       : roomPanelContent
         ? () => {
-          setRoomPanel(null)
-          setThreadRootId(null)
-        }
-        : undefined
+            setRoomPanel(null);
+            setThreadRootId(null);
+          }
+        : undefined;
 
   return (
     <>
@@ -1667,7 +2191,10 @@ export function DirectMessageExperience({
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={openLinkPreview}
       />
-      {convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
+      {convexRoomSubscriptionEnabled &&
+      authUser?.id &&
+      convexAccessToken &&
+      activeWorkspaceId ? (
         <>
           <ConvexRoomMessageSubscription
             accessToken={convexAccessToken}
@@ -1690,85 +2217,129 @@ export function DirectMessageExperience({
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
         rightPanelOpen={Boolean(rightPanel)}
-        rightPanelWidth={shellRightPanel ? shellRightPanelWidth : externalRightPanel ? 'lg' : 380}
-        rightPanelMode={shellRightPanel ? shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
+        rightPanelWidth={
+          shellRightPanel
+            ? shellRightPanelWidth
+            : externalRightPanel
+              ? "lg"
+              : 380
+        }
+        rightPanelMode={
+          shellRightPanel
+            ? shellRightPanelMode
+            : (externalRightPanelMode ?? "docked")
+        }
         onRightPanelClose={rightPanelClose}
         onRightPanelResize={shellRightPanelResize}
-        rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
+        rightPanelOverlayLabel={
+          externalRightPanel ? externalRightPanelLabel : undefined
+        }
       >
         <div
           className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col"
           onDragEnter={(event) => {
-            event.preventDefault()
-            dragCounterRef.current++
-            if (event.dataTransfer.types.includes('Files')) setIsDragging(true)
+            event.preventDefault();
+            dragCounterRef.current++;
+            if (event.dataTransfer.types.includes("Files")) setIsDragging(true);
           }}
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => {
-            event.preventDefault()
-            dragCounterRef.current--
+            event.preventDefault();
+            dragCounterRef.current--;
             if (dragCounterRef.current <= 0) {
-              dragCounterRef.current = 0
-              setIsDragging(false)
+              dragCounterRef.current = 0;
+              setIsDragging(false);
             }
           }}
           onDrop={(event) => {
-            event.preventDefault()
-            dragCounterRef.current = 0
-            setIsDragging(false)
-            const files = Array.from(event.dataTransfer.files ?? [])
-            const images = files.filter((file) => file.type.startsWith('image/'))
-            const documents = files.filter((file) => !file.type.startsWith('image/'))
-            if (images.length) addImages(images)
-            documents.forEach((file) => queueDocumentUpload(file))
+            event.preventDefault();
+            dragCounterRef.current = 0;
+            setIsDragging(false);
+            const files = Array.from(event.dataTransfer.files ?? []);
+            const images = files.filter((file) =>
+              file.type.startsWith("image/"),
+            );
+            const documents = files.filter(
+              (file) => !file.type.startsWith("image/"),
+            );
+            if (images.length) addImages(images);
+            documents.forEach((file) => queueDocumentUpload(file));
           }}
         >
           {isDragging && <ChatDropOverlay />}
           <AppScreenHeader
             title={title}
-            subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
-            leading={(
-              soloAgentParticipant
-                ? <AgentCreature agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
-                : (
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                    <HeaderIcon size={15} />
-                  </span>
-                )
-            )}
-            actions={(
+            subtitle={
+              participants.length > 2
+                ? `${participants.length} people`
+                : online > 0
+                  ? "Online"
+                  : undefined
+            }
+            leading={
+              soloAgentParticipant ? (
+                <AgentCreature
+                  agent={
+                    headerAgent ?? { name: soloAgentParticipant.displayName }
+                  }
+                  size={32}
+                />
+              ) : (
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+                  <HeaderIcon size={15} />
+                </span>
+              )
+            }
+            actions={
               <div className="relative flex items-center gap-1">
-                {agentComputer && (agentComputer.status === 'ready' || agentComputer.status === 'stopped') ? (
+                {agentComputer &&
+                (agentComputer.status === "ready" ||
+                  agentComputer.status === "stopped") ? (
                   <button
                     type="button"
                     onClick={openAgentDesktop}
                     disabled={desktopOpenBusy}
-                    title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
+                    title={
+                      agentComputer.status === "stopped"
+                        ? "View desktop — resumes the machine"
+                        : "View desktop"
+                    }
                     className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-60"
                   >
                     <span className="relative">
                       <Monitor size={14} />
                       <span
                         className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
-                          agentComputer.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500'
+                          agentComputer.status === "ready"
+                            ? "bg-emerald-500"
+                            : "bg-amber-500"
                         }`}
                       />
                     </span>
-                    <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
+                    <span className="hidden sm:inline">
+                      {desktopOpenBusy ? "Opening…" : "Desktop"}
+                    </span>
                   </button>
                 ) : null}
                 {headerActions}
                 {pins.length > 0 ? (
                   <button
                     type="button"
-                    onClick={() => setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))}
-                    aria-pressed={roomPanel === 'pinned'}
+                    onClick={() =>
+                      setRoomPanel((current) =>
+                        current === "pinned" ? null : "pinned",
+                      )
+                    }
+                    aria-pressed={roomPanel === "pinned"}
                     title="Pinned messages"
                     className={`inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-                      roomPanel === 'pinned' ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+                      roomPanel === "pinned"
+                        ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                        : "text-[var(--muted)]"
                     }`}
                   >
-                    <Pin size={13} />{pins.length}
+                    <Pin size={13} />
+                    {pins.length}
                   </button>
                 ) : null}
                 {!showcase ? (
@@ -1782,7 +2353,7 @@ export function DirectMessageExperience({
                     <span className="hidden sm:inline">Attach</span>
                   </button>
                 ) : null}
-                {!showcase && currentParticipant?.role === 'moderator' ? (
+                {!showcase && currentParticipant?.role === "moderator" ? (
                   <button
                     type="button"
                     onClick={() => setShareOpen(true)}
@@ -1794,11 +2365,17 @@ export function DirectMessageExperience({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
-                  aria-pressed={roomPanel === 'people'}
+                  onClick={() =>
+                    setRoomPanel((current) =>
+                      current === "people" ? null : "people",
+                    )
+                  }
+                  aria-pressed={roomPanel === "people"}
                   title="People in this room"
                   className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-                    roomPanel === 'people' ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+                    roomPanel === "people"
+                      ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                      : "text-[var(--muted)]"
                   }`}
                 >
                   <UsersRound size={14} />
@@ -1820,58 +2397,100 @@ export function DirectMessageExperience({
                   align="end"
                   className="w-48 p-1"
                 >
-                    <MenuButton
-                      icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
-                      label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}
-                      onClick={() => {
-                        setMenuOpen(false)
-                        void updateState({
-                          notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
-                        }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')
-                      }}
-                    />
-                    <MenuButton
-                      icon={Bell}
-                      label="Mark unread"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        void updateState({ markUnread: true }, 'Marked unread')
-                      }}
-                    />
-                    <MenuButton
-                      icon={Archive}
-                      label={currentParticipant?.archivedAt ? 'Restore' : 'Archive'}
-                      onClick={() => {
-                        setMenuOpen(false)
-                        if (currentParticipant?.archivedAt) {
-                          void updateState({ archived: false }, 'Conversation restored').then(() => {
-                            const view = conversationType === 'channel' ? 'channels' : 'dms'
+                  <MenuButton
+                    icon={
+                      currentParticipant?.notificationLevel === "muted"
+                        ? Bell
+                        : BellOff
+                    }
+                    label={
+                      currentParticipant?.notificationLevel === "muted"
+                        ? "Unmute"
+                        : "Mute"
+                    }
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void updateState(
+                        {
+                          notificationLevel:
+                            currentParticipant?.notificationLevel === "muted"
+                              ? "all"
+                              : "muted",
+                        },
+                        currentParticipant?.notificationLevel === "muted"
+                          ? "Notifications on"
+                          : "Conversation muted",
+                      );
+                    }}
+                  />
+                  <MenuButton
+                    icon={Bell}
+                    label="Mark unread"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void updateState({ markUnread: true }, "Marked unread");
+                    }}
+                  />
+                  <MenuButton
+                    icon={Archive}
+                    label={
+                      currentParticipant?.archivedAt ? "Restore" : "Archive"
+                    }
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (currentParticipant?.archivedAt) {
+                        void updateState(
+                          { archived: false },
+                          "Conversation restored",
+                        )
+                          .then(() => {
+                            const view =
+                              conversationType === "channel"
+                                ? "channels"
+                                : "dms";
                             const chatBase = activeWorkspaceId
-                              ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-                              : '/app/chat'
-                            router.push(`${chatBase}?${new URLSearchParams({ view, id: conversationId }).toString()}`)
-                          }).catch(() => undefined)
-                          return
-                        }
-                        // A one-to-one DM has nobody else to keep it for —
-                        // archive directly instead of asking about scope.
-                        if (otherParticipants.length <= 1) {
-                          void archiveConversation('self')
-                          return
-                        }
-                        setScopeDialogError(null)
-                        setPendingArchiveScope(true)
-                      }}
-                    />
+                              ? buildWorkspaceHref(
+                                  activeWorkspaceId,
+                                  "/app/chat",
+                                )
+                              : "/app/chat";
+                            router.push(
+                              `${chatBase}?${new URLSearchParams({ view, id: conversationId }).toString()}`,
+                            );
+                          })
+                          .catch(() => undefined);
+                        return;
+                      }
+                      // A one-to-one DM has nobody else to keep it for —
+                      // archive directly instead of asking about scope.
+                      if (otherParticipants.length <= 1) {
+                        void archiveConversation("self");
+                        return;
+                      }
+                      setScopeDialogError(null);
+                      setPendingArchiveScope(true);
+                    }}
+                  />
                 </FloatingMenu>
               </div>
-            )}
+            }
           />
-          <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
+          <AppScreenBody
+            padding="none"
+            maxWidth="none"
+            scroll="hidden"
+            className="flex min-h-0 flex-1 flex-col"
+          >
             {notice ? (
               <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-xs text-[var(--muted)]">
                 <span>{notice}</span>
-                <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={13} /></button>
+                <button
+                  type="button"
+                  onClick={() => setNotice(null)}
+                  aria-label="Dismiss"
+                >
+                  <X size={13} />
+                </button>
               </div>
             ) : null}
             <div className="overlay-chat-surface relative min-h-0 flex-1">
@@ -1882,23 +2501,28 @@ export function DirectMessageExperience({
                   data-testid="jump-to-latest"
                   className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-lg transition-colors hover:bg-[var(--surface-subtle)]"
                 >
-                  {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
+                  {newMessageCount} new{" "}
+                  {newMessageCount === 1 ? "message" : "messages"} ↓
                 </button>
               ) : null}
               <div
                 ref={listRef}
                 onScroll={() => {
-                  const node = listRef.current
+                  const node = listRef.current;
                   if (node) {
-                    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-                    stickToBottomRef.current = distanceFromBottom <= 96
-                    if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
+                    const distanceFromBottom =
+                      node.scrollHeight - node.scrollTop - node.clientHeight;
+                    stickToBottomRef.current = distanceFromBottom <= 96;
+                    if (node.scrollTop <= 120 && hasMoreMessages)
+                      void loadOlderMessages();
                   }
-                  void markVisibleRead()
+                  void markVisibleRead();
                 }}
                 className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
               >
-                <div className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
+                <div
+                  className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? "justify-center" : "justify-end"}`}
+                >
                   {hasMoreMessages ? (
                     <button
                       type="button"
@@ -1906,45 +2530,67 @@ export function DirectMessageExperience({
                       disabled={loadingOlderMessages}
                       className="mx-auto my-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
                     >
-                      {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
+                      {loadingOlderMessages
+                        ? "Loading older messages…"
+                        : "Load older messages"}
                     </button>
                   ) : null}
                   {loading ? (
-                    <div className="space-y-3 py-4" aria-label="Loading messages">
+                    <div
+                      className="space-y-3 py-4"
+                      aria-label="Loading messages"
+                    >
                       {[0, 1, 2].map((row) => (
-                        <div key={row} className="h-12 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
+                        <div
+                          key={row}
+                          className="h-12 animate-pulse rounded-lg bg-[var(--surface-subtle)]"
+                        />
                       ))}
                     </div>
                   ) : mainMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center text-center">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                        {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
+                        {conversationType === "channel" ? (
+                          <Hash size={20} />
+                        ) : (
+                          <UsersRound size={20} />
+                        )}
                       </span>
-                      <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">{title}</h2>
+                      <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">
+                        {title}
+                      </h2>
                       <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">
-                        {conversationType === 'channel'
-                          ? channel?.topic ?? 'This is the beginning of this channel.'
-                          : 'This is the beginning of your conversation. Messages are visible only to its participants.'}
+                        {conversationType === "channel"
+                          ? (channel?.topic ??
+                            "This is the beginning of this channel.")
+                          : "This is the beginning of your conversation. Messages are visible only to its participants."}
                       </p>
                     </div>
                   ) : (
                     mainMessages.map((message, index) => {
-                      const previous = mainMessages[index - 1]
-                      const isUnreadBoundary = message.id === unreadBoundaryMessageId
+                      const previous = mainMessages[index - 1];
+                      const isUnreadBoundary =
+                        message.id === unreadBoundaryMessageId;
                       const grouped = Boolean(
-                        previous
-                        && Boolean(message.authorPrincipalId)
-                        && Boolean(previous.authorPrincipalId)
-                        && previous.authorPrincipalId === message.authorPrincipalId
-                        && previous.authorKind === message.authorKind
-                        && message.createdAt - previous.createdAt <= 5 * 60_000
-                        && !isUnreadBoundary
-                        && previous.id !== unreadBoundaryMessageId,
-                      )
-                      const showDayDivider = !previous
-                        || roomDayKey(previous.createdAt) !== roomDayKey(message.createdAt)
+                        previous &&
+                        Boolean(message.authorPrincipalId) &&
+                        Boolean(previous.authorPrincipalId) &&
+                        previous.authorPrincipalId ===
+                          message.authorPrincipalId &&
+                        previous.authorKind === message.authorKind &&
+                        message.createdAt - previous.createdAt <= 5 * 60_000 &&
+                        !isUnreadBoundary &&
+                        previous.id !== unreadBoundaryMessageId,
+                      );
+                      const showDayDivider =
+                        !previous ||
+                        roomDayKey(previous.createdAt) !==
+                          roomDayKey(message.createdAt);
                       return (
-                        <div key={roomMessageRowKey(message)} className="contents">
+                        <div
+                          key={roomMessageRowKey(message)}
+                          className="contents"
+                        >
                           {showDayDivider ? (
                             <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
                               <span className="h-px flex-1 bg-[var(--border)]" />
@@ -1953,7 +2599,10 @@ export function DirectMessageExperience({
                             </div>
                           ) : null}
                           {isUnreadBoundary ? (
-                            <div className="flex items-center gap-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-500" data-testid="unread-boundary">
+                            <div
+                              className="flex items-center gap-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-500"
+                              data-testid="unread-boundary"
+                            >
                               <span className="h-px flex-1 bg-rose-200 dark:bg-rose-900" />
                               <span>New messages</span>
                               <span className="h-px flex-1 bg-rose-200 dark:bg-rose-900" />
@@ -1961,12 +2610,18 @@ export function DirectMessageExperience({
                           ) : null}
                           {renderMessage(message, { grouped })}
                         </div>
-                      )
+                      );
                     })
                   )}
                   {agentResponding && generatingMessages.length === 0 ? (
-                    <div className="flex items-center gap-2 px-1" aria-live="polite" aria-label={`${agentResponding} response pending`}>
-                      <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
+                    <div
+                      className="flex items-center gap-2 px-1"
+                      aria-live="polite"
+                      aria-label={`${agentResponding} response pending`}
+                    >
+                      <span className="text-xs font-medium text-[var(--foreground)]">
+                        {agentResponding}
+                      </span>
                       <span className="flex items-center gap-1">
                         {[0, 1, 2].map((dot) => (
                           <span
@@ -1990,7 +2645,7 @@ export function DirectMessageExperience({
                 mentionCategories,
                 agentCommands,
               }}
-              emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+              emptyState={{ showCenteredEmptyChat: false, greetingLine: "" }}
               attachments={{
                 attachedImages,
                 setAttachedImages,
@@ -2028,7 +2683,9 @@ export function DirectMessageExperience({
                 attachMenuRef,
                 selectedToolIds: [],
                 memoryEnabled,
-                capabilities: participants.some((participant) => participant.principalType === 'agent')
+                capabilities: participants.some(
+                  (participant) => participant.principalType === "agent",
+                )
                   ? capabilities
                   : { ...capabilities, memory: false, vectorSearch: false },
                 onToggleTool: () => {},
@@ -2054,7 +2711,7 @@ export function DirectMessageExperience({
       </AppScreenShell>
 
       <AttachmentPreviewDialog
-        open={Boolean(attachmentPreview && attachmentPreviewMode === 'dialog')}
+        open={Boolean(attachmentPreview && attachmentPreviewMode === "dialog")}
         preview={attachmentPreview}
         onClose={closeAttachmentPreview}
         onModeChange={setAttachmentPreviewMode}
@@ -2067,7 +2724,7 @@ export function DirectMessageExperience({
         onClose={() => setShareOpen(false)}
         resource={{
           id: conversationId,
-          type: 'chat',
+          type: "chat",
           title,
         }}
       />
@@ -2087,22 +2744,28 @@ export function DirectMessageExperience({
         <NewDirectMessageDialog
           open
           showcase={showcase}
-          workspaceId={currentParticipant?.workspaceId ?? ''}
+          workspaceId={currentParticipant?.workspaceId ?? ""}
           addToConversationId={conversationId}
           addToConversationType={conversationType}
-          excludedPrincipalIds={participants.map((participant) => participant.principalId)}
+          excludedPrincipalIds={participants.map(
+            (participant) => participant.principalId,
+          )}
           onOpenChange={setAddPeopleOpen}
           onCreated={({ id, title: createdTitle, agentId }) => {
             if (agentId) {
-              router.push(`/app/agents?${new URLSearchParams({ agent: agentId, view: 'dms', id }).toString()}`)
-              return
+              router.push(
+                `/app/agents?${new URLSearchParams({ agent: agentId, view: "dms", id }).toString()}`,
+              );
+              return;
             }
-            const view = conversationType === 'channel' ? 'channels' : 'dms'
-            router.push(`/app/chat?${new URLSearchParams({ view, id, draft: '1', title: createdTitle }).toString()}`)
+            const view = conversationType === "channel" ? "channels" : "dms";
+            router.push(
+              `/app/chat?${new URLSearchParams({ view, id, draft: "1", title: createdTitle }).toString()}`,
+            );
           }}
           onParticipantsAdded={() => {
-            setAddPeopleOpen(false)
-            void loadParticipants()
+            setAddPeopleOpen(false);
+            void loadParticipants();
           }}
         />
       ) : null}
@@ -2110,11 +2773,11 @@ export function DirectMessageExperience({
         open={pendingArchiveScope}
         action="archive"
         conversationTitle={title}
-        canApplyToEveryone={activeWorkspace?.role === 'owner'}
+        canApplyToEveryone={activeWorkspace?.role === "owner"}
         busy={scopeDialogBusy}
         error={scopeDialogError}
         onOpenChange={(open) => {
-          if (!open && !scopeDialogBusy) setPendingArchiveScope(false)
+          if (!open && !scopeDialogBusy) setPendingArchiveScope(false);
         }}
         onSelect={(scope) => void archiveConversation(scope)}
       />
@@ -2122,21 +2785,22 @@ export function DirectMessageExperience({
         open={pendingDeleteScope}
         action="delete"
         conversationTitle={title}
-        canApplyToEveryone={activeWorkspace?.role === 'owner'}
+        canApplyToEveryone={activeWorkspace?.role === "owner"}
         busy={scopeDialogBusy}
         error={scopeDialogError}
         onOpenChange={(open) => {
-          if (!open && !scopeDialogBusy) setPendingDeleteScope(false)
+          if (!open && !scopeDialogBusy) setPendingDeleteScope(false);
         }}
         onSelect={async (scope) => {
-          setScopeDialogBusy(true)
-          setScopeDialogError(null)
+          setScopeDialogBusy(true);
+          setScopeDialogError(null);
           try {
-            const response = await overlayAppClient.conversations.deleteResponse({
-              conversationId,
-              scope,
-            })
-            if (!response.ok) throw new Error('Conversation was not deleted')
+            const response =
+              await overlayAppClient.conversations.deleteResponse({
+                conversationId,
+                scope,
+              });
+            if (!response.ok) throw new Error("Conversation was not deleted");
             dispatchChatArchived({
               chat: {
                 _id: conversationId,
@@ -2145,22 +2809,28 @@ export function DirectMessageExperience({
                 conversationType,
                 archivedAt: Date.now(),
               },
-            })
-            setPendingDeleteScope(false)
-            const view = conversationType === 'channel' ? 'channels' : 'dms'
+            });
+            setPendingDeleteScope(false);
+            const view = conversationType === "channel" ? "channels" : "dms";
             const chatBase = activeWorkspaceId
-              ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-              : '/app/chat'
-            router.push(`${chatBase}?${new URLSearchParams({ view }).toString()}`)
+              ? buildWorkspaceHref(activeWorkspaceId, "/app/chat")
+              : "/app/chat";
+            router.push(
+              `${chatBase}?${new URLSearchParams({ view }).toString()}`,
+            );
           } catch (error) {
-            setScopeDialogError(error instanceof Error ? error.message : 'Conversation could not be deleted')
+            setScopeDialogError(
+              error instanceof Error
+                ? error.message
+                : "Conversation could not be deleted",
+            );
           } finally {
-            setScopeDialogBusy(false)
+            setScopeDialogBusy(false);
           }
         }}
       />
     </>
-  )
+  );
 }
 
 function MenuButton({
@@ -2168,18 +2838,14 @@ function MenuButton({
   label,
   onClick,
 }: {
-  icon: typeof Bell
-  label: string
-  onClick(): void
+  icon: typeof Bell;
+  label: string;
+  onClick(): void;
 }) {
   return (
-    <MenuItem
-      type="button"
-      onClick={onClick}
-      className="h-8 rounded-md px-2"
-    >
+    <MenuItem type="button" onClick={onClick} className="h-8 rounded-md px-2">
       <Icon size={13} />
       {label}
     </MenuItem>
-  )
+  );
 }

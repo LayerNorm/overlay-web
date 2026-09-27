@@ -64,13 +64,15 @@ export function AttachResourceDialog({
     return () => { current = false }
   }, [activeWorkspaceId, isOpen])
 
-  useEffect(() => {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen)
     if (!isOpen) {
       setImpact(null)
       setSelected('')
       setNotice(null)
     }
-  }, [isOpen])
+  }
 
   if (!mounted) return null
 

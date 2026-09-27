@@ -43,6 +43,8 @@ export async function getOrCreateSubscription(ctx: SubscriptionCtx, userId: stri
     overlayStorageBytesUsed: 0,
     ...defaultBillingWindow(now),
   })
+    // Read-your-write: must run after the insert above, not concurrently.
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
   const created = await ctx.db
     .query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId))

@@ -66,6 +66,7 @@ function ConvexAgentRunSubscription({
   ) as ConvexAgentRunDoc | undefined
 
   useEffect(() => {
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent, react-doctor/no-prop-callback-in-effect
     onUpdate({ conversationId, run })
   }, [conversationId, onUpdate, run])
 
@@ -108,8 +109,11 @@ export function useAgentRunLifecycle({
   const activeRunRef = useRef<AgentRunResource | null>(null)
   const reconnectedRunIdsRef = useRef(new Set<string>())
   const [terminalSyncUntil, setTerminalSyncUntil] = useState(0)
-  const [terminalSyncConversationId, setTerminalSyncConversationId] = useState<string | null>(null)
-  const [convexQueryState, setConvexQueryState] = useState<ConvexAgentRunQueryState>({
+  const [terminalSyncConversationId, setTerminalSyncConversationId] = useState<
+    string | null
+  >(null)
+  const [convexQueryState, setConvexQueryState] =
+    useState<ConvexAgentRunQueryState>({
     conversationId: null,
     run: undefined,
   })
@@ -118,11 +122,11 @@ export function useAgentRunLifecycle({
   // --- Convex subscription path ---
   const useConvexSubscription = Boolean(enabled && conversationId && enableConvexLiveSync && convexAccessToken && userId)
   const onConvexRunUpdate = useCallback((next: ConvexAgentRunQueryState) => {
-    setConvexQueryState((current) => (
+    setConvexQueryState((current) =>
       current.conversationId === next.conversationId && current.run === next.run
         ? current
-        : next
-    ))
+        : next,
+    )
   }, [])
   const convexRunDoc = convexQueryState.conversationId === conversationId
     ? convexQueryState.run
@@ -162,7 +166,8 @@ export function useAgentRunLifecycle({
           runId: prevRun.id,
           disconnected,
           disconnectDurationMs: disconnectDuration,
-          completedAfterReconnect: disconnected && (nextRun?.status === 'completed'),
+          completedAfterReconnect:
+            disconnected && nextRun?.status === 'completed',
         })
       }
     }
@@ -176,11 +181,16 @@ export function useAgentRunLifecycle({
       !reconnectedRunIdsRef.current.has(nextRun.id)
     ) {
       reconnectedRunIdsRef.current.add(nextRun.id)
-      void overlayAppClient.conversations.recordRunMetricEvent({
+      void overlayAppClient.conversations
+        .recordRunMetricEvent(
+          {
         conversationId,
         agentRunId: nextRun.id,
         event: 'browser_reconnected',
-      }, { credentials: 'same-origin', keepalive: true }).catch(() => undefined)
+          },
+          { credentials: 'same-origin', keepalive: true },
+        )
+        .catch(() => undefined)
     }
   }, [convexRunDoc, conversationId, enabled, enableConvexLiveSync])
 
@@ -218,7 +228,8 @@ export function useAgentRunLifecycle({
             runId: prevRun.id,
             disconnected,
             disconnectDurationMs: disconnectDuration,
-            completedAfterReconnect: disconnected && (next.run?.status === 'completed'),
+            completedAfterReconnect:
+              disconnected && next.run?.status === 'completed',
           })
         }
       }
@@ -232,11 +243,16 @@ export function useAgentRunLifecycle({
         !reconnectedRunIdsRef.current.has(next.run.id)
       ) {
         reconnectedRunIdsRef.current.add(next.run.id)
-        void overlayAppClient.conversations.recordRunMetricEvent({
+        void overlayAppClient.conversations
+          .recordRunMetricEvent(
+            {
           conversationId,
           agentRunId: next.run.id,
           event: 'browser_reconnected',
-        }, { credentials: 'same-origin', keepalive: true }).catch(() => undefined)
+            },
+            { credentials: 'same-origin', keepalive: true },
+          )
+          .catch(() => undefined)
       }
       return next.run
     } catch {
@@ -261,11 +277,16 @@ export function useAgentRunLifecycle({
     const recordDisconnect = () => {
       const activeRun = activeRunRef.current
       if (!activeRun) return
-      void overlayAppClient.conversations.recordRunMetricEvent({
+      void overlayAppClient.conversations
+        .recordRunMetricEvent(
+          {
         conversationId: activeRun.conversationId,
         agentRunId: activeRun.id,
         event: 'browser_disconnected',
-      }, { credentials: 'same-origin', keepalive: true }).catch(() => undefined)
+          },
+          { credentials: 'same-origin', keepalive: true },
+        )
+        .catch(() => undefined)
     }
     window.addEventListener('pagehide', recordDisconnect)
     return () => window.removeEventListener('pagehide', recordDisconnect)

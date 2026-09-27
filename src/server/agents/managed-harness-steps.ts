@@ -348,12 +348,14 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
     harnessId: input.harnessId,
     workspaceId: input.workspaceId,
   })
-  const sandbox = await wrapHarnessSandbox(
+  const [sandbox, authentication] = await Promise.all([
+    wrapHarnessSandbox(
     instance,
     instance.provider,
     harnessSandboxPorts(input.harnessId),
-  )
-  const authentication = await resolveManagedHarnessAuthentication(input, instance.provider)
+    ),
+    resolveManagedHarnessAuthentication(input, instance.provider),
+  ])
   const agent = await createManagedHarnessAgent({
     harnessId: input.harnessId,
     ...(input.harnessModel ? { model: input.harnessModel } : {}),

@@ -54,9 +54,9 @@ export function AutomationEditorPanel({
   onTested: (conversationId: string) => void
   isFreeTier: boolean
 }) {
-  const [draft, setDraft] = useState<AutomationEditorDraft>(() => (
-    automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID)
-  ))
+  const [draft, setDraft] = useState<AutomationEditorDraft>(() =>
+    automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID),
+  )
   const [saveState, setSaveState] = useState<AutomationSaveState>('idle')
   const [testState, setTestState] = useState<AutomationTestState>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
@@ -65,9 +65,11 @@ export function AutomationEditorPanel({
   const [liveWorkflowRunId, setLiveWorkflowRunId] = useState<string | null>(null)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
   const modelOptions = useMemo(
-    () => getModelsByIntelligence(isFreeTier).filter((model) => (
-      model.id !== 'nvidia/nemotron-nano-9b-v2' && !isByokModelId(model.id)
-    )),
+    () =>
+      getModelsByIntelligence(isFreeTier).filter(
+        (model) =>
+          model.id !== 'nvidia/nemotron-nano-9b-v2' && !isByokModelId(model.id),
+      ),
     [isFreeTier],
   )
 
@@ -79,13 +81,15 @@ export function AutomationEditorPanel({
     setRuns(Array.isArray(nextRuns) ? nextRuns : [])
   }, [automation._id])
 
-  useEffect(() => {
+  const [prevAutomation, setPrevAutomation] = useState(automation)
+  if (prevAutomation !== automation) {
+    setPrevAutomation(automation)
     setDraft(automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID))
     setSaveState('idle')
     setTestState('idle')
     setTestMessage(null)
     setLiveWorkflowRunId(null)
-  }, [automation])
+  }
 
   useEffect(() => {
     void loadRuns().catch(() => setRuns([]))
@@ -109,9 +113,11 @@ export function AutomationEditorPanel({
         { automationId: automation._id },
         { credentials: 'same-origin', cache: 'no-store' },
       )
-      if (!refreshedRes.ok) throw new Error('Failed to reload saved automation')
-      const refreshed = await refreshedRes.json() as AutomationDetail
-      const updated = refreshed?._id === automation._id
+      if (!refreshedRes.ok)
+        throw new Error('Failed to reload saved automation')
+      const refreshed = (await refreshedRes.json()) as AutomationDetail
+      const updated =
+        refreshed?._id === automation._id
         ? refreshed
         : applyAutomationUpdate(automation, request)
       setDraft(automationEditorDraftFromDetail(updated, DEFAULT_MODEL_ID))
@@ -130,8 +136,10 @@ export function AutomationEditorPanel({
     try {
       // Durable path: trigger via the per-automation run endpoint, capture
       // the workflowRunId for live visualization, then open the chat.
-      const res = await overlayAppClient.automations.runDurableResponse(automation._id)
-      const data = await res.json().catch(() => ({})) as {
+      const res = await overlayAppClient.automations.runDurableResponse(
+        automation._id,
+      )
+      const data = (await res.json().catch(() => ({}))) as {
         workflowRunId?: string
         runId?: string
         conversationId?: string
@@ -243,8 +251,12 @@ export function AutomationEditorPanel({
       <section className="mx-auto w-full max-w-4xl px-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">Run history</h2>
-            <p className="mt-1 text-xs text-[var(--muted)]">Scheduled and manual execution records.</p>
+            <h2 className='text-sm font-semibold text-[var(--foreground)]'>
+              Run history
+            </h2>
+            <p className='mt-1 text-xs text-[var(--muted)]'>
+              Scheduled and manual execution records.
+            </p>
           </div>
           <button
             type="button"
@@ -259,16 +271,26 @@ export function AutomationEditorPanel({
         <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {runs.length === 0 ? (
             <p className="py-5 text-sm text-[var(--muted)]">No runs yet.</p>
-          ) : runs.slice(0, 50).map((run) => {
-            const runError = formatAutomationRunError(run.error || run.errorMessage)
+          ) : (
+            runs.slice(0, 50).map((run) => {
+              const runError = formatAutomationRunError(
+                run.error || run.errorMessage,
+              )
             return (
-              <div key={run._id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div
+                  key={run._id}
+                  className='flex flex-wrap items-center justify-between gap-3 py-3'
+                >
                 <div className="min-w-0">
                   <p className="text-sm font-medium capitalize text-[var(--foreground)]">
                     {run.status.replace('_', ' ')}
                   </p>
                   <p className="mt-1 text-xs text-[var(--muted)]">
-                    {new Date(run.scheduledFor).toLocaleString()}
+                      {
+                        // Locale pinned to 'en-US' — SSR and client output are identical.
+                        // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                        new Date(run.scheduledFor).toLocaleString('en-US')
+                      }
                     {run.triggerSource ? ` · ${run.triggerSource}` : ''}
                   </p>
                   {runError ? (
@@ -309,7 +331,8 @@ export function AutomationEditorPanel({
                 </div>
               </div>
             )
-          })}
+            })
+          )}
         </div>
       </section>
     </div>

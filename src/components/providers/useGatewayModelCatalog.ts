@@ -123,6 +123,8 @@ export function useGatewayModelCatalog({ enabled = true }: { enabled?: boolean }
     }
   }, [applyCatalog, enabled])
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     let active = true
     if (!enabled) {

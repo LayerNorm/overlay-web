@@ -49,7 +49,7 @@ export function SlashMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showSlashMenu, onClose])
 
-  if (!showSlashMenu) return null
+  if (!showSlashMenu || typeof window === 'undefined') return null
 
   const menu = (
     <div
@@ -169,6 +169,8 @@ export function SlashMenu({
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return null
 
   return createPortal(menu, document.body)
 }

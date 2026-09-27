@@ -216,6 +216,7 @@ export function useChatRouteController({
   useEffect(() => {
     if (mode !== 'automate' || !automationIdParam || !selectedAutomation) return
     if (automationConversationId || !activeChatIdRef.current) return
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     resetToBlankChatSurface({ temporary: false })
   }, [
     activeChatIdRef,

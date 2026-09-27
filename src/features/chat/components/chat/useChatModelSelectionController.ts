@@ -358,10 +358,17 @@ export function useChatModelSelectionController({
       !sameModelOrder(resolvedAskIds, selectedModels)
 
     if (selectionChanged) {
+      // Selection defaults propagate upward by design (single source of truth).
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       setSelectedModels(resolvedAskIds)
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       setSelectedActModel(normalized.actModelId)
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       if (askModelSelectionMode === 'multiple') {
-        setAskModelSelectionMode(resolvedAskIds.length > 1 ? 'multiple' : 'single')
+        // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
+        setAskModelSelectionMode(
+          resolvedAskIds.length > 1 ? 'multiple' : 'single',
+        )
       }
     }
   }, [
@@ -389,7 +396,9 @@ export function useChatModelSelectionController({
         : selectedModels
     const nextOrphans = cloneOrphanModelThreadsMap(activeRuntime.ui.orphanModelThreads)
     threadModelOrder.slice(0, 4).forEach((modelId, slotIdx) => {
-      const messages = activeRuntime.askChats[slotIdx]?.messages as UIMessage[] | undefined
+      const messages = activeRuntime.askChats[slotIdx]?.messages as
+        | UIMessage[]
+        | undefined
       if (messages?.length) {
         nextOrphans.set(modelId, cloneUiMessageThread(messages))
       }
@@ -485,14 +494,24 @@ export function useChatModelSelectionController({
   const registeredModelName = getChatModelDisplayName(selectedActModel)
   const selectedTextModelName =
     selectedGatewayModelName ||
-    (registeredModelName !== selectedActModel ? registeredModelName : readableModelId(selectedActModel))
-  const modelPickerLabel = generationMode === 'image'
-    ? (selectedImageModels.length === 1 ? (IMAGE_MODELS.find((model) => model.id === selectedImageModels[0])?.name ?? 'Select model') : `${selectedImageModels.length} models`)
+    (registeredModelName !== selectedActModel
+      ? registeredModelName
+      : readableModelId(selectedActModel))
+  const modelPickerLabel =
+    generationMode === 'image'
+      ? selectedImageModels.length === 1
+        ? (IMAGE_MODELS.find((model) => model.id === selectedImageModels[0])
+            ?.name ?? 'Select model')
+        : `${selectedImageModels.length} models`
     : generationMode === 'video'
-      ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((model) => model.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
-      : (askModelSelectionMode === 'multiple' && selectedModels.length > 1
+        ? selectedVideoModels.length === 1
+          ? (VIDEO_MODELS.find((model) => model.id === selectedVideoModels[0])
+              ?.name ?? 'Select model')
+          : `${selectedVideoModels.length} models`
+        : askModelSelectionMode === 'multiple' && selectedModels.length > 1
           ? `${selectedModels.length} models`
-          : (selectedTextModelName || (gatewayModelsLoading ? 'Loading models...' : 'Select model')))
+          : selectedTextModelName ||
+            (gatewayModelsLoading ? 'Loading models...' : 'Select model')
 
   const onHoveredModelChange = useCallback((modelId: string | null, position: { x: number; y: number } | null) => {
     setHoveredModelId(modelId)

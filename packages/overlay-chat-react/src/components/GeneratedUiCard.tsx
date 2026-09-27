@@ -260,26 +260,24 @@ export function GeneratedUiCard({
   const [copied, setCopied] = useState(false)
   const timerRef = useRef<number | null>(null)
   const latestDataRef = useRef(data)
-  const partIdRef = useRef(part.id)
-  const incomingDataRef = useRef(part.data)
+  const [prevPart, setPrevPart] = useState<{ id: string; data: typeof part.data }>({ id: part.id, data: part.data })
   const streaming = part.transient === true
 
   useEffect(() => {
-    if (partIdRef.current !== part.id) {
-      partIdRef.current = part.id
-      incomingDataRef.current = part.data
+    latestDataRef.current = data
+  }, [data])
+
+  if (prevPart.id !== part.id) {
+    setPrevPart({ id: part.id, data: part.data })
       setData(part.data)
-      latestDataRef.current = part.data
       setEditing(false)
       setExpanded(false)
-      return
+  } else if (prevPart.data !== part.data) {
+    setPrevPart({ id: part.id, data: part.data })
+    if (!editing) {
+      setData(part.data)
     }
-    if (incomingDataRef.current === part.data) return
-    incomingDataRef.current = part.data
-    if (editing) return
-    setData(part.data)
-    latestDataRef.current = part.data
-  }, [editing, part.id, part.data])
+  }
 
   useEffect(() => () => {
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
