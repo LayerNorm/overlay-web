@@ -15,6 +15,8 @@ import {
   Toggle,
 } from '@overlay/ui/primitives'
 
+type InviteRole = Exclude<WorkspaceMembershipRole, 'owner'>
+
 export function InviteWorkspaceDialog({
   open,
   guest = false,
@@ -32,20 +34,20 @@ export function InviteWorkspaceDialog({
   onOpenChange(open: boolean): void
   onInvite(input: {
     email: string
-    role: Exclude<WorkspaceMembershipRole, 'owner'>
+    role: InviteRole
   }): Promise<void>
 }) {
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<Exclude<WorkspaceMembershipRole, 'owner'>>(
+  const [role, setRole] = useState<InviteRole>(
     guest ? 'guest' : 'member',
   )
-  const [copied, setCopied] = useState(false)
 
   const normalizedEmail = email.trim()
   const canSubmit = normalizedEmail.includes('@') && !busy
   const absoluteInviteUrl = invitePath && typeof window !== 'undefined'
     ? new URL(invitePath, window.location.origin).toString()
     : invitePath
+  const submitInvite = () => void onInvite({ email: normalizedEmail, role })
 
   return (
     <DialogFrame
@@ -55,98 +57,159 @@ export function InviteWorkspaceDialog({
       description={guest
         ? 'Guests only see resources and rooms explicitly shared with them.'
         : 'Invite someone to collaborate across this workspace.'}
-      footer={invitePath ? (
-        <Button variant="primary" onClick={() => onOpenChange(false)}>Done</Button>
-      ) : (
-        <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!canSubmit}
-            onClick={() => void onInvite({ email: normalizedEmail, role })}
-          >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-            Send invite
-          </Button>
-        </>
+      footer={(
+        <InviteDialogFooter
+          hasInvite={Boolean(invitePath)}
+          busy={busy}
+          canSubmit={canSubmit}
+          onOpenChange={onOpenChange}
+          onSubmit={submitInvite}
+        />
       )}
     >
       {invitePath ? (
-        <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-          <p className="text-xs font-medium text-[var(--foreground)]">Invitation created</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">
-            Email delivery is not configured for this deployment. Share this secure link directly.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <Input
-              readOnly
-              value={absoluteInviteUrl ?? ''}
-              aria-label="Invitation link"
-              className="min-w-0 flex-1 text-xs"
-            />
-            <Button
-              size="sm"
-              onClick={() => {
-                if (!absoluteInviteUrl) return
-                void navigator.clipboard.writeText(absoluteInviteUrl).then(() => {
-                  setCopied(true)
-                  window.setTimeout(() => setCopied(false), 1_500)
-                })
-              }}
-            >
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-              {copied ? 'Copied' : 'Copy'}
-            </Button>
-          </div>
-        </div>
+        <InviteLinkPanel inviteUrl={absoluteInviteUrl} />
       ) : (
-        <form
-          className="mt-5 space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (canSubmit) void onInvite({ email: normalizedEmail, role })
-          }}
-        >
-          <div>
-            <label htmlFor="workspace-invite-email" className="text-xs font-medium text-[var(--foreground)]">
-              Email address
-            </label>
-            <Input
-              id="workspace-invite-email"
-              autoFocus
-              className="mt-2 w-full"
-              type="email"
-              value={email}
-              maxLength={320}
-              autoComplete="email"
-              placeholder="teammate@company.com"
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </div>
-          {!guest ? (
-            <div>
-              <label htmlFor="workspace-invite-role" className="text-xs font-medium text-[var(--foreground)]">
-                Workspace role
-              </label>
-              <Select
-                id="workspace-invite-role"
-                className="mt-2 w-full"
-                value={role}
-                onChange={(event) => setRole(
-                  event.target.value as Exclude<WorkspaceMembershipRole, 'owner'>,
-                )}
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </Select>
-            </div>
-          ) : null}
-        </form>
+        <InviteRequestForm
+          guest={guest}
+          email={email}
+          role={role}
+          canSubmit={canSubmit}
+          onEmailChange={setEmail}
+          onRoleChange={setRole}
+          onSubmit={submitInvite}
+        />
       )}
       {error ? <p role="alert" className="mt-3 text-xs text-red-500">{error}</p> : null}
     </DialogFrame>
+  )
+}
+
+function InviteDialogFooter({
+  hasInvite,
+  busy,
+  canSubmit,
+  onOpenChange,
+  onSubmit,
+}: {
+  hasInvite: boolean
+  busy?: boolean
+  canSubmit: boolean
+  onOpenChange(open: boolean): void
+  onSubmit(): void
+}) {
+  if (hasInvite) {
+    return <Button variant="primary" onClick={() => onOpenChange(false)}>Done</Button>
+  }
+  return (
+    <>
+      <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        disabled={!canSubmit}
+        onClick={onSubmit}
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+        Send invite
+      </Button>
+    </>
+  )
+}
+
+function InviteLinkPanel({ inviteUrl }: { inviteUrl?: string | null }) {
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+      <p className="text-xs font-medium text-[var(--foreground)]">Invitation created</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">
+        Email delivery is not configured for this deployment. Share this secure link directly.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <Input
+          readOnly
+          value={inviteUrl ?? ''}
+          aria-label="Invitation link"
+          className="min-w-0 flex-1 text-xs"
+        />
+        <Button
+          size="sm"
+          onClick={() => {
+            if (!inviteUrl) return
+            void navigator.clipboard.writeText(inviteUrl).then(() => {
+              setCopied(true)
+              window.setTimeout(() => setCopied(false), 1_500)
+            })
+          }}
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function InviteRequestForm({
+  guest,
+  email,
+  role,
+  canSubmit,
+  onEmailChange,
+  onRoleChange,
+  onSubmit,
+}: {
+  guest: boolean
+  email: string
+  role: InviteRole
+  canSubmit: boolean
+  onEmailChange(email: string): void
+  onRoleChange(role: InviteRole): void
+  onSubmit(): void
+}) {
+  return (
+    <form
+      className="mt-5 space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (canSubmit) onSubmit()
+      }}
+    >
+      <div>
+        <label htmlFor="workspace-invite-email" className="text-xs font-medium text-[var(--foreground)]">
+          Email address
+        </label>
+        <Input
+          id="workspace-invite-email"
+          autoFocus
+          className="mt-2 w-full"
+          type="email"
+          value={email}
+          maxLength={320}
+          autoComplete="email"
+          placeholder="teammate@company.com"
+          onChange={(event) => onEmailChange(event.target.value)}
+        />
+      </div>
+      {!guest ? (
+        <div>
+          <label htmlFor="workspace-invite-role" className="text-xs font-medium text-[var(--foreground)]">
+            Workspace role
+          </label>
+          <Select
+            id="workspace-invite-role"
+            className="mt-2 w-full"
+            value={role}
+            onChange={(event) => onRoleChange(event.target.value as InviteRole)}
+          >
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+          </Select>
+        </div>
+      ) : null}
+    </form>
   )
 }
 
