@@ -21,21 +21,24 @@ export interface SidebarEntitlements {
   overlayStorageBytesLimit: number
 }
 
-export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements | null }) {
-  if (!entitlements) {
-    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
-  }
+function planKindOf(entitlements: SidebarEntitlements): 'free' | 'paid' {
+  return entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid')
+}
 
-  const { tier } = entitlements
-  const planKind = entitlements.planKind ?? (tier === 'free' ? 'free' : 'paid')
-  const allowanceUsedCents = entitlements.allowanceUsedCents ?? entitlements.budgetUsedCents ?? entitlements.creditsUsed ?? 0
-  const allowanceTotalCents =
+function allowanceUsedCentsOf(entitlements: SidebarEntitlements) {
+  return entitlements.allowanceUsedCents ?? entitlements.budgetUsedCents ?? entitlements.creditsUsed ?? 0
+}
+
+function allowanceTotalCentsOf(entitlements: SidebarEntitlements) {
+  return (
     entitlements.allowanceTotalCents ?? entitlements.budgetTotalCents ??
     (typeof entitlements.creditsTotal === 'number' ? Math.max(0, entitlements.creditsTotal * 100) : 0)
+  )
+}
 
-  if (planKind === 'free') {
-    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Premium models and budgeted tools are unavailable on this plan.</p>
-  }
+function AllowanceMeter({ entitlements }: { entitlements: SidebarEntitlements }) {
+  const allowanceUsedCents = allowanceUsedCentsOf(entitlements)
+  const allowanceTotalCents = allowanceTotalCentsOf(entitlements)
 
   if (allowanceTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No allowance limit set</p>
   const usedPctRaw = entitlements.allowancePercentUsed ?? Math.min(100, (allowanceUsedCents / allowanceTotalCents) * 100)
@@ -54,6 +57,18 @@ export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements |
       trailingIcon={exhausted ? <AlertCircle size={11} /> : undefined}
     />
   )
+}
+
+export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements | null }) {
+  if (!entitlements) {
+    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
+  }
+
+  if (planKindOf(entitlements) === 'free') {
+    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Premium models and budgeted tools are unavailable on this plan.</p>
+  }
+
+  return <AllowanceMeter entitlements={entitlements} />
 }
 
 export function StorageBar({ entitlements }: { entitlements: SidebarEntitlements | null }) {
