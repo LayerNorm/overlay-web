@@ -210,8 +210,9 @@ export async function runAutomationAgentTurn(
         automationRunId,
         toolName: toolCall.toolName,
       }))
+      const toolDefinitionsByName = new Map(resolvedPlan.toolDefinitions.map((entry) => [entry.name, entry]))
       const toolCallDefinitions = call.toolCalls.map((toolCall) =>
-        resolvedPlan.toolDefinitions.find((entry) => entry.name === toolCall.toolName))
+        toolDefinitionsByName.get(toolCall.toolName))
       const toolCallApprovals = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
         const definition = toolCallDefinitions[i]
         if (!definition?.needsApproval) return false

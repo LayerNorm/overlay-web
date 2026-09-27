@@ -524,6 +524,8 @@ export function ChatInlinePanel({
     all: 'No chats yet',
   }[chatView]
 
+  const deletingChatIdSet = new Set(deletingChatIds)
+
   return (
     <>
     <SidebarResourceList>

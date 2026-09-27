@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chat, useChat } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
@@ -92,8 +92,8 @@ function createConversationRuntime(
 
 export function useChatRuntimes(activeChatId: string | null) {
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
-  const emptyRuntimeRef = useRef<ConversationRuntime>(null!)
-  emptyRuntimeRef.current ??= createConversationRuntime('__empty__')
+  const [emptyRuntime] = useState(() => createConversationRuntime('__empty__'))
+  const emptyRuntimeRef = useRef(emptyRuntime)
 
   const ensureConversationRuntime = useCallback((chatId: string, uiOverrides?: Partial<ConversationUiState>) => {
     const existing = runtimesRef.current.get(chatId)

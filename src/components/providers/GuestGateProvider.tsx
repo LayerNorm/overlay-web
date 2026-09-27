@@ -93,13 +93,16 @@ export function GuestGateProvider({
     }, FADE_MS)
   }, [])
 
-  const gateContextValue = useMemo(() => ({ requireAuth, isModalOpen: !!modalReason }), [requireAuth, modalReason])
+  const guestGateValue = useMemo(
+    () => ({ requireAuth, isModalOpen: Boolean(modalReason) }),
+    [requireAuth, modalReason],
+  )
 
   const showCorner =
     !suppressPrompts && authSettled && !isAuthenticated && !cornerDismissed && !modalReason
 
   return (
-    <GuestGateContext.Provider value={gateContextValue}>
+    <GuestGateContext.Provider value={guestGateValue}>
       {children}
       {!isAuthenticated && (((authSettled && !!modalReason) || modalClosing)) ? (
         <SignInFullScreenModal

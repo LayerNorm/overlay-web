@@ -111,8 +111,7 @@ export function SignUpClient({
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault()
-    const verificationTicket = verificationTicketRef.current
-    if (!verificationTicket || !verificationCode) return
+    if (!verificationTicketRef.current || !verificationCode) return
 
     setVerifying(true)
     setError(null)
@@ -121,7 +120,7 @@ export function SignUpClient({
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: verificationTicket, code: verificationCode }),
+        body: JSON.stringify({ ticket: verificationTicketRef.current, code: verificationCode }),
       })
 
       const data = await response.json()
@@ -140,8 +139,7 @@ export function SignUpClient({
   }
 
   const handleResendCode = async () => {
-    const verificationTicket = verificationTicketRef.current
-    if (!verificationTicket) return
+    if (!verificationTicketRef.current) return
 
     setResending(true)
     setError(null)
@@ -150,7 +148,7 @@ export function SignUpClient({
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: verificationTicket, action: 'resend' }),
+        body: JSON.stringify({ ticket: verificationTicketRef.current, action: 'resend' }),
       })
 
       const data = await response.json()

@@ -133,6 +133,7 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
 
 /** Default brand mark path. Custom brand configs keep rendering their image. */
 const DEFAULT_BRAND_LOGO_SRC = '/assets/overlay-logo.png'
+const EMPTY_NOTIFICATIONS: NonNullable<AppSidebarProps['collaborationNotifications']> = []
 
 /**
  * Brand mark: the SVG Overlay orb by default, the configured raster image
@@ -154,10 +155,8 @@ function BrandMark({ logoSrc, logoAlt, size, className }: {
   )
 }
 
-const NO_COLLABORATION_NOTIFICATIONS: AppSidebarProps['collaborationNotifications'] & never[] = []
-
 export default function AppSidebar({
-  collaborationNotifications = NO_COLLABORATION_NOTIFICATIONS,
+  collaborationNotifications = EMPTY_NOTIFICATIONS,
   publicShowcase = false,
   renderChatPanel,
   renderAutomationsPanel,

@@ -104,16 +104,17 @@ export function linkifyInlineWebCitations(
         return line.replace(
           /(?<!\[)(?:\[\s*\d+\s*\](?:\s*[, ]\s*|\s*))+/g,
           (full) => {
-            const indexSet = new Set<number>()
+            const indices: number[] = []
+            const seenIndices = new Set<number>()
             const perMarker = /\[\s*(\d+)\s*\]/g
             let m: RegExpExecArray | null
             while ((m = perMarker.exec(full)) !== null) {
               const idx = Number(m[1])
-              if (Number.isFinite(idx) && idx >= 1 && idx <= sources.length) {
-                indexSet.add(idx)
+              if (Number.isFinite(idx) && idx >= 1 && idx <= sources.length && !seenIndices.has(idx)) {
+                seenIndices.add(idx)
+                indices.push(idx)
               }
             }
-            const indices = [...indexSet]
             if (indices.length === 0) return full
             if (indices.length === 1) {
               const idx = indices[0]!

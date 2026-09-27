@@ -329,29 +329,26 @@ export const getWorkspacePrincipalsByEmail = query({
   })),
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) return []
-    const normalizedEmails = [...new Set(args.emails.map((e) => e.toLowerCase().trim()))].filter(Boolean)
-    if (normalizedEmails.length === 0) return []
+    const normalizedEmails = new Set(args.emails.map((e) => e.toLowerCase().trim()).filter(Boolean))
+    if (normalizedEmails.size === 0) return []
 
     const allPrincipals = await ctx.db
       .query('workspacePrincipals')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
 
-    const normalizedEmailSet = new Set(normalizedEmails)
     const matches = allPrincipals.filter((p) =>
-      p.email && normalizedEmailSet.has(p.email.toLowerCase().trim()),
+      p.email && normalizedEmails.has(p.email.toLowerCase().trim()),
     )
 
-    const matchMemberships = await Promise.all(matches.map((p) =>
-      ctx.db
+    const results = []
+    for (const p of matches) {
+      const membership = await ctx.db
         .query('workspaceMemberships')
         .withIndex('by_workspaceId_principalId', (q) => (
           q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)
         ))
-        .unique()))
-    const results = []
-    for (const [i, p] of matches.entries()) {
-      const membership = matchMemberships[i]
+        .unique()
       results.push({
         principalId: p.principalId,
         userId: p.userId,
@@ -430,32 +427,31 @@ export const resolveAuthorStatuses = query({
       .query('workspacePrincipals')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
-    const memberCandidates = principals.flatMap((p) => {
+    const memberEmails = new Set<string>()
+    for (const p of principals) {
       const email = p.email?.toLowerCase().trim()
-      return !email || p.archivedAt || !emailSet.has(email) ? [] : [{ email, principalId: p.principalId }]
-    })
-    const memberships = await Promise.all(memberCandidates.map(({ principalId }) =>
-      ctx.db
+      if (!email || p.archivedAt || !emailSet.has(email)) continue
+      const membership = await ctx.db
         .query('workspaceMemberships')
         .withIndex('by_workspaceId_principalId', (q) => (
-          q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
+          q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)
         ))
-        .unique()))
-    const memberEmails = new Set<string>(
-      memberCandidates.filter((_, i) => memberships[i]?.status === 'active').map(({ email }) => email))
-    
+        .unique()
+      if (membership?.status === 'active') memberEmails.add(email)
+    }
 
     // Pending invitations count as "invited".
-    const unmemberedEmails = emails.filter((email) => !memberEmails.has(email))
-    const invitations = await Promise.all(unmemberedEmails.map((email) =>
-      ctx.db
+    const invitedEmails = new Set<string>()
+    for (const email of emails) {
+      if (memberEmails.has(email)) continue
+      const invitation = await ctx.db
         .query('workspaceInvitations')
         .withIndex('by_workspaceId_email_status', (q) => (
           q.eq('workspaceId', args.workspaceId).eq('email', email).eq('status', 'pending')
         ))
-        .first()))
-    const invitedEmails = new Set<string>(
-      unmemberedEmails.filter((_, i) => invitations[i]))
+        .first()
+      if (invitation) invitedEmails.add(email)
+    }
 
     return emails.map((email) => ({
       email,
@@ -493,38 +489,33 @@ export const addSlackChannelParticipants = mutation({
     let added = 0
     const now = Date.now()
 
-    const candidateIds = uniquePrincipalIds.filter((id) => id !== actor.principalId)
-    const resolvedPrincipals = await Promise.all(candidateIds.map((principalId) =>
-      ctx.db
+    for (const principalId of uniquePrincipalIds) {
+      if (principalId === actor.principalId) continue // Already the moderator
+
+      const principal = await ctx.db
         .query('workspacePrincipals')
         .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
         .filter((q) => q.eq(q.field('principalId'), principalId))
-        .unique()))
-    const activeCandidates = candidateIds.flatMap((principalId, i) => {
-      const principal = resolvedPrincipals[i]
-      return (!principal || principal.archivedAt || !principal.email) ? [] : [{ principalId, principal }]
-    })
-    const candidateRows = await Promise.all(activeCandidates.map(({ principalId }) =>
-      Promise.all([
-        ctx.db
-          .query('workspaceMemberships')
-          .withIndex('by_workspaceId_principalId', (q) => (
-            q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
-          ))
-          .unique(),
-        ctx.db
-          .query('conversationParticipants')
-          .withIndex('by_conversationId_principalId', (q) => (
-            q.eq('conversationId', args.conversationId).eq('principalId', principalId)
-          ))
-          .unique(),
-      ])))
-    const insertable = activeCandidates.filter((_, i) => {
-      const [membership, existing] = candidateRows[i]!
-      return membership && membership.status === 'active' && !existing
-    })
-    await Promise.all(insertable.map(({ principalId, principal }) =>
-      ctx.db.insert('conversationParticipants', {
+        .unique()
+      if (!principal || principal.archivedAt || !principal.email) continue
+
+      const membership = await ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId_principalId', (q) => (
+          q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
+        ))
+        .unique()
+      if (!membership || membership.status !== 'active') continue
+
+      const existing = await ctx.db
+        .query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('principalId', principalId)
+        ))
+        .unique()
+      if (existing) continue
+
+      await ctx.db.insert('conversationParticipants', {
         conversationId: args.conversationId,
         workspaceId: args.workspaceId,
         principalId,
@@ -534,8 +525,9 @@ export const addSlackChannelParticipants = mutation({
         notificationLevel: 'all',
         joinedAt: now,
         updatedAt: now,
-      })))
-    added += insertable.length
+      })
+      added++
+    }
 
     return added
   },

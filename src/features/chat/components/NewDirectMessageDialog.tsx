@@ -30,7 +30,7 @@ const SHOWCASE_ITEMS: WorkspaceManagementItem[] = [
   },
 ]
 
-const NO_EXCLUDED_PRINCIPAL_IDS: string[] = []
+const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
 
 export function NewDirectMessageDialog({
   open,
@@ -39,7 +39,7 @@ export function NewDirectMessageDialog({
   addToConversationId,
   addToConversationType = 'channel',
   showcase = false,
-  excludedPrincipalIds = NO_EXCLUDED_PRINCIPAL_IDS,
+  excludedPrincipalIds = EMPTY_EXCLUDED_PRINCIPAL_IDS,
   onOpenChange,
   onCreated,
   onParticipantsAdded,
@@ -93,15 +93,16 @@ export function NewDirectMessageDialog({
 
   const candidates = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const excludedPrincipalIdSet = new Set(excludedPrincipalIds)
+    const excludedSet = new Set(excludedPrincipalIds)
     return items
       .filter((item) => (
         item.principalId !== currentPrincipalId
         && item.status === 'active'
-        && !excludedPrincipalIdSet.has(item.principalId ?? '')
+        && !excludedSet.has(item.principalId ?? '')
       ))
       .filter((item) => !needle || `${item.name} ${item.description ?? ''}`.toLowerCase().includes(needle))
   }, [currentPrincipalId, excludedPrincipalIds, items, query])
+  const selectedSet = new Set(selected)
   const emailQuery = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query.trim())
     ? query.trim().toLowerCase()
     : null
@@ -219,9 +220,7 @@ export function NewDirectMessageDialog({
                 <div key={row} className="h-11 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
               ))}
             </div>
-          ) : candidates.length > 0 ? (() => {
-            const selectedSet = new Set(selected)
-            return candidates.map((item) => {
+          ) : candidates.length > 0 ? candidates.map((item) => {
             const principalId = item.principalId!
             const checked = selectedSet.has(principalId)
             const AgentIcon = item.principalType === 'agent' ? Bot : UserRound
@@ -250,8 +249,7 @@ export function NewDirectMessageDialog({
                 </span>
               </button>
             )
-          })
-          })() : emailQuery ? (
+          }) : emailQuery ? (
             <button
               type="button"
               disabled={busy || inviteSent}

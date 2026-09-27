@@ -350,6 +350,8 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
     props.setShowAttachMenu((value) => !value)
   }
 
+  const selectedToolIdSet = new Set(props.selectedToolIds)
+
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
@@ -370,9 +372,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
-          {(() => {
-            const selectedToolIdSet = new Set(props.selectedToolIds)
-            return TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
+          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
             const active = selectedToolIdSet.has(tool.id)
             const Icon = tool.Icon
             return (
@@ -389,8 +389,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
                 checked={active}
               />
             )
-          })
-          })()}
+          })}
           <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
           <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
           {props.capabilities.memory && props.capabilities.vectorSearch && (

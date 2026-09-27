@@ -38,6 +38,8 @@ export interface MentionInputHandle {
   openMentionPopup: () => void
 }
 
+const EMPTY_MENTION_CATEGORIES: MentionCategory[] = []
+
 interface MentionInputProps {
   value: string
   valueRevision?: number
@@ -52,8 +54,6 @@ interface MentionInputProps {
   className?: string
   disabled?: boolean
 }
-
-const NO_MENTION_CATEGORIES: MentionCategory[] = []
 
 const MENTION_ATTR = 'data-mention'
 const MENTION_TYPE_ATTR = 'data-mention-type'
@@ -694,7 +694,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       onKeyDown,
       onPaste,
       onUploadFile,
-      mentionCategories = NO_MENTION_CATEGORIES,
+      mentionCategories = EMPTY_MENTION_CATEGORIES,
       placeholder,
       className,
       disabled,

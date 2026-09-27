@@ -73,10 +73,10 @@ export function opensInDocumentEditor(file: Pick<KnowledgeFile, 'kind' | 'extens
 
 export function filePathLabel(all: readonly Pick<KnowledgeFile, '_id' | 'name' | 'parentId'>[], file: Pick<KnowledgeFile, 'parentId'>): string {
   const parts: string[] = []
-  const allById = new Map(all.map((item) => [item._id, item]))
+  const byId = new Map(all.map((item) => [item._id, item]))
   let pid: string | null = file.parentId
   while (pid) {
-    const parent = allById.get(pid)
+    const parent = byId.get(pid)
     if (!parent) break
     parts.unshift(parent.name)
     pid = parent.parentId
@@ -87,8 +87,8 @@ export function filePathLabel(all: readonly Pick<KnowledgeFile, '_id' | 'name' |
 export function filterKnowledgeFileNodes(files: readonly KnowledgeFileNode[], query: string): KnowledgeFileNode[] {
   const q = query.trim().toLowerCase()
   if (!q) return [...files]
-  const keep = new Set<string>()
   const byId = new Map(files.map((item) => [item._id, item]))
+  const keep = new Set<string>()
   for (const node of files) {
     if (node.name.toLowerCase().includes(q)) {
       keep.add(node._id)
@@ -115,11 +115,11 @@ export function folderBreadcrumb(
   activeFolder: KnowledgeFileNode | null,
 ): KnowledgeFileNode[] {
   const path: KnowledgeFileNode[] = []
-  const filesById = new Map(files.map((file) => [file._id, file]))
+  const byId = new Map(files.map((file) => [file._id, file]))
   let current: KnowledgeFileNode | null = activeFolder
   while (current) {
     path.unshift(current)
-    current = current.parentId ? (filesById.get(current.parentId) ?? null) : null
+    current = current.parentId ? (byId.get(current.parentId) ?? null) : null
   }
   return path
 }
@@ -189,11 +189,11 @@ export function canMoveKnowledgeFile(
 ): boolean {
   if (fileId === parentId) return false
   if (!parentId) return true
-  const filesById = new Map(files.map((file) => [file._id, file]))
+  const byId = new Map(files.map((file) => [file._id, file]))
   let current: string | null = parentId
   while (current) {
     if (current === fileId) return false
-    current = filesById.get(current)?.parentId ?? null
+    current = byId.get(current)?.parentId ?? null
   }
   return true
 }

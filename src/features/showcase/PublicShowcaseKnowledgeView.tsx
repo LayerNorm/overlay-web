@@ -15,7 +15,6 @@ import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { SHOWCASE_KNOWLEDGE_NODES } from './showcase-data'
 
 export function PublicShowcaseKnowledgeView() {
-
   const searchParams = useSearchParams()
   const { requireAuth } = useGuestGate()
 

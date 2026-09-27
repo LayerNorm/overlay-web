@@ -4,7 +4,7 @@ Use this file as the task prompt when assigning an implementation task to a Buil
 
 ## Role and stop point
 
-You are the Builder for one coherent change. Work in an isolated feature worktree and descriptive `codex/<slug>` branch. Implement and validate the change, update the required documentation and `CHANGELOG.md`, and open a focused pull request targeting `staging`.
+You are the Builder for one coherent change. Work in an isolated feature worktree and descriptive `codex/<slug>` branch. Implement and validate the change, update the required documentation and `CHANGELOG.md`, and open a focused pull request targeting `main` (agents acting under the owner's `DevelopedByDev`/`LayerNorm` identity default to `main`; use `staging` only when the task specifically needs hosted pre-production QA).
 
 Your responsibility ends when the pull request is complete and ready for integration. Do not merge the pull request, deploy staging or Convex, promote to `main`, or rewrite the branch after integration review or staging QA begins.
 
@@ -43,7 +43,7 @@ Run `git diff --check`, record the commands and results, and record the exact co
 
 ## Open the Builder pull request
 
-Push your branch and open a focused pull request with `staging` as its base. The description must state:
+Push your branch and open a focused pull request with `main` as its base (`staging` only when the task specifically calls for the staging QA lane). The description must state:
 
 - the user or operational outcome;
 - the important implementation decisions and touched systems;

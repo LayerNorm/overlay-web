@@ -1,6 +1,6 @@
 'use client'
 
-import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion'
+import { AnimatePresence, domAnimation, LazyMotion, m } from 'framer-motion'
 import { Globe2, Image as ImageIcon, PenLine, Zap, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -35,7 +35,7 @@ export function ChatEmptyHero({
   greetingLine: string
 }) {
   return (
-    <LazyMotion features={domAnimation}>
+    <LazyMotion features={domAnimation} strict>
     <AnimatePresence initial={false}>
       {visible && (
         <m.div
@@ -66,7 +66,7 @@ export function ChatEmptyState({
 
   return (
     <>
-      <LazyMotion features={domAnimation}>
+      <LazyMotion features={domAnimation} strict>
       <AnimatePresence initial={false}>
         {visible && (
           <m.div

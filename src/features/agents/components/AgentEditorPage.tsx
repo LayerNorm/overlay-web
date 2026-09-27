@@ -247,10 +247,10 @@ export function AgentEditorPage({
   const { connections: byokConnections } = useByokModels({ enabled: managedRuntimeSelected })
   const managedByokConnections = useMemo(() => {
     if (!managedHarnessEntry || managedHarnessEntry.byokProviders.length === 0) return []
-    const byokProviderSet = new Set(managedHarnessEntry.byokProviders)
+    const byokProviderIds = new Set(managedHarnessEntry.byokProviders)
     return byokConnections
       .filter((connection) => connection.status === 'active'
-        && byokProviderSet.has(connection.providerId))
+        && byokProviderIds.has(connection.providerId))
       .map((connection) => ({ id: connection._id, label: connection.displayName }))
   }, [byokConnections, managedHarnessEntry])
 

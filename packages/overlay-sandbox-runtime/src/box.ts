@@ -204,8 +204,8 @@ export class BoxSandboxRuntime implements SandboxRuntime {
 
   /** Poll an instance until it reaches one of the target box states. */
   async pollBox(boxId: string, targets: BoxState[], timeoutMs: number): Promise<BoxInfo> {
-    const deadline = Date.now() + timeoutMs
     const targetStates = new Set(targets)
+    const deadline = Date.now() + timeoutMs
     for (;;) {
       const info = await this.getBox(boxId)
       if (targetStates.has(info.state)) return info

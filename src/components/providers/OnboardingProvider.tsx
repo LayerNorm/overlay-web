@@ -260,15 +260,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     setCurrentStep(prev)
   }, [currentStep, navigateForStep])
 
+  const onboardingValue = useMemo(() => ({ startTour }), [startTour])
+
   const onInvitationRoute = Boolean(pathname?.startsWith('/app/invitations'))
   // Never mount the tour over invitation accept — missing tour targets used to
   // paint a full-screen click shield that made Accept invitation unclickable.
   const showTourChrome = (active || isClosing) && !onInvitationRoute
 
-  const onboardingContextValue = useMemo(() => ({ startTour }), [startTour])
-
   return (
-    <OnboardingContext.Provider value={onboardingContextValue}>
+    <OnboardingContext.Provider value={onboardingValue}>
       {children}
       {showTourChrome && isMobile && (
         <MobileWelcomeCard onDismiss={closeTour} />

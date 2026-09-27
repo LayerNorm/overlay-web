@@ -43,8 +43,8 @@ export function filterFilesForTreeSearch<T extends Pick<FileTreeEntry, '_id' | '
 ): T[] {
   const q = query.trim().toLowerCase()
   if (!q) return [...files]
-  const keep = new Set<string>()
   const byId = new Map(files.map((file) => [file._id, file]))
+  const keep = new Set<string>()
   for (const file of files) {
     if (file.name.toLowerCase().includes(q)) {
       keep.add(file._id)

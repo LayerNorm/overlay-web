@@ -12,7 +12,7 @@ import {
   usageProgressTone,
 } from '@overlay/app-core/settings-account'
 
-const CREDITS_FORMATTER = new Intl.NumberFormat('en-US')
+const NUMBER_FORMATTER = new Intl.NumberFormat('en-US')
 
 export interface AccountMessage {
   type: 'success' | 'error'
@@ -286,7 +286,7 @@ export function AccountPaidUsageCard({
         isLandingDark={dark}
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Personal top-up credits" value={`${CREDITS_FORMATTER.format((entitlements.topUpBalanceCents ?? 0) * 10)} credits`} />
+        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Personal top-up credits" value={`${NUMBER_FORMATTER.format((entitlements.topUpBalanceCents ?? 0) * 10)} credits`} />
         <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Storage" value={storageUsageLabel} />
       </div>
     </div>

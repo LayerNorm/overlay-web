@@ -195,15 +195,13 @@ export function AuthProvider({
   const authValue = useMemo(() => ({
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated: Boolean(user),
     signOut,
     refreshSession,
   }), [user, isLoading, signOut, refreshSession])
 
   return (
-    <AuthContext.Provider
-      value={authValue}
-    >
+    <AuthContext.Provider value={authValue}>
       {children}
     </AuthContext.Provider>
   )

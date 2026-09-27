@@ -582,12 +582,13 @@ export class KnowledgeSurfaceController {
     this.nodes = previous.filter((node) => !deleted.has(node.id))
     this.selected = new Set([...this.selected].filter((id) => !deleted.has(id)))
     this.emit()
+    const idsSet = new Set(ids)
     try {
       await this.adapters.repository.delete({
         ids,
         expectedRevisions: Object.fromEntries(
           previous
-            .filter((node) => deleted.has(node.id) && node.revision)
+            .filter((node) => idsSet.has(node.id) && node.revision)
             .map((node) => [node.id, node.revision!.revision]),
         ),
       })

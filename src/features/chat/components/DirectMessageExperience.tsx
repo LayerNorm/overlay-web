@@ -415,7 +415,9 @@ export function DirectMessageExperience({
     defaultMemoryEnabled({ temporary: false }),
   )
   const mentionsRef = useRef<MentionItem[]>([])
-  const setMentions = useCallback((value: MentionItem[]) => { mentionsRef.current = value }, [])
+  const setMentions = useCallback((next: MentionItem[]) => {
+    mentionsRef.current = next
+  }, [])
   const [replyContext, setReplyContext] = useState<
     { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
   >(null)

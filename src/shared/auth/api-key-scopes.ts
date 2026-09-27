@@ -15,14 +15,18 @@ export function isApiKeyScope(value: unknown): value is ApiKeyScope {
 }
 
 export function normalizeApiKeyScopes(scopes: readonly unknown[]): ApiKeyScope[] {
-  const normalized = new Set<ApiKeyScope>()
+  const normalized: ApiKeyScope[] = []
+  const seen = new Set<ApiKeyScope>()
   for (const scope of scopes) {
     if (!isApiKeyScope(scope)) {
       throw new Error(`Invalid API key scope: ${String(scope)}`)
     }
-    normalized.add(scope)
+    if (!seen.has(scope)) {
+      seen.add(scope)
+      normalized.push(scope)
+    }
   }
-  return [...normalized]
+  return normalized
 }
 
 export function hasRequiredApiKeyScopes(

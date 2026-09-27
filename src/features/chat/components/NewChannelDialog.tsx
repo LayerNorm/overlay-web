@@ -90,6 +90,8 @@ export function NewChannelDialog({
     }
   }
 
+  const selectedSet = new Set(selected)
+
   return (
     <DialogFrame
       open={open}

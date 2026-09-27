@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
+import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 import { Github, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import { OverlayMark } from "@/components/orb/Orb";
 import Link from "next/link";
@@ -66,7 +66,7 @@ export function MarketingNavbar() {
   return (
     <header className="sticky top-0 z-50 bg-[color:color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-4 md:px-8">
-        <nav className="flex h-14 items-center justify-between gap-4">
+        <nav className="relative flex h-14 items-center justify-between gap-4">
           <Link
             href="/home"
             className="flex min-w-0 items-center gap-2"
@@ -81,7 +81,7 @@ export function MarketingNavbar() {
             </span>
           </Link>
 
-          <div className="hidden items-center gap-6 md:flex">
+          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-6 md:flex">
             {PRIMARY_LINKS.map((item) =>
               item.external ? (
                 <a
@@ -158,7 +158,7 @@ export function MarketingNavbar() {
         </nav>
       </div>
 
-      <LazyMotion features={domAnimation}>
+      <LazyMotion features={domAnimation} strict>
       <AnimatePresence initial={false}>
         {mobileMenuOpen ? (
           <m.div

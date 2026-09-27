@@ -326,8 +326,9 @@ export async function personalChatWorkWorkflow(input: PersonalChatWorkWorkflowIn
           agentRunId: input.agentRunId,
           toolName: toolCall.toolName,
         }))
+        const toolDefinitionsByName = new Map(input.toolDefinitions.map((entry) => [entry.name, entry]))
         const definitions = call.toolCalls.map((toolCall) =>
-          input.toolDefinitions.find((entry) => entry.name === toolCall.toolName))
+          toolDefinitionsByName.get(toolCall.toolName))
         const approvalDecisions = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
           const definition = definitions[i]
           if (!definition?.needsApproval) return false

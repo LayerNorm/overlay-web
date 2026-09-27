@@ -372,8 +372,8 @@ function GraphCanvasInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<AutomationGraphValidationError[]>([])
   const [, setHistoryVersion] = useState(0)
-  const historyRef = useRef<GraphHistory>(null!)
-  historyRef.current ??= new GraphHistory()
+  const [historyInstance] = useState(() => new GraphHistory())
+  const historyRef = useRef(historyInstance)
   const currentGraphRef = useRef<AutomationGraph>(graph)
   const skipHistoryRef = useRef(false)
 
@@ -489,10 +489,10 @@ function GraphCanvasInner({
           c.type === 'position' && c.dragging === false,
       )
       if (positionChanges.length > 0) {
+        const nodesById = new Map(nextNodes.map((n) => [n.id, n]))
         let nextGraph = currentGraphRef.current
-        const nextNodeById = new Map(nextNodes.map((n) => [n.id, n]))
         for (const change of positionChanges) {
-          const updatedNode = nextNodeById.get(change.id)
+          const updatedNode = nodesById.get(change.id)
           if (updatedNode) {
             nextGraph = updateNodePositionInGraph(nextGraph, change.id, updatedNode.position)
           }
@@ -519,10 +519,10 @@ function GraphCanvasInner({
 
       const removed = changes.filter((c) => c.type === 'remove')
       if (removed.length > 0) {
+        const edgesById = new Map(edges.map((e) => [e.id, e]))
         let nextGraph = currentGraphRef.current
-        const edgeById = new Map(edges.map((e) => [e.id, e]))
         for (const change of removed) {
-          const edge = edgeById.get(change.id)
+          const edge = edgesById.get(change.id)
           if (edge) {
             nextGraph = deleteEdgeFromGraph(nextGraph, edge.source, edge.target)
           }
