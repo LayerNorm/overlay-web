@@ -25,15 +25,9 @@ import {
   SidebarSection,
   FloatingMenu,
 } from '@overlay/ui/primitives'
-import {
-  FilesInlinePanel,
-  chatsInlineItems,
-  toolsInlineItems,
-} from '@/components/layout/AppSidebarInlinePanels'
-import {
-  AgentsInlinePanel,
-  agentsInlineItems,
-} from '@/components/layout/AppSidebarAgentsPanel'
+import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
+import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
+import { chatsInlineItems, toolsInlineItems, agentsInlineItems } from '@/components/layout/sidebar-nav'
 import { filesInlineItems, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'

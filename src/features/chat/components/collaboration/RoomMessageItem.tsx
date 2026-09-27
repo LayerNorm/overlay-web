@@ -25,6 +25,7 @@ import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
+import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -121,10 +122,7 @@ export type RoomMessageItemProps = {
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
 
-/** The scroll target for pin and thread jumps. */
-export function roomMessageDomId(messageId: string): string {
-  return `room-message-${messageId}`
-}
+
 
 function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'

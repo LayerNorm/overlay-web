@@ -14,14 +14,13 @@ import { AuthBoundary, useAuth } from "@/contexts/AuthContext";
 import { LandingThemeProvider } from "@/contexts/LandingThemeContext";
 import { Creature } from "@/components/orb/Creature";
 import {
-  BrandLogo,
   LandingAgentField,
   LandingShowcase,
   LandingToast,
-  LOGO,
-  landingToast,
-  type LogoSpec,
 } from "@/features/marketing/components/LandingShowcase";
+import { BrandLogo } from "@/features/marketing/components/BrandLogo";
+import { LOGO, type LogoSpec } from "@/features/marketing/lib/logos";
+import { landingToast } from "@/features/marketing/lib/landing-toast";
 import { MarketingFooter } from "@/features/marketing/components/MarketingFooter";
 import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 import {

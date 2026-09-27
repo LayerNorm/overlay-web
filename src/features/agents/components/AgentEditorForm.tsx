@@ -12,8 +12,8 @@ import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { AVATAR_COLORS, parseRoots } from '../lib/agent-editor-utils'
 
-export const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
 
@@ -772,6 +772,3 @@ export function EnvironmentApprovalPanel({ environment, roots, busy, onRootsChan
   return <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4"><div className="flex items-center gap-2 text-xs text-[var(--foreground)]"><ShieldCheck size={15} className="text-[var(--muted)]" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting…'}</strong></div><label className="block text-xs font-medium">Approved project roots<textarea value={roots} onChange={(event) => onRootsChange(event.target.value)} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className="mt-1.5 min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]" /></label><p className="text-[11px] leading-4 text-[var(--muted)]">Overlay can dispatch work only inside these explicit roots. You can change or revoke access later.</p><Button variant="secondary" size="sm" disabled={busy || !environment.verificationPhrase} onClick={onApprove}>{busy ? 'Approving…' : 'Approve and continue'}</Button></div>
 }
 
-export function parseRoots(value: string) {
-  return value.split(/[,\n]/).map((root) => root.trim()).filter(Boolean)
-}

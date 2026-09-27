@@ -42,11 +42,12 @@ import {
   AgentBehaviorFields,
   AgentMemoriesSection,
   AgentTypeSelector,
-  AVATAR_COLORS,
+
   DangerZone,
   MasterAgentNotice,
   type AgentType,
 } from './AgentEditorForm'
+import { AVATAR_COLORS } from '../lib/agent-editor-utils'
 import {
   AgentEditorDialog,
   AgentEditorSidePanel,

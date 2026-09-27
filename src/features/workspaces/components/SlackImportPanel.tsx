@@ -1065,24 +1065,7 @@ function JobProgressView({
 
       {/* Completion summary */}
       {isCompleted && job.coverage ? (
-        <div className="mb-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
-            <CheckCircle2 size={16} className="text-green-500" />
-            Successfully imported
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <CoverageRow label="Messages" value={job.coverage.messagesImported} />
-            <CoverageRow label="Thread replies" value={job.coverage.threadsImported} />
-            <CoverageRow label="Files downloaded" value={job.coverage.filesDownloaded} />
-            <CoverageRow label="Public channels" value={job.coverage.publicChannels} />
-            <CoverageRow label="Private channels" value={job.coverage.privateChannels} />
-            <CoverageRow label="DMs + Group DMs" value={job.coverage.dms + job.coverage.mpims} />
-          </div>
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[10px] text-[var(--muted)]">
-            Imported messages are read-only in Overlay. They appear as conversations in your workspace chat.
-            Coverage reflects what the connected Slack account can access — not all workspace data may be visible.
-          </div>
-        </div>
+        <ImportCoverageSummary coverage={job.coverage} />
       ) : null}
 
       {/* Spinner for active states */}
@@ -1106,6 +1089,29 @@ function JobProgressView({
           </Button>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function ImportCoverageSummary({ coverage }: { coverage: NonNullable<SlackImportJob['coverage']> }) {
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+        <CheckCircle2 size={16} className="text-green-500" />
+        Successfully imported
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <CoverageRow label="Messages" value={coverage.messagesImported} />
+        <CoverageRow label="Thread replies" value={coverage.threadsImported} />
+        <CoverageRow label="Files downloaded" value={coverage.filesDownloaded} />
+        <CoverageRow label="Public channels" value={coverage.publicChannels} />
+        <CoverageRow label="Private channels" value={coverage.privateChannels} />
+        <CoverageRow label="DMs + Group DMs" value={coverage.dms + coverage.mpims} />
+      </div>
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[10px] text-[var(--muted)]">
+        Imported messages are read-only in Overlay. They appear as conversations in your workspace chat.
+        Coverage reflects what the connected Slack account can access — not all workspace data may be visible.
+      </div>
     </div>
   )
 }
@@ -1163,24 +1169,7 @@ function JobDoneView({
       ) : null}
 
       {isCompleted && job.coverage ? (
-        <div className="mb-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
-            <CheckCircle2 size={16} className="text-green-500" />
-            Successfully imported
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <CoverageRow label="Messages" value={job.coverage.messagesImported} />
-            <CoverageRow label="Thread replies" value={job.coverage.threadsImported} />
-            <CoverageRow label="Files downloaded" value={job.coverage.filesDownloaded} />
-            <CoverageRow label="Public channels" value={job.coverage.publicChannels} />
-            <CoverageRow label="Private channels" value={job.coverage.privateChannels} />
-            <CoverageRow label="DMs + Group DMs" value={job.coverage.dms + job.coverage.mpims} />
-          </div>
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[10px] text-[var(--muted)]">
-            Imported messages are read-only in Overlay. They appear as conversations in your workspace chat.
-            Coverage reflects what the connected Slack account can access — not all workspace data may be visible.
-          </div>
-        </div>
+        <ImportCoverageSummary coverage={job.coverage} />
       ) : null}
 
       {isCancelled ? (

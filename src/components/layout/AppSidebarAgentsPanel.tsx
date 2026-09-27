@@ -3,12 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Archive,
   ArchiveRestore,
   ChevronRight,
   Loader2,
-  User,
-  Users,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarResourceList } from '@overlay/ui/primitives'
@@ -33,13 +30,13 @@ import {
   dispatchChatCreated,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
-import { arrayOrEmpty } from './AppSidebarInlinePanels'
 import {
-  AgentThreadRows,
+  arrayOrEmpty,
   agentThreadHref,
   resourceRowClass,
   type AgentsPanelView,
-} from './AppSidebarAgentThreads'
+} from './sidebar-nav'
+import { AgentThreadRows } from './AppSidebarAgentThreads'
 
 export function AgentsInlinePanel({
   workspaceId,
@@ -519,9 +516,5 @@ export function AgentsInlinePanel({
   )
 }
 
-export const agentsInlineItems = [
-  { id: 'personal', label: 'Personal', icon: User },
-  { id: 'workspace', label: 'Workspace', icon: Users },
-  { id: 'archived', label: 'Archived', icon: Archive },
-] as const
+
 

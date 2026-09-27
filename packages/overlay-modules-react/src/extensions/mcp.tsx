@@ -28,7 +28,7 @@ import { useEffect, useState,type MouseEvent } from 'react'
 import { ListboxSelect, Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
 import { useDialogFocus } from '@overlay/ui'
 
-import { Field } from './shared'
+import { EnabledToggle, Field } from './shared'
 import { AppScreenBody } from '../shell'
 
 export type McpDialogMutationOutcome = boolean | void | McpMutationResult
@@ -277,10 +277,7 @@ export function McpServerDialog({
         </div>
         <div className="flex shrink-0 items-center justify-between border-t border-[var(--border)] px-5 py-3">
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => update('enabled', !values.enabled)} className="flex items-center gap-1.5 text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">
-              {values.enabled ? <ToggleRight size={18} className="text-[var(--foreground)]" /> : <ToggleLeft size={18} className="text-[var(--muted-light)]" />}
-              <span>{values.enabled ? 'Active' : 'Disabled'}</span>
-            </button>
+            <EnabledToggle enabled={values.enabled} onChange={() => update('enabled', !values.enabled)} />
             {isEdit && initial ? (
               <button type="button" onClick={() => void handleDelete()} disabled={deleting} className="flex items-center gap-1 text-xs text-[var(--muted)] transition-colors hover:text-red-400 disabled:opacity-50">
                 {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}

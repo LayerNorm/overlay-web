@@ -31,15 +31,13 @@ import {
 import { Creature, type CreatureShape } from "@/components/orb/Creature";
 import { OverlayMark } from "@/components/orb/Orb";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
+import { LANDING_TOAST_EVENT, landingToast } from "@/features/marketing/lib/landing-toast";
+import { BrandLogo } from "@/features/marketing/components/BrandLogo";
+import { LOGO } from "@/features/marketing/lib/logos";
 
 /* ---------- demo toast (shared via window event) ---------- */
 
-const TOAST_EVENT = "overlay:landing-toast";
 
-export function landingToast(message: string) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: message }));
-}
 
 export function LandingToast() {
   const [message, setMessage] = useState<string | null>(null);
@@ -51,9 +49,9 @@ export function LandingToast() {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setMessage(null), 1400);
     };
-    window.addEventListener(TOAST_EVENT, onToast);
+    window.addEventListener(LANDING_TOAST_EVENT, onToast);
     return () => {
-      window.removeEventListener(TOAST_EVENT, onToast);
+      window.removeEventListener(LANDING_TOAST_EVENT, onToast);
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
@@ -66,49 +64,6 @@ export function LandingToast() {
 }
 
 /* ---------- theme-aware brand logos ---------- */
-
-function BrandLogo({
-  light,
-  dark,
-  alt = "",
-  className,
-}: {
-  light: string;
-  dark?: string;
-  alt?: string;
-  className?: string;
-}) {
-  const landing = useLandingThemeOptional();
-  const src = landing?.isLandingDark && dark ? dark : light;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} className={className} />;
-}
-
-export type LogoSpec = { light: string; dark?: string };
-
-const LOGO: Record<string, LogoSpec> = {
-  claude: { light: "https://svgl.app/library/claude-ai-icon.svg" },
-  openai: {
-    light: "https://svgl.app/library/openai.svg",
-    dark: "https://svgl.app/library/openai_dark.svg",
-  },
-  cursor: {
-    light: "https://svgl.app/library/cursor_light.svg",
-    dark: "https://svgl.app/library/cursor_dark.svg",
-  },
-  windsurf: {
-    light: "https://svgl.app/library/windsurf-light.svg",
-    dark: "https://svgl.app/library/windsurf-dark.svg",
-  },
-  apple: {
-    light: "https://svgl.app/library/apple.svg",
-    dark: "https://svgl.app/library/apple_dark.svg",
-  },
-  slack: { light: "https://svgl.app/library/slack.svg" },
-  telegram: { light: "https://svgl.app/library/telegram.svg" },
-  discord: { light: "https://svgl.app/library/discord.svg" },
-  google: { light: "https://svgl.app/library/google.svg" },
-};
 
 /* ---------- demo data ---------- */
 
@@ -870,5 +825,4 @@ export function LandingAgentField() {
   );
 }
 
-export { BrandLogo, LOGO };
-export const LANDING_AGENTS = AGENTS;
+

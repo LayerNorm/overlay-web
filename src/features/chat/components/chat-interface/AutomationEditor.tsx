@@ -21,11 +21,9 @@ import {
   AUTOMATIONS_UPDATED_EVENT,
   buildAutomationUpdateRequest,
   formatAutomationRunError,
-  normalizeAutomationDetailTab,
   supportedTimeZoneOptions,
 } from '@overlay/app-core/automations'
 import {
-  AUTOMATION_DETAIL_TABS,
   AutomationEditorForm,
   AutomationRunViewer,
 } from '@overlay/modules-react/automations'
@@ -41,7 +39,6 @@ export type {
   AutomationDetailTab,
   AutomationSchedule,
 }
-export { AUTOMATION_DETAIL_TABS, normalizeAutomationDetailTab }
 
 export function AutomationEditorPanel({
   automation,

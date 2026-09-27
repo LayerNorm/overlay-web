@@ -3,15 +3,7 @@
 import { Loader2, MessageSquare, Plus, Archive, ArchiveRestore, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 
-export const resourceRowClass =
-  'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-
-export type AgentsPanelView = 'personal' | 'workspace' | 'archived'
-
-export function agentThreadHref(baseHref: string, agentId: string, conversationId: string) {
-  const params = new URLSearchParams({ agent: agentId, view: 'dms', id: conversationId })
-  return `${baseHref}?${params.toString()}`
-}
+import { resourceRowClass, type AgentsPanelView } from './sidebar-nav'
 
 export function AgentThreadRows({
   agent,

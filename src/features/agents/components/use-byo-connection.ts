@@ -11,7 +11,8 @@ import {
   environmentSupportsHarness,
   type BuiltInByoHarnessId,
 } from '../lib/byo-agent-setup'
-import { parseRoots, type AgentType, type EnvironmentChoice } from './AgentEditorForm'
+import type { AgentType, EnvironmentChoice } from './AgentEditorForm'
+import { parseRoots } from '../lib/agent-editor-utils'
 
 /**
  * The Bring-your-own-agent connection state machine: harness choice,

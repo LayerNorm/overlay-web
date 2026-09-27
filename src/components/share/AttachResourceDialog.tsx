@@ -274,7 +274,7 @@ export function AttachResourceDialog({
   )
 }
 
-export function attachableResourceIcon(resourceType: WorkspaceShareResourceType) {
+function attachableResourceIcon(resourceType: WorkspaceShareResourceType) {
   if (resourceType === 'automation') return <Workflow size={13} />
   if (resourceType === 'agent') return <Bot size={13} />
   return <FileText size={13} />
