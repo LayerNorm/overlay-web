@@ -105,6 +105,60 @@ function ModelCatalogControls({
   )
 }
 
+function ModelCatalogTags({
+  model,
+  language,
+  byok,
+}: {
+  model: GatewayCatalogModel
+  language: boolean
+  byok: boolean
+}) {
+  return (
+    <>
+      {language && model.tags.includes('vision') ? (
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+          <ScanEye size={11} strokeWidth={1.6} />
+        </span>
+      ) : null}
+      {language && model.tags.includes('reasoning') ? (
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+          <Sparkles size={11} strokeWidth={1.6} />
+        </span>
+      ) : null}
+      {!language ? <span>{formatMediaPrice(model)}</span> : byok ? (
+        <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
+          <KeyRound size={10} /> BYOK
+        </span>
+      ) : null}
+    </>
+  )
+}
+
+function ModelCatalogPricingLine({
+  model,
+  language,
+  byok,
+  hasUsagePricing,
+  curated,
+}: {
+  model: GatewayCatalogModel
+  language: boolean
+  byok: boolean
+  hasUsagePricing: boolean
+  curated: boolean
+}) {
+  return (
+    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
+      <span className="capitalize">{model.provider}</span><span>·</span>
+      {byok ? <span>Billed directly by provider</span> : hasUsagePricing && language ? (
+        <><span>{formatPrice(model.inputPricePerMillion)} in</span><span>·</span><span>{formatPrice(model.outputPricePerMillion)} out</span></>
+      ) : !hasUsagePricing ? <span>Pricing unavailable</span> : null}
+      {curated ? <><span>·</span><span>Default</span></> : null}
+    </div>
+  )
+}
+
 function ModelCatalogRow({
   model,
   curated,
@@ -140,29 +194,15 @@ function ModelCatalogRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-medium text-[var(--foreground)]">{model.name}</span>
-          {language && model.tags.includes('vision') ? (
-            <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
-              <ScanEye size={11} strokeWidth={1.6} />
-            </span>
-          ) : null}
-          {language && model.tags.includes('reasoning') ? (
-            <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
-              <Sparkles size={11} strokeWidth={1.6} />
-            </span>
-          ) : null}
-          {!language ? <span>{formatMediaPrice(model)}</span> : byok ? (
-            <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
-              <KeyRound size={10} /> BYOK
-            </span>
-          ) : null}
+          <ModelCatalogTags model={model} language={language} byok={byok} />
         </div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
-          <span className="capitalize">{model.provider}</span><span>·</span>
-          {byok ? <span>Billed directly by provider</span> : hasUsagePricing && language ? (
-            <><span>{formatPrice(model.inputPricePerMillion)} in</span><span>·</span><span>{formatPrice(model.outputPricePerMillion)} out</span></>
-          ) : !hasUsagePricing ? <span>Pricing unavailable</span> : null}
-          {curated ? <><span>·</span><span>Default</span></> : null}
-        </div>
+        <ModelCatalogPricingLine
+          model={model}
+          language={language}
+          byok={byok}
+          hasUsagePricing={hasUsagePricing}
+          curated={curated}
+        />
       </div>
       <ModelCatalogControls
         model={model}
