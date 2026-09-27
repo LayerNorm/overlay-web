@@ -337,7 +337,9 @@ export function CanonicalNotebookEditor({
     setEditorConflict(snapshot.conflict)
   }), [lifecycleController])
 
-  flushSaveRef.current = () => lifecycleController.flush()
+  useEffect(() => {
+    flushSaveRef.current = () => lifecycleController.flush()
+  }, [lifecycleController])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -1054,7 +1056,9 @@ export function CanonicalNotebookEditor({
   }
 
   const createNoteRef = useRef(createNote)
-  createNoteRef.current = createNote
+  useEffect(() => {
+    createNoteRef.current = createNote
+  })
   useEffect(() => {
     if (createNoteRequest === undefined) return
     if (lastCreateNoteRequestRef.current === createNoteRequest) return

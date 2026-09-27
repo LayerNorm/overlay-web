@@ -44,6 +44,7 @@ function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
       <iframe
         src={binaryUrl}
         title={file.name}
+        sandbox=""
         className="h-[80vh] w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]"
       />
     )

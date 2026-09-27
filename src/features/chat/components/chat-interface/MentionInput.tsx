@@ -770,6 +770,9 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
         onMentionsChange([])
         emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(true))
       } else if (value !== lastValueRef.current || el.innerHTML === '') {
+        // markdownToEditorHtml escapes all user text via escapeHtml before
+        // emitting markup, so this innerHTML cannot contain attacker HTML.
+        // react-doctor-disable-next-line react-doctor/dangerous-html-sink
         el.innerHTML = markdownToEditorHtml(value)
         emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(false))
         moveCaretToEnd(el)

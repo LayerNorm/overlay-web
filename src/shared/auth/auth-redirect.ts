@@ -3,6 +3,7 @@ import {
   DESKTOP_AUTH_REDIRECT_URI,
   SESSION_TRANSFER_DEEP_LINK_PREFIX,
 } from '@/shared/auth/auth-constants'
+import { publicEnv } from '@/shared/env/public-env'
 
 function isAllowedOverlayRedirect(value: string): boolean {
   return (
@@ -23,13 +24,18 @@ export function sanitizeClientAuthRedirect(value?: string | null): string {
     return trimmed.startsWith('//') ? DEFAULT_AUTH_REDIRECT : trimmed
   }
 
-  if (typeof window === 'undefined') {
+  // Resolve against the configured app origin (inlined at build time) so the
+  // result is identical on the server and during hydration.
+  let appOrigin: string
+  try {
+    appOrigin = new URL(publicEnv.appUrl).origin
+  } catch {
     return DEFAULT_AUTH_REDIRECT
   }
 
   try {
-    const candidate = new URL(trimmed, window.location.origin)
-    if (candidate.origin !== window.location.origin) {
+    const candidate = new URL(trimmed, appOrigin)
+    if (candidate.origin !== appOrigin) {
       return DEFAULT_AUTH_REDIRECT
     }
     return `${candidate.pathname}${candidate.search}${candidate.hash}` || DEFAULT_AUTH_REDIRECT

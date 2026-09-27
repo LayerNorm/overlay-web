@@ -51,8 +51,15 @@ export function GuestGateProvider({
   const pathname = usePathname()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
   const [modalClosing, setModalClosing] = useState(false)
-  const [cornerDismissed, setCornerDismissed] = useState(readCornerDismissed)
+  // Always false on the server and first client render so hydration matches;
+  // the real sessionStorage value is read after mount.
+  const [cornerDismissed, setCornerDismissed] = useState(false)
   const [cornerClosing, setCornerClosing] = useState(false)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read sessionStorage after mount
+    setCornerDismissed(readCornerDismissed())
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)

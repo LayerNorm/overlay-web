@@ -6,6 +6,9 @@ const LONG_POLL_MS = 15_000
 const MAX_CONCURRENT_EVENT_POLLS_PER_USER = 10
 const activeEventPollsByUser = new Map<string, number>()
 
+// The Map mutation below is an in-memory concurrency guard for long polling
+// (decremented in `finally`), not a persistent write.
+// react-doctor-disable-next-line react-doctor/nextjs-no-side-effect-in-get-handler
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   const repository = getOverlayServerContext().appData.repositories.conversationCollaboration
   const access = {
