@@ -254,6 +254,11 @@
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
     },
     {
+      "cadence": "{ hourUTC: 4, minuteUTC: 30 }",
+      "name": "knowledge orphan-chunk sweep",
+      "target": "(internal as any).knowledge.knowledge.sweepOrphanedChunks"
+    },
+    {
       "cadence": "{ minutes: 1 }",
       "name": "outbound webhook delivery",
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
@@ -400,7 +405,9 @@
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",
     "convex/imports/slackRunner.ts",
+    "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
+    "convex/knowledge/memoryExtractorNode.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]
 }
