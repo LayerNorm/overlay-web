@@ -2,8 +2,8 @@
 
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
-import { BookOpen,Folder,Trash2 } from 'lucide-react'
-import { useState,type MouseEvent } from 'react'
+import { BookOpen, Folder, Trash2 } from 'lucide-react'
+import { useState, type MouseEvent } from 'react'
 
 import { FileTypeIcon } from '../shared/file-type-icon'
 import { BulkSelectMarker } from './selection'
@@ -178,7 +178,9 @@ export function KnowledgeFileCards({
           folder={folder}
           bulkSel={selectedIds.has(folder._id)}
           selectMode={selectMode}
-          onOpen={() => (selectMode ? onToggleBulk(folder._id) : onOpenFolder(folder._id))}
+          onOpen={() =>
+            selectMode ? onToggleBulk(folder._id) : onOpenFolder(folder._id)
+          }
           onMove={onMove}
         />
       ))}
@@ -189,7 +191,9 @@ export function KnowledgeFileCards({
           allFiles={allFiles}
           bulkSel={selectedIds.has(file._id)}
           selectMode={selectMode}
-          onOpen={() => (selectMode ? onToggleBulk(file._id) : onOpenFile(file))}
+          onOpen={() =>
+            selectMode ? onToggleBulk(file._id) : onOpenFile(file)
+          }
         />
       ))}
     </div>
@@ -227,13 +231,22 @@ export function FileCard({
       }`}
       style={{ breakInside: 'avoid' }}
     >
-      {selectMode ? <BulkSelectMarker selected={bulkSel} className="absolute left-3 top-3 z-10" /> : null}
+      {selectMode ? (
+        <BulkSelectMarker
+          selected={bulkSel}
+          className='absolute left-3 top-3 z-10'
+        />
+      ) : null}
       {file.kind === 'note' ? (
         <div className="h-36 overflow-hidden bg-[var(--surface-muted)] p-3">
           <div className="h-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 shadow-sm">
-            <p className={`whitespace-pre-wrap text-[10px] leading-[1.45] ${
-              notePreview ? 'text-[var(--muted)]' : 'italic text-[var(--muted-light)]'
-            }`}>
+            <p
+              className={`whitespace-pre-wrap text-[10px] leading-[1.45] ${
+                notePreview
+                  ? 'text-[var(--muted)]'
+                  : 'italic text-[var(--muted-light)]'
+              }`}
+            >
               {notePreview || 'Empty note'}
             </p>
           </div>
@@ -244,10 +257,18 @@ export function FileCard({
         </div>
       )}
       <div className="px-3 py-2">
-        <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{file.name}</p>
-        <p className="mt-1 line-clamp-2 text-[10px] text-[var(--muted)]">{filePathLabel(allFiles, file)}</p>
+        <p className='line-clamp-2 text-xs font-medium text-[var(--foreground)]'>
+          {file.name}
+        </p>
+        <p className='mt-1 line-clamp-2 text-[10px] text-[var(--muted)]'>
+          {filePathLabel(allFiles, file)}
+        </p>
         <p className="mt-1 text-[10px] text-[var(--muted-light)]">
-          {new Date(file.updatedAt).toLocaleDateString()}
+          {
+            // Locale pinned to 'en-US'.
+            // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+            new Date(file.updatedAt).toLocaleDateString('en-US')
+          }
         </p>
       </div>
     </button>
@@ -304,7 +325,9 @@ export function FolderCard({
         <Folder size={36} className="text-[var(--muted-light)]" />
       </div>
       <div className="px-3 py-2">
-        <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{folder.name}</p>
+        <p className='line-clamp-2 text-xs font-medium text-[var(--foreground)]'>
+          {folder.name}
+        </p>
         <p className="mt-1 text-[10px] text-[var(--muted-light)]">Folder</p>
       </div>
     </button>
@@ -313,7 +336,10 @@ export function FolderCard({
 
 export function KnowledgeFileCardsSkeleton({ cards = 10 }: { cards?: number }) {
   return (
-    <div className="overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4" aria-hidden>
+    <div
+      className='overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4'
+      aria-hidden
+    >
       {Array.from({ length: cards }).map((_, index) => (
         <div
           key={index}

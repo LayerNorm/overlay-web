@@ -22,5 +22,7 @@ async function AgentsPageContent({
   const params = await searchParams
   const showcase = Array.isArray(params?.showcase) ? params.showcase[0] === '1' : params?.showcase === '1'
 
+  // Wrapped in <Suspense> by the page export above.
+  // react-doctor-disable-next-line react-doctor/nextjs-no-use-search-params-without-suspense
   return <AgentConversationWorkspace showcase={showcase} />
 }

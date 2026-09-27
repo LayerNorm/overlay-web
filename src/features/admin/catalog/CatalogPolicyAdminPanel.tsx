@@ -33,19 +33,23 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
 
   const visibleResources = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    return resources.filter((resource) => (
-      resource.resourceType === resourceType
-      && (!normalized || [
+    return resources.filter(
+      (resource) =>
+        resource.resourceType === resourceType &&
+        (!normalized ||
+          [
         resource.id,
         resource.label,
         resource.category,
         resource.description,
-      ].some((value) => value?.toLowerCase().includes(normalized)))
-    ))
+          ].some((value) => value?.toLowerCase().includes(normalized))),
+    )
   }, [query, resourceType, resources])
-  const selected = resources.find((resource) => (
-    resource.resourceType === resourceType && resource.id === selectedId
-  )) ?? null
+  const selected =
+    resources.find(
+      (resource) =>
+        resource.resourceType === resourceType && resource.id === selectedId,
+    ) ?? null
 
   const load = useCallback(async () => {
     const [catalog, groups, roles] = await Promise.all([
@@ -76,16 +80,22 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
   }, [load])
 
   useEffect(() => {
-    const firstId = resources.find((resource) => resource.resourceType === resourceType)?.id ?? null
-    setSelectedId((current) => (
-      current && resources.some((resource) => (
-        resource.resourceType === resourceType && resource.id === current
-      ))
+    const firstId =
+      resources.find((resource) => resource.resourceType === resourceType)
+        ?.id ?? null
+    setSelectedId((current) =>
+      current &&
+      resources.some(
+        (resource) =>
+          resource.resourceType === resourceType && resource.id === current,
+      )
         ? current
-        : firstId
-    ))
+        : firstId,
+    )
   }, [resourceType, resources])
 
+  // Selection → dependent fetch is this panel's data flow, not an accidental chain.
+  // react-doctor-disable-next-line react-doctor/no-effect-chain
   useEffect(() => {
     if (!selectedId) {
       setGrants([])
@@ -106,8 +116,11 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
         principalId,
         accessRole: 'viewer',
       })
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(payload.error || 'Could not update catalog policy')
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'Could not update catalog policy')
       setPrincipalId('')
       await loadGrants(selected.resourceType, selected.id)
     } catch (grantError) {
@@ -122,9 +135,15 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
     setBusy(true)
     setError(null)
     try {
-      const response = await overlayAppClient.adminAuthorization.removeResourceGrantResponse(grantId)
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(payload.error || 'Could not remove catalog policy')
+      const response =
+        await overlayAppClient.adminAuthorization.removeResourceGrantResponse(
+          grantId,
+        )
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'Could not remove catalog policy')
       await loadGrants(selected.resourceType, selected.id)
     } catch (grantError) {
       setError(message(grantError))
@@ -139,7 +158,9 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
         <div>
           <div className="flex items-center gap-2">
             <Boxes size={17} />
-            <h2 className="text-sm font-semibold">Models, tools, and connectors</h2>
+            <h2 className='text-sm font-semibold'>
+              Models, tools, and connectors
+            </h2>
           </div>
           <p className="mt-1 max-w-2xl text-xs text-[var(--muted)]">
             Restrict deployment-enabled resources to selected users, groups, or roles.
@@ -158,7 +179,9 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
         />
       </div>
 
-      {error ? <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? (
+        <p className='mt-4 text-sm text-red-600 dark:text-red-400'>{error}</p>
+      ) : null}
 
       <div className="mt-6 grid min-h-[480px] gap-6 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
         <CatalogResourceList
@@ -422,12 +445,10 @@ function entryLabel(entry: DirectoryEntry): string {
   return entry.email || entry.name || entry.id
 }
 
-function principalLabel(
-  directory: Directory,
-  grant: ResourceGrant,
-): string {
-  const entry = directoryEntries(directory, grant.principalType)
-    .find(({ id }) => id === grant.principalId)
+function principalLabel(directory: Directory, grant: ResourceGrant): string {
+  const entry = directoryEntries(directory, grant.principalType).find(
+    ({ id }) => id === grant.principalId,
+  )
   return entry ? entryLabel(entry) : grant.principalId
 }
 

@@ -192,6 +192,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     // Search when mentionQuery changes
     useEffect(() => {
       if (!showPopup) return
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       void search(mentionQuery).then(setCategories)
     }, [mentionQuery, setCategories, showPopup, search])
 

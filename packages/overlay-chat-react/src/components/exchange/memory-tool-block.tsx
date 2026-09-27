@@ -89,6 +89,8 @@ function MemoryDetails({
       {show ? (
         <ul className={`message-appear space-y-1 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} pr-1 [scrollbar-width:thin]`}>
           {contents.map((c, i) => (
+            // Append-only tool output; index is the stable identity.
+            // react-doctor-disable-next-line react-doctor/no-array-index-as-key
             <li
               key={i}
               className="text-[12px] leading-relaxed text-[var(--muted)]"

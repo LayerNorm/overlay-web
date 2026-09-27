@@ -30,18 +30,20 @@ async function requireActorMembership(
 ): Promise<Doc<'workspacePrincipals'>> {
   const principal = await ctx.db
     .query('workspacePrincipals')
-    .withIndex('by_workspaceId_userId', (q) => (
-      q.eq('workspaceId', args.workspaceId).eq('userId', args.userId)
-    ))
+    .withIndex('by_workspaceId_userId', (q) =>
+      q.eq('workspaceId', args.workspaceId).eq('userId', args.userId),
+    )
     .unique()
   if (!principal || principal.type !== 'human' || principal.archivedAt) {
     throw new Error('WORKSPACE_ACCESS_DENIED')
   }
   const membership = await ctx.db
     .query('workspaceMemberships')
-    .withIndex('by_workspaceId_principalId', (q) => (
-      q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
-    ))
+    .withIndex('by_workspaceId_principalId', (q) =>
+      q
+        .eq('workspaceId', args.workspaceId)
+        .eq('principalId', principal.principalId),
+    )
     .unique()
   if (!membership || membership.status !== 'active') throw new Error('WORKSPACE_ACCESS_DENIED')
   return principal
@@ -65,9 +67,9 @@ async function listThreadDocs(
 ): Promise<Doc<'conversations'>[]> {
   const rows = await ctx.db
     .query('conversations')
-    .withIndex('by_workspaceId_agentId', (q) => (
-      q.eq('workspaceId', args.workspaceId).eq('agentId', args.agentId)
-    ))
+    .withIndex('by_workspaceId_agentId', (q) =>
+      q.eq('workspaceId', args.workspaceId).eq('agentId', args.agentId),
+    )
     .collect()
   // Threads are per-user DM conversations: callers only ever see their own.
   // Automation-owned threads can carry agentId when the automation was
@@ -83,9 +85,9 @@ async function callerArchivedAt(
 ): Promise<number | undefined> {
   const participant = await ctx.db
     .query('conversationParticipants')
-    .withIndex('by_conversationId_principalId', (q) => (
-      q.eq('conversationId', conversationId).eq('principalId', principalId)
-    ))
+    .withIndex('by_conversationId_principalId', (q) =>
+      q.eq('conversationId', conversationId).eq('principalId', principalId),
+    )
     .unique()
   return participant?.archivedAt
 }
@@ -117,20 +119,18 @@ async function insertThread(
     { principal: actor, role: 'moderator' as const },
     { principal: agentPrincipal, role: 'member' as const },
   ]
-  for (const { principal, role } of participants) {
-    await ctx.db.insert('conversationParticipants', {
-      conversationId,
-      workspaceId: args.workspaceId,
-      principalId: principal.principalId,
-      principalType: principal.type as 'human' | 'agent',
-      role,
-      status: 'active',
-      notificationLevel: 'all',
-      joinedAt: now,
-      updatedAt: now,
-      lastReadAt: principal.principalId === actor.principalId ? now : undefined,
-    })
-  }
+  await Promise.all(participants.map(({ principal, role }) => ctx.db.insert('conversationParticipants', {
+    conversationId,
+    workspaceId: args.workspaceId,
+    principalId: principal.principalId,
+    principalType: principal.type as 'human' | 'agent',
+    role,
+    status: 'active',
+    notificationLevel: 'all',
+    joinedAt: now,
+    updatedAt: now,
+    lastReadAt: principal.principalId === actor.principalId ? now : undefined,
+  })))
   await ctx.db.insert('workspaceResourceScopes', {
     workspaceId: args.workspaceId,
     resourceType: 'conversation',
@@ -201,11 +201,15 @@ export const resolveMainThreadByServer = mutation({
   returns: v.object({ conversationId: v.id('conversations'), title: v.string() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const actor = await requireActorMembership(ctx, args)
-    const agent = await requireAgentDefinition(ctx, args)
+    const [actor, agent] = await Promise.all([
+      requireActorMembership(ctx, args),
+      requireAgentDefinition(ctx, args),
+    ])
 
     // Archived agents still resolve their existing main thread so history
     // stays viewable from the Archived tab; they just cannot adopt or create.
+    // requireLiveAgent is skipped when a main thread resolves — ordering required.
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
     const threads = await listThreadDocs(ctx, { ...args })
     const main = threads
       .slice()
@@ -216,12 +220,16 @@ export const resolveMainThreadByServer = mutation({
       agentId: args.agentId,
     })
 
-    const dmIdentityKey = [actor.principalId, agent.principalId].sort().join(':')
+    const dmIdentityKey = [actor.principalId, agent.principalId]
+      .sort()
+      .join(':')
     const legacyDm = await ctx.db
       .query('conversations')
-      .withIndex('by_workspaceId_dmIdentityKey', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('dmIdentityKey', dmIdentityKey)
-      ))
+      .withIndex('by_workspaceId_dmIdentityKey', (q) =>
+        q
+          .eq('workspaceId', args.workspaceId)
+          .eq('dmIdentityKey', dmIdentityKey),
+      )
       .first()
     if (legacyDm
       && !legacyDm.deletedAt
@@ -288,16 +296,18 @@ export const listArchivedAgentsByServer = query({
     const actor = await requireActorMembership(ctx, args)
     const participantRows = await ctx.db
       .query('conversationParticipants')
-      .withIndex('by_workspaceId_principalId_status', (q) => (
-        q.eq('workspaceId', args.workspaceId)
+      .withIndex('by_workspaceId_principalId_status', (q) =>
+        q
+          .eq('workspaceId', args.workspaceId)
           .eq('principalId', actor.principalId)
-          .eq('status', 'active')
-      ))
+          .eq('status', 'active'),
+      )
       .collect()
     const agentIds = new Set<string>()
-    for (const row of participantRows) {
-      if (!row.archivedAt) continue
-      const conversation = await ctx.db.get(row.conversationId)
+    const archivedConversations = await Promise.all(
+      participantRows.filter((row) => row.archivedAt).map((row) => ctx.db.get(row.conversationId)),
+    )
+    for (const conversation of archivedConversations) {
       if (conversation?.agentId && !conversation.deletedAt && !conversation.isAutomation) {
         agentIds.add(conversation.agentId)
       }
@@ -322,11 +332,12 @@ export const listAutomationsByServer = query({
       .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
       .collect()
     return rows
-      .filter((row) => (
-        !row.deletedAt
-        && row.workspaceId === args.workspaceId
-        && row.userId === args.userId
-      ))
+      .filter(
+        (row) =>
+          !row.deletedAt &&
+          row.workspaceId === args.workspaceId &&
+          row.userId === args.userId,
+      )
       .map((row) => ({
         automationId: row._id,
         name: row.name ?? row.title ?? 'Untitled automation',
@@ -369,9 +380,11 @@ export const setThreadArchivedByServer = mutation({
     })
     const participant = await ctx.db
       .query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('principalId', actor.principalId)
-      ))
+      .withIndex('by_conversationId_principalId', (q) =>
+        q
+          .eq('conversationId', args.conversationId)
+          .eq('principalId', actor.principalId),
+      )
       .unique()
     if (!participant || participant.status !== 'active') throw new Error('THREAD_ACCESS_DENIED')
     await ctx.db.patch(participant._id, {
@@ -411,9 +424,11 @@ export const deleteThreadByServer = mutation({
     const actor = await requireActorMembership(ctx, { workspaceId, userId: args.userId })
     const participant = await ctx.db
       .query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('principalId', actor.principalId)
-      ))
+      .withIndex('by_conversationId_principalId', (q) =>
+        q
+          .eq('conversationId', args.conversationId)
+          .eq('principalId', actor.principalId),
+      )
       .unique()
     if (!participant && conversation.userId !== args.userId) throw new Error('THREAD_ACCESS_DENIED')
 

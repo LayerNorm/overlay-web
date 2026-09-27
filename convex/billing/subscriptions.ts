@@ -489,13 +489,9 @@ export const resetDailyUsage = internalMutation({
       .filter((q) => q.lt(q.field('date'), date))
       .collect()
 
-    let deleted = 0
-    for (const record of usageRecords) {
-      await ctx.db.delete(record._id)
-      deleted++
-    }
+    await Promise.all(usageRecords.map((record) => ctx.db.delete(record._id)))
 
-    return { deleted }
+    return { deleted: usageRecords.length }
   }
 })
 
@@ -654,6 +650,9 @@ export const migrateToCreditsOnSubscription = internalMutation({
     let migrated = 0
 
     for (const sub of allSubscriptions) {
+      // Sequential on purpose: ensurePersonalBillingAccount is get-or-create, so
+      // duplicate userIds in one batch must see earlier iterations' writes.
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const billingAccount = await ensurePersonalBillingAccount(ctx, sub.userId)
       const updates: Record<string, unknown> = {}
       updates.billingAccountId = billingAccount.billingAccountId
@@ -1177,12 +1176,8 @@ export const pruneOldWebhookEvents = internalMutation({
       .query('processedWebhookEvents')
       .withIndex('by_processedAt', (q) => q.lt('processedAt', cutoff))
       .take(500)
-    let deleted = 0
-    for (const row of old) {
-      await ctx.db.delete(row._id)
-      deleted++
-    }
-    return { deleted }
+    await Promise.all(old.map((row) => ctx.db.delete(row._id)))
+    return { deleted: old.length }
   },
 })
 
@@ -1195,17 +1190,15 @@ export const backfillTokenUsageEmail = internalMutation({
 
     let migrated = 0
 
-    for (const row of allTokenUsage) {
-      if (row.email) continue // already has email
-
-      const subscription = await ctx.db
+    const rowsWithoutEmail = allTokenUsage.filter((row) => !row.email)
+    const subscriptions = await Promise.all(rowsWithoutEmail.map((row) =>
+      ctx.db
         .query('subscriptions')
         .withIndex('by_userId', (q) => q.eq('userId', row.userId))
-        .first()
-
-      await ctx.db.patch(row._id, { email: subscription?.email ?? '' })
-      migrated++
-    }
+        .first()))
+    await Promise.all(rowsWithoutEmail.map((row, i) =>
+      ctx.db.patch(row._id, { email: subscriptions[i]?.email ?? '' })))
+    migrated = rowsWithoutEmail.length
 
     return { migrated, total: allTokenUsage.length }
   }

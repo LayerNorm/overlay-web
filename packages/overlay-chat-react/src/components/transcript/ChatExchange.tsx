@@ -483,9 +483,9 @@ function ExchangeUserMessage({
         )}
         {userImages.length > 0 && (
           <div className="flex w-full flex-wrap justify-end gap-1.5">
-            {userImages.map((attachment, i) => (
+            {userImages.map((attachment) => (
               <button
-                key={`${attachment.url}-${i}`}
+                key={attachment.url}
                 type="button"
                 onClick={() => onOpenAttachmentPreview?.({
                   name: attachment.name,

@@ -198,7 +198,10 @@ function AutomationNode({ data, selected }: NodeProps) {
       )}
       {/* Error overlay tooltip */}
       {runStatus === 'failed' && errorMessage && (
-        <div className="absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-sm" style={{ zIndex: 10 }}>
+        <div
+          className='absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-sm'
+          style={{ zIndex: 10 }}
+        >
           <p className="truncate">{errorMessage}</p>
           {attemptCount && attemptCount > 1 ? (
             <p className="text-red-400">retry {attemptCount - 1}x</p>
@@ -249,8 +252,14 @@ function NodeConfigPanel({
     <div className="flex w-72 flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)]">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <Icon size={14} strokeWidth={1.75} className="text-[var(--foreground)]" />
-          <span className="text-sm font-medium text-[var(--foreground)]">Node settings</span>
+          <Icon
+            size={14}
+            strokeWidth={1.75}
+            className='text-[var(--foreground)]'
+          />
+          <span className='text-sm font-medium text-[var(--foreground)]'>
+            Node settings
+          </span>
         </div>
         <button
           type="button"
@@ -519,7 +528,7 @@ function useGraphCanvasState({
     syncHistoryFlags()
     setValidationErrors(validateAutomationGraph(graph))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph])
+  }, [graph, setNodes, setEdges])
 
   // Update node data when run statuses change (without resetting layout)
   useEffect(() => {

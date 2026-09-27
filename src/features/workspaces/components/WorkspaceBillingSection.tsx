@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
 import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
@@ -73,7 +74,8 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
     if (workspace.kind !== 'organization') return
     const controller = new AbortController()
     setState({ status: 'loading' })
-    void client.billing(workspace.id, controller.signal)
+    void client
+      .billing(workspace.id, controller.signal)
       .then((summary) => {
         if (controller.signal.aborted) return
         setState({ status: 'ready', summary })
@@ -98,7 +100,8 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
         : null
     if (!sessionId || !kind || workspace.kind !== 'organization') return
     setBusy('verify')
-    void client.verifyBillingCheckout(workspace.id, { kind, sessionId })
+    void client
+      .verifyBillingCheckout(workspace.id, { kind, sessionId })
       .then(() => {
         setMessage(kind === 'paid_plan' ? 'Workspace subscription activated.' : 'Workspace credits added.')
         setRefreshKey((value) => value + 1)
@@ -106,7 +109,11 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Checkout verification failed.'))
       .finally(() => {
         setBusy(null)
-        router.replace('/app/settings?section=workspace&workspace_tab=billing', { scroll: false })
+        window.history.replaceState(
+          null,
+          '',
+          '/app/settings?section=workspace&workspace_tab=billing',
+        )
       })
   }, [client, router, searchParams, workspace.id, workspace.kind])
 
@@ -157,7 +164,14 @@ function WorkspaceBillingLoaded({
 
   return (
     <div data-testid="workspace-billing" className="space-y-4 p-5">
-      {message ? <div role="status" className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-[var(--foreground)]">{message}</div> : null}
+      {message ? (
+        <div
+          role='status'
+          className='rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-[var(--foreground)]'
+        >
+          {message}
+        </div>
+      ) : null}
 
       {!summary.rollout.eligible ? (
         <RolloutNotice stage={summary.rollout.stage} />
@@ -316,8 +330,18 @@ function BillingActionCard({ children, description, title }: { children: ReactNo
 
 function MarginPanel({ report }: { report: NonNullable<WorkspaceBillingSummaryResponse['observability']> }) {
   return (
-    <div data-testid="workspace-margin-report" className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
-      <div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-[var(--foreground)]">Billing health</p><span className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted-light)]">Owners & admins</span></div>
+    <div
+      data-testid='workspace-margin-report'
+      className='rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4'
+    >
+      <div className='flex items-center justify-between gap-3'>
+        <p className='text-sm font-medium text-[var(--foreground)]'>
+          Billing health
+        </p>
+        <span className='text-[10px] uppercase tracking-[0.14em] text-[var(--muted-light)]'>
+          Owners & admins
+        </span>
+      </div>
       <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
         <Metric label="Provider cost" value={`$${(report.actualProviderCostCents / 100).toFixed(2)}`} />
         <Metric label="Retail usage" value={formatCredits(report.retailCredits)} />
@@ -330,8 +354,25 @@ function MarginPanel({ report }: { report: NonNullable<WorkspaceBillingSummaryRe
   )
 }
 
-function Metric({ danger, label, value }: { danger?: boolean; label: string; value: string }) {
-  return <div><dt className="text-[var(--muted-light)]">{label}</dt><dd className={`mt-1 font-medium ${danger ? 'text-red-500' : 'text-[var(--foreground)]'}`}>{value}</dd></div>
+function Metric({
+  danger,
+  label,
+  value,
+}: {
+  danger?: boolean
+  label: string
+  value: string
+}) {
+  return (
+    <div>
+      <dt className='text-[var(--muted-light)]'>{label}</dt>
+      <dd
+        className={`mt-1 font-medium ${danger ? 'text-red-500' : 'text-[var(--foreground)]'}`}
+      >
+        {value}
+      </dd>
+    </div>
+  )
 }
 
 const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })

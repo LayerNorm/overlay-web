@@ -182,7 +182,10 @@ function NotebookModelPicker({
           agentRunning ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
         }`}
       >
-        <span className="min-w-0 truncate">{models.find((model) => model.id === selectedModelId)?.name ?? selectedModelId}</span>
+        <span className='min-w-0 truncate'>
+          {models.find((model) => model.id === selectedModelId)?.name ??
+            selectedModelId}
+        </span>
         <ChevronDown size={11} className="shrink-0" />
       </button>
       {showModelPicker && (
@@ -204,7 +207,11 @@ function NotebookModelPicker({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                    {isSel ? (
+                      <Check size={10} />
+                    ) : (
+                      <span className='w-[10px] inline-block' />
+                    )}
                     {m.name}
                   </span>
                 </button>
@@ -234,10 +241,21 @@ function NotebookAssistantHeader({
     <NotebookAgentHeader
       pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
       modelPicker={modelPicker}
-      presentation={onAgentPanelModeChange ? (agentPanelMode === 'docked' ? 'sidebar' : 'floating') : undefined}
-      onPresentationChange={onAgentPanelModeChange
-        ? (presentation) => onAgentPanelModeChange(presentation === 'sidebar' ? 'docked' : 'floating')
-        : undefined}
+      presentation={
+        onAgentPanelModeChange
+          ? agentPanelMode === 'docked'
+            ? 'sidebar'
+            : 'floating'
+          : undefined
+      }
+      onPresentationChange={
+        onAgentPanelModeChange
+          ? (presentation) =>
+              onAgentPanelModeChange(
+                presentation === 'sidebar' ? 'docked' : 'floating',
+              )
+          : undefined
+      }
       onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
       onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
       onClose={() => void onToggleAgentPanel()}
@@ -712,9 +730,13 @@ export function CanonicalNotebookEditor({
           running={agent.agentRunning}
           logo={overlayLogo}
           composer={agentComposer}
-          renderMarkdownMessage={(text, isStreaming) => renderMarkdown?.(text, isStreaming) ?? (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
-          )}
+            renderMarkdownMessage={(text, isStreaming) =>
+              renderMarkdown?.(text, isStreaming) ?? (
+                <p className='whitespace-pre-wrap text-sm leading-relaxed'>
+                  {text}
+                </p>
+              )
+            }
         />
       ) : null}
       rightPanelOpen={agent.agentPanelOpen && Boolean(activeNote)}

@@ -99,14 +99,16 @@ export function AuthProvider({
   const reconciledUserId = useRef(initialUser?.id ?? null)
   const lastCheckAtRef = useRef(0)
 
-  useEffect(() => {
+  const [prevInitial, setPrevInitial] = useState({ user: initialUser, resolved: initialSessionResolved })
+  if (initialUser !== prevInitial.user || initialSessionResolved !== prevInitial.resolved) {
+    setPrevInitial({ user: initialUser, resolved: initialSessionResolved })
     if (initialUser) {
       setUser(initialUser)
     }
     if (initialSessionResolved) {
       setIsLoading(false)
     }
-  }, [initialUser, initialSessionResolved])
+  }
 
   useEffect(() => {
     if (isLoading) return

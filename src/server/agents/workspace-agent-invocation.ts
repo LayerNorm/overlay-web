@@ -244,14 +244,14 @@ async function loadRoomTurnContext(args: {
 }) {
   const server = getOverlayServerContext()
   const collaboration = server.appData.repositories.conversationCollaboration
-  const conversation = await loadAccessibleConversation({
+  const [conversation, participants, history, directory] = await Promise.all([
+    loadAccessibleConversation({
     actorUserId: args.actorUserId,
     collaboration,
     conversationId: args.conversationId,
     messageId: args.messageId,
     workspaceId: args.workspaceId,
-  })
-  const [participants, history, directory] = await Promise.all([
+    }),
     collaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     }),
@@ -404,16 +404,18 @@ export async function resolveWorkspaceAgentInvocations(args: {
   const remoteRunsEnabled = runtime.features.connectedAgentControlPlane === true
     && runtime.features.remoteAgentRuns === true
     && connectedAgentRollout.eligible
-  const invocations: WorkspaceAgentInvocation[] = []
-  for (const agent of invocableAgents) {
-    const target = remoteRunsEnabled
-      ? await server.appData.repositories.connectedAgents.findInvocationTarget({
+  const targets = await Promise.all(invocableAgents.map((agent) =>
+    remoteRunsEnabled
+      ? server.appData.repositories.connectedAgents.findInvocationTarget({
           workspaceId: args.workspaceId,
           agentId: agent.id,
           now: Date.now(),
           onlineWithinMs: CONNECTED_AGENT_ONLINE_WITHIN_MS,
         })
-      : null
+      : null))
+  const invocations: WorkspaceAgentInvocation[] = []
+  for (const [agentIndex, agent] of invocableAgents.entries()) {
+    const target = targets[agentIndex]
     const configuredAdapterId = target?.binding.adapterConfig.adapterId ?? target?.binding.adapterConfig.harnessId
     const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
     const workingDirectory = target && typeof target.binding.adapterConfig.workingDirectory === 'string'

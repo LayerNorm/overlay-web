@@ -193,16 +193,19 @@ export class FileService {
         userId: args.userId,
       })
     } else if (shouldSplitTextFile(createRequest)) {
-      for (const part of buildTextFilePartWrites(createRequest.fileArgs.name, createRequest.textValue ?? '')) {
-        const partId = await this.deps.repository.createFile({
-          ...createRequest.fileArgs,
-          ...part,
-        })
-        if (!partId) {
-          serviceError({ error: 'Failed to create file part' }, 500)
-        }
-        ids.push(partId)
-      }
+      const partIds = await Promise.all(
+        buildTextFilePartWrites(createRequest.fileArgs.name, createRequest.textValue ?? '')
+          .map(async (part) => {
+            const partId = await this.deps.repository.createFile({
+              ...createRequest.fileArgs,
+              ...part,
+            })
+            if (!partId) {
+              serviceError({ error: 'Failed to create file part' }, 500)
+            }
+            return partId
+          }))
+      ids.push(...partIds)
       id = ids[0]
     } else {
       assignTextContent(createRequest.fileArgs, createRequest.textValue)

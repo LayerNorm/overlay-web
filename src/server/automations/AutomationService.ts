@@ -457,14 +457,13 @@ export class AutomationService {
       workspaceId: args.workspaceId,
     })
 
-    for (const conversationId of linkedConversationIds) {
-      await this.deps.repository.removeConversation({
+    await Promise.all(linkedConversationIds.map((conversationId) =>
+      this.deps.repository.removeConversation({
         conversationId,
         userId: args.userId,
       }).catch((error) => {
         logger.warn('[automations DELETE] Failed to delete linked conversation', error)
-      })
-    }
+      })))
 
     return { success: true, linkedConversationIds }
   }

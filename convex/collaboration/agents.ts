@@ -54,11 +54,26 @@ export const createByServer = mutation({
     if (!args.name.trim() || !args.instructions.trim() || !args.modelId.trim()) {
       throw new Error('WORKSPACE_AGENT_INVALID')
     }
-    const duplicate = (await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-      .find((item) => item.name.toLowerCase() === args.name.trim().toLowerCase() && !item.archivedAt)
-    if (duplicate && !duplicate.archivedAt) throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
-    if (await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()) {
+    const duplicate = (
+      await ctx.db
+        .query('workspaceAgentDefinitions')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect()
+    ).find(
+      (item) =>
+        item.name.toLowerCase() === args.name.trim().toLowerCase() &&
+        !item.archivedAt,
+    )
+    if (duplicate && !duplicate.archivedAt)
+      throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
+    if (
+      await ctx.db
+        .query('workspaceAgentDefinitions')
+        .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+        .unique()
+    ) {
       throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
     }
     await ctx.db.insert('workspacePrincipals', {
@@ -83,30 +98,36 @@ export const createByServer = mutation({
       createdAt: args.now, updatedAt: args.now,
       isDefault: args.isDefault || args.name.trim().toLowerCase() === 'overlay' ? true : undefined,
     })
-    for (const teamId of unique(args.teamIds)) {
-      const team = await ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()
-      if (!team || team.workspaceId !== args.workspaceId || team.archivedAt) continue
-      await ctx.db.insert('workspaceTeamMemberships', {
+    const newTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
+      ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
+    const joinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
+      const team = newTeams[i]
+      return team && team.workspaceId === args.workspaceId && !team.archivedAt
+    })
+    await Promise.all(joinableTeamIds.map((teamId) =>
+      ctx.db.insert('workspaceTeamMemberships', {
         teamMembershipId: `${teamId}:${args.principalId}`, workspaceId: args.workspaceId,
         teamId, principalId: args.principalId, principalType: 'agent',
         addedByPrincipalId: args.createdByPrincipalId, createdAt: args.now,
-      })
-    }
+      })))
     // Creator-only agents join no channels implicitly: only their creator can
     // place them anywhere, and only the creator can invoke them.
     if ((args.visibility ?? 'workspace') !== 'creator') {
-      const channels = await ctx.db.query('conversations')
+      const channels = await ctx.db
+        .query('conversations')
         .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
-          q.eq('workspaceId', args.workspaceId).eq('conversationType', 'channel'))
+          q
+            .eq('workspaceId', args.workspaceId)
+            .eq('conversationType', 'channel'),
+        )
         .collect()
-      for (const channel of channels) {
-        if (channel.deletedAt || channel.channelVisibility !== 'public') continue
-        await ctx.db.insert('conversationParticipants', {
+      await Promise.all(channels
+        .filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
+        .map((channel) => ctx.db.insert('conversationParticipants', {
           conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
           principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
           joinedAt: args.now, updatedAt: args.now,
-        })
-      }
+        })))
     }
     await ctx.db.insert('workspaceResourceScopes', {
       workspaceId: args.workspaceId, resourceType: 'agent', resourceId: args.agentId,
@@ -121,9 +142,13 @@ export const getByServer = query({
   returns: v.union(agentValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
-    return row && row.workspaceId === args.workspaceId ? await directoryValue(ctx, row) : null
+    const row = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+      .unique()
+    return row && row.workspaceId === args.workspaceId
+      ? await directoryValue(ctx, row)
+      : null
   },
 })
 
@@ -132,10 +157,16 @@ export const listByServer = query({
   returns: v.array(agentValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const rows = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect()
-    const visible = rows.filter((row) => args.includeArchived || !row.archivedAt)
-      .sort((a, b) => a.name.localeCompare(b.name) || a.agentId.localeCompare(b.agentId))
+    const rows = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
+    const visible = rows
+      .filter((row) => args.includeArchived || !row.archivedAt)
+      .sort(
+        (a, b) =>
+          a.name.localeCompare(b.name) || a.agentId.localeCompare(b.agentId),
+      )
     return await Promise.all(visible.map((row) => directoryValue(ctx, row)))
   },
 })
@@ -153,21 +184,42 @@ export const updateByServer = mutation({
   returns: v.union(agentValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
-    if (!row || row.workspaceId !== args.workspaceId || row.archivedAt) return null
-    if (args.name && args.name.trim().toLowerCase() !== row.name.toLowerCase()) {
-      const duplicate = (await ctx.db.query('workspaceAgentDefinitions')
-        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-        .find((item) => item._id !== row._id && !item.archivedAt
-          && item.name.toLowerCase() === args.name!.trim().toLowerCase())
+    const row = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+      .unique()
+    if (!row || row.workspaceId !== args.workspaceId || row.archivedAt)
+      return null
+    if (
+      args.name &&
+      args.name.trim().toLowerCase() !== row.name.toLowerCase()
+    ) {
+      const duplicate = (
+        await ctx.db
+          .query('workspaceAgentDefinitions')
+          .withIndex('by_workspaceId', (q) =>
+            q.eq('workspaceId', args.workspaceId),
+          )
+          .collect()
+      ).find(
+        (item) =>
+          item._id !== row._id &&
+          !item.archivedAt &&
+          item.name.toLowerCase() === args.name!.trim().toLowerCase(),
+      )
       if (duplicate) throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
     }
     const patch: {
       name?: string
       description?: string
       instructions?: string
-      harness?: 'overlay' | 'claude-code' | 'codex' | 'opencode' | 'pi' | 'hermes'
+      harness?:
+        | 'overlay'
+        | 'claude-code'
+        | 'codex'
+        | 'opencode'
+        | 'pi'
+        | 'hermes'
       modelId?: string
       avatarColor?: string
       avatarShape?: string
@@ -187,28 +239,43 @@ export const updateByServer = mutation({
       ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
       updatedAt: args.now,
     }
-    if ('name' in patch && !patch.name || 'instructions' in patch && !patch.instructions || 'modelId' in patch && !patch.modelId) {
+    if (
+      ('name' in patch && !patch.name) ||
+      ('instructions' in patch && !patch.instructions) ||
+      ('modelId' in patch && !patch.modelId)
+    ) {
       throw new Error('WORKSPACE_AGENT_INVALID')
     }
     await ctx.db.patch(row._id, patch)
     if ('name' in patch && patch.name) {
-      const principal = await ctx.db.query('workspacePrincipals')
-        .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
-      if (principal) await ctx.db.patch(principal._id, { displayName: patch.name, updatedAt: args.now })
+      const principal = await ctx.db
+        .query('workspacePrincipals')
+        .withIndex('by_principalId', (q) =>
+          q.eq('principalId', row.principalId),
+        )
+        .unique()
+      if (principal)
+        await ctx.db.patch(principal._id, {
+          displayName: patch.name,
+          updatedAt: args.now,
+        })
     }
     if (args.teamIds) {
       const existing = await ctx.db.query('workspaceTeamMemberships')
         .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
-      for (const membership of existing) await ctx.db.delete(membership._id)
-      for (const teamId of unique(args.teamIds)) {
-        const team = await ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()
-        if (!team || team.workspaceId !== args.workspaceId || team.archivedAt) continue
-        await ctx.db.insert('workspaceTeamMemberships', {
+      await Promise.all(existing.map((membership) => ctx.db.delete(membership._id)))
+      const updatedTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
+        ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
+      const updatedJoinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
+        const team = updatedTeams[i]
+        return team && team.workspaceId === args.workspaceId && !team.archivedAt
+      })
+      await Promise.all(updatedJoinableTeamIds.map((teamId) =>
+        ctx.db.insert('workspaceTeamMemberships', {
           teamMembershipId: `${teamId}:${row.principalId}`, workspaceId: args.workspaceId,
           teamId, principalId: row.principalId, principalType: 'agent',
           addedByPrincipalId: args.updatedByPrincipalId, createdAt: args.now,
-        })
-      }
+        })))
       // Store the updated teamIds projection on the definition row so
       // listByServer can read it without N+1 queries.
       patch.teamIds = unique(args.teamIds)
@@ -222,31 +289,56 @@ export const archiveByServer = mutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
-    if (!row || row.workspaceId !== args.workspaceId || row.archivedAt) return false
+    const row = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+      .unique()
+    if (!row || row.workspaceId !== args.workspaceId || row.archivedAt)
+      return false
     if (row.isDefault || row.name.toLowerCase() === 'overlay') return false
-    await ctx.db.patch(row._id, { archivedAt: args.now, updatedAt: args.now, roomCount: 0, teamIds: [] })
-    const principal = await ctx.db.query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
-    if (principal) await ctx.db.patch(principal._id, { archivedAt: args.now, updatedAt: args.now })
-    const membership = await ctx.db.query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId)).unique()
-    if (membership) await ctx.db.patch(membership._id, { status: 'suspended', updatedAt: args.now })
-    const participants = await ctx.db.query('conversationParticipants')
+    await ctx.db.patch(row._id, {
+      archivedAt: args.now,
+      updatedAt: args.now,
+      roomCount: 0,
+      teamIds: [],
+    })
+    const principal = await ctx.db
+      .query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
+      .unique()
+    if (principal)
+      await ctx.db.patch(principal._id, {
+        archivedAt: args.now,
+        updatedAt: args.now,
+      })
+    const membership = await ctx.db
+      .query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) =>
+        q
+          .eq('workspaceId', args.workspaceId)
+          .eq('principalId', row.principalId),
+      )
+      .unique()
+    if (membership)
+      await ctx.db.patch(membership._id, {
+        status: 'suspended',
+        updatedAt: args.now,
+      })
+    const participants = await ctx.db
+      .query('conversationParticipants')
       .withIndex('by_workspaceId_principalId_status', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
-    for (const participant of participants) {
-      // Threads (agentId-bound conversations) keep the agent as a participant
-      // while archived so the Archived view can render them and unarchive
-      // restores without re-joining.
-      const conversation = await ctx.db.get(participant.conversationId)
-      if (conversation?.agentId === row.agentId) continue
-      await ctx.db.patch(participant._id, { status: 'removed', removedAt: args.now, updatedAt: args.now })
-    }
+    const participantConversations = await Promise.all(participants.map((participant) =>
+      ctx.db.get(participant.conversationId)))
+    // Threads (agentId-bound conversations) keep the agent as a participant
+    // while archived so the Archived view can render them and unarchive
+    // restores without re-joining.
+    await Promise.all(participants
+      .filter((_, i) => participantConversations[i]?.agentId !== row.agentId)
+      .map((participant) => ctx.db.patch(participant._id, { status: 'removed', removedAt: args.now, updatedAt: args.now })))
     const memberships = await ctx.db.query('workspaceTeamMemberships')
       .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
-    for (const teamMembership of memberships) await ctx.db.delete(teamMembership._id)
+    await Promise.all(memberships.map((teamMembership) => ctx.db.delete(teamMembership._id)))
     return true
   },
 })
@@ -256,30 +348,49 @@ export const unarchiveByServer = mutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
-    if (!row || row.workspaceId !== args.workspaceId || !row.archivedAt) return false
+    const row = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+      .unique()
+    if (!row || row.workspaceId !== args.workspaceId || !row.archivedAt)
+      return false
     await ctx.db.patch(row._id, { archivedAt: undefined, updatedAt: args.now })
-    const principal = await ctx.db.query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
-    if (principal) await ctx.db.patch(principal._id, { archivedAt: undefined, updatedAt: args.now })
-    const membership = await ctx.db.query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId)).unique()
-    if (membership) await ctx.db.patch(membership._id, { status: 'active', updatedAt: args.now })
+    const principal = await ctx.db
+      .query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
+      .unique()
+    if (principal)
+      await ctx.db.patch(principal._id, {
+        archivedAt: undefined,
+        updatedAt: args.now,
+      })
+    const membership = await ctx.db
+      .query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) =>
+        q
+          .eq('workspaceId', args.workspaceId)
+          .eq('principalId', row.principalId),
+      )
+      .unique()
+    if (membership)
+      await ctx.db.patch(membership._id, {
+        status: 'active',
+        updatedAt: args.now,
+      })
     // Restore the agent's participant rows on its own threads if an older
     // archive removed them (threads written before this change shipped).
-    const threads = await ctx.db.query('conversations')
+    const threads = await ctx.db
+      .query('conversations')
       .withIndex('by_workspaceId_agentId', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('agentId', row.agentId)).collect()
-    for (const thread of threads) {
-      if (thread.deletedAt) continue
-      const participant = await ctx.db.query('conversationParticipants')
+    const liveThreads = threads.filter((thread) => !thread.deletedAt)
+    const threadParticipants = await Promise.all(liveThreads.map((thread) =>
+      ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_principalId', (q) =>
-          q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()
-      if (participant && participant.status !== 'active') {
-        await ctx.db.patch(participant._id, { status: 'active', removedAt: undefined, updatedAt: args.now })
-      }
-    }
+          q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()))
+    await Promise.all(threadParticipants
+      .filter((participant) => participant && participant.status !== 'active')
+      .map((participant) => ctx.db.patch(participant!._id, { status: 'active', removedAt: undefined, updatedAt: args.now })))
     return true
   },
 })
@@ -292,14 +403,12 @@ export const purgeOrphanedByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const definitions = await ctx.db.query('workspaceAgentDefinitions').take(500)
-    let deleted = 0
-    for (const definition of definitions) {
-      const workspace = await ctx.db.query('workspaces')
-        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', definition.workspaceId)).unique()
-      if (workspace) continue
-      await ctx.db.delete(definition._id)
-      deleted += 1
-    }
+    const workspaces = await Promise.all(definitions.map((definition) =>
+      ctx.db.query('workspaces')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', definition.workspaceId)).unique()))
+    const orphaned = definitions.filter((_, i) => !workspaces[i])
+    await Promise.all(orphaned.map((definition) => ctx.db.delete(definition._id)))
+    const deleted = orphaned.length
     return { deleted }
   },
 })
@@ -324,23 +433,57 @@ async function directoryValue(
   }
 
   // Legacy fallback: compute from related tables.
-  const teams = await ctx.db.query('workspaceTeamMemberships')
-    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
-  const rooms = await ctx.db.query('conversationParticipants')
+  const [teams, rooms] = await Promise.all([
+    ctx.db
+      .query('workspaceTeamMemberships')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
+      .collect(),
+    ctx.db
+      .query('conversationParticipants')
     .withIndex('by_workspaceId_principalId_status', (q) =>
-      q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
-  return { ...value, visibility, teamIds: teams.map((item) => item.teamId).sort(), roomCount: rooms.length }
+        q
+          .eq('workspaceId', row.workspaceId)
+          .eq('principalId', row.principalId)
+          .eq('status', 'active'),
+      )
+      .collect(),
+  ])
+  return {
+    ...value,
+    visibility,
+    teamIds: teams.map((item) => item.teamId).sort(),
+    roomCount: rooms.length,
+  }
 }
 
-async function requireActiveWorkspace(ctx: QueryCtx | MutationCtx, workspaceId: string) {
-  const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).unique()
-  if (!workspace || workspace.status !== 'active') throw new Error('WORKSPACE_NOT_FOUND')
+async function requireActiveWorkspace(
+  ctx: QueryCtx | MutationCtx,
+  workspaceId: string,
+) {
+  const workspace = await ctx.db
+    .query('workspaces')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+    .unique()
+  if (!workspace || workspace.status !== 'active')
+    throw new Error('WORKSPACE_NOT_FOUND')
   return workspace
 }
 
-async function requirePrincipal(ctx: QueryCtx | MutationCtx, workspaceId: string, principalId: string) {
-  const principal = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', (q) => q.eq('principalId', principalId)).unique()
-  if (!principal || principal.workspaceId !== workspaceId || principal.archivedAt) throw new Error('WORKSPACE_ACCESS_DENIED')
+async function requirePrincipal(
+  ctx: QueryCtx | MutationCtx,
+  workspaceId: string,
+  principalId: string,
+) {
+  const principal = await ctx.db
+    .query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', principalId))
+    .unique()
+  if (
+    !principal ||
+    principal.workspaceId !== workspaceId ||
+    principal.archivedAt
+  )
+    throw new Error('WORKSPACE_ACCESS_DENIED')
   return principal
 }
 

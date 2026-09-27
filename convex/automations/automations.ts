@@ -97,10 +97,8 @@ async function countEnabledAutomations(
     .query('automations')
     .withIndex('by_userId_enabled', (q) => q.eq('userId', userId).eq('enabled', true))
     .collect()
-  return rows.filter((row) => (
-    !row.deletedAt &&
-    row._id !== excludeAutomationId
-  )).length
+  return rows.filter((row) => !row.deletedAt && row._id !== excludeAutomationId)
+    .length
 }
 
 async function enforceAutomationPolicy(
@@ -115,7 +113,7 @@ async function enforceAutomationPolicy(
   assertSchedulePolicy(params.schedule)
   if (!params.enabled) return
 
-  if (await getUserPlanKind(ctx, params.userId) !== 'paid') {
+  if ((await getUserPlanKind(ctx, params.userId)) !== 'paid') {
     throw new Error(AUTOMATION_POLICY_ERRORS.paidPlanRequired)
   }
 
@@ -133,10 +131,13 @@ async function getAutomationRunPolicyViolation(
   if (schedule.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES) {
     return `Automation paused because interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.`
   }
-  if (await getUserPlanKind(ctx, automation.userId) !== 'paid') {
+  if ((await getUserPlanKind(ctx, automation.userId)) !== 'paid') {
     return 'Automation paused because enabled automations require a paid plan.'
   }
-  if (await countEnabledAutomations(ctx, automation.userId) > MAX_ENABLED_AUTOMATIONS) {
+  if (
+    (await countEnabledAutomations(ctx, automation.userId)) >
+    MAX_ENABLED_AUTOMATIONS
+  ) {
     return `Automation paused because the account exceeds the ${MAX_ENABLED_AUTOMATIONS} enabled automation limit.`
   }
   return null
@@ -177,14 +178,18 @@ export const list = query({
       })
       .order('desc')
       .take(scanLimit)
-    return rows
+    return (
+      rows
       .filter((row) => row.userId === userId)
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
-      .filter((row) => (workspaceId !== undefined ? row.workspaceId === workspaceId : true))
+        .filter((row) =>
+          workspaceId !== undefined ? row.workspaceId === workspaceId : true,
+        )
       // The standalone Automations page lists only standalone automations;
       // agent-owned automations live as threads under their agent.
       .filter((row) => (excludeAgentBound ? !row.agentId : true))
       .slice(0, pageLimit)
+    )
   },
 })
 
@@ -620,9 +625,12 @@ export const attachConversationByServer = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const automation = await ctx.db.get(args.automationId)
-    const conversation = await ctx.db.get(args.conversationId)
+    if (!validateServerSecret(args.serverSecret))
+      throw new Error('Unauthorized')
+    const [automation, conversation] = await Promise.all([
+      ctx.db.get(args.automationId),
+      ctx.db.get(args.conversationId),
+    ])
     if (
       !automation ||
       automation.userId !== args.userId ||
@@ -802,7 +810,10 @@ export const claimDueRuns = internalMutation({
         }
         const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
 
-        if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id, now)) {
+        if (
+          (automation.concurrencyPolicy ?? 'skip') === 'skip' &&
+          (await hasQueuedOrRunningRun(ctx, automation._id, now))
+        ) {
           await ctx.db.insert('automationRuns', {
             automationId: automation._id,
             userId: automation.userId,
@@ -859,7 +870,8 @@ export const getRunForExecution = internalQuery({
     if (!automation || automation.deletedAt) return null
     // Agent-owned automations stop running while their agent is archived.
     const agent = automation.agentId
-      ? await ctx.db.query('workspaceAgentDefinitions')
+      ? await ctx.db
+          .query('workspaceAgentDefinitions')
         .withIndex('by_agentId', (q) => q.eq('agentId', automation.agentId!))
         .unique()
       : null
@@ -881,7 +893,8 @@ export const getRunForExecutionByServer = query({
     const automation = await ctx.db.get(run.automationId)
     if (!automation || automation.deletedAt) return null
     const agent = automation.agentId
-      ? await ctx.db.query('workspaceAgentDefinitions')
+      ? await ctx.db
+          .query('workspaceAgentDefinitions')
         .withIndex('by_agentId', (q) => q.eq('agentId', automation.agentId!))
         .unique()
       : null

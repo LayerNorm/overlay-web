@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import {
   BookOpen,
@@ -16,7 +16,10 @@ import {
 } from 'lucide-react'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
-const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
+const ICON_MAP: Record<
+  string,
+  React.FC<{ size?: number; className?: string; strokeWidth?: number }>
+> = {
   FileText,
   BookOpen,
   Plug,
@@ -166,43 +169,44 @@ function useMentionPopupKeys({
   onClose: () => void
   onSelectedCategoryChange: (category: MentionType | null) => void
 }) {
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        e.stopPropagation()
-        setActiveIndex((prev) => Math.min(prev + 1, rows.length - 1))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        e.stopPropagation()
-        setActiveIndex((prev) => Math.max(prev - 1, 0))
-      } else if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        e.stopPropagation()
-        const current = rows[activeIndex]
-        if (!current) return
-        if (current.kind === 'category') {
-          onSelectedCategoryChange(current.type)
-        } else if (current.kind === 'upload') {
-          onUploadFile()
-        } else {
-          onSelect(current.item)
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        if (selectedCategory !== null) {
-          // Go back to top-level category picker
-          onSelectedCategoryChange(null)
-        } else {
-          onClose()
-        }
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      setActiveIndex((prev) => Math.min(prev + 1, rows.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      setActiveIndex((prev) => Math.max(prev - 1, 0))
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      const current = rows[activeIndex]
+      if (!current) return
+      if (current.kind === 'category') {
+        onSelectedCategoryChange(current.type)
+      } else if (current.kind === 'upload') {
+        onUploadFile()
+      } else {
+        onSelect(current.item)
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (selectedCategory !== null) {
+        // Go back to top-level category picker
+        onSelectedCategoryChange(null)
+      } else {
+        onClose()
       }
     }
+  })
 
+  useEffect(() => {
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [activeIndex, rows, setActiveIndex, onSelect, onUploadFile, onClose, onSelectedCategoryChange, selectedCategory])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleKeyDown is a stable useEffectEvent
+  }, [])
 }
 
 function optionClassName(active: boolean, compact = false) {
@@ -437,6 +441,7 @@ export function MentionPopup({
   }, [activeIndex])
 
   useEffect(() => {
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent, react-doctor/no-prop-callback-in-effect
     onActiveOptionChange?.(rows[activeIndex] ? `mention-option-${activeIndex}` : null)
   }, [activeIndex, rows, onActiveOptionChange])
 
@@ -483,7 +488,12 @@ export function MentionPopup({
         <CategoryBreadcrumb meta={selectedCategoryMeta} onBack={() => onSelectedCategoryChange(null)} />
       )}
 
-      <div className="overflow-y-auto" role="listbox" id="mention-listbox" aria-label="Mention suggestions">
+      <div
+        className='overflow-y-auto'
+        role='listbox'
+        id='mention-listbox'
+        aria-label='Mention suggestions'
+      >
         {loading && isEmptyResults ? (
           <LoadingMentions />
         ) : isEmptyResults && (query.trim() !== '' || selectedCategory !== null) ? (

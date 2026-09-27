@@ -40,13 +40,25 @@ export function OptionRow({ checked, onSelect, label, description, icon, labelle
       onClick={onSelect}
       className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-[var(--muted)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
     >
-      <span className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-[var(--foreground)]' : 'border-[var(--muted-light)]'}`}>
-        {checked ? <span className="absolute inset-[3px] rounded-full bg-[var(--foreground)]" /> : null}
+      <span
+        className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-[var(--foreground)]' : 'border-[var(--muted-light)]'}`}
+      >
+        {checked ? (
+          <span className='absolute inset-[3px] rounded-full bg-[var(--foreground)]' />
+        ) : null}
       </span>
-      {icon ? <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span> : null}
+      {icon ? (
+        <span className='mt-0.5 shrink-0 text-[var(--muted)]'>{icon}</span>
+      ) : null}
       <span className="min-w-0">
-        <span className="block text-xs font-medium text-[var(--foreground)]">{label}</span>
-        {description ? <span className="mt-0.5 block text-[11px] leading-4 text-[var(--muted)]">{description}</span> : null}
+        <span className='block text-xs font-medium text-[var(--foreground)]'>
+          {label}
+        </span>
+        {description ? (
+          <span className='mt-0.5 block text-[11px] leading-4 text-[var(--muted)]'>
+            {description}
+          </span>
+        ) : null}
       </span>
     </button>
   )
@@ -67,7 +79,11 @@ export function ToggleRow({ checked, onChange, label, description, disabled }: {
     <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-[var(--foreground)]">{label}</p>
-        {description ? <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{description}</p> : null}
+        {description ? (
+          <p className='mt-0.5 text-[11px] leading-4 text-[var(--muted)]'>
+            {description}
+          </p>
+        ) : null}
       </div>
       <Toggle checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} />
     </div>
@@ -123,9 +139,12 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  // cancelled flag makes the fetch safe against overlapping re-runs.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     let cancelled = false
-    void overlayAppClient.memory.getResponse({ memberPrincipalId: agentPrincipalId })
+    void overlayAppClient.memory
+      .getResponse({ memberPrincipalId: agentPrincipalId })
       .then(async (res) => {
         if (cancelled) return
         setRows(res.ok ? unwrapPaginatedData<AgentMemoryRow>(await res.json()) : [])
@@ -157,7 +176,12 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
   const preview = rows.slice(0, MEMORY_PREVIEW_COUNT)
   return (
     <div>
-      <p className="text-xs font-medium">Memories <span className="font-normal text-[var(--muted-light)]">{rows.length}</span></p>
+      <p className='text-xs font-medium'>
+        Memories{' '}
+        <span className='font-normal text-[var(--muted-light)]'>
+          {rows.length}
+        </span>
+      </p>
       <div className="mt-1.5 overflow-hidden rounded-xl border border-[var(--border)]">
         {preview.map((row) => (
           <div
@@ -165,9 +189,15 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
             className="group flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5 last:border-b-0"
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs text-[var(--foreground)]">{row.fullContent ?? row.content}</p>
+              <p className='truncate text-xs text-[var(--foreground)]'>
+                {row.fullContent ?? row.content}
+              </p>
               <p className="mt-0.5 text-[11px] text-[var(--muted-light)]">
-                {row.type ?? 'fact'} · {new Date(row.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {
+                  // Locale is pinned to 'en-US', so SSR and client output are identical.
+                  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                  `${row.type ?? 'fact'} · ${new Date(row.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                }
               </p>
             </div>
             {row.canDelete && (
@@ -178,7 +208,11 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
                 aria-label="Delete memory"
                 className="shrink-0 text-[var(--muted-light)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
               >
-                {deletingId === row.memoryId ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deletingId === row.memoryId ? (
+                  <Loader2 size={13} className='animate-spin' />
+                ) : (
+                  <Trash2 size={13} />
+                )}
               </button>
             )}
           </div>
@@ -205,9 +239,22 @@ export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, o
   if (mode !== 'edit' || !hasAgent || isDefaultMaster) return null
   return (
     <section className="rounded-xl border border-red-500/25 p-4">
-      <p className="text-xs font-medium text-[var(--foreground)]">Danger zone</p>
-      <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Archiving removes {agentName} from rooms and teams. Its message history remains.</p>
-      <Button variant="danger" size="sm" className="mt-3" onClick={onArchive} disabled={busy}>Archive agent</Button>
+      <p className='text-xs font-medium text-[var(--foreground)]'>
+        Danger zone
+      </p>
+      <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
+        Archiving removes {agentName} from rooms and teams. Its message history
+        remains.
+      </p>
+      <Button
+        variant='danger'
+        size='sm'
+        className='mt-3'
+        onClick={onArchive}
+        disabled={busy}
+      >
+        Archive agent
+      </Button>
     </section>
   )
 }
@@ -216,7 +263,11 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
   return (
     <div>
       <p className="text-xs font-medium">Access</p>
-      <div className="mt-1.5 space-y-2" role="radiogroup" aria-label="Agent access">
+      <div
+        className='mt-1.5 space-y-2'
+        role='radiogroup'
+        aria-label='Agent access'
+      >
         <OptionRow
           checked={value === 'workspace'}
           onSelect={() => onChange('workspace')}
@@ -232,7 +283,11 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
           description="Only you can see, chat with, or @-mention this agent."
         />
       </div>
-      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{value === 'creator' ? 'Hidden from everyone else — reported as not found.' : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}</p>
+      <p className='mt-1.5 text-[11px] leading-4 text-[var(--muted)]'>
+        {value === 'creator'
+          ? 'Hidden from everyone else — reported as not found.'
+          : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}
+      </p>
     </div>
   )
 }
@@ -364,10 +419,14 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
         />
       ) : null}
       {enabled && !computer ? (
-        <p className="text-[11px] leading-4 text-[var(--muted)]">Created when you save. Also managed under Settings → Computers.</p>
+        <p className='text-[11px] leading-4 text-[var(--muted)]'>
+          Created when you save. Also managed under Settings → Computers.
+        </p>
       ) : null}
       {!enabled && computer ? (
-        <p className="text-[11px] leading-4 text-[var(--muted)]">Saving deletes this computer and its disk permanently.</p>
+        <p className='text-[11px] leading-4 text-[var(--muted)]'>
+          Saving deletes this computer and its disk permanently.
+        </p>
       ) : null}
     </div>
   )
@@ -398,13 +457,25 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
             <Input autoFocus className="mt-1.5" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />
           </label>
           <label className="block text-xs font-medium">
-            Short description <span className="font-normal text-[var(--muted-light)]">optional</span>
-            <Input className="mt-1.5" value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder={descriptionPlaceholder} />
+            Short description{' '}
+            <span className='font-normal text-[var(--muted-light)]'>
+              optional
+            </span>
+            <Input
+              className='mt-1.5'
+              value={description}
+              onChange={(event) => onDescriptionChange(event.target.value)}
+              placeholder={descriptionPlaceholder}
+            />
           </label>
         </div>
       </div>
       <p className="mt-4 text-xs font-medium">Shape</p>
-      <div className="mt-1.5 grid grid-cols-8 gap-1.5" role="radiogroup" aria-label="Avatar shape">
+      <div
+        className='mt-1.5 grid grid-cols-8 gap-1.5'
+        role='radiogroup'
+        aria-label='Avatar shape'
+      >
         {CREATURE_SHAPES.map((creatureShape) => (
           <button
             key={creatureShape}
@@ -420,7 +491,11 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
         ))}
       </div>
       <p className="mt-4 text-xs font-medium">Color</p>
-      <div className="mt-1.5 flex items-center gap-3" role="radiogroup" aria-label="Avatar color">
+      <div
+        className='mt-1.5 flex items-center gap-3'
+        role='radiogroup'
+        aria-label='Avatar color'
+      >
         {AVATAR_COLORS.map((avatarColor) => (
           <button
             key={avatarColor}
@@ -456,7 +531,11 @@ export function HostedRuntimeSelector({ value, onChange, harnesses }: {
   return (
     <div>
       <p className="text-xs font-medium">Runtime</p>
-      <div className="mt-1.5 space-y-2" role="radiogroup" aria-label="Hosted runtime">
+      <div
+        className='mt-1.5 space-y-2'
+        role='radiogroup'
+        aria-label='Hosted runtime'
+      >
         <OptionRow
           checked={value === 'overlay'}
           onSelect={() => onChange('overlay')}
@@ -526,21 +605,53 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
   const modelAccessByok = modelAccess !== 'overlay'
   return (
     <>
-      <label className="block text-xs font-medium">Agent instructions<textarea value={instructions} onChange={(event) => onInstructionsChange(event.target.value)} placeholder="Describe what this agent should do, how it should respond, and when it should stop." className="mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]" /></label>
+      <label className='block text-xs font-medium'>
+        Agent instructions
+        <textarea
+          value={instructions}
+          onChange={(event) => onInstructionsChange(event.target.value)}
+          placeholder='Describe what this agent should do, how it should respond, and when it should stop.'
+          className='mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]'
+        />
+      </label>
       <div>
-        <label className="block text-xs font-medium">Model<ListboxSelect className="mt-1.5" aria-label="Harness model" value={selectedModel?.value ?? modelValue} options={modelOptions} onChange={onModelChange} portal buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]" /></label>
+        <label className='block text-xs font-medium'>
+          Model
+          <ListboxSelect
+            className='mt-1.5'
+            aria-label='Harness model'
+            value={selectedModel?.value ?? modelValue}
+            options={modelOptions}
+            onChange={onModelChange}
+            portal
+            buttonClassName='h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]'
+          />
+        </label>
       </div>
       {byokSelectable ? (
         <div>
-          <label className="block text-xs font-medium">Model access<ListboxSelect className="mt-1.5" aria-label="Model access" value={modelAccess} options={modelAccessOptions} onChange={onModelAccessChange} portal buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]" /></label>
+          <label className='block text-xs font-medium'>
+            Model access
+            <ListboxSelect
+              className='mt-1.5'
+              aria-label='Model access'
+              value={modelAccess}
+              options={modelAccessOptions}
+              onChange={onModelAccessChange}
+              portal
+              buttonClassName='h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]'
+            />
+          </label>
           <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
             {modelAccessByok
-              ? 'Billed to your own provider connection. The key stays in Overlay\u2019s vault — the sandbox never sees it.'
+              ? "Billed to your own provider connection. The key stays in Overlay\u2019s vault — the sandbox never sees it."
               : 'Model usage is funded by Overlay — no API key needed.'}
           </p>
         </div>
       ) : (
-        <p className="text-[11px] leading-4 text-[var(--muted)]">Model usage is funded by Overlay — no API key needed.</p>
+        <p className='text-[11px] leading-4 text-[var(--muted)]'>
+          Model usage is funded by Overlay — no API key needed.
+        </p>
       )}
       <div>
         <InfoRow label="Provider" value={provider} />
@@ -548,13 +659,25 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
         {sandboxStatus ? (
           <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-[var(--foreground)]">Sandbox</p>
-              <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">Resetting clears the agent&rsquo;s saved session and rebuilds its sandbox on the next message.</p>
+              <p className='text-xs font-medium text-[var(--foreground)]'>
+                Sandbox
+              </p>
+              <p className='mt-0.5 text-[11px] leading-4 text-[var(--muted)]'>
+                Resetting clears the agent&rsquo;s saved session and rebuilds
+                its sandbox on the next message.
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[11px] text-[var(--muted)]">{sandboxStatus}</span>
+              <span className='rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[11px] text-[var(--muted)]'>
+                {sandboxStatus}
+              </span>
               {onReset ? (
-                <Button variant="secondary" size="sm" onClick={onReset} disabled={resetBusy}>
+                <Button
+                  variant='secondary'
+                  size='sm'
+                  onClick={onReset}
+                  disabled={resetBusy}
+                >
                   {resetBusy ? 'Resetting…' : 'Reset session'}
                 </Button>
               ) : null}
@@ -760,11 +883,41 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
   const toolGroups = computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')
   return (
     <>
-      <label className="block text-xs font-medium">Agent instructions<textarea value={instructions} onChange={(event) => onInstructionsChange(event.target.value)} placeholder="Describe what this agent should do, how it should respond, and when it should stop." className="mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]" /></label>
-      <label className="block text-xs font-medium">Model<ListboxSelect className="mt-1.5" aria-label="Agent model" value={modelOptions.some((option) => option.value === modelId) ? modelId : (modelOptions[0]?.value ?? modelId)} options={modelOptions.length > 0 ? modelOptions : [{ value: modelId, label: modelId }]} onChange={onModelChange} portal buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]" /></label>
+      <label className='block text-xs font-medium'>
+        Agent instructions
+        <textarea
+          value={instructions}
+          onChange={(event) => onInstructionsChange(event.target.value)}
+          placeholder='Describe what this agent should do, how it should respond, and when it should stop.'
+          className='mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]'
+        />
+      </label>
+      <label className='block text-xs font-medium'>
+        Model
+        <ListboxSelect
+          className='mt-1.5'
+          aria-label='Agent model'
+          value={
+            modelOptions.some((option) => option.value === modelId)
+              ? modelId
+              : (modelOptions[0]?.value ?? modelId)
+          }
+          options={
+            modelOptions.length > 0
+              ? modelOptions
+              : [{ value: modelId, label: modelId }]
+          }
+          onChange={onModelChange}
+          portal
+          buttonClassName='h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]'
+        />
+      </label>
       <div>
         <p className="text-xs font-medium">Tools</p>
-        <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Grant this agent the same tools the personal chat can use. It only acts on what you enable here.</p>
+        <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
+          Grant this agent the same tools the personal chat can use. It only
+          acts on what you enable here.
+        </p>
         <div className="mt-1">
           {toolGroups.map((group) => (
             <Fragment key={group.id}>
@@ -781,8 +934,21 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
           ))}
         </div>
       </div>
-      <button type="button" onClick={() => onAdvancedChange(!advanced)} className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]">Advanced <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /></button>
-      {advanced ? <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-[11px] leading-4 text-[var(--muted)]">Mention-first is enforced. One-to-one agent DMs invoke implicitly; channels and group DMs require a human mention or reply in the agent’s thread.</div> : null}
+      <button
+        type='button'
+        onClick={() => onAdvancedChange(!advanced)}
+        className='flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]'
+      >
+        Advanced{' '}
+        <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
+      </button>
+      {advanced ? (
+        <div className='rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-[11px] leading-4 text-[var(--muted)]'>
+          Mention-first is enforced. One-to-one agent DMs invoke implicitly
+          channels and group DMs require a human mention or reply in the agent’s
+          thread.
+        </div>
+      ) : null}
     </>
   )
 }
@@ -811,7 +977,10 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
   return (
     <div className="space-y-5">
       <section>
-        <p className="text-xs font-medium">Harness</p><p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Choose the coding agent Overlay will invoke.</p>
+        <p className='text-xs font-medium'>Harness</p>
+        <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
+          Choose the coding agent Overlay will invoke.
+        </p>
         <div className="mt-2 space-y-2" role="radiogroup" aria-label="Harness">
           {harnessOptions.map((harness) => (
             <OptionRow
@@ -826,9 +995,26 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
       </section>
       <section>
         <p className="text-xs font-medium">Where it runs</p>
-        <div className="mt-2 space-y-2" role="radiogroup" aria-label="Agent environment">
-          <EnvironmentChoiceButton active={choice === 'existing'} icon={<Server size={15} />} label="Existing environment" description="Pick an already-connected computer, VPS, or sandbox." onClick={() => onChoiceChange('existing')} />
-          <EnvironmentChoiceButton active={choice === 'connect'} icon={<Laptop size={15} />} label="Connect a new machine" description="Outbound-only. No inbound port is opened." disabled={!selectedHarnessConnectable} onClick={() => onChoiceChange('connect')} />
+        <div
+          className='mt-2 space-y-2'
+          role='radiogroup'
+          aria-label='Agent environment'
+        >
+          <EnvironmentChoiceButton
+            active={choice === 'existing'}
+            icon={<Server size={15} />}
+            label='Existing environment'
+            description='Pick an already-connected computer, VPS, or sandbox.'
+            onClick={() => onChoiceChange('existing')}
+          />
+          <EnvironmentChoiceButton
+            active={choice === 'connect'}
+            icon={<Laptop size={15} />}
+            label='Connect a new machine'
+            description='Outbound-only. No inbound port is opened.'
+            disabled={!selectedHarnessConnectable}
+            onClick={() => onChoiceChange('connect')}
+          />
         </div>
         <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
           {choice === 'existing' ? (
@@ -860,7 +1046,11 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
           {setupEnvironment ? <EnvironmentApprovalPanel environment={setupEnvironment} roots={setupRoots} busy={environmentBusy === 'approve'} onRootsChange={onSetupRootsChange} onApprove={onApproveSetup} /> : null}
         </div>
       </section>
-      {(environmentError || copyError) ? <p role="alert" className="text-xs text-red-500">{environmentError ?? copyError}</p> : null}
+      {environmentError || copyError ? (
+        <p role='alert' className='text-xs text-red-500'>
+          {environmentError ?? copyError}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -960,7 +1150,51 @@ function EnvironmentChoiceButton({ active, icon, label, description, disabled = 
   )
 }
 
-export function EnvironmentApprovalPanel({ environment, roots, busy, onRootsChange, onApprove }: { environment: AgentEnvironmentResource; roots: string; busy: boolean; onRootsChange(value: string): void; onApprove(): void }) {
-  return <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4"><div className="flex items-center gap-2 text-xs text-[var(--foreground)]"><ShieldCheck size={15} className="text-[var(--muted)]" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting…'}</strong></div><label className="block text-xs font-medium">Approved project roots<textarea value={roots} onChange={(event) => onRootsChange(event.target.value)} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className="mt-1.5 min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]" /></label><p className="text-[11px] leading-4 text-[var(--muted)]">Overlay can dispatch work only inside these explicit roots. You can change or revoke access later.</p><Button variant="secondary" size="sm" disabled={busy || !environment.verificationPhrase} onClick={onApprove}>{busy ? 'Approving…' : 'Approve and continue'}</Button></div>
+export function EnvironmentApprovalPanel({
+  environment,
+  roots,
+  busy,
+  onRootsChange,
+  onApprove,
+}: {
+  environment: AgentEnvironmentResource
+  roots: string
+  busy: boolean
+  onRootsChange(value: string): void
+  onApprove(): void
+}) {
+  return (
+    <div className='mt-4 space-y-3 border-t border-[var(--border)] pt-4'>
+      <div className='flex items-center gap-2 text-xs text-[var(--foreground)]'>
+        <ShieldCheck size={15} className='text-[var(--muted)]' /> Verify phrase:{' '}
+        <strong>{environment.verificationPhrase ?? 'waiting…'}</strong>
+      </div>
+      <label className='block text-xs font-medium'>
+        Approved project roots
+        <textarea
+          value={roots}
+          onChange={(event) => onRootsChange(event.target.value)}
+          placeholder={
+            environment.kind === 'overlay_cloud'
+              ? '/workspace'
+              : '/Users/you/Projects'
+          }
+          className='mt-1.5 min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]'
+        />
+      </label>
+      <p className='text-[11px] leading-4 text-[var(--muted)]'>
+        Overlay can dispatch work only inside these explicit roots. You can
+        change or revoke access later.
+      </p>
+      <Button
+        variant='secondary'
+        size='sm'
+        disabled={busy || !environment.verificationPhrase}
+        onClick={onApprove}
+      >
+        {busy ? 'Approving…' : 'Approve and continue'}
+      </Button>
+    </div>
+  )
 }
 

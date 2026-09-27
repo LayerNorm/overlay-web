@@ -347,9 +347,7 @@ export function SharedKnowledgeSurface({
     updateQuery,
   } = useSurfaceRouting({ mode, route, onUpdateQuery })
 
-  useEffect(() => {
-    if (!pendingFilesLayout) return
-    if (!queryPending && layout === pendingFilesLayout) {
+  if (pendingFilesLayout && !queryPending && layout === pendingFilesLayout) {
       setPendingFilesLayout(null)
     }
   }, [layout, pendingFilesLayout, queryPending, setPendingFilesLayout])
@@ -455,6 +453,8 @@ export function SharedKnowledgeSurface({
     if (!fileOpenParam || filesLoading || files.length === 0) return
     const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
     if (!node) return
+    // Deep-link file open — intentional state write from the param effect.
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent
     void loadFile(node._id)
   }, [fileOpenParam, files, filesLoading, loadFile])
 

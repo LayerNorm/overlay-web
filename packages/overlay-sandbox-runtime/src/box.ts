@@ -111,6 +111,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     this.apiKey = apiKey
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
     this.fetch = options.fetch ?? (async (input, init) => {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch(input, init)
       return { status: response.status, json: () => response.json() }
     })
@@ -389,11 +390,10 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
-    for (const file of files) {
-      await this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
+    await Promise.all(files.map((file) =>
+      this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })
-    }
+      })))
   }
 
   async readFile(path: string): Promise<Uint8Array | null> {

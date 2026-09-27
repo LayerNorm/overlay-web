@@ -2,7 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element -- room attachments mirror the chat transcript renderer */
 
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   Bookmark,
   Check,
@@ -211,14 +218,20 @@ function AuthorIdentityPopover({
               {authorInitial(name)}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-[var(--foreground)]">{name}</span>
-              <span className="block truncate text-[11px] text-[var(--muted)]">{email ?? 'No email on file'}</span>
+              <span className='block truncate text-sm font-semibold text-[var(--foreground)]'>
+                {name}
+              </span>
+              <span className='block truncate text-[11px] text-[var(--muted)]'>
+                {email ?? 'No email on file'}
+              </span>
             </span>
           </div>
           {statusMeta ? (
             <div className="mt-2.5 flex items-center justify-between border-t border-[var(--border)] pt-2.5">
               <span className="text-[11px] text-[var(--muted)]">Workspace</span>
-              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}
+              >
                 {statusMeta.label}
               </span>
             </div>
@@ -267,8 +280,14 @@ export function RoomMessageItem({
   personalChatStyle = false,
 }: RoomMessageItemProps) {
   const { mine } = message
-  const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
-  const timeLabel = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const isAgent =
+    message.authorKind === 'agent' || message.authorKind === 'model'
+  // Locale pinned to 'en-US' — SSR and client output are identical.
+  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+  const timeLabel = new Date(message.createdAt).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
   const rootProps = {
     id: roomMessageDomId(message.id),
     'data-room-message': message.id,
@@ -478,7 +497,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
         <div className={`flex w-full flex-wrap gap-1.5 ${message.mine ? 'justify-end' : ''}`}>
           {message.images.map((attachment, index) => (
             <button
-              key={`${attachment.url}-${index}`}
+              key={attachment.url}
               type="button"
               onClick={() => onOpenAttachmentPreview({
                 name: attachment.name,
@@ -505,7 +524,9 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
               className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm"
             >
               <FileText size={13} className="shrink-0 text-[var(--muted)]" />
-              <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
+              <span className='truncate font-medium text-[var(--foreground)]'>
+                {name}
+              </span>
             </div>
           ))}
         </div>
@@ -792,26 +813,61 @@ function RemoteRequestControls({ request, onResolve }: {
   request: NonNullable<RoomMessageView['remoteRequest']>
   onResolve: NonNullable<RoomMessageItemProps['onResolveRemoteRequest']>
 }) {
-  const properties = request.requestedSchema?.properties && typeof request.requestedSchema.properties === 'object'
-    ? request.requestedSchema.properties as Record<string, { title?: string; type?: string; enum?: unknown[]; oneOf?: Array<{ const?: unknown; title?: string }> }> : {}
-  const required = Array.isArray(request.requestedSchema?.required)
-    ? request.requestedSchema.required.filter((key): key is string => typeof key === 'string') : []
+  const { properties, required } = useMemo(
+    () => ({
+      properties:
+        request.requestedSchema?.properties &&
+        typeof request.requestedSchema.properties === 'object'
+          ? (request.requestedSchema.properties as Record<
+              string,
+              {
+                title?: string
+                type?: string
+                enum?: unknown[]
+                oneOf?: Array<{ const?: unknown; title?: string }>
+              }
+            >)
+          : {},
+      required: Array.isArray(request.requestedSchema?.required)
+        ? request.requestedSchema.required.filter(
+            (key): key is string => typeof key === 'string',
+          )
+        : [],
+    }),
+    [request],
+  )
   const requiredSet = new Set(required)
-  const [values, setValues] = useState<Record<string, unknown>>(() => initialElicitationValues(properties, required))
+  const [values, setValues] = useState<Record<string, unknown>>(() =>
+    initialElicitationValues(properties, required),
+  )
   return (
     <div className="mt-3 max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-      <p className="text-xs font-medium text-[var(--foreground)]">{request.kind === 'permission' ? 'Permission requested' : 'Input requested'}</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{request.prompt}</p>
-      {request.kind === 'elicitation' ? Object.entries(properties).map(([key, property]) => (
+      <p className='text-xs font-medium text-[var(--foreground)]'>
+        {request.kind === 'permission'
+          ? 'Permission requested'
+          : 'Input requested'}
+      </p>
+      <p className='mt-1 text-xs leading-5 text-[var(--muted)]'>
+        {request.prompt}
+      </p>
+      {request.kind === 'elicitation'
+        ? Object.entries(properties).map(([key, property]) =>
         property.type === 'boolean' ? (
           <div key={key} className="mt-2 flex items-center gap-3">
             <span className="flex-1 text-[11px] text-[var(--muted)]">
-              {property.title ?? key}{requiredSet.has(key) ? ' *' : ''}
+                  {property.title ?? key}
+                  {requiredSet.has(key) ? ' *' : ''}
             </span>
             <Toggle
               checked={values[key] === true}
-              onCheckedChange={(next) => setValues((current) => ({ ...current, [key]: next }))}
-              aria-label={typeof (property.title ?? key) === 'string' ? (property.title ?? key) as string : key}
+                  onCheckedChange={(next) =>
+                    setValues((current) => ({ ...current, [key]: next }))
+                  }
+                  aria-label={
+                    typeof (property.title ?? key) === 'string'
+                      ? ((property.title ?? key) as string)
+                      : key
+                  }
             />
           </div>
         ) : (
@@ -822,7 +878,11 @@ function RemoteRequestControls({ request, onResolve }: {
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
                 className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
                 <option value="">Select…</option>
-                {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {elicitationOptions(property).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
               </select>
             ) : (
               <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
@@ -833,15 +893,37 @@ function RemoteRequestControls({ request, onResolve }: {
             )}
           </label>
         )
-      )) : null}
+        : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        {request.kind === 'permission' ? request.options.map((option) => (
-          <button key={option.id} type="button" onClick={() => onResolve(request, option.id)}
-            className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]">{option.label}</button>
-        )) : <>
-          <button type="button" onClick={() => onResolve(request, 'accept', values)} className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]">Submit</button>
-          <button type="button" onClick={() => onResolve(request, 'decline')} className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)]">Decline</button>
-        </>}
+        {request.kind === 'permission' ? (
+          request.options.map((option) => (
+            <button
+              key={option.id}
+              type='button'
+              onClick={() => onResolve(request, option.id)}
+              className='rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]'
+            >
+              {option.label}
+            </button>
+          ))
+        ) : (
+          <>
+            <button
+              type='button'
+              onClick={() => onResolve(request, 'accept', values)}
+              className='rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]'
+            >
+              Submit
+            </button>
+            <button
+              type='button'
+              onClick={() => onResolve(request, 'decline')}
+              className='rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)]'
+            >
+              Decline
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -857,7 +939,11 @@ function initialElicitationValues(
 function elicitationFieldValue(type: string | undefined, value: string): unknown {
   if (type === 'number' || type === 'integer') return value === '' ? '' : Number(value)
   if (type === 'boolean') return value === 'true'
-  if (type === 'array') return value.split(',').map((item) => item.trim()).filter(Boolean)
+  if (type === 'array')
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
   return value
 }
 
@@ -875,12 +961,36 @@ function RemoteRunControls({ run, onControl }: {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
   if (run.state === 'recoverable') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-      <span>{run.retryClass === 'host_offline' ? 'The environment went offline.' : 'This run can be recovered.'}</span>
-      <button type="button" onClick={() => onControl(run.runId, 'resume')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)]">Resume</button>
-      <button type="button" onClick={() => onControl(run.runId, 'start_fresh')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)]">Start fresh</button>
+        <span>
+          {run.retryClass === 'host_offline'
+            ? 'The environment went offline.'
+            : 'This run can be recovered.'}
+        </span>
+        <button
+          type='button'
+          onClick={() => onControl(run.runId, 'resume')}
+          className='rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)]'
+        >
+          Resume
+        </button>
+        <button
+          type='button'
+          onClick={() => onControl(run.runId, 'start_fresh')}
+          className='rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)]'
+        >
+          Start fresh
+        </button>
     </div>
   )
-  return <button type="button" onClick={() => onControl(run.runId, 'cancel')} className="mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel run</button>
+  return (
+    <button
+      type='button'
+      onClick={() => onControl(run.runId, 'cancel')}
+      className='mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+    >
+      Cancel run
+    </button>
+  )
 }
 
 function RemoteQueueControls({
@@ -901,9 +1011,25 @@ function RemoteQueueControls({
 
   return (
     <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-      <span>{elapsed ? 'The 2-minute waiting window elapsed.' : 'Waiting up to 2 minutes for the environment to reconnect.'}</span>
-      <button type="button" onClick={() => onControl(queue.runId, 'cancel')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel</button>
-      <button type="button" onClick={() => onControl(queue.runId, 'retry')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]">Retry</button>
+      <span>
+        {elapsed
+          ? 'The 2-minute waiting window elapsed.'
+          : 'Waiting up to 2 minutes for the environment to reconnect.'}
+      </span>
+      <button
+        type='button'
+        onClick={() => onControl(queue.runId, 'cancel')}
+        className='rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+      >
+        Cancel
+      </button>
+      <button
+        type='button'
+        onClick={() => onControl(queue.runId, 'retry')}
+        className='rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
+      >
+        Retry
+      </button>
     </div>
   )
 }
@@ -1105,21 +1231,22 @@ function EmojiPickerButton({
   const rootRef = useRef<HTMLDivElement>(null)
   const setOpen = onOpenChange
 
+  const onPointerDown = useEffectEvent((event: MouseEvent) => {
+    if (!rootRef.current?.contains(event.target as Node)) onOpenChange(false)
+  })
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape') onOpenChange(false)
+  })
+
   useEffect(() => {
     if (!open) return
-    function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) onOpenChange(false)
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onOpenChange(false)
-    }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [onOpenChange, open])
+  }, [open])
 
   return (
     <div ref={rootRef} className="relative">

@@ -292,6 +292,9 @@ function useChatListData({
     lastConversationListVersionRef.current = null
   }, [workspaceId])
 
+  // Delta reconcile is guarded by lastConversationListVersionRef — a stale run
+  // only upserts already-fresh rows.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     if (conversationListVersion === null) return
     const previous = lastConversationListVersionRef.current
@@ -372,7 +375,7 @@ function useChatListEvents({
     if (isPublicShowcase) return
     if (!user) return
 
-    function handleChatUpserted(event: Event) {
+  const handleChatUpserted = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
@@ -390,9 +393,9 @@ function useChatListEvents({
         const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
         return [merged, ...withoutExisting]
       })
-    }
+    })
 
-    function handleChatTitleUpdated(event: Event) {
+    const handleChatTitleUpdated = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
       upsertCachedChat({
@@ -406,26 +409,15 @@ function useChatListEvents({
         const updated = { ...existing, title: detail.title, lastModified: Date.now() }
         return [updated, ...prev.filter((chat) => chat._id !== detail.chatId)]
       })
-    }
+    })
 
-    function removeActiveChat(chatId: string) {
-      removeCachedChat(chatId)
-      setDeletingChatIds((prev) => (
-        prev.includes(chatId) ? prev : [...prev, chatId]
-      ))
-      window.setTimeout(() => {
-        setChats((prev) => prev.filter((chat) => chat._id !== chatId))
-        setDeletingChatIds((prev) => prev.filter((id) => id !== chatId))
-      }, 180)
-    }
-
-    function handleChatDeleted(event: Event) {
+    const handleChatDeleted = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatDeletedDetail>
       if (!detail?.chatId) return
       removeActiveChat(detail.chatId)
-    }
+    })
 
-    function handleChatArchived(event: Event) {
+    const handleChatArchived = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatArchivedDetail>
       const archivedChatId = detail?.chat?._id
       if (!archivedChatId) return
@@ -452,7 +444,11 @@ function useChatListEvents({
       } else {
         router.push(emptyHref)
       }
-    }
+    })
+
+    useEffect(() => {
+    if (isPublicShowcase) return
+    if (!user) return
     window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)

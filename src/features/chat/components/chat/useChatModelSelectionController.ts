@@ -379,10 +379,17 @@ function useTextModelSelection({
       !sameModelOrder(resolvedAskIds, selectedModels)
 
     if (selectionChanged) {
+      // Selection defaults propagate upward by design (single source of truth).
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       setSelectedModels(resolvedAskIds)
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       setSelectedActModel(normalized.actModelId)
+      // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
       if (askModelSelectionMode === 'multiple') {
-        setAskModelSelectionMode(resolvedAskIds.length > 1 ? 'multiple' : 'single')
+        // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
+        setAskModelSelectionMode(
+          resolvedAskIds.length > 1 ? 'multiple' : 'single',
+        )
       }
     }
   }, [

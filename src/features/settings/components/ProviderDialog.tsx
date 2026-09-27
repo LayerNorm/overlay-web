@@ -112,6 +112,9 @@ async function testProviderConnection({
   setTesting(true)
   setTestResult(null)
   try {
+    // Guarded by `testing` at the top of handleTest; the /test endpoint's
+    // structured body (data.ok/data.error) is the real status signal.
+    // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check, react-doctor/no-async-event-handler-without-reentry-guard
     const res = await fetch('/api/v1/providers/connections/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -493,6 +496,8 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
   // an explicit user URL and is guarded on the server before any key is sent.
   useEffect(() => {
     if (preset && !preset.allowsCustomEndpoint && !endpoint) {
+      // Fixed presets enforce their vendor URL — an emptied field refills it.
+      // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
       setEndpoint(preset.defaultBaseURL)
     }
   }, [preset, endpoint])
@@ -536,6 +541,7 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
   }, [])
 
   const handleTest = useCallback(() => {
+    if (testing) return
     void testProviderConnection({
       existing,
       providerId,
@@ -546,7 +552,7 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
       setTestResult,
       setEnabledModelIds,
     })
-  }, [existing, providerId, endpoint, apiKey, preset])
+  }, [existing, providerId, endpoint, apiKey, preset, testing])
 
   const handleSave = useCallback(async () => {
     onBusyChange(true)

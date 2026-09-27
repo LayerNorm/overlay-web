@@ -308,6 +308,8 @@ function MarkdownMessageImpl({
   return (
     <div className="markdown-content">
       {completedBlocks.map((block, index) => (
+        // Parsed blocks have no id; index is the stable identity for append-only output.
+        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
         <div key={`md-block-${index}`} className="md-block-appear">
           <ReactMarkdown
             remarkPlugins={activeRemarkPlugins}

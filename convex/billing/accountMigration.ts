@@ -145,16 +145,21 @@ export const getPersonalBalanceParityByServer = query({
       .withIndex('by_userId', (q) => q.eq('userId', args.userId.trim()))
       .unique()
     if (!account) return null
-    const subscription = await ctx.db
+    const [subscription, reservations, canonical] = await Promise.all([
+      ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId.trim()))
-      .unique()
-    const reservations = await activeReservationSummary(ctx, account.billingAccountId)
-    if (reservations.truncated) throw new Error('billing_parity_reservations_truncated')
-    const canonical = await ctx.db
+        .unique(),
+      activeReservationSummary(ctx, account.billingAccountId),
+      ctx.db
       .query('billingAccountBalances')
-      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
-      .unique()
+        .withIndex('by_billingAccountId', (q) =>
+          q.eq('billingAccountId', account.billingAccountId),
+        )
+        .unique(),
+    ])
+    if (reservations.truncated)
+      throw new Error('billing_parity_reservations_truncated')
     if (!canonical) return null
     const legacy = legacyBalanceSnapshot(account.billingAccountId, subscription, reservations.reservedCents)
     const canonicalSnapshot = {
@@ -188,7 +193,9 @@ export const listSubscriptionVerificationRowsByServer = query({
   returns: v.array(verificationRowValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const rows = await ctx.db.query('subscriptions').take(boundedLimit(args.limit, 100, 500))
+    const rows = await ctx.db
+      .query('subscriptions')
+      .take(boundedLimit(args.limit, 100, 500))
     return rows.map((row) => ({
       ...(row.billingAccountId === undefined ? {} : { billingAccountId: row.billingAccountId }),
       planAmountCents: derivePlanAmountCents(row),
@@ -207,7 +214,8 @@ export async function syncPersonalBillingShadows(
   userId: string,
   billingAccountId: string,
 ): Promise<void> {
-  const subscription = await ctx.db.query('subscriptions')
+  const subscription = await ctx.db
+    .query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId))
     .unique()
   if (subscription) {
@@ -232,24 +240,51 @@ async function attachLegacyRows(
   userId: string,
   billingAccountId: string,
 ) {
-  const budgetTopUps = await ctx.db.query('budgetTopUps')
-    .withIndex('by_userId_billingAccountId', (q) => q.eq('userId', userId).eq('billingAccountId', undefined))
-    .take(ATTACH_BATCH_SIZE + 1)
-  const tokenUsage = await ctx.db.query('tokenUsage')
-    .withIndex('by_userId_billingAccountId', (q) => q.eq('userId', userId).eq('billingAccountId', undefined))
-    .take(ATTACH_BATCH_SIZE + 1)
-  const budgetReservations = await ctx.db.query('budgetReservations')
-    .withIndex('by_userId_billingAccountId', (q) => q.eq('userId', userId).eq('billingAccountId', undefined))
-    .take(ATTACH_BATCH_SIZE + 1)
-  const usageOperations = await ctx.db.query('usageOperations')
-    .withIndex('by_userId_billingAccountId', (q) => q.eq('userId', userId).eq('billingAccountId', undefined))
-    .take(ATTACH_BATCH_SIZE + 1)
-  const daytonaUsageLedger = await ctx.db.query('daytonaUsageLedger')
-    .withIndex('by_userId_billingAccountId', (q) => q.eq('userId', userId).eq('billingAccountId', undefined))
-    .take(ATTACH_BATCH_SIZE + 1)
-  const toolInvocations = await ctx.db.query('toolInvocations')
-    .withIndex('by_userId_billingAccountId', (q) => q.eq('userId', userId).eq('billingAccountId', undefined))
-    .take(ATTACH_BATCH_SIZE + 1)
+  const [
+    budgetTopUps,
+    tokenUsage,
+    budgetReservations,
+    usageOperations,
+    daytonaUsageLedger,
+    toolInvocations,
+  ] = await Promise.all([
+    ctx.db
+      .query('budgetTopUps')
+      .withIndex('by_userId_billingAccountId', (q) =>
+        q.eq('userId', userId).eq('billingAccountId', undefined),
+      )
+      .take(ATTACH_BATCH_SIZE + 1),
+    ctx.db
+      .query('tokenUsage')
+      .withIndex('by_userId_billingAccountId', (q) =>
+        q.eq('userId', userId).eq('billingAccountId', undefined),
+      )
+      .take(ATTACH_BATCH_SIZE + 1),
+    ctx.db
+      .query('budgetReservations')
+      .withIndex('by_userId_billingAccountId', (q) =>
+        q.eq('userId', userId).eq('billingAccountId', undefined),
+      )
+      .take(ATTACH_BATCH_SIZE + 1),
+    ctx.db
+      .query('usageOperations')
+      .withIndex('by_userId_billingAccountId', (q) =>
+        q.eq('userId', userId).eq('billingAccountId', undefined),
+      )
+      .take(ATTACH_BATCH_SIZE + 1),
+    ctx.db
+      .query('daytonaUsageLedger')
+      .withIndex('by_userId_billingAccountId', (q) =>
+        q.eq('userId', userId).eq('billingAccountId', undefined),
+      )
+      .take(ATTACH_BATCH_SIZE + 1),
+    ctx.db
+      .query('toolInvocations')
+      .withIndex('by_userId_billingAccountId', (q) =>
+        q.eq('userId', userId).eq('billingAccountId', undefined),
+      )
+      .take(ATTACH_BATCH_SIZE + 1),
+  ])
   const pages = {
     budgetReservations,
     budgetTopUps,
@@ -258,11 +293,8 @@ async function attachLegacyRows(
     toolInvocations,
     usageOperations,
   }
-  for (const rows of Object.values(pages)) {
-    for (const row of rows.slice(0, ATTACH_BATCH_SIZE)) {
-      await ctx.db.patch(row._id, { billingAccountId })
-    }
-  }
+  await Promise.all(Object.values(pages).flatMap((rows) =>
+    rows.slice(0, ATTACH_BATCH_SIZE).map((row) => ctx.db.patch(row._id, { billingAccountId }))))
   const reservations = await activeReservationSummary(ctx, billingAccountId)
   return {
     attached: {
@@ -283,8 +315,11 @@ async function syncCanonicalSubscription(
   billingAccountId: string,
   subscription: Doc<'subscriptions'>,
 ): Promise<void> {
-  const existing = await ctx.db.query('billingAccountSubscriptions')
-    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+  const existing = await ctx.db
+    .query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', (q) =>
+      q.eq('billingAccountId', billingAccountId),
+    )
     .unique()
   const now = Date.now()
   const value = {
@@ -319,9 +354,13 @@ async function syncCanonicalBalance(
   subscription: Doc<'subscriptions'> | null,
   reservations: { reservedCents: number; truncated: boolean },
 ): Promise<void> {
-  if (reservations.truncated) throw new Error('billing_balance_reservations_truncated')
-  const existing = await ctx.db.query('billingAccountBalances')
-    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+  if (reservations.truncated)
+    throw new Error('billing_balance_reservations_truncated')
+  const existing = await ctx.db
+    .query('billingAccountBalances')
+    .withIndex('by_billingAccountId', (q) =>
+      q.eq('billingAccountId', billingAccountId),
+    )
     .unique()
   if (!existing) throw new Error('billing_account_balance_missing')
   const legacy = legacyBalanceSnapshot(billingAccountId, subscription, reservations.reservedCents)
@@ -341,15 +380,19 @@ async function syncCanonicalBalance(
 
 async function activeReservationSummary(ctx: QueryCtx | MutationCtx, billingAccountId: string) {
   const [reserved, reconcileRequired] = await Promise.all([
-    ctx.db.query('budgetReservations')
-      .withIndex('by_billingAccountId_status_createdAt', (q) => q
-        .eq('billingAccountId', billingAccountId)
-        .eq('status', 'reserved'))
+    ctx.db
+      .query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) =>
+        q.eq('billingAccountId', billingAccountId).eq('status', 'reserved'),
+      )
       .take(1_001),
-    ctx.db.query('budgetReservations')
-      .withIndex('by_billingAccountId_status_createdAt', (q) => q
+    ctx.db
+      .query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) =>
+        q
         .eq('billingAccountId', billingAccountId)
-        .eq('status', 'reconcile_required'))
+          .eq('status', 'reconcile_required'),
+      )
       .take(1_001),
   ])
   const rows = [...reserved, ...reconcileRequired]

@@ -107,15 +107,13 @@ export function useUnreadChatRedirect({
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string) => string
 }) {
-  const router = useRouter()
-
   useEffect(() => {
     // Unread was folded into Activity; rewrite stale deep links.
     if (chatViewParam !== 'unread') return
-    router.replace(activeWorkspaceId
+    window.history.replaceState(null, '', activeWorkspaceId
       ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
       : '/app/activity')
-  }, [activeWorkspaceId, buildWorkspaceHref, chatViewParam, router])
+  }, [activeWorkspaceId, buildWorkspaceHref, chatViewParam])
 }
 
 export function useSidebarEntitlements({

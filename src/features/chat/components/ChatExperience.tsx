@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import React, { useCallback } from 'react'
 import dynamic from 'next/dynamic'
@@ -27,11 +27,17 @@ import {
 // NB: the options must be an inline object literal — next/dynamic's SWC
 // transform rejects a shared/referenced options variable.
 const FileViewerPanel = dynamic(
-  () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
+  () =>
+    import("@overlay/modules-react/knowledge").then((mod) => ({
+      default: mod.FileViewerPanel,
+    })),
   { loading: () => null },
-)
+);
 const ExportMenu = dynamic(
-  () => import('@/features/files/components/ExportMenu').then((mod) => ({ default: mod.ExportMenu })),
+  () =>
+    import("@/features/files/components/ExportMenu").then((mod) => ({
+      default: mod.ExportMenu,
+    })),
   { loading: () => null },
 )
 
@@ -49,7 +55,11 @@ export default function ChatExperience(props: ChatExperienceProps) {
         title={c.isTemporaryChat ? 'Temporary chat' : c.activeChatTitle || c.activeChat?.title || 'New conversation'}
         content={c.primaryMessages.map((m) => ({
           role: m.role,
-          content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
+          content:
+            (m.parts as Array<{ type: string; text?: string }>)
+              ?.filter((p) => p.type === "text")
+              .map((p) => p.text ?? "")
+              .join("\n") ?? "",
           parts: m.parts as Array<{ type: string; text?: string }>,
         }))}
         metadata={{
@@ -66,7 +76,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
         }
         renderShareDialog={(dialogProps) => <ShareDialog {...dialogProps} />}
       />
-    )
+    );
   }, [
     c.activeChat,
     c.activeChatId,
@@ -81,8 +91,8 @@ export default function ChatExperience(props: ChatExperienceProps) {
       preview,
       headerRight,
     }: {
-      preview: AttachmentPreview
-      headerRight: React.ReactNode
+      preview: AttachmentPreview;
+      headerRight: React.ReactNode;
     }) => (
       <FileViewerPanel
         name={preview.name}
@@ -92,7 +102,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
       />
     ),
     [],
-  )
+  );
 
   const {
     shellRightPanel,
@@ -104,7 +114,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
   } = useChatShellPanels({
     ...c.shellPanelInputs,
     renderAttachmentViewer,
-  })
+  });
 
   return (
     <>
@@ -130,5 +140,5 @@ export default function ChatExperience(props: ChatExperienceProps) {
         )}
       />
     </>
-  )
+  );
 }

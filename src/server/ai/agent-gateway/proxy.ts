@@ -384,6 +384,7 @@ async function respondWithUpstream(args: {
 
   let upstreamResponse: Response
   try {
+    // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
     upstreamResponse = await fetch(`${upstream.origin}/${args.path}`, {
       method: args.request.method,
       headers,

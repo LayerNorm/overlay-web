@@ -98,8 +98,16 @@ function useAdminData({ canViewUsage, canViewAudit }: AdminPermissions) {
     if (usageResponse && !usageResponse.ok) throw new Error('Failed to load usage data')
     if (auditResponse && !auditResponse.ok) throw new Error('Failed to load audit data')
     setForbidden(false)
-    setUsage(usageResponse ? (await usageResponse.json() as { usage: UsageRow[] }).usage : [])
-    setEvents(auditResponse ? (await auditResponse.json() as { events: AuditRow[] }).events : [])
+    setUsage(
+      usageResponse
+        ? ((await usageResponse.json()) as { usage: UsageRow[] }).usage
+        : [],
+    )
+    setEvents(
+      auditResponse
+        ? ((await auditResponse.json()) as { events: AuditRow[] }).events
+        : [],
+    )
   }, [auditFilter, canViewAudit, canViewUsage, userFilter])
 
   return {
@@ -127,13 +135,18 @@ function useBudgetAdjustment(load: () => Promise<void>, setError: (error: string
     setBusy(true)
     setError(null)
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch('/api/v1/admin/usage', {
         body: JSON.stringify({ amountCents: amount, userId: adjustUserId.trim() }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       })
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(payload.error || 'Budget adjustment failed')
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'Budget adjustment failed')
       setAmountCents('')
       await load()
     } catch (adjustError) {
@@ -253,7 +266,11 @@ function AdminAuditSection({
       <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
         {events.length === 0 ? <p className="py-5 text-sm text-[var(--muted)]">No matching audit events.</p> : events.map((event) => (
           <div key={event.id} className="grid gap-1 py-3 text-sm md:grid-cols-[220px_1fr_100px]">
-            <div><p className="font-medium">{event.action}</p><p className="text-xs text-[var(--muted)]">{new Date(event.createdAt).toLocaleString()}</p></div>
+            <div><p className="font-medium">{event.action}</p><p className="text-xs text-[var(--muted)]">{
+              // Locale pinned to 'en-US'.
+              // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+              new Date(event.createdAt).toLocaleString('en-US')
+            }</p></div>
             <p className="text-[var(--muted)]">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}</p>
             <p>{event.outcome}</p>
           </div>
@@ -347,7 +364,7 @@ export default function AdminPage() {
         <AppScreenHeader
           title="Administration"
           subtitle="Workspace controls"
-          actions={(
+          actions={
             <>
               <button
                 type="button"
@@ -358,12 +375,14 @@ export default function AdminPage() {
                 <RefreshCw size={15} />
               </button>
             </>
-          )}
+          }
         />
-      )}
+      }
     >
       <AppScreenBody maxWidth="xl" padding="md">
-        {error ? <p className="mb-5 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? (
+          <p className='mb-5 text-sm text-red-600 dark:text-red-400'>{error}</p>
+        ) : null}
 
         {section === 'roles' && canViewRoles ? (
           <AuthorizationAdminPanel

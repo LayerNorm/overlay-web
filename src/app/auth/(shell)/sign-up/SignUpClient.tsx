@@ -430,6 +430,8 @@ export function SignUpClient({
   const [verified, setVerified] = useState(false)
 
   // Get redirect URL from params (for desktop app auth)
+  // Auth params intentionally gate first paint; page is client-gated by (shell).
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get('redirect'))
   const signInHref = `/auth/sign-in${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`
 
@@ -470,11 +472,14 @@ export function SignUpClient({
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (verifying) return
     if (!verificationTicketRef.current || !verificationCode) return
 
     setVerifying(true)
     setError(null)
 
+    // Guarded by `verifying` at the handler's top.
+    // react-doctor-disable-next-line react-doctor/no-async-event-handler-without-reentry-guard
     const result = await postVerifyEmail(
       { ticket: verificationTicketRef.current, code: verificationCode },
       'Invalid verification code',
@@ -488,11 +493,13 @@ export function SignUpClient({
   }
 
   const handleResendCode = async () => {
-    if (!verificationTicketRef.current) return
+    if (!verificationTicketRef.current || resending) return
 
     setResending(true)
     setError(null)
 
+    // Guarded by `resending` at the handler's top.
+    // react-doctor-disable-next-line react-doctor/no-async-event-handler-without-reentry-guard
     const result = await postVerifyEmail(
       { ticket: verificationTicketRef.current, action: 'resend' },
       'Failed to resend code',
@@ -588,7 +595,9 @@ export function SignUpClient({
             <div className="w-full border-t border-[var(--border)]" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="bg-[var(--background)] px-4 text-[var(--muted)]">or create with email</span>
+              <span className='bg-[var(--background)] px-4 text-[var(--muted)]'>
+                or create with email
+              </span>
           </div>
         </div>
         ) : null}

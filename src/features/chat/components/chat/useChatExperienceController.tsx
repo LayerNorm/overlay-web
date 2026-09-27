@@ -753,9 +753,14 @@ export function useChatExperienceController({
       loadSubscription()
     }
     wasStreamingRef.current = isActiveLoading
-    if (isActiveLoading) setIsOptimisticLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActiveLoading, chat0.messages.length])
+
+  const [prevActiveLoading, setPrevActiveLoading] = useState(isActiveLoading)
+  if (prevActiveLoading !== isActiveLoading) {
+    setPrevActiveLoading(isActiveLoading)
+    if (isActiveLoading) setIsOptimisticLoading(false)
+  }
 
   useEffect(() => {
     if (!isActiveLoading) return

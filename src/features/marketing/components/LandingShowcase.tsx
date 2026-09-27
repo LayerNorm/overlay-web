@@ -590,13 +590,13 @@ function ShowcaseMain({
         </button>
       </div>
       <div className="thread">
-        {messages.map((m, i) =>
+        {messages.map((m) =>
           m.who === "user" ? (
-            <div className="msg-user" key={i}>
+            <div className="msg-user" key={m.text}>
               {m.text}
             </div>
           ) : (
-            <div className="msg-agent" key={i}>
+            <div className="msg-agent" key={m.worked}>
               <span className="cw" style={{ marginTop: 2 }}>
                 <Creature
                   shape={agent.shape}

@@ -12,14 +12,9 @@ type JsonRecord = Record<string, unknown>
 export async function analyzeToolSetForGatewayCompatibility(
   toolSet: ToolSet,
 ): Promise<GatewayToolSchemaViolation[]> {
-  const violations: GatewayToolSchemaViolation[] = []
-
-  for (const [toolName, toolDef] of Object.entries(toolSet)) {
-    const violation = await getGatewayToolSchemaViolation(toolName, toolDef)
-    if (violation) violations.push(violation)
-  }
-
-  return violations
+  const results = await Promise.all(Object.entries(toolSet).map(([toolName, toolDef]) =>
+    getGatewayToolSchemaViolation(toolName, toolDef)))
+  return results.filter((violation): violation is GatewayToolSchemaViolation => Boolean(violation))
 }
 
 export async function filterGatewayCompatibleToolSet(toolSet: ToolSet): Promise<{
@@ -29,8 +24,11 @@ export async function filterGatewayCompatibleToolSet(toolSet: ToolSet): Promise<
   const dropped: GatewayToolSchemaViolation[] = []
   const tools: ToolSet = {}
 
-  for (const [toolName, toolDef] of Object.entries(toolSet)) {
-    const violation = await getGatewayToolSchemaViolation(toolName, toolDef)
+  const entries = Object.entries(toolSet)
+  const violations = await Promise.all(entries.map(([toolName, toolDef]) =>
+    getGatewayToolSchemaViolation(toolName, toolDef)))
+  for (const [i, [toolName, toolDef]] of entries.entries()) {
+    const violation = violations[i]
     if (violation) {
       dropped.push(violation)
       continue

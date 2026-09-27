@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
@@ -89,7 +89,7 @@ function resolveRoomRightPanel({
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
-  conversationType = 'dm',
+  conversationType = "dm",
   draft = false,
   draftTitle,
   headerActions,
@@ -98,16 +98,16 @@ export function DirectMessageExperience({
   externalRightPanelMode,
   onExternalRightPanelClose,
 }: {
-  conversationId: string
-  showcase?: boolean
-  conversationType?: 'dm' | 'channel'
-  draft?: boolean
-  draftTitle?: string
-  headerActions?: ReactNode
-  externalRightPanel?: ReactNode
-  externalRightPanelLabel?: string
-  externalRightPanelMode?: 'docked' | 'floating'
-  onExternalRightPanelClose?: () => void
+  conversationId: string;
+  showcase?: boolean;
+  conversationType?: "dm" | "channel";
+  draft?: boolean;
+  draftTitle?: string;
+  headerActions?: ReactNode;
+  externalRightPanel?: ReactNode;
+  externalRightPanelLabel?: string;
+  externalRightPanelMode?: "docked" | "floating";
+  onExternalRightPanelClose?: () => void;
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
@@ -267,5 +267,5 @@ export function DirectMessageExperience({
         sendMessage={room.sendMessage}
       />
     </>
-  )
+  );
 }

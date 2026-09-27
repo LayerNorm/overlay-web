@@ -101,9 +101,9 @@ export class FixedRoleAuthorizationBridge {
 
   private async initializeSystemRoles(): Promise<void> {
     await this.ensureMemberRole()
-    for (const role of Object.keys(FIXED_AUTHORIZATION_ROLE_IDS) as AdministrativeRole[]) {
-      await this.ensureSystemRole(role)
-    }
+    await Promise.all(
+      (Object.keys(FIXED_AUTHORIZATION_ROLE_IDS) as AdministrativeRole[]).map((role) =>
+        this.ensureSystemRole(role)))
   }
 
   async ensureDefaultUserRole(userId: string, assignedBy?: string): Promise<void> {
@@ -140,22 +140,16 @@ export class FixedRoleAuthorizationBridge {
     total: number
   }> {
     await this.ensureSystemRoles()
-    let active = 0
-    let revoked = 0
-    for (const principal of principals) {
-      await this.syncPrincipal(principal)
-      if (principal.revokedAt) revoked += 1
-      else active += 1
-    }
-    return { active, revoked, total: principals.length }
+    await Promise.all(principals.map((principal) => this.syncPrincipal(principal)))
+    const revoked = principals.filter((principal) => principal.revokedAt).length
+    return { active: principals.length - revoked, revoked, total: principals.length }
   }
 
   async migrateUsers(userIds: readonly string[]): Promise<number> {
     await this.ensureSystemRoles()
-    for (const userId of new Set(userIds.filter(Boolean))) {
-      await this.ensureDefaultUserRole(userId)
-    }
-    return new Set(userIds.filter(Boolean)).size
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))]
+    await Promise.all(uniqueUserIds.map((userId) => this.ensureDefaultUserRole(userId)))
+    return uniqueUserIds.length
   }
 
   private async ensureMemberRole(): Promise<void> {

@@ -108,24 +108,27 @@ export async function uploadFilePartsForModel(
   }>,
   modelId: string,
 ): Promise<void> {
-  for (const message of messages) {
-    if (message.role !== 'user' || !message.parts) continue
-    for (const part of message.parts) {
-      if (part.type !== 'file' || !part.url || !part.mediaType || part.providerReference) continue
-      // Skip data: URLs that are small (< 100KB) — inline is cheaper for small files.
-      if (part.url.startsWith('data:') && part.url.length < 100_000) continue
-
-      const result = await tryUploadFileToProvider({
-        modelId,
-        url: part.url,
-        mediaType: part.mediaType,
-        fileName: part.fileName ?? part.filename,
-      })
-      if (result) {
-        // AI SDK v7 reads provider references from this dedicated field.
-        // Keep the original URL as a fallback for providers that do not use it.
-        part.providerReference = result.providerReference
-      }
+  const uploadableParts = messages.flatMap((message) =>
+    message.role !== 'user' || !message.parts
+      ? []
+      : message.parts.filter((part) =>
+          part.type === 'file'
+          && Boolean(part.url)
+          && Boolean(part.mediaType)
+          && !part.providerReference
+          // Skip data: URLs that are small (< 100KB) — inline is cheaper for small files.
+          && !(part.url!.startsWith('data:') && part.url!.length < 100_000)))
+  await Promise.all(uploadableParts.map(async (part) => {
+    const result = await tryUploadFileToProvider({
+      modelId,
+      url: part.url!,
+      mediaType: part.mediaType!,
+      fileName: part.fileName ?? part.filename,
+    })
+    if (result) {
+      // AI SDK v7 reads provider references from this dedicated field.
+      // Keep the original URL as a fallback for providers that do not use it.
+      part.providerReference = result.providerReference
     }
-  }
+  }))
 }

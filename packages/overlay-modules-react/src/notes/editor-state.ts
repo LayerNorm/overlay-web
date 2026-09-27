@@ -580,6 +580,7 @@ export function useNotebookNotes({
     editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
     hydratingEditorRef.current = false
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     onHydrated?.(activeNote)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])

@@ -90,6 +90,7 @@ async function fetchWithRetry(
 ): Promise<{ ok: boolean; data: Record<string, unknown>; status: number }> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const res = await fetch(url, { credentials: 'same-origin', ...options })
       const data = await res.json().catch(() => ({})) as Record<string, unknown>
       if (res.status === 429 && attempt < maxRetries) {
@@ -311,6 +312,8 @@ function useSlackImportPanel() {
   }, [view, connectionState, usersLoaded, usersLoading, loadUsers])
 
   // ─── Poll active job for progress ─────────────────────────────────────────
+  // Client-side polling of the import job status — no server data layer.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (view !== 'progress' || !activeJob) return
     if (TERMINAL_JOB_STATUSES.has(activeJob.status)) {

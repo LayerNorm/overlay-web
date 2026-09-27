@@ -132,8 +132,8 @@ function WebSearchToolDetails({
           ) : null}
           {visibleSources.length > 0 ? (
             <ul className="flex flex-col">
-              {visibleSources.map((source, idx) => (
-                <WebSearchSourceRow key={`${source.url}-${idx}`} source={source} />
+              {visibleSources.map((source) => (
+                <WebSearchSourceRow key={source.url} source={source} />
               ))}
             </ul>
           ) : null}

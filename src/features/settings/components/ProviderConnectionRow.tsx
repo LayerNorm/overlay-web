@@ -74,21 +74,29 @@ function useProviderConnectionActions({
   const [rowError, setRowError] = useState<string | null>(null)
 
   const discoverModels = useCallback(async () => {
+    if (discovering) return
     setExpanded(true)
     setDiscovering(true)
     setRowError(null)
     try {
       if (defaultGateway) await onRefreshGateway()
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const res = await fetch('/api/v1/providers/connections/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId: connection._id }),
       })
-      const data = await res.json().catch(() => null) as { ok?: boolean; models?: DiscoveredModel[]; error?: string } | null
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean
+        models?: DiscoveredModel[]
+        error?: string
+      } | null
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error ?? payloadErrorMessage(data) ?? 'Failed to search provider models')
       }
       const now = Date.now()
+      // Guarded by `discovering` at the top of discoverModels.
+      // react-doctor-disable-next-line react-doctor/no-async-event-handler-without-reentry-guard
       const updateRes = await fetch('/api/v1/providers/connections', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -110,7 +118,13 @@ function useProviderConnectionActions({
     } finally {
       setDiscovering(false)
     }
-  }, [connection._id, defaultGateway, onRefreshConnections, onRefreshGateway])
+  }, [
+    connection._id,
+    defaultGateway,
+    discovering,
+    onRefreshConnections,
+    onRefreshGateway,
+  ])
 
   const toggleModel = useCallback(async (model: ProviderModelOption) => {
     const isEnabled = effectiveSettingsIds.has(model.appModelId)

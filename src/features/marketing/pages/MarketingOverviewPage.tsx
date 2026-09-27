@@ -604,8 +604,8 @@ function AutomationsSection() {
                     t: "Last Mon",
                   },
                   { icon: Clock, ok: false, text: "Next run", t: "in 4 days" },
-                ].map((r, i) => (
-                  <div className="run-row" key={i}>
+                ].map((r) => (
+                  <div className="run-row" key={r.text}>
                     <r.icon
                       size={12}
                       strokeWidth={2}

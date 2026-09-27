@@ -69,6 +69,7 @@ export function ConvexRoomMessageSubscription({
     // Auth failures return ok:false — leave the last good transcript alone.
     if (!mainResult?.ok) return
     const threadMessages = threadResult?.ok ? threadResult.messages : []
+    // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
     onMessages([
       ...mainResult.messages,
       ...threadMessages,

@@ -183,6 +183,14 @@ function VideoPlayBadge({ ready }: { ready: boolean }) {
 }
 
 /** Single image/video cell: mesh placeholder while generating; crossfade to media after load. */
+const upgradeLink = (
+  // Internal nav without Link — this package has no next/ dependency.
+  // react-doctor-disable-next-line react-doctor/nextjs-no-a-element
+  <a href='/pricing' className='underline underline-offset-2 hover:opacity-70'>
+    Upgrade here
+  </a>
+)
+
 export function MediaSlotOutput({
   genType,
   isMulti,
@@ -194,11 +202,31 @@ export function MediaSlotOutput({
   modelName: string
   result: GenerationResult | undefined
 }) {
-  const singleBoxStyle = singleMediaBoxStyle(genType, isMulti)
-  const isGenerating = !result || result.status === 'generating'
+  const singleBoxStyle: CSSProperties | undefined =
+    !isMulti
+      ? genType === 'image'
+        ? { width: 208, height: 208, minWidth: 208, minHeight: 208, boxSizing: 'border-box' }
+        : { width: 288, height: 160, minWidth: 288, minHeight: 160, boxSizing: 'border-box' }
+      : undefined
+
+  const multiFrameClass =
+    genType === 'image'
+      ? 'h-[320px] w-full sm:h-[420px]'
+      : 'h-[210px] w-full sm:h-[240px]'
+  const errorFrameClass = isMulti
+    ? `${multiFrameClass} flex items-center justify-center`
+    : ''
+  const multiStatusLabel =
+    !result || result.status === 'generating'
+      ? genType === 'image'
+        ? 'Creating image'
+        : 'Creating video'
+    : ''
 
   return (
-    <div className={`flex min-w-0 flex-col ${isMulti ? 'w-full gap-1.5' : 'gap-2 self-start'}`}>
+    <div
+      className={`flex min-w-0 flex-col ${isMulti ? 'w-full gap-1.5' : 'gap-2 self-start'}`}
+    >
       {isMulti ? (
         <div className="h-5 text-xs font-medium text-(--muted)">
           {isGenerating ? creatingLabel(genType) : ''}
@@ -216,7 +244,65 @@ export function MediaSlotOutput({
           aria-hidden
         />
       ) : result.status !== 'completed' || !result.url ? (
-        <MediaErrorFrame genType={genType} isMulti={isMulti} result={result} />
+        <div
+          className={`rounded-xl border ${
+            isMulti ? errorFrameClass : 'flex items-center gap-2 px-3 py-2 text-xs'
+          }`}
+          style={{
+            ...(!isMulti ? singleBoxStyle : {}),
+            background: 'var(--chat-media-error-bg)',
+            borderColor: 'var(--chat-media-error-border)',
+            color: 'var(--chat-alert-error-text)',
+          }}
+        >
+          {
+            // Internal nav without Link — this package has no next/ dependency.
+            // react-doctor-disable-next-line react-doctor/nextjs-no-a-element
+            // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- placeholder
+          }
+          {isMulti ? (
+            <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-elevated) text-red-500 shadow-sm">
+                <AlertCircle size={18} />
+              </span>
+              <div className="space-y-1">
+                <p
+                  className='text-sm font-medium'
+                  style={{ color: 'var(--chat-alert-error-text)' }}
+                >
+                  {result.upgradeRequired
+                    ? `${genType === 'image' ? 'Image' : 'Video'} generation requires a paid plan`
+                    : 'Generation failed'}
+                </p>
+                {result.upgradeRequired ? (
+                  <p className="text-xs leading-relaxed opacity-90">
+                    {upgradeLink} to generate{' '}
+                    {genType === 'image' ? 'images' : 'videos'}.
+                  </p>
+                ) : (
+                  <p className='text-xs leading-relaxed opacity-90'>
+                    {result.error ?? 'Please try again.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <AlertCircle size={12} />
+              {result.upgradeRequired ? (
+                <>
+                  <span>
+                    {genType === 'image' ? 'Image' : 'Video'} generation
+                    requires a paid plan.{' '}
+                  </span>
+                  {upgradeLink}
+                </>
+              ) : (
+                (result.error ?? 'Failed')
+              )}
+            </>
+          )}
+        </div>
       ) : (
         <MediaCompletedReveal
           key={result.url}

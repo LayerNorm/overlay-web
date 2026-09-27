@@ -76,7 +76,9 @@ function roomDayKey(timestamp: number): string {
 }
 
 function roomDayLabel(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString([], {
+  // Locale pinned to 'en-US' — SSR and client output are identical.
+  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+  return new Date(timestamp).toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',

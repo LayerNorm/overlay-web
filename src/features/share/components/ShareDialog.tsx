@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
 import { useDialogFocus, usePresence } from '@overlay/ui'
 import { safeHttpUrl } from '@/shared/security/safe-url'
@@ -65,11 +65,12 @@ export function ShareDialog({
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose()
+  })
+
   useEffect(() => {
     if (!isOpen) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
     window.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -77,7 +78,7 @@ export function ShareDialog({
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [isOpen, onClose])
+  }, [isOpen])
 
   const socials = useMemo(
     () => (resource?.url ? buildSocialUrls(resource.url, resource.title) : null),

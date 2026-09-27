@@ -31,8 +31,11 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email }),
       })
 
-      const data = await response.json()
-
+      if (!response.ok) {
+        setError('Failed to send reset email')
+        return
+      }
+      const data = await response.json().catch(() => ({}))
       if (data.success) {
         setSent(true)
       } else {
@@ -66,7 +69,8 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="text-2xl font-serif mb-2">Check your email</h1>
           <p className={`mb-8 text-sm ${muted}`}>
-            If an account exists for <strong className="text-[var(--foreground)]">{email}</strong>,
+            If an account exists for{' '}
+            <strong className='text-[var(--foreground)]'>{email}</strong>,
             you&apos;ll receive a password reset link shortly.
           </p>
           <Link
@@ -110,11 +114,7 @@ export default function ForgotPasswordPage() {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={submit}
-          >
+          <button type='submit' disabled={loading} className={submit}>
             {loading ? 'Sending...' : 'Send reset link'}
           </button>
         </form>

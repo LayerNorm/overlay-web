@@ -48,12 +48,12 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       const actorDisplayName = context.workspace.principal.displayName
       const workspaceId = context.workspace.workspace.id
       const workspaceName = context.workspace.workspace.name
-      for (const participant of directMessage.participants) {
-        if (participant.principalId === actorPrincipalId) continue
-        if (participant.principalType !== 'human') continue
+      const notifiedParticipants = directMessage.participants.filter((participant) =>
+        participant.principalId !== actorPrincipalId && participant.principalType === 'human')
+      await Promise.all(notifiedParticipants.map(async (participant) => {
         try {
           const principal = await server.workspaceService.resolvePrincipal(participant.principalId)
-          if (!principal?.userId) continue
+          if (!principal?.userId) return
           await server.lifecycleEvents.publish({
             attributes: {
               workspaceId,
@@ -70,7 +70,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
         } catch (error) {
           logger.warn('[direct-messages] Failed to publish dm_received lifecycle event', { error })
         }
-      }
+      }))
     }
 
     return NextResponse.json({ directMessage }, { status: directMessage.created ? 201 : 200 })

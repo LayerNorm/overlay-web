@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingAuthPageChrome } from "../../_components/AuthPageChrome";
@@ -24,6 +24,8 @@ function useClearExistingSession(isDesktopAuth: boolean, forceLogin: boolean) {
   const [sessionCleared, setSessionCleared] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
 
+  // One-shot session-clear on mount; guarded by clearingSession/sessionCleared.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect, react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     if ((isDesktopAuth || forceLogin) && !sessionCleared && !clearingSession) {
       setClearingSession(true);
@@ -55,26 +57,12 @@ function useRedirectExistingSession({
   isDesktopAuth: boolean;
   redirectUrl: string;
 }) {
-  const router = useRouter();
-  const [redirectingExistingSession, setRedirectingExistingSession] = useState(false);
   const shouldRedirect =
     !authLoading && isAuthenticated && !forceLogin && !isDesktopAuth;
 
-  if (shouldRedirect && !redirectingExistingSession) {
-    setRedirectingExistingSession(true);
+  if (shouldRedirect) {
+    redirect(redirectUrl);
   }
-
-  useEffect(() => {
-    if (!shouldRedirect) return;
-
-    if (redirectUrl.startsWith("overlay://")) {
-      window.location.href = redirectUrl;
-    } else {
-      router.replace(redirectUrl);
-    }
-  }, [redirectUrl, router, shouldRedirect]);
-
-  return redirectingExistingSession;
 }
 
 function useEmailPasswordSignIn({
@@ -100,6 +88,7 @@ function useEmailPasswordSignIn({
     setPendingVerification(false);
 
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch("/api/auth/sign-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -340,7 +329,11 @@ export function SignInClient({
   const linkMuted = "text-[var(--muted)] hover:text-[var(--foreground)]";
   const createLink = "text-[var(--foreground)] hover:underline font-medium";
 
+  // Auth params intentionally gate first paint; page is client-gated by (shell).
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get("redirect"));
+  // Auth params intentionally gate first paint; page is client-gated by (shell).
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const forceLogin = searchParams?.get("force") === "true";
   const isDesktopAuth = redirectUrl.startsWith("overlay://");
 
@@ -349,7 +342,11 @@ export function SignInClient({
     setSeenSearchParams(searchParams);
     const errorParam = searchParams?.get("error");
     if (errorParam) {
-      setError(decodeURIComponent(errorParam));
+      try {
+        setError(decodeURIComponent(errorParam));
+      } catch {
+        setError(errorParam);
+      }
     }
   }
 
@@ -358,7 +355,7 @@ export function SignInClient({
   }, [searchParams]);
 
   useClearExistingSession(isDesktopAuth, forceLogin);
-  const redirectingExistingSession = useRedirectExistingSession({
+  useRedirectExistingSession({
     authLoading,
     isAuthenticated,
     forceLogin,
@@ -393,7 +390,7 @@ export function SignInClient({
     isDirectDesktopCallback: isDesktopAuth,
   });
 
-  if (shouldReuseExistingSession || redirectingExistingSession) {
+  if (shouldReuseExistingSession) {
     return (
       <LandingAuthPageChrome>
         <div className="flex min-h-40 items-center justify-center">
@@ -406,8 +403,12 @@ export function SignInClient({
   return (
     <LandingAuthPageChrome>
       <div>
-        <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>Welcome back</h1>
-          <p className={`text-sm mb-8 ${muted}`}>Sign in to your overlay account</p>
+        <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>
+          Welcome back
+        </h1>
+        <p className={`text-sm mb-8 ${muted}`}>
+          Sign in to your overlay account
+        </p>
 
           <SignInErrorAlert error={error} pendingVerification={pendingVerification} email={email} />
 

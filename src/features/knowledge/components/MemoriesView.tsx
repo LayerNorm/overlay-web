@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
@@ -12,56 +12,56 @@ import { MemoriesLoadingState } from './MemoriesLoadingState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 interface MemoryListItem {
-  key: string
-  memoryId: string
-  segmentIndex: number
-  content: string
-  fullContent: string
-  source: string
-  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-  importance?: number
-  conversationId?: string
-  noteId?: string
-  messageId?: string
-  turnId?: string
-  tags?: string[]
-  actor?: 'user' | 'agent'
-  canDelete: boolean
-  creatorEmail?: string
-  creatorName: string
-  creatorPrincipalId?: string
-  creatorUserId: string
-  createdAt: number
-  updatedAt?: number
+  key: string;
+  memoryId: string;
+  segmentIndex: number;
+  content: string;
+  fullContent: string;
+  source: string;
+  type?: "preference" | "fact" | "project" | "decision" | "agent";
+  importance?: number;
+  conversationId?: string;
+  noteId?: string;
+  messageId?: string;
+  turnId?: string;
+  tags?: string[];
+  actor?: "user" | "agent";
+  canDelete: boolean;
+  creatorEmail?: string;
+  creatorName: string;
+  creatorPrincipalId?: string;
+  creatorUserId: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 interface Memory {
-  memoryId: string
-  content: string
-  source: string
-  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-  importance?: number
-  conversationId?: string
-  noteId?: string
-  messageId?: string
-  turnId?: string
-  tags: string[]
-  actor?: 'user' | 'agent'
-  canDelete: boolean
-  creatorEmail?: string
-  creatorName: string
-  creatorPrincipalId?: string
-  creatorUserId: string
-  createdAt: number
-  updatedAt?: number
+  memoryId: string;
+  content: string;
+  source: string;
+  type?: "preference" | "fact" | "project" | "decision" | "agent";
+  importance?: number;
+  conversationId?: string;
+  noteId?: string;
+  messageId?: string;
+  turnId?: string;
+  tags: string[];
+  actor?: "user" | "agent";
+  canDelete: boolean;
+  creatorEmail?: string;
+  creatorName: string;
+  creatorPrincipalId?: string;
+  creatorUserId: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
-  const seen = new Set<string>()
-  const out: Memory[] = []
+  const seen = new Set<string>();
+  const out: Memory[] = [];
   for (const row of rows) {
-    if (seen.has(row.memoryId)) continue
-    seen.add(row.memoryId)
+    if (seen.has(row.memoryId)) continue;
+    seen.add(row.memoryId);
     out.push({
       memoryId: row.memoryId,
       content: row.fullContent,
@@ -81,39 +81,43 @@ function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
       creatorUserId: row.creatorUserId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    })
+    });
   }
-  return out
+  return out;
 }
 
 function getDateLabel(timestamp: number): string {
-  const date = new Date(timestamp)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
 
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function getBadgeTone(kind: string): string {
-  void kind
-  return 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]'
+  void kind;
+  return "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]";
 }
 
 function memoryDomId(memoryId: string): string {
-  return `memory-${memoryId}`
+  return `memory-${memoryId}`;
 }
 
 interface MemoriesHeaderState {
-  count: number
-  actions: ReactNode
+  count: number;
+  actions: ReactNode;
 }
 
 interface MemoriesViewProps {
-  userId: string
-  onHeaderStateChange?: (state: MemoriesHeaderState | null) => void
+  userId: string;
+  onHeaderStateChange?: (state: MemoriesHeaderState | null) => void;
 }
 
 interface MemoryMemberOption {
@@ -135,8 +139,8 @@ function useMemoryMembers({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!activeWorkspaceId) return
-    let cancelled = false
+    if (!activeWorkspaceId) return;
+    let cancelled = false;
     // `?owner=<principalId>` deep-links from an agent profile's memories section.
     const requestedOwner = typeof window === 'undefined'
       ? null
@@ -146,40 +150,64 @@ function useMemoryMembers({
       setSelectionMode(false)
     })
     void Promise.all([
-      overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
-      overlayAppClient.workspaces.management(activeWorkspaceId, 'guests'),
-      overlayAppClient.agents.list(activeWorkspaceId).catch(() => ({ agents: [] })),
-      requestedOwner ? Promise.resolve() : loadMemories('all'),
-    ]).then(([people, guests, agentDirectory]) => {
-      if (cancelled) return
-      const byPrincipalId = new Map<string, { name: string; principalId: string; isAgent?: boolean }>()
-      for (const item of [...people.items, ...guests.items]) {
-        if (item.kind === 'member' && item.principalId && item.status === 'active') {
-          byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
+      overlayAppClient.workspaces.management(activeWorkspaceId, "people"),
+      overlayAppClient.workspaces.management(activeWorkspaceId, "guests"),
+      overlayAppClient.agents
+        .list(activeWorkspaceId)
+        .catch(() => ({ agents: [] })),
+      requestedOwner ? Promise.resolve() : loadMemories("all"),
+    ])
+      .then(([people, guests, agentDirectory]) => {
+        if (cancelled) return;
+        const byPrincipalId = new Map<
+          string,
+          { name: string; principalId: string; isAgent?: boolean }
+        >();
+        for (const item of [...people.items, ...guests.items]) {
+          if (
+            item.kind === "member" &&
+            item.principalId &&
+            item.status === "active"
+          ) {
+            byPrincipalId.set(item.principalId, {
+              name: item.name,
+              principalId: item.principalId,
+            });
+          }
         }
-      }
-      // Agents appear after humans — they own memories in their own right and
-      // the same member filter resolves them server-side.
-      const humans = [...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name))
-      const agents = (agentDirectory.agents ?? [])
-        .filter((agent) => agent.principalId)
-        .map((agent) => ({ name: agent.name, principalId: agent.principalId, isAgent: true as const }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-      const options = [...humans, ...agents]
-      setMembers(options)
-      const initial = requestedOwner && options.some((m) => m.principalId === requestedOwner)
-        ? requestedOwner
-        : 'all'
-      setSelectedMemberPrincipalId(initial)
-      if (requestedOwner) void loadMemories(initial)
-    }).catch(() => {
-      if (!cancelled) {
-        setMembers([])
-        setSelectedMemberPrincipalId('all')
-      }
-    })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, loadMemories])
+        // Agents appear after humans — they own memories in their own right and
+        // the same member filter resolves them server-side.
+        const humans = [...byPrincipalId.values()].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        const agents = (agentDirectory.agents ?? [])
+          .filter((agent) => agent.principalId)
+          .map((agent) => ({
+            name: agent.name,
+            principalId: agent.principalId,
+            isAgent: true as const,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const options = [...humans, ...agents];
+        setMembers(options);
+        const initial =
+          requestedOwner &&
+          options.some((m) => m.principalId === requestedOwner)
+            ? requestedOwner
+            : "all";
+        setSelectedMemberPrincipalId(initial);
+        if (requestedOwner) void loadMemories(initial);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMembers([]);
+          setSelectedMemberPrincipalId("all");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspaceId, loadMemories]);
 
   return {
     members,
@@ -251,61 +279,73 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   // Deep link from a chat source chip: scroll the cited memory into view and
   // ring it, mirroring the message permalink behaviour in chats.
   useEffect(() => {
-    const target = typeof window === 'undefined'
-      ? null
-      : new URLSearchParams(window.location.search).get('memory')?.trim() || null
-    if (!target || jumpedMemoryIdRef.current === target) return
-    if (!memories.some((memory) => memory.memoryId === target)) return
-    jumpedMemoryIdRef.current = target
-    setHighlightedMemoryId(target)
-    document.getElementById(memoryDomId(target))?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [memories])
+    const target =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("memory")?.trim() ||
+          null;
+    if (!target || jumpedMemoryIdRef.current === target) return;
+    if (!memories.some((memory) => memory.memoryId === target)) return;
+    jumpedMemoryIdRef.current = target;
+    setHighlightedMemoryId(target);
+    document
+      .getElementById(memoryDomId(target))
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [memories]);
 
   useEffect(() => {
-    if (!highlightedMemoryId) return
-    const timer = window.setTimeout(() => setHighlightedMemoryId(null), 2_600)
-    return () => window.clearTimeout(timer)
-  }, [highlightedMemoryId])
+    if (!highlightedMemoryId) return;
+    const timer = window.setTimeout(() => setHighlightedMemoryId(null), 2_600);
+    return () => window.clearTimeout(timer);
+  }, [highlightedMemoryId]);
 
   async function handleAdd() {
-    const text = addText.trim()
-    if (!text || isSaving) return
-    setIsSaving(true)
-    setSaveError(null)
-    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
-    setPendingSavePreview(preview)
+    const text = addText.trim();
+    if (!text || isSaving) return;
+    setIsSaving(true);
+    setSaveError(null);
+    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text;
+    setPendingSavePreview(preview);
     try {
       const res = await overlayAppClient.memory.createResponse({
         content: text,
-        source: 'manual',
+        source: "manual",
         type: addType,
         importance: Number(addImportance) || 3,
-        actor: 'user',
-      })
-      const data = (await res.json().catch(() => null)) as { error?: string } | null
+        actor: "user",
+      });
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       if (!res.ok) {
-        setSaveError(typeof data?.error === 'string' ? data.error : 'Could not save memory')
-        return
+        setSaveError(
+          typeof data?.error === "string"
+            ? data.error
+            : "Could not save memory",
+        );
+        return;
       }
-      setAddText('')
-      setAddType('fact')
-      setAddImportance('3')
-      setShowAdd(false)
-      await loadMemories(selectedMemberPrincipalId)
+      setAddText("");
+      setAddType("fact");
+      setAddImportance("3");
+      setShowAdd(false);
+      await loadMemories(selectedMemberPrincipalId);
     } finally {
-      setPendingSavePreview(null)
-      setIsSaving(false)
+      setPendingSavePreview(null);
+      setIsSaving(false);
     }
   }
 
   async function handleDelete(memoryId: string) {
-    await overlayAppClient.memory.deleteResponse({ memoryId })
-    setMemories((prev) => prev.filter((memory) => memory.memoryId !== memoryId))
+    await overlayAppClient.memory.deleteResponse({ memoryId });
+    setMemories((prev) =>
+      prev.filter((memory) => memory.memoryId !== memoryId),
+    );
     setSelectedIds((prev) => {
-      const next = new Set(prev)
-      next.delete(memoryId)
-      return next
-    })
+      const next = new Set(prev);
+      next.delete(memoryId);
+      return next;
+    });
   }
 
   const handleBulkDelete = useCallback(async () => {
@@ -318,17 +358,17 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   }, [selectedIds, setSelectedIds, setSelectionMode])
 
   async function handleCopy(memory: Memory) {
-    if (typeof navigator === 'undefined' || !navigator.clipboard) return
-    await navigator.clipboard.writeText(memory.content)
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(memory.content);
   }
 
   function toggleSelected(memoryId: string) {
     setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(memoryId)) next.delete(memoryId)
-      else next.add(memoryId)
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(memoryId)) next.delete(memoryId);
+      else next.add(memoryId);
+      return next;
+    });
   }
 
   const handleMemberChange = useCallback((value: string) => {
@@ -382,17 +422,18 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   ])
 
   useEffect(() => {
-    if (!onHeaderStateChange) return
-    onHeaderStateChange({ count: memories.length, actions: headerActions })
-    return () => onHeaderStateChange(null)
-  }, [headerActions, memories.length, onHeaderStateChange])
+    if (!onHeaderStateChange) return;
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent, react-doctor/no-prop-callback-in-effect
+    onHeaderStateChange({ count: memories.length, actions: headerActions });
+    return () => onHeaderStateChange(null);
+  }, [headerActions, memories.length, onHeaderStateChange]);
 
-  const groups: Record<string, Memory[]> = {}
+  const groups: Record<string, Memory[]> = {};
   for (const memory of memories) {
-    const label = getDateLabel(memory.createdAt)
-    ;(groups[label] ||= []).push(memory)
+    const label = getDateLabel(memory.createdAt);
+    (groups[label] ||= []).push(memory);
   }
-  const groupLabels = Object.keys(groups)
+  const groupLabels = Object.keys(groups);
 
   return (
     <div className="flex h-full flex-col">
@@ -401,7 +442,9 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
           <h2 className="text-sm font-medium text-[var(--foreground)]">
             Memories
             {memories.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">{memories.length}</span>
+              <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">
+                {memories.length}
+              </span>
             )}
           </h2>
           <div className="flex items-center gap-2">{headerActions}</div>
@@ -442,9 +485,14 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                 aria-busy
                 aria-live="polite"
               >
-                <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
+                <Loader2
+                  size={18}
+                  className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]"
+                />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[var(--foreground)]">Saving memory…</p>
+                  <p className="text-xs font-medium text-[var(--foreground)]">
+                    Saving memory…
+                  </p>
                   <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
                     {pendingSavePreview}
                   </p>
@@ -477,7 +525,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         )}
       </div>
     </div>
-  )
+  );
 }
 
 function MemoriesHeaderActions({

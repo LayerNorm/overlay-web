@@ -2,8 +2,8 @@
 
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Link2, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/page'
@@ -136,7 +136,12 @@ function GeneralSettingsSection({
         action={
           <button
             type="button"
-            onClick={() => { void overlayAppClient.onboarding.resetResponse().then(() => router.push('/app/chat?tour=replay')) }}
+            onClick={() => {
+              void (async () => {
+                await overlayAppClient.onboarding.resetResponse()
+                router.push('/app/chat?tour=replay')
+              })()
+            }}
             className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)]"
           >
             Replay tour
@@ -153,10 +158,10 @@ function AccountSettingsSection({
   supportsApiKeys: OverlayCapabilitiesApi['appDataCapabilities']['supportsApiKeys']
 }) {
   return (
-    <>
+    <Suspense fallback={null}>
       <AccountPageContent embedded />
       {supportsApiKeys ? <ApiKeySettings /> : null}
-    </>
+    </Suspense>
   )
 }
 
@@ -379,7 +384,15 @@ function SettingsSectionContent({
   )
 }
 
-export default function SettingsPage() {
+export default function Page() {
+  return (
+    <Suspense fallback={<SettingsSectionSkeleton />}>
+      <SettingsPage />
+    </Suspense>
+  )
+}
+
+function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { capabilities, appDataCapabilities } = useOverlayCapabilities()
@@ -400,9 +413,9 @@ export default function SettingsPage() {
   )
 
   const { isAuthenticated, isLoading: authLoading } = useAuth()
-  useEffect(() => {
-    if (!publicShowcase && !authLoading && !isAuthenticated) router.replace('/app/chat?signin=nav')
-  }, [authLoading, isAuthenticated, publicShowcase, router])
+  if (!publicShowcase && !authLoading && !isAuthenticated) {
+    redirect('/app/chat?signin=nav')
+  }
 
   const {
     settings,
@@ -430,7 +443,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!sectionIds.has(rawSection)) {
-      router.replace(`/app/settings?section=${section}`)
+      window.history.replaceState(null, '', `/app/settings?section=${section}`)
     }
   }, [rawSection, section, router, sectionIds])
 

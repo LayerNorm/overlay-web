@@ -56,7 +56,7 @@ async function triggerWorkspaceAgentTurns(args: {
       logger.warn('[conversations/message POST] Failed to enqueue human memory extraction', { error })
     })
   }
-  for (const invocation of invocations) {
+  await Promise.all(invocations.map(async (invocation) => {
     try {
       if (invocation.remoteTarget?.protocolAdapter === 'harness') {
         // Managed HarnessAgent bindings are dispatched to the durable slice
@@ -72,7 +72,7 @@ async function triggerWorkspaceAgentTurns(args: {
           ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
           workspaceId: args.workspaceId,
         })
-        continue
+        return
       }
       if (invocation.remoteTarget) {
         await startRemoteWorkspaceAgentTurn({
@@ -86,7 +86,7 @@ async function triggerWorkspaceAgentTurns(args: {
           ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
           workspaceId: args.workspaceId,
         })
-        continue
+        return
       }
       const turn = await collaboration.startAgentTurn({
         actorUserId: args.actorUserId,
@@ -103,7 +103,7 @@ async function triggerWorkspaceAgentTurns(args: {
       // A turn already exists for this (message, agent): a duplicate trigger,
       // or a retried send. Starting a second workflow against the same reply
       // row would bill the turn twice.
-      if (turn.resumed) continue
+      if (turn.resumed) return
       await start(workspaceAgentTurnWorkflow, [{
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,
@@ -149,7 +149,7 @@ async function triggerWorkspaceAgentTurns(args: {
         })
       })
     }
-  }
+  }))
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -273,10 +273,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       const conversationTitle = conversation.title || 'a conversation'
 
-      for (const mentionedPrincipalId of mentionedPrincipalIds) {
+      await Promise.all(mentionedPrincipalIds.map(async (mentionedPrincipalId) => {
         try {
           const principal = await server.workspaceService.resolvePrincipal(mentionedPrincipalId)
-          if (!principal?.userId || principal.type !== 'human') continue
+          if (!principal?.userId || principal.type !== 'human') return
           await server.lifecycleEvents.publish({
             attributes: {
               workspaceId,
@@ -294,7 +294,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         } catch (error) {
           logger.warn('[conversations/message POST] Failed to publish mention lifecycle event', { error })
         }
-      }
+      }))
     }
 
     if (isCollaborationConversation && messageId) {
