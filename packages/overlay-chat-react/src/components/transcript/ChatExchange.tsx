@@ -108,15 +108,8 @@ export function ChatExchange({
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
-    const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
-    const lastTextBlockIndex = (() => {
-      let idx = -1
-      for (let i = 0; i < assistantVisualBlocks.length; i++) {
-        if (assistantVisualBlocks[i]!.kind === 'text') idx = i
-      }
-      return idx
-    })()
+    const lastTextBlockIndex = findLastTextBlockIndex(assistantVisualBlocks)
     const assistantSegments = useMemo(
       () => buildAssistantVisualSegments(assistantVisualBlocks),
       [assistantVisualBlocks],
@@ -206,108 +199,28 @@ export function ChatExchange({
         data-exchange-turn={turnIdForActions ?? undefined}
       >
         {/* User message */}
-        <div className="flex min-w-0 justify-end">
-          <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-2 sm:max-w-[75%]">
-            {replyThreadMeta && (
-              <button
-                type="button"
-                onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
-                className="mb-1 max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
-              >
-                <span className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
-                  <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
-                  Replying to
-                </span>
-                <span className="mt-0.5 line-clamp-2 block text-[var(--muted)]">{replyThreadMeta.replySnippet}</span>
-              </button>
-            )}
-            {userImages.length > 0 && (
-              <div className="flex w-full flex-wrap justify-end gap-1.5">
-                {userImages.map((attachment, i) => (
-                  <button
-                    key={`${attachment.url}-${i}`}
-                    type="button"
-                    onClick={() => onOpenAttachmentPreview?.({
-                      name: attachment.name,
-                      content: attachment.url,
-                      url: attachment.url,
-                    })}
-                    className="group rounded-xl outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-                    title="Open attachment"
-                  >
-                    <img
-                      src={attachment.url}
-                      alt={attachment.name}
-                      className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-[var(--border)]"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-            {userDocumentNames.length > 0 && (
-              <div className="flex w-full flex-wrap justify-end gap-1.5">
-                {userDocumentNames.map((name) => {
-                  const attachment = userIndexedAttachments?.find((a) => a.name === name)
-                  const clickable = !!attachment && attachment.fileIds.length > 0 && !!onOpenFilePreview
-                  return (
-                    <div
-                      key={name}
-                      role={clickable ? 'button' : undefined}
-                      tabIndex={clickable ? 0 : undefined}
-                      className={`flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm ${clickable ? 'cursor-pointer hover:bg-[var(--surface-subtle)] transition-colors' : ''}`}
-                      onClick={() => {
-                        if (clickable) onOpenFilePreview!(name, attachment.fileIds)
-                      }}
-                      onKeyDown={clickable ? (event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          onOpenFilePreview!(name, attachment.fileIds)
-                        }
-                      } : undefined}
-                      title={clickable ? 'Click to preview' : undefined}
-                    >
-                      <FileText size={13} className="shrink-0 text-[var(--muted)]" />
-                      <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {showTextBubble && (
-              <>
-                <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-                  <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
-                </UserMessageBubble>
-                <UserMessageActions markdown={userBodyText} disabled={isExiting} />
-              </>
-            )}
-          </div>
-        </div>
+        <ExchangeUserMessage
+          replyThreadMeta={replyThreadMeta}
+          onJumpToReply={onJumpToReply}
+          userImages={userImages}
+          onOpenAttachmentPreview={onOpenAttachmentPreview}
+          userDocumentNames={userDocumentNames}
+          userIndexedAttachments={userIndexedAttachments}
+          onOpenFilePreview={onOpenFilePreview}
+          userBodyText={userBodyText}
+          userMentions={userMentions}
+          isExiting={isExiting}
+        />
 
         {/* Inline model tabs — only shown when multiple models are active for this exchange */}
         {exchModelList.length > 1 && (
-          <div className="flex items-center gap-1.5 flex-wrap mt-1">
-            {exchModelList.map((mId, tabIdx) => {
-              const mName = getModelDisplayName(mId)
-              const isActive = tabIdx === selectedTab
-              return (
-                <button
-                  key={mId}
-                  type="button"
-                  onClick={() => !isLoadingTabs && onTabSelect(tabIdx)}
-                  disabled={isLoadingTabs}
-                  aria-pressed={isActive}
-                  className={`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
-                    isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
-                  } ${
-                    isActive ? 'bg-[var(--foreground)] text-[var(--background)]' : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
-                  }`}
-                >
-                  {mName}
-                </button>
-              )
-            })}
-          </div>
+          <ExchangeModelTabs
+            exchModelList={exchModelList}
+            selectedTab={selectedTab}
+            isLoadingTabs={isLoadingTabs}
+            onTabSelect={onTabSelect}
+            getModelDisplayName={getModelDisplayName}
+          />
         )}
 
         {collapsePlan.collapsedIndexes.length > 0 && (
@@ -335,43 +248,15 @@ export function ChatExchange({
         {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 
         {errorMessage && !responseInProgress && (
-          <div className="flex justify-start px-1 py-1">
-            {isUsageExhaustedError(errorMessage) ? (
-              <UsageExhaustedNotice />
-            ) : (
-              <div
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-                style={{
-                  background: 'var(--chat-alert-error-bg)',
-                  borderColor: 'var(--chat-alert-error-border)',
-                  color: 'var(--chat-alert-error-text)',
-                }}
-              >
-                <AlertCircle size={12} />
-                {errorMessage}
-              </div>
-            )}
-          </div>
+          <ExchangeErrorNotice errorMessage={errorMessage} />
         )}
 
-        {interrupted && responseSettled && !errorMessage && (
-          <div className="flex justify-start px-1 py-1">
-            <p className="text-sm text-[var(--muted)]">Response was interrupted.</p>
-          </div>
-        )}
-
-        {onContinue && responseSettled && !errorMessage && (
-          <div className="flex justify-start px-1 py-1">
-            <button
-              type="button"
-              onClick={onContinue}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-            >
-              <Play size={13} strokeWidth={1.75} />
-              Continue
-            </button>
-          </div>
-        )}
+        <ExchangeSettledNotices
+          interrupted={interrupted}
+          responseSettled={responseSettled}
+          errorMessage={errorMessage}
+          onContinue={onContinue}
+        />
 
         {showFooter && (
           <ExchangeActions
@@ -396,4 +281,213 @@ export function ChatExchange({
 
       </div>
     )
+}
+
+function findLastTextBlockIndex(blocks: AssistantVisualBlock[]): number {
+  let idx = -1
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i]!.kind === 'text') idx = i
+  }
+  return idx
+}
+
+function ExchangeUserMessage({
+  replyThreadMeta,
+  onJumpToReply,
+  userImages,
+  onOpenAttachmentPreview,
+  userDocumentNames,
+  userIndexedAttachments,
+  onOpenFilePreview,
+  userBodyText,
+  userMentions,
+  isExiting,
+}: {
+  replyThreadMeta: ChatExchangeProps['replyThreadMeta']
+  onJumpToReply: ChatExchangeProps['onJumpToReply']
+  userImages: ChatExchangeProps['userImages']
+  onOpenAttachmentPreview: ChatExchangeProps['onOpenAttachmentPreview']
+  userDocumentNames: ChatExchangeProps['userDocumentNames']
+  userIndexedAttachments: ChatExchangeProps['userIndexedAttachments']
+  onOpenFilePreview: ChatExchangeProps['onOpenFilePreview']
+  userBodyText: ChatExchangeProps['userBodyText']
+  userMentions: ChatExchangeProps['userMentions']
+  isExiting: boolean
+}) {
+  const showTextBubble = userBodyText.length > 0
+  return (
+    <div className="flex min-w-0 justify-end">
+      <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-2 sm:max-w-[75%]">
+        {replyThreadMeta && (
+          <button
+            type="button"
+            onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
+            className="mb-1 max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+          >
+            <span className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+              <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+              Replying to
+            </span>
+            <span className="mt-0.5 line-clamp-2 block text-[var(--muted)]">{replyThreadMeta.replySnippet}</span>
+          </button>
+        )}
+        {userImages.length > 0 && (
+          <div className="flex w-full flex-wrap justify-end gap-1.5">
+            {userImages.map((attachment, i) => (
+              <button
+                key={`${attachment.url}-${i}`}
+                type="button"
+                onClick={() => onOpenAttachmentPreview?.({
+                  name: attachment.name,
+                  content: attachment.url,
+                  url: attachment.url,
+                })}
+                className="group rounded-xl outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                title="Open attachment"
+              >
+                <img
+                  src={attachment.url}
+                  alt={attachment.name}
+                  className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-[var(--border)]"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+        {userDocumentNames.length > 0 && (
+          <div className="flex w-full flex-wrap justify-end gap-1.5">
+            {userDocumentNames.map((name) => {
+              const attachment = userIndexedAttachments?.find((a) => a.name === name)
+              const clickable = !!attachment && attachment.fileIds.length > 0 && !!onOpenFilePreview
+              return (
+                <div
+                  key={name}
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  className={`flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm ${clickable ? 'cursor-pointer hover:bg-[var(--surface-subtle)] transition-colors' : ''}`}
+                  onClick={() => {
+                    if (clickable) onOpenFilePreview!(name, attachment.fileIds)
+                  }}
+                  onKeyDown={clickable ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      onOpenFilePreview!(name, attachment.fileIds)
+                    }
+                  } : undefined}
+                  title={clickable ? 'Click to preview' : undefined}
+                >
+                  <FileText size={13} className="shrink-0 text-[var(--muted)]" />
+                  <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {showTextBubble && (
+          <>
+            <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+              <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
+            </UserMessageBubble>
+            <UserMessageActions markdown={userBodyText} disabled={isExiting} />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ExchangeModelTabs({
+  exchModelList,
+  selectedTab,
+  isLoadingTabs,
+  onTabSelect,
+  getModelDisplayName,
+}: {
+  exchModelList: ChatExchangeProps['exchModelList']
+  selectedTab: ChatExchangeProps['selectedTab']
+  isLoadingTabs: ChatExchangeProps['isLoadingTabs']
+  onTabSelect: ChatExchangeProps['onTabSelect']
+  getModelDisplayName: ChatExchangeProps['getModelDisplayName']
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mt-1">
+      {exchModelList.map((mId, tabIdx) => {
+        const mName = getModelDisplayName(mId)
+        const isActive = tabIdx === selectedTab
+        return (
+          <button
+            key={mId}
+            type="button"
+            onClick={() => !isLoadingTabs && onTabSelect(tabIdx)}
+            disabled={isLoadingTabs}
+            aria-pressed={isActive}
+            className={`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
+              isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
+            } ${
+              isActive ? 'bg-[var(--foreground)] text-[var(--background)]' : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
+            }`}
+          >
+            {mName}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
+  return (
+    <div className="flex justify-start px-1 py-1">
+      {isUsageExhaustedError(errorMessage) ? (
+        <UsageExhaustedNotice />
+      ) : (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+          style={{
+            background: 'var(--chat-alert-error-bg)',
+            borderColor: 'var(--chat-alert-error-border)',
+            color: 'var(--chat-alert-error-text)',
+          }}
+        >
+          <AlertCircle size={12} />
+          {errorMessage}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ExchangeSettledNotices({
+  interrupted,
+  responseSettled,
+  errorMessage,
+  onContinue,
+}: {
+  interrupted: boolean
+  responseSettled: boolean
+  errorMessage: string | null
+  onContinue: ChatExchangeProps['onContinue']
+}) {
+  return (
+    <>
+      {interrupted && responseSettled && !errorMessage && (
+        <div className="flex justify-start px-1 py-1">
+          <p className="text-sm text-[var(--muted)]">Response was interrupted.</p>
+        </div>
+      )}
+
+      {onContinue && responseSettled && !errorMessage && (
+        <div className="flex justify-start px-1 py-1">
+          <button
+            type="button"
+            onClick={onContinue}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            <Play size={13} strokeWidth={1.75} />
+            Continue
+          </button>
+        </div>
+      )}
+    </>
+  )
 }
