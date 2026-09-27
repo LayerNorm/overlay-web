@@ -211,6 +211,73 @@ type WorkspaceSwitcherTriggerProps = {
   onToggle(): void
 }
 
+function triggerButtonClassName(isFooter: boolean, compact: boolean): string {
+  if (isFooter) {
+    return `w-full gap-2 px-2 py-1.5 ${compact ? 'justify-center' : ''}`
+  }
+  if (compact) return 'h-9 max-w-full gap-2 px-2'
+  return 'h-10 w-full gap-2.5 px-1.5'
+}
+
+function triggerWorkspaceLabel(
+  status: WorkspaceLifecycleStatus,
+  activeWorkspace: WorkspaceSummary | null,
+): string {
+  if (status === 'loading') return 'Loading workspace…'
+  return activeWorkspace?.name ?? 'Choose a workspace'
+}
+
+function triggerSecondaryLabel(
+  compact: boolean,
+  isFooter: boolean,
+  userLabel: string | undefined,
+  activeWorkspace: WorkspaceSummary | null,
+): string | null | undefined {
+  if (!isFooter && !compact) return userLabel ?? activeWorkspace?.role
+  if (isFooter) return userLabel
+  return null
+}
+
+function WorkspaceSwitcherTriggerAvatar({
+  compact,
+  isFooter,
+  activeWorkspace,
+}: {
+  compact: boolean
+  isFooter: boolean
+  activeWorkspace: WorkspaceSummary | null
+}) {
+  if (activeWorkspace) {
+    return <WorkspaceAvatar workspace={activeWorkspace} size={compact || isFooter ? 'sm' : 'md'} />
+  }
+  return (
+    <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-[var(--surface-subtle)]`} />
+  )
+}
+
+function WorkspaceSwitcherTriggerLabels({
+  isFooter,
+  workspaceLabel,
+  secondaryLabel,
+}: {
+  isFooter: boolean
+  workspaceLabel: string
+  secondaryLabel?: string | null
+}) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className={`block truncate font-medium text-[var(--foreground)] ${isFooter ? 'text-xs' : 'text-[13px]'}`}>
+        {workspaceLabel}
+      </span>
+      {secondaryLabel ? (
+        <span className="block truncate text-[10px] text-[var(--muted-light)]">
+          {secondaryLabel}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 function WorkspaceSwitcherTrigger({
   open,
   compact,
@@ -220,16 +287,6 @@ function WorkspaceSwitcherTrigger({
   userLabel,
   onToggle,
 }: WorkspaceSwitcherTriggerProps) {
-  const avatarSize = compact || isFooter ? 'sm' : 'md'
-  const workspaceLabel = status === 'loading'
-    ? 'Loading workspace…'
-    : activeWorkspace?.name ?? 'Choose a workspace'
-  const secondaryLabel = !isFooter && !compact
-    ? userLabel ?? activeWorkspace?.role
-    : isFooter
-      ? userLabel
-      : null
-
   return (
     <button
       type="button"
@@ -237,30 +294,19 @@ function WorkspaceSwitcherTrigger({
       aria-label={isFooter ? 'Workspace and account menu' : 'Switch workspace'}
       aria-haspopup="menu"
       aria-expanded={open}
-      className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-[var(--surface-subtle)] ${
-        isFooter
-          ? `w-full gap-2 px-2 py-1.5 ${compact ? 'justify-center' : ''}`
-          : compact
-            ? 'h-9 max-w-full gap-2 px-2'
-            : 'h-10 w-full gap-2.5 px-1.5'
-      }`}
+      className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-[var(--surface-subtle)] ${triggerButtonClassName(isFooter, compact)}`}
     >
-      {activeWorkspace ? (
-        <WorkspaceAvatar workspace={activeWorkspace} size={avatarSize} />
-      ) : (
-        <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-[var(--surface-subtle)]`} />
-      )}
+      <WorkspaceSwitcherTriggerAvatar
+        compact={compact}
+        isFooter={isFooter}
+        activeWorkspace={activeWorkspace}
+      />
       {!compact ? (
-        <span className="min-w-0 flex-1">
-          <span className={`block truncate font-medium text-[var(--foreground)] ${isFooter ? 'text-xs' : 'text-[13px]'}`}>
-            {workspaceLabel}
-          </span>
-          {secondaryLabel ? (
-            <span className="block truncate text-[10px] text-[var(--muted-light)]">
-              {secondaryLabel}
-            </span>
-          ) : null}
-        </span>
+        <WorkspaceSwitcherTriggerLabels
+          isFooter={isFooter}
+          workspaceLabel={triggerWorkspaceLabel(status, activeWorkspace)}
+          secondaryLabel={triggerSecondaryLabel(compact, isFooter, userLabel, activeWorkspace)}
+        />
       ) : null}
       {!compact ? (
         <ChevronDown
