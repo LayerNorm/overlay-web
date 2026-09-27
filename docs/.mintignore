@@ -1,3 +1,4 @@
 # Internal engineering records are versioned with the repository but are not
 # part of the public Mintlify site. Public developer documentation uses .mdx.
 develop/*.md
+plans/*.md
