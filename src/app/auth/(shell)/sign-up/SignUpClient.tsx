@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { LandingAuthPageChrome } from '../../_components/AuthPageChrome'
@@ -157,6 +157,10 @@ function CheckEmailScreen({
   onVerify: (e: React.FormEvent) => void
   onResend: () => void
 }) {
+  const codeInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    codeInputRef.current?.focus()
+  }, [])
   return (
     <LandingAuthPageChrome>
       <div>
@@ -197,7 +201,7 @@ function CheckEmailScreen({
             placeholder="Enter 6-digit code"
             maxLength={6}
             className={`${fieldClass} text-center text-lg font-mono tracking-widest`}
-            autoFocus
+            ref={codeInputRef}
           />
           <button
             type="submit"
