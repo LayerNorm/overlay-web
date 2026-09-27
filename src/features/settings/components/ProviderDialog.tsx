@@ -15,8 +15,10 @@ import { DialogFrame, Toggle } from '@overlay/ui/primitives'
 import {
   BYOK_PROVIDER_PRESETS,
   getByokPreset,
+  type ByokProviderPreset,
 } from '@overlay/llm-gateway'
 import {
+  type ByokConnectionRow,
   formatByokModelDisplayName,
   parseDiscoveredModels,
 } from '@/shared/ai/gateway/byok-model-conversion'
@@ -35,6 +37,438 @@ export interface ProviderDialogProps {
   onSaved: () => void
 }
 
+type ConnectionTestResult = { ok: boolean; models: DiscoveredModel[]; error?: string }
+
+function toggleModelId(ids: string[], modelId: string): string[] {
+  return ids.includes(modelId)
+    ? ids.filter((id) => id !== modelId)
+    : [...ids, modelId]
+}
+
+function buildEditBody({
+  existing,
+  preset,
+  endpoint,
+  displayName,
+  enabledModelIds,
+  apiKey,
+  testResult,
+}: {
+  existing: ByokConnectionRow
+  preset: ByokProviderPreset | undefined
+  endpoint: string
+  displayName: string
+  enabledModelIds: string[]
+  apiKey: string
+  testResult: ConnectionTestResult | null
+}): Record<string, unknown> {
+  const customEndpointChanged = Boolean(
+    preset?.allowsCustomEndpoint &&
+    endpoint.trim().replace(/\/+$/, '') !== existing.endpoint.trim().replace(/\/+$/, ''),
+  )
+  const body: Record<string, unknown> = {
+    connectionId: existing._id,
+    displayName,
+    enabledModelIds,
+    status: testResult?.ok
+      ? 'active'
+      : customEndpointChanged
+        ? 'untested'
+        : existing.status,
+    lastTestedAt: testResult ? Date.now() : undefined,
+  }
+  if (preset?.allowsCustomEndpoint) body.endpoint = endpoint
+  if (apiKey) body.apiKey = apiKey
+  if (testResult?.ok) {
+    body.discoveredModelsJson = JSON.stringify({ data: testResult.models })
+    body.discoveredAt = Date.now()
+  }
+  if (testResult && !testResult.ok) {
+    body.status = 'error'
+    body.lastError = testResult.error
+  }
+  return body
+}
+
+async function testProviderConnection({
+  existing,
+  providerId,
+  endpoint,
+  apiKey,
+  preset,
+  setTesting,
+  setTestResult,
+  setEnabledModelIds,
+}: {
+  existing: ByokConnectionRow | null
+  providerId: string
+  endpoint: string
+  apiKey: string
+  preset: ByokProviderPreset | undefined
+  setTesting: (testing: boolean) => void
+  setTestResult: (result: ConnectionTestResult | null) => void
+  setEnabledModelIds: (ids: string[]) => void
+}) {
+  setTesting(true)
+  setTestResult(null)
+  try {
+    const res = await fetch('/api/v1/providers/connections/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connectionId: existing?._id,
+        providerId,
+        endpoint: endpoint || preset?.defaultBaseURL,
+        apiKey: apiKey || undefined,
+      }),
+    })
+    const data = await res.json() as ConnectionTestResult
+    setTestResult(data)
+    if (data.ok && data.models.length > 0) {
+      // Auto-select all models on first test
+      setEnabledModelIds(data.models.map((m) => m.id))
+    }
+  } catch (e) {
+    setTestResult({ ok: false, models: [], error: e instanceof Error ? e.message : 'Test failed' })
+  } finally {
+    setTesting(false)
+  }
+}
+
+async function saveProviderConnection({
+  isEdit,
+  existing,
+  preset,
+  endpoint,
+  displayName,
+  enabledModelIds,
+  apiKey,
+  testResult,
+  providerId,
+  onSaved,
+}: {
+  isEdit: boolean
+  existing: ByokConnectionRow | null
+  preset: ByokProviderPreset | undefined
+  endpoint: string
+  displayName: string
+  enabledModelIds: string[]
+  apiKey: string
+  testResult: ConnectionTestResult | null
+  providerId: string
+  onSaved: () => void
+}) {
+  if (isEdit && existing) {
+    const res = await fetch('/api/v1/providers/connections', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildEditBody({
+        existing,
+        preset,
+        endpoint,
+        displayName,
+        enabledModelIds,
+        apiKey,
+        testResult,
+      })),
+    })
+    if (res.ok) onSaved()
+    return
+  }
+
+  // Create new connection
+  const res = await fetch('/api/v1/providers/connections', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    body: JSON.stringify({
+      providerId,
+      endpoint: endpoint || preset?.defaultBaseURL,
+      displayName,
+      apiKey,
+      enabledModelIds,
+    }),
+  })
+  if (!res.ok) return
+  // After creation, update with test results if available
+  const data = await res.json() as { id: string }
+  if (testResult?.ok && data.id) {
+    await fetch('/api/v1/providers/connections', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connectionId: data.id,
+        status: 'active',
+        lastTestedAt: Date.now(),
+        discoveredModelsJson: JSON.stringify({ data: testResult.models }),
+        discoveredAt: Date.now(),
+      }),
+    })
+  }
+  onSaved()
+}
+
+function ProviderPresetSelect({
+  providerId,
+  presets,
+  docsURL,
+  onSelect,
+}: {
+  providerId: string
+  presets: readonly ByokProviderPreset[]
+  docsURL?: string
+  onSelect: (providerId: string) => void
+}) {
+  return (
+    <div>
+      <label htmlFor="provider-id" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider</label>
+      <div className="relative">
+        <select
+          id="provider-id"
+          value={providerId}
+          onChange={(e) => onSelect(e.target.value)}
+          className="h-10 w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-8 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+        >
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+        <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+      </div>
+      {docsURL ? (
+        <a
+          href={docsURL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-[var(--muted-light)] hover:text-[var(--muted)]"
+        >
+          <ExternalLink size={10} />
+          Provider docs
+        </a>
+      ) : null}
+    </div>
+  )
+}
+
+function ProviderEndpointField({
+  endpoint,
+  onEndpointChange,
+}: {
+  endpoint: string
+  onEndpointChange: (value: string) => void
+}) {
+  return (
+    <div>
+      <label htmlFor="provider-endpoint" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+        API base URL
+      </label>
+      <input
+        id="provider-endpoint"
+        type="url"
+        value={endpoint}
+        onChange={(event) => onEndpointChange(event.target.value)}
+        autoComplete="url"
+        spellCheck={false}
+        placeholder="https://api.example.com/v1"
+        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+      />
+      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-light)]">
+        Use an HTTPS OpenAI-compatible base URL. Overlay blocks redirects and private-network addresses before sending your key.
+      </p>
+    </div>
+  )
+}
+
+function ProviderApiKeyField({
+  apiKey,
+  showApiKey,
+  optional,
+  isEdit,
+  onApiKeyChange,
+  onToggleShow,
+}: {
+  apiKey: string
+  showApiKey: boolean
+  optional: boolean
+  isEdit: boolean
+  onApiKeyChange: (value: string) => void
+  onToggleShow: () => void
+}) {
+  return (
+    <div>
+      <label htmlFor="provider-api-key" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+        API key{optional ? ' (optional)' : ''}
+        {isEdit ? ' (leave blank to keep existing)' : ''}
+      </label>
+      <div className="relative">
+        <input
+          id="provider-api-key"
+          type={showApiKey ? 'text' : 'password'}
+          value={apiKey}
+          onChange={(e) => onApiKeyChange(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={isEdit ? '••••••••' : 'Enter your API key'}
+          className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+        />
+        <button
+          type="button"
+          aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+          onClick={onToggleShow}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted-light)] hover:text-[var(--muted)]"
+        >
+          {showApiKey ? <X size={14} /> : <KeyRound size={14} />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ModelToggleList({
+  models,
+  enabledModelIds,
+  onToggleModel,
+}: {
+  models: DiscoveredModel[]
+  enabledModelIds: string[]
+  onToggleModel: (modelId: string) => void
+}) {
+  return (
+    <>
+      {models.map((model) => (
+        <div
+          key={model.id}
+          className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
+        >
+          <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
+          <Toggle
+            checked={enabledModelIds.includes(model.id)}
+            onCheckedChange={() => onToggleModel(model.id)}
+            aria-label={formatByokModelDisplayName(model.id, model.name)}
+          />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function ConnectionTestResultPanel({
+  testResult,
+  enabledModelIds,
+  onToggleModel,
+}: {
+  testResult: ConnectionTestResult
+  enabledModelIds: string[]
+  onToggleModel: (modelId: string) => void
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+      {testResult.ok ? (
+        <>
+          <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400">
+            <Check size={14} />
+            Connected — {testResult.models.length} model{testResult.models.length !== 1 ? 's' : ''} found
+          </div>
+          {testResult.models.length > 0 ? (
+            <div className="mt-2 max-h-40 overflow-y-auto">
+              <p className="mb-1.5 text-[11px] text-[var(--muted)]">Select models to enable:</p>
+              <ModelToggleList
+                models={testResult.models}
+                enabledModelIds={enabledModelIds}
+                onToggleModel={onToggleModel}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-red-500">
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="truncate">{testResult.error ?? 'Connection failed'}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ExistingModelsPanel({
+  connection,
+  enabledModelIds,
+  onToggleModel,
+}: {
+  connection: ByokConnectionRow
+  enabledModelIds: string[]
+  onToggleModel: (modelId: string) => void
+}) {
+  const models = parseDiscoveredModels(connection.discoveredModelsJson)
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+      <p className="mb-2 text-xs font-medium text-[var(--muted)]">
+        {models.length} discovered models
+      </p>
+      <div className="max-h-32 overflow-y-auto">
+        <ModelToggleList
+          models={models}
+          enabledModelIds={enabledModelIds}
+          onToggleModel={onToggleModel}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ProviderDialogFooter({
+  testing,
+  busy,
+  canTest,
+  canSave,
+  isEdit,
+  onTest,
+  onCancel,
+  onSave,
+}: {
+  testing: boolean
+  busy: boolean
+  canTest: boolean
+  canSave: boolean
+  isEdit: boolean
+  onTest: () => void
+  onCancel: () => void
+  onSave: () => void
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onTest}
+        disabled={testing || busy || !canTest}
+        className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-50"
+      >
+        {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+        Test connection
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        className="rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={busy || !canSave}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+        {isEdit ? 'Save changes' : 'Add provider'}
+      </button>
+    </>
+  )
+}
+
 export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: ProviderDialogProps) {
   const isEdit = state.mode === 'edit'
   const existing = state.mode === 'edit' ? state.connection : null
@@ -43,7 +477,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
   const [endpoint, setEndpoint] = useState(existing?.endpoint ?? '')
   const [displayName, setDisplayName] = useState(existing?.displayName ?? '')
   const [apiKey, setApiKey] = useState('')
-  const [testResult, setTestResult] = useState<{ ok: boolean; models: DiscoveredModel[]; error?: string } | null>(null)
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
   const [testing, setTesting] = useState(false)
   const [enabledModelIds, setEnabledModelIds] = useState<string[]>(existing?.enabledModelIds ?? [])
   const [showApiKey, setShowApiKey] = useState(false)
@@ -79,104 +513,53 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
     })
   }, [preset, endpointHost, isEdit])
 
-  const handleTest = useCallback(async () => {
-    setTesting(true)
+  const handleProviderChange = useCallback((nextProviderId: string) => {
+    setProviderId(nextProviderId)
     setTestResult(null)
-    try {
-      const res = await fetch('/api/v1/providers/connections/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionId: existing?._id,
-          providerId,
-          endpoint: endpoint || preset?.defaultBaseURL,
-          apiKey: apiKey || undefined,
-        }),
-      })
-      const data = await res.json() as { ok: boolean; models: DiscoveredModel[]; error?: string }
-      setTestResult(data)
-      if (data.ok && data.models.length > 0) {
-        // Auto-select all models on first test
-        setEnabledModelIds(data.models.map((m) => m.id))
-      }
-    } catch (e) {
-      setTestResult({ ok: false, models: [], error: e instanceof Error ? e.message : 'Test failed' })
-    } finally {
-      setTesting(false)
-    }
-  }, [existing?._id, providerId, endpoint, apiKey, preset])
+    setEnabledModelIds([])
+    const nextPreset = getByokPreset(nextProviderId)
+    setEndpoint(nextPreset?.defaultBaseURL ?? '')
+    setDisplayName(nextPreset?.label ?? '')
+  }, [])
+
+  const handleEndpointChange = useCallback((value: string) => {
+    setEndpoint(value)
+    setTestResult(null)
+    setEnabledModelIds([])
+  }, [])
+
+  const handleToggleModel = useCallback((modelId: string) => {
+    setEnabledModelIds((prev) => toggleModelId(prev, modelId))
+  }, [])
+
+  const handleTest = useCallback(() => {
+    void testProviderConnection({
+      existing,
+      providerId,
+      endpoint,
+      apiKey,
+      preset,
+      setTesting,
+      setTestResult,
+      setEnabledModelIds,
+    })
+  }, [existing, providerId, endpoint, apiKey, preset])
 
   const handleSave = useCallback(async () => {
     onBusyChange(true)
     try {
-      if (isEdit && existing) {
-        const customEndpointChanged = Boolean(
-          preset?.allowsCustomEndpoint &&
-          endpoint.trim().replace(/\/+$/, '') !== existing.endpoint.trim().replace(/\/+$/, ''),
-        )
-        const body: Record<string, unknown> = {
-          connectionId: existing._id,
-          displayName,
-          enabledModelIds,
-          status: testResult?.ok
-            ? 'active'
-            : customEndpointChanged
-              ? 'untested'
-              : existing.status,
-          lastTestedAt: testResult ? Date.now() : undefined,
-        }
-        if (preset?.allowsCustomEndpoint) body.endpoint = endpoint
-        if (apiKey) body.apiKey = apiKey
-        if (testResult?.ok) {
-          body.discoveredModelsJson = JSON.stringify({ data: testResult.models })
-          body.discoveredAt = Date.now()
-        }
-        if (testResult && !testResult.ok) {
-          body.status = 'error'
-          body.lastError = testResult.error
-        }
-
-        const res = await fetch('/api/v1/providers/connections', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (res.ok) onSaved()
-      } else {
-        // Create new connection
-        const res = await fetch('/api/v1/providers/connections', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Idempotency-Key': crypto.randomUUID(),
-          },
-          body: JSON.stringify({
-            providerId,
-            endpoint: endpoint || preset?.defaultBaseURL,
-            displayName,
-            apiKey,
-            enabledModelIds,
-          }),
-        })
-        if (res.ok) {
-          // After creation, update with test results if available
-          const data = await res.json() as { id: string }
-          if (testResult?.ok && data.id) {
-            await fetch('/api/v1/providers/connections', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                connectionId: data.id,
-                status: 'active',
-                lastTestedAt: Date.now(),
-                discoveredModelsJson: JSON.stringify({ data: testResult.models }),
-                discoveredAt: Date.now(),
-              }),
-            })
-          }
-          onSaved()
-        }
-      }
+      await saveProviderConnection({
+        isEdit,
+        existing,
+        preset,
+        endpoint,
+        displayName,
+        enabledModelIds,
+        apiKey,
+        testResult,
+        providerId,
+        onSaved,
+      })
     } finally {
       onBusyChange(false)
     }
@@ -198,73 +581,27 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
       onOpenChange={(open) => !open && !busy && onClose()}
       className="w-[min(520px,92vw)]"
       footer={
-        <>
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={testing || busy || !canTest}
-            className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-50"
-          >
-            {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Test connection
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={busy || !canSave}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-            {isEdit ? 'Save changes' : 'Add provider'}
-          </button>
-        </>
+        <ProviderDialogFooter
+          testing={testing}
+          busy={busy}
+          canTest={canTest}
+          canSave={canSave}
+          isEdit={isEdit}
+          onTest={handleTest}
+          onCancel={onClose}
+          onSave={handleSave}
+        />
       }
     >
       <div className="mt-4 flex flex-col gap-4">
         {/* Provider selector — only for add mode */}
         {!isEdit ? (
-          <div>
-            <label htmlFor="provider-id" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider</label>
-            <div className="relative">
-              <select
-                id="provider-id"
-                value={providerId}
-                onChange={(e) => {
-                  setProviderId(e.target.value)
-                  setTestResult(null)
-                  setEnabledModelIds([])
-                  const newPreset = getByokPreset(e.target.value)
-                  setEndpoint(newPreset?.defaultBaseURL ?? '')
-                  setDisplayName(newPreset?.label ?? '')
-                }}
-                className="h-10 w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-8 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-              >
-                {availablePresets.map((p) => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-            </div>
-            {preset?.docsURL ? (
-              <a
-                href={preset.docsURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-[var(--muted-light)] hover:text-[var(--muted)]"
-              >
-                <ExternalLink size={10} />
-                Provider docs
-              </a>
-            ) : null}
-          </div>
+          <ProviderPresetSelect
+            providerId={providerId}
+            presets={availablePresets}
+            docsURL={preset?.docsURL}
+            onSelect={handleProviderChange}
+          />
         ) : null}
 
         <div>
@@ -281,129 +618,34 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         </div>
 
         {preset?.allowsCustomEndpoint ? (
-          <div>
-            <label htmlFor="provider-endpoint" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
-              API base URL
-            </label>
-            <input
-              id="provider-endpoint"
-              type="url"
-              value={endpoint}
-              onChange={(event) => {
-                setEndpoint(event.target.value)
-                setTestResult(null)
-                setEnabledModelIds([])
-              }}
-              autoComplete="url"
-              spellCheck={false}
-              placeholder="https://api.example.com/v1"
-              className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-            />
-            <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-light)]">
-              Use an HTTPS OpenAI-compatible base URL. Overlay blocks redirects and private-network addresses before sending your key.
-            </p>
-          </div>
+          <ProviderEndpointField endpoint={endpoint} onEndpointChange={handleEndpointChange} />
         ) : null}
 
-        {/* API Key */}
-        <div>
-          <label htmlFor="provider-api-key" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
-            API key{preset?.requiresApiKey === false ? ' (optional)' : ''}
-            {isEdit ? ' (leave blank to keep existing)' : ''}
-          </label>
-          <div className="relative">
-            <input
-              id="provider-api-key"
-              type={showApiKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={isEdit ? '••••••••' : 'Enter your API key'}
-              className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-            />
-            <button
-              type="button"
-              aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-              onClick={() => setShowApiKey((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted-light)] hover:text-[var(--muted)]"
-            >
-              {showApiKey ? <X size={14} /> : <KeyRound size={14} />}
-            </button>
-          </div>
-        </div>
+        <ProviderApiKeyField
+          apiKey={apiKey}
+          showApiKey={showApiKey}
+          optional={preset?.requiresApiKey === false}
+          isEdit={isEdit}
+          onApiKeyChange={setApiKey}
+          onToggleShow={() => setShowApiKey((v) => !v)}
+        />
 
         {/* Test results */}
         {testResult ? (
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-            {testResult.ok ? (
-              <>
-                <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400">
-                  <Check size={14} />
-                  Connected — {testResult.models.length} model{testResult.models.length !== 1 ? 's' : ''} found
-                </div>
-                {testResult.models.length > 0 ? (
-                  <div className="mt-2 max-h-40 overflow-y-auto">
-                    <p className="mb-1.5 text-[11px] text-[var(--muted)]">Select models to enable:</p>
-                    {testResult.models.map((model) => (
-                      <div
-                        key={model.id}
-                        className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
-                        <Toggle
-                          checked={enabledModelIds.includes(model.id)}
-                          onCheckedChange={() => {
-                            setEnabledModelIds((prev) =>
-                              prev.includes(model.id)
-                                ? prev.filter((id) => id !== model.id)
-                                : [...prev, model.id],
-                            )
-                          }}
-                          aria-label={formatByokModelDisplayName(model.id, model.name)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="flex items-center gap-2 text-xs text-red-500">
-                <AlertCircle size={14} className="shrink-0" />
-                <span className="truncate">{testResult.error ?? 'Connection failed'}</span>
-              </div>
-            )}
-          </div>
+          <ConnectionTestResultPanel
+            testResult={testResult}
+            enabledModelIds={enabledModelIds}
+            onToggleModel={handleToggleModel}
+          />
         ) : null}
 
         {/* Existing discovered models (edit mode, before re-test) */}
         {isEdit && existing && !testResult && existing.discoveredModelsJson ? (
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-            <p className="mb-2 text-xs font-medium text-[var(--muted)]">
-              {parseDiscoveredModels(existing.discoveredModelsJson).length} discovered models
-            </p>
-            <div className="max-h-32 overflow-y-auto">
-              {parseDiscoveredModels(existing.discoveredModelsJson).map((model) => (
-                <div
-                  key={model.id}
-                  className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
-                >
-                  <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
-                  <Toggle
-                    checked={enabledModelIds.includes(model.id)}
-                    onCheckedChange={() => {
-                      setEnabledModelIds((prev) =>
-                        prev.includes(model.id)
-                          ? prev.filter((id) => id !== model.id)
-                          : [...prev, model.id],
-                      )
-                    }}
-                    aria-label={formatByokModelDisplayName(model.id, model.name)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+          <ExistingModelsPanel
+            connection={existing}
+            enabledModelIds={enabledModelIds}
+            onToggleModel={handleToggleModel}
+          />
         ) : null}
       </div>
     </DialogFrame>
