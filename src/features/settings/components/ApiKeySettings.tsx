@@ -33,7 +33,7 @@ export function ApiKeySettings() {
   const load = useCallback(async () => {
     const response = await fetch('/api/v1/api-keys', { cache: 'no-store' })
     if (!response.ok) throw new Error('Failed to load API keys')
-    setKeys((await response.json() as { keys: ApiKeyRow[] }).keys)
+    setKeys(((await response.json()) as { keys: ApiKeyRow[] }).keys)
   }, [])
 
   useEffect(() => {
@@ -45,8 +45,12 @@ export function ApiKeySettings() {
     setError(null)
     try {
       const response = await action()
-      const payload = await response.json().catch(() => ({})) as { error?: string; key?: ApiKeyRow & { key: string } }
-      if (!response.ok) throw new Error(payload.error || 'API key operation failed')
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+        key?: ApiKeyRow & { key: string }
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'API key operation failed')
       if (payload.key?.key) setRevealedKey(payload.key.key)
       await load()
     } catch (mutationError) {
@@ -70,14 +74,21 @@ export function ApiKeySettings() {
   }
 
   return (
-    <section className="border-y border-[var(--border)] py-5" data-testid="api-key-settings">
+    <section
+      className='border-y border-[var(--border)] py-5'
+      data-testid='api-key-settings'
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <KeyRound size={17} strokeWidth={1.8} />
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">API keys</h2>
+            <h2 className='text-sm font-semibold text-[var(--foreground)]'>
+              API keys
+            </h2>
           </div>
-          <p className="mt-1 text-sm text-[var(--muted)]">Create scoped credentials for automation and service access.</p>
+          <p className='mt-1 text-sm text-[var(--muted)]'>
+            Create scoped credentials for automation and service access.
+          </p>
         </div>
         <button
           type="button"
@@ -112,8 +123,13 @@ export function ApiKeySettings() {
         </button>
         <div className="md:col-span-2">
           {SCOPES.map((scope) => (
-            <div key={scope.id} className="flex items-center gap-3 border-b border-[var(--border)] py-2 last:border-b-0">
-              <span className="flex-1 text-xs text-[var(--muted)]">{scope.label}</span>
+            <div
+              key={scope.id}
+              className='flex items-center gap-3 border-b border-[var(--border)] py-2 last:border-b-0'
+            >
+              <span className='flex-1 text-xs text-[var(--muted)]'>
+                {scope.label}
+              </span>
               <Toggle
                 checked={scopes.includes(scope.id)}
                 onCheckedChange={() => toggleScope(scope.id)}
@@ -126,25 +142,53 @@ export function ApiKeySettings() {
 
       {revealedKey ? (
         <div className="mt-4 border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-          <p className="text-xs text-[var(--muted)]">Copy this key now. It will not be shown again.</p>
+          <p className='text-xs text-[var(--muted)]'>
+            Copy this key now. It will not be shown again.
+          </p>
           <div className="mt-2 flex items-center gap-2">
-            <code className="min-w-0 flex-1 overflow-x-auto text-xs" data-testid="revealed-api-key">{revealedKey}</code>
-            <button type="button" aria-label="Copy API key" className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)]" onClick={() => void copyKey()}>
+            <code
+              className='min-w-0 flex-1 overflow-x-auto text-xs'
+              data-testid='revealed-api-key'
+            >
+              {revealedKey}
+            </code>
+            <button
+              type='button'
+              aria-label='Copy API key'
+              className='inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)]'
+              onClick={() => void copyKey()}
+            >
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
           </div>
         </div>
       ) : null}
 
-      {error ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? (
+        <p className='mt-3 text-sm text-red-600 dark:text-red-400'>{error}</p>
+      ) : null}
 
       <div className="mt-4 divide-y divide-[var(--border)] border-t border-[var(--border)]">
-        {keys.length === 0 ? <p className="py-5 text-sm text-[var(--muted)]">No API keys.</p> : keys.map((key) => (
-          <div key={key.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+        {keys.length === 0 ? (
+          <p className='py-5 text-sm text-[var(--muted)]'>No API keys.</p>
+        ) : (
+          keys.map((key) => (
+            <div
+              key={key.id}
+              className='flex flex-wrap items-center justify-between gap-3 py-3'
+            >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-[var(--foreground)]">{key.name || 'Unnamed key'}</p>
+                <p className='truncate text-sm font-medium text-[var(--foreground)]'>
+                  {key.name || 'Unnamed key'}
+                </p>
               <p className="mt-1 text-xs text-[var(--muted)]">
-                {key.scopes.join(', ')} · expires {new Date(key.expiresAt).toLocaleDateString()}{key.revokedAt ? ' · revoked' : ''}
+                  {key.scopes.join(', ')} · expires{' '}
+                  {
+                    // Locale pinned to 'en-US' — SSR and client output are identical.
+                    // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                    new Date(key.expiresAt).toLocaleDateString('en-US')
+                  }
+                  {key.revokedAt ? ' · revoked' : ''}
               </p>
             </div>
             {!key.revokedAt ? (
@@ -178,7 +222,8 @@ export function ApiKeySettings() {
               </div>
             ) : null}
           </div>
-        ))}
+          ))
+        )}
       </div>
     </section>
   )

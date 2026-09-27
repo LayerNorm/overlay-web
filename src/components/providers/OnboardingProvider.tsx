@@ -98,11 +98,22 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
         onClick={(e) => e.stopPropagation()}
         className="absolute bottom-6 left-4 right-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
       >
-        <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">Welcome to Overlay</h3>
+        <h3 className='mb-2 text-sm font-semibold text-[var(--foreground)]'>
+          Welcome to Overlay
+        </h3>
         <ul className="mb-5 space-y-1.5 text-xs text-[var(--muted)]">
-          <li>💬 <strong className="text-[var(--foreground)]">Chat</strong> — talk to the best models, or multiple at once</li>
-          <li>🎨 <strong className="text-[var(--foreground)]">Generate</strong> — images & video with best-in-class models</li>
-          <li>🧠 <strong className="text-[var(--foreground)]">Knowledge</strong> — memories, files, connectors, skills & MCPs</li>
+          <li>
+            💬 <strong className='text-[var(--foreground)]'>Chat</strong> — talk
+            to the best models, or multiple at once
+          </li>
+          <li>
+            🎨 <strong className='text-[var(--foreground)]'>Generate</strong> —
+            images & video with best-in-class models
+          </li>
+          <li>
+            🧠 <strong className='text-[var(--foreground)]'>Knowledge</strong> —
+            memories, files, connectors, skills & MCPs
+          </li>
         </ul>
         <button
           type="button"
@@ -150,6 +161,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
+  // One-shot onboarding check; checkedRef prevents overlapping runs.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     if (isLoading || !isAuthenticated || !user?.id || checkedRef.current) return
     // Invitation accept must stay fully interactive; the tour's full-screen
@@ -184,7 +197,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       try {
         const res = await overlayAppClient.onboarding.statusResponse({ credentials: 'include' })
         if (!res.ok) return
-        const data = await res.json() as { hasSeenOnboarding: boolean }
+        const data = (await res.json()) as { hasSeenOnboarding: boolean }
         if (data.hasSeenOnboarding) {
           try {
             localStorage.setItem(onboardingCompleteLsKey(uid), '1')

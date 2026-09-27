@@ -17,9 +17,7 @@ export const cleanupOldMetricsInternal = internalMutation({
       .withIndex('by_timestamp', (q) => q.lt('timestamp', cutoff))
       .take(500)
 
-    for (const metric of oldMetrics) {
-      await ctx.db.delete(metric._id)
-    }
+    await Promise.all(oldMetrics.map((metric) => ctx.db.delete(metric._id)))
   },
 })
 

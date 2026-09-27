@@ -105,7 +105,7 @@ export function SourcesPanel({
           ? snippet || (source.internalKind === 'memory' ? 'Saved memory' : source.internalKind === 'message' ? 'Past message' : 'Indexed file')
           : snippet || (isTitleJustHost ? prettyUrlPath(source.url) : host)
         return (
-          <li key={`${source.url}-${idx}`}>
+          <li key={source.url}>
             <a
               href={safeUrl}
               {...(internal ? {} : { target: '_blank', rel: 'noopener noreferrer' })}

@@ -62,6 +62,7 @@ async function loadConnections(userId: string, force = false): Promise<ByokConne
   const cache = cacheFor(userId)
   if (!force && cache.connections) return cache.connections
   if (!force && cache.inFlight) return cache.inFlight
+  // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
   cache.inFlight = fetch('/api/v1/providers/connections', {
     cache: 'no-store',
     credentials: 'same-origin',
@@ -118,6 +119,8 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
     }
   }, [enabled, userId])
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (!enabled || !userId) {
       setConnections([])

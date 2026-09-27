@@ -12,17 +12,19 @@ export async function POST(request: Request) {
     }
     const server = getOverlayServerContext()
     const controlPlane = server.connectedAgentControlPlane
-    const supervised = await controlPlane.sweepRemoteRuns()
-    const reconciliation = await controlPlane.reconcileSandboxSettlements(100)
-    const meter = await server.managedAgentSandboxBilling.meterLeases()
     // Defense in depth: delete `sandbox/run` sandboxes orphaned by aborted
     // requests. Runs already delete themselves; anything swept here is a bug
     // elsewhere, so the count is reported loudly.
-    const ephemeralSweep = await sweepEphemeralSandboxes().catch((error) => ({
-      swept: [] as string[],
-      errors: 1,
-      error: error instanceof Error ? error.message : String(error),
-    }))
+    const [supervised, reconciliation, meter, ephemeralSweep] = await Promise.all([
+      controlPlane.sweepRemoteRuns(),
+      controlPlane.reconcileSandboxSettlements(100),
+      server.managedAgentSandboxBilling.meterLeases(),
+      sweepEphemeralSandboxes().catch((error) => ({
+        swept: [] as string[],
+        errors: 1,
+        error: error instanceof Error ? error.message : String(error),
+      })),
+    ])
     return NextResponse.json({
       reconciliation,
       supervised: supervised.expiredRunIds.length,

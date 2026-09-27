@@ -432,6 +432,8 @@ export async function ensureWorkspaceSandbox(params: {
     tier: params.tier,
   })
 
+  // Depends on the configured sandbox above — must follow, not overlap it.
+  // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
   const workspace = await syncWorkspaceRecordFromSandbox({
     repository: params.repository,
     userId: params.userId,

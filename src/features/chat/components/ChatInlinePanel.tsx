@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
+import { useState, useCallback, useEffect, useEffectEvent, useRef, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
@@ -295,6 +295,9 @@ export function ChatInlinePanel({
     lastConversationListVersionRef.current = null
   }, [workspaceId])
 
+  // Delta reconcile is guarded by lastConversationListVersionRef — a stale run
+  // only upserts already-fresh rows.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     if (conversationListVersion === null) return
     const previous = lastConversationListVersionRef.current
@@ -341,11 +344,18 @@ export function ChatInlinePanel({
     void reconcileDelta()
   }, [conversationListVersion, loadChats])
 
-  useEffect(() => {
-    if (isPublicShowcase) return
-    if (!user) return
+  const removeActiveChat = useCallback((chatId: string) => {
+    removeCachedChat(chatId)
+    setDeletingChatIds((prev) => (
+      prev.includes(chatId) ? prev : [...prev, chatId]
+    ))
+    window.setTimeout(() => {
+      setChats((prev) => prev.filter((chat) => chat._id !== chatId))
+      setDeletingChatIds((prev) => prev.filter((id) => id !== chatId))
+    }, 180)
+  }, [])
 
-    function handleChatUpserted(event: Event) {
+  const handleChatUpserted = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
@@ -363,9 +373,9 @@ export function ChatInlinePanel({
         const withoutExisting = prev.filter((chat) => chat._id !== nextChat._id)
         return [merged, ...withoutExisting]
       })
-    }
+    })
 
-    function handleChatTitleUpdated(event: Event) {
+    const handleChatTitleUpdated = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
       upsertCachedChat({
@@ -379,26 +389,15 @@ export function ChatInlinePanel({
         const updated = { ...existing, title: detail.title, lastModified: Date.now() }
         return [updated, ...prev.filter((chat) => chat._id !== detail.chatId)]
       })
-    }
+    })
 
-    function removeActiveChat(chatId: string) {
-      removeCachedChat(chatId)
-      setDeletingChatIds((prev) => (
-        prev.includes(chatId) ? prev : [...prev, chatId]
-      ))
-      window.setTimeout(() => {
-        setChats((prev) => prev.filter((chat) => chat._id !== chatId))
-        setDeletingChatIds((prev) => prev.filter((id) => id !== chatId))
-      }, 180)
-    }
-
-    function handleChatDeleted(event: Event) {
+    const handleChatDeleted = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatDeletedDetail>
       if (!detail?.chatId) return
       removeActiveChat(detail.chatId)
-    }
+    })
 
-    function handleChatArchived(event: Event) {
+    const handleChatArchived = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatArchivedDetail>
       const archivedChatId = detail?.chat?._id
       if (!archivedChatId) return
@@ -425,7 +424,11 @@ export function ChatInlinePanel({
       } else {
         router.push(emptyHref)
       }
-    }
+    })
+
+    useEffect(() => {
+    if (isPublicShowcase) return
+    if (!user) return
     window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
@@ -438,7 +441,7 @@ export function ChatInlinePanel({
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
       window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
     }
-  }, [activeId, baseHref, chatView, isPublicShowcase, openChat, pathname, router, user, workspaceId])
+  }, [isPublicShowcase, user])
 
   function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
@@ -537,7 +540,9 @@ export function ChatInlinePanel({
         </p>
       ) : (
         <>
-          {filteredChats.map((chat) => {
+          {(() => {
+            const deletingChatIdSet = new Set(deletingChatIds)
+            return filteredChats.map((chat) => {
             const isStreaming = sessions[chat._id]?.status === 'streaming'
             const unread = Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)
             const active = activeId === chat._id
@@ -628,7 +633,8 @@ export function ChatInlinePanel({
                 )}
               </SidebarResourceRow>
             )
-          })}
+          })
+          })()}
           {hasMore ? (
             <button
               type="button"

@@ -70,9 +70,17 @@ async function prepareImageAttachment(file: File, mimeType: string): Promise<Att
       : null
     // Keep original bytes when transcoding can't beat them (tiny PNGs, odd content).
     if (!blob || blob.size >= file.size) {
-      return { dataUrl: await readBlobAsDataUrl(file), mimeType, name: file.name }
+      return {
+        dataUrl: await readBlobAsDataUrl(file),
+        mimeType,
+        name: file.name,
     }
-    return { dataUrl: await readBlobAsDataUrl(blob), mimeType: 'image/webp', name: file.name }
+    }
+    return {
+      dataUrl: await readBlobAsDataUrl(blob),
+      mimeType: 'image/webp',
+      name: file.name,
+    }
   } catch {
     return { dataUrl: await readBlobAsDataUrl(file), mimeType, name: file.name }
   }
@@ -84,7 +92,9 @@ export function useChatAttachments({
   setComposerNotice: (notice: string | null) => void
 }) {
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
-  const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
+  const [pendingChatDocuments, setPendingChatDocuments] = useState<
+    PendingChatDocument[]
+  >([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const attachedImagesRef = useRef<AttachedImage[]>(attachedImages)
   useEffect(() => {
@@ -107,7 +117,8 @@ export function useChatAttachments({
     ])
     const form = new FormData()
     form.append('file', file)
-    void overlayAppClient.files.ingestDocumentResponse(form, {
+    void overlayAppClient.files
+      .ingestDocumentResponse(form, {
       credentials: 'same-origin',
     })
       .then(async (res) => {

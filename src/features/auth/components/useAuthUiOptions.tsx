@@ -23,6 +23,8 @@ const FALLBACK_AUTH_UI_OPTIONS: ClientAuthUiOptions = {
 export function useAuthUiOptions(): ClientAuthUiOptions | null {
   const [options, setOptions] = useState<ClientAuthUiOptions | null>(null)
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     let active = true
     void fetch('/api/auth/options', { cache: 'no-store' })

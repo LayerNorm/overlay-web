@@ -172,9 +172,10 @@ export class ManagedAgentSandboxBilling {
       this.dependencies.repository.listSandboxLeases({ statuses: [...ACTIVE_STATUSES], limit }),
       this.dependencies.repository.listSandboxLeases({ statuses: [...REAPABLE_STATUSES], cleanupBefore: this.now(), limit }),
     ])
-    const ticks: ManagedSandboxMeterTick[] = []
-    for (const lease of active) ticks.push(await this.tickLease(lease))
-    for (const lease of reapable) ticks.push(await this.reapLease(lease))
+    const ticks: ManagedSandboxMeterTick[] = [
+      ...(await Promise.all(active.map((lease) => this.tickLease(lease)))),
+      ...(await Promise.all(reapable.map((lease) => this.reapLease(lease)))),
+    ]
     // Fleet-level signal once per sweep when box leases exist: box bills from
     // a shared account pool, so `canStart`/`remainingSeconds` exhaustion would
     // stall every box environment at once.

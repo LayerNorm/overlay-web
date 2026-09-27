@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import {
   Bot,
   Check,
@@ -91,11 +91,12 @@ export function ShareDialog({
     return () => { current = false }
   }, [activeWorkspaceId, isOpen, resource?.id, resourceType])
 
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape') onClose()
+  })
+
   useEffect(() => {
     if (!isOpen) return
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
     window.addEventListener('keydown', onKey)
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -103,9 +104,13 @@ export function ShareDialog({
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = previous
     }
-  }, [isOpen, onClose])
+  }, [isOpen])
 
-  useEffect(() => { if (!isOpen) setPending(null) }, [isOpen])
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen)
+    if (!isOpen) setPending(null)
+  }
 
   const entriesByKey = useMemo(() => new Map(
     directory.map((entry) => [`${entry.targetType}:${entry.id}`, entry]),

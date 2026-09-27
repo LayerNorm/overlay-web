@@ -292,7 +292,9 @@ export function CanonicalNotebookEditor({
   const mediaRef = useRef(media)
   const lastInsertionRef = useRef<string | null>(null)
   const lastCreateNoteRequestRef = useRef(createNoteRequest)
-  const [editorConflict, setEditorConflict] = useState<NotebookEditorConflict | undefined>()
+  const [editorConflict, setEditorConflict] = useState<
+    NotebookEditorConflict | undefined
+  >()
 
   useEffect(() => {
     repositoryRef.current = repository
@@ -575,7 +577,11 @@ export function CanonicalNotebookEditor({
         description: 'Insert a 3x3 table',
         icon: <Table2 size={16} />,
         command: () =>
-          editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+          editor
+            ?.chain()
+            .focus()
+            .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+            .run(),
         category: 'nodes',
       },
       {
@@ -869,6 +875,7 @@ export function CanonicalNotebookEditor({
     editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
     hydratingEditorRef.current = false
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
     onHydrated?.(activeNote)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
@@ -881,10 +888,14 @@ export function CanonicalNotebookEditor({
   useEffect(() => {
     if (!editor || !externalInsertion || lastInsertionRef.current === externalInsertion.id) return
     lastInsertionRef.current = externalInsertion.id
-    editor.chain().focus().insertContentAt(editor.state.doc.content.size, {
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(editor.state.doc.content.size, {
       type: 'paragraph',
       content: [{ type: 'text', text: externalInsertion.text }],
-    }).run()
+      })
+      .run()
   }, [editor, externalInsertion])
 
   useEffect(() => {
@@ -902,7 +913,11 @@ export function CanonicalNotebookEditor({
 
       if (slashIndex !== -1) {
         const deleteFrom = $from.pos - (textBefore.length - slashIndex)
-        editor.chain().focus().deleteRange({ from: deleteFrom, to: $from.pos }).run()
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: deleteFrom, to: $from.pos })
+          .run()
       }
 
       item.command()
@@ -927,10 +942,14 @@ export function CanonicalNotebookEditor({
 
       if (event.key === 'ArrowDown') {
         event.preventDefault()
-        setSelectedSlashIndex((prev) => (prev < filteredSlashItems.length - 1 ? prev + 1 : 0))
+        setSelectedSlashIndex((prev) =>
+          prev < filteredSlashItems.length - 1 ? prev + 1 : 0,
+        )
       } else if (event.key === 'ArrowUp') {
         event.preventDefault()
-        setSelectedSlashIndex((prev) => (prev > 0 ? prev - 1 : filteredSlashItems.length - 1))
+        setSelectedSlashIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredSlashItems.length - 1,
+        )
       } else if (event.key === 'Enter') {
         if (!filteredSlashItems[selectedSlashIndex]) return
         event.preventDefault()
@@ -953,12 +972,10 @@ export function CanonicalNotebookEditor({
 
   const handleToggleAgentPanel = useCallback(async () => {
     await flushSaveRef.current()
-    setAgentPanelOpen((open) => {
-      const next = !open
+    const next = !agentPanelOpen
+    setAgentPanelOpen(next)
       onAgentPanelOpenChange?.(next)
-      return next
-    })
-  }, [onAgentPanelOpenChange])
+  }, [agentPanelOpen, onAgentPanelOpenChange])
 
   const stopNotebookAgent = useCallback(() => {
     notebookAgentAbortRef.current?.abort()
@@ -1019,7 +1036,7 @@ export function CanonicalNotebookEditor({
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
+        const lines = buffer.split("\n")
         buffer = lines.pop() ?? ''
         for (const line of lines) {
           const trimmed = line.trim()
@@ -1146,7 +1163,10 @@ export function CanonicalNotebookEditor({
           agentRunning ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
         }`}
       >
-        <span className="min-w-0 truncate">{models.find((model) => model.id === selectedModelId)?.name ?? selectedModelId}</span>
+        <span className='min-w-0 truncate'>
+          {models.find((model) => model.id === selectedModelId)?.name ??
+            selectedModelId}
+        </span>
         <ChevronDown size={11} className="shrink-0" />
       </button>
       {showModelPicker && (
@@ -1168,7 +1188,11 @@ export function CanonicalNotebookEditor({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    {isSel ? <Check size={10} /> : <span className="w-[10px] inline-block" />}
+                    {isSel ? (
+                      <Check size={10} />
+                    ) : (
+                      <span className='w-[10px] inline-block' />
+                    )}
                     {m.name}
                   </span>
                 </button>
@@ -1184,10 +1208,21 @@ export function CanonicalNotebookEditor({
     <NotebookAgentHeader
       pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
       modelPicker={modelPicker}
-      presentation={onAgentPanelModeChange ? (agentPanelMode === 'docked' ? 'sidebar' : 'floating') : undefined}
-      onPresentationChange={onAgentPanelModeChange
-        ? (presentation) => onAgentPanelModeChange(presentation === 'sidebar' ? 'docked' : 'floating')
-        : undefined}
+      presentation={
+        onAgentPanelModeChange
+          ? agentPanelMode === 'docked'
+            ? 'sidebar'
+            : 'floating'
+          : undefined
+      }
+      onPresentationChange={
+        onAgentPanelModeChange
+          ? (presentation) =>
+              onAgentPanelModeChange(
+                presentation === 'sidebar' ? 'docked' : 'floating',
+              )
+          : undefined
+      }
       onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
       onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
       onClose={() => void handleToggleAgentPanel()}
@@ -1272,7 +1307,10 @@ export function CanonicalNotebookEditor({
 
   return (
     <AppScreenShell
-      header={renderHeader ? renderHeader(notebookHeaderProps) : (
+      header={
+        renderHeader ? (
+          renderHeader(notebookHeaderProps)
+        ) : (
         <NotebookHeader
           activeNote={activeNote}
           loading={resolvingRequestedNote}
@@ -1304,9 +1342,13 @@ export function CanonicalNotebookEditor({
           running={agentRunning}
           logo={overlayLogo}
           composer={agentComposer}
-          renderMarkdownMessage={(text, isStreaming) => renderMarkdown?.(text, isStreaming) ?? (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
-          )}
+            renderMarkdownMessage={(text, isStreaming) =>
+              renderMarkdown?.(text, isStreaming) ?? (
+                <p className='whitespace-pre-wrap text-sm leading-relaxed'>
+                  {text}
+                </p>
+              )
+            }
         />
       ) : null}
       rightPanelOpen={agentPanelOpen && Boolean(activeNote)}
@@ -1314,7 +1356,12 @@ export function CanonicalNotebookEditor({
       rightPanelMode={agentPanelMode}
       onRightPanelClose={() => void handleToggleAgentPanel()}
     >
-      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="relative flex h-full flex-row">
+      <AppScreenBody
+        padding='none'
+        maxWidth='none'
+        scroll='hidden'
+        className='relative flex h-full flex-row'
+      >
         {showNotesSidebar
           ? (renderNotesSidebar?.({
               notes,
@@ -1336,13 +1383,19 @@ export function CanonicalNotebookEditor({
           {activeNote ? (
             <>
             {editorConflict ? (
-              <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-800 dark:text-amber-200" role="alert">
+                <div
+                  className='shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-800 dark:text-amber-200'
+                  role='alert'
+                >
                 {editorConflict.message} Your local draft has been preserved.
               </div>
             ) : null}
             <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                <div ref={contentContainerRef} className="h-full overflow-y-auto px-6 py-4">
+                  <div
+                    ref={contentContainerRef}
+                    className='h-full overflow-y-auto px-6 py-4'
+                  >
                   <EditorContent editor={editor} />
                 </div>
 

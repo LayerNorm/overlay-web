@@ -3,7 +3,14 @@
 // Compatibility wrapper: canonical integration contracts/controllers live in
 // @overlay/app-core, typed transport in @overlay/api-client, and reusable
 // presentation in @overlay/modules-react.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import posthog from 'posthog-js'
 import {
   DEFAULT_CONNECTOR_CATALOG,
@@ -162,21 +169,24 @@ export default function IntegrationsView({
   useWorkspaceChanged(useCallback(() => {
     loadConnected()
     loadCatalog()
-  }, [loadConnected, loadCatalog]))
+    }, [loadConnected, loadCatalog]),
+  )
+
+  const lastFocusFetchAtRef = useRef(Date.now())
+  const onFocus = useEffectEvent(() => {
+    // Only refetch on focus if at least 60 seconds have passed since
+    // the last fetch.  Prevents redundant requests when rapidly switching tabs.
+    if (Date.now() - lastFocusFetchAtRef.current < 60_000) return
+    lastFocusFetchAtRef.current = Date.now()
+    void loadConnected()
+    void loadCatalog()
+  })
 
   useEffect(() => {
-    let lastFetchAt = Date.now()
-    const onFocus = () => {
-      // Only refetch on focus if at least 60 seconds have passed since
-      // the last fetch.  Prevents redundant requests when rapidly switching tabs.
-      if (Date.now() - lastFetchAt < 60_000) return
-      lastFetchAt = Date.now()
-      void loadConnected()
-      void loadCatalog()
-    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [loadConnected, loadCatalog])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onFocus is a stable useEffectEvent
+  }, [])
 
   useEffect(() => {
     const onIntegrationsChanged = () => {
@@ -291,13 +301,19 @@ export default function IntegrationsView({
   const connectedRows = useMemo(() => getConnectedConnectorRows(connected, catalogItems), [connected, catalogItems])
   const availableList = useMemo(() => getAvailableConnectorRows(connected, catalogItems, DEFAULT_CONNECTOR_CATALOG), [connected, catalogItems])
 
-  useEffect(() => {
+  const [prevConnectedSize, setPrevConnectedSize] = useState(connected.size)
+  if (prevConnectedSize !== connected.size) {
+    setPrevConnectedSize(connected.size)
     setConnectedVisible(LIST_PAGE_SIZE)
-  }, [connected.size])
+  }
 
-  useEffect(() => {
+  const [prevAvailableLength, setPrevAvailableLength] = useState(
+    availableList.length,
+  )
+  if (prevAvailableLength !== availableList.length) {
+    setPrevAvailableLength(availableList.length)
     setAvailableVisible(LIST_PAGE_SIZE)
-  }, [availableList.length])
+  }
 
   const filteredConnectedRows = useMemo(
     () => filterConnectorCatalog(connectedRows, searchQuery),

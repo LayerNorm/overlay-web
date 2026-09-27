@@ -1891,17 +1891,18 @@ export const resetTokenUsage = internalMutation({
   },
   handler: async (ctx, { userId, newPeriodStart }) => {
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
-    const subscription = await ctx.db
+    const [subscription, existing] = await Promise.all([
+      ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-
-    const existing = await ctx.db
+        .first(),
+      ctx.db
       .query('tokenUsage')
       .withIndex('by_userId_period', (q) =>
         q.eq('userId', userId).eq('billingPeriodStart', newPeriodStart)
       )
-      .first()
+        .first(),
+    ])
 
     if (!existing) {
       await ctx.db.insert('tokenUsage', {

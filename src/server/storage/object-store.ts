@@ -45,9 +45,7 @@ export async function deleteObject(key: string): Promise<void> {
 }
 
 export async function deleteObjects(keys: string[]): Promise<void> {
-  for (const key of keys) {
-    await deleteObject(key)
-  }
+  await Promise.all(keys.map((key) => deleteObject(key)))
 }
 
 export async function headObject(

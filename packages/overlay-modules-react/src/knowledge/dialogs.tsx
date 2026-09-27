@@ -73,7 +73,9 @@ export function KnowledgePendingNotice({
       <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-[var(--foreground)]">{title}</p>
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">{preview}</p>
+        <p className='mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]'>
+          {preview}
+        </p>
       </div>
     </div>
   )
@@ -152,9 +154,15 @@ export function AddMemoryDialog({
         <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">
           Long memories stay as one saved item; the list shows short previews so you can scan them quickly.
         </p>
-        {error ? <p className="mt-3 text-xs text-red-400" role="alert">{error}</p> : null}
+        {error ? (
+          <p className='mt-3 text-xs text-red-400' role='alert'>
+            {error}
+          </p>
+        ) : null}
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+            Cancel
+          </button>
           <button
             onClick={onSave}
             disabled={!value.trim() || saving}
@@ -203,11 +211,17 @@ export function ImportMemoryDialog({
           </button>
         </div>
         <div className="mb-5 flex gap-3">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">1</span>
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]'>
+            1
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Copy this prompt into a chat with your other AI provider</p>
+            <p className='mb-2 text-xs font-medium text-[var(--foreground)]'>
+              Copy this prompt into a chat with your other AI provider
+            </p>
             <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pb-10 pt-3">
-              <p className="text-xs leading-relaxed text-[var(--foreground)]">{IMPORT_MEMORY_PROMPT}</p>
+              <p className='text-xs leading-relaxed text-[var(--foreground)]'>
+                {IMPORT_MEMORY_PROMPT}
+              </p>
               <button
                 type="button"
                 onClick={onCopyPrompt}
@@ -220,7 +234,9 @@ export function ImportMemoryDialog({
           </div>
         </div>
         <div className="mb-5 flex gap-3">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">2</span>
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]'>
+            2
+          </span>
           <div className="min-w-0 flex-1">
             <p className="mb-2 text-xs font-medium text-[var(--foreground)]" id="import-memory-paste-label">Paste results below to add to your memory</p>
             <textarea
@@ -233,9 +249,15 @@ export function ImportMemoryDialog({
             />
           </div>
         </div>
-        {error ? <p className="mb-3 text-xs text-red-400" role="alert">{error}</p> : null}
+        {error ? (
+          <p className='mb-3 text-xs text-red-400' role='alert'>
+            {error}
+          </p>
+        ) : null}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+            Cancel
+          </button>
           <button
             onClick={onSave}
             disabled={!value.trim() || saving}
@@ -287,7 +309,9 @@ export function CreateKnowledgeItemDialog({
           className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
         />
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>Cancel</button>
+          <button onClick={onClose} className={DIALOG_ACTION_BUTTON_CLASS}>
+            Cancel
+          </button>
           <button
             onClick={onCreate}
             disabled={!value.trim() || creating}
@@ -320,7 +344,15 @@ export function MemoryDetailDialog({
           <span id="memory-detail-dialog-title" className="text-sm font-medium text-[var(--foreground)]">Memory</span>
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--muted-light)]">
-              {new Date(memory.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {
+                // Locale is pinned to 'en-US', so SSR and client output are identical.
+                // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                new Date(memory.createdAt).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              }
             </span>
             <button
               type="button"
@@ -341,8 +373,14 @@ export function MemoryDetailDialog({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">{memory.fullContent}</p>
-          {memory.source ? <p className="mt-4 text-xs text-[var(--muted-light)]">Source: {memory.source}</p> : null}
+          <p className='whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]'>
+            {memory.fullContent}
+          </p>
+          {memory.source ? (
+            <p className='mt-4 text-xs text-[var(--muted-light)]'>
+              Source: {memory.source}
+            </p>
+          ) : null}
         </div>
     </DialogShell>
   )

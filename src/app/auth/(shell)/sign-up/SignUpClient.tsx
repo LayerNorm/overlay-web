@@ -52,6 +52,8 @@ export function SignUpClient({
   const [verified, setVerified] = useState(false)
 
   // Get redirect URL from params (for desktop app auth)
+  // Auth params intentionally gate first paint; page is client-gated by (shell).
+  // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get('redirect'))
 
   useEffect(() => {
@@ -111,12 +113,15 @@ export function SignUpClient({
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (verifying) return
     if (!verificationTicketRef.current || !verificationCode) return
 
     setVerifying(true)
     setError(null)
 
     try {
+      // Guarded by `verifying` at the handler's top.
+      // react-doctor-disable-next-line react-doctor/no-async-event-handler-without-reentry-guard
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,12 +144,14 @@ export function SignUpClient({
   }
 
   const handleResendCode = async () => {
-    if (!verificationTicketRef.current) return
+    if (!verificationTicketRef.current || resending) return
 
     setResending(true)
     setError(null)
 
     try {
+      // Guarded by `resending` at the handler's top.
+      // react-doctor-disable-next-line react-doctor/no-async-event-handler-without-reentry-guard
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,11 +189,17 @@ export function SignUpClient({
   const legalFinePrint = (
     <p className="mt-8 text-center text-xs leading-5 text-[var(--muted-light)]">
       By continuing, you agree to the{' '}
-      <Link href={LEGAL_DOCUMENTS.terms.href} className="underline hover:text-[var(--foreground)]">
+      <Link
+        href={LEGAL_DOCUMENTS.terms.href}
+        className='underline hover:text-[var(--foreground)]'
+      >
         Terms of Service
       </Link>{' '}
       and acknowledge the{' '}
-      <Link href={LEGAL_DOCUMENTS.privacy.href} className="underline hover:text-[var(--foreground)]">
+      <Link
+        href={LEGAL_DOCUMENTS.privacy.href}
+        className='underline hover:text-[var(--foreground)]'
+      >
         Privacy Policy
       </Link>
       .
@@ -218,7 +231,9 @@ export function SignUpClient({
                 />
               </svg>
             </div>
-            <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>Email verified!</h1>
+            <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>
+              Email verified!
+            </h1>
             <p className={`mb-8 text-sm ${muted}`}>
               Your account has been verified. You can now sign in.
             </p>
@@ -252,7 +267,9 @@ export function SignUpClient({
               />
             </svg>
           </div>
-          <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>Check your email</h1>
+          <h1 className={`text-2xl font-serif mb-2 ${labelText}`}>
+            Check your email
+          </h1>
           <p className={`mb-8 text-sm ${muted}`}>
             We&apos;ve sent a verification code to{' '}
             <strong className={labelText}>{email}</strong>.
@@ -351,7 +368,9 @@ export function SignUpClient({
             <div className="w-full border-t border-[var(--border)]" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="bg-[var(--background)] px-4 text-[var(--muted)]">or create with email</span>
+              <span className='bg-[var(--background)] px-4 text-[var(--muted)]'>
+                or create with email
+              </span>
           </div>
         </div>
         ) : null}
@@ -361,7 +380,10 @@ export function SignUpClient({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="firstName" className={`block text-sm font-medium mb-2 ${labelText}`}>
+                <label
+                  htmlFor='firstName'
+                  className={`block text-sm font-medium mb-2 ${labelText}`}
+                >
                 First name
               </label>
               <input
@@ -374,7 +396,10 @@ export function SignUpClient({
               />
             </div>
             <div>
-              <label htmlFor="lastName" className={`block text-sm font-medium mb-2 ${labelText}`}>
+                <label
+                  htmlFor='lastName'
+                  className={`block text-sm font-medium mb-2 ${labelText}`}
+                >
                 Last name
               </label>
               <input
@@ -389,7 +414,10 @@ export function SignUpClient({
           </div>
 
           <div>
-            <label htmlFor="email" className={`block text-sm font-medium mb-2 ${labelText}`}>
+              <label
+                htmlFor='email'
+                className={`block text-sm font-medium mb-2 ${labelText}`}
+              >
               Email
             </label>
             <input
@@ -404,7 +432,10 @@ export function SignUpClient({
           </div>
 
           <div>
-            <label htmlFor="password" className={`block text-sm font-medium mb-2 ${labelText}`}>
+              <label
+                htmlFor='password'
+                className={`block text-sm font-medium mb-2 ${labelText}`}
+              >
               Password
             </label>
             <input
@@ -416,11 +447,16 @@ export function SignUpClient({
               className={field}
               placeholder="••••••••"
             />
-            <p className={`mt-1.5 text-xs ${muted}`}>Must be at least 8 characters</p>
+              <p className={`mt-1.5 text-xs ${muted}`}>
+                Must be at least 8 characters
+              </p>
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className={`block text-sm font-medium mb-2 ${labelText}`}>
+              <label
+                htmlFor='confirmPassword'
+                className={`block text-sm font-medium mb-2 ${labelText}`}
+              >
               Confirm password
             </label>
             <input

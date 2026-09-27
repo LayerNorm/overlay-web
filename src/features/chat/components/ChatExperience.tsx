@@ -1,106 +1,107 @@
-'use client'
+"use client";
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
-import dynamic from 'next/dynamic'
-import {
-  ChevronDown,
-} from 'lucide-react'
-import type { UIMessage } from '@/shared/chat/ai-ui-message'
-import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
-import {
-  createConversationUiState,
-  sameModelOrder,
-} from '@overlay/chat-core'
-import { UsageExhaustedNotice } from '@overlay/chat-react'
-import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
-import { usePathname, useSearchParams, useRouter } from 'next/navigation'
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+} from "react";
+import dynamic from "next/dynamic";
+import { ChevronDown } from "lucide-react";
+import type { UIMessage } from "@/shared/chat/ai-ui-message";
+import type { GeneratedUiData } from "@overlay/chat-core/generated-ui";
+import { createConversationUiState, sameModelOrder } from "@overlay/chat-core";
+import { UsageExhaustedNotice } from "@overlay/chat-react";
+import type { AutomationDetail, AutomationDetailTab } from "@overlay/app-core";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   DEFAULT_MODEL_ID,
   type GenerationMode,
-} from '@/shared/ai/gateway/model-types'
-import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
-import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
+} from "@/shared/ai/gateway/model-types";
+import { normalizeChatModelSelection } from "@/shared/chat/chat-model-prefs";
+import { resolveDefaultChatModelSelection } from "@/shared/chat/default-chat-model";
 import {
   defaultChatToolRequestIds,
   defaultMemoryEnabled,
   type ChatToolRequestId,
-} from '@/shared/chat/tool-requests'
-import { ChatExperienceView } from './ChatExperienceView'
-import { useChatListEventSync } from './chat/useChatListEventSync'
-import { useChatAttachments } from './useChatAttachments'
-import { useChatBillingControls } from './chat/useChatBillingControls'
-import { useDraftReviewActions } from './chat/useDraftReviewActions'
-import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
-import { useChatPreferences } from './chat/useChatPreferences'
-import { safeSetLocalStorage } from './chat/model-selection-utils'
-import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
-import { useChatShellPanels } from './chat/useChatShellPanels'
-import { useChatConversationLoader } from './chat/useChatConversationLoader'
-import { useConversationUiState } from './chat/useConversationUiState'
-import { useChatListController } from './chat/useChatListController'
-import { useChatModelSelectionController } from './chat/useChatModelSelectionController'
-import { useChatRetryController } from './chat/useChatRetryController'
-import { useChatRouteController } from './chat/useChatRouteController'
+} from "@/shared/chat/tool-requests";
+import { ChatExperienceView } from "./ChatExperienceView";
+import { useChatListEventSync } from "./chat/useChatListEventSync";
+import { useChatAttachments } from "./useChatAttachments";
+import { useChatBillingControls } from "./chat/useChatBillingControls";
+import { useDraftReviewActions } from "./chat/useDraftReviewActions";
+import type {
+  EmptyAutomateSuggestionId,
+  EmptyChatSuggestionId,
+} from "./ChatEmptyState";
+import { useChatPreferences } from "./chat/useChatPreferences";
+import { safeSetLocalStorage } from "./chat/model-selection-utils";
+import { useChatPanels, type AttachmentPreview } from "./chat/useChatPanels";
+import { useChatShellPanels } from "./chat/useChatShellPanels";
+import { useChatConversationLoader } from "./chat/useChatConversationLoader";
+import { useConversationUiState } from "./chat/useConversationUiState";
+import { useChatListController } from "./chat/useChatListController";
+import { useChatModelSelectionController } from "./chat/useChatModelSelectionController";
+import { useChatRetryController } from "./chat/useChatRetryController";
+import { useChatRouteController } from "./chat/useChatRouteController";
 import {
   TEMPORARY_CHAT_ID,
   useChatSendController,
-} from './chat/useChatSendController'
-import { useChatStopController } from './chat/useChatStopController'
-import { useChatTitleController } from './chat/useChatTitleController'
-import { useLiveConversationSync } from './chat/useLiveConversationSync'
-import { useAgentRunLifecycle } from './chat/useAgentRunLifecycle'
+} from "./chat/useChatSendController";
+import { useChatStopController } from "./chat/useChatStopController";
+import { useChatTitleController } from "./chat/useChatTitleController";
+import { useLiveConversationSync } from "./chat/useLiveConversationSync";
+import { useAgentRunLifecycle } from "./chat/useAgentRunLifecycle";
 import {
   getResponseForExchangeForModel as selectResponseForExchangeForModel,
   removeTurnFromConversationRuntime,
-} from './chat/chat-runtime-helpers'
-import { useChatRuntimes } from './chat/useChatRuntimes'
-import { useComposerTextState } from './chat/useComposerTextState'
-import {
-  type ChatListPageInfo,
-} from '@/shared/chat/chat-list-cache'
-import { TEMPORARY_CHAT_UI_EVENT } from '@/shared/chat/temporary-chat-ui'
-import {
-  tryLogTtftClientFirstText,
-} from '@/shared/chat/ttft-client-debug'
-import { useAsyncSessions } from '@/components/providers/async-sessions-store'
-import { DelayedTooltip } from './DelayedTooltip'
-import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
-import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
-import { useByokModels } from '@/components/providers/useByokModels'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { buildSharePageUrl } from '@/features/share/lib/share-url'
-import { ShareDialog } from '@/features/share/components/ShareDialog'
-import { LinkOpenInterceptor } from './LinkOpenInterceptor'
-import { createIdempotencyKey } from '@overlay/api-client'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useGuestGate } from '@/components/providers/GuestGateProvider'
-import { useAuth } from '@/contexts/AuthContext'
-import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
-import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorActions'
+} from "./chat/chat-runtime-helpers";
+import { useChatRuntimes } from "./chat/useChatRuntimes";
+import { useComposerTextState } from "./chat/useComposerTextState";
+import { type ChatListPageInfo } from "@/shared/chat/chat-list-cache";
+import { TEMPORARY_CHAT_UI_EVENT } from "@/shared/chat/temporary-chat-ui";
+import { tryLogTtftClientFirstText } from "@/shared/chat/ttft-client-debug";
+import { useAsyncSessions } from "@/components/providers/async-sessions-store";
+import { DelayedTooltip } from "./DelayedTooltip";
+import { useAppSettings } from "@/components/providers/AppSettingsProvider";
+import { useGatewayModelCatalog } from "@/components/providers/useGatewayModelCatalog";
+import { shouldLoadGatewayModelCatalog } from "@/shared/ai/gateway/catalog-access";
+import { useByokModels } from "@/components/providers/useByokModels";
+import { useOverlayCapabilities } from "@/components/providers/CapabilitiesProvider";
+import { buildSharePageUrl } from "@/features/share/lib/share-url";
+import { ShareDialog } from "@/features/share/components/ShareDialog";
+import { LinkOpenInterceptor } from "./LinkOpenInterceptor";
+import { createIdempotencyKey } from "@overlay/api-client";
+import { overlayAppClient } from "@/shared/app/overlay-app-client";
+import { useGuestGate } from "@/components/providers/GuestGateProvider";
+import { useAuth } from "@/contexts/AuthContext";
+import { useConvexAuthToken } from "@/components/providers/ConvexAuthProvider";
+import { useGeneratedUiConnectorActions } from "./chat/useGeneratedUiConnectorActions";
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
   PERSONAL_CHAT_MODE_KEY,
-} from './chat-interface/constants'
-import type { PersonalChatMode } from '@overlay/ui/chat'
+} from "./chat-interface/constants";
+import type { PersonalChatMode } from "@overlay/ui/chat";
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSequence,
   chatGreetingLine,
-} from '@overlay/chat-core'
-import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
+} from "@overlay/chat-core";
+import { scrollToExchangeTurn } from "@/features/chat/lib/scroll-to-exchange-turn";
 import type {
   AskModelSelectionMode,
   Conversation,
   ConversationUiState,
-} from './chat-interface/types'
-import type { MentionInputHandle } from './chat-interface/MentionInput'
-import { useChatMentions } from './use-chat-mentions'
-import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { PersonalMentionConversionPrompt } from './PersonalMentionConversionPrompt'
-import { recordRender } from '@overlay/chat-react/lib/perf-debug'
-import type { ConversationLoadSnapshot } from './chat/chatTransport'
+} from "./chat-interface/types";
+import type { MentionInputHandle } from "./chat-interface/MentionInput";
+import { useChatMentions } from "./use-chat-mentions";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { PersonalMentionConversionPrompt } from "./PersonalMentionConversionPrompt";
+import { recordRender } from "@overlay/chat-react/lib/perf-debug";
+import type { ConversationLoadSnapshot } from "./chat/chatTransport";
 
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
@@ -115,14 +116,20 @@ import type { ConversationLoadSnapshot } from './chat/chatTransport'
 // NB: the options must be an inline object literal — next/dynamic's SWC
 // transform rejects a shared/referenced options variable.
 const FileViewerPanel = dynamic(
-  () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
+  () =>
+    import("@overlay/modules-react/knowledge").then((mod) => ({
+      default: mod.FileViewerPanel,
+    })),
   { loading: () => null },
-)
+);
 const ExportMenu = dynamic(
-  () => import('@/features/files/components/ExportMenu').then((mod) => ({ default: mod.ExportMenu })),
+  () =>
+    import("@/features/files/components/ExportMenu").then((mod) => ({
+      default: mod.ExportMenu,
+    })),
   { loading: () => null },
-)
-const EMPTY_UI_MESSAGES: UIMessage[] = []
+);
+const EMPTY_UI_MESSAGES: UIMessage[] = [];
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function ChatExperience({
@@ -130,53 +137,59 @@ export default function ChatExperience({
   firstName,
   hideSidebar,
   projectName,
-  mode = 'chat',
+  mode = "chat",
   hideHeader = false,
   belowEmptyComposer,
   initialChats,
   initialChatPageInfo,
   publicShowcaseSnapshots,
 }: {
-  userId: string | null
-  firstName?: string
-  hideSidebar?: boolean
-  projectName?: string
-  mode?: 'chat' | 'automate'
-  hideHeader?: boolean
-  belowEmptyComposer?: React.ReactNode
-  initialChats?: Conversation[]
-  initialChatPageInfo?: ChatListPageInfo
-  publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>
+  userId: string | null;
+  firstName?: string;
+  hideSidebar?: boolean;
+  projectName?: string;
+  mode?: "chat" | "automate";
+  hideHeader?: boolean;
+  belowEmptyComposer?: React.ReactNode;
+  initialChats?: Conversation[];
+  initialChatPageInfo?: ChatListPageInfo;
+  publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>;
 }) {
-  recordRender('ChatExperience')
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const isPublicShowcase = Boolean(publicShowcaseSnapshots)
-  const { settings, updateSettings } = useAppSettings()
-  const { user: authUser, isLoading: authLoading } = useAuth()
+  recordRender("ChatExperience");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isPublicShowcase = Boolean(publicShowcaseSnapshots);
+  const { settings, updateSettings } = useAppSettings();
+  const { user: authUser, isLoading: authLoading } = useAuth();
   const gatewayCatalogEnabled = shouldLoadGatewayModelCatalog({
     isAuthenticated: Boolean(authUser),
     isAuthLoading: authLoading,
     isPublicShowcase,
-  })
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  });
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities();
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
     revision: gatewayCatalogRevision,
-  } = useGatewayModelCatalog({ enabled: gatewayCatalogEnabled })
-  const { activeWorkspaceId } = useWorkspace()
-  const { connections: byokConnections, isLoading: byokModelsLoading } = useByokModels({
-    enabled: gatewayCatalogEnabled && capabilities.modelRouting,
-  })
+  } = useGatewayModelCatalog({ enabled: gatewayCatalogEnabled });
+  const { activeWorkspaceId } = useWorkspace();
+  const { connections: byokConnections, isLoading: byokModelsLoading } =
+    useByokModels({
+      enabled: gatewayCatalogEnabled && capabilities.modelRouting,
+    });
   const modelCatalogVersion = useMemo(
-    () => `${gatewayCatalogRevision}:${byokConnections.map((connection) => [
-      connection._id,
-      connection.status,
-      connection.discoveredAt ?? 0,
-      connection.enabledModelIds.join(','),
-    ].join(':')).join('|')}`,
+    () =>
+      `${gatewayCatalogRevision}:${byokConnections
+        .map((connection) =>
+          [
+            connection._id,
+            connection.status,
+            connection.discoveredAt ?? 0,
+            connection.enabledModelIds.join(","),
+          ].join(":"),
+        )
+        .join("|")}`,
     [byokConnections, gatewayCatalogRevision],
   )
   const billingEnabled = capabilities.billing
@@ -195,28 +208,34 @@ export default function ChatExperience({
   const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
-      detail: { active: isTemporaryChat },
-    }))
-  }, [isTemporaryChat])
+    window.dispatchEvent(
+      new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
+        detail: { active: isTemporaryChat },
+      }),
+    );
+  }, [isTemporaryChat]);
 
   useEffect(() => {
     return () => {
-      window.dispatchEvent(new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
-        detail: { active: false },
-      }))
-    }
-  }, [])
+      window.dispatchEvent(
+        new CustomEvent(TEMPORARY_CHAT_UI_EVENT, {
+          detail: { active: false },
+        }),
+      );
+    };
+  }, []);
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
-  const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
+  const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(
+    null,
+  );
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
     return () => {
-      activeChatIdRef.current = null
-      setActiveViewer(null)
-    }
-  }, [setActiveViewer])
+      activeChatIdRef.current = null;
+      setActiveViewer(null);
+    };
+  }, [setActiveViewer]);
 
   const { chats, loadChats, setChats } = useChatListController({
     initialChatPageInfo,
@@ -224,8 +243,8 @@ export default function ChatExperience({
     pendingTitleRef,
     useSeededGuestData: isPublicShowcase,
     userId,
-  })
-  const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  });
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const {
     runtimesRef,
     emptyRuntimeRef,
@@ -243,9 +262,9 @@ export default function ChatExperience({
     chat3Ref,
     actChatRef,
     chatInstances,
-  } = useChatRuntimes(activeChatId)
-  const [, forceLiveSyncRender] = useState(0)
-  const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0)
+  } = useChatRuntimes(activeChatId);
+  const [, forceLiveSyncRender] = useState(0);
+  const [runtimeHydrationVersion, setRuntimeHydrationVersion] = useState(0);
   const {
     attachmentPreview,
     attachmentPreviewMode,
@@ -264,12 +283,14 @@ export default function ChatExperience({
     setAttachmentPreviewMode,
     setSourcesPanel,
     sourcesPanel,
-  } = useChatPanels()
+  } = useChatPanels();
 
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
-  const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
+  const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<
+    number | null
+  >(null);
   /** When true, account default-model sync must not overwrite single/multi picker mode. */
-  const userAskModelOverrideRef = useRef(false)
+  const userAskModelOverrideRef = useRef(false);
   const {
     selectedActModel,
     setSelectedActModel,
@@ -306,16 +327,16 @@ export default function ChatExperience({
   const [, setIsSwitchingChat] = useState(false)
   const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: !isPublicShowcase })
 
-  const [showAttachMenu, setShowAttachMenu] = useState(false)
-  const [showModeMenu, setShowModeMenu] = useState(false)
-  const [selectedToolIds, setSelectedToolIds] = useState<ChatToolRequestId[]>(() =>
-    defaultChatToolRequestIds({ temporary: false }),
-  )
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const [selectedToolIds, setSelectedToolIds] = useState<ChatToolRequestId[]>(
+    () => defaultChatToolRequestIds({ temporary: false }),
+  );
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
-  )
-  const [isDragging, setIsDragging] = useState(false)
-  const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const autoContinuedForMessageRef = useRef<Set<string>>(new Set());
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -323,23 +344,25 @@ export default function ChatExperience({
     inputRef,
     inputRevision,
     setInput,
-  } = useComposerTextState()
+  } = useComposerTextState();
 
   // Restore guest draft after hydration so server/client initial renders match
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === "undefined") return;
     try {
-      const draft = sessionStorage.getItem('overlay:guest-draft')
+      const draft = sessionStorage.getItem("overlay:guest-draft");
       if (draft) {
-        sessionStorage.removeItem('overlay:guest-draft')
-        setInput(draft)
+        sessionStorage.removeItem("overlay:guest-draft");
+        setInput(draft);
       }
-    } catch { /* ignore */ }
-  }, [setInput])
+    } catch {
+      /* ignore */
+    }
+  }, [setInput]);
 
-  const [isOptimisticLoading, setIsOptimisticLoading] = useState(false)
-  const [composerNotice, setComposerNotice] = useState<string | null>(null)
-  const [approvalSubmitting, setApprovalSubmitting] = useState(false)
+  const [isOptimisticLoading, setIsOptimisticLoading] = useState(false);
+  const [composerNotice, setComposerNotice] = useState<string | null>(null);
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const {
     attachedImages,
     setAttachedImages,
@@ -355,37 +378,37 @@ export default function ChatExperience({
     addDocumentsFromPicker,
     addImages,
     handlePaste,
-  } = useChatAttachments({ setComposerNotice })
+  } = useChatAttachments({ setComposerNotice });
 
   const [replyContext, setReplyContext] = useState<{
-    snippet: string
-    bodyForModel: string
-    replyToTurnId?: string
-  } | null>(null)
+    snippet: string;
+    bodyForModel: string;
+    replyToTurnId?: string;
+  } | null>(null);
   const clearTransientComposerState = useCallback(() => {
-    setPendingChatDocuments([])
-    setReplyContext(null)
-    setAttachmentError(null)
-    setComposerNotice(null)
-  }, [setAttachmentError, setPendingChatDocuments])
+    setPendingChatDocuments([]);
+    setReplyContext(null);
+    setAttachmentError(null);
+    setComposerNotice(null);
+  }, [setAttachmentError, setPendingChatDocuments]);
   const resetComposerToolIds = useCallback((temporary: boolean) => {
-    setSelectedToolIds(defaultChatToolRequestIds({ temporary }))
-    setMemoryEnabled(defaultMemoryEnabled({ temporary }))
-  }, [])
+    setSelectedToolIds(defaultChatToolRequestIds({ temporary }));
+    setMemoryEnabled(defaultMemoryEnabled({ temporary }));
+  }, []);
   const toggleComposerTool = useCallback((toolId: ChatToolRequestId) => {
-    if (toolId === 'memory') {
-      setMemoryEnabled((current) => !current)
-      return
+    if (toolId === "memory") {
+      setMemoryEnabled((current) => !current);
+      return;
     }
     setSelectedToolIds((current) =>
       current.includes(toolId)
         ? current.filter((id) => id !== toolId)
         : [...current, toolId],
-    )
-  }, [])
+    );
+  }, []);
   const removeComposerTool = useCallback((toolId: ChatToolRequestId) => {
-    setSelectedToolIds((current) => current.filter((id) => id !== toolId))
-  }, [])
+    setSelectedToolIds((current) => current.filter((id) => id !== toolId));
+  }, []);
   const {
     isBudgetExhaustedPaid,
     isFreeTier,
@@ -412,21 +435,21 @@ export default function ChatExperience({
     setComposerNotice,
     setSelectedActModel,
     setSelectedModels,
-  })
+  });
   const resolveAppDefaultChatModels = useCallback(() => {
     return resolveDefaultChatModelSelection({
       defaultActModelId: settings.defaultActModelId,
       defaultAskModelIds: settings.defaultAskModelIds,
       isFreeTier: billingEnabled ? isFreeTier : false,
       onlyAllowZdrModels: settings.onlyAllowZdrModels,
-    })
+    });
   }, [
     billingEnabled,
     isFreeTier,
     settings.defaultActModelId,
     settings.defaultAskModelIds,
     settings.onlyAllowZdrModels,
-  ])
+  ]);
   const applyDefaultChatModelsToView = useCallback(
     (ui: Partial<ConversationUiState>): ConversationUiState => {
       if (hasStoredTextModelSelection) {
@@ -434,45 +457,52 @@ export default function ChatExperience({
           ...ui,
           selectedActModel,
           selectedModels,
-          askModelSelectionMode: selectedModels.length > 1 ? 'multiple' : 'single',
-        })
+          askModelSelectionMode:
+            selectedModels.length > 1 ? "multiple" : "single",
+        });
       }
-      const { askModelIds, actModelId } = resolveAppDefaultChatModels()
+      const { askModelIds, actModelId } = resolveAppDefaultChatModels();
       return createConversationUiState({
         ...ui,
         selectedActModel: actModelId,
         selectedModels: askModelIds,
-        askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
-      })
+        askModelSelectionMode: askModelIds.length > 1 ? "multiple" : "single",
+      });
     },
-    [hasStoredTextModelSelection, resolveAppDefaultChatModels, selectedActModel, selectedModels],
-  )
+    [
+      hasStoredTextModelSelection,
+      resolveAppDefaultChatModels,
+      selectedActModel,
+      selectedModels,
+    ],
+  );
   // Apply account default models on new-chat surfaces when settings load or change,
   // but only if the user has no stored per-session text model preference. Stored
   // preferences win so a single-model user isn\'t forced back into multiple model
   // mode every time they return to personal chat.
   useEffect(() => {
-    if (!chatPrefsHydrated || activeChatId || isTemporaryChat) return
-    if (userAskModelOverrideRef.current) return
-    if (hasStoredTextModelSelection) return
+    if (!chatPrefsHydrated || activeChatId || isTemporaryChat) return;
+    if (userAskModelOverrideRef.current) return;
+    if (hasStoredTextModelSelection) return;
 
-    const { askModelIds, actModelId } = resolveAppDefaultChatModels()
+    const { askModelIds, actModelId } = resolveAppDefaultChatModels();
     const modeFromSettings: AskModelSelectionMode =
-      askModelIds.length > 1 ? 'multiple' : 'single'
-    const currentMode = askModelSelectionModeRef.current
+      askModelIds.length > 1 ? "multiple" : "single";
+    const currentMode = askModelSelectionModeRef.current;
 
     const modelsMatch =
-      sameModelOrder(askModelIds, selectedModels) && actModelId === selectedActModel
+      sameModelOrder(askModelIds, selectedModels) &&
+      actModelId === selectedActModel;
     if (modelsMatch) {
       if (currentMode !== modeFromSettings) {
-        setAskModelSelectionMode(modeFromSettings)
+        setAskModelSelectionMode(modeFromSettings);
       }
-      return
+      return;
     }
 
-    setSelectedModels(askModelIds)
-    setSelectedActModel(actModelId)
-    setAskModelSelectionMode(modeFromSettings)
+    setSelectedModels(askModelIds);
+    setSelectedActModel(actModelId);
+    setAskModelSelectionMode(modeFromSettings);
     // selectedModels/selectedActModel are intentionally excluded: this effect applies
     // account defaults once when the new-chat surface mounts or settings change. Including
     // them creates a feedback loop because the effect itself sets those values.
@@ -486,46 +516,46 @@ export default function ChatExperience({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-  ])
+  ]);
 
   useEffect(() => {
     if (activeChatId || isTemporaryChat) {
-      userAskModelOverrideRef.current = false
+      userAskModelOverrideRef.current = false;
     }
-  }, [activeChatId, isTemporaryChat])
+  }, [activeChatId, isTemporaryChat]);
   /** User turn ids currently playing the delete (fade-out) animation */
-  const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
-  const [, setDeletingChatIds] = useState<string[]>([])
-  const [activeChatDeleting, setActiveChatDeleting] = useState(false)
-  const [selectedAutomation, setSelectedAutomation] = useState<AutomationDetail | null>(null)
-  const [selectedAutomationLoading, setSelectedAutomationLoading] = useState(false)
-  const {
-    draftModalState,
-    isDraftSaving,
-    saveSkillDraft,
-    setDraftModalState,
-  } = useDraftReviewActions({
-    setComposerNotice,
-  })
+  const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([]);
+  const [, setDeletingChatIds] = useState<string[]>([]);
+  const [activeChatDeleting, setActiveChatDeleting] = useState(false);
+  const [selectedAutomation, setSelectedAutomation] =
+    useState<AutomationDetail | null>(null);
+  const [selectedAutomationLoading, setSelectedAutomationLoading] =
+    useState(false);
+  const { draftModalState, isDraftSaving, saveSkillDraft, setDraftModalState } =
+    useDraftReviewActions({
+      setComposerNotice,
+    });
 
   useEffect(() => {
-    setExitingTurnIds([])
+    setExitingTurnIds([]);
     if (
       !pendingScrollTurnIdRef.current ||
-      (pendingScrollChatIdRef.current && pendingScrollChatIdRef.current !== activeChatId)
+      (pendingScrollChatIdRef.current &&
+        pendingScrollChatIdRef.current !== activeChatId)
     ) {
-      pendingScrollTurnIdRef.current = null
-      pendingScrollChatIdRef.current = null
+      pendingScrollTurnIdRef.current = null;
+      pendingScrollChatIdRef.current = null;
     }
-  }, [activeChatId])
+  }, [activeChatId]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const messagesScrollRef = useRef<HTMLDivElement>(null)
-  const shouldScrollRef = useRef(false)
-  const [isConversationBottomVisible, setIsConversationBottomVisible] = useState(true)
-  const pendingScrollTurnIdRef = useRef<string | null>(null)
-  const pendingScrollChatIdRef = useRef<string | null>(null)
-  const textareaRef = useRef<MentionInputHandle>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const shouldScrollRef = useRef(false);
+  const [isConversationBottomVisible, setIsConversationBottomVisible] =
+    useState(true);
+  const pendingScrollTurnIdRef = useRef<string | null>(null);
+  const pendingScrollChatIdRef = useRef<string | null>(null);
+  const textareaRef = useRef<MentionInputHandle>(null);
   const {
     mentions,
     setMentions,
@@ -534,14 +564,14 @@ export default function ChatExperience({
     setPersonalMentionConfirmationOpen,
     mentionCategories,
     personMentions,
-  } = useChatMentions({ activeWorkspaceId, isPublicShowcase })
-  const attachMenuRef = useRef<HTMLDivElement>(null)
-  const modeMenuRef = useRef<HTMLDivElement>(null)
-  const wasStreamingRef = useRef(false)
+  } = useChatMentions({ activeWorkspaceId, isPublicShowcase });
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
+  const wasStreamingRef = useRef(false);
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (!hideSidebar) router.replace('/app/chat')
-  }, [hideSidebar, router])
+    if (!hideSidebar) router.replace("/app/chat");
+  }, [hideSidebar, router]);
 
   const {
     activeChatTitle,
@@ -579,7 +609,7 @@ export default function ChatExperience({
     setSelectedActModel,
     setSelectedModels,
     setSourcesPanel,
-  })
+  });
 
   const {
     automationConversationId,
@@ -616,7 +646,7 @@ export default function ChatExperience({
     setIsTemporaryChat,
     setRuntimeHydrationVersion,
     setSourcesPanel,
-  })
+  });
 
   useChatListEventSync({
     activeChatIdRef,
@@ -626,21 +656,23 @@ export default function ChatExperience({
     setChats,
     setDeletingChatIds,
     updateRuntimeUiState,
-  })
+  });
 
   useEffect(() => {
-    persistActiveRuntimeUiState()
-  }, [persistActiveRuntimeUiState])
+    persistActiveRuntimeUiState();
+  }, [persistActiveRuntimeUiState]);
 
   const onRuntimeMessagesChanged = useCallback(() => {
-    forceLiveSyncRender((value) => value + 1)
-  }, [])
+    forceLiveSyncRender((value) => value + 1);
+  }, []);
 
-  const activeAskChats = activeRuntime.askChats
+  const activeAskChats = activeRuntime.askChats;
   const localStreamActive =
-    activeAskChats.some((chat) => chat.status === 'streaming' || chat.status === 'submitted') ||
-    actChat.status === 'streaming' ||
-    actChat.status === 'submitted'
+    activeAskChats.some(
+      (chat) => chat.status === "streaming" || chat.status === "submitted",
+    ) ||
+    actChat.status === "streaming" ||
+    actChat.status === "submitted";
   const agentRunLifecycle = useAgentRunLifecycle({
     conversationId: activeChatId,
     enabled: !isPublicShowcase && Boolean(authUser),
@@ -648,10 +680,8 @@ export default function ChatExperience({
     convexAccessToken,
     enableConvexLiveSync: convexLiveSyncEnabled,
     userId: authUser?.id,
-  })
-  const {
-    liveQueryBridge,
-  } = useLiveConversationSync({
+  });
+  const { liveQueryBridge } = useLiveConversationSync({
     activeChatId,
     activeChatIdRef,
     actChat,
@@ -667,55 +697,75 @@ export default function ChatExperience({
     runtimesRef,
     sessions,
     shouldSyncMessages: agentRunLifecycle.shouldSyncMessages,
-  })
+  });
 
-  const isActiveLoading = localStreamActive || agentRunLifecycle.active
-
-  useEffect(() => {
-    setIsOptimisticLoading(false)
-  }, [activeChatId])
+  const isActiveLoading = localStreamActive || agentRunLifecycle.active;
 
   useEffect(() => {
-    const failedNotice = agentRunLifecycle.run?.status === 'failed'
-      ? `Work failed: ${agentRunLifecycle.run.terminalError?.message ?? 'The run could not be completed.'}`
-      : null
-    const cancelledNotice = agentRunLifecycle.run?.status === 'cancelled'
-      ? 'Work stopped.'
-      : null
+    setIsOptimisticLoading(false);
+  }, [activeChatId]);
+
+  useEffect(() => {
+    const failedNotice =
+      agentRunLifecycle.run?.status === "failed"
+        ? `Work failed: ${agentRunLifecycle.run.terminalError?.message ?? "The run could not be completed."}`
+        : null;
+    const cancelledNotice =
+      agentRunLifecycle.run?.status === "cancelled" ? "Work stopped." : null;
     if (failedNotice || cancelledNotice) {
-      setComposerNotice(failedNotice ?? cancelledNotice)
-      return
+      setComposerNotice(failedNotice ?? cancelledNotice);
+      return;
     }
-    setComposerNotice((current) => (
-      current === 'Work stopped.' || current?.startsWith('Work failed:')
+    setComposerNotice((current) =>
+      current === "Work stopped." || current?.startsWith("Work failed:")
         ? null
-        : current
-    ))
-  }, [agentRunLifecycle.run])
+        : current,
+    );
+  }, [agentRunLifecycle.run]);
 
   // When loadChat finishes it bumps runtimeHydrationVersion. Explicitly sync the
   // runtime's loaded messages to the current useChat instances so the greeting
   // disappears immediately. Using refs avoids stale closures from loadChat.
   useEffect(() => {
-    if (!activeChatId || isPublicShowcase) return
-    const runtime = runtimesRef.current.get(activeChatId)
-    if (!runtime) return
+    if (!activeChatId || isPublicShowcase) return;
+    const runtime = runtimesRef.current.get(activeChatId);
+    if (!runtime) return;
     if (chat0Ref.current.messages !== runtime.askChats[0].messages) {
-      chat0Ref.current.setMessages([...runtime.askChats[0].messages] as UIMessage[])
+      chat0Ref.current.setMessages([
+        ...runtime.askChats[0].messages,
+      ] as UIMessage[]);
     }
     if (chat1Ref.current.messages !== runtime.askChats[1].messages) {
-      chat1Ref.current.setMessages([...runtime.askChats[1].messages] as UIMessage[])
+      chat1Ref.current.setMessages([
+        ...runtime.askChats[1].messages,
+      ] as UIMessage[]);
     }
     if (chat2Ref.current.messages !== runtime.askChats[2].messages) {
-      chat2Ref.current.setMessages([...runtime.askChats[2].messages] as UIMessage[])
+      chat2Ref.current.setMessages([
+        ...runtime.askChats[2].messages,
+      ] as UIMessage[]);
     }
     if (chat3Ref.current.messages !== runtime.askChats[3].messages) {
-      chat3Ref.current.setMessages([...runtime.askChats[3].messages] as UIMessage[])
+      chat3Ref.current.setMessages([
+        ...runtime.askChats[3].messages,
+      ] as UIMessage[]);
     }
     if (actChatRef.current.messages !== runtime.actChat.messages) {
-      actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
+      actChatRef.current.setMessages([
+        ...runtime.actChat.messages,
+      ] as UIMessage[]);
     }
-  }, [activeChatId, actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, isPublicShowcase, runtimeHydrationVersion, runtimesRef])
+  }, [
+    activeChatId,
+    actChatRef,
+    chat0Ref,
+    chat1Ref,
+    chat2Ref,
+    chat3Ref,
+    isPublicShowcase,
+    runtimeHydrationVersion,
+    runtimesRef,
+  ]);
 
   const {
     beginHeaderChatRename,
@@ -739,121 +789,175 @@ export default function ChatExperience({
     setChats,
     titleGenerationEnabled,
     updateRuntimeUiState,
-  })
+  });
 
-  const handleGeneratedUiChange = useCallback((messageId: string, partId: string, data: GeneratedUiData) => {
-    const patchMessages = (messages: UIMessage[]): { changed: boolean; messages: UIMessage[] } => {
-      let changed = false
-      const nextMessages = messages.map((message) => {
-        const current = message as unknown as { id?: string; parts?: Array<Record<string, unknown>> }
-        if (current.id !== messageId || !Array.isArray(current.parts)) return message
-        let partsChanged = false
-        const nextParts = current.parts.map((part) => {
-          if (
-            part.type === 'data' &&
-            part.id === partId &&
-            part.dataType === 'overlay.generated_ui'
-          ) {
-            partsChanged = true
-            return { ...part, data }
-          }
-          return part
+  const handleGeneratedUiChange = useCallback(
+    (messageId: string, partId: string, data: GeneratedUiData) => {
+      const patchMessages = (
+        messages: UIMessage[],
+      ): { changed: boolean; messages: UIMessage[] } => {
+        let changed = false;
+        const nextMessages = messages.map((message) => {
+          const current = message as unknown as {
+            id?: string;
+            parts?: Array<Record<string, unknown>>;
+          };
+          if (current.id !== messageId || !Array.isArray(current.parts))
+            return message;
+          let partsChanged = false;
+          const nextParts = current.parts.map((part) => {
+            if (
+              part.type === "data" &&
+              part.id === partId &&
+              part.dataType === "overlay.generated_ui"
+            ) {
+              partsChanged = true;
+              return { ...part, data };
+            }
+            return part;
+          });
+          if (!partsChanged) return message;
+          changed = true;
+          return { ...message, parts: nextParts } as UIMessage;
+        });
+        return { changed, messages: changed ? nextMessages : messages };
+      };
+
+      const targetChatId = isTemporaryChatRef.current
+        ? TEMPORARY_CHAT_ID
+        : activeChatIdRef.current;
+      const runtime = isTemporaryChatRef.current
+        ? emptyRuntimeRef.current
+        : targetChatId
+          ? runtimesRef.current.get(targetChatId)
+          : null;
+      if (!runtime) return;
+
+      let changed = false;
+      const actPatch = patchMessages(runtime.actChat.messages as UIMessage[]);
+      if (actPatch.changed) {
+        runtime.actChat.messages = actPatch.messages as never;
+        changed = true;
+      }
+      runtime.askChats.forEach((chat) => {
+        const patch = patchMessages(chat.messages as UIMessage[]);
+        if (patch.changed) {
+          chat.messages = patch.messages as never;
+          changed = true;
+        }
+      });
+      if (changed) {
+        if (
+          isTemporaryChatRef.current ||
+          (targetChatId && activeChatIdRef.current === targetChatId)
+        ) {
+          actChatRef.current.setMessages([
+            ...runtime.actChat.messages,
+          ] as UIMessage[]);
+          chat0Ref.current.setMessages([
+            ...runtime.askChats[0]!.messages,
+          ] as UIMessage[]);
+          chat1Ref.current.setMessages([
+            ...runtime.askChats[1]!.messages,
+          ] as UIMessage[]);
+          chat2Ref.current.setMessages([
+            ...runtime.askChats[2]!.messages,
+          ] as UIMessage[]);
+          chat3Ref.current.setMessages([
+            ...runtime.askChats[3]!.messages,
+          ] as UIMessage[]);
+        }
+        forceLiveSyncRender((value) => value + 1);
+      }
+
+      if (
+        isPublicShowcase ||
+        isTemporaryChatRef.current ||
+        !targetChatId ||
+        targetChatId === TEMPORARY_CHAT_ID
+      )
+        return;
+      void overlayAppClient.conversations
+        .updateMessageUiPartResponse({
+          conversationId: targetChatId,
+          messageId,
+          partId,
+          data,
         })
-        if (!partsChanged) return message
-        changed = true
-        return { ...message, parts: nextParts } as UIMessage
-      })
-      return { changed, messages: changed ? nextMessages : messages }
-    }
-
-    const targetChatId = isTemporaryChatRef.current ? TEMPORARY_CHAT_ID : activeChatIdRef.current
-    const runtime = isTemporaryChatRef.current
-      ? emptyRuntimeRef.current
-      : targetChatId
-        ? runtimesRef.current.get(targetChatId)
-        : null
-    if (!runtime) return
-
-    let changed = false
-    const actPatch = patchMessages(runtime.actChat.messages as UIMessage[])
-    if (actPatch.changed) {
-      runtime.actChat.messages = actPatch.messages as never
-      changed = true
-    }
-    runtime.askChats.forEach((chat) => {
-      const patch = patchMessages(chat.messages as UIMessage[])
-      if (patch.changed) {
-        chat.messages = patch.messages as never
-        changed = true
-      }
-    })
-    if (changed) {
-      if (isTemporaryChatRef.current || (targetChatId && activeChatIdRef.current === targetChatId)) {
-        actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
-        chat0Ref.current.setMessages([...runtime.askChats[0]!.messages] as UIMessage[])
-        chat1Ref.current.setMessages([...runtime.askChats[1]!.messages] as UIMessage[])
-        chat2Ref.current.setMessages([...runtime.askChats[2]!.messages] as UIMessage[])
-        chat3Ref.current.setMessages([...runtime.askChats[3]!.messages] as UIMessage[])
-      }
-      forceLiveSyncRender((value) => value + 1)
-    }
-
-    if (isPublicShowcase || isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
-    void overlayAppClient.conversations.updateMessageUiPartResponse({
-      conversationId: targetChatId,
-      messageId,
-      partId,
-      data,
-    }).then((res) => {
-      if (res.ok) return
-      setComposerNotice('Could not save draft edits.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
-    }).catch(() => {
-      setComposerNotice('Could not save draft edits.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
-    })
-  }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, isPublicShowcase, runtimesRef])
+        .then((res) => {
+          if (res.ok) return;
+          setComposerNotice("Could not save draft edits.");
+          window.setTimeout(() => setComposerNotice(null), 4000);
+        })
+        .catch(() => {
+          setComposerNotice("Could not save draft edits.");
+          window.setTimeout(() => setComposerNotice(null), 4000);
+        });
+    },
+    [
+      actChatRef,
+      chat0Ref,
+      chat1Ref,
+      chat2Ref,
+      chat3Ref,
+      emptyRuntimeRef,
+      forceLiveSyncRender,
+      isPublicShowcase,
+      runtimesRef,
+    ],
+  );
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = Boolean(
     activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
-  )
+  );
 
   useEffect(() => {
-    if (authLoading) return
-    if (initialChats === undefined || (!userId && authUser?.id)) void loadChats()
-    if (!isPublicShowcase) void loadSubscription()
-  }, [authLoading, authUser?.id, initialChats, isPublicShowcase, loadChats, loadSubscription, userId])
+    if (authLoading) return;
+    if (initialChats === undefined || (!userId && authUser?.id))
+      void loadChats();
+    if (!isPublicShowcase) void loadSubscription();
+  }, [
+    authLoading,
+    authUser?.id,
+    initialChats,
+    isPublicShowcase,
+    loadChats,
+    loadSubscription,
+    userId,
+  ]);
 
   useEffect(() => {
-    if (!activeChatId || isPublicShowcase) return
+    if (!activeChatId || isPublicShowcase) return;
     const t = window.setTimeout(() => {
       const normalized = normalizeChatModelSelection({
         askModelIds: selectedModels,
         actModelId: selectedActModel,
-      })
+      });
       void overlayAppClient.conversations.updateResponse({
         conversationId: activeChatId,
-        lastMode: 'act',
+        lastMode: "act",
         askModelIds: normalized.askModelIds,
         actModelId: normalized.actModelId,
-      })
-    }, 600)
-    return () => clearTimeout(t)
-  }, [selectedModels, selectedActModel, activeChatId, isPublicShowcase])
+      });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [selectedModels, selectedActModel, activeChatId, isPublicShowcase]);
 
-  const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
+  const automationHeaderModelId =
+    selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID;
 
   // Automations must always run with exactly one model. Collapse multi-model selection
   // whenever the user is working inside an automation surface so saved automations and
   // automation-chat runs never inherit a stale multi-model state.
   useEffect(() => {
-    if (mode !== 'automate') return
-    if (askModelSelectionMode !== 'multiple' && selectedModels.length <= 1) return
-    const primary = selectedActModel || selectedModels[0] || DEFAULT_MODEL_ID
-    setAskModelSelectionMode('single')
-    setSelectedModels([primary])
-    setSelectedActModel(primary)
+    if (mode !== "automate") return;
+    if (askModelSelectionMode !== "multiple" && selectedModels.length <= 1)
+      return;
+    const primary = selectedActModel || selectedModels[0] || DEFAULT_MODEL_ID;
+    setAskModelSelectionMode("single");
+    setSelectedModels([primary]);
+    setSelectedActModel(primary);
   }, [
     askModelSelectionMode,
     mode,
@@ -862,7 +966,7 @@ export default function ChatExperience({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-  ])
+  ]);
 
   const { invalidateLoadChatRequest, loadChat } = useChatConversationLoader({
     activeChatIdRef,
@@ -894,139 +998,173 @@ export default function ChatExperience({
     setSourcesPanel,
     shouldScrollRef,
     syncStandaloneChatUrl,
-  })
+  });
 
-  loadChatRef.current = loadChat
+  loadChatRef.current = loadChat;
 
-  invalidateLoadChatRequestRef.current = invalidateLoadChatRequest
+  invalidateLoadChatRequestRef.current = invalidateLoadChatRequest;
 
-  const refreshSelectedAutomation = useCallback(async (options?: {
-    showLoading?: boolean
-    conversationId?: string
-  }) => {
-    if (mode !== 'automate') {
-      setSelectedAutomation(null)
-      setSelectedAutomationLoading(false)
-      return
-    }
-    if (options?.showLoading !== false) setSelectedAutomationLoading(true)
-    try {
-      let automationId = automationIdParam
-      if (!automationId) {
-        const conversationId = options?.conversationId ?? activeChatIdRef.current
-        if (conversationId) {
-          const page = await overlayAppClient.automations.getPage<AutomationDetail>({ limit: 100 })
-          const linked = (Array.isArray(page.data) ? page.data : []).find((automation) => (
-            automation.conversationId === conversationId
-          ))
-          if (linked) {
-            automationId = linked._id
-            setSelectedAutomation(linked)
-            const params = new URLSearchParams(searchParams?.toString() ?? '')
-            params.set('automationId', linked._id)
-            if (!params.get('id')) params.set('id', conversationId)
-            const query = params.toString()
-            router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false })
+  const refreshSelectedAutomation = useCallback(
+    async (options?: { showLoading?: boolean; conversationId?: string }) => {
+      if (mode !== "automate") {
+        setSelectedAutomation(null);
+        setSelectedAutomationLoading(false);
+        return;
+      }
+      if (options?.showLoading !== false) setSelectedAutomationLoading(true);
+      try {
+        let automationId = automationIdParam;
+        if (!automationId) {
+          const conversationId =
+            options?.conversationId ?? activeChatIdRef.current;
+          if (conversationId) {
+            const page =
+              await overlayAppClient.automations.getPage<AutomationDetail>({
+                limit: 100,
+              });
+            const linked = (Array.isArray(page.data) ? page.data : []).find(
+              (automation) => automation.conversationId === conversationId,
+            );
+            if (linked) {
+              automationId = linked._id;
+              setSelectedAutomation(linked);
+              const params = new URLSearchParams(
+                searchParams?.toString() ?? "",
+              );
+              params.set("automationId", linked._id);
+              if (!params.get("id")) params.set("id", conversationId);
+              const query = params.toString();
+              router.replace(`${pathname}${query ? `?${query}` : ""}`, {
+                scroll: false,
+              });
+            }
           }
         }
-      }
-      if (!automationId) {
-        setSelectedAutomation(null)
-        return
-      }
-      const res = await overlayAppClient.automations.getResponse({ automationId }, {
-        credentials: 'same-origin',
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error('Failed to load automation')
-      const automation = await res.json() as AutomationDetail
-      // Only the automation-owned thread is shown — the source conversation is
-      // provenance (the chat the automation was drafted in) and stays a normal
-      // chat for its owner.
-      const candidates = [automation.conversationId]
-        .filter((value): value is string => Boolean(value))
-      let resolvedConversationId: string | null = null
-      for (const candidate of candidates) {
-        const conversationResponse = await overlayAppClient.conversations.getResponse({
-          conversationId: candidate,
-        }, { cache: 'no-store' }).catch(() => null)
-        if (conversationResponse?.ok) {
-          resolvedConversationId = candidate
-          break
+        if (!automationId) {
+          setSelectedAutomation(null);
+          return;
         }
+        const res = await overlayAppClient.automations.getResponse(
+          { automationId },
+          {
+            credentials: "same-origin",
+            cache: "no-store",
+          },
+        );
+        if (!res.ok) throw new Error("Failed to load automation");
+        const automation = (await res.json()) as AutomationDetail;
+        // Only the automation-owned thread is shown — the source conversation is
+        // provenance (the chat the automation was drafted in) and stays a normal
+        // chat for its owner.
+        const candidates = [automation.conversationId].filter(
+          (value): value is string => Boolean(value),
+        );
+        let resolvedConversationId: string | null = null;
+        for (const candidate of candidates) {
+          const conversationResponse = await overlayAppClient.conversations
+            .getResponse(
+              {
+                conversationId: candidate,
+              },
+              { cache: "no-store" },
+            )
+            .catch(() => null);
+          if (conversationResponse?.ok) {
+            resolvedConversationId = candidate;
+            break;
+          }
+        }
+        const validatedAutomation: AutomationDetail = {
+          ...automation,
+          sourceConversationId:
+            resolvedConversationId === automation.sourceConversationId
+              ? automation.sourceConversationId
+              : undefined,
+          conversationId:
+            resolvedConversationId === automation.conversationId
+              ? automation.conversationId
+              : undefined,
+        };
+        setSelectedAutomation(validatedAutomation);
+        const currentId = searchParams?.get("id");
+        if (currentId !== resolvedConversationId) {
+          const params = new URLSearchParams(searchParams?.toString() ?? "");
+          if (resolvedConversationId) params.set("id", resolvedConversationId);
+          else params.delete("id");
+          params.set("automationId", automation._id);
+          const query = params.toString();
+          router.replace(`${pathname}${query ? `?${query}` : ""}`, {
+            scroll: false,
+          });
+        }
+      } catch {
+        setSelectedAutomation(null);
+      } finally {
+        setSelectedAutomationLoading(false);
       }
-      const validatedAutomation: AutomationDetail = {
-        ...automation,
-        sourceConversationId:
-          resolvedConversationId === automation.sourceConversationId
-            ? automation.sourceConversationId
-            : undefined,
-        conversationId:
-          resolvedConversationId === automation.conversationId
-            ? automation.conversationId
-            : undefined,
-      }
-      setSelectedAutomation(validatedAutomation)
-      const currentId = searchParams?.get('id')
-      if (currentId !== resolvedConversationId) {
-        const params = new URLSearchParams(searchParams?.toString() ?? '')
-        if (resolvedConversationId) params.set('id', resolvedConversationId)
-        else params.delete('id')
-        params.set('automationId', automation._id)
-        const query = params.toString()
-        router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false })
-      }
-    } catch {
-      setSelectedAutomation(null)
-    } finally {
-      setSelectedAutomationLoading(false)
-    }
-  }, [activeChatIdRef, automationIdParam, mode, pathname, router, searchParams])
+    },
+    [activeChatIdRef, automationIdParam, mode, pathname, router, searchParams],
+  );
 
   useEffect(() => {
-    void refreshSelectedAutomation()
-  }, [refreshSelectedAutomation])
+    void refreshSelectedAutomation();
+  }, [refreshSelectedAutomation]);
+
+  const [prevActiveLoading, setPrevActiveLoading] = useState(isActiveLoading);
+  if (prevActiveLoading !== isActiveLoading) {
+    setPrevActiveLoading(isActiveLoading);
+    if (isActiveLoading) setIsOptimisticLoading(false);
+  }
 
   useEffect(() => {
-    if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
-      snapshotCurrentAskThreadsForModelPicker()
-      loadSubscription()
+    if (
+      wasStreamingRef.current &&
+      !isActiveLoading &&
+      chat0.messages.length > 0
+    ) {
+      snapshotCurrentAskThreadsForModelPicker();
+      loadSubscription();
     }
-    wasStreamingRef.current = isActiveLoading
-    if (isActiveLoading) setIsOptimisticLoading(false)
+    wasStreamingRef.current = isActiveLoading;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActiveLoading, chat0.messages.length])
+  }, [isActiveLoading, chat0.messages.length]);
 
   useEffect(() => {
-    if (!isActiveLoading) return
-    const lastAssistant = [...actChat.messages].reverse().find((m) => m.role === 'assistant')
-    if (!lastAssistant) return
+    if (!isActiveLoading) return;
+    const lastAssistant = [...actChat.messages]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    if (!lastAssistant) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parts = (lastAssistant as any).parts as Array<{ type: string; text?: string }> | undefined
-    const hasText = parts?.some((p) => p.type === 'text' && (p.text?.trim().length ?? 0) > 0)
-    if (!hasText) return
-    tryLogTtftClientFirstText()
-  }, [isActiveLoading, actChat.messages, selectedActModel])
+    const parts = (lastAssistant as any).parts as
+      | Array<{ type: string; text?: string }>
+      | undefined;
+    const hasText = parts?.some(
+      (p) => p.type === "text" && (p.text?.trim().length ?? 0) > 0,
+    );
+    if (!hasText) return;
+    tryLogTtftClientFirstText();
+  }, [isActiveLoading, actChat.messages, selectedActModel]);
 
   useLayoutEffect(() => {
-    const turnId = pendingScrollTurnIdRef.current
-    if (!turnId || !messagesScrollRef.current) return
-    const pendingChatId = pendingScrollChatIdRef.current
-    if (pendingChatId && activeChatId !== pendingChatId) return
+    const turnId = pendingScrollTurnIdRef.current;
+    if (!turnId || !messagesScrollRef.current) return;
+    const pendingChatId = pendingScrollChatIdRef.current;
+    if (pendingChatId && activeChatId !== pendingChatId) return;
     const scrollFrame = window.requestAnimationFrame(() => {
-      const container = messagesScrollRef.current
-      if (!container || pendingScrollTurnIdRef.current !== turnId) return
+      const container = messagesScrollRef.current;
+      if (!container || pendingScrollTurnIdRef.current !== turnId) return;
       const target = container.querySelector<HTMLElement>(
         `[data-exchange-turn="${CSS.escape(turnId)}"]`,
-      )
-      if (!target) return
+      );
+      if (!target) return;
       // The shared transcript hook performs the single top-alignment. These
       // refs only suppress the older send-to-bottom path until the optimistic
       // exchange is mounted; streaming updates must never move the viewport.
-      pendingScrollTurnIdRef.current = null
-      pendingScrollChatIdRef.current = null
-    })
-    return () => window.cancelAnimationFrame(scrollFrame)
+      pendingScrollTurnIdRef.current = null;
+      pendingScrollChatIdRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(scrollFrame);
   }, [
     activeChatId,
     chat0.messages,
@@ -1036,45 +1174,47 @@ export default function ChatExperience({
     isActiveLoading,
     isOptimisticLoading,
     runtimeHydrationVersion,
-  ])
+  ]);
 
   const updateConversationBottomVisibility = useCallback(() => {
-    const container = messagesScrollRef.current
-    const endMarker = messagesEndRef.current
+    const container = messagesScrollRef.current;
+    const endMarker = messagesEndRef.current;
     if (!container || !endMarker) {
-      setIsConversationBottomVisible(true)
-      return
+      setIsConversationBottomVisible(true);
+      return;
     }
-    const containerRect = container.getBoundingClientRect()
-    const markerRect = endMarker.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect();
+    const markerRect = endMarker.getBoundingClientRect();
     const visible =
       markerRect.top <= containerRect.bottom + 24 &&
-      markerRect.bottom >= containerRect.top - 24
-    setIsConversationBottomVisible((current) => (current === visible ? current : visible))
-  }, [])
+      markerRect.bottom >= containerRect.top - 24;
+    setIsConversationBottomVisible((current) =>
+      current === visible ? current : visible,
+    );
+  }, []);
 
   useEffect(() => {
-    const container = messagesScrollRef.current
+    const container = messagesScrollRef.current;
     if (!container) {
-      setIsConversationBottomVisible(true)
-      return
+      setIsConversationBottomVisible(true);
+      return;
     }
-    let frame = 0
+    let frame = 0;
     const schedule = () => {
-      if (frame) window.cancelAnimationFrame(frame)
+      if (frame) window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        frame = 0
-        updateConversationBottomVisibility()
-      })
-    }
-    container.addEventListener('scroll', schedule, { passive: true })
-    window.addEventListener('resize', schedule)
-    schedule()
+        frame = 0;
+        updateConversationBottomVisibility();
+      });
+    };
+    container.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    schedule();
     return () => {
-      if (frame) window.cancelAnimationFrame(frame)
-      container.removeEventListener('scroll', schedule)
-      window.removeEventListener('resize', schedule)
-    }
+      if (frame) window.cancelAnimationFrame(frame);
+      container.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
   }, [
     activeChatId,
     isActiveLoading,
@@ -1083,11 +1223,13 @@ export default function ChatExperience({
     runtimeHydrationVersion,
     showAutomationChatTab,
     updateConversationBottomVisibility,
-  ])
+  ]);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(updateConversationBottomVisibility)
-    return () => window.cancelAnimationFrame(frame)
+    const frame = window.requestAnimationFrame(
+      updateConversationBottomVisibility,
+    );
+    return () => window.cancelAnimationFrame(frame);
   }, [
     actChat.messages.length,
     chat0.messages.length,
@@ -1098,112 +1240,142 @@ export default function ChatExperience({
     isOptimisticLoading,
     runtimeHydrationVersion,
     updateConversationBottomVisibility,
-  ])
+  ]);
 
-  const scrollToConversationBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    const endMarker = messagesEndRef.current
-    if (endMarker) {
-      endMarker.scrollIntoView({ behavior, block: 'end' })
-      window.requestAnimationFrame(updateConversationBottomVisibility)
-      return
-    }
-    const container = messagesScrollRef.current
-    if (!container) return
-    container.scrollTo({ top: container.scrollHeight, behavior })
-    window.requestAnimationFrame(updateConversationBottomVisibility)
-  }, [updateConversationBottomVisibility])
+  const scrollToConversationBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const endMarker = messagesEndRef.current;
+      if (endMarker) {
+        endMarker.scrollIntoView({ behavior, block: "end" });
+        window.requestAnimationFrame(updateConversationBottomVisibility);
+        return;
+      }
+      const container = messagesScrollRef.current;
+      if (!container) return;
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      window.requestAnimationFrame(updateConversationBottomVisibility);
+    },
+    [updateConversationBottomVisibility],
+  );
 
   useEffect(() => {
     if (shouldScrollRef.current) {
       if (pendingScrollTurnIdRef.current) {
-        shouldScrollRef.current = false
-        return
+        shouldScrollRef.current = false;
+        return;
       }
-      scrollToConversationBottom('smooth')
-      shouldScrollRef.current = false
+      scrollToConversationBottom("smooth");
+      shouldScrollRef.current = false;
     }
-  }, [chat0.messages.length, actChat.messages.length, scrollToConversationBottom])
+  }, [
+    chat0.messages.length,
+    actChat.messages.length,
+    scrollToConversationBottom,
+  ]);
 
   useEffect(() => {
-    if (!showAttachMenu) return
+    if (!showAttachMenu) return;
     function handleOutside(e: MouseEvent) {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node))
-        setShowAttachMenu(false)
+      if (
+        attachMenuRef.current &&
+        !attachMenuRef.current.contains(e.target as Node)
+      )
+        setShowAttachMenu(false);
     }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [showAttachMenu])
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showAttachMenu]);
 
   useEffect(() => {
-    if (!showModeMenu) return
+    if (!showModeMenu) return;
     function handleOutside(e: MouseEvent) {
-      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node))
-        setShowModeMenu(false)
+      if (
+        modeMenuRef.current &&
+        !modeMenuRef.current.contains(e.target as Node)
+      )
+        setShowModeMenu(false);
     }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [showModeMenu])
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showModeMenu]);
 
   // Auto-resize is now handled internally by MentionInput
 
   // ── response lookup ────────────────────────────────────────────────────────
 
-  const getResponseForExchangeForModel = useCallback((
-    modelId: string,
-    exchIdx: number,
-    /** For Act multi-compare, slot order is the exchange's model list, not the global picker. */
-    slotOrder?: string[],
-  ): UIMessage | null => selectResponseForExchangeForModel({
-    modelId,
-    exchangeIndex: exchIdx,
-    slotOrder,
-    selectedModels,
-    activeRuntime,
-    activeAskChats,
-    isActiveLoading,
-  }), [activeAskChats, activeRuntime, isActiveLoading, selectedModels])
+  const getResponseForExchangeForModel = useCallback(
+    (
+      modelId: string,
+      exchIdx: number,
+      /** For Act multi-compare, slot order is the exchange's model list, not the global picker. */
+      slotOrder?: string[],
+    ): UIMessage | null =>
+      selectResponseForExchangeForModel({
+        modelId,
+        exchangeIndex: exchIdx,
+        slotOrder,
+        selectedModels,
+        activeRuntime,
+        activeAskChats,
+        isActiveLoading,
+      }),
+    [activeAskChats, activeRuntime, isActiveLoading, selectedModels],
+  );
 
   // ── stable callbacks ───────────────────────────────────────────────────────
 
-  const handleTabSelect = useCallback((exchIdx: number, tabIdx: number) => {
-    setSelectedTabPerExchange((prev) => {
-      const next = [...prev]
-      next[exchIdx] = tabIdx
-      return next
-    })
-  }, [])
+  const handleTabSelect = useCallback(
+    (exchIdx: number, tabIdx: number) => {
+      setSelectedTabPerExchange((prev) => {
+        const next = [...prev];
+        next[exchIdx] = tabIdx;
+        return next;
+      });
+    },
+    [setSelectedTabPerExchange],
+  );
 
-  const beginReplyToAssistantText = useCallback((assistantText: string, targetUserTurnId: string | null) => {
-    const t = assistantText.trim()
-    if (!t) {
-      textareaRef.current?.focus()
-      return
-    }
-    setReplyContext({
-      snippet: t.length > 160 ? `${t.slice(0, 160)}…` : t,
-      bodyForModel: t.slice(0, 16000),
-      ...(targetUserTurnId ? { replyToTurnId: targetUserTurnId } : {}),
-    })
-    textareaRef.current?.focus()
-  }, [])
+  const beginReplyToAssistantText = useCallback(
+    (assistantText: string, targetUserTurnId: string | null) => {
+      const t = assistantText.trim();
+      if (!t) {
+        textareaRef.current?.focus();
+        return;
+      }
+      setReplyContext({
+        snippet: t.length > 160 ? `${t.slice(0, 160)}…` : t,
+        bodyForModel: t.slice(0, 16000),
+        ...(targetUserTurnId ? { replyToTurnId: targetUserTurnId } : {}),
+      });
+      textareaRef.current?.focus();
+    },
+    [],
+  );
 
-  const beginReplyToMediaPrompt = useCallback((prompt: string, kind: 'image' | 'video', targetUserTurnId: string | null) => {
-    const t = prompt.trim()
-    if (!t) {
-      textareaRef.current?.focus()
-      return
-    }
-    setReplyContext({
-      snippet: t.length > 120 ? `${t.slice(0, 120)}…` : t,
-      bodyForModel: `[Prior ${kind} generation request]\n${t.slice(0, 12000)}`,
-      ...(targetUserTurnId ? { replyToTurnId: targetUserTurnId } : {}),
-    })
-    textareaRef.current?.focus()
-  }, [])
+  const beginReplyToMediaPrompt = useCallback(
+    (
+      prompt: string,
+      kind: "image" | "video",
+      targetUserTurnId: string | null,
+    ) => {
+      const t = prompt.trim();
+      if (!t) {
+        textareaRef.current?.focus();
+        return;
+      }
+      setReplyContext({
+        snippet: t.length > 120 ? `${t.slice(0, 120)}…` : t,
+        bodyForModel: `[Prior ${kind} generation request]\n${t.slice(0, 12000)}`,
+        ...(targetUserTurnId ? { replyToTurnId: targetUserTurnId } : {}),
+      });
+      textareaRef.current?.focus();
+    },
+    [],
+  );
 
   const jumpToReplyTarget = useCallback((turnId: string) => {
-    scrollToExchangeTurn(turnId)
-  }, [])
+    scrollToExchangeTurn(turnId);
+  }, []);
 
   const {
     handleModeChange,
@@ -1247,139 +1419,169 @@ export default function ChatExperience({
     userAskModelOverrideRef,
     videoModelSelectionMode,
     videoSubMode,
-  })
+  });
 
   // ── chat management ────────────────────────────────────────────────────────
 
   function removeTurnFromRuntime(chatId: string, turnId: string) {
-    const runtime = ensureConversationRuntime(chatId)
-    const { removedExchangeIndex } = removeTurnFromConversationRuntime(runtime, turnId)
+    const runtime = ensureConversationRuntime(chatId);
+    const { removedExchangeIndex } = removeTurnFromConversationRuntime(
+      runtime,
+      turnId,
+    );
 
     runtime.askChats.forEach((chat, index) => {
       if (activeChatIdRef.current === chatId && chatInstances[index]) {
-        chatInstances[index].setMessages([...chat.messages] as UIMessage[])
+        chatInstances[index].setMessages([...chat.messages] as UIMessage[]);
       }
-    })
+    });
     if (activeChatIdRef.current === chatId) {
-      actChat.setMessages([...runtime.actChat.messages] as UIMessage[])
+      actChat.setMessages([...runtime.actChat.messages] as UIMessage[]);
     }
 
     if (removedExchangeIndex >= 0) {
-      if (activeChatIdRef.current === chatId) applyUiStateToView(runtime.ui)
+      if (activeChatIdRef.current === chatId) applyUiStateToView(runtime.ui);
     }
-    setRuntimeHydrationVersion((value) => value + 1)
+    setRuntimeHydrationVersion((value) => value + 1);
   }
 
   function handleTemporaryChatToggle() {
-    if (isActiveLoading) return
-    resetToBlankChatSurface({ temporary: !isTemporaryChat })
+    if (isActiveLoading) return;
+    resetToBlankChatSurface({ temporary: !isTemporaryChat });
   }
 
   async function handleBranchConversationAtTurn(turnId: string | null) {
-    const sourceChatId = activeChatIdRef.current ?? activeChatId
-    const targetTurnId = turnId?.trim()
-    if (!sourceChatId || !targetTurnId || isActiveLoading) return
+    const sourceChatId = activeChatIdRef.current ?? activeChatId;
+    const targetTurnId = turnId?.trim();
+    if (!sourceChatId || !targetTurnId || isActiveLoading) return;
     try {
-      setComposerNotice('Creating branch…')
-      setIsSwitchingChat(true)
+      setComposerNotice("Creating branch…");
+      setIsSwitchingChat(true);
       const sourceRes = await overlayAppClient.conversations.getResponse({
         conversationId: sourceChatId,
         messages: true,
-      })
-      if (!sourceRes.ok) throw new Error('Could not load source chat')
-      const sourceData = await sourceRes.json() as {
+      });
+      if (!sourceRes.ok) throw new Error("Could not load source chat");
+      const sourceData = (await sourceRes.json()) as {
         messages?: Array<{
-          turnId?: string
-          mode?: 'ask' | 'act'
-          role?: 'user' | 'assistant'
-          contentType?: 'text' | 'image' | 'video'
-          parts?: Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
-          model?: string
-          variantIndex?: number
-          replyToTurnId?: string
-          replySnippet?: string
-        }>
-      }
-      const rows: NonNullable<typeof sourceData.messages> = []
+          turnId?: string;
+          mode?: "ask" | "act";
+          role?: "user" | "assistant";
+          contentType?: "text" | "image" | "video";
+          parts?: Array<{
+            type: string;
+            text?: string;
+            url?: string;
+            mediaType?: string;
+            fileName?: string;
+          }>;
+          model?: string;
+          variantIndex?: number;
+          replyToTurnId?: string;
+          replySnippet?: string;
+        }>;
+      };
+      const rows: NonNullable<typeof sourceData.messages> = [];
       for (const message of sourceData.messages ?? []) {
-        rows.push(message)
-        if (message.turnId === targetTurnId && message.role === 'assistant') {
-          continue
+        rows.push(message);
+        if (message.turnId === targetTurnId && message.role === "assistant") {
+          continue;
         }
       }
-      const targetIdx = rows.findLastIndex((message) => message.turnId === targetTurnId)
-      if (targetIdx < 0) throw new Error('Could not find that turn')
-      const branchRows = rows.slice(0, targetIdx + 1)
-      const branchChatId = await createNewChat({ title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch` })
-      if (!branchChatId) throw new Error('Could not create branch')
-      const branchCopyRequestPrefix = createIdempotencyKey()
+      const targetIdx = rows.findLastIndex(
+        (message) => message.turnId === targetTurnId,
+      );
+      if (targetIdx < 0) throw new Error("Could not find that turn");
+      const branchRows = rows.slice(0, targetIdx + 1);
+      const branchChatId = await createNewChat({
+        title: `${activeChatTitle || DEFAULT_CHAT_TITLE} branch`,
+      });
+      if (!branchChatId) throw new Error("Could not create branch");
+      const branchCopyRequestPrefix = createIdempotencyKey();
       for (const [messageIndex, message] of branchRows.entries()) {
         const content = (message.parts ?? [])
           .filter((part) => part.type === 'text' && part.text?.trim())
           .map((part) => part.text!.trim())
           .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
         const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
+        // Sequential on purpose: branch messages must be appended in order —
+        // parallel copies could interleave the conversation history.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const res = await overlayAppClient.conversations.addMessageResponse(
           {
             conversationId: branchChatId,
             turnId: message.turnId,
-            mode: message.mode ?? 'act',
+            mode: message.mode ?? "act",
             role: message.role,
             content,
             parts,
             modelId: message.model,
-            contentType: message.contentType ?? 'text',
+            contentType: message.contentType ?? "text",
             variantIndex: message.variantIndex,
-            ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet } : {}),
+            ...(message.replyToTurnId
+              ? {
+                  replyToTurnId: message.replyToTurnId,
+                  replySnippet: message.replySnippet,
+                }
+              : {}),
           },
           {
             idempotencyKey: [
-              'branch-copy',
+              "branch-copy",
               branchCopyRequestPrefix,
               messageIndex,
-              message.role ?? 'unknown',
+              message.role ?? "unknown",
               message.variantIndex ?? 0,
-            ].join(':'),
+            ].join(":"),
           },
-        )
-        if (!res.ok) throw new Error('Could not copy branch messages')
+        );
+        if (!res.ok) throw new Error("Could not copy branch messages");
       }
-      const branchRuntime = runtimesRef.current.get(branchChatId)
-      if (branchRuntime) branchRuntime.hydrated = false
-      await loadChat(branchChatId)
-      setComposerNotice('Branch created.')
-      window.setTimeout(() => setComposerNotice(null), 2500)
+      const branchRuntime = runtimesRef.current.get(branchChatId);
+      if (branchRuntime) branchRuntime.hydrated = false;
+      await loadChat(branchChatId);
+      setComposerNotice("Branch created.");
+      window.setTimeout(() => setComposerNotice(null), 2500);
     } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Could not create branch')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-      setIsSwitchingChat(false)
+      setComposerNotice(
+        error instanceof Error ? error.message : "Could not create branch",
+      );
+      window.setTimeout(() => setComposerNotice(null), 5000);
+      setIsSwitchingChat(false);
     }
   }
 
   async function handleDeleteTurnById(turnId: string) {
-    const cid = activeChatIdRef.current ?? activeChatId
+    const cid = activeChatIdRef.current ?? activeChatId;
     if (!cid || !turnId) {
-      setComposerNotice('Cannot delete this message right now.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
-      return
+      setComposerNotice("Cannot delete this message right now.");
+      window.setTimeout(() => setComposerNotice(null), 4000);
+      return;
     }
-    const EXIT_MS = 300
-    setExitingTurnIds((prev) => (prev.includes(turnId) ? prev : [...prev, turnId]))
-    await new Promise((r) => window.setTimeout(r, EXIT_MS))
+    const EXIT_MS = 300;
+    setExitingTurnIds((prev) =>
+      prev.includes(turnId) ? prev : [...prev, turnId],
+    );
+    await new Promise((r) => window.setTimeout(r, EXIT_MS));
     try {
-      const res = await overlayAppClient.conversations.deleteMessageResponse({ conversationId: cid, turnId })
-      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      const res = await overlayAppClient.conversations.deleteMessageResponse({
+        conversationId: cid,
+        turnId,
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
       if (!res.ok) {
-        setComposerNotice(payload.error || 'Could not delete this turn.')
-        window.setTimeout(() => setComposerNotice(null), 5000)
-        return
+        setComposerNotice(payload.error || "Could not delete this turn.");
+        window.setTimeout(() => setComposerNotice(null), 5000);
+        return;
       }
-      removeTurnFromRuntime(cid, turnId)
+      removeTurnFromRuntime(cid, turnId);
     } catch {
-      setComposerNotice('Could not delete this turn.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
+      setComposerNotice("Could not delete this turn.");
+      window.setTimeout(() => setComposerNotice(null), 5000);
     } finally {
-      setExitingTurnIds((prev) => prev.filter((id) => id !== turnId))
+      setExitingTurnIds((prev) => prev.filter((id) => id !== turnId));
     }
   }
 
@@ -1398,16 +1600,14 @@ export default function ChatExperience({
     setComposerNotice,
     shouldScrollRef,
     startSession,
-  })
+  });
 
-  const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
+  const effectiveGenType =
+    generationChip ?? (generationMode !== "text" ? generationMode : null);
 
-  const { requireAuth } = useGuestGate()
+  const { requireAuth } = useGuestGate();
 
-  const {
-    createNewChat,
-    handleSend,
-  } = useChatSendController({
+  const { createNewChat, handleSend } = useChatSendController({
     activeChatId,
     activeChatIdRef,
     activeChatTitle,
@@ -1476,130 +1676,164 @@ export default function ChatExperience({
     updateRuntimeUiState,
     userId,
     videoSubMode,
-  })
+  });
 
   const effectiveHandleSend = useCallback(async () => {
     if (isPublicShowcase) {
-      requireAuth('nav')
-      return
+      requireAuth("nav");
+      return;
     }
     if (personMentions.length > 0) {
-      setPersonalMentionConfirmationOpen(true)
-      return
+      setPersonalMentionConfirmationOpen(true);
+      return;
     }
-    await handleSend()
-  }, [handleSend, isPublicShowcase, personMentions.length, requireAuth, setPersonalMentionConfirmationOpen])
+    await handleSend();
+  }, [
+    handleSend,
+    isPublicShowcase,
+    personMentions.length,
+    requireAuth,
+    setPersonalMentionConfirmationOpen,
+  ]);
 
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
-      textareaRef.current?.focus()
-    }, 0)
-  }, [])
+      textareaRef.current?.focus();
+    }, 0);
+  }, []);
 
-  const handlePersonalChatModeChange = useCallback((nextMode: PersonalChatMode) => {
-    setPersonalChatMode(nextMode)
-    safeSetLocalStorage(PERSONAL_CHAT_MODE_KEY, nextMode)
-  }, [setPersonalChatMode])
+  const handlePersonalChatModeChange = useCallback(
+    (nextMode: PersonalChatMode) => {
+      setPersonalChatMode(nextMode);
+      safeSetLocalStorage(PERSONAL_CHAT_MODE_KEY, nextMode);
+    },
+    [setPersonalChatMode],
+  );
 
-  const handleGenerationModeChange = useCallback((nextMode: GenerationMode) => {
-    if (nextMode !== 'text' && personalChatMode === 'work') {
-      handlePersonalChatModeChange('chat')
-    }
-    handleModeChange(nextMode)
-  }, [handleModeChange, handlePersonalChatModeChange, personalChatMode])
+  const handleGenerationModeChange = useCallback(
+    (nextMode: GenerationMode) => {
+      if (nextMode !== "text" && personalChatMode === "work") {
+        handlePersonalChatModeChange("chat");
+      }
+      handleModeChange(nextMode);
+    },
+    [handleModeChange, handlePersonalChatModeChange, personalChatMode],
+  );
 
-  const handleGenerationChipChange = useCallback((chip: 'image' | 'video' | null) => {
-    if (chip && personalChatMode === 'work') {
-      handlePersonalChatModeChange('chat')
-    }
-    setGenerationChip(chip)
-  }, [handlePersonalChatModeChange, personalChatMode, setGenerationChip])
+  const handleGenerationChipChange = useCallback(
+    (chip: "image" | "video" | null) => {
+      if (chip && personalChatMode === "work") {
+        handlePersonalChatModeChange("chat");
+      }
+      setGenerationChip(chip);
+    },
+    [handlePersonalChatModeChange, personalChatMode, setGenerationChip],
+  );
 
-  const submitWorkApproval = useCallback(async (approved: boolean) => {
-    const run = agentRunLifecycle.run
-    if (!activeChatId || !run?.approval || run.status !== 'waiting_for_approval') return
-    setApprovalSubmitting(true)
-    try {
-      await overlayAppClient.conversations.submitRunApproval({
-        conversationId: activeChatId,
-        agentRunId: run.id,
-        token: run.approval.token,
-        approved,
-      })
-      await agentRunLifecycle.refresh()
-    } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Could not submit approval.')
-    } finally {
-      setApprovalSubmitting(false)
-    }
-  }, [activeChatId, agentRunLifecycle])
-
-  const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
-    ? (
-        <div className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 shadow-sm">
-          <p className="text-sm font-medium text-[var(--foreground)]">{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              disabled={approvalSubmitting}
-              onClick={() => void submitWorkApproval(true)}
-              className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] disabled:opacity-50"
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              disabled={approvalSubmitting}
-              onClick={() => void submitWorkApproval(false)}
-              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] disabled:opacity-50"
-            >
-              Deny
-            </button>
-          </div>
-        </div>
+  const submitWorkApproval = useCallback(
+    async (approved: boolean) => {
+      const run = agentRunLifecycle.run;
+      if (
+        !activeChatId ||
+        !run?.approval ||
+        run.status !== "waiting_for_approval"
       )
-    : undefined
+        return;
+      setApprovalSubmitting(true);
+      try {
+        await overlayAppClient.conversations.submitRunApproval({
+          conversationId: activeChatId,
+          agentRunId: run.id,
+          token: run.approval.token,
+          approved,
+        });
+        await agentRunLifecycle.refresh();
+      } catch (error) {
+        setComposerNotice(
+          error instanceof Error ? error.message : "Could not submit approval.",
+        );
+      } finally {
+        setApprovalSubmitting(false);
+      }
+    },
+    [activeChatId, agentRunLifecycle],
+  );
+
+  const workApprovalContent =
+    agentRunLifecycle.run?.status === "waiting_for_approval" &&
+    agentRunLifecycle.run.approval ? (
+      <div className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 shadow-sm">
+        <p className="text-sm font-medium text-[var(--foreground)]">
+          {agentRunLifecycle.run.approval.title ?? "Work needs your approval"}
+        </p>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          {agentRunLifecycle.run.approval.requests
+            .map((request) => request.toolName)
+            .join(", ")}
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={approvalSubmitting}
+            onClick={() => void submitWorkApproval(true)}
+            className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] disabled:opacity-50"
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            disabled={approvalSubmitting}
+            onClick={() => void submitWorkApproval(false)}
+            className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] disabled:opacity-50"
+          >
+            Deny
+          </button>
+        </div>
+      </div>
+    ) : undefined;
 
   const handleEmptySuggestion = useCallback(
     (id: EmptyChatSuggestionId) => {
-      if (id === 'image') {
-        handleGenerationModeChange('image')
-        handleGenerationChipChange('image')
-        setInput('')
-        focusComposer()
-        return
+      if (id === "image") {
+        handleGenerationModeChange("image");
+        handleGenerationChipChange("image");
+        setInput("");
+        focusComposer();
+        return;
       }
-      if (id === 'write') {
-        handleGenerationModeChange('text')
-        setInput('Help me write or edit ')
-        focusComposer()
-        return
+      if (id === "write") {
+        handleGenerationModeChange("text");
+        setInput("Help me write or edit ");
+        focusComposer();
+        return;
       }
-      handleGenerationModeChange('text')
+      handleGenerationModeChange("text");
       setSelectedToolIds((current) =>
-        current.includes('web_search') ? current : [...current, 'web_search'],
-      )
-      setInput('Look up ')
-      focusComposer()
+        current.includes("web_search") ? current : [...current, "web_search"],
+      );
+      setInput("Look up ");
+      focusComposer();
     },
-    [focusComposer, handleGenerationChipChange, handleGenerationModeChange, setInput],
-  )
+    [
+      focusComposer,
+      handleGenerationChipChange,
+      handleGenerationModeChange,
+      setInput,
+    ],
+  );
 
   const handleAutomateSuggestion = useCallback(
     (id: EmptyAutomateSuggestionId) => {
       const prompts: Record<EmptyAutomateSuggestionId, string> = {
-        workflow: 'Build a workflow that ',
-        monitor: 'Monitor a website and alert me when it changes',
-        schedule: 'Schedule a weekly report and send it to my team',
-      }
-      setInput(prompts[id])
-      focusComposer()
+        workflow: "Build a workflow that ",
+        monitor: "Monitor a website and alert me when it changes",
+        schedule: "Schedule a weekly report and send it to my team",
+      };
+      setInput(prompts[id]);
+      focusComposer();
     },
     [focusComposer, setInput],
-  )
+  );
 
   const isActiveLoadingRef = useRef(isActiveLoading)
   useEffect(() => {
@@ -1608,75 +1842,94 @@ export default function ChatExperience({
 
   useEffect(() => {
     function onGlobalKeyDown(e: KeyboardEvent) {
-      const meta = e.metaKey || e.ctrlKey
+      const meta = e.metaKey || e.ctrlKey;
 
-      if (meta && e.shiftKey && (e.key === '/' || e.key === '?')) {
-        e.preventDefault()
-        setShowModelPicker((v) => !v)
-        return
+      if (meta && e.shiftKey && (e.key === "/" || e.key === "?")) {
+        e.preventDefault();
+        setShowModelPicker((v) => !v);
+        return;
       }
 
-      if (meta && e.shiftKey && e.key === '.') {
-        if (isActiveLoadingRef.current) return
-        e.preventDefault()
+      if (meta && e.shiftKey && e.key === ".") {
+        if (isActiveLoadingRef.current) return;
+        e.preventDefault();
         setGenerationMode((prev) => {
-          const order: GenerationMode[] = ['text', 'image', 'video']
-          const i = order.indexOf(prev)
-          const next = order[(i + 1) % order.length]!
-          safeSetLocalStorage(CHAT_GEN_MODE_KEY, next)
-          return next
-        })
-        setGenerationChip(null)
-        return
+          const order: GenerationMode[] = ["text", "image", "video"];
+          const i = order.indexOf(prev);
+          const next = order[(i + 1) % order.length]!;
+          safeSetLocalStorage(CHAT_GEN_MODE_KEY, next);
+          return next;
+        });
+        setGenerationChip(null);
+        return;
       }
 
-      if (e.key === '/' && !meta && !e.altKey && !e.shiftKey) {
-        const t = e.target as HTMLElement | null
-        if (!t) return
-        const editorEl = textareaRef.current?.getElement?.()
-        if (editorEl && (t === editorEl || editorEl.contains(t))) return
-        if (t.closest('input, textarea, select, [contenteditable="true"]')) return
-        e.preventDefault()
-        textareaRef.current?.focus()
+      if (e.key === "/" && !meta && !e.altKey && !e.shiftKey) {
+        const t = e.target as HTMLElement | null;
+        if (!t) return;
+        const editorEl = textareaRef.current?.getElement?.();
+        if (editorEl && (t === editorEl || editorEl.contains(t))) return;
+        if (t.closest('input, textarea, select, [contenteditable="true"]'))
+          return;
+        e.preventDefault();
+        textareaRef.current?.focus();
       }
     }
-    window.addEventListener('keydown', onGlobalKeyDown, true)
-    return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
-  }, [setGenerationChip, setGenerationMode, setShowModelPicker])
+    window.addEventListener("keydown", onGlobalKeyDown, true);
+    return () => window.removeEventListener("keydown", onGlobalKeyDown, true);
+  }, [setGenerationChip, setGenerationMode, setShowModelPicker]);
 
   // ── derived values for header ─────────────────────────────────────────────
 
-  const activeChat = chats.find((c) => c._id === activeChatId)
+  const activeChat = chats.find((c) => c._id === activeChatId);
 
   // Read messages directly from the runtime Chat instance so the UI never lags
   // behind the loaded state (useChat's useSyncExternalStore can be one beat late).
   const primaryMessageSource =
-    activeRuntime.askChats.find((chat) => chat.messages.some((message) => message.role === 'user')) ??
-    (activeRuntime.actChat.messages.some((message) => message.role === 'user') ? activeRuntime.actChat : activeRuntime.askChats[0])
-  const primaryMessages = (primaryMessageSource.messages as UIMessage[] | undefined) ?? EMPTY_UI_MESSAGES
+    activeRuntime.askChats.find((chat) =>
+      chat.messages.some((message) => message.role === "user"),
+    ) ??
+    (activeRuntime.actChat.messages.some((message) => message.role === "user")
+      ? activeRuntime.actChat
+      : activeRuntime.askChats[0]);
+  const primaryMessages =
+    (primaryMessageSource.messages as UIMessage[] | undefined) ??
+    EMPTY_UI_MESSAGES;
   const hasRuntimeMessages =
-    activeRuntime.actChat.messages.some((message) => message.role === 'user') ||
-    activeRuntime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user'))
-  const hasHistory = hasRuntimeMessages || generationResults.size > 0
-  const isExistingConversationView = Boolean(idParam || activeChatId || automationConversationId)
-  const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !activeChatHydrated
+    activeRuntime.actChat.messages.some((message) => message.role === "user") ||
+    activeRuntime.askChats.some((chat) =>
+      chat.messages.some((message) => message.role === "user"),
+    );
+  const hasHistory = hasRuntimeMessages || generationResults.size > 0;
+  const isExistingConversationView = Boolean(
+    idParam || activeChatId || automationConversationId,
+  );
+  const showChatLoadingState =
+    showAutomationChatTab &&
+    isExistingConversationView &&
+    !hasHistory &&
+    !activeChatHydrated;
   /** Empty chat (any modality): center composer + suggestions only on the true new-chat surface. */
-  const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || activeChatHydrated)
-  const reserveLatestExchangeStartSpace = showAutomationChatTab && hasHistory && (isActiveLoading || isOptimisticLoading)
+  const showCenteredEmptyChat =
+    !hasHistory && (!isExistingConversationView || activeChatHydrated);
+  const reserveLatestExchangeStartSpace =
+    showAutomationChatTab &&
+    hasHistory &&
+    (isActiveLoading || isOptimisticLoading);
   const showScrollToBottomControl =
     showAutomationChatTab &&
     hasHistory &&
     !showChatLoadingState &&
     !showCenteredEmptyChat &&
-    !isConversationBottomVisible
-  const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
-  const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
-  const getActiveRuntimeForStop = useCallback(() => activeRuntime, [activeRuntime])
+    !isConversationBottomVisible;
+  const userTurnCount = primaryMessages.filter((m) => m.role === "user").length;
+  const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1;
+  const getActiveRuntimeForStop = useCallback(
+    () => activeRuntime,
+    [activeRuntime],
+  );
 
-  const {
-    handleContinue,
-    stopActiveChat,
-  } = useChatStopController({
+  const { handleContinue, stopActiveChat } = useChatStopController({
     activeAskChats,
     activeChatId,
     activeChatIdRef,
@@ -1694,7 +1947,7 @@ export default function ChatExperience({
     runtimesRef,
     setInput,
     setInterruptedExchangeIdx,
-  })
+  });
 
   const handleSendRef = useRef(effectiveHandleSend)
   useEffect(() => {
@@ -1702,168 +1955,238 @@ export default function ChatExperience({
   })
 
   const handleCreateAutomationDraftViaChat = useCallback(async () => {
-    if (isActiveLoadingRef.current) return
-    setDraftModalState(null)
-    setGenerationMode('text')
-    setGenerationChip(null)
-    setInput('Create automation')
+    if (isActiveLoadingRef.current) return;
+    setDraftModalState(null);
+    setGenerationMode("text");
+    setGenerationChip(null);
+    setInput("Create automation");
     await new Promise<void>((resolve) => {
       window.setTimeout(() => {
-        void handleSendRef.current().finally(resolve)
-      }, 0)
-    })
-  }, [setDraftModalState, setGenerationChip, setGenerationMode, setInput])
+        void handleSendRef.current().finally(resolve);
+      }, 0);
+    });
+  }, [setDraftModalState, setGenerationChip, setGenerationMode, setInput]);
 
   // Auto-continue: when the latest assistant message contains a timeout sentinel
   // and the user has enabled auto-continue, automatically send "continue".
   useEffect(() => {
-    if (!settings.autoContinue || !activeChatId) return
+    if (!settings.autoContinue || !activeChatId) return;
     const latestAssistantMsg = [...primaryMessages].reverse().find((m) => {
-      const um = m as unknown as { role?: string }
-      return um.role === 'assistant'
-    })
-    if (!latestAssistantMsg) return
-    const msgId = (latestAssistantMsg as unknown as { id?: string }).id
-    if (!msgId || autoContinuedForMessageRef.current.has(msgId)) return
+      const um = m as unknown as { role?: string };
+      return um.role === "assistant";
+    });
+    if (!latestAssistantMsg) return;
+    const msgId = (latestAssistantMsg as unknown as { id?: string }).id;
+    if (!msgId || autoContinuedForMessageRef.current.has(msgId)) return;
 
     const text = assistantBlocksToPlainText(
       buildAssistantVisualSequence(
         (latestAssistantMsg as unknown as { parts?: unknown[] }).parts,
       ),
+    );
+    if (!/\[Request timed out after \d+s\. Continue\?\]/.test(text)) return;
+    if (
+      (latestAssistantMsg as unknown as { status?: string }).status !==
+      "completed"
     )
-    if (!/\[Request timed out after \d+s\. Continue\?\]/.test(text)) return
-    if ((latestAssistantMsg as unknown as { status?: string }).status !== 'completed') return
+      return;
 
-    autoContinuedForMessageRef.current.add(msgId)
+    autoContinuedForMessageRef.current.add(msgId);
     const timer = setTimeout(() => {
-      setInput('continue')
-      void handleSendRef.current()
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [settings.autoContinue, activeChatId, primaryMessages, setInput])
+      setInput("continue");
+      void handleSendRef.current();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [settings.autoContinue, activeChatId, primaryMessages, setInput]);
 
   // Reset auto-continue tracking when switching chats.
   useEffect(() => {
-    autoContinuedForMessageRef.current.clear()
-  }, [activeChatId])
+    autoContinuedForMessageRef.current.clear();
+  }, [activeChatId]);
 
-  const greetingLine = composerMode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
-  const automationChatIntro = showCenteredEmptyChat && selectedAutomation && !automationConversationId ? (
-    <div className="mx-auto mt-5 w-full max-w-[36rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 text-left shadow-sm">
-      <p className="text-sm font-medium text-[var(--foreground)]">{selectedAutomation.name || selectedAutomation.title || 'Saved automation'}</p>
-      {selectedAutomation.description ? (
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{selectedAutomation.description}</p>
-      ) : null}
-      <div className="mt-3 border-t border-[var(--border)] pt-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-light)]">Saved instructions</p>
-        <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[var(--foreground)]">{selectedAutomation.instructions}</p>
+  const greetingLine =
+    composerMode === "automate"
+      ? "What are we automating today?"
+      : chatGreetingLine(firstName);
+  const automationChatIntro =
+    showCenteredEmptyChat && selectedAutomation && !automationConversationId ? (
+      <div className="mx-auto mt-5 w-full max-w-[36rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 text-left shadow-sm">
+        <p className="text-sm font-medium text-[var(--foreground)]">
+          {selectedAutomation.name ||
+            selectedAutomation.title ||
+            "Saved automation"}
+        </p>
+        {selectedAutomation.description ? (
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            {selectedAutomation.description}
+          </p>
+        ) : null}
+        <div className="mt-3 border-t border-[var(--border)] pt-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-light)]">
+            Saved instructions
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[var(--foreground)]">
+            {selectedAutomation.instructions}
+          </p>
+        </div>
+        <p className="mt-3 text-xs text-[var(--muted)]">
+          Send a message below to continue this automation conversation.
+        </p>
       </div>
-      <p className="mt-3 text-xs text-[var(--muted)]">Send a message below to continue this automation conversation.</p>
-    </div>
-  ) : null
+    ) : null;
   const emptyComposerContent = (
     <>
       {automationChatIntro}
       {belowEmptyComposer}
     </>
-  )
-  const usageExhaustedNotice = isBudgetExhaustedPaid && !isActiveLoading
-    ? <UsageExhaustedNotice />
-    : null
+  );
+  const usageExhaustedNotice =
+    isBudgetExhaustedPaid && !isActiveLoading ? <UsageExhaustedNotice /> : null;
 
-  const creatingAutomationDraftRef = useRef(false)
-  const selectAutomationDetailTab = useCallback(async (tab: AutomationDetailTab) => {
-    // A brand-new automation has no saved doc yet. Switching to "edit" creates an
-    // empty draft so the full editor can load and persist, then routes to it.
-    if (tab === 'edit' && mode === 'automate' && !automationIdParam && !selectedAutomation) {
-      if (creatingAutomationDraftRef.current) return
-      creatingAutomationDraftRef.current = true
-      try {
-        const res = await overlayAppClient.automations.createResponse({
-          name: 'New automation',
-          description: 'Draft automation',
-          instructions: 'Describe what this automation should do.',
-          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-          modelId: selectedActModel,
-          enabled: false,
-        })
-        const payload = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
-        if (!res.ok || !payload.id) {
-          throw new Error(payload.error || 'Failed to create automation draft')
+  const creatingAutomationDraftRef = useRef(false);
+  const selectAutomationDetailTab = useCallback(
+    async (tab: AutomationDetailTab) => {
+      // A brand-new automation has no saved doc yet. Switching to "edit" creates an
+      // empty draft so the full editor can load and persist, then routes to it.
+      if (
+        tab === "edit" &&
+        mode === "automate" &&
+        !automationIdParam &&
+        !selectedAutomation
+      ) {
+        if (creatingAutomationDraftRef.current) return;
+        creatingAutomationDraftRef.current = true;
+        try {
+          const res = await overlayAppClient.automations.createResponse({
+            name: "New automation",
+            description: "Draft automation",
+            instructions: "Describe what this automation should do.",
+            schedule: { kind: "daily", hourUTC: 14, minuteUTC: 0 },
+            modelId: selectedActModel,
+            enabled: false,
+          });
+          const payload = (await res.json().catch(() => ({}))) as {
+            id?: string;
+            error?: string;
+          };
+          if (!res.ok || !payload.id) {
+            throw new Error(
+              payload.error || "Failed to create automation draft",
+            );
+          }
+          const params = new URLSearchParams(searchParams?.toString() ?? "");
+          params.set("automationId", payload.id);
+          params.set("tab", "edit");
+          router.replace(`${pathname}?${params.toString()}`);
+        } catch (error) {
+          setComposerNotice(
+            error instanceof Error
+              ? error.message
+              : "Failed to open automation editor.",
+          );
+          window.setTimeout(() => setComposerNotice(null), 6000);
+        } finally {
+          creatingAutomationDraftRef.current = false;
         }
-        const params = new URLSearchParams(searchParams?.toString() ?? '')
-        params.set('automationId', payload.id)
-        params.set('tab', 'edit')
-        router.replace(`${pathname}?${params.toString()}`)
-      } catch (error) {
-        setComposerNotice(error instanceof Error ? error.message : 'Failed to open automation editor.')
-        window.setTimeout(() => setComposerNotice(null), 6000)
-      } finally {
-        creatingAutomationDraftRef.current = false
+        return;
       }
-      return
-    }
-    const params = new URLSearchParams(searchParams?.toString() ?? '')
-    if (tab === 'chat') {
-      params.delete('tab')
-    } else {
-      params.set('tab', tab)
-    }
-    const query = params.toString()
-    router.replace(`${pathname}${query ? `?${query}` : ''}`)
-  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, setComposerNotice])
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      if (tab === "chat") {
+        params.delete("tab");
+      } else {
+        params.set("tab", tab);
+      }
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ""}`);
+    },
+    [
+      pathname,
+      router,
+      searchParams,
+      mode,
+      automationIdParam,
+      selectedAutomation,
+      selectedActModel,
+      setComposerNotice,
+    ],
+  );
 
-  const automationHeaderModels = selectableTextModels
-  const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
-    // Mark the model as user-chosen so the new-chat-surface default-model effect
-    // does not immediately reset it back to the account default.
-    userAskModelOverrideRef.current = true
-    // Always reflect the choice in local model state so a brand-new automation
-    // (no saved doc yet) uses it when the automation is created from the first message.
-    setSelectedActModel(modelId)
-    setSelectedModels([modelId])
-    if (!selectedAutomation) return
-    const previousAutomation = selectedAutomation
-    const nextAutomation = { ...selectedAutomation, modelId }
-    setSelectedAutomation(nextAutomation)
-    try {
-      const res = await overlayAppClient.automations.updateResponse({
-        automationId: selectedAutomation._id,
-        modelId,
-      })
-      if (!res.ok) throw new Error('Failed to save automation model')
-      if (activeChatId) {
-        await overlayAppClient.conversations.updateResponse({
-          conversationId: activeChatId,
-          actModelId: modelId,
-          askModelIds: [modelId],
-          lastMode: 'act',
-        })
+  const automationHeaderModels = selectableTextModels;
+  const saveAutomationHeaderModel = useCallback(
+    async (modelId: string) => {
+      // Mark the model as user-chosen so the new-chat-surface default-model effect
+      // does not immediately reset it back to the account default.
+      userAskModelOverrideRef.current = true;
+      // Always reflect the choice in local model state so a brand-new automation
+      // (no saved doc yet) uses it when the automation is created from the first message.
+      setSelectedActModel(modelId);
+      setSelectedModels([modelId]);
+      if (!selectedAutomation) return;
+      const previousAutomation = selectedAutomation;
+      const nextAutomation = { ...selectedAutomation, modelId };
+      setSelectedAutomation(nextAutomation);
+      try {
+        const res = await overlayAppClient.automations.updateResponse({
+          automationId: selectedAutomation._id,
+          modelId,
+        });
+        if (!res.ok) throw new Error("Failed to save automation model");
+        if (activeChatId) {
+          await overlayAppClient.conversations.updateResponse({
+            conversationId: activeChatId,
+            actModelId: modelId,
+            askModelIds: [modelId],
+            lastMode: "act",
+          });
+        }
+      } catch {
+        setSelectedAutomation(previousAutomation);
+        const fallbackModelId = previousAutomation.modelId ?? selectedActModel;
+        setSelectedActModel(fallbackModelId);
+        setSelectedModels([fallbackModelId]);
       }
-    } catch {
-      setSelectedAutomation(previousAutomation)
-      const fallbackModelId = previousAutomation.modelId ?? selectedActModel
-      setSelectedActModel(fallbackModelId)
-      setSelectedModels([fallbackModelId])
-    }
-  }, [selectedAutomation, activeChatId, selectedActModel, setSelectedActModel, setSelectedModels])
+    },
+    [
+      selectedAutomation,
+      activeChatId,
+      selectedActModel,
+      setSelectedActModel,
+      setSelectedModels,
+    ],
+  );
 
   const headerTitleLabel =
     selectedAutomation?.name ||
-    (isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation'))
+    (isTemporaryChat
+      ? "Temporary chat"
+      : activeChatTitle ||
+        activeChat?.title ||
+        (mode === "automate" ? "New automation" : "New conversation"));
 
   const renderExportMenu = useCallback(() => {
-    if (selectedAutomation || primaryMessages.length === 0 || (!activeChatId && !isTemporaryChat)) {
-      return null
+    if (
+      selectedAutomation ||
+      primaryMessages.length === 0 ||
+      (!activeChatId && !isTemporaryChat)
+    ) {
+      return null;
     }
     return (
       <ExportMenu
         className="shrink-0"
         type="chat"
-        title={isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || 'New conversation'}
+        title={
+          isTemporaryChat
+            ? "Temporary chat"
+            : activeChatTitle || activeChat?.title || "New conversation"
+        }
         content={primaryMessages.map((m) => ({
           role: m.role,
-          content: (m.parts as Array<{ type: string; text?: string }>)?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? '',
+          content:
+            (m.parts as Array<{ type: string; text?: string }>)
+              ?.filter((p) => p.type === "text")
+              .map((p) => p.text ?? "")
+              .join("\n") ?? "",
           parts: m.parts as Array<{ type: string; text?: string }>,
         }))}
         metadata={{
@@ -1871,16 +2194,18 @@ export default function ChatExperience({
           updatedAt: activeChat?.updatedAt,
           modelIds: activeChat?.modelIds,
         }}
-        resourceId={isTemporaryChat ? undefined : activeChatId ?? undefined}
-        initialShareVisibility={activeChat?.shareVisibility ?? 'private'}
+        resourceId={isTemporaryChat ? undefined : (activeChatId ?? undefined)}
+        initialShareVisibility={activeChat?.shareVisibility ?? "private"}
         initialShareUrl={
-          !isTemporaryChat && activeChat?.shareVisibility === 'public' && activeChat?.shareToken
-            ? buildSharePageUrl('chat', activeChat.shareToken)
+          !isTemporaryChat &&
+          activeChat?.shareVisibility === "public" &&
+          activeChat?.shareToken
+            ? buildSharePageUrl("chat", activeChat.shareToken)
             : null
         }
         renderShareDialog={(props) => <ShareDialog {...props} />}
       />
-    )
+    );
   }, [
     activeChat,
     activeChatId,
@@ -1888,15 +2213,15 @@ export default function ChatExperience({
     isTemporaryChat,
     primaryMessages,
     selectedAutomation,
-  ])
+  ]);
 
   const renderAttachmentViewer = useCallback(
     ({
       preview,
       headerRight,
     }: {
-      preview: AttachmentPreview
-      headerRight: React.ReactNode
+      preview: AttachmentPreview;
+      headerRight: React.ReactNode;
     }) => (
       <FileViewerPanel
         name={preview.name}
@@ -1906,7 +2231,7 @@ export default function ChatExperience({
       />
     ),
     [],
-  )
+  );
 
   const {
     shellRightPanel,
@@ -1928,7 +2253,7 @@ export default function ChatExperience({
     setAttachmentPreviewMode,
     sourcesPanel,
     renderAttachmentViewer,
-  })
+  });
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -1940,272 +2265,302 @@ export default function ChatExperience({
         onOpenInOverlay={openLinkPreview}
       />
       <ChatExperienceView
-      shell={{
-        rightPanel: shellRightPanel,
-        rightPanelOpen: Boolean(shellRightPanel),
-        rightPanelWidth: shellRightPanelWidth,
-        rightPanelMode: shellRightPanelMode,
-        onRightPanelClose: shellRightPanelClose,
-        onRightPanelResize: shellRightPanelResize,
-      }}
-      main={{
-        activeChatDeleting,
-        isDragging,
-        dragHandlers: {
-          onDragEnter: (e) => {
-            e.preventDefault()
-            dragCounterRef.current++
-            if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+        shell={{
+          rightPanel: shellRightPanel,
+          rightPanelOpen: Boolean(shellRightPanel),
+          rightPanelWidth: shellRightPanelWidth,
+          rightPanelMode: shellRightPanelMode,
+          onRightPanelClose: shellRightPanelClose,
+          onRightPanelResize: shellRightPanelResize,
+        }}
+        main={{
+          activeChatDeleting,
+          isDragging,
+          dragHandlers: {
+            onDragEnter: (e) => {
+              e.preventDefault();
+              dragCounterRef.current++;
+              if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
+            },
+            onDragOver: (e) => e.preventDefault(),
+            onDragLeave: () => {
+              dragCounterRef.current--;
+              if (dragCounterRef.current === 0) setIsDragging(false);
+            },
+            onDrop: (e) => {
+              e.preventDefault();
+              dragCounterRef.current = 0;
+              setIsDragging(false);
+              const all = Array.from(e.dataTransfer.files);
+              const images = all.filter((f) => f.type.startsWith("image/"));
+              if (images.length > 0) addImages(images);
+              const docExts =
+                /^(pdf|docx|txt|md|markdown|csv|json|html|htm|xml|log|ts|tsx|js|jsx|css|yaml|yml|toml|py|go|rs)$/i;
+              const docs = all.filter((f) => {
+                const ext = f.name.split(".").pop() ?? "";
+                return (
+                  docExts.test(ext) ||
+                  f.type === "application/pdf" ||
+                  f.type ===
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                  (f.type.startsWith("text/") && ext !== "")
+                );
+              });
+              if (docs.length > 0) docs.forEach((f) => queueDocumentUpload(f));
+            },
           },
-          onDragOver: (e) => e.preventDefault(),
-          onDragLeave: () => {
-            dragCounterRef.current--
-            if (dragCounterRef.current === 0) setIsDragging(false)
-          },
-          onDrop: (e) => {
-            e.preventDefault()
-            dragCounterRef.current = 0
-            setIsDragging(false)
-            const all = Array.from(e.dataTransfer.files)
-            const images = all.filter((f) => f.type.startsWith('image/'))
-            if (images.length > 0) addImages(images)
-            const docExts =
-              /^(pdf|docx|txt|md|markdown|csv|json|html|htm|xml|log|ts|tsx|js|jsx|css|yaml|yml|toml|py|go|rs)$/i
-            const docs = all.filter((f) => {
-              const ext = f.name.split('.').pop() ?? ''
-              return (
-                docExts.test(ext) ||
-                f.type === 'application/pdf' ||
-                f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                (f.type.startsWith('text/') && ext !== '')
-              )
-            })
-            if (docs.length > 0) docs.forEach((f) => queueDocumentUpload(f))
-          },
-        },
-      }}
-      headerProps={{
-        hideHeader,
-        activeChatId,
-        editingChatId,
-        editingChatTitle,
-        onEditingChatTitleChange: setEditingChatTitle,
-        onCommitChatRename: commitChatRename,
-        onCancelChatRename: cancelChatRename,
-        headerTitleInputRef,
-        showAutomationHeaderControls,
-        titleLabel: headerTitleLabel,
-        onBeginHeaderChatRename: beginHeaderChatRename,
-        showRenameButton: Boolean(activeChatId && !selectedAutomation && !isPublicShowcase),
-        projectName,
-        showAutomationChatTab,
-        appMode: mode,
-        isTemporaryChat,
-        isActiveLoading,
-        onTemporaryChatToggle: handleTemporaryChatToggle,
-        onGenerationModeChange: handleGenerationModeChange,
-        generationMode,
-        personalChatMode,
-        onPersonalChatModeChange: handlePersonalChatModeChange,
-        renderExportMenu,
-        ...headerModelProps,
-        automationHeaderModelId,
-        automationHeaderModels,
-        onSaveAutomationHeaderModel: saveAutomationHeaderModel,
-        automationDetailTab,
-        onSelectAutomationDetailTab: selectAutomationDetailTab,
-      }}
-      body={{
-        hasAutomationContext,
-        isTemporaryChat,
-        selectedAutomationLoading,
-        showAutomationChatTab,
-      }}
-      automationEditorProps={
-        !showAutomationChatTab && selectedAutomation && automationDetailTab === 'edit'
-          ? {
-              automation: selectedAutomation,
-              onSaved: setSelectedAutomation,
-              onTested: (conversationId) => {
-                const params = new URLSearchParams(searchParams?.toString() ?? '')
-                params.set('id', conversationId)
-                params.set('automationId', selectedAutomation._id)
-                params.delete('tab')
-                router.replace(`${pathname}?${params.toString()}`)
-              },
-              isFreeTier,
-            }
-          : null
-      }
-      messageListProps={
-        showAutomationChatTab && (hasHistory || showChatLoadingState)
-          ? {
-              messagesScrollRef,
-              messagesEndRef,
-              floatingControl: showScrollToBottomControl ? (
-                <DelayedTooltip label="Jump to latest" side="top">
-                  <button
-                    type="button"
-                    aria-label="Jump to latest message"
-                    onClick={() => scrollToConversationBottom('smooth')}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <ChevronDown size={17} strokeWidth={1.9} />
-                  </button>
-                </DelayedTooltip>
-              ) : null,
-              showLoadingState: showChatLoadingState,
-              reserveLatestExchangeStartSpace,
-              transcriptKey: activeChatId ?? (isTemporaryChat ? 'temporary-chat' : null),
-              afterMessages: usageExhaustedNotice,
-              state: {
-                primaryMessages,
-                latestExchangeIndex: latestExchIdx,
-                generationResults,
-                exchangeGenTypes,
-                exchangeModels,
-                selectedImageModels,
-                selectedVideoModels,
-                selectedTabPerExchange,
-                selectedModels,
-                exchangeModes,
-              },
-              runtime: {
-                actChat,
-                chatInstances,
-                isActiveLoading,
-                isOptimisticLoading,
-                interruptedExchangeIdx,
-                exitingTurnIds,
-                sourcesPanel,
-                getResponseForExchangeForModel,
-              },
-              actions: {
-                onTabSelect: handleTabSelect,
-                onJumpToReply: jumpToReplyTarget,
-                onDeleteTurn: isPublicShowcase ? () => requireAuth('history') : handleDeleteTurnById,
-                onReplyToMediaPrompt: beginReplyToMediaPrompt,
-                onReplyToAssistantText: beginReplyToAssistantText,
-                onBranch: isPublicShowcase ? () => requireAuth('history') : handleBranchConversationAtTurn,
-                onOpenDraft: setDraftModalState,
-                onCreateAutomationDraft: isPublicShowcase ? () => requireAuth('nav') : handleCreateAutomationDraftViaChat,
-                onOpenSources: openSourcesPanel,
-                onRetry: isPublicShowcase ? () => requireAuth('history') : handleRetryExchange,
-                onOpenFilePreview: openFilePreview,
-                onOpenAttachmentPreview: openAttachmentPreview,
-                onContinue: handleContinue,
-                onGeneratedUiChange: isPublicShowcase ? () => requireAuth('nav') : handleGeneratedUiChange,
-                generatedUiConnectorActions,
-              },
-            }
-          : null
-      }
-      composerProps={
-        showAutomationChatTab
-          ? {
-              mode: composerMode,
-              emptyState: {
-                showCenteredEmptyChat,
-                greetingLine,
-                belowEmptyComposer: emptyComposerContent,
-              },
-              attachments: {
-                attachedImages,
-                setAttachedImages,
-                pendingChatDocuments,
-                removePendingDocument,
-                attachmentError,
-                fileInputRef,
-                docInputRef,
-                onAddImages: addImages,
-                onAddDocumentsFromPicker: addDocumentsFromPicker,
-                onOpenAttachmentPreview: openAttachmentPreview,
-                onOpenFilePreview: openFilePreview,
-              },
-              runtime: {
-                composerNotice,
-                beforeComposerContent: personalMentionConfirmationOpen && activeWorkspaceId ? (
-                  <PersonalMentionConversionPrompt
-                    draft={inputRef.current ?? input}
-                    mentions={personMentions}
-                    sourceConversationId={activeChatId}
-                    workspaceId={activeWorkspaceId}
-                    onCancel={() => setPersonalMentionConfirmationOpen(false)}
-                  />
-                ) : workApprovalContent,
-                billingPromptContent: hasHistory ? null : usageExhaustedNotice,
-                isSendBlocked,
-                isActiveLoading,
-                isTemporaryChat,
-                blockedComposerContent: isBudgetExhaustedPaid ? null : (
-                  <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted)]">
-                    This model requires a paid plan. Switch to Auto or upgrade.
-                  </div>
-                ),
-              },
-              inputState: {
-                replyContext,
-                setReplyContext,
-                textareaRef,
-                input,
-                inputRevision,
-                onInputChange: handleComposerInputChange,
-                onMentionsChange: handleMentionsChange,
-                onPaste: handlePaste,
-                hasComposerText,
-              },
-              toolState: {
-                showAttachMenu,
-                setShowAttachMenu,
-                attachMenuRef,
-                selectedToolIds,
-                memoryEnabled,
-                capabilities,
-                onToggleTool: toggleComposerTool,
-                onToggleMemory: () => setMemoryEnabled((current) => !current),
-                onRemoveTool: removeComposerTool,
-              },
-              modeState: {
-                onModeChange: handleGenerationModeChange,
-                generationChip,
-                setGenerationChip: handleGenerationChipChange,
-                showModeMenu,
-                setShowModeMenu,
-                modeMenuRef,
-                onNavigateMode: (nextMode) => {
-                  router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
-                  setShowModeMenu(false)
+        }}
+        headerProps={{
+          hideHeader,
+          activeChatId,
+          editingChatId,
+          editingChatTitle,
+          onEditingChatTitleChange: setEditingChatTitle,
+          onCommitChatRename: commitChatRename,
+          onCancelChatRename: cancelChatRename,
+          headerTitleInputRef,
+          showAutomationHeaderControls,
+          titleLabel: headerTitleLabel,
+          onBeginHeaderChatRename: beginHeaderChatRename,
+          showRenameButton: Boolean(
+            activeChatId && !selectedAutomation && !isPublicShowcase,
+          ),
+          projectName,
+          showAutomationChatTab,
+          appMode: mode,
+          isTemporaryChat,
+          isActiveLoading,
+          onTemporaryChatToggle: handleTemporaryChatToggle,
+          onGenerationModeChange: handleGenerationModeChange,
+          generationMode,
+          personalChatMode,
+          onPersonalChatModeChange: handlePersonalChatModeChange,
+          renderExportMenu,
+          ...headerModelProps,
+          automationHeaderModelId,
+          automationHeaderModels,
+          onSaveAutomationHeaderModel: saveAutomationHeaderModel,
+          automationDetailTab,
+          onSelectAutomationDetailTab: selectAutomationDetailTab,
+        }}
+        body={{
+          hasAutomationContext,
+          isTemporaryChat,
+          selectedAutomationLoading,
+          showAutomationChatTab,
+        }}
+        automationEditorProps={
+          !showAutomationChatTab &&
+          selectedAutomation &&
+          automationDetailTab === "edit"
+            ? {
+                automation: selectedAutomation,
+                onSaved: setSelectedAutomation,
+                onTested: (conversationId) => {
+                  const params = new URLSearchParams(
+                    searchParams?.toString() ?? "",
+                  );
+                  params.set("id", conversationId);
+                  params.set("automationId", selectedAutomation._id);
+                  params.delete("tab");
+                  router.replace(`${pathname}?${params.toString()}`);
                 },
-              },
-              surface: {
-                mentionCategories,
-              },
-              actions: {
-                onStop: stopActiveChat,
-                onSend: effectiveHandleSend,
-                onEmptySuggestion: handleEmptySuggestion,
-                onAutomateSuggestion: handleAutomateSuggestion,
-              },
-            }
-          : null
-      }
-      draftReviewProps={{
-        state: draftModalState,
-        saving: isDraftSaving,
-        onClose: () => {
-          if (!isDraftSaving) setDraftModalState(null)
-        },
-        onSaveSkill: saveSkillDraft,
-        onSaveAutomation: handleCreateAutomationDraftViaChat,
-      }}
-      attachmentPreviewProps={{
-        open: Boolean(attachmentPreview && attachmentPreviewMode === 'dialog'),
-        preview: attachmentPreview,
-        onClose: closeAttachmentPreview,
-        onModeChange: setAttachmentPreviewMode,
-        renderViewer: renderAttachmentViewer,
-      }}
+                isFreeTier,
+              }
+            : null
+        }
+        messageListProps={
+          showAutomationChatTab && (hasHistory || showChatLoadingState)
+            ? {
+                messagesScrollRef,
+                messagesEndRef,
+                floatingControl: showScrollToBottomControl ? (
+                  <DelayedTooltip label="Jump to latest" side="top">
+                    <button
+                      type="button"
+                      aria-label="Jump to latest message"
+                      onClick={() => scrollToConversationBottom("smooth")}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                    >
+                      <ChevronDown size={17} strokeWidth={1.9} />
+                    </button>
+                  </DelayedTooltip>
+                ) : null,
+                showLoadingState: showChatLoadingState,
+                reserveLatestExchangeStartSpace,
+                transcriptKey:
+                  activeChatId ?? (isTemporaryChat ? "temporary-chat" : null),
+                afterMessages: usageExhaustedNotice,
+                state: {
+                  primaryMessages,
+                  latestExchangeIndex: latestExchIdx,
+                  generationResults,
+                  exchangeGenTypes,
+                  exchangeModels,
+                  selectedImageModels,
+                  selectedVideoModels,
+                  selectedTabPerExchange,
+                  selectedModels,
+                  exchangeModes,
+                },
+                runtime: {
+                  actChat,
+                  chatInstances,
+                  isActiveLoading,
+                  isOptimisticLoading,
+                  interruptedExchangeIdx,
+                  exitingTurnIds,
+                  sourcesPanel,
+                  getResponseForExchangeForModel,
+                },
+                actions: {
+                  onTabSelect: handleTabSelect,
+                  onJumpToReply: jumpToReplyTarget,
+                  onDeleteTurn: isPublicShowcase
+                    ? () => requireAuth("history")
+                    : handleDeleteTurnById,
+                  onReplyToMediaPrompt: beginReplyToMediaPrompt,
+                  onReplyToAssistantText: beginReplyToAssistantText,
+                  onBranch: isPublicShowcase
+                    ? () => requireAuth("history")
+                    : handleBranchConversationAtTurn,
+                  onOpenDraft: setDraftModalState,
+                  onCreateAutomationDraft: isPublicShowcase
+                    ? () => requireAuth("nav")
+                    : handleCreateAutomationDraftViaChat,
+                  onOpenSources: openSourcesPanel,
+                  onRetry: isPublicShowcase
+                    ? () => requireAuth("history")
+                    : handleRetryExchange,
+                  onOpenFilePreview: openFilePreview,
+                  onOpenAttachmentPreview: openAttachmentPreview,
+                  onContinue: handleContinue,
+                  onGeneratedUiChange: isPublicShowcase
+                    ? () => requireAuth("nav")
+                    : handleGeneratedUiChange,
+                  generatedUiConnectorActions,
+                },
+              }
+            : null
+        }
+        composerProps={
+          showAutomationChatTab
+            ? {
+                mode: composerMode,
+                emptyState: {
+                  showCenteredEmptyChat,
+                  greetingLine,
+                  belowEmptyComposer: emptyComposerContent,
+                },
+                attachments: {
+                  attachedImages,
+                  setAttachedImages,
+                  pendingChatDocuments,
+                  removePendingDocument,
+                  attachmentError,
+                  fileInputRef,
+                  docInputRef,
+                  onAddImages: addImages,
+                  onAddDocumentsFromPicker: addDocumentsFromPicker,
+                  onOpenAttachmentPreview: openAttachmentPreview,
+                  onOpenFilePreview: openFilePreview,
+                },
+                runtime: {
+                  composerNotice,
+                  beforeComposerContent:
+                    personalMentionConfirmationOpen && activeWorkspaceId ? (
+                      <PersonalMentionConversionPrompt
+                        draft={inputRef.current ?? input}
+                        mentions={personMentions}
+                        sourceConversationId={activeChatId}
+                        workspaceId={activeWorkspaceId}
+                        onCancel={() =>
+                          setPersonalMentionConfirmationOpen(false)
+                        }
+                      />
+                    ) : (
+                      workApprovalContent
+                    ),
+                  billingPromptContent: hasHistory
+                    ? null
+                    : usageExhaustedNotice,
+                  isSendBlocked,
+                  isActiveLoading,
+                  isTemporaryChat,
+                  blockedComposerContent: isBudgetExhaustedPaid ? null : (
+                    <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted)]">
+                      This model requires a paid plan. Switch to Auto or
+                      upgrade.
+                    </div>
+                  ),
+                },
+                inputState: {
+                  replyContext,
+                  setReplyContext,
+                  textareaRef,
+                  input,
+                  inputRevision,
+                  onInputChange: handleComposerInputChange,
+                  onMentionsChange: handleMentionsChange,
+                  onPaste: handlePaste,
+                  hasComposerText,
+                },
+                toolState: {
+                  showAttachMenu,
+                  setShowAttachMenu,
+                  attachMenuRef,
+                  selectedToolIds,
+                  memoryEnabled,
+                  capabilities,
+                  onToggleTool: toggleComposerTool,
+                  onToggleMemory: () => setMemoryEnabled((current) => !current),
+                  onRemoveTool: removeComposerTool,
+                },
+                modeState: {
+                  onModeChange: handleGenerationModeChange,
+                  generationChip,
+                  setGenerationChip: handleGenerationChipChange,
+                  showModeMenu,
+                  setShowModeMenu,
+                  modeMenuRef,
+                  onNavigateMode: (nextMode) => {
+                    router.push(
+                      nextMode === "chat" ? "/app/chat" : "/app/automations",
+                    );
+                    setShowModeMenu(false);
+                  },
+                },
+                surface: {
+                  mentionCategories,
+                },
+                actions: {
+                  onStop: stopActiveChat,
+                  onSend: effectiveHandleSend,
+                  onEmptySuggestion: handleEmptySuggestion,
+                  onAutomateSuggestion: handleAutomateSuggestion,
+                },
+              }
+            : null
+        }
+        draftReviewProps={{
+          state: draftModalState,
+          saving: isDraftSaving,
+          onClose: () => {
+            if (!isDraftSaving) setDraftModalState(null);
+          },
+          onSaveSkill: saveSkillDraft,
+          onSaveAutomation: handleCreateAutomationDraftViaChat,
+        }}
+        attachmentPreviewProps={{
+          open: Boolean(
+            attachmentPreview && attachmentPreviewMode === "dialog",
+          ),
+          preview: attachmentPreview,
+          onClose: closeAttachmentPreview,
+          onModeChange: setAttachmentPreviewMode,
+          renderViewer: renderAttachmentViewer,
+        }}
       />
     </>
-  )
+  );
 }

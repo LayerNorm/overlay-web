@@ -31,7 +31,13 @@ async function AutomationsRouteContent({
   const params = await searchParams
   const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
 
-  if (showcaseParam === '1') return <PublicShowcaseAutomationsView />
+  if (showcaseParam === '1') {
+    return (
+      <Suspense fallback={null}>
+        <PublicShowcaseAutomationsView />
+      </Suspense>
+    )
+  }
 
   const userId = session?.user.id ?? null
   const firstName = session?.user.firstName ?? undefined

@@ -28,7 +28,10 @@ const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: 
   { value: 'reactions', label: 'Reactions', icon: Smile },
 ]
 
-const EMPTY_STATES: Record<WorkspaceNotificationFilter, { title: string; description: string }> = {
+const EMPTY_STATES: Record<
+  WorkspaceNotificationFilter,
+  { title: string; description: string }
+> = {
   all: { title: 'No activity yet', description: 'You are all caught up.' },
   unread: { title: 'Nothing unread', description: 'New unread activity will appear here.' },
   mentions: { title: 'No mentions', description: 'Mentions from people and agents will appear here.' },
@@ -83,19 +86,23 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       for (const id of unreadIds) next.set(id, readAt)
       return next
     })
-    void overlayAppClient.conversations.markNotificationsRead(unreadIds)
+    void overlayAppClient.conversations
+      .markNotificationsRead(unreadIds)
       .then(() => dispatchCollaborationNotificationsChanged())
       .catch(() => undefined)
   }, [sourceNotifications])
 
   async function openNotification(notification: WorkspaceNotification) {
     const conversationPromise = notification.conversationId
-      ? overlayAppClient.conversations.get<{
+      ? overlayAppClient.conversations
+          .get<{
           conversationType?: 'personal' | 'dm' | 'channel'
-        }>({ conversationId: notification.conversationId }).catch(() => null)
+          }>({ conversationId: notification.conversationId })
+          .catch(() => null)
       : Promise.resolve(null)
     if (!notification.readAt) {
-      void overlayAppClient.conversations.markNotificationsRead([notification.id])
+      void overlayAppClient.conversations
+        .markNotificationsRead([notification.id])
         .then(() => dispatchCollaborationNotificationsChanged())
         .catch(() => undefined)
       setLocallyRead((current) => new Map(current).set(notification.id, Date.now()))
@@ -121,7 +128,9 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   }
 
   async function markAllRead() {
-    const unreadIds = notifications.filter((notification) => !notification.readAt).map(({ id }) => id)
+    const unreadIds = notifications
+      .filter((notification) => !notification.readAt)
+      .map(({ id }) => id)
     if (unreadIds.length === 0) return
     setLocallyRead((current) => {
       const next = new Map(current)
@@ -129,7 +138,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       for (const id of unreadIds) next.set(id, readAt)
       return next
     })
-    await overlayAppClient.conversations.markNotificationsRead(unreadIds)
+    await overlayAppClient.conversations
+      .markNotificationsRead(unreadIds)
       .then(() => dispatchCollaborationNotificationsChanged())
       .catch(() => undefined)
   }
@@ -137,20 +147,20 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   return (
     <AppScreenShell
       className="h-full"
-      header={(
+      header={
         <AppScreenHeader
           title="Activity"
           subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
-          actions={(
+          actions={
             <SegmentedControl
               value={filter}
               options={FILTERS}
               onChange={setFilter}
               ariaLabel="Activity filters"
             />
-          )}
+          }
         />
-      )}
+      }
     >
       <div className="h-full min-h-0 overflow-y-auto">
         {loading ? (
@@ -188,20 +198,41 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                       {notificationIcon(notification.type)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-[var(--foreground)]">{notification.title}</span>
+                      <span className='block text-sm font-medium text-[var(--foreground)]'>
+                        {notification.title}
+                      </span>
                       {notification.body ? (
-                        <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-[var(--muted)]">{notification.body}</span>
+                        <span className='mt-0.5 line-clamp-2 block text-xs leading-5 text-[var(--muted)]'>
+                          {notification.body}
+                        </span>
                       ) : null}
                       <time className="mt-1 block text-[11px] text-[var(--muted-light)]">
-                        {new Date(notification.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                        {conversationActivityLabel(notification.conversationState)
+                        {
+                          // Locale pinned to 'en-US' — SSR and client output are identical.
+                          // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                          new Date(notification.createdAt).toLocaleString(
+                            'en-US',
+                            { dateStyle: 'short', timeStyle: 'short' },
+                          )
+                        }
+                        {conversationActivityLabel(
+                          notification.conversationState,
+                        )
                           ? ` · ${conversationActivityLabel(notification.conversationState)}`
                           : ''}
                       </time>
                     </span>
-                    {notification.readAt
-                      ? <Check size={13} className="mt-2 shrink-0 text-[var(--muted-light)]" />
-                      : <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />}
+                    {notification.readAt ? (
+                      <Check
+                        size={13}
+                        className='mt-2 shrink-0 text-[var(--muted-light)]'
+                      />
+                    ) : (
+                      <span
+                        className='mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]'
+                        aria-label='Unread'
+                      />
+                    )}
                   </button>
                 </li>
               ))}

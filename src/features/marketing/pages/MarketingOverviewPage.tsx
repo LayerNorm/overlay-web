@@ -595,7 +595,7 @@ function HomeLandingContent() {
                         },
                         { icon: Clock, ok: false, text: "Next run", t: "in 4 days" },
                       ].map((r, i) => (
-                        <div className="run-row" key={i}>
+                        <div className='run-row' key={r.text}>
                           <r.icon
                             size={12}
                             strokeWidth={2}

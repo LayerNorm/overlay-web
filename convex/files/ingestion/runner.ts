@@ -105,8 +105,9 @@ export const runMinuteTick = internalAction({
       limit: 5,
     })
 
-    for (const job of jobs) {
-      await ctx.scheduler.runAfter(0, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await Promise.all((jobs as any[]).map((job: any) =>
+      ctx.scheduler.runAfter(0, // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (internal as any).files.ingestion.runner.processOne, {
         jobId: job._id as Id<'documentIngestionJobs'>,
         userId: job.userId,
@@ -115,8 +116,7 @@ export const runMinuteTick = internalAction({
         mimeType: job.mimeType,
         sizeBytes: job.sizeBytes,
           ...(job.parentId ? { parentId: job.parentId } : {}),
-      })
-    }
+      })))
 
     return null
   },

@@ -230,8 +230,9 @@ export async function deleteObjects(keys: string[]): Promise<void> {
   const t0 = Date.now()
 
   const BATCH_SIZE = 1000
-  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
-    const batch = keys.slice(i, i + BATCH_SIZE)
+  const batches: string[][] = []
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) batches.push(keys.slice(i, i + BATCH_SIZE))
+  await Promise.all(batches.map(async (batch) => {
     const result = await client.send(
       new DeleteObjectsCommand({
         Bucket: bucket,
@@ -244,7 +245,7 @@ export async function deleteObjects(keys: string[]): Promise<void> {
     if (result.Errors && result.Errors.length > 0) {
       logger.error(`[R2] deleteObjects partial errors: ${JSON.stringify(result.Errors)}`)
     }
-  }
+  }))
 
   logger.info(`[R2] deleteObjects count=${keys.length} duration=${Date.now() - t0}ms`)
 }

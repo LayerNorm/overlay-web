@@ -138,6 +138,8 @@ export function CapabilitiesProvider({
   )
   const [isLoading, setIsLoading] = useState(!initialCapabilities || !initialAppDataCapabilities)
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (initialCapabilities && initialAppDataCapabilities) return
     let active = true

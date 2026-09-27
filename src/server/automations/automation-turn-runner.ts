@@ -296,13 +296,14 @@ export async function prepareAutomationAgentTurn(
     )
   }
 
-  const resolvedBillingPayer = await resolveBillingPayer({
+  const [resolvedBillingPayer, authorizedModelIds] = await Promise.all([
+    resolveBillingPayer({
     programmaticSubjectId: billingProgrammaticSubjectId,
     userId,
     workspaceId: billingWorkspaceId,
-  })
-
-  const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: runtimeEntitlements })
+    }),
+    resolveAuthorizedModelIds({ entitlements: runtimeEntitlements }),
+  ])
   if (!authorizedModelIds.chat.has(effectiveModelId)) {
     throw new AutomationTurnError(
       `Model ${effectiveModelId} is not allowed by the server model policy.`,
@@ -597,11 +598,11 @@ export async function prepareAutomationAgentTurn(
     automationMode: false,
   })
 
-  const modelMessages = await convertToModelMessages(messagesForModel)
-
   // Turn-level usage reservation — same shape the Work runner holds so usage
   // accounting stays consistent if the workflow dies mid-turn.
-  const reservation = await actUsageBudgetService.reserveForAttempt({
+  const [modelMessages, reservation] = await Promise.all([
+    convertToModelMessages(messagesForModel),
+    actUsageBudgetService.reserveForAttempt({
     entitlements: runtimeEntitlements,
     estimatedInputTokens: Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000,
     idempotencyKey: requestIdempotencyKey,
@@ -613,7 +614,8 @@ export async function prepareAutomationAgentTurn(
     userId,
     workspaceId: billingWorkspaceId,
     programmaticSubjectId: billingProgrammaticSubjectId,
-  })
+    }),
+  ])
   if (!reservation.ok) {
     const payload = reservation.failure.payload as Record<string, unknown>
     throw new AutomationTurnError(
