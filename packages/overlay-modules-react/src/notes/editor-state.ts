@@ -389,7 +389,7 @@ export function useEditorRequests({
   focusRequest,
   externalInsertion,
 }: {
-  editor: TiptapEditor
+  editor: TiptapEditor | null
   focusRequest?: number
   externalInsertion?: { id: string; text: string }
 }) {
@@ -414,7 +414,7 @@ export function useSlashMenu({
   editor,
   slashState,
 }: {
-  editor: TiptapEditor
+  editor: TiptapEditor | null
   slashState: ReturnType<typeof useSlashMenuState>
 }) {
   const {
@@ -525,7 +525,7 @@ export function useNotebookNotes({
   setActiveNote: (note: NotebookNote | null) => void
   setTitle: (title: string) => void
   hydratingEditorRef: MutableRefObject<boolean>
-  editor: TiptapEditor
+  editor: TiptapEditor | null
 }) {
   const openNote = useCallback((note: NotebookNote) => {
     lifecycleController.current?.select({
@@ -611,7 +611,7 @@ export function useNoteMutations({
   setNotes: React.Dispatch<React.SetStateAction<NotebookNote[]>>
   setActiveNote: (note: NotebookNote | null) => void
   setTitle: (title: string) => void
-  editor: TiptapEditor
+  editor: TiptapEditor | null
   lifecycleController: MutableRefObject<NotebookEditorController | null>
   activeNoteRef: MutableRefObject<NotebookNote | null>
   titleRef: MutableRefObject<string>
@@ -725,7 +725,7 @@ export function useNoteMutations({
 
 async function readAgentStream(
   res: Response,
-  editor: TiptapEditor,
+  editor: TiptapEditor | null,
   setAgentItems: React.Dispatch<React.SetStateAction<NotebookAgentUiItem[]>>,
 ) {
   const reader = res.body?.getReader()
@@ -771,7 +771,7 @@ export function useNotebookAgent({
   onAgentPanelOpenChange,
 }: {
   runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
-  editor: TiptapEditor
+  editor: TiptapEditor | null
   activeNote: NotebookNote | null
   title: string
   initialModelId: string
