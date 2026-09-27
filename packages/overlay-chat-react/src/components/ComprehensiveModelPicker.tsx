@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { BrainCircuit, Check, ChevronDown, Image as ImageIcon, KeyRound } from 'lucide-react'
 import {
   type ChatModelPreferences,
@@ -12,48 +12,62 @@ function isByokModel(model: ChatModel): boolean {
   return model.id.startsWith('byok/')
 }
 
+function ByokBadge({ pill }: { pill?: boolean }) {
+  return (
+    <span
+      className={`inline-flex h-5 items-center bg-[var(--surface-subtle)] text-[9px] font-semibold leading-none text-[var(--muted)] ${
+        pill ? 'rounded-full px-1.5 tracking-tight' : 'rounded px-1'
+      }`}
+    >
+      <KeyRound size={8} strokeWidth={2} className="mr-0.5" />
+      BYOK
+    </span>
+  )
+}
+
+function CostBadge({ cost }: { cost: number }) {
+  return (
+    <span
+      className={`inline-flex h-5 items-center rounded-full px-1.5 text-[9px] font-semibold leading-none tracking-tight ${
+        cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+      }`}
+      style={cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
+    >
+      {cost === 0 ? 'Free' : '$'.repeat(cost)}
+    </span>
+  )
+}
+
+function CapabilityBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+      {children}
+    </span>
+  )
+}
+
 function ModelBadges({ m, isHovered }: { m: ChatModel; isHovered: boolean }) {
   const byok = isByokModel(m)
-  const cost = m.cost ?? 1
   if (isHovered) {
     return (
       <span className="flex h-5 shrink-0 items-center gap-1">
-        {byok ? (
-          <span className="inline-flex h-5 items-center rounded-full bg-[var(--surface-subtle)] px-1.5 text-[9px] font-semibold leading-none tracking-tight text-[var(--muted)]">
-            <KeyRound size={8} strokeWidth={2} className="mr-0.5" />
-            BYOK
-          </span>
-        ) : (
-          <span
-            className={`inline-flex h-5 items-center rounded-full px-1.5 text-[9px] font-semibold leading-none tracking-tight ${
-              cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-            }`}
-            style={cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
-          >
-            {cost === 0 ? 'Free' : '$'.repeat(cost)}
-          </span>
-        )}
+        {byok ? <ByokBadge pill /> : <CostBadge cost={m.cost ?? 1} />}
       </span>
     )
   }
 
   return (
     <span className="flex h-5 shrink-0 items-center gap-1">
-      {byok ? (
-        <span className="inline-flex h-5 items-center rounded bg-[var(--surface-subtle)] px-1 text-[9px] font-semibold leading-none text-[var(--muted)]">
-          <KeyRound size={8} strokeWidth={2} className="mr-0.5" />
-          BYOK
-        </span>
-      ) : null}
+      {byok ? <ByokBadge /> : null}
       {m.supportsVision ? (
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <CapabilityBadge>
           <ImageIcon size={10} strokeWidth={1.75} />
-        </span>
+        </CapabilityBadge>
       ) : null}
       {m.supportsReasoning ? (
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <CapabilityBadge>
           <BrainCircuit size={10} strokeWidth={1.75} />
-        </span>
+        </CapabilityBadge>
       ) : null}
     </span>
   )
