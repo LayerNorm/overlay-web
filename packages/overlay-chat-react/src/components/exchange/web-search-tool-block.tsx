@@ -56,18 +56,7 @@ export function WebSearchToolBlock({
                 {label}
               </span>
               {hasDetails && isDone ? (
-                <button
-                  type="button"
-                  onClick={() => setUserExpanded((open) => !open)}
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  aria-label={userExpanded ? 'Collapse web search details' : 'Expand web search details'}
-                >
-                  <ChevronDown
-                    size={14}
-                    strokeWidth={1.75}
-                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
-                  />
-                </button>
+                <WebSearchExpandToggle expanded={userExpanded} onToggle={() => setUserExpanded((open) => !open)} />
               ) : null}
             </div>
           </div>
@@ -77,6 +66,23 @@ export function WebSearchToolBlock({
         ) : null}
       </div>
     </div>
+  )
+}
+
+function WebSearchExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      aria-label={expanded ? 'Collapse web search details' : 'Expand web search details'}
+    >
+      <ChevronDown
+        size={14}
+        strokeWidth={1.75}
+        className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+      />
+    </button>
   )
 }
 

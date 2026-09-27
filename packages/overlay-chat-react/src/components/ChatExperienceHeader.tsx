@@ -693,6 +693,152 @@ function VideoSubModePicker({
   )
 }
 
+function ChatModelPickerDropdown({
+  generationMode,
+  onGenerationModeChange,
+  isActiveLoading,
+  modelPickerListScrollRef,
+  textModelsLoading,
+  isFreeTier,
+  imageModels,
+  selectedImageModels,
+  imageModelSelectionMode,
+  onToggleImageModel,
+  onImageModelSelectionModeChange,
+  videoModels,
+  selectedVideoModels,
+  videoModelSelectionMode,
+  onToggleVideoModel,
+  onVideoModelSelectionModeChange,
+  selectableTextModels,
+  askModelSelectionMode,
+  selectedActModel,
+  selectedModels,
+  onToggleTextModel,
+  onTextModelSelectionModeChange,
+  isFreeTierChatModelId,
+  onHoveredModelChange,
+  hasAutomationContext,
+}: Pick<ChatExperienceHeaderProps,
+  | 'generationMode'
+  | 'onGenerationModeChange'
+  | 'isActiveLoading'
+  | 'modelPickerListScrollRef'
+  | 'textModelsLoading'
+  | 'isFreeTier'
+  | 'imageModels'
+  | 'selectedImageModels'
+  | 'imageModelSelectionMode'
+  | 'onToggleImageModel'
+  | 'onImageModelSelectionModeChange'
+  | 'videoModels'
+  | 'selectedVideoModels'
+  | 'videoModelSelectionMode'
+  | 'onToggleVideoModel'
+  | 'onVideoModelSelectionModeChange'
+  | 'selectableTextModels'
+  | 'askModelSelectionMode'
+  | 'selectedActModel'
+  | 'selectedModels'
+  | 'onToggleTextModel'
+  | 'onTextModelSelectionModeChange'
+  | 'isFreeTierChatModelId'
+  | 'onHoveredModelChange'
+  | 'hasAutomationContext'
+>) {
+  return (
+    <div
+      data-tour="model-picker"
+      className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+    >
+      <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
+        <DelayedTooltip
+          label="Cycle text / image / video (⇧⌘.)"
+          side="left"
+          className="block w-full"
+        >
+          <span data-tour="generation-mode-toggle" className="block w-full">
+            <GenerationModeToggle
+              mode={generationMode}
+              onChange={onGenerationModeChange}
+              disabled={isActiveLoading}
+              layout="stretch"
+            />
+          </span>
+        </DelayedTooltip>
+      </div>
+      <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
+        {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
+          <PremiumModelsLoadingRows />
+        ) : null}
+        {generationMode === 'image' ? (
+          <MediaModelList
+            models={imageModels}
+            selectedModelIds={selectedImageModels}
+            selectionMode={imageModelSelectionMode}
+            onToggleModel={onToggleImageModel}
+          />
+        ) : generationMode === 'video' ? (
+          <MediaModelList
+            models={videoModels}
+            selectedModelIds={selectedVideoModels}
+            selectionMode={videoModelSelectionMode}
+            onToggleModel={onToggleVideoModel}
+          />
+        ) : (
+          <TextModelRows
+            models={selectableTextModels}
+            isFreeTier={isFreeTier}
+            isFreeTierChatModelId={isFreeTierChatModelId}
+            textModelsLoading={textModelsLoading}
+            onHoveredModelChange={onHoveredModelChange}
+            isSelected={(m) =>
+              askModelSelectionMode === 'single'
+                ? m.id === selectedActModel
+                : selectedModels.includes(m.id)
+            }
+            isDisabled={(m, isSel) =>
+              askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
+            }
+            onSelect={(m) => onToggleTextModel(m.id)}
+          />
+        )}
+        {generationMode === 'text' && textModelsLoading && isFreeTier ? (
+          <PremiumModelsLoadingRows divider />
+        ) : null}
+      </div>
+      {generationMode === 'image' ? (
+        <div className="border-t border-[var(--border)] px-2 py-2">
+          <ModelSelectionModeButtons
+            selectionMode={imageModelSelectionMode}
+            onSelectionModeChange={onImageModelSelectionModeChange}
+            isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
+          />
+        </div>
+      ) : null}
+      {generationMode === 'video' ? (
+        <div className="border-t border-[var(--border)] px-2 py-2">
+          <ModelSelectionModeButtons
+            selectionMode={videoModelSelectionMode}
+            onSelectionModeChange={onVideoModelSelectionModeChange}
+            isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
+          />
+        </div>
+      ) : null}
+      {generationMode === 'text' && !hasAutomationContext ? (
+        <div className="border-t border-[var(--border)] px-2 py-2">
+          <ModelSelectionModeButtons
+            selectionMode={askModelSelectionMode}
+            onSelectionModeChange={onTextModelSelectionModeChange}
+            isModeDisabled={(mode) => isFreeTier && mode === 'multiple'}
+          />
+        </div>
+      ) : null}
+
+    </div>
+  )
+}
+
 function ChatModelPicker({
   modelPickerRef,
   onToggleModelPicker,
@@ -788,95 +934,33 @@ function ChatModelPicker({
               onHoveredModelChange={onHoveredModelChange}
             />
           ) : null}
-          <div
-            data-tour="model-picker"
-            className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-          >
-            <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
-              <DelayedTooltip
-                label="Cycle text / image / video (⇧⌘.)"
-                side="left"
-                className="block w-full"
-              >
-                <span data-tour="generation-mode-toggle" className="block w-full">
-                  <GenerationModeToggle
-                    mode={generationMode}
-                    onChange={onGenerationModeChange}
-                    disabled={isActiveLoading}
-                    layout="stretch"
-                  />
-                </span>
-              </DelayedTooltip>
-            </div>
-            <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-              {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
-                <PremiumModelsLoadingRows />
-              ) : null}
-              {generationMode === 'image' ? (
-                <MediaModelList
-                  models={imageModels}
-                  selectedModelIds={selectedImageModels}
-                  selectionMode={imageModelSelectionMode}
-                  onToggleModel={onToggleImageModel}
-                />
-              ) : generationMode === 'video' ? (
-                <MediaModelList
-                  models={videoModels}
-                  selectedModelIds={selectedVideoModels}
-                  selectionMode={videoModelSelectionMode}
-                  onToggleModel={onToggleVideoModel}
-                />
-              ) : (
-                <TextModelRows
-                  models={selectableTextModels}
-                  isFreeTier={isFreeTier}
-                  isFreeTierChatModelId={isFreeTierChatModelId}
-                  textModelsLoading={textModelsLoading}
-                  onHoveredModelChange={onHoveredModelChange}
-                  isSelected={(m) =>
-                    askModelSelectionMode === 'single'
-                      ? m.id === selectedActModel
-                      : selectedModels.includes(m.id)
-                  }
-                  isDisabled={(m, isSel) =>
-                    askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
-                  }
-                  onSelect={(m) => onToggleTextModel(m.id)}
-                />
-              )}
-              {generationMode === 'text' && textModelsLoading && isFreeTier ? (
-                <PremiumModelsLoadingRows divider />
-              ) : null}
-            </div>
-            {generationMode === 'image' ? (
-              <div className="border-t border-[var(--border)] px-2 py-2">
-                <ModelSelectionModeButtons
-                  selectionMode={imageModelSelectionMode}
-                  onSelectionModeChange={onImageModelSelectionModeChange}
-                  isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
-                />
-              </div>
-            ) : null}
-            {generationMode === 'video' ? (
-              <div className="border-t border-[var(--border)] px-2 py-2">
-                <ModelSelectionModeButtons
-                  selectionMode={videoModelSelectionMode}
-                  onSelectionModeChange={onVideoModelSelectionModeChange}
-                  isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
-                />
-              </div>
-            ) : null}
-            {generationMode === 'text' && !hasAutomationContext ? (
-              <div className="border-t border-[var(--border)] px-2 py-2">
-                <ModelSelectionModeButtons
-                  selectionMode={askModelSelectionMode}
-                  onSelectionModeChange={onTextModelSelectionModeChange}
-                  isModeDisabled={(mode) => isFreeTier && mode === 'multiple'}
-                />
-              </div>
-            ) : null}
-
-          </div>
+          <ChatModelPickerDropdown
+            generationMode={generationMode}
+            onGenerationModeChange={onGenerationModeChange}
+            isActiveLoading={isActiveLoading}
+            modelPickerListScrollRef={modelPickerListScrollRef}
+            textModelsLoading={textModelsLoading}
+            isFreeTier={isFreeTier}
+            imageModels={imageModels}
+            selectedImageModels={selectedImageModels}
+            imageModelSelectionMode={imageModelSelectionMode}
+            onToggleImageModel={onToggleImageModel}
+            onImageModelSelectionModeChange={onImageModelSelectionModeChange}
+            videoModels={videoModels}
+            selectedVideoModels={selectedVideoModels}
+            videoModelSelectionMode={videoModelSelectionMode}
+            onToggleVideoModel={onToggleVideoModel}
+            onVideoModelSelectionModeChange={onVideoModelSelectionModeChange}
+            selectableTextModels={selectableTextModels}
+            askModelSelectionMode={askModelSelectionMode}
+            selectedActModel={selectedActModel}
+            selectedModels={selectedModels}
+            onToggleTextModel={onToggleTextModel}
+            onTextModelSelectionModeChange={onTextModelSelectionModeChange}
+            isFreeTierChatModelId={isFreeTierChatModelId}
+            onHoveredModelChange={onHoveredModelChange}
+            hasAutomationContext={hasAutomationContext}
+          />
         </>
       ) : null}
     </div>

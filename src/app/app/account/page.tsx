@@ -2,7 +2,7 @@
 
 // Compatibility wrapper: account and billing transport lives behind @overlay/api-client
 // while this web container keeps current billing flows and redirects unchanged.
-import { useState, useEffect, Suspense, useRef, useCallback } from 'react'
+import { useState, useEffect, Suspense, useRef, useCallback, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Download, MonitorDown, RefreshCw, ArrowRight } from 'lucide-react'
@@ -455,19 +455,21 @@ function AuthenticatedAccountPanels({
   )
 }
 
-export function AccountPageContent({ embedded = false }: { embedded?: boolean }) {
-  const { settings } = useAppSettings()
-  const isLandingDark = settings.theme === 'dark'
-  const panel = minimalPanel() + ' p-5'
-  const panelLg = 'mx-auto max-w-md ' + minimalPanel() + ' p-8'
-  const t = {
-    title: 'font-serif text-[var(--foreground)]',
-    h: 'text-[var(--foreground)]',
-    muted: 'text-[var(--muted)]',
-    body: minimalBody(),
-  }
-  const router = useRouter()
-  const searchParams = useSearchParams()
+function useAccountHandoffs({
+  searchParams,
+  isAuthenticated,
+  currentUserId,
+  sessionCheckComplete,
+  billing,
+  router,
+}: {
+  searchParams: ReturnType<typeof useSearchParams>
+  isAuthenticated: boolean
+  currentUserId: string | null
+  sessionCheckComplete: boolean
+  billing: ReturnType<typeof useAccountBillingState>
+  router: ReturnType<typeof useRouter>
+}) {
   const desktopCodeChallengeFromUrl = searchParams?.get('desktop_code_challenge')?.trim() || ''
   const desktopCodeChallenge = desktopCodeChallengeFromUrl || getStoredDesktopPkceChallenge() || ''
   const extensionHandoff = searchParams?.get('extension_handoff') === '1'
@@ -477,19 +479,6 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
         `/account?desktop_code_challenge=${encodeURIComponent(desktopCodeChallenge)}`,
       )}`
     : '/auth/sign-in'
-
-  // Get userId from AuthContext (session-based)
-  const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
-  const currentUserId = user?.id || null
-  const [signingOut, setSigningOut] = useState(false)
-  const billing = useAccountBillingState({
-    authLoading,
-    currentUserId,
-    isAuthenticated,
-    router,
-    searchParams,
-  })
-  const sessionCheckComplete = useSessionCheckOnMount(isAuthenticated, authLoading, refreshSession)
 
   useEffect(() => {
     persistMobilePkceChallengeFromUrl(searchParams)
@@ -513,6 +502,45 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
     currentUserId,
     sessionCheckComplete,
     setActionLoading: billing.setActionLoading,
+  })
+
+  return { accountSignInHref, handleOpenInApp }
+}
+
+export function AccountPageContent({ embedded = false }: { embedded?: boolean }) {
+  const { settings } = useAppSettings()
+  const isLandingDark = settings.theme === 'dark'
+  const panel = minimalPanel() + ' p-5'
+  const panelLg = 'mx-auto max-w-md ' + minimalPanel() + ' p-8'
+  const t = {
+    title: 'font-serif text-[var(--foreground)]',
+    h: 'text-[var(--foreground)]',
+    muted: 'text-[var(--muted)]',
+    body: minimalBody(),
+  }
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Get userId from AuthContext (session-based)
+  const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
+  const currentUserId = user?.id || null
+  const [signingOut, setSigningOut] = useState(false)
+  const billing = useAccountBillingState({
+    authLoading,
+    currentUserId,
+    isAuthenticated,
+    router,
+    searchParams,
+  })
+  const sessionCheckComplete = useSessionCheckOnMount(isAuthenticated, authLoading, refreshSession)
+
+  const { accountSignInHref, handleOpenInApp } = useAccountHandoffs({
+    searchParams,
+    isAuthenticated,
+    currentUserId,
+    sessionCheckComplete,
+    billing,
+    router,
   })
 
   const handleSignOut = async () => {
@@ -541,41 +569,66 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
 
         {!embedded ? <AccountIntro /> : null}
 
-        {billing.loading || authLoading || !sessionCheckComplete || !billing.capabilitiesLoaded ? (
-          <AccountLoadingState mutedClass={t.muted} dark={isLandingDark} />
-        ) : !isAuthenticated ? (
-          <AccountSignInPrompt
-            panelClass={panelLg}
-            headingClass={t.h}
-            mutedClass={t.muted}
-            action={
-              <Link
-                href={accountSignInHref}
-                className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
-              >
-                Sign in
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            }
-          />
-        ) : (
-          <AuthenticatedAccountPanels
-            panelClass={panel}
-            headingClass={t.h}
-            mutedClass={t.muted}
-            dark={isLandingDark}
-            name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
-            email={user?.email}
-            signingOut={signingOut}
-            onSignOut={handleSignOut}
-            openingApp={billing.actionLoading === 'openApp'}
-            onOpenInApp={handleOpenInApp}
-            billing={billing}
-          />
-        )}
+        <AccountContentBody
+          ready={!billing.loading && !authLoading && sessionCheckComplete && billing.capabilitiesLoaded}
+          isAuthenticated={isAuthenticated}
+          loadingMutedClass={t.muted}
+          dark={isLandingDark}
+          signInPrompt={
+            <AccountSignInPrompt
+              panelClass={panelLg}
+              headingClass={t.h}
+              mutedClass={t.muted}
+              action={
+                <Link
+                  href={accountSignInHref}
+                  className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
+                >
+                  Sign in
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              }
+            />
+          }
+          panels={
+            <AuthenticatedAccountPanels
+              panelClass={panel}
+              headingClass={t.h}
+              mutedClass={t.muted}
+              dark={isLandingDark}
+              name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
+              email={user?.email}
+              signingOut={signingOut}
+              onSignOut={handleSignOut}
+              openingApp={billing.actionLoading === 'openApp'}
+              onOpenInApp={handleOpenInApp}
+              billing={billing}
+            />
+          }
+        />
       </div>
     </Content>
   )
+}
+
+function AccountContentBody({
+  ready,
+  isAuthenticated,
+  loadingMutedClass,
+  dark,
+  signInPrompt,
+  panels,
+}: {
+  ready: boolean
+  isAuthenticated: boolean
+  loadingMutedClass: string
+  dark: boolean
+  signInPrompt: ReactNode
+  panels: ReactNode
+}) {
+  if (!ready) return <AccountLoadingState mutedClass={loadingMutedClass} dark={dark} />
+  if (!isAuthenticated) return <>{signInPrompt}</>
+  return <>{panels}</>
 }
 
 function AccountPageRedirect() {

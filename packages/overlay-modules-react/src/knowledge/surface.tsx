@@ -157,6 +157,72 @@ function KnowledgeSurfaceDialogs({
   )
 }
 
+function KnowledgeMemoriesTab({
+  memories,
+  select,
+  layout,
+}: {
+  memories: ReturnType<typeof useSurfaceMemories>
+  select: ReturnType<typeof useSelectMode>
+  layout: KnowledgeLayout
+}) {
+  const hasPending = Boolean(memories.memorySavePendingPreview || memories.importPendingPreview)
+  return (
+    <>
+      {hasPending && (
+        <KnowledgePendingNotice
+          title={memories.memorySavePendingPreview ? 'Saving memory…' : 'Importing memory…'}
+          preview={memories.memorySavePendingPreview ?? memories.importPendingPreview}
+        />
+      )}
+      <KnowledgeMemoriesPanel
+        loading={memories.memoriesLoading}
+        memoriesCount={memories.memories.length}
+        memories={memories.memoriesFiltered}
+        layout={layout}
+        selectedIds={select.selectedMemoryIds}
+        selectMode={select.selectMode}
+        hasPending={hasPending}
+        onOpen={memories.openMemory}
+        onToggleSelect={select.toggleMemorySelect}
+        onAddFirst={() => { memories.setShowAddMemory(true); memories.setMemorySaveError(null) }}
+        onDelete={(memoryId, event) => {
+          event.stopPropagation()
+          void memories.handleDeleteMemory(memoryId)
+        }}
+      />
+    </>
+  )
+}
+
+function KnowledgeFilesTabNotices({
+  fileUploadPending,
+  fileUploadError,
+  fileList,
+}: {
+  fileUploadPending: { label: string } | null
+  fileUploadError: string | null
+  fileList: ReturnType<typeof useSurfaceFileList>
+}) {
+  return (
+    <>
+      {fileUploadPending && (
+        <KnowledgePendingNotice title="Uploading…" preview={fileUploadPending.label} />
+      )}
+      {fileUploadError && (
+        <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+          {fileUploadError}
+        </p>
+      )}
+      {fileList.filesLoadError && (
+        <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+          {fileList.filesLoadError}
+        </p>
+      )}
+    </>
+  )
+}
+
 function KnowledgeSurfaceBody({
   activeTab,
   layout,
@@ -215,44 +281,16 @@ function KnowledgeSurfaceBody({
         />
       )}
 
-      {activeTab === 'memories' && (memories.memorySavePendingPreview || memories.importPendingPreview) && (
-        <KnowledgePendingNotice
-          title={memories.memorySavePendingPreview ? 'Saving memory…' : 'Importing memory…'}
-          preview={memories.memorySavePendingPreview ?? memories.importPendingPreview}
-        />
-      )}
-
       {activeTab === 'memories' && (
-        <KnowledgeMemoriesPanel
-          loading={memories.memoriesLoading}
-          memoriesCount={memories.memories.length}
-          memories={memories.memoriesFiltered}
-          layout={layout}
-          selectedIds={select.selectedMemoryIds}
-          selectMode={select.selectMode}
-          hasPending={Boolean(memories.memorySavePendingPreview || memories.importPendingPreview)}
-          onOpen={memories.openMemory}
-          onToggleSelect={select.toggleMemorySelect}
-          onAddFirst={() => { memories.setShowAddMemory(true); memories.setMemorySaveError(null) }}
-          onDelete={(memoryId, event) => {
-            event.stopPropagation()
-            void memories.handleDeleteMemory(memoryId)
-          }}
-        />
+        <KnowledgeMemoriesTab memories={memories} select={select} layout={layout} />
       )}
 
-      {activeTab === 'files' && !opened.selectedFile && fileUploadPending && (
-        <KnowledgePendingNotice title="Uploading…" preview={fileUploadPending.label} />
-      )}
-      {activeTab === 'files' && !opened.selectedFile && fileUploadError && (
-        <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
-          {fileUploadError}
-        </p>
-      )}
-      {activeTab === 'files' && !opened.selectedFile && fileList.filesLoadError && (
-        <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
-          {fileList.filesLoadError}
-        </p>
+      {activeTab === 'files' && !opened.selectedFile && (
+        <KnowledgeFilesTabNotices
+          fileUploadPending={fileUploadPending}
+          fileUploadError={fileUploadError}
+          fileList={fileList}
+        />
       )}
       {activeTab === 'files' && fileList.filesRefreshing && (
         <span className="sr-only" role="status">Refreshing files</span>

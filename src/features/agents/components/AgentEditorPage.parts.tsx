@@ -255,40 +255,73 @@ function AgentEditorFormSection({
             onArchive={() => void archiveAgent()}
           />
 
-          {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
-          {savedFlash && mode === 'edit'
-            ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
-            : null}
-          {mode === 'new' ? (
-            <>
-              <Button
-                className="mt-2 w-full"
-                disabled={busy || !valid}
-                onClick={() => persistNew()}
-              >
-                {busy ? 'Creating…' : 'Create agent'}
-              </Button>
-              <Button variant="ghost" className="w-full" disabled={busy} onClick={closeEditor}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                className="mt-2 w-full"
-                disabled={busy || !valid || !dirty}
-                onClick={() => saveEdit()}
-              >
-                {busy ? 'Saving…' : 'Save changes'}
-              </Button>
-              <Button variant="ghost" className="w-full" disabled={busy} onClick={cancelEdit}>
-                Cancel
-              </Button>
-            </>
-          )}
+          <AgentEditorFormFooter
+            mode={mode}
+            error={error}
+            savedFlash={savedFlash}
+            busy={busy}
+            valid={valid}
+            dirty={dirty}
+            onCreate={() => persistNew()}
+            onClose={closeEditor}
+            onSave={() => saveEdit()}
+            onCancel={cancelEdit}
+          />
         </div>
       </div>
     </div>
+  )
+}
+
+function AgentEditorFormFooter({
+  mode,
+  error,
+  savedFlash,
+  busy,
+  valid,
+  dirty,
+  onCreate,
+  onClose,
+  onSave,
+  onCancel,
+}: {
+  mode: 'new' | 'edit'
+  error: string | null
+  savedFlash: boolean
+  busy: boolean
+  valid: boolean
+  dirty: boolean
+  onCreate(): void
+  onClose(): void
+  onSave(): void
+  onCancel(): void
+}) {
+  return (
+    <>
+      {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
+      {savedFlash && mode === 'edit'
+        ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
+        : null}
+      {mode === 'new' ? (
+        <>
+          <Button className="mt-2 w-full" disabled={busy || !valid} onClick={onCreate}>
+            {busy ? 'Creating…' : 'Create agent'}
+          </Button>
+          <Button variant="ghost" className="w-full" disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button className="mt-2 w-full" disabled={busy || !valid || !dirty} onClick={onSave}>
+            {busy ? 'Saving…' : 'Save changes'}
+          </Button>
+          <Button variant="ghost" className="w-full" disabled={busy} onClick={onCancel}>
+            Cancel
+          </Button>
+        </>
+      )}
+    </>
   )
 }
 

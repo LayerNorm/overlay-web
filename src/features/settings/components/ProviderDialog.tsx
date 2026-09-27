@@ -469,8 +469,12 @@ function ProviderDialogFooter({
   )
 }
 
-export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: ProviderDialogProps) {
-  const isEdit = state.mode === 'edit'
+function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
+  state: ProviderDialogProps['state']
+  isEdit: boolean
+  onBusyChange: (busy: boolean) => void
+  onSaved: ProviderDialogProps['onSaved']
+}) {
   const existing = state.mode === 'edit' ? state.connection : null
 
   const [providerId, setProviderId] = useState(existing?.providerId ?? 'openrouter')
@@ -573,6 +577,59 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
   const availablePresets = BYOK_PROVIDER_PRESETS.filter(
     (p) => p.id !== 'vercel-ai-gateway' || isEdit,
   )
+  return {
+    providerId,
+    endpoint,
+    displayName,
+    apiKey,
+    testResult,
+    testing,
+    enabledModelIds,
+    showApiKey,
+    preset,
+    availablePresets,
+    setDisplayName,
+    setApiKey,
+    setShowApiKey,
+    handleProviderChange,
+    handleEndpointChange,
+    handleToggleModel,
+    handleTest,
+    handleSave,
+    existing,
+    hasRequiredEndpoint,
+    hasRequiredApiKey,
+    canSave,
+    canTest,
+  }
+}
+
+export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: ProviderDialogProps) {
+  const isEdit = state.mode === 'edit'
+  const {
+    providerId,
+    endpoint,
+    displayName,
+    apiKey,
+    testResult,
+    testing,
+    enabledModelIds,
+    showApiKey,
+    preset,
+    availablePresets,
+    setDisplayName,
+    setApiKey,
+    setShowApiKey,
+    handleProviderChange,
+    handleEndpointChange,
+    handleToggleModel,
+    handleTest,
+    handleSave,
+    existing,
+    canSave,
+    canTest,
+  } = useProviderForm({ state, isEdit, onBusyChange, onSaved })
+
 
   return (
     <DialogFrame

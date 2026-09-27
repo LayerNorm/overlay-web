@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
@@ -100,6 +100,44 @@ export interface ChatExchangeProps {
   presentation?: Partial<ChatTranscriptPresentation>
 }
 
+function useExchangeSegments(assistantVisualBlocks: Parameters<typeof buildAssistantVisualSegments>[0]) {
+  const assistantSegments = useMemo(
+    () => buildAssistantVisualSegments(assistantVisualBlocks),
+    [assistantVisualBlocks],
+  )
+  const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
+  return { assistantSegments, toolChainFlags }
+}
+
+function useCollapsePlan(assistantSegments: ReturnType<typeof buildAssistantVisualSegments>, isStreaming: boolean) {
+  const collapsePlan = useMemo(
+    () => isStreaming
+      ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
+      : planAssistantWorkCollapse(assistantSegments),
+    [assistantSegments, isStreaming],
+  )
+  const collapsedSet = useMemo(
+    () => new Set(collapsePlan.collapsedIndexes),
+    [collapsePlan],
+  )
+  return { collapsePlan, collapsedSet }
+}
+
+function useWorkedMs(isStreaming: boolean, workedDurationMs: number | null | undefined): number | null {
+  const streamStartedAtRef = useRef<number | null>(null)
+  const [measuredWorkMs, setMeasuredWorkMs] = useState<number | null>(null)
+  useEffect(() => {
+    if (isStreaming) {
+      if (streamStartedAtRef.current == null) streamStartedAtRef.current = Date.now()
+      return
+    }
+    if (streamStartedAtRef.current != null && measuredWorkMs == null) {
+      setMeasuredWorkMs(Math.max(0, Date.now() - streamStartedAtRef.current))
+    }
+  }, [isStreaming, measuredWorkMs])
+  return workedDurationMs ?? measuredWorkMs
+}
+
 export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
@@ -110,50 +148,22 @@ export function ChatExchange({
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const lastTextBlockIndex = findLastTextBlockIndex(assistantVisualBlocks)
-    const assistantSegments = useMemo(
-      () => buildAssistantVisualSegments(assistantVisualBlocks),
-      [assistantVisualBlocks],
-    )
-    const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
+    const { assistantSegments, toolChainFlags } = useExchangeSegments(assistantVisualBlocks)
     const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
       assistantPlainText,
       assistantVisualBlocks,
       responseSources,
       sourceCitations,
     })
-    const normalizedStatus: ChatExchangeStatus = status ?? (
-      responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
-    )
-    const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
-    const responseSettled = !loadingPresentation.active
+    const { loadingPresentation, responseSettled } = resolveLoadingPresentation(status, responseInProgress, assistantVisualBlocks)
 
     // Turn duration: the persisted createdAt→updatedAt span wins when present;
     // live turns still measure on the streaming→settled edge.
-    const streamStartedAtRef = useRef<number | null>(null)
-    const [measuredWorkMs, setMeasuredWorkMs] = useState<number | null>(null)
-    useEffect(() => {
-      if (isStreaming) {
-        if (streamStartedAtRef.current == null) streamStartedAtRef.current = Date.now()
-        return
-      }
-      if (streamStartedAtRef.current != null && measuredWorkMs == null) {
-        setMeasuredWorkMs(Math.max(0, Date.now() - streamStartedAtRef.current))
-      }
-    }, [isStreaming, measuredWorkMs])
-    const workedMs = workedDurationMs ?? measuredWorkMs
+    const workedMs = useWorkedMs(isStreaming, workedDurationMs)
 
-    const collapsePlan = useMemo(
-      () => isStreaming
-        ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
-        : planAssistantWorkCollapse(assistantSegments),
-      [assistantSegments, isStreaming],
-    )
-    const collapsedSet = useMemo(
-      () => new Set(collapsePlan.collapsedIndexes),
-      [collapsePlan],
-    )
+    const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming)
     const [workExpanded, setWorkExpanded] = useState(false)
-    const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
+    const segmentCtx: AssistantSegmentRenderContext = {
       keyPrefix: exchIdx,
       markdownKeyPrefix: `${userMsgId}-${responseModelId}`,
       blockCount: assistantVisualBlocks.length,
@@ -168,19 +178,8 @@ export function ChatExchange({
       onOpenAttachmentPreview,
       generatedUiConnectorActions,
       onGeneratedUiChange,
-    }), [
-      exchIdx, userMsgId, responseModelId, assistantVisualBlocks.length,
-      lastTextBlockIndex, isStreaming, isTextStreaming, effectiveSourceCitations,
-      webSources, loadingPresentation.inlineTextMarker, onOpenDraft,
-      onCreateAutomationDraft, onOpenAttachmentPreview,
-      generatedUiConnectorActions, onGeneratedUiChange,
-    ])
-    const copyPlainText =
-      interrupted && !errorMessage
-        ? assistantPlainText.trim()
-          ? `${assistantPlainText}\n\nResponse was interrupted.`
-          : 'Response was interrupted.'
-        : assistantPlainText
+    }
+    const copyPlainText = interruptedCopyText(assistantPlainText, interrupted, errorMessage)
     const showFooter =
       presentation?.showActions !== false &&
       responseSettled &&
@@ -213,6 +212,133 @@ export function ChatExchange({
         />
 
         {/* Inline model tabs — only shown when multiple models are active for this exchange */}
+        <ChatExchangeAssistantBody
+          exchModelList={exchModelList}
+          selectedTab={selectedTab}
+          isLoadingTabs={isLoadingTabs}
+          onTabSelect={onTabSelect}
+          getModelDisplayName={getModelDisplayName}
+          collapsePlan={collapsePlan}
+          workedMs={workedMs}
+          workExpanded={workExpanded}
+          setWorkExpanded={setWorkExpanded}
+          assistantSegments={assistantSegments}
+          collapsedSet={collapsedSet}
+          toolChainFlags={toolChainFlags}
+          exchIdx={exchIdx}
+          isStreaming={isStreaming}
+          segmentCtx={segmentCtx}
+          errorMessage={errorMessage}
+          loadingPresentation={loadingPresentation}
+          responseInProgress={responseInProgress}
+          interrupted={interrupted}
+          responseSettled={responseSettled}
+          onContinue={onContinue}
+          showFooter={showFooter}
+          copyPlainText={copyPlainText}
+          isExiting={isExiting}
+          onRetry={onRetry}
+          retryDisabled={retryDisabled}
+          onDeleteTurn={onDeleteTurn}
+          onReply={onReply}
+          onBranch={onBranch}
+          turnIdForActions={turnIdForActions}
+          actionsLocked={actionsLocked}
+          allSources={allSources}
+          onOpenSources={onOpenSources}
+          userMsgId={userMsgId}
+          isSourcesOpenForThis={isSourcesOpenForThis}
+          modelLabel={modelLabel}
+          actionVisibility={presentation?.actionVisibility}
+          showModelLabel={presentation?.showModelLabel}
+        />
+      </div>
+    )
+}
+
+type ChatExchangeAssistantBodyProps = {
+  exchModelList: ChatExchangeProps['exchModelList']
+  selectedTab: ChatExchangeProps['selectedTab']
+  isLoadingTabs: ChatExchangeProps['isLoadingTabs']
+  onTabSelect: ChatExchangeProps['onTabSelect']
+  getModelDisplayName: ChatExchangeProps['getModelDisplayName']
+  collapsePlan: ReturnType<typeof useCollapsePlan>['collapsePlan']
+  workedMs: number | null
+  workExpanded: boolean
+  setWorkExpanded: Dispatch<SetStateAction<boolean>>
+  assistantSegments: ReturnType<typeof useExchangeSegments>['assistantSegments']
+  collapsedSet: ReturnType<typeof useCollapsePlan>['collapsedSet']
+  toolChainFlags: ReturnType<typeof useExchangeSegments>['toolChainFlags']
+  exchIdx: number
+  isStreaming: boolean
+  segmentCtx: AssistantSegmentRenderContext
+  errorMessage: ChatExchangeProps['errorMessage']
+  loadingPresentation: ReturnType<typeof exchangeLoadingPresentation>
+  responseInProgress: ChatExchangeProps['responseInProgress']
+  interrupted: boolean
+  responseSettled: boolean
+  onContinue: ChatExchangeProps['onContinue']
+  showFooter: boolean
+  copyPlainText: string
+  isExiting: boolean
+  onRetry: ChatExchangeProps['onRetry']
+  retryDisabled: boolean
+  onDeleteTurn: ChatExchangeProps['onDeleteTurn']
+  onReply: ChatExchangeProps['onReply']
+  onBranch: ChatExchangeProps['onBranch']
+  turnIdForActions: ChatExchangeProps['turnIdForActions']
+  actionsLocked: ChatExchangeProps['actionsLocked']
+  allSources: ReturnType<typeof useChatExchangeSources>['allSources']
+  onOpenSources: ChatExchangeProps['onOpenSources']
+  userMsgId: string
+  isSourcesOpenForThis: ChatExchangeProps['isSourcesOpenForThis']
+  modelLabel: string
+  actionVisibility?: 'always' | 'hover'
+  showModelLabel?: boolean
+}
+
+function ChatExchangeAssistantBody({
+  exchModelList,
+  selectedTab,
+  isLoadingTabs,
+  onTabSelect,
+  getModelDisplayName,
+  collapsePlan,
+  workedMs,
+  workExpanded,
+  setWorkExpanded,
+  assistantSegments,
+  collapsedSet,
+  toolChainFlags,
+  exchIdx,
+  isStreaming,
+  segmentCtx,
+  errorMessage,
+  loadingPresentation,
+  responseInProgress,
+  interrupted,
+  responseSettled,
+  onContinue,
+  showFooter,
+  copyPlainText,
+  isExiting,
+  onRetry,
+  retryDisabled,
+  onDeleteTurn,
+  onReply,
+  onBranch,
+  turnIdForActions,
+  actionsLocked,
+  allSources,
+  onOpenSources,
+  userMsgId,
+  isSourcesOpenForThis,
+  modelLabel,
+  actionVisibility,
+  showModelLabel,
+}: ChatExchangeAssistantBodyProps) {
+  return (
+    <>
         {exchModelList.length > 1 && (
           <ExchangeModelTabs
             exchModelList={exchModelList}
@@ -274,13 +400,37 @@ export function ChatExchange({
             userMsgId={userMsgId}
             isSourcesOpenForThis={isSourcesOpenForThis}
             modelLabel={modelLabel}
-            actionVisibility={presentation?.actionVisibility}
-            showModelLabel={presentation?.showModelLabel}
+            actionVisibility={actionVisibility}
+            showModelLabel={showModelLabel}
           />
         )}
 
-      </div>
-    )
+    </>
+  )
+}
+
+function resolveLoadingPresentation(
+  status: ChatExchangeStatus | undefined,
+  responseInProgress: boolean | undefined,
+  assistantVisualBlocks: AssistantVisualBlock[],
+) {
+  const normalizedStatus: ChatExchangeStatus = status ?? (
+    responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
+  )
+  const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
+  return { loadingPresentation, responseSettled: !loadingPresentation.active }
+}
+
+function interruptedCopyText(
+  assistantPlainText: string,
+  interrupted: boolean | undefined,
+  errorMessage: string | null | undefined,
+) {
+  return interrupted && !errorMessage
+    ? assistantPlainText.trim()
+      ? `${assistantPlainText}\n\nResponse was interrupted.`
+      : 'Response was interrupted.'
+    : assistantPlainText
 }
 
 function findLastTextBlockIndex(blocks: AssistantVisualBlock[]): number {

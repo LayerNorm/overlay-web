@@ -27,6 +27,65 @@ import {
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 
+function resolveRoomRightPanel({
+  panels,
+  externalRightPanel,
+  externalRightPanelClose,
+  room,
+  vm,
+  roster,
+  thread,
+  conversationType,
+  showcase,
+  messageCtx,
+}: {
+  panels: ReturnType<typeof useRoomPanels>
+  externalRightPanel?: ReactNode
+  externalRightPanelClose?: () => void
+  room: ReturnType<typeof useDirectMessageRoom>
+  vm: ReturnType<typeof useDirectMessageRoom>['vm']
+  roster: ReturnType<typeof useDirectMessageRoom>['roster']
+  thread: ReturnType<typeof useDirectMessageRoom>['thread']
+  conversationType: 'dm' | 'channel'
+  showcase: boolean
+  messageCtx: ReturnType<typeof useDirectMessageRoom>['messageCtx']
+}) {
+  const roomPanelOpen = room.roomPanel === 'people' || room.roomPanel === 'pinned'
+    || (room.roomPanel === 'thread' && Boolean(vm.threadRoot))
+  const closeRoomPanel = () => {
+    room.setRoomPanel(null)
+    thread.setThreadRootId(null)
+  }
+  // The attachment preview wins the slot while it is open; otherwise the room's
+  // own panels share the shell surface the sources sidebar already uses.
+  const rightPanel = panels.shellRightPanel ?? externalRightPanel
+    ?? (roomPanelOpen ? (
+      <RoomSidePanel
+        roomPanel={room.roomPanel}
+        conversationType={conversationType}
+        title={vm.title}
+        showcase={showcase}
+        roster={roster}
+        vm={vm}
+        thread={thread}
+        navigation={room.navigation}
+        actions={room.actions}
+        sendMessage={room.sendMessage}
+        onAddPeople={() => room.setAddPeopleOpen(true)}
+        onClosePanel={() => room.setRoomPanel(null)}
+        ctx={messageCtx}
+      />
+    ) : null)
+  const rightPanelClose = panels.shellRightPanel
+    ? panels.shellRightPanelClose
+    : externalRightPanel
+      ? externalRightPanelClose
+      : roomPanelOpen
+        ? closeRoomPanel
+        : undefined
+  return { rightPanel, rightPanelClose }
+}
+
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
@@ -79,39 +138,18 @@ export function DirectMessageExperience({
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
 
-  const roomPanelOpen = room.roomPanel === 'people' || room.roomPanel === 'pinned'
-    || (room.roomPanel === 'thread' && Boolean(vm.threadRoot))
-  const closeRoomPanel = () => {
-    room.setRoomPanel(null)
-    thread.setThreadRootId(null)
-  }
-  // The attachment preview wins the slot while it is open; otherwise the room's
-  // own panels share the shell surface the sources sidebar already uses.
-  const rightPanel = panels.shellRightPanel ?? externalRightPanel
-    ?? (roomPanelOpen ? (
-      <RoomSidePanel
-        roomPanel={room.roomPanel}
-        conversationType={conversationType}
-        title={vm.title}
-        showcase={showcase}
-        roster={roster}
-        vm={vm}
-        thread={thread}
-        navigation={room.navigation}
-        actions={room.actions}
-        sendMessage={room.sendMessage}
-        onAddPeople={() => room.setAddPeopleOpen(true)}
-        onClosePanel={() => room.setRoomPanel(null)}
-        ctx={messageCtx}
-      />
-    ) : null)
-  const rightPanelClose = panels.shellRightPanel
-    ? panels.shellRightPanelClose
-    : externalRightPanel
-      ? onExternalRightPanelClose
-      : roomPanelOpen
-        ? closeRoomPanel
-        : undefined
+  const { rightPanel, rightPanelClose } = resolveRoomRightPanel({
+    panels,
+    externalRightPanel,
+    externalRightPanelClose: onExternalRightPanelClose,
+    room,
+    vm,
+    roster,
+    thread,
+    conversationType,
+    showcase,
+    messageCtx,
+  })
 
   return (
     <>

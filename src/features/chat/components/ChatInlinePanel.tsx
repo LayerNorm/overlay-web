@@ -686,6 +686,120 @@ function ChatListRow({
   )
 }
 
+function ChatListBody({
+  loading,
+  chatView,
+  chats,
+  searchQuery,
+  activeId,
+  editingChatId,
+  deletingChatIds,
+  sessions,
+  getUnread,
+  collaborationUnread,
+  editingTitle,
+  isPublicShowcase,
+  hasMore,
+  loadingMore,
+  loadMoreChats,
+  openChat,
+  beginRename,
+  requestArchive,
+  setEditingTitle,
+  saveRename,
+  cancelRename,
+}: {
+  loading: boolean
+  chatView: ChatView
+  chats: Conversation[]
+  searchQuery: string
+  activeId: string | null
+  editingChatId: string | null
+  deletingChatIds: string[]
+  sessions: ReturnType<typeof useAsyncSessions>['sessions']
+  getUnread: ReturnType<typeof useAsyncSessions>['getUnread']
+  collaborationUnread: ReturnType<typeof useCollaborationUnread>
+  editingTitle: string
+  isPublicShowcase: boolean
+  hasMore: boolean
+  loadingMore: boolean
+  loadMoreChats: () => Promise<void> | void
+  openChat: (chat: Conversation) => void
+  beginRename: ReturnType<typeof useChatRename>['beginRename']
+  requestArchive: ReturnType<typeof useChatArchive>['requestArchive']
+  setEditingTitle: (title: string) => void
+  saveRename: ReturnType<typeof useChatRename>['saveRename']
+  cancelRename: ReturnType<typeof useChatRename>['cancelRename']
+}) {
+  const viewChats = chatView === 'personal'
+    ? chats.filter((chat) => (chat.conversationType ?? 'personal') === 'personal')
+    : chatView === 'dms'
+      ? chats.filter((chat) => chat.conversationType === 'dm')
+      : chatView === 'channels'
+        ? chats.filter((chat) => chat.conversationType === 'channel')
+        : chats
+  const filteredChats = searchQuery.trim()
+    ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : viewChats
+  const emptyLabel = {
+    personal: 'No personal chats yet',
+    dms: 'No direct messages yet',
+    channels: 'No channels yet',
+    all: 'No chats yet',
+  }[chatView]
+  if (loading) {
+    return (
+      <SidebarResourceList>
+        <SidebarListSkeleton rows={6} />
+      </SidebarResourceList>
+    )
+  }
+  if (filteredChats.length === 0) {
+    return (
+      <SidebarResourceList>
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
+          {viewChats.length === 0 ? emptyLabel : 'No results'}
+        </p>
+      </SidebarResourceList>
+    )
+  }
+  return (
+    <SidebarResourceList>
+      <>
+          {filteredChats.map((chat) => (
+            <ChatListRow
+              key={chat._id}
+              chat={chat}
+              active={activeId === chat._id}
+              isEditing={editingChatId === chat._id}
+              isDeleting={deletingChatIds.includes(chat._id)}
+              isStreaming={sessions[chat._id]?.status === 'streaming'}
+              unread={Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
+              editingTitle={editingTitle}
+              isPublicShowcase={isPublicShowcase}
+              onOpenChat={openChat}
+              onBeginRename={beginRename}
+              onRequestArchive={requestArchive}
+              onEditingTitleChange={setEditingTitle}
+              onSaveRename={(chatId) => void saveRename(chatId)}
+              onCancelRename={cancelRename}
+            />
+          ))}
+          {hasMore ? (
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={() => void loadMoreChats()}
+              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingMore ? 'Loading...' : 'Load more'}
+            </button>
+          ) : null}
+        </>
+    </SidebarResourceList>
+  )
+}
+
 export function ChatInlinePanel({
   refreshKey,
   searchQuery = '',
@@ -813,108 +927,129 @@ export function ChatInlinePanel({
     archiveChat,
   } = useChatArchive({ loadChats, setEditingChatId })
 
-  const viewChats = chatView === 'personal'
-    ? chats.filter((chat) => (chat.conversationType ?? 'personal') === 'personal')
-    : chatView === 'dms'
-      ? chats.filter((chat) => chat.conversationType === 'dm')
-      : chatView === 'channels'
-        ? chats.filter((chat) => chat.conversationType === 'channel')
-        : chats
-  const filteredChats = searchQuery.trim()
-    ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : viewChats
-  const emptyLabel = {
-    personal: 'No personal chats yet',
-    dms: 'No direct messages yet',
-    channels: 'No channels yet',
-    all: 'No chats yet',
-  }[chatView]
-
   return (
     <>
-    <SidebarResourceList>
-      {loading ? (
-        <SidebarListSkeleton rows={6} />
-      ) : filteredChats.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          {viewChats.length === 0 ? emptyLabel : 'No results'}
-        </p>
-      ) : (
-        <>
-          {filteredChats.map((chat) => (
-            <ChatListRow
-              key={chat._id}
-              chat={chat}
-              active={activeId === chat._id}
-              isEditing={editingChatId === chat._id}
-              isDeleting={deletingChatIds.includes(chat._id)}
-              isStreaming={sessions[chat._id]?.status === 'streaming'}
-              unread={Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
-              editingTitle={editingTitle}
-              isPublicShowcase={isPublicShowcase}
-              onOpenChat={openChat}
-              onBeginRename={beginRename}
-              onRequestArchive={requestArchive}
-              onEditingTitleChange={setEditingTitle}
-              onSaveRename={(chatId) => void saveRename(chatId)}
-              onCancelRename={cancelRename}
-            />
-          ))}
-          {hasMore ? (
-            <button
-              type="button"
-              disabled={loadingMore}
-              onClick={() => void loadMoreChats()}
-              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
-            >
-              {loadingMore ? 'Loading...' : 'Load more'}
-            </button>
-          ) : null}
-        </>
-      )}
-    </SidebarResourceList>
-    {workspaceId ? (
-      <NewDirectMessageDialog
-        open={newDirectMessageOpen}
-        workspaceId={workspaceId}
-        onOpenChange={setNewDirectMessageOpen}
-        onCreated={({ id, title, agentId }) => {
-          // Agent DMs are threads under the agent — they open on the agents
-          // surface and never appear in the chat list.
-          const href = agentId
-            ? `${buildWorkspaceHref(workspaceId, '/app/agents')}?${new URLSearchParams({ agent: agentId, view: 'dms', id }).toString()}`
-            : `${baseHref}?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`
-          router.push(href)
-          onNavigate?.()
-        }}
-      />
-    ) : null}
-    {workspaceId ? (
-      <NewChannelDialog
-        open={newChannelOpen}
-        workspaceId={workspaceId}
-        showcase={isPublicShowcase}
-        onOpenChange={setNewChannelOpen}
-        onCreated={({ id, title }) => {
-          router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id, draft: '1', title }).toString()}`)
-          onNavigate?.()
-        }}
-      />
-    ) : null}
-    <ConversationScopeActionDialog
-      open={Boolean(pendingArchiveChat)}
-      action="archive"
-      conversationTitle={pendingArchiveChat?.title ?? 'conversation'}
-      canApplyToEveryone={activeWorkspace?.role === 'owner'}
-      busy={archiveBusy}
-      error={archiveError}
-      onOpenChange={(open) => {
-        if (!open && !archiveBusy) closeArchiveDialog()
-      }}
-      onSelect={(scope) => {
-        if (pendingArchiveChat) void archiveChat(pendingArchiveChat, scope)
-      }}
+    <ChatListBody
+      loading={loading}
+      chatView={chatView}
+      chats={chats}
+      searchQuery={searchQuery}
+      activeId={activeId}
+      editingChatId={editingChatId}
+      deletingChatIds={deletingChatIds}
+      sessions={sessions}
+      getUnread={getUnread}
+      collaborationUnread={collaborationUnread}
+      editingTitle={editingTitle}
+      isPublicShowcase={isPublicShowcase}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
+      loadMoreChats={loadMoreChats}
+      openChat={openChat}
+      beginRename={beginRename}
+      requestArchive={requestArchive}
+      setEditingTitle={setEditingTitle}
+      saveRename={saveRename}
+      cancelRename={cancelRename}
     />
+    <ChatListDialogs
+      workspaceId={workspaceId}
+      baseHref={baseHref}
+      isPublicShowcase={isPublicShowcase}
+      router={router}
+      onNavigate={onNavigate}
+      newDirectMessageOpen={newDirectMessageOpen}
+      setNewDirectMessageOpen={setNewDirectMessageOpen}
+      newChannelOpen={newChannelOpen}
+      setNewChannelOpen={setNewChannelOpen}
+      pendingArchiveChat={pendingArchiveChat}
+      canApplyToEveryone={activeWorkspace?.role === 'owner'}
+      archiveBusy={archiveBusy}
+      archiveError={archiveError}
+      closeArchiveDialog={closeArchiveDialog}
+      archiveChat={archiveChat}
+    />
+    </>
+  )
+}
+
+function ChatListDialogs({
+  workspaceId,
+  baseHref,
+  isPublicShowcase,
+  router,
+  onNavigate,
+  newDirectMessageOpen,
+  setNewDirectMessageOpen,
+  newChannelOpen,
+  setNewChannelOpen,
+  pendingArchiveChat,
+  canApplyToEveryone,
+  archiveBusy,
+  archiveError,
+  closeArchiveDialog,
+  archiveChat,
+}: {
+  workspaceId?: string | null
+  baseHref: string
+  isPublicShowcase: boolean
+  router: ReturnType<typeof useRouter>
+  onNavigate?: () => void
+  newDirectMessageOpen: boolean
+  setNewDirectMessageOpen: (open: boolean) => void
+  newChannelOpen: boolean
+  setNewChannelOpen: (open: boolean) => void
+  pendingArchiveChat: Conversation | null
+  canApplyToEveryone: boolean
+  archiveBusy: boolean
+  archiveError: string | null
+  closeArchiveDialog: () => void
+  archiveChat: ReturnType<typeof useChatArchive>['archiveChat']
+}) {
+  return (
+    <>
+      {workspaceId ? (
+        <NewDirectMessageDialog
+          open={newDirectMessageOpen}
+          workspaceId={workspaceId}
+          onOpenChange={setNewDirectMessageOpen}
+          onCreated={({ id, title, agentId }) => {
+            // Agent DMs are threads under the agent — they open on the agents
+            // surface and never appear in the chat list.
+            const href = agentId
+              ? `${buildWorkspaceHref(workspaceId, '/app/agents')}?${new URLSearchParams({ agent: agentId, view: 'dms', id }).toString()}`
+              : `${baseHref}?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`
+            router.push(href)
+            onNavigate?.()
+          }}
+        />
+      ) : null}
+      {workspaceId ? (
+        <NewChannelDialog
+          open={newChannelOpen}
+          workspaceId={workspaceId}
+          showcase={isPublicShowcase}
+          onOpenChange={setNewChannelOpen}
+          onCreated={({ id, title }) => {
+            router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id, draft: '1', title }).toString()}`)
+            onNavigate?.()
+          }}
+        />
+      ) : null}
+      <ConversationScopeActionDialog
+        open={Boolean(pendingArchiveChat)}
+        action="archive"
+        conversationTitle={pendingArchiveChat?.title ?? 'conversation'}
+        canApplyToEveryone={canApplyToEveryone}
+        busy={archiveBusy}
+        error={archiveError}
+        onOpenChange={(open) => {
+          if (!open && !archiveBusy) closeArchiveDialog()
+        }}
+        onSelect={(scope) => {
+          if (pendingArchiveChat) void archiveChat(pendingArchiveChat, scope)
+        }}
+      />
     </>
   )
 }

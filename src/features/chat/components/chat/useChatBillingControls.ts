@@ -274,6 +274,118 @@ function applyFetchedEntitlements(
   }
 }
 
+function useTopUpActions({
+  pathname,
+  searchParams,
+  setBillingActionLoading,
+  setComposerNotice,
+  loadSubscription,
+  topUpAmountDraftCents,
+  autoTopUpEnabledDraft,
+}: {
+  pathname: string
+  searchParams: ChatSearchParams
+  setBillingActionLoading: (loading: 'checkout' | 'save' | null) => void
+  setComposerNotice: ComposerNoticeSetter
+  loadSubscription: () => Promise<Entitlements | null>
+  topUpAmountDraftCents: number
+  autoTopUpEnabledDraft: boolean
+}) {
+  const buildTopUpReturnPath = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
+    nextParams.delete('topup_success')
+    nextParams.delete('topup_session_id')
+    nextParams.delete('topup_canceled')
+    const query = nextParams.toString()
+    return `${pathname}${query ? `?${query}` : ''}`
+  }, [pathname, searchParams])
+
+  const handleStartTopUp = useCallback(async () => {
+    setBillingActionLoading('checkout')
+    try {
+      const response = await fetch('/api/topups/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCents: topUpAmountDraftCents,
+          autoTopUpEnabled: autoTopUpEnabledDraft,
+          returnPath: buildTopUpReturnPath(),
+          ...currentLegalAcceptancePayload(),
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.url) {
+        setComposerNotice(data.error || 'Failed to start top-up checkout.')
+        return
+      }
+      const checkoutUrl = safeHttpUrl(data.url)
+      if (!checkoutUrl) {
+        setComposerNotice('Failed to start top-up checkout.')
+        return
+      }
+      window.location.href = checkoutUrl
+    } catch {
+      setComposerNotice('Failed to start top-up checkout.')
+    } finally {
+      setBillingActionLoading(null)
+    }
+  }, [autoTopUpEnabledDraft, buildTopUpReturnPath, setBillingActionLoading, setComposerNotice, topUpAmountDraftCents])
+
+  const handleSaveTopUpPreference = useCallback(async () => {
+    setBillingActionLoading('save')
+    try {
+      const response = await overlayAppClient.subscription.updateSettingsResponse({
+        autoTopUpEnabled: autoTopUpEnabledDraft,
+        confirmation: 'UPDATE_BILLING_SETTINGS',
+        topUpAmountCents: topUpAmountDraftCents,
+        grantOffSessionConsent: autoTopUpEnabledDraft,
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setComposerNotice(data.error || 'Failed to save top-up preference.')
+        return
+      }
+      await loadSubscription()
+      setComposerNotice('Top-up preference updated.')
+      window.setTimeout(() => setComposerNotice((current) => current === 'Top-up preference updated.' ? null : current), 5000)
+    } catch {
+      setComposerNotice('Failed to save top-up preference.')
+    } finally {
+      setBillingActionLoading(null)
+    }
+  }, [autoTopUpEnabledDraft, loadSubscription, setBillingActionLoading, setComposerNotice, topUpAmountDraftCents])
+
+  return { handleStartTopUp, handleSaveTopUpPreference }
+}
+
+function resolveEntitlementDerived(
+  entitlements: Entitlements | null,
+  billingEnabled: boolean,
+  onlyAllowZdrModels: boolean,
+) {
+  const resolvedPlanKind = entitlements
+    ? (entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid'))
+    : null
+  const isPaidSubscription = !billingEnabled || resolvedPlanKind === 'paid'
+  const budgetTotalCents = entitlements ? budgetTotalCentsFor(entitlements) : 0
+  const budgetUsedCents = entitlements ? budgetUsedCentsFor(entitlements) : 0
+  const budgetRemainingCents = entitlements ? budgetRemainingCentsFor(entitlements) : 0
+  const isBudgetExhaustedPaid = billingEnabled && Boolean(entitlements) && isPaidSubscription && budgetRemainingCents <= 0
+  const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
+  const isModelAccessRestricted = isFreeTier
+  const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
+  return {
+    isPaidSubscription,
+    budgetTotalCents,
+    budgetUsedCents,
+    budgetRemainingCents,
+    isBudgetExhaustedPaid,
+    isFreeTier,
+    isModelAccessRestricted,
+    effectiveOnlyAllowZdrModels,
+  }
+}
+
 export function useChatBillingControls({
   activeChatId,
   activeWorkspaceId,
@@ -322,17 +434,16 @@ export function useChatBillingControls({
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const announcedBudgetExhaustedRef = useRef(false)
 
-  const resolvedPlanKind = entitlements
-    ? (entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid'))
-    : null
-  const isPaidSubscription = !billingEnabled || resolvedPlanKind === 'paid'
-  const budgetTotalCents = entitlements ? budgetTotalCentsFor(entitlements) : 0
-  const budgetUsedCents = entitlements ? budgetUsedCentsFor(entitlements) : 0
-  const budgetRemainingCents = entitlements ? budgetRemainingCentsFor(entitlements) : 0
-  const isBudgetExhaustedPaid = billingEnabled && Boolean(entitlements) && isPaidSubscription && budgetRemainingCents <= 0
-  const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
-  const isModelAccessRestricted = isFreeTier
-  const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
+  const {
+    isPaidSubscription,
+    budgetTotalCents,
+    budgetUsedCents,
+    budgetRemainingCents,
+    isBudgetExhaustedPaid,
+    isFreeTier,
+    isModelAccessRestricted,
+    effectiveOnlyAllowZdrModels,
+  } = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
   // catalogRevision is required: getEnabledChatModels reads module-level AVAILABLE_MODELS
   // which mutates when the gateway catalog registers.
   const selectableTextModels = useMemo(() => {
@@ -409,69 +520,15 @@ export function useChatBillingControls({
     return null
   }, [activeWorkspaceId, billingEnabled, setComposerNotice])
 
-  const buildTopUpReturnPath = useCallback(() => {
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-    nextParams.delete('topup_success')
-    nextParams.delete('topup_session_id')
-    nextParams.delete('topup_canceled')
-    const query = nextParams.toString()
-    return `${pathname}${query ? `?${query}` : ''}`
-  }, [pathname, searchParams])
-
-  const handleStartTopUp = useCallback(async () => {
-    setBillingActionLoading('checkout')
-    try {
-      const response = await fetch('/api/topups/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amountCents: topUpAmountDraftCents,
-          autoTopUpEnabled: autoTopUpEnabledDraft,
-          returnPath: buildTopUpReturnPath(),
-          ...currentLegalAcceptancePayload(),
-        }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.url) {
-        setComposerNotice(data.error || 'Failed to start top-up checkout.')
-        return
-      }
-      const checkoutUrl = safeHttpUrl(data.url)
-      if (!checkoutUrl) {
-        setComposerNotice('Failed to start top-up checkout.')
-        return
-      }
-      window.location.href = checkoutUrl
-    } catch {
-      setComposerNotice('Failed to start top-up checkout.')
-    } finally {
-      setBillingActionLoading(null)
-    }
-  }, [autoTopUpEnabledDraft, buildTopUpReturnPath, setComposerNotice, topUpAmountDraftCents])
-
-  const handleSaveTopUpPreference = useCallback(async () => {
-    setBillingActionLoading('save')
-    try {
-      const response = await overlayAppClient.subscription.updateSettingsResponse({
-        autoTopUpEnabled: autoTopUpEnabledDraft,
-        confirmation: 'UPDATE_BILLING_SETTINGS',
-        topUpAmountCents: topUpAmountDraftCents,
-        grantOffSessionConsent: autoTopUpEnabledDraft,
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setComposerNotice(data.error || 'Failed to save top-up preference.')
-        return
-      }
-      await loadSubscription()
-      setComposerNotice('Top-up preference updated.')
-      window.setTimeout(() => setComposerNotice((current) => current === 'Top-up preference updated.' ? null : current), 5000)
-    } catch {
-      setComposerNotice('Failed to save top-up preference.')
-    } finally {
-      setBillingActionLoading(null)
-    }
-  }, [autoTopUpEnabledDraft, loadSubscription, setComposerNotice, topUpAmountDraftCents])
+  const { handleStartTopUp, handleSaveTopUpPreference } = useTopUpActions({
+    pathname,
+    searchParams,
+    setBillingActionLoading,
+    setComposerNotice,
+    loadSubscription,
+    topUpAmountDraftCents,
+    autoTopUpEnabledDraft,
+  })
 
   useTopUpCheckoutResult({
     billingEnabled,

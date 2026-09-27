@@ -207,6 +207,30 @@ export function RoomHeaderLeading({
   )
 }
 
+function AgentDesktopButton({ desktop }: { desktop: ReturnType<typeof useAgentDesktop> }) {
+  const { agentComputer, desktopOpenBusy, openAgentDesktop } = desktop
+  if (!agentComputer || (agentComputer.status !== 'ready' && agentComputer.status !== 'stopped')) return null
+  return (
+    <button
+      type="button"
+      onClick={openAgentDesktop}
+      disabled={desktopOpenBusy}
+      title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
+      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-60"
+    >
+      <span className="relative">
+        <Monitor size={14} />
+        <span
+          className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
+            agentComputer.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500'
+          }`}
+        />
+      </span>
+      <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
+    </button>
+  )
+}
+
 export function RoomHeaderActions({
   desktop,
   vm,
@@ -238,30 +262,11 @@ export function RoomHeaderActions({
   onAttach: () => void
   onShare: () => void
 }) {
-  const { agentComputer, desktopOpenBusy, openAgentDesktop } = desktop
   const { currentParticipant } = vm
   const { updateState: onUpdateState, archiveMenuAction: onArchive } = roomActions
   return (
     <div className="relative flex items-center gap-1">
-      {agentComputer && (agentComputer.status === 'ready' || agentComputer.status === 'stopped') ? (
-        <button
-          type="button"
-          onClick={openAgentDesktop}
-          disabled={desktopOpenBusy}
-          title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-60"
-        >
-          <span className="relative">
-            <Monitor size={14} />
-            <span
-              className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
-                agentComputer.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500'
-              }`}
-            />
-          </span>
-          <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
-        </button>
-      ) : null}
+      <AgentDesktopButton desktop={desktop} />
       {headerActions}
       {collab.pins.length > 0 ? (
         <button
@@ -391,6 +396,80 @@ export function RoomNoticeBar({
 }
 
 
+function resolveMessageAuthorName(message: OptimisticMessage, ctx: RoomMessageContext): string {
+  return message.importedAuthorName?.trim()
+    ?? (message.authorPrincipalId ? ctx.directoryAgentsByPrincipal.get(message.authorPrincipalId)?.name : undefined)
+    ?? ctx.participants.find((participant) => participant.principalId === message.authorPrincipalId)?.displayName
+    ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
+}
+
+function buildRoomMessageItemProps({
+  view,
+  message,
+  ctx,
+  inThread,
+  grouped,
+  teaserMessage,
+  teaserAuthor,
+}: {
+  view: ReturnType<typeof toRoomMessageView>
+  message: OptimisticMessage
+  ctx: RoomMessageContext
+  inThread?: boolean
+  grouped?: boolean
+  teaserMessage: OptimisticMessage | null
+  teaserAuthor: string | null
+}) {
+  return {
+    message: view,
+    reactions: ctx.reactions
+      .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
+      .map((reaction) => ({
+        emoji: reaction.emoji,
+        count: reaction.count,
+        reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
+      })),
+    replyCount: inThread ? 0 : ctx.replyCounts.get(message.id) ?? 0,
+    threadTeaser: teaserMessage && teaserAuthor ? {
+      authorName: teaserAuthor,
+      text: teaserMessage.content.trim().slice(0, 120),
+      createdAt: teaserMessage.createdAt,
+    } : null,
+    pinned: ctx.pins.some((pin) => pin.messageId === message.id),
+    saved: ctx.savedMessages.some((row) => (
+      row.conversationId === ctx.conversationId && row.messageId === message.id
+    )),
+    editing: ctx.editingId === message.id,
+    editingContent: ctx.editingContent,
+    onEditingContentChange: ctx.setEditingContent,
+    onSaveEdit: () => void ctx.saveEdit(message.id),
+    onCancelEdit: () => ctx.setEditingId(null),
+    onStartEdit: () => {
+      ctx.setEditingId(message.id)
+      ctx.setEditingContent(message.content)
+    },
+    onDelete: () => void ctx.deleteMessage(message.id),
+    onReport: () => void ctx.reportMessage(message.id),
+    onToggleReaction: (emoji: string) => void ctx.toggleReaction(message.id, emoji),
+    onTogglePinned: () => void ctx.togglePinned(message.id),
+    onToggleSaved: () => void ctx.toggleSaved(message.id),
+    onOpenThread: () => ctx.openThread(inThread ? ctx.threadRootId ?? message.id : message.id),
+    onQuoteReply: () => ctx.beginQuoteReply(message),
+    onRetrySend: () => void ctx.sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId }),
+    onOpenAttachmentPreview: ctx.onOpenAttachmentPreview,
+    onCopyPermalink: () => void ctx.copyMessagePermalink(message.id),
+    onStopResponse:
+      message.status === 'generating' && !message.id.startsWith('optimistic_')
+        ? () => void ctx.stopAgentResponse(message.id)
+        : undefined,
+    onControlRemoteQueue: (runId: string, action: Parameters<RoomMessageContext['controlRemoteQueue']>[1]) => void ctx.controlRemoteQueue(runId, action),
+    onResolveRemoteRequest: (request: Parameters<RoomMessageContext['resolveRemoteRequest']>[0], decision: Parameters<RoomMessageContext['resolveRemoteRequest']>[1], response: Parameters<RoomMessageContext['resolveRemoteRequest']>[2]) => void ctx.resolveRemoteRequest(request, decision, response),
+    highlighted: ctx.highlightedMessageId === message.id,
+    grouped,
+    personalChatStyle: ctx.conversationType !== 'channel',
+  }
+}
+
 export function RoomMessage({
   message,
   ctx,
@@ -421,62 +500,40 @@ export function RoomMessage({
     streaming: message.status === 'generating',
   })
   const teaserMessage = inThread ? null : ctx.threadTeasers.get(message.id) ?? null
-  const teaserAuthor = teaserMessage
-    ? teaserMessage.importedAuthorName?.trim()
-      ?? (teaserMessage.authorPrincipalId ? ctx.directoryAgentsByPrincipal.get(teaserMessage.authorPrincipalId)?.name : undefined)
-      ?? ctx.participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
-      ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
-    : null
+  const teaserAuthor = teaserMessage ? resolveMessageAuthorName(teaserMessage, ctx) : null
+  const itemProps = buildRoomMessageItemProps({
+    view,
+    message,
+    ctx,
+    inThread,
+    grouped,
+    teaserMessage,
+    teaserAuthor,
+  })
+  return <RoomMessageItem {...itemProps} />
+}
+
+function RoomEmptyState({
+  conversationType,
+  title,
+  channelTopic,
+}: {
+  conversationType: 'dm' | 'channel'
+  title: string
+  channelTopic: string | undefined
+}) {
   return (
-    <RoomMessageItem
-      message={view}
-      reactions={ctx.reactions
-        .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
-        .map((reaction) => ({
-          emoji: reaction.emoji,
-          count: reaction.count,
-          reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
-        }))}
-      replyCount={inThread ? 0 : ctx.replyCounts.get(message.id) ?? 0}
-      threadTeaser={teaserMessage && teaserAuthor ? {
-        authorName: teaserAuthor,
-        text: teaserMessage.content.trim().slice(0, 120),
-        createdAt: teaserMessage.createdAt,
-      } : null}
-      pinned={ctx.pins.some((pin) => pin.messageId === message.id)}
-      saved={ctx.savedMessages.some((row) => (
-        row.conversationId === ctx.conversationId && row.messageId === message.id
-      ))}
-      editing={ctx.editingId === message.id}
-      editingContent={ctx.editingContent}
-      onEditingContentChange={ctx.setEditingContent}
-      onSaveEdit={() => void ctx.saveEdit(message.id)}
-      onCancelEdit={() => ctx.setEditingId(null)}
-      onStartEdit={() => {
-        ctx.setEditingId(message.id)
-        ctx.setEditingContent(message.content)
-      }}
-      onDelete={() => void ctx.deleteMessage(message.id)}
-      onReport={() => void ctx.reportMessage(message.id)}
-      onToggleReaction={(emoji) => void ctx.toggleReaction(message.id, emoji)}
-      onTogglePinned={() => void ctx.togglePinned(message.id)}
-      onToggleSaved={() => void ctx.toggleSaved(message.id)}
-      onOpenThread={() => ctx.openThread(inThread ? ctx.threadRootId ?? message.id : message.id)}
-      onQuoteReply={() => ctx.beginQuoteReply(message)}
-      onRetrySend={() => void ctx.sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
-      onOpenAttachmentPreview={ctx.onOpenAttachmentPreview}
-      onCopyPermalink={() => void ctx.copyMessagePermalink(message.id)}
-      onStopResponse={
-        message.status === 'generating' && !message.id.startsWith('optimistic_')
-          ? () => void ctx.stopAgentResponse(message.id)
-          : undefined
-      }
-      onControlRemoteQueue={(runId, action) => void ctx.controlRemoteQueue(runId, action)}
-      onResolveRemoteRequest={(request, decision, response) => void ctx.resolveRemoteRequest(request, decision, response)}
-      highlighted={ctx.highlightedMessageId === message.id}
-      grouped={grouped}
-      personalChatStyle={ctx.conversationType !== 'channel'}
-    />
+    <div className="flex flex-col items-center justify-center text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+        {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
+      </span>
+      <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">{title}</h2>
+      <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">
+        {conversationType === 'channel'
+          ? channelTopic ?? 'This is the beginning of this channel.'
+          : 'This is the beginning of your conversation. Messages are visible only to its participants.'}
+      </p>
+    </div>
   )
 }
 
@@ -551,17 +608,7 @@ export function RoomTranscript({
               ))}
             </div>
           ) : mainMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
-              </span>
-              <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">{title}</h2>
-              <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">
-                {conversationType === 'channel'
-                  ? channelTopic ?? 'This is the beginning of this channel.'
-                  : 'This is the beginning of your conversation. Messages are visible only to its participants.'}
-              </p>
-            </div>
+            <RoomEmptyState conversationType={conversationType} title={title} channelTopic={channelTopic} />
           ) : (
             mainMessages.map((message, index) => {
               const previous = mainMessages[index - 1]

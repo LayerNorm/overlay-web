@@ -868,32 +868,22 @@ export function useAgentDesktop({
   return { agentComputer, desktopOpenBusy, openAgentDesktop }
 }
 
-export function useRoomViewModels({
+function resolveRoomIdentity({
   participants,
   currentPrincipalId,
-  presence,
-  messages,
-  unreadBoundarySequence,
   conversationTitle,
   draftTitle,
   conversationType,
   channel,
   directoryAgentsByPrincipal,
-  pins,
-  threadRootId,
 }: {
   participants: ConversationParticipant[]
   currentPrincipalId: string
-  presence: ConversationPresence[]
-  messages: OptimisticMessage[]
-  unreadBoundarySequence: number | null
   conversationTitle: string | null
   draftTitle: string | undefined
   conversationType: 'dm' | 'channel'
   channel: ChannelSummary | null
   directoryAgentsByPrincipal: ReadonlyMap<string, AgentDirectoryEntry>
-  pins: ConversationPin[]
-  threadRootId: string | null
 }) {
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
   // Agent identity (creature color + shape) resolves from the directory once
@@ -917,10 +907,18 @@ export function useRoomViewModels({
       // the DM was created and go stale on rename, so the directory wins.
       ? (headerAgent?.name ?? conversationTitle ?? draftTitle ?? 'Direct message')
       : conversationTitle ?? draftTitle ?? (otherParticipants.map((participant) => participant.displayName).join(', ') || 'Direct message')
-  const online = presence.filter((row) => (
-    row.principalId !== currentPrincipalId && row.status === 'online'
-  )).length
-  const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
+  return { otherParticipants, soloAgentParticipant, headerAgent, title }
+}
+
+function useRoomMessageDerivations({
+  messages,
+  unreadBoundarySequence,
+  threadRootId,
+}: {
+  messages: OptimisticMessage[]
+  unreadBoundarySequence: number | null
+  threadRootId: string | null
+}) {
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
   const agentCommands = useMemo<RemoteAgentCommand[]>(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -959,6 +957,58 @@ export function useRoomViewModels({
     }
     return latest
   }, [messages])
+  return { mainMessages, agentCommands, threadRoot, threadReplies, unreadBoundaryMessageId, replyCounts, threadTeasers }
+}
+
+export function useRoomViewModels({
+  participants,
+  currentPrincipalId,
+  presence,
+  messages,
+  unreadBoundarySequence,
+  conversationTitle,
+  draftTitle,
+  conversationType,
+  channel,
+  directoryAgentsByPrincipal,
+  pins,
+  threadRootId,
+}: {
+  participants: ConversationParticipant[]
+  currentPrincipalId: string
+  presence: ConversationPresence[]
+  messages: OptimisticMessage[]
+  unreadBoundarySequence: number | null
+  conversationTitle: string | null
+  draftTitle: string | undefined
+  conversationType: 'dm' | 'channel'
+  channel: ChannelSummary | null
+  directoryAgentsByPrincipal: ReadonlyMap<string, AgentDirectoryEntry>
+  pins: ConversationPin[]
+  threadRootId: string | null
+}) {
+  const { otherParticipants, soloAgentParticipant, headerAgent, title } = resolveRoomIdentity({
+    participants,
+    currentPrincipalId,
+    conversationTitle,
+    draftTitle,
+    conversationType,
+    channel,
+    directoryAgentsByPrincipal,
+  })
+  const online = presence.filter((row) => (
+    row.principalId !== currentPrincipalId && row.status === 'online'
+  )).length
+  const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
+  const {
+    mainMessages,
+    agentCommands,
+    threadRoot,
+    threadReplies,
+    unreadBoundaryMessageId,
+    replyCounts,
+    threadTeasers,
+  } = useRoomMessageDerivations({ messages, unreadBoundarySequence, threadRootId })
 
   const participantMentions = useMemo(() => participants.map((participant) => {
     const agent = participant.principalType === 'agent'

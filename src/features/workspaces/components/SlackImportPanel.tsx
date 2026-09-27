@@ -108,7 +108,7 @@ async function fetchWithRetry(
   return { ok: false, data: { error: 'Max retries exceeded' }, status: 0 }
 }
 
-export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
+function useSlackImportPanel() {
   const { activeWorkspace } = useWorkspace()
   const { user } = useAuth()
   const workspaceId = activeWorkspace?.id
@@ -560,6 +560,31 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
     setActiveJob(null)
     void loadJobs()
   }, [loadJobs])
+
+  return {
+    activeWorkspace, user, workspaceId, currentUserEmail,
+    connectionState, channels, channelsLoaded, channelsLoading, channelsError,
+    selectedChannelIds, activeJob, jobs, starting, cancelling, error, view,
+    users, usersLoaded, usersLoading, usersError, selectedUserIds, inviting,
+    oauthPolling,
+    setError, setView, loadJobs, checkConnection, loadChannels, loadUsers,
+    handleConnect, handleInviteUsers, handleStartImport, handleCancel,
+    handleRefreshChannels, toggleChannel, selectAllPublic, clearSelection,
+    toggleUser, showActiveJob, backToPicker,
+  }
+}
+
+export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
+  const {
+    connectionState, channels, channelsLoading, channelsError,
+    selectedChannelIds, activeJob, jobs, starting, cancelling, error, view,
+    users, usersLoading, usersError, selectedUserIds, inviting,
+    oauthPolling,
+    setError, setView, loadUsers,
+    handleConnect, handleInviteUsers, handleStartImport, handleCancel,
+    handleRefreshChannels, toggleChannel, selectAllPublic, clearSelection,
+    toggleUser, showActiveJob, backToPicker,
+  } = useSlackImportPanel()
 
   // ─── Loading state ────────────────────────────────────────────────────────
   if (connectionState === 'loading') {

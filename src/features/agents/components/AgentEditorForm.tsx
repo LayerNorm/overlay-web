@@ -12,7 +12,7 @@ import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
-import { AVATAR_COLORS, parseRoots } from '../lib/agent-editor-utils'
+import { AVATAR_COLORS } from '../lib/agent-editor-utils'
 
 export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
@@ -264,6 +264,39 @@ function ComputerSizePicker({ size, onSizeChange, disabled }: {
   )
 }
 
+function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerLabel, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
+  status: Computer['status']
+  canTogglePower: boolean
+  canDeleteComputer: boolean
+  powerLabel: string
+  openBusy: boolean
+  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  onOpenDesktop(): void
+  onTogglePower(): void
+  onDelete(): void
+}) {
+  const busy = lifecycleBusy !== null || openBusy
+  return (
+    <>
+      {status === 'ready' ? (
+        <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy || lifecycleBusy !== null}>
+          {openBusy ? 'Opening…' : 'Open desktop'}
+        </Button>
+      ) : null}
+      {canTogglePower ? (
+        <Button variant="secondary" size="sm" onClick={onTogglePower} disabled={busy}>
+          {powerLabel}
+        </Button>
+      ) : null}
+      {canDeleteComputer ? (
+        <Button variant="secondary" size="sm" onClick={onDelete} disabled={busy} aria-label="Delete computer">
+          {lifecycleBusy === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+        </Button>
+      ) : null}
+    </>
+  )
+}
+
 function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
   computer: Computer
   openBusy: boolean
@@ -282,21 +315,17 @@ function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesk
         <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{computer.status} · {computer.size} · size is fixed once provisioned</p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        {computer.status === 'ready' ? (
-          <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy || lifecycleBusy !== null}>
-            {openBusy ? 'Opening…' : 'Open desktop'}
-          </Button>
-        ) : null}
-        {canTogglePower ? (
-          <Button variant="secondary" size="sm" onClick={onTogglePower} disabled={lifecycleBusy !== null || openBusy}>
-            {powerLabel}
-          </Button>
-        ) : null}
-        {canDeleteComputer ? (
-          <Button variant="secondary" size="sm" onClick={onDelete} disabled={lifecycleBusy !== null || openBusy} aria-label="Delete computer">
-            {lifecycleBusy === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-          </Button>
-        ) : null}
+        <ComputerCardActions
+          status={computer.status}
+          canTogglePower={canTogglePower}
+          canDeleteComputer={canDeleteComputer}
+          powerLabel={powerLabel}
+          openBusy={openBusy}
+          lifecycleBusy={lifecycleBusy}
+          onOpenDesktop={onOpenDesktop}
+          onTogglePower={onTogglePower}
+          onDelete={onDelete}
+        />
       </div>
     </div>
   )

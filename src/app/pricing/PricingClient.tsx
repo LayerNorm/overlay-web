@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { type Dispatch, type SetStateAction, Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, MessageSquare, SlidersHorizontal } from 'lucide-react'
@@ -441,6 +441,149 @@ function HowBillingWorksPanel({ theme }: { theme: PricingTheme }) {
   )
 }
 
+function usePricingActions({
+  billingEnabled,
+  isAuthenticated,
+  user,
+  router,
+  acceptedCheckoutTerms,
+  autoTopUpEnabled,
+  selectTier,
+  setLoading,
+  setError,
+}: {
+  billingEnabled: boolean
+  isAuthenticated: boolean
+  user: { id?: string | null } | null
+  router: ReturnType<typeof useRouter>
+  acceptedCheckoutTerms: boolean
+  autoTopUpEnabled: boolean
+  selectTier: (tier: TierId, amountCents?: number) => void
+  setLoading: Dispatch<SetStateAction<PricingLoadingState>>
+  setError: Dispatch<SetStateAction<string | null>>
+}) {
+  async function startCheckout(planAmountCents: number, tier?: TierId) {
+    if (!billingEnabled) {
+      setError('Billing is disabled for this deployment.')
+      return
+    }
+    if (tier) {
+      if (tier === 'custom') selectTier('custom', planAmountCents)
+      else selectTier(tier)
+    }
+
+    if (!isAuthenticated || !user) {
+      router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
+      return
+    }
+
+    if (!acceptedCheckoutTerms) {
+      setError('Please accept the current Terms, Privacy Policy, and billing terms before subscribing.')
+      return
+    }
+
+    setLoading('checkout')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planAmountCents,
+          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+          autoTopUpEnabled,
+          ...currentLegalAcceptancePayload(),
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
+          return
+        }
+        setError(data.error || 'Failed to start checkout.')
+        return
+      }
+
+      const checkoutUrl = safeHttpUrl(data.url)
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl
+        return
+      }
+
+      setError('No checkout URL returned. Please try again.')
+    } catch (checkoutError) {
+      console.error('[Pricing] Checkout error:', checkoutError)
+      setError('Failed to start checkout. Please try again.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  async function handleManageBilling() {
+    if (!billingEnabled) {
+      setError('Billing is disabled for this deployment.')
+      return
+    }
+    setLoading('portal')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.url) {
+        setError(data.error || 'Failed to open billing portal.')
+        return
+      }
+      window.location.href = data.url
+    } catch (portalError) {
+      console.error('[Pricing] Portal error:', portalError)
+      setError('Failed to open billing portal.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  async function handleSaveTopUpPreference() {
+    if (!billingEnabled) {
+      setError('Billing is disabled for this deployment.')
+      return
+    }
+    setLoading('topup-settings')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/subscription/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+          autoTopUpEnabled,
+          confirmation: 'UPDATE_BILLING_SETTINGS',
+          grantOffSessionConsent: autoTopUpEnabled,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(data.error || 'Failed to save top-up preference.')
+      }
+    } catch (saveError) {
+      console.error('[Pricing] Top-up settings error:', saveError)
+      setError('Failed to save top-up preference.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  return { startCheckout, handleManageBilling, handleSaveTopUpPreference }
+}
+
 function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const router = useRouter()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -572,124 +715,17 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     )
   }
 
-  async function startCheckout(planAmountCents: number, tier?: TierId) {
-    if (!billingEnabled) {
-      setError('Billing is disabled for this deployment.')
-      return
-    }
-    if (tier) {
-      if (tier === 'custom') selectTier('custom', planAmountCents)
-      else selectTier(tier)
-    }
-
-    if (!isAuthenticated || !user) {
-      router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
-      return
-    }
-
-    if (!acceptedCheckoutTerms) {
-      setError('Please accept the current Terms, Privacy Policy, and billing terms before subscribing.')
-      return
-    }
-
-    setLoading('checkout')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planAmountCents,
-          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
-          autoTopUpEnabled,
-          ...currentLegalAcceptancePayload(),
-        }),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        if (response.status === 401) {
-          router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
-          return
-        }
-        setError(data.error || 'Failed to start checkout.')
-        return
-      }
-
-      const checkoutUrl = safeHttpUrl(data.url)
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl
-        return
-      }
-
-      setError('No checkout URL returned. Please try again.')
-    } catch (checkoutError) {
-      console.error('[Pricing] Checkout error:', checkoutError)
-      setError('Failed to start checkout. Please try again.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleManageBilling() {
-    if (!billingEnabled) {
-      setError('Billing is disabled for this deployment.')
-      return
-    }
-    setLoading('portal')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
-      })
-      const data = await response.json()
-      if (!response.ok || !data.url) {
-        setError(data.error || 'Failed to open billing portal.')
-        return
-      }
-      window.location.href = data.url
-    } catch (portalError) {
-      console.error('[Pricing] Portal error:', portalError)
-      setError('Failed to open billing portal.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleSaveTopUpPreference() {
-    if (!billingEnabled) {
-      setError('Billing is disabled for this deployment.')
-      return
-    }
-    setLoading('topup-settings')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/subscription/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
-          autoTopUpEnabled,
-          confirmation: 'UPDATE_BILLING_SETTINGS',
-          grantOffSessionConsent: autoTopUpEnabled,
-        }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setError(data.error || 'Failed to save top-up preference.')
-      }
-    } catch (saveError) {
-      console.error('[Pricing] Top-up settings error:', saveError)
-      setError('Failed to save top-up preference.')
-    } finally {
-      setLoading(null)
-    }
-  }
+  const { startCheckout, handleManageBilling, handleSaveTopUpPreference } = usePricingActions({
+    billingEnabled,
+    isAuthenticated,
+    user,
+    router,
+    acceptedCheckoutTerms,
+    autoTopUpEnabled,
+    selectTier,
+    setLoading,
+    setError,
+  })
 
   function paidCtaForAmount(cardAmountCents: number, cardTier: TierId) {
     const subscribedTier =

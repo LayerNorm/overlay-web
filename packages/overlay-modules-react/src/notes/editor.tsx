@@ -416,6 +416,139 @@ function NotebookEditorBody({
   )
 }
 
+function notebookChromeElements({
+  agent,
+  editor,
+  agentPanelMode,
+  onAgentPanelModeChange,
+  models,
+  onModelChange,
+  renderAgentComposer,
+  renderAgentInput,
+}: {
+  agent: ReturnType<typeof useNotebookAgent>
+  editor: ReturnType<typeof useNotebookEditor>['editor']
+  agentPanelMode: 'docked' | 'floating'
+  onAgentPanelModeChange: CanonicalNotebookEditorProps['onAgentPanelModeChange']
+  models: CanonicalNotebookEditorProps['models']
+  onModelChange: CanonicalNotebookEditorProps['onModelChange']
+  renderAgentComposer: CanonicalNotebookEditorProps['renderAgentComposer']
+  renderAgentInput: CanonicalNotebookEditorProps['renderAgentInput']
+}) {
+  const modelPicker = (
+    <NotebookModelPicker
+      models={models}
+      selectedModelId={agent.selectedModelId}
+      agentRunning={agent.agentRunning}
+      showModelPicker={agent.showModelPicker}
+      modelPickerRef={agent.modelPickerRef}
+      setSelectedModelId={agent.setSelectedModelId}
+      setShowModelPicker={agent.setShowModelPicker}
+      onModelChange={onModelChange}
+    />
+  )
+
+  const assistantHeader = (
+    <NotebookAssistantHeader
+      editor={editor}
+      modelPicker={modelPicker}
+      agentPanelMode={agentPanelMode}
+      onAgentPanelModeChange={onAgentPanelModeChange}
+      onToggleAgentPanel={agent.handleToggleAgentPanel}
+    />
+  )
+
+  const agentComposer = (
+    <NotebookAgentComposerArea
+      agent={agent}
+      models={models}
+      onModelChange={onModelChange}
+      renderAgentComposer={renderAgentComposer}
+      renderAgentInput={renderAgentInput}
+    />
+  )
+
+  return { modelPicker, assistantHeader, agentComposer }
+}
+
+function NotebookHeaderBlock({
+  renderHeader,
+  activeNote,
+  resolvingRequestedNote,
+  compactHeader,
+  title,
+  projectName,
+  isDirty,
+  agentPanelOpen,
+  headerLeading,
+  hideBackButton,
+  repository,
+  mutations,
+  renderExportMenu,
+  editor,
+  handleBackToFiles,
+  agent,
+}: {
+  renderHeader: CanonicalNotebookEditorProps['renderHeader']
+  activeNote: ReturnType<typeof useEditorLifecycle>['activeNote']
+  resolvingRequestedNote: boolean
+  compactHeader: CanonicalNotebookEditorProps['compactHeader']
+  title: string
+  projectName: CanonicalNotebookEditorProps['projectName']
+  isDirty: boolean
+  agentPanelOpen: boolean
+  headerLeading: CanonicalNotebookEditorProps['headerLeading']
+  hideBackButton: CanonicalNotebookEditorProps['hideBackButton']
+  repository: CanonicalNotebookEditorProps['repository']
+  mutations: ReturnType<typeof useNoteMutations>
+  renderExportMenu: CanonicalNotebookEditorProps['renderExportMenu']
+  editor: ReturnType<typeof useNotebookEditor>['editor']
+  handleBackToFiles: () => Promise<void>
+  agent: ReturnType<typeof useNotebookAgent>
+}) {
+  const notebookHeaderProps: NotebookEditorHeaderRenderProps = {
+    activeNote,
+    loading: resolvingRequestedNote,
+    title,
+    isDirty,
+    agentPanelOpen,
+    onCreateNote: () => void mutations.createNote(),
+    onDeleteNote: repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined,
+    onTitleChange: mutations.updateTitle,
+    onTitleBlur: () => void mutations.commitTitleChange(),
+    onTitleKeyDown: mutations.handleTitleKeyDown,
+    onToggleAgentPanel: () => void agent.handleToggleAgentPanel(),
+  }
+  if (renderHeader) {
+    return <>{renderHeader(notebookHeaderProps)}</>
+  }
+  return (
+    <NotebookHeader
+      activeNote={activeNote}
+      loading={resolvingRequestedNote}
+      compact={compactHeader}
+      title={title}
+      projectName={projectName}
+      isDirty={isDirty}
+      agentPanelOpen={agentPanelOpen}
+      leading={headerLeading}
+      hideBackButton={hideBackButton}
+      onDeleteNote={repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined}
+      exportMenu={activeNote ? renderExportMenu?.({
+        note: activeNote,
+        title: title || 'Untitled',
+        content: editor?.getHTML() || activeNote.content || '',
+      }) : null}
+      onBackToFiles={() => void handleBackToFiles()}
+      onCreateNote={() => void mutations.createNote()}
+      onTitleChange={mutations.handleTitleChange}
+      onTitleBlur={() => void mutations.commitTitleChange()}
+      onTitleKeyDown={mutations.handleTitleKeyDown}
+      onToggleAgentPanel={() => void agent.handleToggleAgentPanel()}
+    />
+  )
+}
+
 export function CanonicalNotebookEditor({
   noteId,
   hideSidebar,
@@ -533,38 +666,16 @@ export function CanonicalNotebookEditor({
     onBackToFiles()
   }, [flushSaveRef, onBackToFiles])
 
-  const modelPicker = (
-    <NotebookModelPicker
-      models={models}
-      selectedModelId={agent.selectedModelId}
-      agentRunning={agent.agentRunning}
-      showModelPicker={agent.showModelPicker}
-      modelPickerRef={agent.modelPickerRef}
-      setSelectedModelId={agent.setSelectedModelId}
-      setShowModelPicker={agent.setShowModelPicker}
-      onModelChange={onModelChange}
-    />
-  )
-
-  const assistantHeader = (
-    <NotebookAssistantHeader
-      editor={editor}
-      modelPicker={modelPicker}
-      agentPanelMode={agentPanelMode}
-      onAgentPanelModeChange={onAgentPanelModeChange}
-      onToggleAgentPanel={agent.handleToggleAgentPanel}
-    />
-  )
-
-  const agentComposer = (
-    <NotebookAgentComposerArea
-      agent={agent}
-      models={models}
-      onModelChange={onModelChange}
-      renderAgentComposer={renderAgentComposer}
-      renderAgentInput={renderAgentInput}
-    />
-  )
+  const { assistantHeader, agentComposer } = notebookChromeElements({
+    agent,
+    editor,
+    agentPanelMode,
+    onAgentPanelModeChange,
+    models,
+    onModelChange,
+    renderAgentComposer,
+    renderAgentInput,
+  })
 
   const overlayLogo = logo ?? (
     <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden>
@@ -572,47 +683,28 @@ export function CanonicalNotebookEditor({
     </span>
   )
   const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))
-  const notebookHeaderProps: NotebookEditorHeaderRenderProps = {
-    activeNote,
-    loading: resolvingRequestedNote,
-    title,
-    isDirty,
-    agentPanelOpen: agent.agentPanelOpen,
-    onCreateNote: () => void mutations.createNote(),
-    onDeleteNote: repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined,
-    onTitleChange: mutations.updateTitle,
-    onTitleBlur: () => void mutations.commitTitleChange(),
-    onTitleKeyDown: mutations.handleTitleKeyDown,
-    onToggleAgentPanel: () => void agent.handleToggleAgentPanel(),
-  }
-
   return (
     <AppScreenShell
-      header={renderHeader ? renderHeader(notebookHeaderProps) : (
-        <NotebookHeader
+      header={
+        <NotebookHeaderBlock
+          renderHeader={renderHeader}
           activeNote={activeNote}
-          loading={resolvingRequestedNote}
-          compact={compactHeader}
+          resolvingRequestedNote={resolvingRequestedNote}
+          compactHeader={compactHeader}
           title={title}
           projectName={projectName}
           isDirty={isDirty}
           agentPanelOpen={agent.agentPanelOpen}
-          leading={headerLeading}
+          headerLeading={headerLeading}
           hideBackButton={hideBackButton}
-          onDeleteNote={repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined}
-          exportMenu={activeNote ? renderExportMenu?.({
-            note: activeNote,
-            title: title || 'Untitled',
-            content: editor?.getHTML() || activeNote.content || '',
-          }) : null}
-          onBackToFiles={() => void handleBackToFiles()}
-          onCreateNote={() => void mutations.createNote()}
-          onTitleChange={mutations.handleTitleChange}
-          onTitleBlur={() => void mutations.commitTitleChange()}
-          onTitleKeyDown={mutations.handleTitleKeyDown}
-          onToggleAgentPanel={() => void agent.handleToggleAgentPanel()}
+          repository={repository}
+          mutations={mutations}
+          renderExportMenu={renderExportMenu}
+          editor={editor}
+          handleBackToFiles={handleBackToFiles}
+          agent={agent}
         />
-      )}
+      }
       rightPanel={agent.agentPanelOpen && activeNote ? (
         <NotebookAgentPanel
           header={assistantHeader}

@@ -700,6 +700,57 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
   )
 }
 
+function TourBackdrop({
+  opacity,
+  spotlightRect,
+}: {
+  opacity: number
+  spotlightRect: Frame['spotlightRect']
+}) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9998,
+        pointerEvents: 'none',
+        transition: 'opacity 400ms ease',
+        opacity,
+      }}
+    >
+      {spotlightRect && (
+        <div
+          style={{
+            position: 'absolute',
+            top: spotlightRect.top,
+            left: spotlightRect.left,
+            width: spotlightRect.width,
+            height: spotlightRect.height,
+            borderRadius: 8,
+            boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
+            transition: 'top 400ms ease, left 400ms ease, width 400ms ease, height 400ms ease',
+          }}
+        />
+      )}
+      {spotlightRect && (
+        <>
+          {/* Block clicks to the app behind the tour; do not dismiss on backdrop (Skip / X only). */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: spotlightRect.top, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', top: spotlightRect.top + spotlightRect.height, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', top: spotlightRect.top, left: 0, width: spotlightRect.left, height: spotlightRect.height, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} />
+        </>
+      )}
+      {/* When the target is missing, do not swallow clicks for the whole app —
+          that blocked invitation accept and other non-chat routes. */}
+      {!spotlightRect && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+      )}
+    </div>
+  )
+}
+
 function TourOverlay({
   step,
   currentStep,
@@ -738,46 +789,7 @@ function TourOverlay({
   return (
     <>
       {/* Backdrop with box-shadow cutout */}
-      <div
-        aria-hidden
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9998,
-          pointerEvents: 'none',
-          transition: 'opacity 400ms ease',
-          opacity: backdropOpacity,
-        }}
-      >
-        {spotlightRect && (
-          <div
-            style={{
-              position: 'absolute',
-              top: spotlightRect.top,
-              left: spotlightRect.left,
-              width: spotlightRect.width,
-              height: spotlightRect.height,
-              borderRadius: 8,
-              boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
-              transition: 'top 400ms ease, left 400ms ease, width 400ms ease, height 400ms ease',
-            }}
-          />
-        )}
-        {spotlightRect && (
-          <>
-            {/* Block clicks to the app behind the tour; do not dismiss on backdrop (Skip / X only). */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: spotlightRect.top, pointerEvents: 'auto' }} />
-            <div style={{ position: 'absolute', top: spotlightRect.top + spotlightRect.height, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }} />
-            <div style={{ position: 'absolute', top: spotlightRect.top, left: 0, width: spotlightRect.left, height: spotlightRect.height, pointerEvents: 'auto' }} />
-            <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} />
-          </>
-        )}
-        {/* When the target is missing, do not swallow clicks for the whole app —
-            that blocked invitation accept and other non-chat routes. */}
-        {!spotlightRect && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
-        )}
-      </div>
+      <TourBackdrop opacity={backdropOpacity} spotlightRect={spotlightRect} />
 
       {/* Tooltip card */}
       {tooltipInfo && (

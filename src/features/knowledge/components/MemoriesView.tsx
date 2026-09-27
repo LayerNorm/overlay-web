@@ -701,6 +701,42 @@ function MemoriesEmptyState({
   )
 }
 
+function MemoryMetaChips({ memory, metaChipClass }: { memory: Memory; metaChipClass: string }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className={metaChipClass} title={memory.creatorEmail}>
+        <UserRound size={10} className="mr-1 inline" />
+        {memory.creatorName}
+      </span>
+      {memory.type && (
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
+          {memory.type}
+        </span>
+      )}
+      <span className={metaChipClass}>
+        {memory.source}
+      </span>
+      {typeof memory.importance === 'number' && (
+        <span className={metaChipClass}>
+          importance {memory.importance}
+        </span>
+      )}
+      {memory.actor && (
+        <span className={metaChipClass}>
+          {memory.actor}
+        </span>
+      )}
+      {memory.conversationId && <span className={metaChipClass}>chat</span>}
+      {memory.noteId && <span className={metaChipClass}>note</span>}
+      {memory.tags.map((tag) => (
+        <span key={`${memory.memoryId}:${tag}`} className={metaChipClass}>
+          #{tag}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function MemoryCard({
   memory,
   isSelected,
@@ -748,48 +784,7 @@ function MemoryCard({
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
             {memory.content}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className={metaChipClass} title={memory.creatorEmail}>
-              <UserRound size={10} className="mr-1 inline" />
-              {memory.creatorName}
-            </span>
-            {memory.type && (
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
-                {memory.type}
-              </span>
-            )}
-            <span className={metaChipClass}>
-              {memory.source}
-            </span>
-            {typeof memory.importance === 'number' && (
-              <span className={metaChipClass}>
-                importance {memory.importance}
-              </span>
-            )}
-            {memory.actor && (
-              <span className={metaChipClass}>
-                {memory.actor}
-              </span>
-            )}
-            {memory.conversationId && (
-              <span className={metaChipClass}>
-                chat
-              </span>
-            )}
-            {memory.noteId && (
-              <span className={metaChipClass}>
-                note
-              </span>
-            )}
-            {memory.tags.map((tag) => (
-              <span
-                key={`${memory.memoryId}:${tag}`}
-                className={metaChipClass}
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
+          <MemoryMetaChips memory={memory} metaChipClass={metaChipClass} />
           <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-light)]">
             <span>
               {new Date(memory.createdAt).toLocaleTimeString('en-US', {

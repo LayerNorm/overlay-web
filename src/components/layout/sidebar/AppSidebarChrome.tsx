@@ -239,46 +239,78 @@ export function DesktopAccountSlot({
           userLabel: displayName,
           accountMenu,
         })
-      ) : !isGuestConfirmed ? (
-        <>
-          <FloatingMenu
-            anchorRef={menuRef}
-            open={accountMenuOpen}
-            onOpenChange={onAccountMenuOpenChange}
-            side="top"
-            className="w-64"
-          >
-            {accountMenu}
-          </FloatingMenu>
-          <button
-            type="button"
-            onClick={() => onAccountMenuOpenChange(!accountMenuOpen)}
-            className={`flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-              railExpanded ? 'gap-2.5 px-3' : 'justify-center'
-            }`}
-            aria-label="Account menu"
-            aria-expanded={accountMenuOpen}
-            title={displayName}
-          >
-            <User size={15} className="shrink-0" />
-            {railExpanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span> : null}
-          </button>
-        </>
       ) : (
-        <button
-          type="button"
-          onClick={onSignIn}
-          className={`flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-            railExpanded ? 'gap-2.5 px-3' : 'justify-center'
-          }`}
-          aria-label="Sign in"
-          title="Sign in"
-        >
-          <User size={15} className="shrink-0" />
-          {railExpanded ? <span className="min-w-0 flex-1 text-left text-sm">Sign in</span> : null}
-        </button>
+        <DesktopAccountFallback
+          menuRef={menuRef}
+          isGuestConfirmed={isGuestConfirmed}
+          railExpanded={railExpanded}
+          displayName={displayName}
+          accountMenuOpen={accountMenuOpen}
+          onAccountMenuOpenChange={onAccountMenuOpenChange}
+          accountMenu={accountMenu}
+          onSignIn={onSignIn}
+        />
       )}
     </div>
+  )
+}
+
+function DesktopAccountFallback({
+  menuRef,
+  isGuestConfirmed,
+  railExpanded,
+  displayName,
+  accountMenuOpen,
+  onAccountMenuOpenChange,
+  accountMenu,
+  onSignIn,
+}: {
+  menuRef: { current: HTMLDivElement | null }
+  isGuestConfirmed: boolean
+  railExpanded: boolean
+  displayName: string
+  accountMenuOpen: boolean
+  onAccountMenuOpenChange: (open: boolean) => void
+  accountMenu: ReactNode
+  onSignIn: () => void
+}) {
+  const rowClass = `flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+    railExpanded ? 'gap-2.5 px-3' : 'justify-center'
+  }`
+  const label = railExpanded ? (
+    <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span>
+  ) : null
+  if (!isGuestConfirmed) {
+    return (
+      <>
+        <FloatingMenu
+          anchorRef={menuRef}
+          open={accountMenuOpen}
+          onOpenChange={onAccountMenuOpenChange}
+          side="top"
+          className="w-64"
+        >
+          {accountMenu}
+        </FloatingMenu>
+        <button
+          type="button"
+          onClick={() => onAccountMenuOpenChange(!accountMenuOpen)}
+          className={rowClass}
+          aria-label="Account menu"
+          aria-expanded={accountMenuOpen}
+          title={displayName}
+        >
+          <User size={15} className="shrink-0" />
+          {label}
+        </button>
+      </>
+    )
+  }
+  return (
+    <button type="button" onClick={onSignIn} className={rowClass} aria-label="Sign in" title="Sign in">
+      <User size={15} className="shrink-0" />
+      {railExpanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">Sign in</span> : null}
+    </button>
   )
 }
 
@@ -472,17 +504,34 @@ export function MobileNavRow({
     >
       <Icon size={15} />
       <div className="min-w-0 flex-1 text-left">{label}</div>
-      {pending ? (
-        <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
-      ) : unreadCount > 0 ? (
-        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
-          {unreadCount > 9 ? '9+' : unreadCount}
-        </span>
-      ) : opensPanel && !disabled ? (
-        <ChevronRight size={13} className="shrink-0 text-[var(--muted-light)]" aria-hidden />
-      ) : null}
+      <MobileNavRowAccessory pending={pending} unreadCount={unreadCount} opensPanel={opensPanel} disabled={disabled} />
     </button>
   )
+}
+
+function MobileNavRowAccessory({
+  pending,
+  unreadCount,
+  opensPanel,
+  disabled,
+}: {
+  pending: boolean
+  unreadCount: number
+  opensPanel: boolean
+  disabled?: boolean
+}) {
+  if (pending) return <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+  if (unreadCount > 0) {
+    return (
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
+        {unreadCount > 9 ? '9+' : unreadCount}
+      </span>
+    )
+  }
+  if (opensPanel && !disabled) {
+    return <ChevronRight size={13} className="shrink-0 text-[var(--muted-light)]" aria-hidden />
+  }
+  return null
 }
 
 export interface ShowcaseLink {
