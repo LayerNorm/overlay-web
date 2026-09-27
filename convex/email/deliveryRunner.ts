@@ -206,6 +206,8 @@ function parseEvent(payloadJson: string): LifecycleEmailEvent {
     'automation.failed',
     'api_key.changed',
     'workspace.invitation_sent',
+    'workspace.mention',
+    'workspace.dm_received',
   ]
   if (!allowed.includes(String(value.name))) throw new Error('Unsupported lifecycle email event')
   return {

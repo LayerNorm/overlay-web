@@ -475,6 +475,7 @@ export class AutomationService {
   }): Promise<{ success: true; runId: string; conversationId: string }> {
     let runId: string | null = null
     let automationId: string | null = null
+    let automationName: string | undefined
     try {
       if (!args.automationId) {
         serviceError({ error: 'automationId required' }, 400)
@@ -487,6 +488,7 @@ export class AutomationService {
       if (!automation) serviceError({ error: 'Automation not found' }, 404)
 
       const name = (automation.name || automation.title || 'Untitled automation').trim()
+      automationName = name
       const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
       if (!instructions) {
         serviceError({ error: 'Automation has no instructions to test' }, 400)
@@ -547,6 +549,7 @@ export class AutomationService {
       })
       await this.publishAutomationLifecycleEvent({
         automationId,
+        automationName: name,
         execution: 'manual',
         name: 'automation.succeeded',
         runId,
@@ -560,6 +563,7 @@ export class AutomationService {
         runId,
         userId: args.userId,
         automationId,
+        automationName,
       })
       throw error
     }
@@ -572,6 +576,7 @@ export class AutomationService {
   }): Promise<{ success: true; conversationId: string }> {
     let automationId: string | undefined
     let userId: string | undefined
+    let automationName: string | undefined
     try {
       if (!args.runId) serviceError({ error: 'runId required' }, 400)
       const executionRunId = args.runId
@@ -582,6 +587,8 @@ export class AutomationService {
       const { run, automation } = payload
       automationId = automation._id
       userId = automation.userId
+      const displayName = automation.name || automation.title || 'Untitled automation'
+      automationName = displayName
       if (automation.userId !== args.serviceUserId) {
         serviceError({ error: 'Unauthorized' }, 401)
       }
@@ -598,7 +605,7 @@ export class AutomationService {
         automationId: automation._id,
         runId: executionRunId,
         userId: automation.userId,
-        name: automation.name || automation.title || 'Untitled automation',
+        name: displayName,
         description: automation.description || '',
         instructions: automation.instructions || automation.instructionsMarkdown || '',
         modelId: automation.modelId,
@@ -616,6 +623,7 @@ export class AutomationService {
       })
       await this.publishAutomationLifecycleEvent({
         automationId: automation._id,
+        automationName,
         execution: 'scheduled',
         name: 'automation.succeeded',
         runId: args.runId,
@@ -633,6 +641,7 @@ export class AutomationService {
         })
         await this.publishAutomationLifecycleEvent({
           automationId,
+          automationName,
           execution: 'scheduled',
           failureClass: classifyAutomationFailure(error),
           name: 'automation.failed',
@@ -878,6 +887,7 @@ export class AutomationService {
 
   private async failManualRunBestEffort(args: {
     automationId: string | null
+    automationName?: string
     error: unknown
     runId: string | null
     userId: string
@@ -900,6 +910,7 @@ export class AutomationService {
       })
       await this.publishAutomationLifecycleEvent({
         automationId: args.automationId,
+        automationName: args.automationName,
         execution: 'manual',
         failureClass: classifyAutomationFailure(args.error),
         name: 'automation.failed',
@@ -911,6 +922,7 @@ export class AutomationService {
 
   private async publishAutomationLifecycleEvent(args: {
     automationId: string
+    automationName?: string
     execution: 'manual' | 'scheduled'
     failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
     name: 'automation.failed' | 'automation.succeeded'
@@ -920,6 +932,7 @@ export class AutomationService {
     await this.deps.lifecycleEvents?.().publish({
       attributes: {
         execution: args.execution,
+        ...(args.automationName ? { automationName: args.automationName } : {}),
         ...(args.failureClass ? { failureClass: args.failureClass } : {}),
       },
       idempotencyKey: `${args.name}:${args.runId}`,
