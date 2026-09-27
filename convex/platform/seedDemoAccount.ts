@@ -49,7 +49,7 @@ export default mutation({
       updatedAt: Date.now(),
     });
 
-    const note2 = await ctx.db.insert("notes", {
+    const note2Promise = ctx.db.insert('notes', {
       title: "Project Ideas",
       content: JSON.stringify({
         type: "doc",
@@ -71,15 +71,16 @@ export default mutation({
     });
 
     // 2. Create a saved memory
-    await ctx.db.insert("memories", {
-      content: "User prefers concise, bullet-point summaries. Interested in productivity tools, AI workflows, and building efficient teams.",
+    const memoriesPromise = ctx.db.insert('memories', {
+      content:
+        'User prefers concise, bullet-point summaries. Interested in productivity tools, AI workflows, and building efficient teams.',
       source: "manual",
       userId,
       createdAt: Date.now(),
     });
 
     // 3. Create sample file
-    await ctx.db.insert("files", {
+    const filesPromise = ctx.db.insert('files', {
       name: "Overlay Documentation",
       type: "file",
       kind: "upload",
@@ -89,8 +90,12 @@ export default mutation({
       updatedAt: Date.now(),
     });
 
-    // 4. Create a sample chat conversation
-    const conversation = await ctx.db.insert("conversations", {
+    // 4. Create a sample chat conversation (independent of the notes/memories/files inserts)
+    const [note2, , , conversation] = await Promise.all([
+      note2Promise,
+      memoriesPromise,
+      filesPromise,
+      ctx.db.insert('conversations', {
       title: "Welcome Chat",
       userId,
       lastModified: Date.now(),
@@ -99,11 +104,13 @@ export default mutation({
       lastMode: "ask",
       askModelIds: ["gpt-4o"],
       actModelId: "gpt-4o",
-    });
+      }),
+    ])
 
     const turnId = crypto.randomUUID();
 
-    await ctx.db.insert("conversationMessages", {
+    await Promise.all([
+      ctx.db.insert('conversationMessages', {
       conversationId: conversation,
       userId,
       turnId,
@@ -112,9 +119,8 @@ export default mutation({
       content: "What can you help me with?",
       contentType: "text",
       createdAt: Date.now() - 120000,
-    });
-
-    await ctx.db.insert("conversationMessages", {
+      }),
+      ctx.db.insert('conversationMessages', {
       conversationId: conversation,
       userId,
       turnId,
@@ -123,7 +129,8 @@ export default mutation({
       content: "I can help you with a wide range of tasks! I can write and edit documents, brainstorm ideas, analyze data, write code, answer questions, and much more. What would you like to work on today?",
       contentType: "text",
       createdAt: Date.now() - 60000,
-    });
+      }),
+    ])
 
     return {
       success: true,

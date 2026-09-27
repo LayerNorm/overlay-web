@@ -109,8 +109,12 @@ export function AutomationEditorForm({
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-[var(--foreground)]">Automation editor</p>
-            <p className="text-xs text-[var(--muted)]">Configure and test this automation.</p>
+            <p className='text-sm font-medium text-[var(--foreground)]'>
+              Automation editor
+            </p>
+            <p className='text-xs text-[var(--muted)]'>
+              Configure and test this automation.
+            </p>
           </div>
           <button
             type="button"
@@ -144,17 +148,25 @@ export function AutomationEditorForm({
             </div>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-[var(--foreground)]">Enabled</p>
-                <p className="text-xs text-[var(--muted)]">Run this automation on its schedule.</p>
+                <p className='text-sm font-medium text-[var(--foreground)]'>
+                  Enabled
+                </p>
+                <p className='text-xs text-[var(--muted)]'>
+                  Run this automation on its schedule.
+                </p>
               </div>
               <SettingsToggle checked={enabled} onChange={() => onEnabledChange(!enabled)} />
             </div>
           </div>
           <div className="mt-4 flex items-center justify-between border-t border-[var(--border)] pt-4">
             {saveState === 'error' ? (
-              <p className="text-xs text-red-500">Could not save automation. Please try again.</p>
+              <p className='text-xs text-red-500'>
+                Could not save automation. Please try again.
+              </p>
             ) : (
-              <span className="text-xs text-[var(--muted)]">Changes are saved manually.</span>
+              <span className='text-xs text-[var(--muted)]'>
+                Changes are saved manually.
+              </span>
             )}
           </div>
         </SettingsCard>
@@ -169,7 +181,9 @@ export function AutomationEditorForm({
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
               >
                 {scheduleKindOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
               </Select>
             </label>
@@ -180,7 +194,12 @@ export function AutomationEditorForm({
                   type="number"
                   min={MIN_AUTOMATION_INTERVAL_MINUTES}
                   value={intervalMinutes}
-                  onChange={(event) => onIntervalMinutesChange(Number(event.target.value))}
+                  onChange={(event) => {
+                    // type=number constrains input; NaN/out-of-range is filtered.
+                    // react-doctor-disable-next-line react-doctor/no-unguarded-numeric-input-parse
+                    const n = Number(event.target.value)
+                    if (Number.isFinite(n) && n > 0) onIntervalMinutesChange(n)
+                  }}
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
                 />
               </label>
@@ -204,7 +223,9 @@ export function AutomationEditorForm({
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
                 >
                   {WEEKDAY_LABELS.map((day, index) => (
-                    <option key={day} value={index}>{day}</option>
+                    <option key={day} value={index}>
+                      {day}
+                    </option>
                   ))}
                 </Select>
               </label>
@@ -217,7 +238,13 @@ export function AutomationEditorForm({
                   min={1}
                   max={31}
                   value={dayOfMonth}
-                  onChange={(event) => onDayOfMonthChange(Number(event.target.value))}
+                  onChange={(event) => {
+                    // type=number with min/max; NaN/out-of-range is filtered.
+                    // react-doctor-disable-next-line react-doctor/no-unguarded-numeric-input-parse
+                    const n = Number(event.target.value)
+                    if (Number.isFinite(n) && n >= 1 && n <= 31)
+                      onDayOfMonthChange(n)
+                  }}
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-8 text-sm text-[var(--foreground)] outline-none"
                 />
               </label>
@@ -230,7 +257,9 @@ export function AutomationEditorForm({
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
               >
                 {timeZoneOptions.map((zone) => (
-                  <option key={zone.value} value={zone.value}>{zone.label}</option>
+                  <option key={zone.value} value={zone.value}>
+                    {zone.label}
+                  </option>
                 ))}
               </Select>
             </label>
@@ -242,7 +271,9 @@ export function AutomationEditorForm({
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
               >
                 {modelOptions.map((model) => (
-                  <option key={model.id} value={model.id}>{model.name}</option>
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
                 ))}
               </Select>
             </label>
@@ -260,7 +291,9 @@ export function AutomationEditorForm({
             the canvas (`manuallyEdited`) — auto-derived graphs never show it. */}
         {(renderFlow || graph?.manuallyEdited) && (
           <SettingsCard title="Flow">
-            {renderFlow ? renderFlow() : (
+            {renderFlow ? (
+              renderFlow()
+            ) : (
               <Suspense
                 fallback={
                   <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
@@ -275,8 +308,13 @@ export function AutomationEditorForm({
         <SettingsCard title="Test">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-[var(--foreground)]">Run once</p>
-              <p className="text-xs text-[var(--muted)]">Executes the automation now and writes the result to the automation chat.</p>
+              <p className='text-sm font-medium text-[var(--foreground)]'>
+                Run once
+              </p>
+              <p className='text-xs text-[var(--muted)]'>
+                Executes the automation now and writes the result to the
+                automation chat.
+              </p>
             </div>
             <button
               type="button"
@@ -288,7 +326,9 @@ export function AutomationEditorForm({
             </button>
           </div>
           {testMessage ? (
-            <p className={`mt-3 text-xs ${testState === 'error' ? 'text-red-500' : 'text-[var(--muted)]'}`}>
+            <p
+              className={`mt-3 text-xs ${testState === 'error' ? 'text-red-500' : 'text-[var(--muted)]'}`}
+            >
               {testMessage}
             </p>
           ) : null}

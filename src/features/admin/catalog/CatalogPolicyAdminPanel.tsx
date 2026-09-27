@@ -33,19 +33,23 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
 
   const visibleResources = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    return resources.filter((resource) => (
-      resource.resourceType === resourceType
-      && (!normalized || [
+    return resources.filter(
+      (resource) =>
+        resource.resourceType === resourceType &&
+        (!normalized ||
+          [
         resource.id,
         resource.label,
         resource.category,
         resource.description,
-      ].some((value) => value?.toLowerCase().includes(normalized)))
-    ))
+          ].some((value) => value?.toLowerCase().includes(normalized))),
+    )
   }, [query, resourceType, resources])
-  const selected = resources.find((resource) => (
-    resource.resourceType === resourceType && resource.id === selectedId
-  )) ?? null
+  const selected =
+    resources.find(
+      (resource) =>
+        resource.resourceType === resourceType && resource.id === selectedId,
+    ) ?? null
 
   const load = useCallback(async () => {
     const [catalog, groups, roles] = await Promise.all([
@@ -76,16 +80,22 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
   }, [load])
 
   useEffect(() => {
-    const firstId = resources.find((resource) => resource.resourceType === resourceType)?.id ?? null
-    setSelectedId((current) => (
-      current && resources.some((resource) => (
-        resource.resourceType === resourceType && resource.id === current
-      ))
+    const firstId =
+      resources.find((resource) => resource.resourceType === resourceType)
+        ?.id ?? null
+    setSelectedId((current) =>
+      current &&
+      resources.some(
+        (resource) =>
+          resource.resourceType === resourceType && resource.id === current,
+      )
         ? current
-        : firstId
-    ))
+        : firstId,
+    )
   }, [resourceType, resources])
 
+  // Selection → dependent fetch is this panel's data flow, not an accidental chain.
+  // react-doctor-disable-next-line react-doctor/no-effect-chain
   useEffect(() => {
     if (!selectedId) {
       setGrants([])
@@ -106,8 +116,11 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
         principalId,
         accessRole: 'viewer',
       })
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(payload.error || 'Could not update catalog policy')
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'Could not update catalog policy')
       setPrincipalId('')
       await loadGrants(selected.resourceType, selected.id)
     } catch (grantError) {
@@ -122,9 +135,15 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
     setBusy(true)
     setError(null)
     try {
-      const response = await overlayAppClient.adminAuthorization.removeResourceGrantResponse(grantId)
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(payload.error || 'Could not remove catalog policy')
+      const response =
+        await overlayAppClient.adminAuthorization.removeResourceGrantResponse(
+          grantId,
+        )
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'Could not remove catalog policy')
       await loadGrants(selected.resourceType, selected.id)
     } catch (grantError) {
       setError(message(grantError))
@@ -139,7 +158,9 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
         <div>
           <div className="flex items-center gap-2">
             <Boxes size={17} />
-            <h2 className="text-sm font-semibold">Models, tools, and connectors</h2>
+            <h2 className='text-sm font-semibold'>
+              Models, tools, and connectors
+            </h2>
           </div>
           <p className="mt-1 max-w-2xl text-xs text-[var(--muted)]">
             Restrict deployment-enabled resources to selected users, groups, or roles.
@@ -158,7 +179,9 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
         />
       </div>
 
-      {error ? <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? (
+        <p className='mt-4 text-sm text-red-600 dark:text-red-400'>{error}</p>
+      ) : null}
 
       <div className="mt-6 grid min-h-[480px] gap-6 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
         <div className="min-w-0 border-r-0 border-[var(--border)] lg:border-r lg:pr-6">
@@ -174,8 +197,11 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
           </div>
           <div className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
             {visibleResources.length === 0 ? (
-              <p className="py-5 text-sm text-[var(--muted)]">No matching resources.</p>
-            ) : visibleResources.map((resource) => (
+              <p className='py-5 text-sm text-[var(--muted)]'>
+                No matching resources.
+              </p>
+            ) : (
+              visibleResources.map((resource) => (
               <button
                 key={`${resource.resourceType}:${resource.id}`}
                 type="button"
@@ -186,24 +212,34 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                     : 'hover:bg-[var(--surface-subtle)]'
                 }`}
               >
-                <p className="truncate text-sm font-medium">{resource.label}</p>
+                  <p className='truncate text-sm font-medium'>
+                    {resource.label}
+                  </p>
                 <p className="mt-1 truncate text-xs text-[var(--muted)]">
-                  {resource.category ? `${resource.category} · ` : ''}{resource.id}
+                    {resource.category ? `${resource.category} · ` : ''}
+                    {resource.id}
                 </p>
               </button>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
         <div className="min-w-0">
           {!selected ? (
-            <p className="py-10 text-sm text-[var(--muted)]">Select a resource to manage availability.</p>
+            <p className='py-10 text-sm text-[var(--muted)]'>
+              Select a resource to manage availability.
+            </p>
           ) : (
             <>
               <h3 className="text-base font-semibold">{selected.label}</h3>
-              <p className="mt-1 break-all text-xs text-[var(--muted)]">{selected.id}</p>
+              <p className='mt-1 break-all text-xs text-[var(--muted)]'>
+                {selected.id}
+              </p>
               {selected.description ? (
-                <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{selected.description}</p>
+                <p className='mt-3 text-sm leading-6 text-[var(--muted)]'>
+                  {selected.description}
+                </p>
               ) : null}
               <p className="mt-4 text-xs text-[var(--muted)]">
                 {grants.length === 0
@@ -242,9 +278,13 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                       className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
                     >
                       <option value="">Select {principalType}</option>
-                      {directoryEntries(directory, principalType).map((entry) => (
-                        <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>
-                      ))}
+                      {directoryEntries(directory, principalType).map(
+                        (entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entryLabel(entry)}
+                          </option>
+                        ),
+                      )}
                     </Select>
                   )}
                   <IconButton
@@ -252,19 +292,33 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                     onClick={() => void addGrant()}
                     disabled={!principalId || busy}
                   >
-                    {busy ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                    {busy ? (
+                      <Loader2 className='animate-spin' size={14} />
+                    ) : (
+                      <Plus size={14} />
+                    )}
                   </IconButton>
                 </div>
               ) : null}
 
               <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
                 {grants.length === 0 ? (
-                  <p className="py-5 text-sm text-[var(--muted)]">No principal restrictions.</p>
-                ) : grants.map((grant) => (
-                  <div key={grant.id} className="flex items-center gap-3 py-3">
+                  <p className='py-5 text-sm text-[var(--muted)]'>
+                    No principal restrictions.
+                  </p>
+                ) : (
+                  grants.map((grant) => (
+                    <div
+                      key={grant.id}
+                      className='flex items-center gap-3 py-3'
+                    >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{principalLabel(directory, grant)}</p>
-                      <p className="text-xs text-[var(--muted)]">{grant.principalType}</p>
+                        <p className='truncate text-sm font-medium'>
+                          {principalLabel(directory, grant)}
+                        </p>
+                        <p className='text-xs text-[var(--muted)]'>
+                          {grant.principalType}
+                        </p>
                     </div>
                     {canManage ? (
                       <IconButton
@@ -276,7 +330,8 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                       </IconButton>
                     ) : null}
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </>
           )}
@@ -300,12 +355,10 @@ function entryLabel(entry: DirectoryEntry): string {
   return entry.email || entry.name || entry.id
 }
 
-function principalLabel(
-  directory: Directory,
-  grant: ResourceGrant,
-): string {
-  const entry = directoryEntries(directory, grant.principalType)
-    .find(({ id }) => id === grant.principalId)
+function principalLabel(directory: Directory, grant: ResourceGrant): string {
+  const entry = directoryEntries(directory, grant.principalType).find(
+    ({ id }) => id === grant.principalId,
+  )
   return entry ? entryLabel(entry) : grant.principalId
 }
 

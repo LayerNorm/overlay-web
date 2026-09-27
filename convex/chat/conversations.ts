@@ -783,8 +783,10 @@ export const startAgentRun = mutation({
   },
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const conversation = await ctx.db.get(args.conversationId)
-    const userMessage = await ctx.db.get(args.userMessageId)
+    const [conversation, userMessage] = await Promise.all([
+      ctx.db.get(args.conversationId),
+      ctx.db.get(args.userMessageId),
+    ])
     if (
       !conversation || conversation.userId !== args.userId || conversation.deletedAt ||
       !userMessage || userMessage.conversationId !== args.conversationId ||

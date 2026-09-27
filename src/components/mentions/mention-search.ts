@@ -64,8 +64,10 @@ async function fetchAll(): Promise<CachedData> {
   if (cache && cache.cacheKey.startsWith(`${currentKeyPrefix}:`)) return cache
   if (inFlight) return inFlight
   inFlight = (async () => {
-    const automationsEnabled = await areAutomationsEnabled()
-    const capabilities = await getMentionCapabilities()
+    const [automationsEnabled, capabilities] = await Promise.all([
+      areAutomationsEnabled(),
+      getMentionCapabilities(),
+    ])
     const cacheKey = `${currentKeyPrefix}:${mentionCapabilityCacheKey(capabilities)}`
     const [filesRes, notesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
@@ -412,8 +414,7 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
   }
 
   // Fallback: scan-and-filter (existing behavior).
-  const data = await fetchAll()
-  const capabilities = await getMentionCapabilities()
+  const [data, capabilities] = await Promise.all([fetchAll(), getMentionCapabilities()])
   return CATEGORY_META.filter((cat) => {
     switch (cat.type) {
       case 'file':

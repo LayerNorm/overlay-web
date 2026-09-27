@@ -404,10 +404,10 @@ export default function AppSidebar({
   useEffect(() => {
     // Unread was folded into Activity; rewrite stale deep links.
     if (chatViewParam !== 'unread') return
-    router.replace(activeWorkspaceId
+    window.history.replaceState(null, '', activeWorkspaceId
       ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
       : '/app/activity')
-  }, [activeWorkspaceId, buildWorkspaceHref, chatViewParam, router])
+  }, [activeWorkspaceId, buildWorkspaceHref, chatViewParam])
 
   const loadEntitlements = useCallback(async () => {
     if (!billingEnabled || authLoading || !authUserId) {

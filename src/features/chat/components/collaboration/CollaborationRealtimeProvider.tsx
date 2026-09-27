@@ -82,11 +82,13 @@ function ConvexCollaborationSubscriptions({
     const workspaceVersion = listVersion?.ok ? listVersion.version : 0
     const personalVersion = personalListVersion?.ok ? personalListVersion.version : 0
     // Use the max of both versions so any change triggers a refresh.
+    // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
     onConversationListVersion(Math.max(workspaceVersion, personalVersion))
   }, [listVersion, personalListVersion, onConversationListVersion])
 
   useEffect(() => {
     if (notificationResult?.ok) {
+      // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
       onNotifications(notificationResult.notifications as WorkspaceNotification[])
     }
   }, [notificationResult, onNotifications])

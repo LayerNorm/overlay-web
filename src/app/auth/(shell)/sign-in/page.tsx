@@ -2,6 +2,7 @@ import { deriveOverlayCapabilities } from '@overlay/app-core'
 import { getAuthUiOptions } from '@/server/auth/actions'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import { LandingAuthBoundary } from '../../_components/AuthPageChrome'
+import { Suspense } from 'react'
 import { SignInClient } from './SignInClient'
 
 export default async function SignInPage() {
@@ -10,7 +11,9 @@ export default async function SignInPage() {
 
   return (
     <LandingAuthBoundary>
+      <Suspense fallback={null}>
       <SignInClient authUiOptions={authUiOptions} ssoEnabled={ssoEnabled} />
+      </Suspense>
     </LandingAuthBoundary>
   )
 }

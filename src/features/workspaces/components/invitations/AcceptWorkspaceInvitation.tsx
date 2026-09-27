@@ -23,6 +23,7 @@ export function AcceptWorkspaceInvitation({
     setError(null)
     setRequiresSignIn(false)
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch(
         `/api/v1/workspace-invitations/${encodeURIComponent(invitationId)}/accept`,
         {

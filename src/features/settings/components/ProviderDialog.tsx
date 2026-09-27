@@ -54,6 +54,8 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
   // an explicit user URL and is guarded on the server before any key is sent.
   useEffect(() => {
     if (preset && !preset.allowsCustomEndpoint && !endpoint) {
+      // Fixed presets enforce their vendor URL — an emptied field refills it.
+      // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
       setEndpoint(preset.defaultBaseURL)
     }
   }, [preset, endpoint])
@@ -78,9 +80,13 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
   }, [preset, endpointHost, isEdit, autoDisplayName])
 
   const handleTest = useCallback(async () => {
+    if (testing) return
     setTesting(true)
     setTestResult(null)
     try {
+      // Guarded by `testing` at the top of handleTest; the /test endpoint's
+      // structured body (data.ok/data.error) is the real status signal.
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check, react-doctor/no-async-event-handler-without-reentry-guard
       const res = await fetch('/api/v1/providers/connections/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,7 +97,11 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
           apiKey: apiKey || undefined,
         }),
       })
-      const data = await res.json() as { ok: boolean; models: DiscoveredModel[]; error?: string }
+      const data = (await res.json()) as {
+        ok: boolean
+        models: DiscoveredModel[]
+        error?: string
+      }
       setTestResult(data)
       if (data.ok && data.models.length > 0) {
         // Auto-select all models on first test
@@ -102,7 +112,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
     } finally {
       setTesting(false)
     }
-  }, [existing?._id, providerId, endpoint, apiKey, preset])
+  }, [existing?._id, providerId, endpoint, apiKey, preset, testing])
 
   const handleSave = useCallback(async () => {
     onBusyChange(true)
@@ -158,7 +168,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         })
         if (res.ok) {
           // After creation, update with test results if available
-          const data = await res.json() as { id: string }
+          const data = (await res.json()) as { id: string }
           if (testResult?.ok && data.id) {
             await fetch('/api/v1/providers/connections', {
               method: 'PATCH',
@@ -204,7 +214,11 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
             disabled={testing || busy || !canTest}
             className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-50"
           >
-            {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {testing ? (
+              <Loader2 size={14} className='animate-spin' />
+            ) : (
+              <RefreshCw size={14} />
+            )}
             Test connection
           </button>
           <button
@@ -231,7 +245,9 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         {/* Provider selector — only for add mode */}
         {!isEdit ? (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider</label>
+            <label className='mb-1.5 block text-xs font-medium text-[var(--muted)]'>
+              Provider
+            </label>
             <div className="relative">
               <select
                 value={providerId}
@@ -246,7 +262,9 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                 className="h-10 w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-8 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
               >
                 {availablePresets.map((p) => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
                 ))}
               </select>
               <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
@@ -266,7 +284,9 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         ) : null}
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider name</label>
+          <label className='mb-1.5 block text-xs font-medium text-[var(--muted)]'>
+            Provider name
+          </label>
           <input
             type="text"
             value={displayName}
@@ -334,17 +354,22 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
               <>
                 <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400">
                   <Check size={14} />
-                  Connected — {testResult.models.length} model{testResult.models.length !== 1 ? 's' : ''} found
+                  Connected — {testResult.models.length} model
+                  {testResult.models.length !== 1 ? 's' : ''} found
                 </div>
                 {testResult.models.length > 0 ? (
                   <div className="mt-2 max-h-40 overflow-y-auto">
-                    <p className="mb-1.5 text-[11px] text-[var(--muted)]">Select models to enable:</p>
+                    <p className='mb-1.5 text-[11px] text-[var(--muted)]'>
+                      Select models to enable:
+                    </p>
                     {testResult.models.map((model) => (
                       <div
                         key={model.id}
                         className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
                       >
-                        <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
+                        <span className='min-w-0 flex-1 truncate text-xs text-[var(--foreground)]'>
+                          {formatByokModelDisplayName(model.id, model.name)}
+                        </span>
                         <Toggle
                           checked={enabledModelIdSet.has(model.id)}
                           onCheckedChange={() => {
@@ -364,7 +389,9 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
             ) : (
               <div className="flex items-center gap-2 text-xs text-red-500">
                 <AlertCircle size={14} className="shrink-0" />
-                <span className="truncate">{testResult.error ?? 'Connection failed'}</span>
+                <span className='truncate'>
+                  {testResult.error ?? 'Connection failed'}
+                </span>
               </div>
             )}
           </div>
@@ -374,7 +401,8 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         {isEdit && existing && !testResult && existing.discoveredModelsJson ? (
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
             <p className="mb-2 text-xs font-medium text-[var(--muted)]">
-              {parseDiscoveredModels(existing.discoveredModelsJson).length} discovered models
+              {parseDiscoveredModels(existing.discoveredModelsJson).length}{' '}
+              discovered models
             </p>
             <div className="max-h-32 overflow-y-auto">
               {parseDiscoveredModels(existing.discoveredModelsJson).map((model) => (
@@ -382,7 +410,9 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
                   key={model.id}
                   className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
                 >
-                  <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
+                    <span className='min-w-0 flex-1 truncate text-xs text-[var(--foreground)]'>
+                      {formatByokModelDisplayName(model.id, model.name)}
+                    </span>
                   <Toggle
                     checked={enabledModelIdSet.has(model.id)}
                     onCheckedChange={() => {

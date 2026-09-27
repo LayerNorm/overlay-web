@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ExternalLink, PanelRight } from 'lucide-react'
 import type { LinkOpenPreference } from '@overlay/app-core'
@@ -48,8 +48,7 @@ export function LinkOpenInterceptor({
 
   const close = useCallback(() => setChoice(null), [])
 
-  useEffect(() => {
-    function onClick(event: MouseEvent) {
+  const onClick = useEffectEvent((event: MouseEvent) => {
       // Leave the browser's own affordances alone: modified clicks, middle
       // clicks, and anything already handled by another listener.
       if (event.defaultPrevented) return
@@ -79,11 +78,13 @@ export function LinkOpenInterceptor({
         return
       }
       setChoice({ url, label, x: event.clientX, y: event.clientY })
-    }
+  })
 
+  useEffect(() => {
     document.addEventListener('click', onClick, true)
     return () => document.removeEventListener('click', onClick, true)
-  }, [onOpenInOverlay, preference])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onClick is a stable useEffectEvent
+  }, [])
 
   useEffect(() => {
     if (!choice) return
@@ -115,7 +116,10 @@ export function LinkOpenInterceptor({
         style={{ position: 'fixed', top, left, width: CHOOSER_WIDTH, zIndex: 451 }}
         className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-2xl"
       >
-        <p className="truncate px-2.5 pb-1 pt-1.5 text-[11px] text-[var(--muted-light)]" title={choice.url}>
+        <p
+          className='truncate px-2.5 pb-1 pt-1.5 text-[11px] text-[var(--muted-light)]'
+          title={choice.url}
+        >
           {hostOf(choice.url)}
         </p>
         <button

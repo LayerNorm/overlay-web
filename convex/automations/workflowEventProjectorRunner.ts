@@ -1,9 +1,9 @@
 "use node";
 
-import { v } from 'convex/values'
-import { internal } from '../_generated/api'
-import { internalAction } from '../_generated/server'
-import type { Id } from '../_generated/dataModel'
+import { v } from "convex/values";
+import { internal } from "../_generated/api";
+import { internalAction } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 
 /**
  * Cron-triggered action that polls the Workflow SDK event log for active
@@ -21,27 +21,33 @@ export const runProjectionTick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const serverSecret = process.env.INTERNAL_API_SECRET
-    if (!serverSecret) return null
+    const serverSecret = process.env.INTERNAL_API_SECRET;
+    if (!serverSecret) return null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const activeRuns = await ctx.runQuery((internal as any).automations.workflowEventProjector.listActiveWorkflowRuns, {
-      serverSecret,
-      limit: 20,
-    })
+    const activeRuns = await ctx.runQuery(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (internal as any).automations.workflowEventProjector
+        .listActiveWorkflowRuns,
+      {
+        serverSecret,
+        limit: 20,
+      },
+    );
 
-    if (activeRuns.length === 0) return null
+    if (activeRuns.length === 0) return null;
 
     // Import Workflow SDK lazily (only when there are active runs)
-    const { getRun } = await import('workflow/api')
-    const { getWorld } = await import('workflow/runtime')
+    const [{ getRun }, { getWorld }] = await Promise.all([
+      import("workflow/api"),
+      import("workflow/runtime"),
+    ]);
 
-    let world: ReturnType<typeof getWorld> | null = null
+    let world: ReturnType<typeof getWorld> | null = null;
     try {
-      world = getWorld()
+      world = getWorld();
     } catch {
       // Workflow SDK not available in this environment
-      return null
+      return null;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,42 +58,50 @@ export const runProjectionTick = internalAction({
         if (!exists) return
 
         // Get the latest projected event timestamp for this run
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const latestCursor = await ctx.runQuery((internal as any).automations.workflowEventProjector.getLatestEventCursor, {
-          workflowRunId: run.workflowRunId,
-          serverSecret,
-        })
+        const latestCursor = await ctx.runQuery(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (internal as any).automations.workflowEventProjector
+            .getLatestEventCursor,
+          {
+            workflowRunId: run.workflowRunId,
+            serverSecret,
+          },
+        );
 
         // Fetch events from the Workflow SDK
         const eventPage = await world.events.list({
           runId: run.workflowRunId,
-          resolveData: 'none',
-        })
+          resolveData: "none",
+        });
 
         // Project new events into Convex
         for (const event of eventPage.data) {
-          const eventTime = event.createdAt.getTime()
-          if (latestCursor && eventTime <= latestCursor) continue
+          const eventTime = event.createdAt.getTime();
+          if (latestCursor && eventTime <= latestCursor) continue;
 
-          const eventData = ('eventData' in event ? event.eventData : undefined) as
-            | Record<string, unknown>
-            | undefined
+          const eventData = (
+            "eventData" in event ? event.eventData : undefined
+          ) as Record<string, unknown> | undefined;
 
           // Only project step-level events
-          const stepName = eventData?.stepName as string | undefined
-          if (!stepName) continue
+          const stepName = eventData?.stepName as string | undefined;
+          if (!stepName) continue;
 
-          const eventType = event.eventType
-          const stepStatus: 'running' | 'completed' | 'failed' =
-            eventType === 'step_created' ? 'running' :
-            eventType === 'step_completed' ? 'completed' :
-            eventType === 'step_failed' ? 'failed' :
-            eventType === 'step_retrying' ? 'running' :
-            'running'
+          const eventType = event.eventType;
+          const stepStatus: "running" | "completed" | "failed" =
+            eventType === "step_created"
+              ? "running"
+              : eventType === "step_completed"
+                ? "completed"
+                : eventType === "step_failed"
+                  ? "failed"
+                  : eventType === "step_retrying"
+                    ? "running"
+                    : "running";
 
-          const error = eventData?.error as string | undefined
-          const stack = eventData?.stack as string | undefined
-          const attempt = eventData?.attempt as number | undefined
+          const error = eventData?.error as string | undefined;
+          const stack = eventData?.stack as string | undefined;
+          const attempt = eventData?.attempt as number | undefined;
 
           // Step events are ordered (created → completed); a parallel batch
           // could commit them out of order, so keep this loop sequential.
@@ -105,12 +119,12 @@ export const runProjectionTick = internalAction({
             serverSecret,
           })
         }
-      } catch (_error) {
+      } catch {
         // Skip this run on error, continue with the next one
       }
       /* eslint-enable @typescript-eslint/no-explicit-any */
     }))
 
-    return null
+    return null;
   },
-})
+});

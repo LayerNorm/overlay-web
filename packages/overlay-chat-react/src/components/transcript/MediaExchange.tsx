@@ -81,6 +81,8 @@ export function MediaExchange({
         }`}
       >
         {modelIds.map((modelId, index) => (
+          // Index disambiguates duplicate modelIds in a multi-generation run.
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key
           <div
             key={`${modelId}-${index}`}
             className={`min-w-0 ${isMulti ? 'w-full' : 'flex flex-col gap-1.5 self-start'}`}

@@ -225,7 +225,7 @@ export function ChatExchange({
               <div className="flex w-full flex-wrap justify-end gap-1.5">
                 {userImages.map((attachment, i) => (
                   <button
-                    key={`${attachment.url}-${i}`}
+                    key={attachment.url}
                     type="button"
                     onClick={() => onOpenAttachmentPreview?.({
                       name: attachment.name,

@@ -249,8 +249,10 @@ export async function getPayerEntitlements(params: {
   userId: string
   workspaceId?: string
 }): Promise<Entitlements | null> {
-  const payer = await resolveBillingPayer(params)
-  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const [payer, { getOverlayServerContext }] = await Promise.all([
+    resolveBillingPayer(params),
+    import('@/server/bootstrap'),
+  ])
   const server = getOverlayServerContext()
   if (payer.scope === 'workspace') {
     return await server.appData.repositories.billing.getBillingAccountEntitlementsByServer({

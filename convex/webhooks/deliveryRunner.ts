@@ -76,6 +76,7 @@ export const deliverOne = internalAction({
     let response: Response
     try {
       const signature = await signPayload(job.secret, job.payloadJson, timestamp)
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       response = await fetch(job.url, {
         method: 'POST',
         headers: {

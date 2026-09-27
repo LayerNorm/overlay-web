@@ -142,7 +142,7 @@ export function WebSourceTooltip({
                     cleanTitle.toLowerCase() === shortHost.toLowerCase())
                 const titleText = isTitleJustHost ? host : cleanTitle || shortHost
                 return (
-                  <li key={`${source.url}-${i}`}>
+                  <li key={source.url}>
                     <a
                       href={internal ? (source.internalHref ?? source.url) : source.url}
                       {...(internal ? {} : { target: '_blank', rel: 'noopener noreferrer' })}

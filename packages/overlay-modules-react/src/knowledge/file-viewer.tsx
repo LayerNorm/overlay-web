@@ -169,7 +169,7 @@ function DocumentViewer({ url, fetchImpl = fetch }: { url: string; fetchImpl?: t
       cancelled = true
       controller.abort()
     }
-  }, [url])
+  }, [url, fetchImpl])
 
   if (loading) {
     return (
@@ -284,6 +284,8 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
           <thead>
             <tr>
               {headers.map((h, i) => (
+                // Positional table headers mirror CSV column order — no stable key exists.
+                // react-doctor-disable-next-line react-doctor/no-array-index-as-key
                 <th
                   key={i}
                   className="whitespace-nowrap border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-left font-medium text-[var(--foreground)]"
@@ -295,8 +297,12 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
           </thead>
           <tbody>
             {body.map((row, i) => (
+              // Positional table rows mirror CSV row order — no stable key exists.
+              // react-doctor-disable-next-line react-doctor/no-array-index-as-key
               <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--surface-subtle)]/50'}>
                 {row.map((cell, j) => (
+                  // Positional table cells mirror CSV column order — no stable key exists.
+                  // react-doctor-disable-next-line react-doctor/no-array-index-as-key
                   <td
                     key={j}
                     className="max-w-md whitespace-pre-wrap break-words border border-[var(--border)] px-3 py-1.5 align-top text-[var(--muted)]"
@@ -404,6 +410,8 @@ function PdfViewer({
   iframeSrc?: string
 }) {
   const [previewFailed, setPreviewFailed] = useState(false)
+  // iframeSrc seeds the initial view only — the viewer mounts per file.
+  // react-doctor-disable-next-line react-doctor/no-derived-useState
   const [showText, setShowText] = useState(!iframeSrc)
   const hasExtractedText = content.trim().length > 0
   const showingText = !iframeSrc || showText || previewFailed

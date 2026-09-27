@@ -1,9 +1,9 @@
-import 'server-only'
+import "server-only";
 
-import { createHash } from 'node:crypto'
-import { logger } from '@/server/observability/logger'
-import { tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { createHash } from "node:crypto";
+import { logger } from "@/server/observability/logger";
+import { tool, type ToolSet } from "ai";
+import { z } from "zod";
 
 /**
  * Tool approval function for MCP tools. Uses the v7 `toolApproval` API
@@ -12,12 +12,12 @@ import { z } from 'zod'
  * `call_mcp_tool` needs to inspect `serverId`/`toolName` to resolve policy.
  */
 export type McpToolApprovalFn = (options: {
-  toolCall: { toolName: string; input: Record<string, unknown> }
-}) => 'user-approval' | undefined
-import { jsonSchemaToZod } from './mcp-schema-to-zod'
-import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
-import { validatePublicNetworkUrl } from '@/server/security/ssrf'
-import { getOverlayServerContext } from '@/server/bootstrap'
+  toolCall: { toolName: string; input: Record<string, unknown> };
+}) => "user-approval" | undefined;
+import { jsonSchemaToZod } from "./mcp-schema-to-zod";
+import { fireAndForgetRecordToolInvocation } from "./tools/record-tool-invocation";
+import { validatePublicNetworkUrl } from "@/server/security/ssrf";
+import { getOverlayServerContext } from "@/server/bootstrap";
 import type {
   McpAuthType,
   McpOAuthClient,
@@ -25,82 +25,79 @@ import type {
   McpOAuthTokens,
   McpServerRepository,
   McpToolPolicyMode,
-} from '@/server/extensions'
-import { resolveMcpToolPolicy } from '@/server/extensions'
+} from "@/server/extensions";
+import { resolveMcpToolPolicy } from "@/server/extensions";
 
 // Dynamic import of MCP SDK (ESM)
-type McpClientModule = typeof import('@modelcontextprotocol/sdk/client/index.js')
-type McpSseModule = typeof import('@modelcontextprotocol/sdk/client/sse.js')
-type McpStreamableHttpModule = typeof import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-type McpTypesModule = typeof import('@modelcontextprotocol/sdk/types.js')
+type McpClientModule =
+  typeof import("@modelcontextprotocol/sdk/client/index.js");
+type McpSseModule = typeof import("@modelcontextprotocol/sdk/client/sse.js");
+type McpStreamableHttpModule =
+  typeof import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+type McpTypesModule = typeof import("@modelcontextprotocol/sdk/types.js");
 
 let mcpModules:
   | {
-      Client: McpClientModule['Client']
-      SSEClientTransport: McpSseModule['SSEClientTransport']
-      StreamableHTTPClientTransport: McpStreamableHttpModule['StreamableHTTPClientTransport']
-      ListToolsResultSchema: McpTypesModule['ListToolsResultSchema']
-      CallToolResultSchema: McpTypesModule['CallToolResultSchema']
+      Client: McpClientModule["Client"];
+      SSEClientTransport: McpSseModule["SSEClientTransport"];
+      StreamableHTTPClientTransport: McpStreamableHttpModule["StreamableHTTPClientTransport"];
+      ListToolsResultSchema: McpTypesModule["ListToolsResultSchema"];
+      CallToolResultSchema: McpTypesModule["CallToolResultSchema"];
     }
-  | undefined
+  | undefined;
 
 async function loadMcpModules() {
-  if (mcpModules) return mcpModules
-  const [
-    clientMod,
-    sseMod,
-    httpMod,
-    typesMod,
-  ] = await Promise.all([
-    import('@modelcontextprotocol/sdk/client/index.js'),
-    import('@modelcontextprotocol/sdk/client/sse.js'),
-    import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
-    import('@modelcontextprotocol/sdk/types.js'),
-  ])
+  if (mcpModules) return mcpModules;
+  const [clientMod, sseMod, httpMod, typesMod] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/sse.js"),
+    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+    import("@modelcontextprotocol/sdk/types.js"),
+  ]);
   mcpModules = {
     Client: clientMod.Client,
     SSEClientTransport: sseMod.SSEClientTransport,
     StreamableHTTPClientTransport: httpMod.StreamableHTTPClientTransport,
     ListToolsResultSchema: typesMod.ListToolsResultSchema,
     CallToolResultSchema: typesMod.CallToolResultSchema,
-  }
-  return mcpModules
+  };
+  return mcpModules;
 }
 
 export interface McpServerConfig {
-  _id: string
-  userId: string
-  name: string
-  description?: string
-  transport: 'sse' | 'streamable-http'
-  url: string
-  enabled: boolean
-  authType: McpAuthType
+  _id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  transport: "sse" | "streamable-http";
+  url: string;
+  enabled: boolean;
+  authType: McpAuthType;
   authConfig?: {
-    bearerToken?: string
-    headerName?: string
-    headerValue?: string
-  }
-  timeoutMs?: number
-  defaultToolPolicy: McpToolPolicyMode
-  toolPolicies: Record<string, McpToolPolicyMode>
-  toolCatalog?: McpToolCatalogEntry[]
-  toolCatalogError?: string
+    bearerToken?: string;
+    headerName?: string;
+    headerValue?: string;
+  };
+  timeoutMs?: number;
+  defaultToolPolicy: McpToolPolicyMode;
+  toolPolicies: Record<string, McpToolPolicyMode>;
+  toolCatalog?: McpToolCatalogEntry[];
+  toolCatalogError?: string;
   /** Present only for authType 'oauth'; supplied by the repository, never by the client. */
-  oauthTokens?: McpOAuthTokens
-  oauthClient?: McpOAuthClient
-  oauthStatus?: McpOAuthStatus
-  oauthIssuer?: string
-  oauthScope?: string
-  oauthResource?: string
-  oauthTokenVersion?: number
+  oauthTokens?: McpOAuthTokens;
+  oauthClient?: McpOAuthClient;
+  oauthStatus?: McpOAuthStatus;
+  oauthIssuer?: string;
+  oauthScope?: string;
+  oauthResource?: string;
+  oauthTokenVersion?: number;
 }
 
 export function buildMcpToolsContext(args: {
-  userId: string
-  conversationId?: string
-  turnId?: string
-  modelId?: string
+  userId: string;
+  conversationId?: string;
+  turnId?: string;
+  modelId?: string;
 }): Record<string, unknown> {
   return {
     call_mcp_tool: {
@@ -109,42 +106,40 @@ export function buildMcpToolsContext(args: {
       ...(args.turnId ? { turnId: args.turnId } : {}),
       ...(args.modelId ? { modelId: args.modelId } : {}),
     },
-  }
+  };
 }
 
 function getMcpRepository(): McpServerRepository {
-  return getOverlayServerContext().appData.repositories.mcpServers
+  return getOverlayServerContext().appData.repositories.mcpServers;
 }
 
-async function listRuntimeMcpServers(args: {
-  userId: string
-}) {
-  const repository = getMcpRepository()
-  return await repository.listEnabled({ userId: args.userId })
+async function listRuntimeMcpServers(args: { userId: string }) {
+  const repository = getMcpRepository();
+  return await repository.listEnabled({ userId: args.userId });
 }
 
 async function recordMcpExecution(input: {
   args: {
-    userId: string
-    conversationId?: string
-    turnId?: string
-    modelId?: string
-  }
-  config: McpServerConfig
-  toolName: string
-  toolArgs: unknown
-  policyDecision: McpToolPolicyMode
-  status: 'succeeded' | 'failed' | 'denied'
-  durationMs?: number
-  errorMessage?: string
+    userId: string;
+    conversationId?: string;
+    turnId?: string;
+    modelId?: string;
+  };
+  config: McpServerConfig;
+  toolName: string;
+  toolArgs: unknown;
+  policyDecision: McpToolPolicyMode;
+  status: "succeeded" | "failed" | "denied";
+  durationMs?: number;
+  errorMessage?: string;
 }): Promise<void> {
   await getMcpRepository().recordExecution({
     userId: input.args.userId,
     mcpServerId: input.config._id,
     toolName: input.toolName,
-    argumentsHash: createHash('sha256')
+    argumentsHash: createHash("sha256")
       .update(JSON.stringify(input.toolArgs ?? null))
-      .digest('hex'),
+      .digest("hex"),
     policyDecision: input.policyDecision,
     status: input.status,
     conversationId: input.args.conversationId,
@@ -152,37 +147,41 @@ async function recordMcpExecution(input: {
     modelId: input.args.modelId,
     durationMs: input.durationMs,
     errorMessage: input.errorMessage,
-  })
+  });
 }
 
 type McpCacheEntry = {
-  tools: ToolSet
-  createdAt: number
-}
-const mcpCache = new Map<string, McpCacheEntry>()
-const mcpInFlight = new Map<string, Promise<ToolSet>>()
-const MCP_CACHE_TTL_MS = 60_000 // 60 seconds
+  tools: ToolSet;
+  createdAt: number;
+};
+const mcpCache = new Map<string, McpCacheEntry>();
+const mcpInFlight = new Map<string, Promise<ToolSet>>();
+const MCP_CACHE_TTL_MS = 60_000; // 60 seconds
 
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function safeToolId(serverName: string, toolName: string): string {
-  return `mcp_${slugify(serverName)}_${slugify(toolName)}`
+  return `mcp_${slugify(serverName)}_${slugify(toolName)}`;
 }
 
 function buildAuthHeaders(config: McpServerConfig): Record<string, string> {
-  const headers: Record<string, string> = {}
-  if (config.authType === 'bearer' && config.authConfig?.bearerToken) {
-    headers['Authorization'] = `Bearer ${config.authConfig.bearerToken}`
+  const headers: Record<string, string> = {};
+  if (config.authType === "bearer" && config.authConfig?.bearerToken) {
+    headers["Authorization"] = `Bearer ${config.authConfig.bearerToken}`;
   }
-  if (config.authType === 'header' && config.authConfig?.headerName && config.authConfig?.headerValue) {
-    headers[config.authConfig.headerName] = config.authConfig.headerValue
+  if (
+    config.authType === "header" &&
+    config.authConfig?.headerName &&
+    config.authConfig?.headerValue
+  ) {
+    headers[config.authConfig.headerName] = config.authConfig.headerValue;
   }
-  return headers
+  return headers;
 }
 
 /**
@@ -207,8 +206,10 @@ async function createRuntimeAuthProvider(config: McpServerConfig) {
   // handles a surprise 401 through the same provider.
   const tokens = await ensureFreshMcpOAuthTokens({
     baseUrl,
-    server: config as unknown as Parameters<typeof ensureFreshMcpOAuthTokens>[0]['server'],
-  }).catch((_error) => config.oauthTokens)
+    server: config as unknown as Parameters<
+      typeof ensureFreshMcpOAuthTokens
+    >[0]["server"],
+  }).catch((_error) => config.oauthTokens);
 
   return new McpOAuthProvider({
     clientUri: baseUrl,
@@ -221,103 +222,126 @@ async function createRuntimeAuthProvider(config: McpServerConfig) {
     scope: config.oauthScope,
     serverName: config.name,
     userId: config.userId,
-  })
+  });
 }
 
 async function createMcpTransportAndClient(config: McpServerConfig) {
-  const {
-    Client,
-    SSEClientTransport,
-    StreamableHTTPClientTransport,
-  } = await loadMcpModules()
+  const [
+    { Client, SSEClientTransport, StreamableHTTPClientTransport },
+    validation,
+    authProvider,
+  ] = await Promise.all([
+    loadMcpModules(),
+    validatePublicNetworkUrl(config.url, {
+      allowLocalDev: true,
+      requireHttps: true,
+    }),
+    createRuntimeAuthProvider(config),
+  ]);
+  if (!validation.ok) throw new Error(validation.error);
+  const url = validation.url;
+  const headers = buildAuthHeaders(config);
+  const timeoutMs = config.timeoutMs ?? 30_000;
 
-  const validation = await validatePublicNetworkUrl(config.url, { allowLocalDev: true, requireHttps: true })
-  if (!validation.ok) throw new Error(validation.error)
-  const url = validation.url
-  const headers = buildAuthHeaders(config)
-  const timeoutMs = config.timeoutMs ?? 30_000
-  const authProvider = await createRuntimeAuthProvider(config)
+  let transport:
+    | {
+        start(): Promise<void>;
+        close(): Promise<void>;
+        send(message: unknown): Promise<void>;
+      }
+    | undefined;
 
-  let transport: { start(): Promise<void>; close(): Promise<void>; send(message: unknown): Promise<void> } | undefined
-
-  if (config.transport === 'sse') {
+  if (config.transport === "sse") {
     transport = new SSEClientTransport(url, {
       authProvider,
       requestInit: { headers },
       eventSourceInit: { headers } as EventSourceInit,
-    } as unknown as import('@modelcontextprotocol/sdk/client/sse.js').SSEClientTransportOptions)
+    } as unknown as import("@modelcontextprotocol/sdk/client/sse.js").SSEClientTransportOptions);
   } else {
     transport = new StreamableHTTPClientTransport(url, {
       authProvider,
       requestInit: { headers },
-    } as unknown as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
+    } as unknown as import("@modelcontextprotocol/sdk/client/streamableHttp.js").StreamableHTTPClientTransportOptions);
   }
 
   const client = new Client(
-    { name: 'overlay-web', version: '0.1.0' },
-    { capabilities: {} }
-  )
+    { name: "overlay-web", version: "0.1.0" },
+    { capabilities: {} },
+  );
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    await client.connect(transport as import('@modelcontextprotocol/sdk/shared/transport.js').Transport)
+    await client.connect(
+      transport as import("@modelcontextprotocol/sdk/shared/transport.js").Transport,
+    );
   } finally {
-    clearTimeout(timeoutId)
+    clearTimeout(timeoutId);
   }
 
-  return { client, transport, timeoutMs }
+  return { client, transport, timeoutMs };
 }
 
-const MAX_MCP_TOOL_RESULT_CHARS = 50_000 // Truncate to prevent AI Gateway token limit errors
+const MAX_MCP_TOOL_RESULT_CHARS = 50_000; // Truncate to prevent AI Gateway token limit errors
 
 export interface McpToolCatalogEntry {
-  name: string
-  description?: string
-  inputSchema?: unknown
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
 }
 
-function flattenMcpToolResult(result: { isError?: boolean; content: unknown }): string {
-  const content = result.content
-  let resultText: string
+function flattenMcpToolResult(result: {
+  isError?: boolean;
+  content: unknown;
+}): string {
+  const content = result.content;
+  let resultText: string;
   if (Array.isArray(content) && content.length > 0) {
     const textParts = content
-      .filter((c): c is { type: string; text?: string } =>
-        typeof c === 'object' && c !== null
+      .filter(
+        (c): c is { type: string; text?: string } =>
+          typeof c === "object" && c !== null,
       )
       .map((c) => c.text)
-      .filter((t): t is string => typeof t === 'string')
+      .filter((t): t is string => typeof t === "string");
     if (textParts.length > 0) {
-      resultText = textParts.join('\n')
+      resultText = textParts.join("\n");
     } else {
-      resultText = JSON.stringify(content)
+      resultText = JSON.stringify(content);
     }
   } else {
-    resultText = JSON.stringify(result)
+    resultText = JSON.stringify(result);
   }
   if (resultText.length > MAX_MCP_TOOL_RESULT_CHARS) {
-    logger.warn(`[MCP] Truncating tool result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`)
-    resultText = resultText.slice(0, MAX_MCP_TOOL_RESULT_CHARS) + '\n\n[Result truncated due to length]'
+    logger.warn(
+      `[MCP] Truncating tool result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`,
+    );
+    resultText =
+      resultText.slice(0, MAX_MCP_TOOL_RESULT_CHARS) +
+      "\n\n[Result truncated due to length]";
   }
-  return resultText
+  return resultText;
 }
 
 export async function discoverToolsCatalogForServer(
   config: McpServerConfig,
 ): Promise<McpToolCatalogEntry[]> {
-  const { client, timeoutMs } = await createMcpTransportAndClient(config)
+  const { client, timeoutMs } = await createMcpTransportAndClient(config);
   try {
-    const toolsResult = await client.listTools({}, { signal: AbortSignal.timeout(timeoutMs) })
+    const toolsResult = await client.listTools(
+      {},
+      { signal: AbortSignal.timeout(timeoutMs) },
+    );
     return (toolsResult.tools ?? [])
-      .filter((t) => typeof t.name === 'string' && t.name.length > 0)
+      .filter((t) => typeof t.name === "string" && t.name.length > 0)
       .map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema,
-      }))
+      }));
   } finally {
     try {
-      await client.close()
+      await client.close();
     } catch (_error) {
       // ignore close errors
     }
@@ -330,23 +354,24 @@ export async function discoverToolsCatalogForServer(
  * cached tools. Those keys are metadata that jsonSchemaToZod ignores, so drop them.
  */
 export function stripReservedSchemaKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((entry) => stripReservedSchemaKeys(entry))
-  if (!value || typeof value !== 'object') return value
-  const result: Record<string, unknown> = {}
+  if (Array.isArray(value))
+    return value.map((entry) => stripReservedSchemaKeys(entry));
+  if (!value || typeof value !== "object") return value;
+  const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (key.startsWith('$')) continue
-    result[key] = stripReservedSchemaKeys(entry)
+    if (key.startsWith("$")) continue;
+    result[key] = stripReservedSchemaKeys(entry);
   }
-  return result
+  return result;
 }
 
 export async function persistMcpServerToolCatalog(args: {
-  mcpServerId: string
-  userId: string
-  accessToken?: string
-  serverSecret?: string
-  tools: McpToolCatalogEntry[]
-  catalogError?: string
+  mcpServerId: string;
+  userId: string;
+  accessToken?: string;
+  serverSecret?: string;
+  tools: McpToolCatalogEntry[];
+  catalogError?: string;
 }): Promise<void> {
   await getMcpRepository().updateToolCatalog({
     mcpServerId: args.mcpServerId,
@@ -358,108 +383,140 @@ export async function persistMcpServerToolCatalog(args: {
         : { inputSchema: stripReservedSchemaKeys(entry.inputSchema) }),
     })),
     catalogError: args.catalogError,
-  })
+  });
 }
 
 export async function refreshMcpServerToolCatalog(args: {
-  mcpServerId: string
-  userId: string
-  accessToken?: string
-  serverSecret?: string
+  mcpServerId: string;
+  userId: string;
+  accessToken?: string;
+  serverSecret?: string;
 }): Promise<{ toolCount: number; error?: string }> {
-  const config = await getMcpRepository().get(args)
+  const config = await getMcpRepository().get(args);
   if (!config) {
-    return { toolCount: 0, error: 'MCP server not found' }
+    return { toolCount: 0, error: "MCP server not found" };
   }
   try {
-    const tools = await discoverToolsCatalogForServer(config)
+    const tools = await discoverToolsCatalogForServer(config);
     await persistMcpServerToolCatalog({
       ...args,
       tools,
       catalogError: undefined,
-    })
-    return { toolCount: tools.length }
+    });
+    return { toolCount: tools.length };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error ? err.message : String(err);
     await persistMcpServerToolCatalog({
       ...args,
       tools: [],
       catalogError: message,
-    }).catch((_error) => undefined)
-    return { toolCount: 0, error: message }
+    }).catch((_error) => undefined);
+    return { toolCount: 0, error: message };
   }
 }
 
 export function rankMcpCatalogEntries(
-  entries: Array<McpToolCatalogEntry & { serverId: string; serverName: string }>,
+  entries: Array<
+    McpToolCatalogEntry & { serverId: string; serverName: string }
+  >,
   query: string,
   limit: number,
-): Array<McpToolCatalogEntry & { serverId: string; serverName: string; score: number }> {
-  const normalizedQuery = query.trim().toLowerCase()
+): Array<
+  McpToolCatalogEntry & { serverId: string; serverName: string; score: number }
+> {
+  const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
-    return entries.slice(0, limit).map((entry) => ({ ...entry, score: 0 }))
+    return entries.slice(0, limit).map((entry) => ({ ...entry, score: 0 }));
   }
-  const tokens = normalizedQuery.split(/\s+/).filter(Boolean)
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
   const scored = entries.map((entry) => {
-    const haystack = `${entry.name} ${entry.description ?? ''} ${entry.serverName}`.toLowerCase()
-    let score = 0
-    if (entry.name.toLowerCase() === normalizedQuery) score += 100
-    if (entry.name.toLowerCase().includes(normalizedQuery)) score += 40
+    const haystack =
+      `${entry.name} ${entry.description ?? ""} ${entry.serverName}`.toLowerCase();
+    let score = 0;
+    if (entry.name.toLowerCase() === normalizedQuery) score += 100;
+    if (entry.name.toLowerCase().includes(normalizedQuery)) score += 40;
     for (const token of tokens) {
-      if (entry.name.toLowerCase().includes(token)) score += 20
-      if (haystack.includes(token)) score += 5
+      if (entry.name.toLowerCase().includes(token)) score += 20;
+      if (haystack.includes(token)) score += 5;
     }
-    return { ...entry, score }
-  })
+    return { ...entry, score };
+  });
   return scored
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || a.serverName.localeCompare(b.serverName) || a.name.localeCompare(b.name))
-    .slice(0, limit)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.serverName.localeCompare(b.serverName) ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, limit);
 }
 
 export async function createMcpLazyMetaTools(args: {
-  userId: string
-  accessToken?: string
-  serverSecret?: string
-  conversationId?: string
-  turnId?: string
-  modelId?: string
-}): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> {
+  userId: string;
+  accessToken?: string;
+  serverSecret?: string;
+  conversationId?: string;
+  turnId?: string;
+  modelId?: string;
+}): Promise<{
+  tools: ToolSet;
+  toolApproval?: McpToolApprovalFn;
+  toolsContext?: Record<string, unknown>;
+}> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
-  })
+  });
 
   if (!configs || configs.length === 0) {
-    return { tools: {} }
+    return { tools: {} };
   }
 
-  const configById = new Map(configs.map((config) => [config._id, config]))
+  const configById = new Map(configs.map((config) => [config._id, config]));
 
   const searchMcpTools = tool({
     description:
-      'Search the user\'s enabled MCP integrations for tools by capability. Returns server id, tool name, and description. Call call_mcp_tool with exact names from results.',
+      "Search the user's enabled MCP integrations for tools by capability. Returns server id, tool name, and description. Call call_mcp_tool with exact names from results.",
     inputSchema: z.object({
-      query: z.string().describe('What capability or task you need, e.g. "create issue" or "fetch weather"'),
-      serverId: z.string().optional().describe('Optional MCP server id to restrict search'),
-      limit: z.number().int().min(1).max(25).optional().describe('Max results (default 10)'),
+      query: z
+        .string()
+        .describe(
+          'What capability or task you need, e.g. "create issue" or "fetch weather"',
+        ),
+      serverId: z
+        .string()
+        .optional()
+        .describe("Optional MCP server id to restrict search"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(25)
+        .optional()
+        .describe("Max results (default 10)"),
     }),
     execute: async ({ query, serverId, limit }) => {
       const scoped = serverId
         ? configs.filter((config) => config._id === serverId)
-        : configs
+        : configs;
       if (scoped.length === 0) {
-        return JSON.stringify({ results: [], message: 'No matching enabled MCP servers.' })
+        return JSON.stringify({
+          results: [],
+          message: "No matching enabled MCP servers.",
+        });
       }
 
       const catalogEntries = scoped.flatMap((config) =>
         config.toolCatalog
-          .filter((entry) => resolveMcpToolPolicy(config, entry.name) !== 'deny')
+          .filter(
+            (entry) => resolveMcpToolPolicy(config, entry.name) !== "deny",
+          )
           .map((entry) => ({
-          ...entry,
-          serverId: config._id,
-          serverName: config.name,
-        })),
-      )
+            ...entry,
+            serverId: config._id,
+            serverName: config.name,
+          })),
+      );
 
       if (catalogEntries.length === 0) {
         return JSON.stringify({
@@ -470,31 +527,38 @@ export async function createMcpLazyMetaTools(args: {
             catalogError: config.toolCatalogError,
           })),
           message:
-            'No cached MCP tool catalog for the selected server(s). You can still call call_mcp_tool with one of the serverId values above if you know the exact tool name; otherwise ask the user to test the connection in MCP settings to refresh the catalog.',
-        })
+            "No cached MCP tool catalog for the selected server(s). You can still call call_mcp_tool with one of the serverId values above if you know the exact tool name; otherwise ask the user to test the connection in MCP settings to refresh the catalog.",
+        });
       }
 
-      const ranked = rankMcpCatalogEntries(catalogEntries, query, limit ?? 10)
+      const ranked = rankMcpCatalogEntries(catalogEntries, query, limit ?? 10);
       return JSON.stringify({
-        results: ranked.map(({ serverId: sid, serverName, name, description, score }) => ({
-          serverId: sid,
-          serverName,
-          toolName: name,
-          description,
-          score,
-          policy: resolveMcpToolPolicy(configById.get(sid)!, name),
-        })),
-      })
+        results: ranked.map(
+          ({ serverId: sid, serverName, name, description, score }) => ({
+            serverId: sid,
+            serverName,
+            toolName: name,
+            description,
+            score,
+            policy: resolveMcpToolPolicy(configById.get(sid)!, name),
+          }),
+        ),
+      });
     },
-  })
+  });
 
   const callMcpToolMeta = tool({
     description:
-      'Invoke an MCP tool on a connected server. Use search_mcp_tools first to get serverId and toolName.',
+      "Invoke an MCP tool on a connected server. Use search_mcp_tools first to get serverId and toolName.",
     inputSchema: z.object({
-      serverId: z.string().describe('MCP server id from search_mcp_tools'),
-      toolName: z.string().describe('Exact MCP tool name from search_mcp_tools'),
-      arguments: z.record(z.string(), z.unknown()).optional().describe('Tool arguments object'),
+      serverId: z.string().describe("MCP server id from search_mcp_tools"),
+      toolName: z
+        .string()
+        .describe("Exact MCP tool name from search_mcp_tools"),
+      arguments: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("Tool arguments object"),
     }),
     // v7: typed tool context — runtime metadata validated per-tool.
     // Replaces ad-hoc closure capture of request-scoped values.
@@ -507,59 +571,72 @@ export async function createMcpLazyMetaTools(args: {
     execute: async ({ serverId, toolName, arguments: toolArgs }, options) => {
       // v7: context is passed via toolsContext at the agent level and made
       // available in options.context. Cast to our expected shape.
-      const context = (options?.context ?? undefined) as { userId?: string; conversationId?: string; turnId?: string; modelId?: string } | undefined
-      const config = configById.get(serverId)
+      const context = (options?.context ?? undefined) as
+        | {
+            userId?: string;
+            conversationId?: string;
+            turnId?: string;
+            modelId?: string;
+          }
+        | undefined;
+      const config = configById.get(serverId);
       if (!config) {
-        const available = configs.map((entry) => `${entry.name}=${entry._id}`).join(', ')
+        const available = configs
+          .map((entry) => `${entry.name}=${entry._id}`)
+          .join(", ");
         throw new Error(
-          `No enabled MCP server with id "${serverId}". serverId must be the id from search_mcp_tools, not a name or URL. Enabled servers: ${available || 'none'}`,
-        )
+          `No enabled MCP server with id "${serverId}". serverId must be the id from search_mcp_tools, not a name or URL. Enabled servers: ${available || "none"}`,
+        );
       }
-      const catalog = config.toolCatalog ?? []
-      const catalogHit = catalog.some((entry) => entry.name === toolName)
+      const catalog = config.toolCatalog ?? [];
+      const catalogHit = catalog.some((entry) => entry.name === toolName);
       if (catalog.length > 0 && !catalogHit) {
-        throw new Error(`Tool "${toolName}" is not in the cached catalog for server "${config.name}". Run search_mcp_tools again.`)
+        throw new Error(
+          `Tool "${toolName}" is not in the cached catalog for server "${config.name}". Run search_mcp_tools again.`,
+        );
       }
 
-      const policyDecision = resolveMcpToolPolicy(config, toolName)
-      if (policyDecision === 'deny') {
+      const policyDecision = resolveMcpToolPolicy(config, toolName);
+      if (policyDecision === "deny") {
         await recordMcpExecution({
           args,
           config,
           toolName,
           toolArgs: toolArgs ?? {},
           policyDecision,
-          status: 'denied',
-        })
-        throw new Error(`Tool "${toolName}" is denied by this MCP server's policy`)
+          status: "denied",
+        });
+        throw new Error(
+          `Tool "${toolName}" is denied by this MCP server's policy`,
+        );
       }
 
-      const toolId = safeToolId(config.name, toolName)
-      const start = Date.now()
+      const toolId = safeToolId(config.name, toolName);
+      const start = Date.now();
       try {
-        const result = await callMcpTool(config, toolName, toolArgs ?? {})
+        const result = await callMcpTool(config, toolName, toolArgs ?? {});
         await recordMcpExecution({
           args,
           config,
           toolName,
           toolArgs: toolArgs ?? {},
           policyDecision,
-          status: result.isError ? 'failed' : 'succeeded',
+          status: result.isError ? "failed" : "succeeded",
           durationMs: Date.now() - start,
-          errorMessage: result.isError ? 'Tool returned error flag' : undefined,
-        })
+          errorMessage: result.isError ? "Tool returned error flag" : undefined,
+        });
         void fireAndForgetRecordToolInvocation({
           userId: context?.userId ?? args.userId,
           toolName: toolId,
-          mode: 'act',
+          mode: "act",
           modelId: context?.modelId ?? args.modelId,
           conversationId: context?.conversationId ?? args.conversationId,
           turnId: context?.turnId ?? args.turnId,
           success: !result.isError,
           durationMs: Date.now() - start,
-          error: result.isError ? 'Tool returned error flag' : undefined,
-        })
-        return flattenMcpToolResult(result)
+          error: result.isError ? "Tool returned error flag" : undefined,
+        });
+        return flattenMcpToolResult(result);
       } catch (err) {
         await recordMcpExecution({
           args,
@@ -567,39 +644,43 @@ export async function createMcpLazyMetaTools(args: {
           toolName,
           toolArgs: toolArgs ?? {},
           policyDecision,
-          status: 'failed',
+          status: "failed",
           durationMs: Date.now() - start,
           errorMessage: err instanceof Error ? err.message : String(err),
-        }).catch((_error) => undefined)
+        }).catch((_error) => undefined);
         void fireAndForgetRecordToolInvocation({
           userId: context?.userId ?? args.userId,
           toolName: toolId,
-          mode: 'act',
+          mode: "act",
           modelId: context?.modelId ?? args.modelId,
           conversationId: context?.conversationId ?? args.conversationId,
           turnId: context?.turnId ?? args.turnId,
           success: false,
           durationMs: Date.now() - start,
           error: err instanceof Error ? err.message : String(err),
-        })
-        throw err
+        });
+        throw err;
       }
     },
-  })
+  });
 
   // v7 toolApproval: moved from per-tool `needsApproval` to the agent-level
   // `toolApproval` configuration. The approval decision for `call_mcp_tool`
   // depends on the tool's input (serverId/toolName), so we use a function that
   // resolves the MCP server's policy at call time.
   const toolApproval: McpToolApprovalFn = ({ toolCall }) => {
-    if (toolCall.toolName !== 'call_mcp_tool') return undefined
-    const { serverId, toolName } = toolCall.input as { serverId?: string; toolName?: string }
-    if (!serverId || !toolName) return undefined
-    const config = configById.get(serverId)
-    return config && resolveMcpToolPolicy(config, toolName) === 'approval_required'
-      ? 'user-approval'
-      : undefined
-  }
+    if (toolCall.toolName !== "call_mcp_tool") return undefined;
+    const { serverId, toolName } = toolCall.input as {
+      serverId?: string;
+      toolName?: string;
+    };
+    if (!serverId || !toolName) return undefined;
+    const config = configById.get(serverId);
+    return config &&
+      resolveMcpToolPolicy(config, toolName) === "approval_required"
+      ? "user-approval"
+      : undefined;
+  };
 
   // v7: toolsContext provides request-scoped runtime metadata to tools
   // that declare a `contextSchema`. This replaces closure capture for
@@ -607,7 +688,7 @@ export async function createMcpLazyMetaTools(args: {
   // AI SDK toolsContext is keyed by tool name. Passing this as a flat object
   // fails contextSchema validation before execute() and leaves a pending tool
   // call in the transcript without an MCP execution record.
-  const toolsContext = buildMcpToolsContext(args)
+  const toolsContext = buildMcpToolsContext(args);
 
   return {
     tools: {
@@ -616,7 +697,7 @@ export async function createMcpLazyMetaTools(args: {
     },
     toolApproval,
     toolsContext,
-  }
+  };
 }
 
 /**
@@ -624,135 +705,164 @@ export async function createMcpLazyMetaTools(args: {
  * Without this the model sees a bare transport error and — as happened before OAuth existed —
  * invents explanations like "the server is not enabled" for a server that is plainly connected.
  */
-async function describeMcpAuthFailure(config: McpServerConfig, error: unknown): Promise<unknown> {
-  if (config.authType !== 'oauth') return error
-  const { McpOAuthInteractionRequiredError } = await import('@/server/extensions/McpOAuthProvider')
-  if (error instanceof McpOAuthInteractionRequiredError) return error
+async function describeMcpAuthFailure(
+  config: McpServerConfig,
+  error: unknown,
+): Promise<unknown> {
+  if (config.authType !== "oauth") return error;
+  const { McpOAuthInteractionRequiredError } =
+    await import("@/server/extensions/McpOAuthProvider");
+  if (error instanceof McpOAuthInteractionRequiredError) return error;
 
-  const message = error instanceof Error ? error.message : String(error)
-  if (!/\b401\b|unauthor|invalid_token|invalid_grant/i.test(message)) return error
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/\b401\b|unauthor|invalid_token|invalid_grant/i.test(message))
+    return error;
 
-  await getMcpRepository().updateOAuthState({
-    error: 'The stored OAuth session was rejected by the server',
-    mcpServerId: config._id,
-    status: 'needs_reauth',
-    userId: config.userId,
-  }).catch((_error) => undefined)
+  await getMcpRepository()
+    .updateOAuthState({
+      error: "The stored OAuth session was rejected by the server",
+      mcpServerId: config._id,
+      status: "needs_reauth",
+      userId: config.userId,
+    })
+    .catch((_error) => undefined);
 
   return new Error(
     `${config.name} rejected the stored OAuth session. Ask the user to reconnect ${config.name} in MCP settings, then retry.`,
-  )
+  );
 }
 
 async function callMcpTool(
   config: McpServerConfig,
   toolName: string,
-  input: unknown
+  input: unknown,
 ): Promise<{ isError?: boolean; content: unknown }> {
-  logger.info(`[MCP] Calling tool ${toolName} on server ${config.name}`)
-  const { client, timeoutMs } = await createMcpTransportAndClient(config)
+  logger.info(`[MCP] Calling tool ${toolName} on server ${config.name}`);
+  const { client, timeoutMs } = await createMcpTransportAndClient(config);
   try {
     const result = await client.callTool(
       { name: toolName, arguments: input as Record<string, unknown> },
       undefined,
-      { signal: AbortSignal.timeout(timeoutMs) }
-    )
-    logger.info(`[MCP] Tool ${toolName} on server ${config.name} returned (isError=${result.isError})`)
-    return result as { isError?: boolean; content: unknown }
+      { signal: AbortSignal.timeout(timeoutMs) },
+    );
+    logger.info(
+      `[MCP] Tool ${toolName} on server ${config.name} returned (isError=${result.isError})`,
+    );
+    return result as { isError?: boolean; content: unknown };
   } catch (err) {
-    logger.error(`[MCP] Tool ${toolName} on server ${config.name} failed: ${err instanceof Error ? err.message : String(err)}`)
-    throw await describeMcpAuthFailure(config, err)
+    logger.error(
+      `[MCP] Tool ${toolName} on server ${config.name} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    throw await describeMcpAuthFailure(config, err);
   } finally {
     try {
-      await client.close()
+      await client.close();
     } catch (_error) {
       // ignore close errors
     }
   }
 }
 
-async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet> {
-  const {
-    Client,
-    SSEClientTransport,
-    StreamableHTTPClientTransport,
-  } = await loadMcpModules()
-
-  const validation = await validatePublicNetworkUrl(config.url, { allowLocalDev: true, requireHttps: true })
+async function discoverToolsForServer(
+  config: McpServerConfig,
+): Promise<ToolSet> {
+  const [
+    { Client, SSEClientTransport, StreamableHTTPClientTransport },
+    validation,
+  ] = await Promise.all([
+    loadMcpModules(),
+    validatePublicNetworkUrl(config.url, {
+      allowLocalDev: true,
+      requireHttps: true,
+    }),
+  ]);
   if (!validation.ok) {
-    logger.warn(`[MCP] Refusing server ${config.name}: ${validation.error}`)
-    return {}
+    logger.warn(`[MCP] Refusing server ${config.name}: ${validation.error}`);
+    return {};
   }
-  const url = validation.url
-  const headers = buildAuthHeaders(config)
-  const timeoutMs = config.timeoutMs ?? 30_000
+  const url = validation.url;
+  const headers = buildAuthHeaders(config);
+  const timeoutMs = config.timeoutMs ?? 30_000;
 
-  let transport: { start(): Promise<void>; close(): Promise<void>; send(message: unknown): Promise<void> } | undefined
+  let transport:
+    | {
+        start(): Promise<void>;
+        close(): Promise<void>;
+        send(message: unknown): Promise<void>;
+      }
+    | undefined;
 
   try {
-    if (config.transport === 'sse') {
+    if (config.transport === "sse") {
       transport = new SSEClientTransport(url, {
         requestInit: { headers },
         eventSourceInit: { headers } as EventSourceInit,
-      } as import('@modelcontextprotocol/sdk/client/sse.js').SSEClientTransportOptions)
+      } as import("@modelcontextprotocol/sdk/client/sse.js").SSEClientTransportOptions);
     } else {
       transport = new StreamableHTTPClientTransport(url, {
         requestInit: { headers },
-      } as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
+      } as import("@modelcontextprotocol/sdk/client/streamableHttp.js").StreamableHTTPClientTransportOptions);
     }
   } catch (err) {
-    logger.warn(`[MCP] Failed to create transport for ${config.name}: ${err instanceof Error ? err.message : String(err)}`)
-    return {}
+    logger.warn(
+      `[MCP] Failed to create transport for ${config.name}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return {};
   }
 
   const client = new Client(
-    { name: 'overlay-web', version: '0.1.0' },
-    { capabilities: {} }
-  )
+    { name: "overlay-web", version: "0.1.0" },
+    { capabilities: {} },
+  );
 
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      await client.connect(transport as import('@modelcontextprotocol/sdk/shared/transport.js').Transport)
+      await client.connect(
+        transport as import("@modelcontextprotocol/sdk/shared/transport.js").Transport,
+      );
     } finally {
-      clearTimeout(timeoutId)
+      clearTimeout(timeoutId);
     }
 
-    const toolsResult = await client.listTools({}, { signal: AbortSignal.timeout(timeoutMs) })
-    const discoveredTools = toolsResult.tools ?? []
+    const toolsResult = await client.listTools(
+      {},
+      { signal: AbortSignal.timeout(timeoutMs) },
+    );
+    const discoveredTools = toolsResult.tools ?? [];
 
     if (discoveredTools.length === 0) {
-      return {}
+      return {};
     }
 
-    const toolSet: ToolSet = {}
-    const seenNames = new Set<string>()
+    const toolSet: ToolSet = {};
+    const seenNames = new Set<string>();
 
     for (const t of discoveredTools) {
-      if (!t.name) continue
-      const policyDecision = resolveMcpToolPolicy(config, t.name)
-      if (policyDecision === 'deny') continue
+      if (!t.name) continue;
+      const policyDecision = resolveMcpToolPolicy(config, t.name);
+      if (policyDecision === "deny") continue;
 
-      let toolId = safeToolId(config.name, t.name)
+      let toolId = safeToolId(config.name, t.name);
       if (seenNames.has(toolId)) {
-        let suffix = 1
-        while (seenNames.has(`${toolId}_${suffix}`)) suffix++
-        toolId = `${toolId}_${suffix}`
+        let suffix = 1;
+        while (seenNames.has(`${toolId}_${suffix}`)) suffix++;
+        toolId = `${toolId}_${suffix}`;
       }
-      seenNames.add(toolId)
+      seenNames.add(toolId);
 
-      const inputSchema = t.inputSchema as Record<string, unknown> | undefined
+      const inputSchema = t.inputSchema as Record<string, unknown> | undefined;
       const zodSchema = inputSchema
         ? jsonSchemaToZod(inputSchema)
-        : z.object({})
+        : z.object({});
 
-      const descriptionParts: string[] = []
-      if (t.description) descriptionParts.push(t.description)
-      descriptionParts.push(`(MCP server: ${config.name})`)
+      const descriptionParts: string[] = [];
+      if (t.description) descriptionParts.push(t.description);
+      descriptionParts.push(`(MCP server: ${config.name})`);
 
       toolSet[toolId] = tool({
-        description: descriptionParts.join(' '),
+        description: descriptionParts.join(" "),
         inputSchema: zodSchema as z.ZodTypeAny,
         // v7: per-tool `needsApproval` removed — approval is now configured at
         // the agent level via `toolApproval`. This eager tool-set path is only
@@ -760,59 +870,66 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
         // meta-tools path (`createMcpLazyMetaTools`) which returns a
         // `toolApproval` function.
         execute: async (input) => {
-          const start = Date.now()
+          const start = Date.now();
           try {
-            const result = await callMcpTool(config, t.name, input)
+            const result = await callMcpTool(config, t.name, input);
             await recordMcpExecution({
               args: { userId: config.userId },
               config,
               toolName: t.name,
               toolArgs: input,
               policyDecision,
-              status: result.isError ? 'failed' : 'succeeded',
+              status: result.isError ? "failed" : "succeeded",
               durationMs: Date.now() - start,
-              errorMessage: result.isError ? 'Tool returned error flag' : undefined,
-            })
+              errorMessage: result.isError
+                ? "Tool returned error flag"
+                : undefined,
+            });
 
             // Record invocation
             void fireAndForgetRecordToolInvocation({
               userId: config.userId,
               toolName: toolId,
-              mode: 'act',
+              mode: "act",
               modelId: undefined,
               conversationId: undefined,
               turnId: undefined,
               success: !result.isError,
               durationMs: Date.now() - start,
-              error: result.isError ? 'Tool returned error flag' : undefined,
-            })
+              error: result.isError ? "Tool returned error flag" : undefined,
+            });
 
             // Flatten MCP content into a serializable result
-            const content = result.content
-            let resultText: string
+            const content = result.content;
+            let resultText: string;
             if (Array.isArray(content) && content.length > 0) {
               // Prefer text content
               const textParts = content
-                .filter((c): c is { type: string; text?: string } =>
-                  typeof c === 'object' && c !== null
+                .filter(
+                  (c): c is { type: string; text?: string } =>
+                    typeof c === "object" && c !== null,
                 )
                 .map((c) => c.text)
-                .filter((t): t is string => typeof t === 'string')
+                .filter((t): t is string => typeof t === "string");
               if (textParts.length > 0) {
-                resultText = textParts.join('\n')
+                resultText = textParts.join("\n");
               } else {
                 // Fallback: return structured content
-                resultText = JSON.stringify(content)
+                resultText = JSON.stringify(content);
               }
             } else {
-              resultText = JSON.stringify(result)
+              resultText = JSON.stringify(result);
             }
             // Truncate very large results to prevent token limit errors
             if (resultText.length > MAX_MCP_TOOL_RESULT_CHARS) {
-              logger.warn(`[MCP] Truncating tool ${toolId} result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`)
-              resultText = resultText.slice(0, MAX_MCP_TOOL_RESULT_CHARS) + '\n\n[Result truncated due to length]'
+              logger.warn(
+                `[MCP] Truncating tool ${toolId} result from ${resultText.length} to ${MAX_MCP_TOOL_RESULT_CHARS} chars`,
+              );
+              resultText =
+                resultText.slice(0, MAX_MCP_TOOL_RESULT_CHARS) +
+                "\n\n[Result truncated due to length]";
             }
-            return resultText
+            return resultText;
           } catch (err) {
             await recordMcpExecution({
               args: { userId: config.userId },
@@ -820,34 +937,36 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
               toolName: t.name,
               toolArgs: input,
               policyDecision,
-              status: 'failed',
+              status: "failed",
               durationMs: Date.now() - start,
               errorMessage: err instanceof Error ? err.message : String(err),
-            }).catch((_error) => undefined)
+            }).catch((_error) => undefined);
             void fireAndForgetRecordToolInvocation({
               userId: config.userId,
               toolName: toolId,
-              mode: 'act',
+              mode: "act",
               modelId: undefined,
               conversationId: undefined,
               turnId: undefined,
               success: false,
               durationMs: Date.now() - start,
               error: err instanceof Error ? err.message : String(err),
-            })
-            throw err
+            });
+            throw err;
           }
         },
-      })
+      });
     }
 
-    return toolSet
+    return toolSet;
   } catch (err) {
-    logger.warn(`[MCP] Failed to discover tools from ${config.name}: ${err instanceof Error ? err.message : String(err)}`)
-    return {}
+    logger.warn(
+      `[MCP] Failed to discover tools from ${config.name}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return {};
   } finally {
     try {
-      await client.close()
+      await client.close();
     } catch (_error) {
       // ignore close errors
     }
@@ -855,23 +974,25 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
 }
 
 async function buildMcpToolSet(args: {
-  userId: string
-  accessToken?: string
-  serverSecret?: string
+  userId: string;
+  accessToken?: string;
+  serverSecret?: string;
 }): Promise<ToolSet> {
-  logger.info(`[MCP] Fetching enabled MCP servers for user ${args.userId}`)
+  logger.info(`[MCP] Fetching enabled MCP servers for user ${args.userId}`);
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
-  })
+  });
 
   if (!configs || configs.length === 0) {
-    logger.info(`[MCP] No enabled MCP servers found for user ${args.userId}`)
-    return {}
+    logger.info(`[MCP] No enabled MCP servers found for user ${args.userId}`);
+    return {};
   }
-  logger.info(`[MCP] Found ${configs.length} enabled MCP server(s): ${configs.map(c => c.name).join(', ')}`)
+  logger.info(
+    `[MCP] Found ${configs.length} enabled MCP server(s): ${configs.map((c) => c.name).join(", ")}`,
+  );
 
-  const allTools: ToolSet = {}
-  const globalSeen = new Set<string>()
+  const allTools: ToolSet = {};
+  const globalSeen = new Set<string>();
 
   const discovered = await Promise.all(configs.map(async (config) => {
     try {
@@ -907,54 +1028,58 @@ async function buildMcpToolSet(args: {
     }
   }
 
-  return allTools
+  return allTools;
 }
 
 export async function createMcpToolSet(args: {
-  userId: string
-  accessToken?: string
-  serverSecret?: string
+  userId: string;
+  accessToken?: string;
+  serverSecret?: string;
 }): Promise<ToolSet> {
-  const now = Date.now()
-  const cacheKey = `${args.userId}:global`
-  const cached = mcpCache.get(cacheKey)
+  const now = Date.now();
+  const cacheKey = `${args.userId}:global`;
+  const cached = mcpCache.get(cacheKey);
   if (cached && now - cached.createdAt < MCP_CACHE_TTL_MS) {
-    logger.info(`[MCP] Cache hit for user ${args.userId}, returning ${Object.keys(cached.tools).length} cached tools`)
-    return cached.tools
+    logger.info(
+      `[MCP] Cache hit for user ${args.userId}, returning ${Object.keys(cached.tools).length} cached tools`,
+    );
+    return cached.tools;
   }
 
-  const existing = mcpInFlight.get(cacheKey)
+  const existing = mcpInFlight.get(cacheKey);
   if (existing) {
-    logger.info(`[MCP] In-flight request for user ${args.userId}, awaiting`)
-    return existing
+    logger.info(`[MCP] In-flight request for user ${args.userId}, awaiting`);
+    return existing;
   }
 
-  logger.info(`[MCP] Building MCP tool set for user ${args.userId}`)
+  logger.info(`[MCP] Building MCP tool set for user ${args.userId}`);
   const promise = (async () => {
     try {
-      const tools = await buildMcpToolSet(args)
-      logger.info(`[MCP] Built ${Object.keys(tools).length} MCP tools for user ${args.userId}`)
-      mcpCache.set(cacheKey, { tools, createdAt: Date.now() })
-      return tools
+      const tools = await buildMcpToolSet(args);
+      logger.info(
+        `[MCP] Built ${Object.keys(tools).length} MCP tools for user ${args.userId}`,
+      );
+      mcpCache.set(cacheKey, { tools, createdAt: Date.now() });
+      return tools;
     } finally {
-      mcpInFlight.delete(cacheKey)
+      mcpInFlight.delete(cacheKey);
     }
-  })()
-  mcpInFlight.set(cacheKey, promise)
-  return promise
+  })();
+  mcpInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 /** Fire-and-forget pre-warm. Errors are swallowed. */
 export function prewarmMcpTools(args: {
-  userId: string
-  accessToken?: string
-  serverSecret?: string
+  userId: string;
+  accessToken?: string;
+  serverSecret?: string;
 }): void {
-  const cacheKey = `${args.userId}:global`
-  const cached = mcpCache.get(cacheKey)
-  if (cached && Date.now() - cached.createdAt < MCP_CACHE_TTL_MS) return
-  if (mcpInFlight.has(cacheKey)) return
+  const cacheKey = `${args.userId}:global`;
+  const cached = mcpCache.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < MCP_CACHE_TTL_MS) return;
+  if (mcpInFlight.has(cacheKey)) return;
   void createMcpToolSet(args).catch((_error) => {
     // swallow
-  })
+  });
 }

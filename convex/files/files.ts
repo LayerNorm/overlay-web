@@ -268,8 +268,10 @@ export const createUploadIntentByServer = mutation({
       throw new Error('upload_intent_already_exists')
     }
 
-    const subscription = await getOrCreateSubscription(ctx, args.userId)
-    const pendingBytes = await getPendingUploadIntentBytes(ctx, args.userId)
+    const [subscription, pendingBytes] = await Promise.all([
+      getOrCreateSubscription(ctx, args.userId),
+      getPendingUploadIntentBytes(ctx, args.userId),
+    ])
     const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
     const storageLimitBytes = getStorageLimitForSubscription(subscription)
     if (nextReservedBytes > storageLimitBytes) {
@@ -1184,9 +1186,11 @@ export const backfillCanonicalFilesystem = mutation({
   handler: async (ctx, { serverSecret, dryRun, userId, limit }) => {
     if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
     const max = Math.min(5000, Math.max(1, limit ?? 1000))
-    const notes = await ctx.db.query('notes').collect()
-    const outputs = await ctx.db.query('outputs').collect()
-    const existingFiles = await ctx.db.query('files').collect()
+    const [notes, outputs, existingFiles] = await Promise.all([
+      ctx.db.query('notes').collect(),
+      ctx.db.query('outputs').collect(),
+      ctx.db.query('files').collect(),
+    ])
     const targetNotes = notes.filter((note) => !userId || note.userId === userId).slice(0, max)
     const targetOutputs = outputs.filter((output) => !userId || output.userId === userId).slice(0, max)
     const targetFiles = existingFiles.filter((file) => !userId || file.userId === userId).slice(0, max)

@@ -9,11 +9,14 @@ export default function BackgroundPollManager() {
   const authUserId = user?.id ?? null
 
   /** Warm personalized chat starters cache early so empty-chat chips rarely wait on the network. */
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (authLoading || !authUserId) return
     const run = () => {
       void coalesceRequest('chat-suggestions', () =>
-        fetch('/api/v1/chat-suggestions', { credentials: 'same-origin' }).then((r) => r.json()),
+        fetch('/api/v1/chat-suggestions', { credentials: 'same-origin' })
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`chat-suggestions ${r.status}`)))),
       ).catch(() => {})
     }
     if (typeof window.requestIdleCallback === 'function') {

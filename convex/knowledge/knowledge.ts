@@ -946,12 +946,14 @@ export const listConversationMessagesPage = internalQuery({
     cursor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, { conversationId, cursor }) => {
-    const convo = await ctx.db.get(conversationId)
-    const page = await ctx.db
+    const [convo, page] = await Promise.all([
+      ctx.db.get(conversationId),
+      ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
-      .paginate({ cursor: cursor ?? null, numItems: 50 })
+        .paginate({ cursor: cursor ?? null, numItems: 50 }),
+    ])
     return {
       workspaceId: convo?.workspaceId,
       isDone: page.isDone,

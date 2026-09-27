@@ -86,8 +86,10 @@ export async function loadHarnessSandboxProvider(
     const { createVercelSandbox } = await import('@ai-sdk/sandbox-vercel')
     return createVercelSandbox()
   }
-  const { createOverlayHarnessSandboxProvider } = await import('@overlay/sandbox-runtime/harness-bridge')
-  const { managedSandboxRuntimeFromEnv } = await import('@/server/agents/ManagedAgentSandboxService')
+  const [{ createOverlayHarnessSandboxProvider }, { managedSandboxRuntimeFromEnv }] = await Promise.all([
+    import('@overlay/sandbox-runtime/harness-bridge'),
+    import('@/server/agents/ManagedAgentSandboxService'),
+  ])
   return createOverlayHarnessSandboxProvider({
     runtime: managedSandboxRuntimeFromEnv(resolved),
   })

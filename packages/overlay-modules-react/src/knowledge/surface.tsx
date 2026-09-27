@@ -146,12 +146,9 @@ export function SharedKnowledgeSurface({
     onUpdateQuery(updates)
   }
 
-  useEffect(() => {
-    if (!pendingFilesLayout) return
-    if (!queryPending && layout === pendingFilesLayout) {
+  if (pendingFilesLayout && !queryPending && layout === pendingFilesLayout) {
       setPendingFilesLayout(null)
     }
-  }, [layout, pendingFilesLayout, queryPending])
 
   const [, setOutputsRefreshKey] = useState(0)
   const [outputFilterOpen, setOutputFilterOpen] = useState(false)
@@ -184,12 +181,18 @@ export function SharedKnowledgeSurface({
   const [addText, setAddText] = useState('')
   const [isSavingMemory, setIsSavingMemory] = useState(false)
   const [memorySaveError, setMemorySaveError] = useState<string | null>(null)
-  const [memorySavePendingPreview, setMemorySavePendingPreview] = useState<string | null>(null)
+  const [memorySavePendingPreview, setMemorySavePendingPreview] = useState<
+    string | null
+  >(null)
   const [showImportMemory, setShowImportMemory] = useState(false)
   const [importText, setImportText] = useState('')
   const [isImporting, setIsImporting] = useState(false)
-  const [importMemoryError, setImportMemoryError] = useState<string | null>(null)
-  const [importPendingPreview, setImportPendingPreview] = useState<string | null>(null)
+  const [importMemoryError, setImportMemoryError] = useState<string | null>(
+    null,
+  )
+  const [importPendingPreview, setImportPendingPreview] = useState<
+    string | null
+  >(null)
   const [importPromptCopied, setImportPromptCopied] = useState(false)
   const [fileUploadPending, setFileUploadPending] = useState<{ label: string } | null>(null)
   const [fileUploadError, setFileUploadError] = useState<string | null>(null)
@@ -243,12 +246,14 @@ export function SharedKnowledgeSurface({
     return () => document.removeEventListener('mousedown', handleMouseDown)
   }, [createMenuOpen, uploadMenuOpen])
 
-  useEffect(() => {
+  const [prevActiveTab, setPrevActiveTab] = useState(activeTab)
+  if (prevActiveTab !== activeTab) {
+    setPrevActiveTab(activeTab)
     setSelectMode(false)
     setSelectedMemoryIds(new Set())
     setSelectedFileIds(new Set())
     setSelectedOutputIds(new Set())
-  }, [activeTab])
+  }
 
   function exitSelectMode() {
     setSelectMode(false)
@@ -394,11 +399,22 @@ export function SharedKnowledgeSurface({
       return
     }
     if (event.type === 'upload-progress' || event.type === 'conflict') {
-      setFiles((current) => current.map((node) => node._id === event.id
-        ? { ...node, ...(event.type === 'conflict' ? { conflict: event.conflict } : { upload: event.upload }) }
-        : node))
+          setFiles((current) =>
+            current.map((node) =>
+              node._id === event.id
+                ? {
+                    ...node,
+                    ...(event.type === 'conflict'
+                      ? { conflict: event.conflict }
+                      : { upload: event.upload }),
     }
-  }), [adapters.repository])
+                : node,
+            ),
+          )
+        }
+      }),
+    [adapters.repository],
+  )
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -434,6 +450,8 @@ export function SharedKnowledgeSurface({
     if (!fileOpenParam || filesLoading || files.length === 0) return
     const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
     if (!node) return
+    // Deep-link file open — intentional state write from the param effect.
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent
     void loadFile(node._id)
   }, [fileOpenParam, files, filesLoading, loadFile])
 
@@ -582,10 +600,15 @@ export function SharedKnowledgeSurface({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       setIsSavingFile(true)
+      try {
       const saved = await filePort.saveContent(selectedFile._id, val)
       if (saved) filePort.entityChanged('file', selectedFile._id, 'updated')
-      setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
+        setFiles((prev) =>
+          prev.map((f) => (f._id === selectedFile._id ? { ...f } : f)),
+        )
+      } finally {
       setIsSavingFile(false)
+      }
     }, 800)
   }
 
@@ -597,9 +620,16 @@ export function SharedKnowledgeSurface({
     titleSaveTimerRef.current = setTimeout(async () => {
       setIsSavingFile(true)
       try {
-        await adapters.repository.rename({ id: selectedFile._id, name: nextName })
-        setSelectedFile((prev) => prev ? { ...prev, name: nextName } : prev)
-        setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, name: nextName } : f))
+        await adapters.repository.rename({
+          id: selectedFile._id,
+          name: nextName,
+        })
+        setSelectedFile((prev) => (prev ? { ...prev, name: nextName } : prev))
+        setFiles((prev) =>
+          prev.map((f) =>
+            f._id === selectedFile._id ? { ...f, name: nextName } : f,
+          ),
+        )
       } catch {
         // Keep the previous persisted title when the host rejects the rename.
       }
@@ -676,7 +706,7 @@ export function SharedKnowledgeSurface({
 
   async function handleNativePick(folder: boolean) {
     const picked = folder
-      ? await adapters.filePicker.pickFolder?.() ?? []
+      ? ((await adapters.filePicker.pickFolder?.()) ?? [])
       : await adapters.filePicker.pickFiles({ multiple: true })
     const files = await Promise.all(picked.map(pickedFileToBrowserFile))
     await uploadFiles(files, folder)
@@ -972,17 +1002,25 @@ export function SharedKnowledgeSurface({
           <KnowledgePendingNotice title="Uploading…" preview={fileUploadPending.label} />
         )}
         {activeTab === 'files' && !selectedFile && fileUploadError && (
-          <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+            <p
+              className='mx-auto mb-3 max-w-3xl text-xs text-red-400'
+              role='alert'
+            >
             {fileUploadError}
           </p>
         )}
         {activeTab === 'files' && !selectedFile && filesLoadError && (
-          <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+            <p
+              className='mx-auto mb-3 max-w-3xl text-xs text-red-400'
+              role='alert'
+            >
             {filesLoadError}
           </p>
         )}
         {activeTab === 'files' && filesRefreshing && (
-          <span className="sr-only" role="status">Refreshing files</span>
+            <span className='sr-only' role='status'>
+              Refreshing files
+            </span>
         )}
 
         {activeTab === 'files' && !selectedFile && (

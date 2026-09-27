@@ -156,8 +156,11 @@ export const ensurePersonalWorkspaceByServer = mutation({
   returns: workspaceAccessValidator,
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const existing = await ctx.db.query('workspaces')
-      .withIndex('by_personalOwnerUserId', (q) => q.eq('personalOwnerUserId', args.userId))
+    const existing = await ctx.db
+      .query('workspaces')
+      .withIndex('by_personalOwnerUserId', (q) =>
+        q.eq('personalOwnerUserId', args.userId),
+      )
       .unique()
     if (existing) {
       const access = await requireHumanAccess(ctx, existing, args.userId, true)
@@ -233,11 +236,14 @@ export const createOrganizationByServer = mutation({
     ])
     const now = args.now
     const slug = slugify(args.slug ?? args.name)
-    const duplicateSlug = await ctx.db.query('workspaces')
+    const duplicateSlug = await ctx.db
+      .query('workspaces')
       .withIndex('by_slug', (q) => q.eq('slug', slug))
       .first()
     if (duplicateSlug) throw new Error('WORKSPACE_SLUG_ALREADY_EXISTS')
-    const workspace = await insertAndRead(ctx, 'workspaces', {
+    const [workspace, principal, membership, generalChannelId] =
+      await Promise.all([
+        insertAndRead(ctx, 'workspaces', {
       workspaceId: args.workspaceId,
       kind: 'organization',
       name: requiredName(args.name, 'Workspace'),
@@ -246,8 +252,8 @@ export const createOrganizationByServer = mutation({
       createdByPrincipalId: args.principalId,
       createdAt: now,
       updatedAt: now,
-    })
-    const principal = await insertAndRead(ctx, 'workspacePrincipals', {
+        }),
+        insertAndRead(ctx, 'workspacePrincipals', {
       principalId: args.principalId,
       workspaceId: args.workspaceId,
       type: 'human',
@@ -256,8 +262,8 @@ export const createOrganizationByServer = mutation({
       email: optionalEmail(args.creatorEmail),
       createdAt: now,
       updatedAt: now,
-    })
-    const membership = await insertAndRead(ctx, 'workspaceMemberships', {
+        }),
+        insertAndRead(ctx, 'workspaceMemberships', {
       membershipId: args.membershipId,
       workspaceId: args.workspaceId,
       principalId: args.principalId,
@@ -265,8 +271,8 @@ export const createOrganizationByServer = mutation({
       status: 'active',
       joinedAt: now,
       updatedAt: now,
-    })
-    const generalChannelId = await ctx.db.insert('conversations', {
+        }),
+        ctx.db.insert('conversations', {
       userId: args.creatorUserId,
       workspaceId: args.workspaceId,
       conversationType: 'channel',
@@ -281,7 +287,8 @@ export const createOrganizationByServer = mutation({
       channelSlug: 'general',
       channelVisibility: 'public',
       channelTopic: 'Company-wide announcements and conversation',
-    })
+        }),
+      ])
     await ctx.db.insert('conversationParticipants', {
       conversationId: generalChannelId,
       workspaceId: args.workspaceId,
@@ -314,15 +321,20 @@ export const listForUserByServer = query({
   returns: v.array(workspaceAccessValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const principals = await ctx.db.query('workspacePrincipals')
+    const principals = await ctx.db
+      .query('workspacePrincipals')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .take(MAX_DIRECTORY_ROWS)
     const accesses = await Promise.all(principals.map(async (principal) => {
       const [workspace, membership] = await Promise.all([
         getWorkspace(ctx, principal.workspaceId),
-        ctx.db.query('workspaceMemberships')
+          ctx.db
+            .query('workspaceMemberships')
           .withIndex('by_workspaceId_principalId', (q) =>
-            q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId))
+              q
+                .eq('workspaceId', principal.workspaceId)
+                .eq('principalId', principal.principalId),
+            )
           .unique(),
       ])
       if (!workspace || !membership || membership.status !== 'active') return null
@@ -371,7 +383,8 @@ export const resolveActiveWorkspaceByServer = mutation({
   returns: v.union(workspaceAccessValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const preference = await ctx.db.query('workspaceUserPreferences')
+    const preference = await ctx.db
+      .query('workspaceUserPreferences')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .unique()
     if (preference) {
@@ -382,7 +395,8 @@ export const resolveActiveWorkspaceByServer = mutation({
       }
     }
 
-    const principals = await ctx.db.query('workspacePrincipals')
+    const principals = await ctx.db
+      .query('workspacePrincipals')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .take(MAX_DIRECTORY_ROWS)
     for (const principal of principals) {
@@ -441,19 +455,26 @@ export const createPrincipalByServer = mutation({
     }
     await requireUnusedId(ctx, 'principal', args.principalId)
     const subjectId = requirePrincipalSubject(args)
-    const existing = args.type === 'human'
-      ? await ctx.db.query('workspacePrincipals')
+    const existing =
+      args.type === 'human'
+        ? await ctx.db
+            .query('workspacePrincipals')
         .withIndex('by_workspaceId_userId', (q) =>
           q.eq('workspaceId', args.workspaceId).eq('userId', subjectId))
         .unique()
       : args.type === 'agent'
-        ? await ctx.db.query('workspacePrincipals')
+          ? await ctx.db
+              .query('workspacePrincipals')
           .withIndex('by_workspaceId_agentId', (q) =>
             q.eq('workspaceId', args.workspaceId).eq('agentId', subjectId))
           .unique()
-        : await ctx.db.query('workspacePrincipals')
+          : await ctx.db
+              .query('workspacePrincipals')
           .withIndex('by_workspaceId_serviceId', (q) =>
-            q.eq('workspaceId', args.workspaceId).eq('serviceId', subjectId))
+                q
+                  .eq('workspaceId', args.workspaceId)
+                  .eq('serviceId', subjectId),
+              )
           .unique()
     if (existing) throw new Error('WORKSPACE_PRINCIPAL_SUBJECT_ALREADY_EXISTS')
     const now = args.now
@@ -512,7 +533,8 @@ export const getHumanPrincipalByServer = query({
   returns: v.union(principalValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const principal = await ctx.db.query('workspacePrincipals')
+    const principal = await ctx.db
+      .query('workspacePrincipals')
       .withIndex('by_workspaceId_userId', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('userId', args.userId))
       .unique()
@@ -531,7 +553,8 @@ export const listPrincipalsByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const principals = await ctx.db.query('workspacePrincipals')
+    const principals = await ctx.db
+      .query('workspacePrincipals')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(MAX_DIRECTORY_ROWS)
     return principals
@@ -584,9 +607,14 @@ export const inviteByServer = mutation({
     await requirePrincipal(ctx, args.workspaceId, args.invitedByPrincipalId)
     await requireUnusedId(ctx, 'invitation', args.invitationId)
     const email = requiredEmail(args.email)
-    const duplicate = await ctx.db.query('workspaceInvitations')
+    const duplicate = await ctx.db
+      .query('workspaceInvitations')
       .withIndex('by_workspaceId_email_status', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('email', email).eq('status', 'pending'))
+        q
+          .eq('workspaceId', args.workspaceId)
+          .eq('email', email)
+          .eq('status', 'pending'),
+      )
       .first()
     if (duplicate && duplicate.expiresAt > args.now) {
       await ctx.db.patch(duplicate._id, {
@@ -641,7 +669,8 @@ export const acceptInvitationByServer = mutation({
       throw new Error('WORKSPACE_INVITATION_EMAIL_MISMATCH')
     }
     const workspace = await requireActiveWorkspace(ctx, invitation.workspaceId)
-    let principal = await ctx.db.query('workspacePrincipals')
+    let principal = await ctx.db
+      .query('workspacePrincipals')
       .withIndex('by_workspaceId_userId', (q) =>
         q.eq('workspaceId', workspace.workspaceId).eq('userId', args.userId))
       .unique()
@@ -687,10 +716,15 @@ export const acceptInvitationByServer = mutation({
         updatedAt: now,
       })
     }
-    const publicChannels = await ctx.db.query('conversations')
-      .withIndex('by_workspaceId_conversationType_lastModified', (q) => (
-        q.eq('workspaceId', workspace.workspaceId).eq('conversationType', 'channel')
-      )).filter((q) => q.and(
+    const publicChannels = await ctx.db
+      .query('conversations')
+      .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
+        q
+          .eq('workspaceId', workspace.workspaceId)
+          .eq('conversationType', 'channel'),
+      )
+      .filter((q) =>
+        q.and(
         q.eq(q.field('channelVisibility'), 'public'),
         q.eq(q.field('deletedAt'), undefined),
       )).collect()
@@ -826,8 +860,11 @@ export const listInvitationsByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const invitations = await ctx.db.query('workspaceInvitations')
-      .withIndex('by_workspaceId_createdAt', (q) => q.eq('workspaceId', args.workspaceId))
+    const invitations = await ctx.db
+      .query('workspaceInvitations')
+      .withIndex('by_workspaceId_createdAt', (q) =>
+        q.eq('workspaceId', args.workspaceId),
+      )
       .order('desc')
       .take(MAX_DIRECTORY_ROWS)
     return invitations
@@ -857,11 +894,17 @@ export const expireInvitationsByServer = mutation({
     requireServerSecret(args.serverSecret)
     if (args.workspaceId) await requireWorkspace(ctx, args.workspaceId)
     const pending = args.workspaceId
-      ? await ctx.db.query('workspaceInvitations')
+      ? await ctx.db
+          .query('workspaceInvitations')
         .withIndex('by_workspaceId_status_expiresAt', (q) =>
-          q.eq('workspaceId', args.workspaceId!).eq('status', 'pending').lte('expiresAt', args.now))
+            q
+              .eq('workspaceId', args.workspaceId!)
+              .eq('status', 'pending')
+              .lte('expiresAt', args.now),
+          )
         .take(MAX_DIRECTORY_ROWS)
-      : await ctx.db.query('workspaceInvitations')
+      : await ctx.db
+          .query('workspaceInvitations')
         .withIndex('by_status_expiresAt', (q) =>
           q.eq('status', 'pending').lte('expiresAt', args.now))
         .take(MAX_DIRECTORY_ROWS)
@@ -880,7 +923,8 @@ export const listMembersByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const memberships = await ctx.db.query('workspaceMemberships')
+    const memberships = await ctx.db
+      .query('workspaceMemberships')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(MAX_DIRECTORY_ROWS)
     const entries = await Promise.all(memberships.map(async (membership) => {
@@ -915,7 +959,8 @@ export const listMembershipsByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const rows = await ctx.db.query('workspaceMemberships')
+    const rows = await ctx.db
+      .query('workspaceMemberships')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(MAX_DIRECTORY_ROWS)
     return rows
@@ -1118,7 +1163,8 @@ export const purgeArchivedWorkspaceByServer = mutation({
       await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
       deletedRows += rows.length
     }
-    const teams = await ctx.db.query('workspaceTeams')
+    const teams = await ctx.db
+      .query('workspaceTeams')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
     const teamMembershipLists = await Promise.all(teams.map((team) =>
@@ -1189,36 +1235,116 @@ export const purgeArchivedWorkspaceByServer = mutation({
         .withIndex('by_credentialId_expiresAt', (q) => q.eq('credentialId', credential.credentialId)).collect()))
     await deleteRows(credentialNonces.flat())
     await deleteRows(environmentCredentials)
-    await deleteRows(await ctx.db.query('agentEnvironmentProofChallenges')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentEnrollmentSessions')
-      .withIndex('by_workspaceId_createdAt', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentApprovalRequests')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentRunCommands')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentEventRateWindows')
-      .withIndex('by_workspaceId_windowStartedAt', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentWorkspacePolicyUsage')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentArtifacts')
-      .withIndex('by_workspaceId_environmentId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentSandboxSettlements')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentRemoteSessions')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentSandboxLeases')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentBindings')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-    await deleteRows(await ctx.db.query('agentEnvironments')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
+    await deleteRows(
+      await ctx.db
+        .query('agentEnvironmentProofChallenges')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentEnrollmentSessions')
+        .withIndex('by_workspaceId_createdAt', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentApprovalRequests')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentRunCommands')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentEventRateWindows')
+        .withIndex('by_workspaceId_windowStartedAt', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentWorkspacePolicyUsage')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentArtifacts')
+        .withIndex('by_workspaceId_environmentId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentSandboxSettlements')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentRemoteSessions')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentSandboxLeases')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentBindings')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    await deleteRows(
+      await ctx.db
+        .query('agentEnvironments')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
     await deleteRows(teams)
-    await deleteRows(await ctx.db.query('workspacePrincipals')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
-      .collect())
-    const preferences = await ctx.db.query('workspaceUserPreferences')
-      .withIndex('by_activeWorkspaceId', (q) => q.eq('activeWorkspaceId', args.workspaceId))
+    await deleteRows(
+      await ctx.db
+        .query('workspacePrincipals')
+        .withIndex('by_workspaceId', (q) =>
+          q.eq('workspaceId', args.workspaceId),
+        )
+        .collect(),
+    )
+    const preferences = await ctx.db
+      .query('workspaceUserPreferences')
+      .withIndex('by_activeWorkspaceId', (q) =>
+        q.eq('activeWorkspaceId', args.workspaceId),
+      )
       .collect()
     await deleteRows(preferences)
     await ctx.db.delete(workspace._id)
@@ -1244,7 +1370,8 @@ export const createTeamByServer = mutation({
     await requirePrincipal(ctx, args.workspaceId, args.createdByPrincipalId)
     await requireUnusedId(ctx, 'team', args.teamId)
     const name = requiredName(args.name, 'Team')
-    const duplicate = await ctx.db.query('workspaceTeams')
+    const duplicate = await ctx.db
+      .query('workspaceTeams')
       .withIndex('by_workspaceId_name', (q) =>
         q.eq('workspaceId', args.workspaceId).eq('name', name))
       .first()
@@ -1281,7 +1408,8 @@ export const updateTeamByServer = mutation({
     }
     if (patch.name && patch.name !== team.name) {
       const nextName = patch.name
-      const duplicate = await ctx.db.query('workspaceTeams')
+      const duplicate = await ctx.db
+        .query('workspaceTeams')
         .withIndex('by_workspaceId_name', (q) =>
           q.eq('workspaceId', args.workspaceId).eq('name', nextName))
         .first()
@@ -1300,7 +1428,8 @@ export const deleteTeamByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const team = await requireTeam(ctx, args.workspaceId, args.teamId)
-    const memberships = await ctx.db.query('workspaceTeamMemberships')
+    const memberships = await ctx.db
+      .query('workspaceTeamMemberships')
       .withIndex('by_teamId', (q) => q.eq('teamId', args.teamId))
       .take(MAX_DIRECTORY_ROWS + 1)
     if (memberships.length > MAX_DIRECTORY_ROWS) {
@@ -1321,16 +1450,20 @@ export const listTeamsByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const teams = await ctx.db.query('workspaceTeams')
+    const teams = await ctx.db
+      .query('workspaceTeams')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(MAX_DIRECTORY_ROWS)
     return await Promise.all(teams.map(async (team) => ({
       team: teamValue(team),
-      memberships: (await ctx.db.query('workspaceTeamMemberships')
+        memberships: (
+          await ctx.db
+            .query('workspaceTeamMemberships')
         .withIndex('by_teamId', (q) => q.eq('teamId', team.teamId))
-        .take(MAX_DIRECTORY_ROWS))
-        .map(teamMembershipValue),
-    })))
+            .take(MAX_DIRECTORY_ROWS)
+        ).map(teamMembershipValue),
+      })),
+    )
   },
 })
 
@@ -1354,7 +1487,8 @@ export const listTeamsOnlyByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const teams = await ctx.db.query('workspaceTeams')
+    const teams = await ctx.db
+      .query('workspaceTeams')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(MAX_DIRECTORY_ROWS)
     return teams
@@ -1384,7 +1518,8 @@ export const listTeamMembersByServer = query({
     requireServerSecret(args.serverSecret)
     const team = await getTeam(ctx, args.teamId)
     if (!team) return []
-    const rows = await ctx.db.query('workspaceTeamMemberships')
+    const rows = await ctx.db
+      .query('workspaceTeamMemberships')
       .withIndex('by_teamId', (q) => q.eq('teamId', args.teamId))
       .take(MAX_DIRECTORY_ROWS)
     return rows.map(teamMembershipValue)
@@ -1415,7 +1550,8 @@ export const addTeamPrincipalByServer = mutation({
       throw new Error('WORKSPACE_TEAM_PRINCIPAL_TYPE_MISMATCH')
     }
     await requireUnusedId(ctx, 'teamMembership', args.teamMembershipId)
-    const existing = await ctx.db.query('workspaceTeamMemberships')
+    const existing = await ctx.db
+      .query('workspaceTeamMemberships')
       .withIndex('by_teamId_principalId', (q) =>
         q.eq('teamId', args.teamId).eq('principalId', args.principalId))
       .unique()
@@ -1443,7 +1579,8 @@ export const removeTeamPrincipalByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireTeam(ctx, args.workspaceId, args.teamId)
-    const membership = await ctx.db.query('workspaceTeamMemberships')
+    const membership = await ctx.db
+      .query('workspaceTeamMemberships')
       .withIndex('by_teamId_principalId', (q) =>
         q.eq('teamId', args.teamId).eq('principalId', args.principalId))
       .unique()
@@ -1508,7 +1645,8 @@ export const bindResourceByServer = mutation({
     await requireActiveWorkspace(ctx, args.workspaceId)
     const resourceType = requiredName(args.resourceType, 'Resource type')
     const resourceId = requiredName(args.resourceId, 'Resource')
-    const existing = await ctx.db.query('workspaceResourceScopes')
+    const existing = await ctx.db
+      .query('workspaceResourceScopes')
       .withIndex('by_resource', (q) =>
         q.eq('resourceType', resourceType).eq('resourceId', resourceId))
       .unique()
@@ -1544,9 +1682,13 @@ export const getResourceWorkspaceByServer = query({
   returns: v.union(resourceScopeValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceResourceScopes')
+    const row = await ctx.db
+      .query('workspaceResourceScopes')
       .withIndex('by_resource', (q) =>
-        q.eq('resourceType', args.resourceType).eq('resourceId', args.resourceId))
+        q
+          .eq('resourceType', args.resourceType)
+          .eq('resourceId', args.resourceId),
+      )
       .unique()
     if (!row) return null
     return {
@@ -1571,7 +1713,9 @@ export const listResourceIdsByWorkspaceByServer = query({
     const rows = await ctx.db
       .query('workspaceResourceScopes')
       .withIndex('by_workspaceId_resource', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('resourceType', args.resourceType),
+        q
+          .eq('workspaceId', args.workspaceId)
+          .eq('resourceType', args.resourceType),
       )
       .collect()
     return rows.map((row) => row.resourceId)
@@ -1657,7 +1801,8 @@ export const getSharingPolicyByServer = query({
   returns: v.union(sharingPolicyValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceSharingPolicies')
+    const row = await ctx.db
+      .query('workspaceSharingPolicies')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .unique()
     if (!row) return null
@@ -1689,13 +1834,17 @@ export const setSharingPolicyByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireActiveWorkspace(ctx, args.workspaceId)
-    const principal = await ctx.db.query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', args.updatedByPrincipalId))
+    const principal = await ctx.db
+      .query('workspacePrincipals')
+      .withIndex('by_principalId', (q) =>
+        q.eq('principalId', args.updatedByPrincipalId),
+      )
       .unique()
     if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt) {
       throw new Error('WORKSPACE_PRINCIPAL_NOT_FOUND')
     }
-    const existing = await ctx.db.query('workspaceSharingPolicies')
+    const existing = await ctx.db
+      .query('workspaceSharingPolicies')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .unique()
     // Only supplied fields change; null clears an optional field, undefined
@@ -1746,14 +1895,17 @@ export const upsertIdentityMappingByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireActiveWorkspace(ctx, args.workspaceId)
-    const principal = await ctx.db.query('workspacePrincipals')
+    const principal = await ctx.db
+      .query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
       .unique()
     if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt) {
       throw new Error('WORKSPACE_PRINCIPAL_NOT_FOUND')
     }
-    const existing = await ctx.db.query('workspaceIdentityMappings')
-      .withIndex('by_workspaceId_external', (q) => q
+    const existing = await ctx.db
+      .query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_external', (q) =>
+        q
         .eq('workspaceId', args.workspaceId)
         .eq('directory', args.directory)
         .eq('externalId', args.externalId))
@@ -1814,8 +1966,10 @@ export const getIdentityMappingByServer = query({
   returns: v.union(identityMappingValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceIdentityMappings')
-      .withIndex('by_workspaceId_external', (q) => q
+    const row = await ctx.db
+      .query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_external', (q) =>
+        q
         .eq('workspaceId', args.workspaceId)
         .eq('directory', args.directory)
         .eq('externalId', args.externalId))
@@ -1833,8 +1987,11 @@ export const listIdentityMappingsByServer = query({
   returns: v.array(identityMappingValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const rows = await ctx.db.query('workspaceIdentityMappings')
-      .withIndex('by_workspaceId_principal', (q) => q.eq('workspaceId', args.workspaceId))
+    const rows = await ctx.db
+      .query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_principal', (q) =>
+        q.eq('workspaceId', args.workspaceId),
+      )
       .collect()
     return rows
       .filter((row) => args.includeDeprovisioned || row.status === 'active')
@@ -1854,8 +2011,10 @@ export const deprovisionIdentityMappingByServer = mutation({
   returns: v.union(identityMappingValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('workspaceIdentityMappings')
-      .withIndex('by_workspaceId_external', (q) => q
+    const row = await ctx.db
+      .query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_external', (q) =>
+        q
         .eq('workspaceId', args.workspaceId)
         .eq('directory', args.directory)
         .eq('externalId', args.externalId))
@@ -1916,7 +2075,8 @@ export const listAuditExportsByServer = query({
   returns: v.array(auditExportValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const rows = await ctx.db.query('workspaceAuditExports')
+    const rows = await ctx.db
+      .query('workspaceAuditExports')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .order('desc')
       .take(args.limit ?? 50)
@@ -1969,8 +2129,11 @@ export const revokeResourceGuestByServer = mutation({
   returns: resourceGuestValidator,
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const guest = await ctx.db.query('workspaceResourceGuests')
-      .withIndex('by_resourceGuestId', (q) => q.eq('resourceGuestId', args.resourceGuestId))
+    const guest = await ctx.db
+      .query('workspaceResourceGuests')
+      .withIndex('by_resourceGuestId', (q) =>
+        q.eq('resourceGuestId', args.resourceGuestId),
+      )
       .unique()
     if (!guest || guest.workspaceId !== args.workspaceId) {
       throw new Error('WORKSPACE_RESOURCE_GUEST_NOT_FOUND')
@@ -1999,15 +2162,21 @@ export const listResourceGuestsByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     await requireWorkspace(ctx, args.workspaceId)
-    const rows = args.resourceType && args.resourceId
-      ? await ctx.db.query('workspaceResourceGuests')
+    const rows =
+      args.resourceType && args.resourceId
+        ? await ctx.db
+            .query('workspaceResourceGuests')
         .withIndex('by_workspaceId_resource', (q) =>
-          q.eq('workspaceId', args.workspaceId)
+              q
+                .eq('workspaceId', args.workspaceId)
             .eq('resourceType', args.resourceType!)
             .eq('resourceId', args.resourceId!))
         .take(MAX_DIRECTORY_ROWS)
-      : await ctx.db.query('workspaceResourceGuests')
-        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+        : await ctx.db
+            .query('workspaceResourceGuests')
+            .withIndex('by_workspaceId', (q) =>
+              q.eq('workspaceId', args.workspaceId),
+            )
         .take(MAX_DIRECTORY_ROWS)
     return rows
       .filter((row) =>
@@ -2022,8 +2191,11 @@ export const getResourceGuestByServer = query({
   returns: v.union(resourceGuestValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const guest = await ctx.db.query('workspaceResourceGuests')
-      .withIndex('by_resourceGuestId', (q) => q.eq('resourceGuestId', args.resourceGuestId))
+    const guest = await ctx.db
+      .query('workspaceResourceGuests')
+      .withIndex('by_resourceGuestId', (q) =>
+        q.eq('resourceGuestId', args.resourceGuestId),
+      )
       .unique()
     return guest ? resourceGuestValueWithExpiry(guest) : null
   },
@@ -2032,7 +2204,8 @@ export const getResourceGuestByServer = query({
 type DatabaseReader = QueryCtx['db'] | MutationCtx['db']
 
 async function getWorkspace(ctx: { db: DatabaseReader }, workspaceId: string) {
-  return await ctx.db.query('workspaces')
+  return await ctx.db
+    .query('workspaces')
     .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
     .unique()
 }
@@ -2050,7 +2223,8 @@ async function requireActiveWorkspace(ctx: { db: DatabaseReader }, workspaceId: 
 }
 
 async function getPrincipal(ctx: { db: DatabaseReader }, principalId: string) {
-  return await ctx.db.query('workspacePrincipals')
+  return await ctx.db
+    .query('workspacePrincipals')
     .withIndex('by_principalId', (q) => q.eq('principalId', principalId))
     .unique()
 }
@@ -2072,7 +2246,8 @@ async function getMembershipForPrincipal(
   workspaceId: string,
   principalId: string,
 ) {
-  return await ctx.db.query('workspaceMemberships')
+  return await ctx.db
+    .query('workspaceMemberships')
     .withIndex('by_workspaceId_principalId', (q) =>
       q.eq('workspaceId', workspaceId).eq('principalId', principalId))
     .unique()
@@ -2084,7 +2259,8 @@ async function findHumanAccess(
   userId: string,
   includeSuspended: boolean,
 ) {
-  const principal = await ctx.db.query('workspacePrincipals')
+  const principal = await ctx.db
+    .query('workspacePrincipals')
     .withIndex('by_workspaceId_userId', (q) =>
       q.eq('workspaceId', workspace.workspaceId).eq('userId', userId))
     .unique()
@@ -2120,13 +2296,18 @@ async function requireTeam(
 }
 
 async function getTeam(ctx: { db: DatabaseReader }, teamId: string) {
-  return await ctx.db.query('workspaceTeams')
+  return await ctx.db
+    .query('workspaceTeams')
     .withIndex('by_teamId', (q) => q.eq('teamId', teamId))
     .unique()
 }
 
-async function getInvitation(ctx: { db: DatabaseReader }, invitationId: string) {
-  return await ctx.db.query('workspaceInvitations')
+async function getInvitation(
+  ctx: { db: DatabaseReader },
+  invitationId: string,
+) {
+  return await ctx.db
+    .query('workspaceInvitations')
     .withIndex('by_invitationId', (q) => q.eq('invitationId', invitationId))
     .unique()
 }
@@ -2136,9 +2317,14 @@ async function requireAnotherActiveOwner(
   workspaceId: string,
   excludedPrincipalId: string,
 ) {
-  const owners = await ctx.db.query('workspaceMemberships')
+  const owners = await ctx.db
+    .query('workspaceMemberships')
     .withIndex('by_workspaceId_role_status', (q) =>
-      q.eq('workspaceId', workspaceId).eq('role', 'owner').eq('status', 'active'))
+      q
+        .eq('workspaceId', workspaceId)
+        .eq('role', 'owner')
+        .eq('status', 'active'),
+    )
     .take(2)
   if (!owners.some((owner) => owner.principalId !== excludedPrincipalId)) {
     throw new Error('WORKSPACE_LAST_OWNER_REQUIRED')
@@ -2161,7 +2347,8 @@ async function upsertActivePreference(
   activeWorkspaceId: string,
   now = Date.now(),
 ) {
-  const existing = await ctx.db.query('workspaceUserPreferences')
+  const existing = await ctx.db
+    .query('workspaceUserPreferences')
     .withIndex('by_userId', (q) => q.eq('userId', userId))
     .unique()
   const updatedAt = now
@@ -2187,19 +2374,34 @@ async function requireUnusedId(ctx: Pick<MutationCtx, 'db'>, kind: IdKind, id: s
     : kind === 'principal'
       ? await getPrincipal(ctx, id)
       : kind === 'membership'
-        ? await ctx.db.query('workspaceMemberships')
-          .withIndex('by_membershipId', (q) => q.eq('membershipId', id)).unique()
+          ? await ctx.db
+              .query('workspaceMemberships')
+              .withIndex('by_membershipId', (q) => q.eq('membershipId', id))
+              .unique()
         : kind === 'invitation'
           ? await getInvitation(ctx, id)
           : kind === 'team'
-            ? await ctx.db.query('workspaceTeams')
-              .withIndex('by_teamId', (q) => q.eq('teamId', id)).unique()
+              ? await ctx.db
+                  .query('workspaceTeams')
+                  .withIndex('by_teamId', (q) => q.eq('teamId', id))
+                  .unique()
             : kind === 'teamMembership'
-              ? await ctx.db.query('workspaceTeamMemberships')
-                .withIndex('by_teamMembershipId', (q) => q.eq('teamMembershipId', id)).unique()
-              : await ctx.db.query('workspaceResourceGuests')
-                .withIndex('by_resourceGuestId', (q) => q.eq('resourceGuestId', id)).unique()
-  if (existing) throw new Error(`WORKSPACE_${kind.replace(/[A-Z]/g, (part) => `_${part}`).toUpperCase()}_ID_EXISTS`)
+                ? await ctx.db
+                    .query('workspaceTeamMemberships')
+                    .withIndex('by_teamMembershipId', (q) =>
+                      q.eq('teamMembershipId', id),
+                    )
+                    .unique()
+                : await ctx.db
+                    .query('workspaceResourceGuests')
+                    .withIndex('by_resourceGuestId', (q) =>
+                      q.eq('resourceGuestId', id),
+                    )
+                    .unique()
+  if (existing)
+    throw new Error(
+      `WORKSPACE_${kind.replace(/[A-Z]/g, (part) => `_${part}`).toUpperCase()}_ID_EXISTS`,
+    )
 }
 
 async function insertAndRead<
@@ -2377,7 +2579,9 @@ function optionalText(value: string | undefined): string | undefined {
 }
 
 function slugify(value: string): string {
-  const slug = value.trim().toLowerCase()
+  const slug = value
+    .trim()
+    .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80)
