@@ -1,0 +1,23 @@
+/* Overlay docs theme — aligns Mintlify chrome with the landing page's
+   hairline-and-paper design language. Theme tokens (colors, fonts,
+   backgrounds) live in docs.json; this file only carries the small overrides
+   config cannot express. Mintlify element ids are documented but may evolve. */
+
+/* Flat, translucent top bar with a hairline seam instead of a filled band. */
+#navbar {
+  border-bottom: 1px solid rgb(127 127 135 / 0.2);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+/* Serif group titles in the sidebar, matching the landing nav's display face. */
+#sidebar .sidebar-group-title,
+#sidebar .sidebar-title {
+  font-family: 'Libre Baskerville', Georgia, serif;
+}
+
+/* Cards and callouts read as hairline panels, not filled boxes. */
+#content-area .card,
+#content-area .card-group .card {
+  box-shadow: none;
+}
