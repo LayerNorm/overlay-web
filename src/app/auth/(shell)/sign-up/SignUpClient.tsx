@@ -268,6 +268,7 @@ export function SignUpClient({
           <form onSubmit={handleVerifyCode} className="space-y-4">
             <input
               type="text"
+              aria-label="Verification code"
               value={verificationCode}
               onChange={(e) => setVerificationCode(e.target.value)}
               placeholder="Enter 6-digit code"

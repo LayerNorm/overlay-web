@@ -139,9 +139,11 @@ export function GenerationModeSelect({
           {MODES.map(({ value, label, Icon }) => {
             const active = mode === value
             return (
-              <li key={value} role="option" aria-selected={active}>
+              <li key={value}>
                 <button
                   type="button"
+                  role="option"
+                  aria-selected={active}
                   onClick={() => {
                     onChange(value)
                     setOpen(false)

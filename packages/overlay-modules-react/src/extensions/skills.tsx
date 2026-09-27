@@ -18,6 +18,7 @@ X
 } from 'lucide-react'
 import { useEffect,useRef,useState,type MouseEvent } from 'react'
 import { Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
+import { useDialogFocus } from '@overlay/ui'
 
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
@@ -74,12 +75,26 @@ export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogPro
     }
   }
 
+  const dialogRef = useDialogFocus<HTMLDivElement>(true)
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div className="overlay-dialog-in flex w-full max-w-xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="skill-dialog-title" className="overlay-dialog-in flex w-full max-w-xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-4">
-          <h3 className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit Skill' : 'New Skill'}</h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+          <h3 id="skill-dialog-title" className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit Skill' : 'New Skill'}</h3>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
             <X size={16} />
           </button>
         </div>
@@ -88,6 +103,7 @@ export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogPro
           <Field label="Name">
             <input
               ref={nameRef}
+              aria-label="Name"
               value={values.name}
               onChange={(event) => update('name', event.target.value)}
               placeholder="e.g. Concise Responder"
@@ -97,6 +113,7 @@ export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogPro
 
           <Field label="Description">
             <input
+              aria-label="Description"
               value={values.description}
               onChange={(event) => update('description', event.target.value)}
               placeholder="Brief description of what this skill does"
@@ -106,10 +123,11 @@ export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogPro
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Instructions</label>
+              <label htmlFor="skill-instructions" className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Instructions</label>
               <span className="text-[10px] text-[var(--muted-light)]">Markdown supported</span>
             </div>
             <textarea
+              id="skill-instructions"
               value={values.instructions}
               onChange={(event) => update('instructions', event.target.value)}
               placeholder={'Describe what the AI should do differently when this skill is active.\n\nExample:\n- Always respond in bullet points\n- Keep answers under 3 sentences\n- Use a formal tone'}

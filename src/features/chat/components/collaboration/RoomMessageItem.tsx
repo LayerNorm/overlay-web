@@ -201,8 +201,11 @@ function AuthorIdentityPopover({
         {children}
       </button>
       {open ? (
+        // Anchored author popover — a native <dialog> cannot anchor below the trigger.
+        // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
+          aria-label={name ? `${name} profile` : 'Message author'}
           className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 shadow-xl"
         >
           <div className="flex items-center gap-2.5">
@@ -619,10 +622,10 @@ function RemoteRequestControls({ request, onResolve }: {
             />
           </div>
         ) : (
-          <div key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
+          <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
             <span>{property.title ?? key}{required.includes(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
-              <select value={String(values[key] ?? '')}
+              <select aria-label={key} value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
                 className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
                 <option value="">Select…</option>
@@ -630,11 +633,12 @@ function RemoteRequestControls({ request, onResolve }: {
               </select>
             ) : (
               <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+                aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
                 className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
             )}
-          </div>
+          </label>
         )
       )) : null}
       <div className="mt-3 flex flex-wrap gap-2">
@@ -900,6 +904,8 @@ function EmojiPickerButton({
         <SmilePlus size={14} strokeWidth={1.75} />
       </button>
       {open ? (
+        // Anchored reaction picker — a native <dialog> cannot anchor above the trigger.
+        // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
           aria-label="Pick a reaction"

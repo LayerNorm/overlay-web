@@ -260,6 +260,7 @@ export function ChatExperienceHeader({
         {activeChatId && editingChatId === activeChatId ? (
           <input
             ref={headerTitleInputRef}
+            aria-label="Conversation title"
             className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
             value={editingChatTitle}
             onChange={(e) => onEditingChatTitleChange(e.target.value)}

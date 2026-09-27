@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Bot, FileText, Loader2, TriangleAlert, User, Workflow, X } from 'lucide-react'
-import { usePresence } from '@overlay/ui'
+import { useDialogFocus, usePresence } from '@overlay/ui'
 import type {
   WorkspaceShareAccessRole,
   WorkspaceShareImpact,
@@ -47,6 +47,16 @@ export function AttachResourceDialog({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const { mounted, visible } = usePresence(isOpen)
+  const dialogRef = useDialogFocus(mounted)
+
+  useEffect(() => {
+    if (!mounted) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mounted, onClose])
 
   useEffect(() => {
     if (!isOpen || !activeWorkspaceId) return
@@ -132,11 +142,16 @@ export function AttachResourceDialog({
   }
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={`fixed inset-0 z-[10080] flex items-center justify-center bg-black/55 p-4 transition-opacity duration-150 ${visible ? 'opacity-100' : 'opacity-0'}`}
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="attach-resource-title"

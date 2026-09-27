@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
-import { usePresence } from '@overlay/ui'
+import { useDialogFocus, usePresence } from '@overlay/ui'
 import type { AutomationDraftSummary, DraftModalState, SkillDraftSummary } from '@overlay/chat-core'
 
 export function FlashCopyIconButton({
@@ -65,6 +65,16 @@ export function DraftReviewModal({
   onSaveAutomation: (draft: AutomationDraftSummary) => Promise<void>
 }) {
   const { mounted, visible } = usePresence(Boolean(stateProp), 300)
+  const dialogRef = useDialogFocus(mounted)
+
+  useEffect(() => {
+    if (!mounted) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mounted, onClose])
   // Retain the last non-null state so the modal keeps its content while sliding
   // out. The state object is reference-stable while open, so this converges.
   const [cachedState, setCachedState] = useState(stateProp)
@@ -74,6 +84,8 @@ export function DraftReviewModal({
   const isAutomation = state.kind === 'automation'
 
   return (
+    // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={`fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 transition-opacity duration-300 ease-[var(--overlay-ease)] sm:items-center sm:p-4 ${
         visible ? 'opacity-100' : 'opacity-0'
@@ -82,7 +94,13 @@ export function DraftReviewModal({
         if (event.target === event.currentTarget) onClose()
       }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="draft-review-modal-title"
         className={`w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl transition-[opacity,transform] duration-300 ease-[var(--overlay-ease)] sm:rounded-2xl ${
           visible
             ? 'translate-y-0 opacity-100 sm:scale-100'
@@ -91,7 +109,7 @@ export function DraftReviewModal({
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div>
-            <h3 className="text-sm font-medium text-[var(--foreground)]">
+            <h3 id="draft-review-modal-title" className="text-sm font-medium text-[var(--foreground)]">
               {isAutomation ? 'Review Automation Draft' : 'Review Skill Draft'}
             </h3>
             <p className="mt-0.5 text-[11px] text-[var(--muted)]">{state.draft.reason}</p>

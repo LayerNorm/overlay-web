@@ -28,25 +28,30 @@ export function KnowledgeMemoryList({
         return (
           <div
             key={memory.key}
-            role="button"
-            tabIndex={0}
-            onClick={() => (selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory))}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                if (selectMode) onToggleSelect(memory.memoryId)
-                else onOpen(memory)
-              }
-            }}
-            className={`group flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+            className={`group flex items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
               bulkSel ? 'border-[var(--border)] bg-[var(--surface-muted)]' : ''
             }`}
           >
             {selectMode ? <BulkSelectMarker selected={bulkSel} className="mt-0.5 shrink-0" /> : null}
-            <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => (selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  if (selectMode) onToggleSelect(memory.memoryId)
+                  else onOpen(memory)
+                }
+              }}
+              className="min-w-0 flex-1 cursor-pointer rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+            >
+              <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
+            </div>
             {!selectMode ? (
               <button
                 type="button"
+                aria-label="Delete memory"
                 onClick={(event) => onDelete(memory.memoryId, event)}
                 className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
               >

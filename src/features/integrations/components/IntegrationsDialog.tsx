@@ -8,7 +8,7 @@ import {
   truncateIntegrationDescription,
   type IntegrationProviderCapabilities,
 } from '@overlay/app-core'
-import { usePresence } from '@overlay/ui'
+import { useDialogFocus, usePresence } from '@overlay/ui'
 import { IntegrationDialogRowSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -174,6 +174,16 @@ export function IntegrationsDialog({
   }, [actingSlug, onDisconnect])
 
   const { mounted, visible } = usePresence(isOpen)
+  const dialogRef = useDialogFocus(mounted)
+
+  useEffect(() => {
+    if (!mounted) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mounted, onClose])
   if (!mounted) return null
 
   const isSearching = queryInput.trim() !== query || loadingInitial
@@ -182,23 +192,31 @@ export function IntegrationsDialog({
     : items.map((item) => ({ ...item, isConnected: connectedSlugs.has(item.slug) }))
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={`${overlayClassName} transition-opacity duration-200 ease-[var(--overlay-ease)] ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="integrations-dialog-title"
         className={`flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
         }`}
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
-            <p className="text-sm font-semibold text-[var(--foreground)]">Add Integration</p>
+            <p id="integrations-dialog-title" className="text-sm font-semibold text-[var(--foreground)]">Add Integration</p>
             <p className="mt-0.5 text-xs text-[var(--muted)]">Search integrations available from the configured provider</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
             <X size={16} />
           </button>
         </div>
@@ -208,10 +226,11 @@ export function IntegrationsDialog({
             <Search size={13} className="shrink-0 text-[var(--muted-light)]" />
             <input
               type="text"
+              aria-label="Search integrations"
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="Search integrations..."
-              autoFocus
+              data-autofocus
               className="flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
             />
           </div>

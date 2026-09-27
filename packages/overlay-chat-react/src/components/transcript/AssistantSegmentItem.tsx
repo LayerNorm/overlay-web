@@ -210,10 +210,10 @@ export function AssistantSegmentItem({
           >
             <video
               src={block.url}
-              controls
               preload="metadata"
               playsInline
-              className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+              aria-hidden="true"
+              className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
             />
           </button>
         )}

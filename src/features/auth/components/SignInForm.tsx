@@ -92,6 +92,7 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
       <div className="flex gap-2">
         <input
           type="email"
+          aria-label="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleEmailContinue() }}

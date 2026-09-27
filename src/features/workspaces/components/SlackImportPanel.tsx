@@ -622,7 +622,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-500">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
             <span>{error}</span>
-            <button type="button" className="ml-auto shrink-0" onClick={() => setError(null)}>
+            <button type="button" aria-label="Dismiss error" className="ml-auto shrink-0" onClick={() => setError(null)}>
               <X size={12} />
             </button>
           </div>
@@ -793,7 +793,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-500">
           <AlertCircle size={14} className="mt-0.5 shrink-0" />
           <span>{error}</span>
-          <button type="button" className="ml-auto shrink-0" onClick={() => setError(null)}>
+          <button type="button" aria-label="Dismiss error" className="ml-auto shrink-0" onClick={() => setError(null)}>
             <X size={12} />
           </button>
         </div>
@@ -1008,6 +1008,7 @@ function JobProgressView({
       <div className="mb-4 flex items-center gap-3">
         <button
           type="button"
+          aria-label="Back to channel picker"
           onClick={onBackToPicker}
           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
         >
@@ -1138,6 +1139,7 @@ function JobDoneView({
       <div className="mb-4 flex items-center gap-3">
         <button
           type="button"
+          aria-label="Back to channel picker"
           onClick={onBackToPicker}
           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
         >

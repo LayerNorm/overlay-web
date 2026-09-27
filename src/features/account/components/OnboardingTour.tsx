@@ -546,10 +546,14 @@ export function OnboardingTour({
 
   if (postTourPhase === 'import-memories') {
     return (
+      // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
+      // react-doctor-disable-next-line react-doctor/no-static-element-interactions
       <div
         className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
         onClick={(e) => { if (e.target === e.currentTarget) finishImportStep() }}
       >
+        {/* Import step is a transient post-tour surface, not a persistent native <dialog>. */}
+        {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
         <div
           role="dialog"
           aria-labelledby="onboarding-import-title"
@@ -611,6 +615,7 @@ export function OnboardingTour({
                 Paste results below to add to Overlay memories
               </p>
               <textarea
+                aria-label="Memory import results"
                 value={importPaste}
                 onChange={(e) => setImportPaste(e.target.value)}
                 placeholder="Paste your memory details here"
@@ -644,10 +649,14 @@ export function OnboardingTour({
   if (postTourPhase === 'connectors') {
     return (
       <>
+        {/* Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls. */}
+        {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
         <div
           className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) finishPostTour() }}
         >
+          {/* Anchored post-tour surface, not a persistent native <dialog>. */}
+          {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
           <div
             role="dialog"
             aria-labelledby="onboarding-connectors-title"
@@ -812,6 +821,8 @@ export function OnboardingTour({
 
       {/* Tooltip card */}
       {tooltipInfo && (
+        // Anchored spotlight tooltip — a native <dialog> cannot position against the target element.
+        // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
           aria-label={`Onboarding step ${currentStep + 1} of ${steps.length}`}

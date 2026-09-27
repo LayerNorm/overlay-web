@@ -323,6 +323,7 @@ export function ModelCatalogSetting({
           <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
             <input
+              aria-label="Search models or providers"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search models or providers"

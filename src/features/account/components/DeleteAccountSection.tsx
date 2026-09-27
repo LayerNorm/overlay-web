@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
-import { usePresence } from '@overlay/ui'
+import { useDialogFocus, usePresence } from '@overlay/ui'
 
 /**
  * Account-deletion UI required by Apple App Store guideline 5.1.1(v).
@@ -24,6 +24,7 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
 
   const [open, setOpen] = useState(false)
   const { mounted: dialogMounted, visible: dialogVisible } = usePresence(open)
+  const dialogRef = useDialogFocus(dialogMounted)
   const [confirmInput, setConfirmInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +48,18 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
     setConfirmInput('')
     setError(null)
   }
+
+  useEffect(() => {
+    if (!dialogMounted || submitting) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      setConfirmInput('')
+      setError(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [dialogMounted, submitting])
 
   async function handleConfirm(): Promise<void> {
     if (submitting) return
@@ -90,16 +103,22 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
       </button>
 
       {dialogMounted ? (
+        // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+        // react-doctor-disable-next-line react-doctor/no-static-element-interactions
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-account-title"
+          role="presentation"
           className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
             dialogVisible ? 'opacity-100' : 'opacity-0'
           }`}
           onClick={close}
         >
+          {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+          {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
           <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
             onClick={(e) => e.stopPropagation()}
             className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
               dialogVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
@@ -142,12 +161,13 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
               This action cannot be undone.
             </p>
 
-            <label className={`mb-1 block text-xs font-medium uppercase tracking-wide ${
+            <label htmlFor="delete-account-confirm" className={`mb-1 block text-xs font-medium uppercase tracking-wide ${
               isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
             }`}>
               Type DELETE to confirm
             </label>
             <input
+              id="delete-account-confirm"
               type="text"
               value={confirmInput}
               onChange={(e) => {

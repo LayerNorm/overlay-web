@@ -152,7 +152,6 @@ export function AppScreenShell({
                   : 'translate-x-full opacity-0 lg:w-0 lg:translate-x-0 lg:border-l-0',
             )}
             style={rightPanelStyle}
-            role="complementary"
             aria-label={rightPanelOverlayLabel}
             aria-hidden={!rightPanelVisible}
           >

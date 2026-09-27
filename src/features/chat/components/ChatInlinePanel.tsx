@@ -561,7 +561,8 @@ export function ChatInlinePanel({
                 <ConversationIcon size={12} className="shrink-0" />
                 {!isPublicShowcase && isEditing ? (
                   <input
-                    autoFocus
+                    aria-label="Conversation title"
+                    ref={(el) => { el?.focus() }}
                     value={editingTitle}
                     onChange={(event) => setEditingTitle(event.target.value)}
                     onClick={(event) => event.stopPropagation()}

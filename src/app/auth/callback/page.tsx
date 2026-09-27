@@ -117,7 +117,7 @@ function AuthCallbackContent() {
                 href={`${APP_PROTOCOL}://auth/callback?code=${code}`}
                 className="text-[#3b82f6] hover:underline"
               >
-                click here
+                open Overlay
               </a>
             </p>
           </>

@@ -232,9 +232,10 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         {/* Provider selector — only for add mode */}
         {!isEdit ? (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider</label>
+            <label htmlFor="provider-id" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider</label>
             <div className="relative">
               <select
+                id="provider-id"
                 value={providerId}
                 onChange={(e) => {
                   setProviderId(e.target.value)
@@ -267,8 +268,9 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         ) : null}
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider name</label>
+          <label htmlFor="provider-name" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider name</label>
           <input
+            id="provider-name"
             type="text"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
@@ -280,10 +282,11 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
 
         {preset?.allowsCustomEndpoint ? (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+            <label htmlFor="provider-endpoint" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
               API base URL
             </label>
             <input
+              id="provider-endpoint"
               type="url"
               value={endpoint}
               onChange={(event) => {
@@ -304,12 +307,13 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
 
         {/* API Key */}
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+          <label htmlFor="provider-api-key" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
             API key{preset?.requiresApiKey === false ? ' (optional)' : ''}
             {isEdit ? ' (leave blank to keep existing)' : ''}
           </label>
           <div className="relative">
             <input
+              id="provider-api-key"
               type={showApiKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
@@ -320,6 +324,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
             />
             <button
               type="button"
+              aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
               onClick={() => setShowApiKey((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted-light)] hover:text-[var(--muted)]"
             >

@@ -254,6 +254,7 @@ function NodeConfigPanel({
         </div>
         <button
           type="button"
+          aria-label="Close node settings"
           onClick={onClose}
           className="rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
         >
@@ -690,6 +691,7 @@ function GraphCanvasInner({
             <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
               <button
                 type="button"
+                aria-label="Undo"
                 onClick={undo}
                 disabled={!historyRef.current.canUndo()}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
@@ -698,6 +700,7 @@ function GraphCanvasInner({
               </button>
               <button
                 type="button"
+                aria-label="Redo"
                 onClick={redo}
                 disabled={!historyRef.current.canRedo()}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"

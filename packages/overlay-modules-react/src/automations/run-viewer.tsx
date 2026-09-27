@@ -214,6 +214,7 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
         </div>
         <input
           type="range"
+          aria-label="Event timeline"
           min={0}
           max={events.length}
           value={currentIndex}

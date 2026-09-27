@@ -98,6 +98,7 @@ export function NotebookHeader({
         ) : null}
         <input
           type="text"
+          aria-label="Note title"
           value={title}
           onChange={onTitleChange}
           onBlur={onTitleBlur}

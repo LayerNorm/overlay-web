@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { usePresence } from '@overlay/ui'
+import { useDialogFocus, usePresence } from '@overlay/ui'
 import type {
   WorkspaceResourceGrant,
   WorkspaceShareAccessRole,
@@ -114,6 +114,7 @@ export function ShareDialog({
     grant.targetType === entry.targetType && grant.targetId === entry.id
   ))), [directory, grants])
   const { mounted, visible } = usePresence(isOpen)
+  const dialogRef = useDialogFocus(mounted)
   if (!mounted || !resource || !resourceType) return null
 
   const shareResource = {
@@ -239,11 +240,16 @@ export function ShareDialog({
   }
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={`fixed inset-0 z-[10080] flex items-center justify-center bg-black/55 p-4 transition-opacity duration-150 ${visible ? 'opacity-100' : 'opacity-0'}`}
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-dialog-title"

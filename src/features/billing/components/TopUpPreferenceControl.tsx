@@ -88,6 +88,7 @@ export function TopUpPreferenceControl({
         </div>
         <input
           type="range"
+          aria-label="Top-up amount"
           min={minDollars}
           max={maxDollars}
           step={stepDollars}

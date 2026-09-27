@@ -501,6 +501,8 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
               <div className="lg:hidden">{renderPaidTierToggle()}</div>
 
               {/* Paid */}
+              {/* Card click pre-selects the tier as a pointer convenience; the inner CTA performs the same action for keyboard users. */}
+              {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions, react-doctor/no-noninteractive-element-interactions, react-doctor/click-events-have-key-events */}
               <section className={tierCardClass(selectedPaidOption.tier)} onClick={() => selectTier(selectedPaidOption.tier)}>
                 <div className="flex min-h-[56px] items-center justify-between gap-3">
                   <div>
@@ -530,6 +532,8 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
               </section>
 
               {/* Choose your own */}
+              {/* Card click pre-selects the tier as a pointer convenience; the inner CTA performs the same action for keyboard users. */}
+              {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions, react-doctor/no-noninteractive-element-interactions, react-doctor/click-events-have-key-events */}
               <section className={`${tierCardClass('custom')} relative overflow-hidden`} onClick={() => selectTier('custom')}>
                 <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
                 <div className="relative flex min-h-[56px] items-center gap-3">
