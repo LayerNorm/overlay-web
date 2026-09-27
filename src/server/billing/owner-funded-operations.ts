@@ -64,7 +64,6 @@ export const OWNER_FUNDED_OPERATIONS = [
 ] as const
 
 export type OwnerFundedOperation = (typeof OWNER_FUNDED_OPERATIONS)[number]
-export type OwnerFundedOperationId = OwnerFundedOperation['id']
 
 const IDEMPOTENCY_REQUIRED_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
 

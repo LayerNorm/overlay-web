@@ -161,4 +161,3 @@ export function createHarnessTranscriptWritable(args: {
   }
 }
 
-export type HarnessTranscriptWritable = ReturnType<typeof createHarnessTranscriptWritable>
