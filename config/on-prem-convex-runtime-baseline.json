@@ -195,9 +195,10 @@
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
-    "src/features/chat/components/ChatExperience.tsx",
+    "src/features/chat/components/DirectMessageExperience.parts.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAgentRunLifecycle.ts",
+    "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
@@ -300,7 +301,6 @@
     }
   ],
   "convexRuntimeImportFiles": [
-    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -311,9 +311,10 @@
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
-    "src/features/chat/components/ChatExperience.tsx",
+    "src/features/chat/components/DirectMessageExperience.parts.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAgentRunLifecycle.ts",
+    "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
