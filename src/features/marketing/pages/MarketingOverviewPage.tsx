@@ -92,7 +92,7 @@ function HomeLandingContent() {
               <div className="hero-grid">
                 <div>
                   <h1 className="rise" style={rise(0)}>
-                    The control panel for your AI workforce.
+                    The control plane for your workspace.
                   </h1>
                   <p className="hero-sub rise" style={rise(1)}>
                     Create, deploy, and manage your agents in one workspace — or
@@ -628,7 +628,7 @@ function HomeLandingContent() {
                 </div>
               </div>
               <div className="visual">
-                <div className="visual-mask" style={{ paddingBottom: 44 }}>
+                <div className="visual-mask">
                   <div className="logo-cloud">
                     <button className="logo-pill" onClick={() => landingToast("Codex — OpenAI")}>
                       <BrandLogo light={LOGO.openai.light} dark={LOGO.openai.dark} />
@@ -642,9 +642,15 @@ function HomeLandingContent() {
                       <BrandLogo light={LOGO.cursor.light} dark={LOGO.cursor.dark} />
                       Cursor
                     </button>
-                    <button className="logo-pill" onClick={() => landingToast("Windsurf")}>
-                      <BrandLogo light={LOGO.windsurf.light} dark={LOGO.windsurf.dark} />
-                      Windsurf
+                    <button className="logo-pill" onClick={() => landingToast("Devin — Cognition")}>
+                      <BrandLogo light={LOGO.devin.light} dark={LOGO.devin.dark} />
+                      Devin <span className="tagline">Cognition</span>
+                    </button>
+                    <button className="logo-pill" onClick={() => landingToast("Hermes — your agent, in the cloud")}>
+                      <span className="cw">
+                        <Creature shape="cloud" color="#0284c7" size={16} animated={false} />
+                      </span>
+                      Hermes <span className="tagline">cloud agent</span>
                     </button>
                     <button className="logo-pill" onClick={() => landingToast("Copilot — GitHub")}>
                       <BrandLogo light={EXTRA_LOGOS.copilot.light} dark={EXTRA_LOGOS.copilot.dark} />
@@ -800,8 +806,9 @@ function HomeLandingContent() {
                 Own the work they do.
               </h2>
               <p>
-                One workspace for the workforce you&apos;re building. Built by
-                LayerNorm.
+                One workspace for the workforce you&apos;re building.
+                <br />
+                Built by LayerNorm.
               </p>
               <div className="hero-ctas">
                 <Link className="btn btn-primary" href={webAppHref}>

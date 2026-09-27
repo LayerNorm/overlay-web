@@ -252,7 +252,8 @@ export const rotateEnvironmentCredentialByServer = mutation({
     requireServerSecret(args.serverSecret)
     assertCredentialClaims(args.credential, args.now)
     const current = await ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.currentCredentialId)).unique()
-    if (!current || current.revokedAt || current.workspaceId !== args.credential.workspaceId || current.environmentId !== args.credential.environmentId || current.audience !== args.credential.audience || current.methods.length !== args.credential.methods.length || current.methods.some(method => !args.credential.methods.includes(method))) return null
+    const credentialMethods = new Set(args.credential.methods)
+    if (!current || current.revokedAt || current.workspaceId !== args.credential.workspaceId || current.environmentId !== args.credential.environmentId || current.audience !== args.credential.audience || current.methods.length !== args.credential.methods.length || current.methods.some(method => !credentialMethods.has(method))) return null
     await requireActiveEnvironment(ctx, current.workspaceId, current.environmentId)
     const [idCollision, hashCollision, nonceCollision] = await Promise.all([
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.credential.id)).unique(),

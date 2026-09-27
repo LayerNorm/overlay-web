@@ -4,10 +4,41 @@
   "name": "Overlay",
   "description": "Documentation for Overlay across web, desktop, and self-hosted deployments.",
   "colors": {
-    "primary": "#111827"
+    "primary": "#0a0a0a",
+    "light": "#f5f5f5",
+    "dark": "#27272a"
   },
+  "logo": {
+    "light": "/assets/overlay-lockup-light.svg",
+    "dark": "/assets/overlay-lockup-dark.svg",
+    "href": "https://getoverlay.io"
+  },
+  "favicon": "/assets/overlay-mark.svg",
   "appearance": {
     "default": "system"
+  },
+  "background": {
+    "color": {
+      "light": "#fafafa",
+      "dark": "#09090b"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Libre Baskerville",
+      "weight": 400
+    }
+  },
+  "navbar": {
+    "links": [
+      { "label": "Blog", "href": "https://getoverlay.io/blog" },
+      { "label": "Pricing", "href": "https://getoverlay.io/pricing" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://getoverlay.io/auth/sign-in"
+    }
   },
   "icons": {
     "library": "lucide"
@@ -35,23 +66,38 @@
         "group": "Desktop",
         "pages": [
           "desktop/overview",
-          "desktop/download-install",
-          "desktop/system-requirements",
-          "desktop/sign-in",
-          "desktop/self-hosted-server",
-          "desktop/build-from-source",
-          "desktop/local-vs-cloud",
-          "desktop/chat-permissions",
-          "desktop/macos-permissions",
-          "desktop/browser-security",
-          "desktop/transcription",
-          "desktop/updates",
-          "desktop/uninstall",
-          "desktop/privacy-diagnostics",
-          "desktop/security-reporting",
-          "desktop/troubleshooting",
-          "desktop/release-verification",
-          "desktop/changelog"
+          {
+            "group": "Get started",
+            "pages": [
+              "desktop/download-install",
+              "desktop/system-requirements",
+              "desktop/sign-in",
+              "desktop/self-hosted-server",
+              "desktop/build-from-source"
+            ]
+          },
+          {
+            "group": "Using the app",
+            "pages": [
+              "desktop/local-vs-cloud",
+              "desktop/chat-permissions",
+              "desktop/macos-permissions",
+              "desktop/browser-security",
+              "desktop/transcription"
+            ]
+          },
+          {
+            "group": "Maintenance and security",
+            "pages": [
+              "desktop/updates",
+              "desktop/uninstall",
+              "desktop/privacy-diagnostics",
+              "desktop/security-reporting",
+              "desktop/troubleshooting",
+              "desktop/release-verification",
+              "desktop/changelog"
+            ]
+          }
         ]
       },
       {
@@ -87,11 +133,61 @@
       },
       {
         "group": "Develop",
-        "pages": ["develop/architecture", "develop/agentic-development", "develop/worktree-staging-qa", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth", "develop/api-route-catalog", "develop/compact-api-route-catalog"]
+        "pages": [
+          "develop/architecture",
+          {
+            "group": "Workflow",
+            "pages": [
+              "develop/agentic-development",
+              "develop/worktree-staging-qa",
+              "develop/convex-workflow",
+              "develop/local-integrations",
+              "develop/customization",
+              "develop/feature-modules"
+            ]
+          },
+          {
+            "group": "API",
+            "pages": [
+              "develop/api-source-of-truth",
+              "develop/api-route-catalog",
+              "develop/compact-api-route-catalog"
+            ]
+          }
+        ]
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/self-hosted-convex", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/cloud-managed", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/security", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/release-gates", "deploy-operate/tenancy", "deploy-operate/docs-hosting"]
+        "pages": [
+          "deploy-operate/self-hosting",
+          {
+            "group": "Self-hosting",
+            "pages": [
+              "deploy-operate/one-command-install",
+              "deploy-operate/self-hosted-convex",
+              "deploy-operate/docker-ec2",
+              "deploy-operate/aws",
+              "deploy-operate/cloud-managed",
+              "deploy-operate/enterprise-source-install"
+            ]
+          },
+          {
+            "group": "Enterprise",
+            "pages": [
+              "deploy-operate/enterprise-admin-onboarding",
+              "deploy-operate/enterprise-security-launch-checklist",
+              "deploy-operate/compliance",
+              "deploy-operate/security",
+              "deploy-operate/tenancy",
+              "deploy-operate/executor-integrations",
+              "deploy-operate/better-auth-onprem-runbook"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": ["deploy-operate/release-gates", "deploy-operate/docs-hosting"]
+          }
+        ]
       },
       {
         "group": "API Reference",
@@ -119,16 +215,16 @@
         ]
       },
       {
+        "group": "Help",
+        "pages": ["help/index", "help/chat", "help/memory", "help/files", "help/projects", "help/automations", "help/settings", "help/faq"]
+      },
+      {
         "group": "Legal",
         "pages": ["legal/licensing", "legal/self-hosting-obligations", "legal/security-reporting"]
       },
       {
         "group": "Changelog",
         "pages": ["changelog"]
-      },
-      {
-        "group": "Help",
-        "pages": ["help/index", "help/chat", "help/memory", "help/files", "help/projects", "help/automations", "help/settings", "help/faq"]
       }
     ]
   }

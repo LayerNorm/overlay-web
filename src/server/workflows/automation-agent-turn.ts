@@ -205,11 +205,10 @@ export async function runAutomationAgentTurn(
       const toolResultContent: Array<Record<string, unknown>> = []
       const stepToolResults: Array<Record<string, unknown>> = []
       const stepContent: Array<Record<string, unknown>> = []
+      const toolDefinitionsByName = new Map(resolvedPlan.toolDefinitions.map((entry) => [entry.name, entry]))
       for (const toolCall of call.toolCalls) {
         stepContent.push({ type: 'tool-call', ...toolCall })
-        const definition = resolvedPlan.toolDefinitions.find(
-          (entry) => entry.name === toolCall.toolName,
-        )
+        const definition = toolDefinitionsByName.get(toolCall.toolName)
         const context = {
           ...resolvedPlan.toolingContext,
           automationRunId,

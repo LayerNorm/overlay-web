@@ -213,9 +213,13 @@ export function useChatConversationLoader({
 
       const exchangeModesFromServer = exchanges.map((e) => e.mode)
       const uniqueModels: string[] = []
+      const seenModels = new Set<string>()
       for (const ex of exchanges) {
         for (const { model } of ex.responses) {
-          if (!uniqueModels.includes(model)) uniqueModels.push(model)
+          if (!seenModels.has(model)) {
+            seenModels.add(model)
+            uniqueModels.push(model)
+          }
         }
       }
 

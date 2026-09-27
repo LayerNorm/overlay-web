@@ -350,6 +350,8 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
     props.setShowAttachMenu((value) => !value)
   }
 
+  const selectedToolIdSet = new Set(props.selectedToolIds)
+
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
@@ -371,7 +373,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
             />
           )}
           {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
-            const active = props.selectedToolIds.includes(tool.id)
+            const active = selectedToolIdSet.has(tool.id)
             const Icon = tool.Icon
             return (
               <AttachMenuButton
