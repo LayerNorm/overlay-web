@@ -452,7 +452,7 @@ export function MentionPopup({
   if (!position) return null
 
   const selectedCategoryMeta = selectedCategory
-    ? CATEGORY_ORDER.find((c) => c.type === selectedCategory)
+    ? (CATEGORY_ORDER.find((c) => c.type === selectedCategory) ?? null)
     : null
 
   const isEmptyResults = rows.length === 0 || (rows.length === 1 && rows[0]!.kind === 'upload')
