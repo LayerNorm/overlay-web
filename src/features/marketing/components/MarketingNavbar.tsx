@@ -46,6 +46,209 @@ function activeLinkClass(active: boolean) {
   return active ? "text-[var(--foreground)]" : mutedLink;
 }
 
+type LandingTheme = ReturnType<typeof useLandingThemeOptional>;
+
+type NavTextStyle = { fontFamily: string };
+
+function DesktopNavLinks({
+  pathname,
+  navText,
+  serif,
+}: {
+  pathname: string;
+  navText: string;
+  serif: NavTextStyle;
+}) {
+  return (
+    <div className="hidden items-center gap-6 md:flex">
+      {PRIMARY_LINKS.map((item) =>
+        item.external ? (
+          <a
+            key={item.label}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${navText} transition-colors ${mutedLink}`}
+            style={serif}
+          >
+            {item.label}
+          </a>
+        ) : (
+          <Link
+            key={item.label}
+            href={item.href}
+            className={`${navText} transition-colors ${activeLinkClass(item.match(pathname))}`}
+            style={serif}
+          >
+            {item.label}
+          </Link>
+        ),
+      )}
+    </div>
+  );
+}
+
+function DesktopActions({
+  landing,
+  navText,
+  serif,
+  appHref,
+}: {
+  landing: LandingTheme;
+  navText: string;
+  serif: NavTextStyle;
+  appHref: string;
+}) {
+  return (
+    <div className="hidden items-center gap-2 md:flex">
+      {landing ? (
+        <button
+          type="button"
+          onClick={landing.toggleLandingTheme}
+          aria-label="Toggle theme"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+        >
+          {landing.landingTheme === "dark" ? (
+            <SunMedium className="h-4 w-4" />
+          ) : (
+            <MoonStar className="h-4 w-4" />
+          )}
+        </button>
+      ) : null}
+      <a
+        href={MARKETING_GITHUB_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="GitHub"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+      >
+        <Github className="h-4 w-4" />
+      </a>
+      <Link
+        href={appHref}
+        className={`inline-flex items-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
+        style={serif}
+      >
+        Get Started
+      </Link>
+    </div>
+  );
+}
+
+function MobileNavMenu({
+  open,
+  pathname,
+  isAuthenticated,
+  landing,
+  navText,
+  serif,
+  appHref,
+  onClose,
+}: {
+  open: boolean;
+  pathname: string;
+  isAuthenticated: boolean;
+  landing: LandingTheme;
+  navText: string;
+  serif: NavTextStyle;
+  appHref: string;
+  onClose: () => void;
+}) {
+  return (
+    <AnimatePresence initial={false}>
+      {open ? (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="overflow-hidden border-t border-[var(--border)] bg-[var(--sidebar-surface)] px-4 py-3 md:hidden"
+        >
+          <div className="grid gap-2">
+            {PRIMARY_LINKS.map((item) =>
+              item.external ? (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onClose}
+                  className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
+                  style={serif}
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  onClick={onClose}
+                  className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
+                    item.match(pathname)
+                      ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                      : mutedLink
+                  }`}
+                  style={serif}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
+            <a
+              href={MARKETING_GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={onClose}
+              className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
+              style={serif}
+            >
+              GitHub
+            </a>
+            {isAuthenticated ? (
+              <Link
+                href="/app/settings?section=account"
+                onClick={onClose}
+                className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
+                style={serif}
+              >
+                Account
+              </Link>
+            ) : null}
+
+            <div className="mt-1 flex items-center gap-2">
+              {landing ? (
+                <button
+                  type="button"
+                  onClick={landing.toggleLandingTheme}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--border)] px-4 py-2.5 ${navText} text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]`}
+                  style={serif}
+                >
+                  {landing.landingTheme === "dark" ? (
+                    <SunMedium className="h-4 w-4" />
+                  ) : (
+                    <MoonStar className="h-4 w-4" />
+                  )}
+                  <span>
+                    {landing.landingTheme === "dark" ? "Light" : "Dark"}
+                  </span>
+                </button>
+              ) : null}
+              <Link
+                href={appHref}
+                onClick={onClose}
+                className={`inline-flex flex-1 items-center justify-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2.5 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
+                style={serif}
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
 /**
  * Single navbar shared across all outside-the-app surfaces. Free-floating on
  * the page field (no bottom divider) with a translucent paper fill so content
@@ -62,6 +265,7 @@ export function MarketingNavbar() {
   const appHref = getMarketingAppHref(isAuthenticated);
   const serif = marketingSerifStyle();
   const navText = marketingNavText();
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <header className="sticky top-0 z-50 bg-[color:color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
@@ -70,7 +274,7 @@ export function MarketingNavbar() {
           <Link
             href="/home"
             className="flex min-w-0 items-center gap-2"
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={closeMobileMenu}
           >
             <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
             <span
@@ -81,64 +285,14 @@ export function MarketingNavbar() {
             </span>
           </Link>
 
-          <div className="hidden items-center gap-6 md:flex">
-            {PRIMARY_LINKS.map((item) =>
-              item.external ? (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${navText} transition-colors ${mutedLink}`}
-                  style={serif}
-                >
-                  {item.label}
-                </a>
-              ) : (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`${navText} transition-colors ${activeLinkClass(item.match(pathname))}`}
-                  style={serif}
-                >
-                  {item.label}
-                </Link>
-              ),
-            )}
-          </div>
+          <DesktopNavLinks pathname={pathname} navText={navText} serif={serif} />
 
-          <div className="hidden items-center gap-2 md:flex">
-            {landing ? (
-              <button
-                type="button"
-                onClick={landing.toggleLandingTheme}
-                aria-label="Toggle theme"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-              >
-                {landing.landingTheme === "dark" ? (
-                  <SunMedium className="h-4 w-4" />
-                ) : (
-                  <MoonStar className="h-4 w-4" />
-                )}
-              </button>
-            ) : null}
-            <a
-              href={MARKETING_GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GitHub"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-            >
-              <Github className="h-4 w-4" />
-            </a>
-            <Link
-              href={appHref}
-              className={`inline-flex items-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
-              style={serif}
-            >
-              Get Started
-            </Link>
-          </div>
+          <DesktopActions
+            landing={landing}
+            navText={navText}
+            serif={serif}
+            appHref={appHref}
+          />
 
           <button
             type="button"
@@ -158,97 +312,16 @@ export function MarketingNavbar() {
         </nav>
       </div>
 
-      <AnimatePresence initial={false}>
-        {mobileMenuOpen ? (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="overflow-hidden border-t border-[var(--border)] bg-[var(--sidebar-surface)] px-4 py-3 md:hidden"
-          >
-            <div className="grid gap-2">
-              {PRIMARY_LINKS.map((item) =>
-                item.external ? (
-                  <a
-                    key={item.label}
-                    href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
-                    style={serif}
-                  >
-                    {item.label}
-                  </a>
-                ) : (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
-                      item.match(pathname)
-                        ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
-                        : mutedLink
-                    }`}
-                    style={serif}
-                  >
-                    {item.label}
-                  </Link>
-                ),
-              )}
-              <a
-                href={MARKETING_GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
-                style={serif}
-              >
-                GitHub
-              </a>
-              {isAuthenticated ? (
-                <Link
-                  href="/app/settings?section=account"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`rounded-xl px-4 py-3 ${navText} transition-colors ${mutedLink}`}
-                  style={serif}
-                >
-                  Account
-                </Link>
-              ) : null}
-
-              <div className="mt-1 flex items-center gap-2">
-                {landing ? (
-                  <button
-                    type="button"
-                    onClick={landing.toggleLandingTheme}
-                    className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--border)] px-4 py-2.5 ${navText} text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]`}
-                    style={serif}
-                  >
-                    {landing.landingTheme === "dark" ? (
-                      <SunMedium className="h-4 w-4" />
-                    ) : (
-                      <MoonStar className="h-4 w-4" />
-                    )}
-                    <span>
-                      {landing.landingTheme === "dark" ? "Light" : "Dark"}
-                    </span>
-                  </button>
-                ) : null}
-                <Link
-                  href={appHref}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`inline-flex flex-1 items-center justify-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2.5 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
-                  style={serif}
-                >
-                  Get Started
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <MobileNavMenu
+        open={mobileMenuOpen}
+        pathname={pathname}
+        isAuthenticated={isAuthenticated}
+        landing={landing}
+        navText={navText}
+        serif={serif}
+        appHref={appHref}
+        onClose={closeMobileMenu}
+      />
     </header>
   );
 }
