@@ -13,9 +13,8 @@ import {
   PENDING_LEGAL_ACCEPTANCE_COOKIE,
 } from '@/server/legal/pending-legal-acceptance'
 
-// OAuth initiation endpoint: it must set the pending-legal-acceptance and
-// PKCE state cookies before redirecting; CSRF is handled by the OAuth
-// state/code-challenge parameters, not by method choice.
+// This GET is the OAuth entry point: its response is a 302 to the identity
+// provider, so the pending-legal-acceptance cookie must be written here.
 // react-doctor-disable-next-line react-doctor/nextjs-no-side-effect-in-get-handler
 export async function GET(
   request: NextRequest,

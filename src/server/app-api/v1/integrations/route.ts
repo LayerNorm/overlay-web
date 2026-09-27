@@ -49,9 +49,9 @@ function catalogErrorMessage(error: unknown): string {
     : 'Failed to load integrations'
 }
 
-// The GET performs an idempotent legacy-connector backfill: workspaceConnectors.insert
-// upserts on (workspaceId, userId, providerKey), so repeated/prefetched calls are
-// no-ops once the mapping exists.
+// The workspaceConnectors.insert calls below are an idempotent lazy backfill of
+// legacy connector→workspace mappings (insert-if-missing). TODO: replace with a
+// one-time data migration so GET has no writes.
 // react-doctor-disable-next-line react-doctor/nextjs-no-side-effect-in-get-handler
 export async function GET(
   request: NextRequest,

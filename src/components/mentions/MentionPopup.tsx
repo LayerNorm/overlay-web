@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import {
   BookOpen,
@@ -36,6 +36,14 @@ const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> 
   { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
 ]
+
+const subscribeToViewportResize = (onStoreChange: () => void) => {
+  window.addEventListener('resize', onStoreChange)
+  return () => window.removeEventListener('resize', onStoreChange)
+}
+const getViewportWidth = () => window.innerWidth
+const getViewportHeight = () => window.innerHeight
+const getServerViewportSize = () => Number.POSITIVE_INFINITY
 
 function CategoryIcon({ icon, className }: { icon: string; className?: string }) {
   const Icon = ICON_MAP[icon]
@@ -117,20 +125,24 @@ function rowKey(row: Row): string {
   return `${row.categoryType}-${row.item.id}`
 }
 
-function popupStyle(position: { x: number; y: number }): React.CSSProperties {
+function popupStyle(
+  position: { x: number; y: number },
+  viewportWidth: number,
+  viewportHeight: number,
+): React.CSSProperties {
   const popupWidth = 288
   const popupHeight = 320
   const viewportPadding = 8
   const left = Math.min(
     Math.max(viewportPadding, position.x),
-    Math.max(viewportPadding, window.innerWidth - popupWidth - viewportPadding),
+    Math.max(viewportPadding, viewportWidth - popupWidth - viewportPadding),
   )
   const top = position.y + 18
-  const shouldOpenUp = window.innerHeight - top < popupHeight && position.y > popupHeight
+  const shouldOpenUp = viewportHeight - top < popupHeight && position.y > popupHeight
   return {
     left: `${left}px`,
     ...(shouldOpenUp
-      ? { bottom: `${Math.max(viewportPadding, window.innerHeight - position.y + 8)}px` }
+      ? { bottom: `${Math.max(viewportPadding, viewportHeight - position.y + 8)}px` }
       : { top: `${top}px` }),
   }
 }
@@ -449,6 +461,9 @@ export function MentionPopup({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [onClose])
 
+  const viewportWidth = useSyncExternalStore(subscribeToViewportResize, getViewportWidth, getServerViewportSize)
+  const viewportHeight = useSyncExternalStore(subscribeToViewportResize, getViewportHeight, getServerViewportSize)
+
   if (!position) return null
 
   const selectedCategoryMeta = selectedCategory
@@ -461,7 +476,7 @@ export function MentionPopup({
     <div
       ref={popupRef}
       className="overlay-pop-in fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl flex flex-col"
-      style={popupStyle(position)}
+      style={popupStyle(position, viewportWidth, viewportHeight)}
     >
       {/* Breadcrumb header when in category view */}
       {selectedCategoryMeta && (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
   Check,
@@ -499,7 +499,7 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
   // The name users see in the providers list and model picker. Pre-filled from
   // the preset label, or derived from the endpoint host for custom providers —
   // never overwrites a name the user typed.
-  const derivedNameRef = useRef('')
+  const [autoDisplayName, setAutoDisplayName] = useState('')
   const endpointHost = useMemo(() => {
     try {
       return new URL(endpoint.trim()).hostname.replace(/^www\./, '')
@@ -509,13 +509,11 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
   }, [endpoint])
   useEffect(() => {
     if (!preset || isEdit) return
-    setDisplayName((current) => {
-      if (current && current !== preset.label && current !== derivedNameRef.current) return current
-      const next = preset.allowsCustomEndpoint && endpointHost ? endpointHost : preset.label
-      derivedNameRef.current = preset.allowsCustomEndpoint ? endpointHost : ''
-      return next
-    })
-  }, [preset, endpointHost, isEdit])
+    const next = preset.allowsCustomEndpoint && endpointHost ? endpointHost : preset.label
+    setDisplayName((current) =>
+      current && current !== preset.label && current !== autoDisplayName ? current : next)
+    setAutoDisplayName(preset.allowsCustomEndpoint ? endpointHost : '')
+  }, [preset, endpointHost, isEdit, autoDisplayName])
 
   const handleProviderChange = useCallback((nextProviderId: string) => {
     setProviderId(nextProviderId)

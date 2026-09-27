@@ -375,7 +375,7 @@ function useSlackImportPanel() {
         setOauthPolling(false)
       } else if (data.redirectUrl) {
         if (oauthTab) oauthTab.location.href = data.redirectUrl
-        else window.open(data.redirectUrl, '_blank')
+        else window.open(data.redirectUrl, '_blank', 'noopener,noreferrer')
 
         // Poll for connection status every 3s for up to 5 minutes
         let pollCount = 0
