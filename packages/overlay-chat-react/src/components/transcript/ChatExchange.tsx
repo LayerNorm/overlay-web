@@ -252,10 +252,18 @@ export function ChatExchange({
                   return (
                     <div
                       key={name}
+                      role={clickable ? 'button' : undefined}
+                      tabIndex={clickable ? 0 : undefined}
                       className={`flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm ${clickable ? 'cursor-pointer hover:bg-[var(--surface-subtle)] transition-colors' : ''}`}
                       onClick={() => {
                         if (clickable) onOpenFilePreview!(name, attachment.fileIds)
                       }}
+                      onKeyDown={clickable ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onOpenFilePreview!(name, attachment.fileIds)
+                        }
+                      } : undefined}
                       title={clickable ? 'Click to preview' : undefined}
                     >
                       <FileText size={13} className="shrink-0 text-[var(--muted)]" />

@@ -2,30 +2,14 @@
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
-import {
-  Brain,
-  CheckSquare,
-  Copy,
-  Loader2,
-  Plus,
-  Square,
-  Trash2,
-  UserRound,
-  X,
-} from "lucide-react";
-import { ListboxSelect } from "@overlay/ui/primitives";
-import { overlayAppClient } from "@/shared/app/overlay-app-client";
-import { unwrapPaginatedData } from "@/shared/api/pagination";
-import { MemoriesLoadingState } from "./MemoriesLoadingState";
-import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
+import { ListboxSelect } from '@overlay/ui/primitives'
+import { useDialogFocus } from '@overlay/ui'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { MemoriesLoadingState } from './MemoriesLoadingState'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 interface MemoryListItem {
   key: string;
@@ -144,28 +128,31 @@ export default function MemoriesView({
   const { activeWorkspaceId } = useWorkspace();
   const [memories, setMemories] = useState<Memory[]>([]);
   /** Set when a chat source citation deep-links here via `?memory=<id>`. */
-  const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(
-    null,
-  );
-  const jumpedMemoryIdRef = useRef<string | null>(null);
-  const [members, setMembers] = useState<
-    Array<{ name: string; principalId: string; isAgent?: boolean }>
-  >([]);
-  const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] =
-    useState("all");
-  const loadRequestIdRef = useRef(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [addText, setAddText] = useState("");
-  const [addType, setAddType] = useState<Memory["type"]>("fact");
-  const [addImportance, setAddImportance] = useState("3");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(
-    null,
-  );
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(null)
+  const jumpedMemoryIdRef = useRef<string | null>(null)
+  const [members, setMembers] = useState<Array<{ name: string; principalId: string; isAgent?: boolean }>>([])
+  const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
+  const loadRequestIdRef = useRef(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+  const addDialogRef = useDialogFocus(showAdd)
+
+  useEffect(() => {
+    if (!showAdd) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowAdd(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [showAdd])
+  const [addText, setAddText] = useState('')
+  const [addType, setAddType] = useState<Memory['type']>('fact')
+  const [addImportance, setAddImportance] = useState('3')
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const actionButtonClass =
     "flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]";
   const dialogButtonClass =
@@ -466,32 +453,33 @@ export default function MemoriesView({
       ) : null}
 
       {showAdd && (
+        // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
+        // react-doctor-disable-next-line react-doctor/no-static-element-interactions
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
           onClick={(event) => {
             if (event.target === event.currentTarget) setShowAdd(false);
           }}
         >
-          <div className="w-[520px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+          {/* Inline modal keeps a lightweight form flow; focus trapped via useDialogFocus. */}
+          {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
+          <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="add-memory-title" className="w-[520px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-[var(--foreground)]">
-                Add memory
-              </h3>
+              <h3 id="add-memory-title" className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
               <button
-                onClick={() => {
-                  setShowAdd(false);
-                  setSaveError(null);
-                }}
+                aria-label="Close"
+                onClick={() => { setShowAdd(false); setSaveError(null) }}
                 className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               >
                 <X size={14} />
               </button>
             </div>
             <textarea
+              aria-label="Memory content"
               value={addText}
               onChange={(event) => setAddText(event.target.value)}
               placeholder="Type or paste memory content..."
-              autoFocus
+              data-autofocus
               rows={5}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && event.metaKey) void handleAdd();
@@ -626,6 +614,7 @@ export default function MemoriesView({
                           {selectionMode && memory.canDelete && (
                             <button
                               type="button"
+                              aria-label={isSelected ? 'Deselect memory' : 'Select memory'}
                               onClick={() => toggleSelected(memory.memoryId)}
                               className="mt-0.5 shrink-0 text-[var(--muted)]"
                             >

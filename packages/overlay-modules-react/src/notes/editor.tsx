@@ -1273,6 +1273,7 @@ export function CanonicalNotebookEditor({
           disabled: agentRunning,
         }) ?? (
           <textarea
+            aria-label="Ask about this note"
             value={agentInput}
             onChange={(event) => setAgentInput(event.target.value)}
             disabled={agentRunning}

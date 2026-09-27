@@ -846,6 +846,7 @@ export function LandingAgentField() {
       {cards.map((c) => (
         <button
           key={c.name}
+          tabIndex={-1}
           className={c.className}
           style={c.style}
           onClick={() => landingToast(c.toast)}
@@ -865,6 +866,7 @@ export function LandingAgentField() {
       {pills.map((p) => (
         <button
           key={p.name}
+          tabIndex={-1}
           className={p.className}
           style={p.style}
           onClick={() => landingToast(p.toast)}

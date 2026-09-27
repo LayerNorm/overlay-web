@@ -24,6 +24,8 @@ export function SignInCornerPopover({ onDismiss, isClosing = false, ssoEnabled =
   const visible = mounted && !isClosing
 
   return (
+    // Anchored non-modal popover — a native <dialog> cannot anchor to the corner while leaving the page interactive.
+    // react-doctor-disable-next-line react-doctor/prefer-html-dialog
     <div
       style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(6px)', transition: 'opacity 200ms ease, transform 200ms ease' }}
       className="fixed bottom-5 right-5 z-50 w-[320px] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl"

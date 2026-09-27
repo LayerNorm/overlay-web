@@ -87,9 +87,14 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.55)' }}
-      aria-hidden
     >
+      {/* Inner stopPropagation only guards future backdrop dismissal; no interactive role is claimed. */}
+      {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
+      {/* Bottom-anchored mobile welcome card — a native <dialog> cannot anchor to the viewport bottom non-modally. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        role="dialog"
+        aria-label="Welcome to Overlay"
         onClick={(e) => e.stopPropagation()}
         className="absolute bottom-6 left-4 right-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
       >

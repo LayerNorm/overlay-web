@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
 import { cn } from '../../utils/cn'
 import { usePresence } from '../../hooks/usePresence'
 
@@ -36,6 +37,7 @@ export function ConfirmDialog({
   }, [isOpen, onCancel, onConfirm])
 
   const { mounted, visible } = usePresence(isOpen)
+  const dialogRef = useDialogFocus(mounted)
   if (!mounted) return null
 
   const confirmClass = destructive
@@ -43,6 +45,8 @@ export function ConfirmDialog({
     : 'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or Cancel.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={cn(
         'fixed inset-0 z-[10070] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)]',
@@ -52,7 +56,10 @@ export function ConfirmDialog({
         if (e.target === e.currentTarget && !busy) onCancel()
       }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

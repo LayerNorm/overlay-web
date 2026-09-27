@@ -310,6 +310,7 @@ export function ChatComposer({
             ) : (
               <button
                 type="button"
+                aria-label="Send message"
                 onClick={onSubmit}
                 disabled={disabled || loading || !canSend}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"

@@ -142,6 +142,7 @@ function AutoTextarea({
   return (
     <textarea
       ref={ref}
+      aria-label="Prompt"
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
@@ -450,6 +451,7 @@ function TextDraftCardBody({
     return (
       <div className="space-y-3 px-5 py-5">
         <input
+          aria-label="Card title"
           value={data.title ?? ''}
           onChange={(event) => onChange({ ...data, title: event.target.value || undefined })}
           onBlur={onBlur}

@@ -84,23 +84,16 @@ export function AutomationsInlineList({
                 : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
             }`}
           >
-            <button
-              type="button"
-              disabled={isDeleting || pendingNavId === automation._id}
-              onClick={() => {
-                if (isEditing) return
-                onNavigateAutomation(automation, href)
-              }}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5 text-left disabled:cursor-default disabled:opacity-50"
-            >
-              {pendingNavId === automation._id ? (
-                <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
-              ) : (
-                <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
-              )}
-              {isEditing ? (
+            {isEditing ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5">
+                {pendingNavId === automation._id ? (
+                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
+                ) : (
+                  <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
+                )}
                 <input
-                  autoFocus
+                  aria-label="Automation name"
+                  ref={(el) => { el?.focus() }}
                   value={editingAutomationName}
                   onChange={(event) => onEditingNameChange(event.target.value)}
                   onClick={(event) => event.stopPropagation()}
@@ -116,10 +109,22 @@ export function AutomationsInlineList({
                   onBlur={() => onCommitRename(automation)}
                   className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
                 />
-              ) : (
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isDeleting || pendingNavId === automation._id}
+                onClick={() => onNavigateAutomation(automation, href)}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5 text-left disabled:cursor-default disabled:opacity-50"
+              >
+                {pendingNavId === automation._id ? (
+                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
+                ) : (
+                  <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
+                )}
                 <span className="flex-1 truncate text-left">{automationLabel}</span>
-              )}
-            </button>
+              </button>
+            )}
             {!isEditing ? (
               <>
                 {isConfirmingDelete ? (

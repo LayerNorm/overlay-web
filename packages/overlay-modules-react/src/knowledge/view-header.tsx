@@ -54,6 +54,7 @@ function SelectedFileHeader({
       </button>
       <input
         type="text"
+        aria-label="File title"
         value={fileTitle}
         onChange={(e) => onTitleChange(e.target.value)}
         placeholder="File title..."

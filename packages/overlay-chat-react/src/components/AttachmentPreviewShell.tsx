@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Maximize2, PanelRightOpen, X } from 'lucide-react'
-import { cn, usePresence } from '@overlay/ui'
+import { cn, useDialogFocus, usePresence } from '@overlay/ui'
 
 export type AttachmentPreviewMode = 'panel' | 'dialog'
 
@@ -94,13 +94,25 @@ export function AttachmentPreviewDialog({
   renderViewer: (props: AttachmentViewerRenderProps) => ReactNode
 }) {
   const { mounted, visible } = usePresence(open, 300)
+  const dialogRef = useDialogFocus(mounted)
   // Keep the last preview while the exit animation plays (same pattern as DraftReviewModal).
   const [cachedPreview, setCachedPreview] = useState(preview)
   if (preview && preview !== cachedPreview) setCachedPreview(preview)
   const activePreview = preview ?? cachedPreview
+  useEffect(() => {
+    if (!mounted) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mounted, onClose])
+
   if (!mounted || !activePreview) return null
 
   return (
+    // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close button.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={cn(
         'fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4 transition-opacity duration-300 ease-[var(--overlay-ease)]',
@@ -108,7 +120,10 @@ export function AttachmentPreviewDialog({
       )}
       onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
+      {/* Custom modal keeps portal-free mount + enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="Attachment preview"
         aria-modal="true"

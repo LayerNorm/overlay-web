@@ -65,6 +65,7 @@ export function ShortcutsSettings() {
     <div className="flex flex-col gap-4">
       <input
         type="search"
+        aria-label="Search shortcuts"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search shortcuts..."

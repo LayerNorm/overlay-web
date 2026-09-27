@@ -1,5 +1,6 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import { useEffect, type HTMLAttributes, type ReactNode } from 'react'
 import { cn } from '../../utils/cn'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
 import { usePresence } from '../../hooks/usePresence'
 
 export interface DialogFrameProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
@@ -23,9 +24,22 @@ export function DialogFrame({
   ...props
 }: DialogFrameProps) {
   const { mounted, visible } = usePresence(open)
+  const dialogRef = useDialogFocus(mounted)
+
+  useEffect(() => {
+    if (!mounted) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange?.(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mounted, onOpenChange])
+
   if (!mounted) return null
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={cn(
         'fixed inset-0 z-[10070] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)]',
@@ -35,7 +49,10 @@ export function DialogFrame({
         if (event.target === event.currentTarget) onOpenChange?.(false)
       }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         className={cn(

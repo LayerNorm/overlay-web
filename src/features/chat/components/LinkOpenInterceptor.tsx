@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { ExternalLink, PanelRight } from 'lucide-react'
 import type { LinkOpenPreference } from '@overlay/app-core'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { useDialogFocus } from '@overlay/ui'
 
 /**
  * Marks a region whose links participate in the open-in-Overlay flow. Anything
@@ -45,6 +46,7 @@ export function LinkOpenInterceptor({
   onOpenInOverlay: (url: string, title?: string) => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(null)
+  const dialogRef = useDialogFocus(choice !== null)
 
   const close = useCallback(() => setChoice(null), [])
 
@@ -109,8 +111,13 @@ export function LinkOpenInterceptor({
 
   return createPortal(
     <>
+      {/* Scrim is a pointer-only click catcher; keyboard users dismiss via Escape. */}
+      {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
       <div className="fixed inset-0 z-[450]" onMouseDown={close} />
+      {/* Anchored chooser popover — a native <dialog> cannot position at the clicked link. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="Open link"
         style={{ position: 'fixed', top, left, width: CHOOSER_WIDTH, zIndex: 451 }}

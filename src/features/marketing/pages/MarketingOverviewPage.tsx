@@ -69,6 +69,7 @@ function LearnMore({ href = MARKETING_DOCS_URL }: { href?: string }) {
     <a
       className="learn-more"
       href={href}
+      aria-label="Learn more in the Overlay docs"
       target={href.startsWith("http") ? "_blank" : undefined}
       rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
     >

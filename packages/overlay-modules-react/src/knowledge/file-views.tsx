@@ -86,8 +86,6 @@ export function FileTreeRow({
   return (
     <div>
       <div
-        role="button"
-        tabIndex={0}
         draggable={!bulkSelectMode}
         onDragStart={(event) => {
           event.dataTransfer.setData('application/x-overlay-file-id', node._id)
@@ -110,14 +108,7 @@ export function FileTreeRow({
           if (!fileId || fileId === node._id) return
           onMove(fileId, node._id)
         }}
-        onClick={handleRowClick}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            handleRowClick()
-          }
-        }}
-        className={`overlay-knowledge-row group flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+        className={`overlay-knowledge-row group flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
           dragOver
             ? 'border-[var(--foreground)] bg-[var(--surface-muted)]'
             : isFileViewerSelected && !bulkSelectMode
@@ -128,13 +119,12 @@ export function FileTreeRow({
         }`}
         style={{ paddingLeft: '12px' }}
       >
-        {bulkSelectMode ? (
-          <BulkSelectMarker
-            selected={isBulkSelected}
-            className='mt-0.5 shrink-0'
-          />
-        ) : null}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        {bulkSelectMode ? <BulkSelectMarker selected={isBulkSelected} className="mt-0.5 shrink-0" /> : null}
+        <button
+          type="button"
+          onClick={handleRowClick}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+        >
           {node.type === 'folder' ? (
             <Folder size={14} className="shrink-0 text-[var(--muted-light)]" />
           ) : node.kind === 'note' ? (
@@ -142,10 +132,8 @@ export function FileTreeRow({
           ) : (
             <FileTypeIcon file={node} size={15} className="text-[var(--muted-light)]" />
           )}
-          <span className='min-w-0 flex-1 truncate leading-relaxed'>
-            {node.name}
-          </span>
-        </div>
+          <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
+        </button>
         {!bulkSelectMode ? (
           <button
             type="button"

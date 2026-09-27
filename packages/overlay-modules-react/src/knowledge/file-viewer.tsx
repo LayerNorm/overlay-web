@@ -534,6 +534,7 @@ export function FileViewerPanel({
       {editable ? (
         <>
           <textarea
+            aria-label="File contents"
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start typing..."
