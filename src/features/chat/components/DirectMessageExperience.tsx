@@ -387,7 +387,9 @@ export function DirectMessageExperience({
   const listRef = useRef<HTMLDivElement>(null)
   /** Latest messages for callbacks that must not close over a stale render. */
   const messagesRef = useRef<OptimisticMessage[]>(messages)
-  messagesRef.current = messages
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
   const sessionIdRef = useRef<string | null>(null)
   const activeConversationRef = useRef<string | null>(conversationId)
   const stickToBottomRef = useRef(true)
@@ -397,7 +399,9 @@ export function DirectMessageExperience({
   const skipNextMessageGrowthRef = useRef(false)
   const permalinkJumpedRef = useRef<string | null>(null)
   const readMarkInFlightRef = useRef(false)
-  activeConversationRef.current = conversationId
+  useEffect(() => {
+    activeConversationRef.current = conversationId
+  }, [conversationId])
   const lastTypingSentAt = useRef(0)
   const pendingCollaborationMessageSentRef = useRef(false)
   const draftCommittedRef = useRef(!draft)

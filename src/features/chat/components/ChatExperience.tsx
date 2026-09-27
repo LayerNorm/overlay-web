@@ -189,7 +189,9 @@ export default function ChatExperience({
   const activeChatIdRef = useRef<string | null>(null)
   const [isTemporaryChat, setIsTemporaryChat] = useState(false)
   const isTemporaryChatRef = useRef(false)
-  isTemporaryChatRef.current = isTemporaryChat
+  useEffect(() => {
+    isTemporaryChatRef.current = isTemporaryChat
+  }, [isTemporaryChat])
   const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
 
   useEffect(() => {
@@ -298,7 +300,9 @@ export default function ChatExperience({
     setReasoning,
   } = useChatPreferences()
   const askModelSelectionModeRef = useRef(askModelSelectionMode)
-  askModelSelectionModeRef.current = askModelSelectionMode
+  useEffect(() => {
+    askModelSelectionModeRef.current = askModelSelectionMode
+  }, [askModelSelectionMode])
   const [, setIsSwitchingChat] = useState(false)
   const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: !isPublicShowcase })
 
@@ -1598,7 +1602,9 @@ export default function ChatExperience({
   )
 
   const isActiveLoadingRef = useRef(isActiveLoading)
-  isActiveLoadingRef.current = isActiveLoading
+  useEffect(() => {
+    isActiveLoadingRef.current = isActiveLoading
+  }, [isActiveLoading])
 
   useEffect(() => {
     function onGlobalKeyDown(e: KeyboardEvent) {
@@ -1691,7 +1697,9 @@ export default function ChatExperience({
   })
 
   const handleSendRef = useRef(effectiveHandleSend)
-  handleSendRef.current = effectiveHandleSend
+  useEffect(() => {
+    handleSendRef.current = effectiveHandleSend
+  })
 
   const handleCreateAutomationDraftViaChat = useCallback(async () => {
     if (isActiveLoadingRef.current) return

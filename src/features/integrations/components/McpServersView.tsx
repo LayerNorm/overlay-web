@@ -150,7 +150,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       }
 
       if (oauthTab) oauthTab.location.href = data.redirectUrl
-      else window.open(data.redirectUrl, '_blank')
+      else window.open(data.redirectUrl, '_blank', 'noopener,noreferrer')
       return { ok: true }
     } catch {
       oauthTab?.close()
