@@ -90,7 +90,10 @@ Rules:
 - Do NOT speculate, hedge, or extrapolate beyond what the facts directly support.
 - Each inference must cite the index of every supporting fact (at least 2).
 - Prefer fewer, stronger inferences — return an empty list when nothing qualifies.
-- Write each inference as a single declarative sentence about the user, in the same style as the facts.`
+- Write each inference as a single declarative sentence about the user, in the same style as the facts.
+
+Return ONLY JSON of exactly this shape:
+{"inferences": [{"content": "...", "supportIndexes": [0, 2]}, ...]}`
 
 export type ConsolidationOutcome = {
   sources: number
