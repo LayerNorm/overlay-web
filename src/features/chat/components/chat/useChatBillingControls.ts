@@ -6,6 +6,7 @@ import {
   FREE_TIER_AUTO_MODEL_ID,
   isFreeTierChatModelId,
   isLegacyFreeTierDefaultModelId,
+  type ChatModel,
 } from '@/shared/ai/gateway/model-types'
 import {
   getEnabledChatModels,
@@ -40,6 +41,237 @@ function budgetUsedCentsFor(entitlements: Entitlements): number {
 
 function budgetRemainingCentsFor(entitlements: Entitlements): number {
   return entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCentsFor(entitlements) - budgetUsedCentsFor(entitlements))
+}
+
+type ComposerNoticeSetter = (value: string | null | ((current: string | null) => string | null)) => void
+
+type ModelSelectionControls = {
+  setAskModelSelectionMode: (mode: 'single' | 'multiple') => void
+  setSelectedActModel: (modelId: string) => void
+  setSelectedModels: (modelIds: string[]) => void
+}
+
+function useByokModelFallback({
+  chatPrefsHydrated,
+  modelCatalogReady,
+  selectableTextModels,
+  selectedActModel,
+  setAskModelSelectionMode,
+  setSelectedActModel,
+  setSelectedModels,
+}: {
+  chatPrefsHydrated: boolean
+  modelCatalogReady: boolean
+  selectableTextModels: ChatModel[]
+  selectedActModel: string
+} & ModelSelectionControls) {
+  useEffect(() => {
+    if (!chatPrefsHydrated || !modelCatalogReady || !isByokModelId(selectedActModel)) return
+    if (selectableTextModels.some((model) => model.id === selectedActModel)) return
+    const fallbackModelId = selectableTextModels[0]?.id ?? FREE_TIER_AUTO_MODEL_ID
+    setSelectedModels([fallbackModelId])
+    setSelectedActModel(fallbackModelId)
+    setAskModelSelectionMode('single')
+  }, [
+    chatPrefsHydrated,
+    modelCatalogReady,
+    selectableTextModels,
+    selectedActModel,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
+}
+
+function useFreeTierModelSelection({
+  activeChatId,
+  chatPrefsHydrated,
+  isModelAccessRestricted,
+  selectedActModel,
+  setAskModelSelectionMode,
+  setSelectedActModel,
+  setSelectedModels,
+}: {
+  activeChatId: string | null
+  chatPrefsHydrated: boolean
+  isModelAccessRestricted: boolean
+  selectedActModel: string
+} & ModelSelectionControls) {
+  useEffect(() => {
+    if (!chatPrefsHydrated || !isModelAccessRestricted || activeChatId) return
+    if (isByokModelId(selectedActModel)) return
+    if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
+
+    setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
+    setAskModelSelectionMode('single')
+    setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
+  }, [
+    activeChatId,
+    chatPrefsHydrated,
+    isModelAccessRestricted,
+    selectedActModel,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
+}
+
+function useZdrModelSelection({
+  activeChatId,
+  chatPrefsHydrated,
+  effectiveOnlyAllowZdrModels,
+  selectableTextModels,
+  selectedActModel,
+  selectedModels,
+  setAskModelSelectionMode,
+  setSelectedActModel,
+  setSelectedModels,
+}: {
+  activeChatId: string | null
+  chatPrefsHydrated: boolean
+  effectiveOnlyAllowZdrModels: boolean
+  selectableTextModels: ChatModel[]
+  selectedActModel: string
+  selectedModels: string[]
+} & ModelSelectionControls) {
+  useEffect(() => {
+    if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
+    const fallback = selectableTextModels[0]?.id ?? DEFAULT_MODEL_ID
+    const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 4)
+    const resolvedSelected = nextSelected.length > 0 ? nextSelected : [fallback]
+    const nextActModel = modelSupportsZeroDataRetention(selectedActModel) ? selectedActModel : resolvedSelected[0]!
+    const changed =
+      resolvedSelected.length !== selectedModels.length ||
+      resolvedSelected.some((id, index) => id !== selectedModels[index]) ||
+      nextActModel !== selectedActModel
+    if (!changed) return
+    setSelectedModels(resolvedSelected)
+    setSelectedActModel(nextActModel)
+    if (resolvedSelected.length === 1) setAskModelSelectionMode('single')
+  }, [
+    activeChatId,
+    chatPrefsHydrated,
+    effectiveOnlyAllowZdrModels,
+    selectableTextModels,
+    selectedActModel,
+    selectedModels,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
+}
+
+function useTopUpCheckoutResult({
+  billingEnabled,
+  loadSubscription,
+  pathname,
+  router,
+  searchParams,
+  setComposerNotice,
+}: {
+  billingEnabled: boolean
+  loadSubscription: () => Promise<Entitlements | null>
+  pathname: string
+  router: ChatRouter
+  searchParams: ChatSearchParams
+  setComposerNotice: ComposerNoticeSetter
+}) {
+  useEffect(() => {
+    if (!billingEnabled) return
+    const topUpSuccess = searchParams?.get('topup_success') === 'true'
+    const topUpSessionId = searchParams?.get('topup_session_id')
+    const topUpCanceled = searchParams?.get('topup_canceled') === 'true'
+
+    if (!topUpSuccess && !topUpCanceled) return
+
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
+    nextParams.delete('topup_success')
+    nextParams.delete('topup_session_id')
+    nextParams.delete('topup_canceled')
+    const nextUrl = `${pathname}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
+
+    if (topUpCanceled) {
+      setComposerNotice('Top-up checkout canceled.')
+      router.replace(nextUrl)
+      return
+    }
+
+    if (!topUpSessionId) return
+
+    let cancelled = false
+    void verifyTopUp(topUpSessionId, () => cancelled, { loadSubscription, setComposerNotice })
+      .finally(() => {
+        if (!cancelled) router.replace(nextUrl)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [billingEnabled, loadSubscription, pathname, router, searchParams, setComposerNotice])
+}
+
+async function verifyTopUp(
+  topUpSessionId: string,
+  isCancelled: () => boolean,
+  {
+    loadSubscription,
+    setComposerNotice,
+  }: {
+    loadSubscription: () => Promise<Entitlements | null>
+    setComposerNotice: ComposerNoticeSetter
+  },
+): Promise<void> {
+  try {
+    const response = await fetch('/api/topups/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: topUpSessionId }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (isCancelled()) return
+    if (response.ok) {
+      setComposerNotice(`Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.`)
+      await loadSubscription()
+    } else {
+      setComposerNotice(data.error || 'We could not verify your top-up.')
+    }
+  } catch {
+    if (!isCancelled()) setComposerNotice('We could not verify your top-up.')
+  }
+}
+
+function applyFetchedEntitlements(
+  data: Entitlements,
+  {
+    announcedBudgetExhaustedRef,
+    setAutoTopUpEnabledDraft,
+    setComposerNotice,
+    setEntitlements,
+    setTopUpAmountDraftCents,
+  }: {
+    announcedBudgetExhaustedRef: { current: boolean }
+    setAutoTopUpEnabledDraft: (value: boolean) => void
+    setComposerNotice: ComposerNoticeSetter
+    setEntitlements: (value: Entitlements | null) => void
+    setTopUpAmountDraftCents: (value: number) => void
+  },
+) {
+  setEntitlements(data)
+  setTopUpAmountDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? 800)
+  setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
+  const planKind = data.planKind ?? (data.tier === 'free' ? 'free' : 'paid')
+  const exhausted = planKind === 'paid' && budgetRemainingCentsFor(data) <= 0
+  if (exhausted && !announcedBudgetExhaustedRef.current) {
+    announcedBudgetExhaustedRef.current = true
+    setComposerNotice(BUDGET_EXHAUSTED_NOTICE)
+  } else if (!exhausted) {
+    announcedBudgetExhaustedRef.current = false
+    setComposerNotice((current) =>
+      current === BUDGET_EXHAUSTED_NOTICE
+        ? null
+        : current,
+    )
+  }
 }
 
 export function useChatBillingControls({
@@ -80,7 +312,7 @@ export function useChatBillingControls({
   selectedActModel: string
   selectedModels: string[]
   setAskModelSelectionMode: (mode: 'single' | 'multiple') => void
-  setComposerNotice: (value: string | null | ((current: string | null) => string | null)) => void
+  setComposerNotice: ComposerNoticeSetter
   setSelectedActModel: (modelId: string) => void
   setSelectedModels: (modelIds: string[]) => void
 }) {
@@ -118,14 +350,7 @@ export function useChatBillingControls({
     !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked
 
-  useEffect(() => {
-    if (!chatPrefsHydrated || !modelCatalogReady || !isByokModelId(selectedActModel)) return
-    if (selectableTextModels.some((model) => model.id === selectedActModel)) return
-    const fallbackModelId = selectableTextModels[0]?.id ?? FREE_TIER_AUTO_MODEL_ID
-    setSelectedModels([fallbackModelId])
-    setSelectedActModel(fallbackModelId)
-    setAskModelSelectionMode('single')
-  }, [
+  useByokModelFallback({
     chatPrefsHydrated,
     modelCatalogReady,
     selectableTextModels,
@@ -133,17 +358,9 @@ export function useChatBillingControls({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-  ])
+  })
 
-  useEffect(() => {
-    if (!chatPrefsHydrated || !isModelAccessRestricted || activeChatId) return
-    if (isByokModelId(selectedActModel)) return
-    if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
-
-    setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
-    setAskModelSelectionMode('single')
-    setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
-  }, [
+  useFreeTierModelSelection({
     activeChatId,
     chatPrefsHydrated,
     isModelAccessRestricted,
@@ -151,23 +368,9 @@ export function useChatBillingControls({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-  ])
+  })
 
-  useEffect(() => {
-    if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
-    const fallback = selectableTextModels[0]?.id ?? DEFAULT_MODEL_ID
-    const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 4)
-    const resolvedSelected = nextSelected.length > 0 ? nextSelected : [fallback]
-    const nextActModel = modelSupportsZeroDataRetention(selectedActModel) ? selectedActModel : resolvedSelected[0]!
-    const changed =
-      resolvedSelected.length !== selectedModels.length ||
-      resolvedSelected.some((id, index) => id !== selectedModels[index]) ||
-      nextActModel !== selectedActModel
-    if (!changed) return
-    setSelectedModels(resolvedSelected)
-    setSelectedActModel(nextActModel)
-    if (resolvedSelected.length === 1) setAskModelSelectionMode('single')
-  }, [
+  useZdrModelSelection({
     activeChatId,
     chatPrefsHydrated,
     effectiveOnlyAllowZdrModels,
@@ -177,7 +380,7 @@ export function useChatBillingControls({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-  ])
+  })
 
   const loadSubscription = useCallback(async () => {
     if (!billingEnabled) {
@@ -193,22 +396,13 @@ export function useChatBillingControls({
       })
       if (res.ok) {
         const data = await res.json() as Entitlements
-        setEntitlements(data)
-        setTopUpAmountDraftCents(data.topUpAmountCents ?? data.autoTopUpAmountCents ?? 800)
-        setAutoTopUpEnabledDraft(Boolean(data.autoTopUpEnabled))
-        const planKind = data.planKind ?? (data.tier === 'free' ? 'free' : 'paid')
-        const exhausted = planKind === 'paid' && budgetRemainingCentsFor(data) <= 0
-        if (exhausted && !announcedBudgetExhaustedRef.current) {
-          announcedBudgetExhaustedRef.current = true
-          setComposerNotice(BUDGET_EXHAUSTED_NOTICE)
-        } else if (!exhausted) {
-          announcedBudgetExhaustedRef.current = false
-          setComposerNotice((current) =>
-            current === BUDGET_EXHAUSTED_NOTICE
-              ? null
-              : current,
-          )
-        }
+        applyFetchedEntitlements(data, {
+          announcedBudgetExhaustedRef,
+          setAutoTopUpEnabledDraft,
+          setComposerNotice,
+          setEntitlements,
+          setTopUpAmountDraftCents,
+        })
         return data
       }
     } catch { /* ignore */ }
@@ -279,55 +473,14 @@ export function useChatBillingControls({
     }
   }, [autoTopUpEnabledDraft, loadSubscription, setComposerNotice, topUpAmountDraftCents])
 
-  useEffect(() => {
-    if (!billingEnabled) return
-    const topUpSuccess = searchParams?.get('topup_success') === 'true'
-    const topUpSessionId = searchParams?.get('topup_session_id')
-    const topUpCanceled = searchParams?.get('topup_canceled') === 'true'
-
-    if (!topUpSuccess && !topUpCanceled) return
-
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-    nextParams.delete('topup_success')
-    nextParams.delete('topup_session_id')
-    nextParams.delete('topup_canceled')
-    const nextUrl = `${pathname}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
-
-    if (topUpCanceled) {
-      setComposerNotice('Top-up checkout canceled.')
-      router.replace(nextUrl)
-      return
-    }
-
-    if (!topUpSessionId) return
-
-    let cancelled = false
-    void fetch('/api/topups/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: topUpSessionId }),
-    })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}))
-        if (cancelled) return
-        if (response.ok) {
-          setComposerNotice(`Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.`)
-          await loadSubscription()
-        } else {
-          setComposerNotice(data.error || 'We could not verify your top-up.')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setComposerNotice('We could not verify your top-up.')
-      })
-      .finally(() => {
-        if (!cancelled) router.replace(nextUrl)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [billingEnabled, loadSubscription, pathname, router, searchParams, setComposerNotice])
+  useTopUpCheckoutResult({
+    billingEnabled,
+    loadSubscription,
+    pathname,
+    router,
+    searchParams,
+    setComposerNotice,
+  })
 
   return {
     autoTopUpEnabledDraft,
