@@ -161,128 +161,250 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
       {error ? <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
       <div className="mt-6 grid min-h-[480px] gap-6 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
-        <div className="min-w-0 border-r-0 border-[var(--border)] lg:border-r lg:pr-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={14} />
-            <input
-              aria-label={`Search ${resourceType}s`}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search ${resourceType}s`}
-              className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-9 pr-3 text-sm"
-            />
-          </div>
-          <div className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-            {visibleResources.length === 0 ? (
-              <p className="py-5 text-sm text-[var(--muted)]">No matching resources.</p>
-            ) : visibleResources.map((resource) => (
-              <button
-                key={`${resource.resourceType}:${resource.id}`}
-                type="button"
-                onClick={() => setSelectedId(resource.id)}
-                className={`w-full px-2 py-3 text-left transition-colors ${
-                  selectedId === resource.id
-                    ? 'bg-[var(--surface-subtle)]'
-                    : 'hover:bg-[var(--surface-subtle)]'
-                }`}
-              >
-                <p className="truncate text-sm font-medium">{resource.label}</p>
-                <p className="mt-1 truncate text-xs text-[var(--muted)]">
-                  {resource.category ? `${resource.category} · ` : ''}{resource.id}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          {!selected ? (
-            <p className="py-10 text-sm text-[var(--muted)]">Select a resource to manage availability.</p>
-          ) : (
-            <>
-              <h3 className="text-base font-semibold">{selected.label}</h3>
-              <p className="mt-1 break-all text-xs text-[var(--muted)]">{selected.id}</p>
-              {selected.description ? (
-                <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{selected.description}</p>
-              ) : null}
-              <p className="mt-4 text-xs text-[var(--muted)]">
-                {grants.length === 0
-                  ? 'Unrestricted within the deployment capability boundary.'
-                  : `Restricted to ${grants.length} assigned principal${grants.length === 1 ? '' : 's'}.`}
-              </p>
-
-              {canManage ? (
-                <div className="mt-6 grid gap-2 sm:grid-cols-[100px_minmax(0,1fr)_auto]">
-                  <Select
-                    aria-label="Catalog principal type"
-                    value={principalType}
-                    onChange={(event) => {
-                      setPrincipalType(event.target.value as AuthorizationPrincipalType)
-                      setPrincipalId('')
-                    }}
-                    className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
-                  >
-                    <option value="user">User</option>
-                    <option value="group">Group</option>
-                    <option value="role">Role</option>
-                  </Select>
-                  {principalType === 'user' ? (
-                    <input
-                      aria-label="Catalog policy user ID"
-                      value={principalId}
-                      onChange={(event) => setPrincipalId(event.target.value)}
-                      placeholder="User ID"
-                      className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
-                    />
-                  ) : (
-                    <Select
-                      aria-label="Catalog policy principal"
-                      value={principalId}
-                      onChange={(event) => setPrincipalId(event.target.value)}
-                      className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
-                    >
-                      <option value="">Select {principalType}</option>
-                      {directoryEntries(directory, principalType).map((entry) => (
-                        <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>
-                      ))}
-                    </Select>
-                  )}
-                  <IconButton
-                    aria-label="Restrict catalog resource to principal"
-                    onClick={() => void addGrant()}
-                    disabled={!principalId || busy}
-                  >
-                    {busy ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
-                  </IconButton>
-                </div>
-              ) : null}
-
-              <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-                {grants.length === 0 ? (
-                  <p className="py-5 text-sm text-[var(--muted)]">No principal restrictions.</p>
-                ) : grants.map((grant) => (
-                  <div key={grant.id} className="flex items-center gap-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{principalLabel(directory, grant)}</p>
-                      <p className="text-xs text-[var(--muted)]">{grant.principalType}</p>
-                    </div>
-                    {canManage ? (
-                      <IconButton
-                        aria-label="Remove catalog resource restriction"
-                        onClick={() => void removeGrant(grant.id)}
-                        disabled={busy}
-                      >
-                        <Trash2 size={14} />
-                      </IconButton>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        <CatalogResourceList
+          resourceType={resourceType}
+          query={query}
+          visibleResources={visibleResources}
+          selectedId={selectedId}
+          onQueryChange={setQuery}
+          onSelect={setSelectedId}
+        />
+        <CatalogResourcePolicy
+          selected={selected}
+          grants={grants}
+          canManage={canManage}
+          principalType={principalType}
+          principalId={principalId}
+          directory={directory}
+          busy={busy}
+          onPrincipalTypeChange={(next) => {
+            setPrincipalType(next)
+            setPrincipalId('')
+          }}
+          onPrincipalIdChange={setPrincipalId}
+          onAddGrant={() => void addGrant()}
+          onRemoveGrant={(grantId) => void removeGrant(grantId)}
+        />
       </div>
     </section>
+  )
+}
+
+function CatalogResourceList({
+  resourceType,
+  query,
+  visibleResources,
+  selectedId,
+  onQueryChange,
+  onSelect,
+}: {
+  resourceType: AdminCatalogResourceType
+  query: string
+  visibleResources: AdminCatalogResource[]
+  selectedId: string | null
+  onQueryChange(value: string): void
+  onSelect(id: string): void
+}) {
+  return (
+    <div className="min-w-0 border-r-0 border-[var(--border)] lg:border-r lg:pr-6">
+      <div className="relative">
+        <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={14} />
+        <input
+          aria-label={`Search ${resourceType}s`}
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder={`Search ${resourceType}s`}
+          className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-9 pr-3 text-sm"
+        />
+      </div>
+      <div className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        {visibleResources.length === 0 ? (
+          <p className="py-5 text-sm text-[var(--muted)]">No matching resources.</p>
+        ) : visibleResources.map((resource) => (
+          <button
+            key={`${resource.resourceType}:${resource.id}`}
+            type="button"
+            onClick={() => onSelect(resource.id)}
+            className={`w-full px-2 py-3 text-left transition-colors ${
+              selectedId === resource.id
+                ? 'bg-[var(--surface-subtle)]'
+                : 'hover:bg-[var(--surface-subtle)]'
+            }`}
+          >
+            <p className="truncate text-sm font-medium">{resource.label}</p>
+            <p className="mt-1 truncate text-xs text-[var(--muted)]">
+              {resource.category ? `${resource.category} · ` : ''}{resource.id}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CatalogResourcePolicy({
+  selected,
+  grants,
+  canManage,
+  principalType,
+  principalId,
+  directory,
+  busy,
+  onPrincipalTypeChange,
+  onPrincipalIdChange,
+  onAddGrant,
+  onRemoveGrant,
+}: {
+  selected: AdminCatalogResource | null
+  grants: ResourceGrant[]
+  canManage: boolean
+  principalType: AuthorizationPrincipalType
+  principalId: string
+  directory: Directory
+  busy: boolean
+  onPrincipalTypeChange(type: AuthorizationPrincipalType): void
+  onPrincipalIdChange(id: string): void
+  onAddGrant(): void
+  onRemoveGrant(grantId: string): void
+}) {
+  return (
+    <div className="min-w-0">
+      {!selected ? (
+        <p className="py-10 text-sm text-[var(--muted)]">Select a resource to manage availability.</p>
+      ) : (
+        <>
+          <h3 className="text-base font-semibold">{selected.label}</h3>
+          <p className="mt-1 break-all text-xs text-[var(--muted)]">{selected.id}</p>
+          {selected.description ? (
+            <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{selected.description}</p>
+          ) : null}
+          <p className="mt-4 text-xs text-[var(--muted)]">
+            {grants.length === 0
+              ? 'Unrestricted within the deployment capability boundary.'
+              : `Restricted to ${grants.length} assigned principal${grants.length === 1 ? '' : 's'}.`}
+          </p>
+
+          {canManage ? (
+            <CatalogGrantEditor
+              principalType={principalType}
+              principalId={principalId}
+              directory={directory}
+              busy={busy}
+              onPrincipalTypeChange={onPrincipalTypeChange}
+              onPrincipalIdChange={onPrincipalIdChange}
+              onAddGrant={onAddGrant}
+            />
+          ) : null}
+
+          <CatalogGrantList
+            grants={grants}
+            directory={directory}
+            canManage={canManage}
+            busy={busy}
+            onRemoveGrant={onRemoveGrant}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function CatalogGrantEditor({
+  principalType,
+  principalId,
+  directory,
+  busy,
+  onPrincipalTypeChange,
+  onPrincipalIdChange,
+  onAddGrant,
+}: {
+  principalType: AuthorizationPrincipalType
+  principalId: string
+  directory: Directory
+  busy: boolean
+  onPrincipalTypeChange(type: AuthorizationPrincipalType): void
+  onPrincipalIdChange(id: string): void
+  onAddGrant(): void
+}) {
+  return (
+    <div className="mt-6 grid gap-2 sm:grid-cols-[100px_minmax(0,1fr)_auto]">
+      <Select
+        aria-label="Catalog principal type"
+        value={principalType}
+        onChange={(event) => onPrincipalTypeChange(event.target.value as AuthorizationPrincipalType)}
+        className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+      >
+        <option value="user">User</option>
+        <option value="group">Group</option>
+        <option value="role">Role</option>
+      </Select>
+      {principalType === 'user' ? (
+        <input
+          aria-label="Catalog policy user ID"
+          value={principalId}
+          onChange={(event) => onPrincipalIdChange(event.target.value)}
+          placeholder="User ID"
+          className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+        />
+      ) : (
+        <Select
+          aria-label="Catalog policy principal"
+          value={principalId}
+          onChange={(event) => onPrincipalIdChange(event.target.value)}
+          className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+        >
+          <option value="">Select {principalType}</option>
+          {directoryEntries(directory, principalType).map((entry) => (
+            <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>
+          ))}
+        </Select>
+      )}
+      <IconButton
+        aria-label="Restrict catalog resource to principal"
+        onClick={onAddGrant}
+        disabled={!principalId || busy}
+      >
+        {busy ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+      </IconButton>
+    </div>
+  )
+}
+
+function CatalogGrantList({
+  grants,
+  directory,
+  canManage,
+  busy,
+  onRemoveGrant,
+}: {
+  grants: ResourceGrant[]
+  directory: Directory
+  canManage: boolean
+  busy: boolean
+  onRemoveGrant(grantId: string): void
+}) {
+  return (
+    <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+      {grants.length === 0 ? (
+        <p className="py-5 text-sm text-[var(--muted)]">No principal restrictions.</p>
+      ) : grants.map((grant) => (
+        <div key={grant.id} className="flex items-center gap-3 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{principalLabel(directory, grant)}</p>
+            <p className="text-xs text-[var(--muted)]">{grant.principalType}</p>
+          </div>
+          {canManage ? (
+            <IconButton
+              aria-label="Remove catalog resource restriction"
+              onClick={() => onRemoveGrant(grant.id)}
+              disabled={busy}
+            >
+              <Trash2 size={14} />
+            </IconButton>
+          ) : null}
+        </div>
+      ))}
+    </div>
   )
 }
 

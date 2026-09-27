@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -174,6 +174,38 @@ function useAgentAutoOpen(args: {
   }, [conversationId, activeWorkspaceId, agentId, directory, retryCount, router, onResolvingChange, onError])
 }
 
+/** Archive + cleanup after an abandoned create-first agent, then land on the next one. */
+async function archiveAbandonedAgent(
+  workspaceId: string,
+  abandoned: { agentId: string; conversationId: string | null },
+  router: { push(href: string): void; replace(href: string): void },
+) {
+  await overlayAppClient.agents.archive(workspaceId, abandoned.agentId).catch(() => undefined)
+  if (abandoned.conversationId) {
+    await overlayAppClient.conversations
+      .deleteResponse({ conversationId: abandoned.conversationId, scope: 'self' })
+      .catch(() => undefined)
+  }
+  dispatchAgentDirectoryChanged(workspaceId)
+  const remaining = await overlayAppClient.agents
+    .list(workspaceId)
+    .then((response) => response.agents.filter((agent) => agent.id !== abandoned.agentId))
+    .catch(() => [])
+  const target = pickAgentToOpen(remaining, workspaceId)
+  if (!target) {
+    router.replace(buildAgentsDirectoryHref(workspaceId))
+    return
+  }
+  rememberAgentOpened(workspaceId, target.id)
+  await startAgentChat({
+    workspaceId,
+    agentId: target.id,
+    agentPrincipalId: target.principalId,
+    surface: 'agents',
+    push: (href) => router.push(href),
+  }).catch(() => router.replace(buildAgentsDirectoryHref(workspaceId)))
+}
+
 export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -189,6 +221,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+
   // The agent created by the current editor session that has never been
   // saved. Cancelling the editor archives it; a successful save (onSaved)
   // or explicit archive (onArchived) clears the marker. A ref, not state:
@@ -252,34 +285,8 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     if (!abandoned) return
     freshAgentRef.current = null
     if (!activeWorkspaceId) return
-    const workspaceId = activeWorkspaceId
-    clearAgentOpened(workspaceId, abandoned.agentId)
-    void (async () => {
-      await overlayAppClient.agents.archive(workspaceId, abandoned.agentId).catch(() => undefined)
-      if (abandoned.conversationId) {
-        await overlayAppClient.conversations
-          .deleteResponse({ conversationId: abandoned.conversationId, scope: 'self' })
-          .catch(() => undefined)
-      }
-      dispatchAgentDirectoryChanged(workspaceId)
-      const remaining = await overlayAppClient.agents
-        .list(workspaceId)
-        .then((response) => response.agents.filter((agent) => agent.id !== abandoned.agentId))
-        .catch(() => [])
-      const target = pickAgentToOpen(remaining, workspaceId)
-      if (!target) {
-        router.replace(buildAgentsDirectoryHref(workspaceId))
-        return
-      }
-      rememberAgentOpened(workspaceId, target.id)
-      await startAgentChat({
-        workspaceId,
-        agentId: target.id,
-        agentPrincipalId: target.principalId,
-        surface: 'agents',
-        push: (href) => router.push(href),
-      }).catch(() => router.replace(buildAgentsDirectoryHref(workspaceId)))
-    })()
+    clearAgentOpened(activeWorkspaceId, abandoned.agentId)
+    void archiveAbandonedAgent(activeWorkspaceId, abandoned, router)
   }, [agentId, activeWorkspaceId, router])
 
   const workspaceActions = useAgentWorkspaceActions({
@@ -310,15 +317,14 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   })
 
   const editor = editorMode ? (
-    <AgentEditorPage
+    <AgentEditorPanel
       key={`${editorMode}:${agentId ?? 'new'}`}
       mode={editorMode}
-      agentId={editorMode === 'edit' ? (agentId ?? undefined) : undefined}
+      agentId={agentId}
       // The create flow inserts the draft row first, then opens the editor in
       // edit mode — a fresh draft is still "creating", so its runtime must
       // stay pickable until first save.
       freshDraft={Boolean(agentId) && agentId === freshAgentRef.current?.agentId}
-      presentation="panel"
       panelMode={panelMode}
       onTogglePanelMode={() => setPanelMode(panelMode === 'dialog' ? 'side' : 'dialog')}
       onClose={closeEditor}
@@ -367,6 +373,85 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
     )
   }
 
+  return (
+    <>
+      <AgentDirectoryScreen
+        settingsButton={settingsButton}
+        sideEditor={sideEditor}
+        onRightPanelClose={closeEditor}
+        activeWorkspaceId={activeWorkspaceId}
+        directory={directory}
+        resolving={resolving}
+        error={error}
+        loadError={loadError}
+        onRetry={retryOpen}
+        onCreate={openCreate}
+      />
+      {dialogEditor}
+    </>
+  )
+}
+
+function AgentEditorPanel({
+  mode,
+  agentId,
+  freshDraft,
+  panelMode,
+  onTogglePanelMode,
+  onClose,
+  onCreated,
+  onArchived,
+  onSaved,
+}: {
+  mode: 'new' | 'edit'
+  agentId: string | null
+  freshDraft: boolean
+  panelMode: 'dialog' | 'side'
+  onTogglePanelMode(): void
+  onClose(): void
+  onCreated(agent: WorkspaceAgentDirectoryItem): void
+  onArchived(): void
+  onSaved(): void
+}) {
+  return (
+    <AgentEditorPage
+      mode={mode}
+      agentId={mode === 'edit' ? (agentId ?? undefined) : undefined}
+      freshDraft={freshDraft}
+      presentation="panel"
+      panelMode={panelMode}
+      onTogglePanelMode={onTogglePanelMode}
+      onClose={onClose}
+      onCreated={onCreated}
+      onArchived={onArchived}
+      onSaved={onSaved}
+    />
+  )
+}
+
+function AgentDirectoryScreen({
+  settingsButton,
+  sideEditor,
+  onRightPanelClose,
+  activeWorkspaceId,
+  directory,
+  resolving,
+  error,
+  loadError,
+  onRetry,
+  onCreate,
+}: {
+  settingsButton: ReactNode
+  sideEditor: ReactNode
+  onRightPanelClose(): void
+  activeWorkspaceId: string | null
+  directory: WorkspaceAgentDirectoryItem[] | null
+  resolving: boolean
+  error: string | null
+  loadError: string | null
+  onRetry(): void
+  onCreate(): void
+}) {
   // Loading covers three phases with no gaps: roster fetch, the frame between
   // roster arrival and the resolve effect firing, and the DM creation itself.
   // The empty state therefore only ever renders for genuinely agent-less
@@ -377,52 +462,49 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const empty = directory !== null && directory.length === 0 && !displayError
 
   return (
-    <>
-      <AppScreenShell
-        header={<AppScreenHeader title="Agents" actions={settingsButton} />}
-        rightPanel={sideEditor}
-        rightPanelMode="docked"
-        rightPanelWidth="lg"
-        onRightPanelClose={closeEditor}
-      >
-        <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
-        {loading ? (
-          <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
-            {[0, 1, 2].map((dot) => (
-              <span
-                key={dot}
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted)]"
-                style={{ animationDelay: `${dot * 150}ms` }}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="max-w-sm text-center">
-            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
-              <Bot size={18} />
-            </span>
-            <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">
-              {displayError ? 'Could not open your agent' : 'Your agents work from here'}
-            </h1>
-            <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
-              {displayError ?? (empty
-                ? 'Create one for a new outcome.'
-                : 'Select an agent to open its conversation, or create one for a new outcome.')}
-            </p>
-            {displayError ? (
-              <Button variant="secondary" size="sm" className="mt-4" onClick={retryOpen}>
-                Retry
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" className="mt-4" onClick={openCreate}>
-                Create agent
-              </Button>
-            )}
-          </div>
-        )}
+    <AppScreenShell
+      header={<AppScreenHeader title="Agents" actions={settingsButton} />}
+      rightPanel={sideEditor}
+      rightPanelMode="docked"
+      rightPanelWidth="lg"
+      onRightPanelClose={onRightPanelClose}
+    >
+      <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
+      {loading ? (
+        <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted)]"
+              style={{ animationDelay: `${dot * 150}ms` }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="max-w-sm text-center">
+          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
+            <Bot size={18} />
+          </span>
+          <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">
+            {displayError ? 'Could not open your agent' : 'Your agents work from here'}
+          </h1>
+          <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
+            {displayError ?? (empty
+              ? 'Create one for a new outcome.'
+              : 'Select an agent to open its conversation, or create one for a new outcome.')}
+          </p>
+          {displayError ? (
+            <Button variant="secondary" size="sm" className="mt-4" onClick={onRetry}>
+              Retry
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" className="mt-4" onClick={onCreate}>
+              Create agent
+            </Button>
+          )}
+        </div>
+      )}
       </AppScreenBody>
-      </AppScreenShell>
-      {dialogEditor}
-    </>
+    </AppScreenShell>
   )
 }
