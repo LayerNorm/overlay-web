@@ -98,32 +98,18 @@ export const createByServer = mutation({
       createdAt: args.now, updatedAt: args.now,
       isDefault: args.isDefault || args.name.trim().toLowerCase() === 'overlay' ? true : undefined,
     })
-    // Membership validation follows the agent insert deliberately.
-    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
-    const memberTeams = await Promise.all(
-      unique(args.teamIds).map(async (teamId) => ({
-        teamId,
-        team: await ctx.db
-          .query('workspaceTeams')
-          .withIndex('by_teamId', (q) => q.eq('teamId', teamId))
-          .unique(),
-      })),
-    )
-    await Promise.all(
-      memberTeams.map(({ teamId, team }) => {
-        if (!team || team.workspaceId !== args.workspaceId || team.archivedAt)
-          return null
-        return ctx.db.insert('workspaceTeamMemberships', {
-          teamMembershipId: `${teamId}:${args.principalId}`,
-          workspaceId: args.workspaceId,
-          teamId,
-          principalId: args.principalId,
-          principalType: 'agent',
-          addedByPrincipalId: args.createdByPrincipalId,
-          createdAt: args.now,
-      })
-      }),
-    )
+    const newTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
+      ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
+    const joinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
+      const team = newTeams[i]
+      return team && team.workspaceId === args.workspaceId && !team.archivedAt
+    })
+    await Promise.all(joinableTeamIds.map((teamId) =>
+      ctx.db.insert('workspaceTeamMemberships', {
+        teamMembershipId: `${teamId}:${args.principalId}`, workspaceId: args.workspaceId,
+        teamId, principalId: args.principalId, principalType: 'agent',
+        addedByPrincipalId: args.createdByPrincipalId, createdAt: args.now,
+      })))
     // Creator-only agents join no channels implicitly: only their creator can
     // place them anywhere, and only the creator can invoke them.
     if ((args.visibility ?? 'workspace') !== 'creator') {
@@ -135,14 +121,13 @@ export const createByServer = mutation({
             .eq('conversationType', 'channel'),
         )
         .collect()
-      for (const channel of channels) {
-        if (channel.deletedAt || channel.channelVisibility !== 'public') continue
-        await ctx.db.insert('conversationParticipants', {
+      await Promise.all(channels
+        .filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
+        .map((channel) => ctx.db.insert('conversationParticipants', {
           conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
           principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
           joinedAt: args.now, updatedAt: args.now,
-        })
-      }
+        })))
     }
     await ctx.db.insert('workspaceResourceScopes', {
       workspaceId: args.workspaceId, resourceType: 'agent', resourceId: args.agentId,
@@ -276,26 +261,21 @@ export const updateByServer = mutation({
         })
     }
     if (args.teamIds) {
-      const existing = await ctx.db
-        .query('workspaceTeamMemberships')
-        .withIndex('by_principalId', (q) =>
-          q.eq('principalId', row.principalId),
-        )
-        .collect()
-      for (const membership of existing) await ctx.db.delete(membership._id)
-      for (const teamId of unique(args.teamIds)) {
-        const team = await ctx.db
-          .query('workspaceTeams')
-          .withIndex('by_teamId', (q) => q.eq('teamId', teamId))
-          .unique()
-        if (!team || team.workspaceId !== args.workspaceId || team.archivedAt)
-          continue
-        await ctx.db.insert('workspaceTeamMemberships', {
+      const existing = await ctx.db.query('workspaceTeamMemberships')
+        .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
+      await Promise.all(existing.map((membership) => ctx.db.delete(membership._id)))
+      const updatedTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
+        ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
+      const updatedJoinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
+        const team = updatedTeams[i]
+        return team && team.workspaceId === args.workspaceId && !team.archivedAt
+      })
+      await Promise.all(updatedJoinableTeamIds.map((teamId) =>
+        ctx.db.insert('workspaceTeamMemberships', {
           teamMembershipId: `${teamId}:${row.principalId}`, workspaceId: args.workspaceId,
           teamId, principalId: row.principalId, principalType: 'agent',
           addedByPrincipalId: args.updatedByPrincipalId, createdAt: args.now,
-        })
-      }
+        })))
       // Store the updated teamIds projection on the definition row so
       // listByServer can read it without N+1 queries.
       patch.teamIds = unique(args.teamIds)
@@ -347,26 +327,18 @@ export const archiveByServer = mutation({
     const participants = await ctx.db
       .query('conversationParticipants')
       .withIndex('by_workspaceId_principalId_status', (q) =>
-        q
-          .eq('workspaceId', args.workspaceId)
-          .eq('principalId', row.principalId)
-          .eq('status', 'active'),
-      )
-      .collect()
-    for (const participant of participants) {
-      // Threads (agentId-bound conversations) keep the agent as a participant
-      // while archived so the Archived view can render them and unarchive
-      // restores without re-joining.
-      const conversation = await ctx.db.get(participant.conversationId)
-      if (conversation?.agentId === row.agentId) continue
-      await ctx.db.patch(participant._id, { status: 'removed', removedAt: args.now, updatedAt: args.now })
-    }
-    const memberships = await ctx.db
-      .query('workspaceTeamMemberships')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
-      .collect()
-    for (const teamMembership of memberships)
-      await ctx.db.delete(teamMembership._id)
+        q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
+    const participantConversations = await Promise.all(participants.map((participant) =>
+      ctx.db.get(participant.conversationId)))
+    // Threads (agentId-bound conversations) keep the agent as a participant
+    // while archived so the Archived view can render them and unarchive
+    // restores without re-joining.
+    await Promise.all(participants
+      .filter((_, i) => participantConversations[i]?.agentId !== row.agentId)
+      .map((participant) => ctx.db.patch(participant._id, { status: 'removed', removedAt: args.now, updatedAt: args.now })))
+    const memberships = await ctx.db.query('workspaceTeamMemberships')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
+    await Promise.all(memberships.map((teamMembership) => ctx.db.delete(teamMembership._id)))
     return true
   },
 })
@@ -410,21 +382,15 @@ export const unarchiveByServer = mutation({
     const threads = await ctx.db
       .query('conversations')
       .withIndex('by_workspaceId_agentId', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('agentId', row.agentId),
-      )
-      .collect()
-    for (const thread of threads) {
-      if (thread.deletedAt) continue
-      const participant = await ctx.db
-        .query('conversationParticipants')
+        q.eq('workspaceId', args.workspaceId).eq('agentId', row.agentId)).collect()
+    const liveThreads = threads.filter((thread) => !thread.deletedAt)
+    const threadParticipants = await Promise.all(liveThreads.map((thread) =>
+      ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_principalId', (q) =>
-          q.eq('conversationId', thread._id).eq('principalId', row.principalId),
-        )
-        .unique()
-      if (participant && participant.status !== 'active') {
-        await ctx.db.patch(participant._id, { status: 'active', removedAt: undefined, updatedAt: args.now })
-      }
-    }
+          q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()))
+    await Promise.all(threadParticipants
+      .filter((participant) => participant && participant.status !== 'active')
+      .map((participant) => ctx.db.patch(participant!._id, { status: 'active', removedAt: undefined, updatedAt: args.now })))
     return true
   },
 })
@@ -436,21 +402,13 @@ export const purgeOrphanedByServer = mutation({
   returns: v.object({ deleted: v.number() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const definitions = await ctx.db
-      .query('workspaceAgentDefinitions')
-      .take(500)
-    let deleted = 0
-    for (const definition of definitions) {
-      const workspace = await ctx.db
-        .query('workspaces')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', definition.workspaceId),
-        )
-        .unique()
-      if (workspace) continue
-      await ctx.db.delete(definition._id)
-      deleted += 1
-    }
+    const definitions = await ctx.db.query('workspaceAgentDefinitions').take(500)
+    const workspaces = await Promise.all(definitions.map((definition) =>
+      ctx.db.query('workspaces')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', definition.workspaceId)).unique()))
+    const orphaned = definitions.filter((_, i) => !workspaces[i])
+    await Promise.all(orphaned.map((definition) => ctx.db.delete(definition._id)))
+    const deleted = orphaned.length
     return { deleted }
   },
 })

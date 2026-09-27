@@ -340,15 +340,12 @@ export const cleanupExpiredByServer = mutation({
       .withIndex('by_expiresAt', (q) => q.lt('expiresAt', now))
       .take(limit)
 
-    let revoked = 0
-    for (const row of expired) {
-      if (row.revokedAt) continue
-      await ctx.db.patch(row._id, {
-        revokedAt: row.expiresAt,
-        revokedReason: 'expired',
-      })
-      revoked += 1
-    }
+    const toRevoke = expired.filter((row) => !row.revokedAt)
+    await Promise.all(toRevoke.map((row) => ctx.db.patch(row._id, {
+      revokedAt: row.expiresAt,
+      revokedReason: 'expired',
+    })))
+    const revoked = toRevoke.length
 
     return { revoked }
   },

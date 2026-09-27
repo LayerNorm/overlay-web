@@ -23,9 +23,8 @@ export const runMinuteTick = internalAction({
       now: Date.now(),
       workerId: WORKER_ID,
     })
-    for (const outboxId of ids) {
-      await ctx.scheduler.runAfter(0, internal.email.deliveryRunner.deliverOne, { outboxId })
-    }
+    await Promise.all(ids.map((outboxId) =>
+      ctx.scheduler.runAfter(0, internal.email.deliveryRunner.deliverOne, { outboxId })))
     return null
   },
 })

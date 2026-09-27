@@ -293,11 +293,8 @@ async function attachLegacyRows(
     toolInvocations,
     usageOperations,
   }
-  for (const rows of Object.values(pages)) {
-    for (const row of rows.slice(0, ATTACH_BATCH_SIZE)) {
-      await ctx.db.patch(row._id, { billingAccountId })
-    }
-  }
+  await Promise.all(Object.values(pages).flatMap((rows) =>
+    rows.slice(0, ATTACH_BATCH_SIZE).map((row) => ctx.db.patch(row._id, { billingAccountId }))))
   const reservations = await activeReservationSummary(ctx, billingAccountId)
   return {
     attached: {

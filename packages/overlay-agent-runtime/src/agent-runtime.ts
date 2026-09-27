@@ -34,6 +34,9 @@ export class AgentRuntime {
     const toolRegistry = createRegistry(resolvedDeps.tools)
     const tools = filterAllowedTools(toolRegistry.list(), input.allowedToolIds)
     const contextBuilder = resolvedDeps.contextBuilder ?? new NoOpContextBuilder()
+    // Context must complete before executeTurn consumes it — nothing else can
+    // proceed concurrently, so the await is inherent.
+    // react-doctor-disable-next-line react-doctor/async-defer-await
     const context = await contextBuilder.build({
       input,
       tools,

@@ -120,11 +120,8 @@ export const runMinuteTick = internalAction({
       limit: 25,
     })
 
-    for (const runId of runIds) {
-      await ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, {
-        runId,
-      })
-    }
+    await Promise.all(runIds.map((runId) =>
+      ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, { runId })))
 
     return null
   },

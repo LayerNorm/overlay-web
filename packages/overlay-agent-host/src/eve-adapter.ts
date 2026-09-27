@@ -257,7 +257,10 @@ async function projectEveEvent(
     if (event.data.message !== null) textByStep.set(event.data.stepIndex, event.data.message)
     await emit({ type: 'text_checkpoint', payload: { text: orderedText(textByStep), final: event.data.finishReason !== 'tool-calls' } })
   } else if (event.type === 'actions.requested') {
+    // Sequential on purpose: emitted events are an ordered stream; parallel
+    // emission would let action rows appear out of order.
     for (const action of event.data.actions) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       await emit({ type: 'action', payload: { actionId: action.callId, title: actionTitle(action), status: 'started', detail: safeDetail(action.input) } })
     }
   } else if (event.type === 'action.partial') {
@@ -280,6 +283,9 @@ async function projectEveEvent(
       })
       requestBatch.set(request.requestId, batch)
       if (request.kind === 'question') {
+        // Sequential on purpose: emitted events are an ordered stream; parallel
+        // emission would reorder request prompts.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await emit({ type: 'elicitation_requested', payload: {
           requestKey: request.requestId,
           prompt: request.prompt,
@@ -294,6 +300,8 @@ async function projectEveEvent(
         } })
       } else {
         const options = approvalOptions ?? defaultApprovalOptions()
+        // Sequential on purpose: emitted events are an ordered stream.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await emit({ type: 'approval_requested', payload: {
           requestKey: request.requestId,
           prompt: request.prompt,

@@ -193,10 +193,10 @@ async function maybePromoteDuplicate(
   const promoted = duplicates.find((candidate) => candidate.userId === userId && !candidate.deletedAt)
   if (!promoted) return null
   await ctx.db.patch(promoted._id, { duplicateOfFileId: undefined, indexStatus: 'pending' })
-  for (const duplicate of duplicates) {
-    if (duplicate._id === promoted._id || duplicate.userId !== userId || duplicate.deletedAt) continue
-    await ctx.db.patch(duplicate._id, { duplicateOfFileId: promoted._id, updatedAt: Date.now() })
-  }
+  const now = Date.now()
+  await Promise.all(duplicates
+    .filter((duplicate) => duplicate._id !== promoted._id && duplicate.userId === userId && !duplicate.deletedAt)
+    .map((duplicate) => ctx.db.patch(duplicate._id, { duplicateOfFileId: promoted._id, updatedAt: now })))
   return promoted._id
 }
 
@@ -393,14 +393,15 @@ export const expireUploadIntentsByServer = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     requireServerAccess(args.serverSecret)
-    for (const intentId of args.intentIds) {
-      const intent = await ctx.db.get(intentId)
-      if (!intent || intent.userId !== args.userId || intent.status !== 'pending') continue
-      await ctx.db.patch(intentId, {
+    const intents = await Promise.all(args.intentIds.map((intentId) => ctx.db.get(intentId)))
+    await Promise.all(args.intentIds.flatMap((intentId, i) => {
+      const intent = intents[i]
+      if (!intent || intent.userId !== args.userId || intent.status !== 'pending') return []
+      return [ctx.db.patch(intentId, {
         status: 'expired',
         expiredAt: args.now,
-      })
-    }
+      })]
+    }))
     return null
   },
 })
@@ -1208,31 +1209,30 @@ export const backfillCanonicalFilesystem = mutation({
     let outputsSkipped = 0
     const now = Date.now()
 
-    for (const file of targetFiles) {
-      if (file.kind) continue
-      filesPatched += 1
-      if (!dryRun) {
+    const filesToPatch = targetFiles.filter((file) => !file.kind)
+    filesPatched += filesToPatch.length
+    if (!dryRun) {
+      await Promise.all(filesToPatch.flatMap((file) => {
         const text = textOf(file)
         const kind = file.type === 'folder' ? 'folder' : 'upload'
-        await ctx.db.patch(file._id, {
+        const writes: Promise<unknown>[] = [ctx.db.patch(file._id, {
           kind,
           extension: file.extension ?? extensionOf(file.name),
           indexable: isTextIndexable(kind, text),
           indexStatus: isTextIndexable(kind, text) ? 'pending' : 'skipped',
-        })
+        })]
         if (isTextIndexable(kind, text)) {
-          await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id })
+          writes.push(ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id }))
         }
-      }
+        return writes
+      }))
     }
 
-    for (const note of targetNotes) {
-      if (note.deletedAt || existingNoteIds.has(String(note._id))) {
-        notesSkipped += 1
-        continue
-      }
-      notesMigrated += 1
-      if (!dryRun) {
+    const notesToMigrate = targetNotes.filter((note) => !(note.deletedAt || existingNoteIds.has(String(note._id))))
+    notesSkipped += targetNotes.length - notesToMigrate.length
+    notesMigrated += notesToMigrate.length
+    if (!dryRun) {
+      await Promise.all(notesToMigrate.map(async (note) => {
         const fileId = await ctx.db.insert('files', {
           userId: note.userId,
           name: note.title || 'Untitled',
@@ -1251,16 +1251,14 @@ export const backfillCanonicalFilesystem = mutation({
         if (note.content.trim()) {
           await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
         }
-      }
+      }))
     }
 
-    for (const output of targetOutputs) {
-      if (existingOutputIds.has(String(output._id))) {
-        outputsSkipped += 1
-        continue
-      }
-      outputsMigrated += 1
-      if (!dryRun) {
+    const outputsToMigrate = targetOutputs.filter((output) => !existingOutputIds.has(String(output._id)))
+    outputsSkipped += targetOutputs.length - outputsToMigrate.length
+    outputsMigrated += outputsToMigrate.length
+    if (!dryRun) {
+      await Promise.all(outputsToMigrate.map(async (output) => {
         const name = output.fileName || `${output.type}-${output._id}`
         const textContent =
           output.type === 'text' || output.type === 'code' || output.type === 'document'
@@ -1292,7 +1290,7 @@ export const backfillCanonicalFilesystem = mutation({
         if (textContent.trim()) {
           await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
         }
-      }
+      }))
     }
 
     return {

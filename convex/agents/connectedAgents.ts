@@ -248,12 +248,9 @@ export const disableBindingsForAgentByServer = mutation({
         q.eq('workspaceId', args.workspaceId).eq('agentId', args.agentId),
       )
       .take(200)
-    let changed = false
-    for (const row of rows) if (row.enabled) {
-      await ctx.db.patch(row._id, { enabled: false, updatedAt: args.now })
-      changed = true
-    }
-    return changed
+    const enabledRows = rows.filter((row) => row.enabled)
+    await Promise.all(enabledRows.map((row) => ctx.db.patch(row._id, { enabled: false, updatedAt: args.now })))
+    return enabledRows.length > 0
   },
 })
 
@@ -662,25 +659,15 @@ export const controlRemoteAgentTurnByServer = mutation({
       }
       await ctx.db.patch(run._id, { status: 'cancelled', cancelledAt: args.now, updatedAt: args.now })
       await ctx.db.patch(session._id, { status: 'cancelled', endedAt: args.now, updatedAt: args.now })
-      for (const command of commands) if (command.type !== 'cancel' && (command.status === 'pending' || command.status === 'claimed')) {
-        await ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })
-      }
-      const pendingRequests = await ctx.db
-        .query('agentApprovalRequests')
-        .withIndex('by_workspaceId_runId', (q) =>
-          q.eq('workspaceId', args.workspaceId).eq('runId', args.runId),
-        )
-        .take(100)
-      for (const request of pendingRequests)
-        if (!request.resolution) {
-          await ctx.db.patch(request._id, {
-            resolution: {
-              decision: 'cancelled',
-              resolvedByPrincipalId: actor.principalId,
-              resolvedAt: args.now,
-            },
-          })
-      }
+      await Promise.all(commands
+        .filter((command) => command.type !== 'cancel' && (command.status === 'pending' || command.status === 'claimed'))
+        .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })))
+      const pendingRequests = await ctx.db.query('agentApprovalRequests')
+        .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', args.workspaceId).eq('runId', args.runId)).take(100)
+      await Promise.all(pendingRequests.filter((request) => !request.resolution).map((request) =>
+        ctx.db.patch(request._id, { resolution: {
+          decision: 'cancelled', resolvedByPrincipalId: actor.principalId, resolvedAt: args.now,
+        } })))
       await ctx.db.patch(run.assistantMessageId, { content: 'Cancelled',
         parts: [{ type: 'text', text: 'Cancelled' }, { type: 'data-remote-agent-status', data: {
           environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId, state: 'cancelled' } }],
@@ -692,9 +679,8 @@ export const controlRemoteAgentTurnByServer = mutation({
     }
     if (args.action === 'retry' && run.status === 'queued') {
       await ctx.db.patch(run._id, { leaseExpiresAt: args.queueExpiresAt, updatedAt: args.now })
-      for (const command of commands) if (command.status !== 'acknowledged') {
-        await ctx.db.patch(command._id, { status: 'pending', claimedAt: undefined, claimExpiresAt: undefined, updatedAt: args.now })
-      }
+      await Promise.all(commands.filter((command) => command.status !== 'acknowledged').map((command) =>
+        ctx.db.patch(command._id, { status: 'pending', claimedAt: undefined, claimExpiresAt: undefined, updatedAt: args.now })))
       await ctx.db.patch(session._id, { capabilitySnapshot: { ...session.capabilitySnapshot, queueExpiresAt: args.queueExpiresAt }, updatedAt: args.now })
       await ctx.db.patch(run.assistantMessageId, { content: `Waiting for ${environment.name}`,
         parts: conversationParts(waitingRemoteAgentParts({ environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId })),
@@ -1347,11 +1333,9 @@ export const pruneEventRateWindowsInternal = internalMutation({
   returns: v.object({ deleted: v.number() }),
   handler: async (ctx, args) => {
     const cutoff = (args.now ?? Date.now()) - 10 * 60_000
-    const rows = await ctx.db
-      .query('agentEventRateWindows')
-      .withIndex('by_windowStartedAt', (q) => q.lt('windowStartedAt', cutoff))
-      .take(1_000)
-    for (const row of rows) await ctx.db.delete(row._id)
+    const rows = await ctx.db.query('agentEventRateWindows')
+      .withIndex('by_windowStartedAt', q => q.lt('windowStartedAt', cutoff)).take(1_000)
+    await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
     return { deleted: rows.length }
   },
 })
@@ -1365,30 +1349,19 @@ export const listPendingSandboxSettlementsByServer = query({
       .query('agentSandboxSettlements')
       .withIndex('by_status_updatedAt', (q) => q.eq('status', 'pending'))
       .take(limit)
-    const settlements = []
-    for (const marker of markers) {
-      const session = await ctx.db
-        .query('agentRemoteSessions')
-        .withIndex('by_runId', (q) => q.eq('runId', marker.runId))
-        .unique()
-      if (
-        !session ||
-        !['completed', 'failed', 'cancelled'].includes(session.status)
-      )
-        continue
-      const run = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_externalRunId', (q) =>
-          q.eq('externalRunId', marker.runId),
-        )
-        .unique()
+    const settlements = (await Promise.all(markers.map(async (marker) => {
+      const session = await ctx.db.query('agentRemoteSessions')
+        .withIndex('by_runId', q => q.eq('runId', marker.runId)).unique()
+      if (!session || !['completed', 'failed', 'cancelled'].includes(session.status)) return null
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_externalRunId', q => q.eq('externalRunId', marker.runId)).unique()
       const message = run ? await ctx.db.get(run.assistantMessageId) : null
-      settlements.push(terminalBilling(
+      return terminalBilling(
         session.capabilitySnapshot,
         message?.tokens,
         terminalOutcome(session.status),
-      ))
-    }
+      )
+    }))).filter((settlement) => settlement !== null)
     return settlements
   },
 })
@@ -1573,37 +1546,27 @@ export const stopSandboxLeaseByServer = mutation({
       usage,
       updatedAt: args.now,
     })
-    for (const command of await ctx.db
-      .query('agentRunCommands')
-      .withIndex('by_environmentId_sequence', (q) =>
-        q.eq('environmentId', lease.environmentId),
-      )
-      .take(1_000)) {
-      if (command.status === 'pending' || command.status === 'claimed') {
-        await ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: args.now, updatedAt: args.now })
-      }
-    }
+    const leaseCommands = await ctx.db.query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', q => q.eq('environmentId', lease.environmentId)).take(1_000)
+    await Promise.all(leaseCommands
+      .filter((command) => command.status === 'pending' || command.status === 'claimed')
+      .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: args.now, updatedAt: args.now })))
     // Managed-harness workflow slices check the run row at slice entry —
     // cancelling them here is what fails parked turns cleanly.
-    for (const run of await ctx.db
-      .query('conversationAgentRuns')
-      .withIndex('by_environmentId_createdAt', (q) =>
-        q.eq('environmentId', lease.environmentId),
-      )
-      .take(1_000)) {
-      if (['queued', 'running', 'waiting_for_approval'].includes(run.status)) {
-        await ctx.db.patch(run._id, {
-          status: 'cancelled',
-          cancelledAt: args.now,
-          terminalError: {
-            code: 'usage_limited',
-            message: 'The sandbox was stopped because the billing balance ran low.',
-            retryable: false,
-          },
-          updatedAt: args.now,
-        })
-      }
-    }
+    const leaseRuns = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_environmentId_createdAt', q => q.eq('environmentId', lease.environmentId)).take(1_000)
+    await Promise.all(leaseRuns
+      .filter((run) => ['queued', 'running', 'waiting_for_approval'].includes(run.status))
+      .map((run) => ctx.db.patch(run._id, {
+        status: 'cancelled',
+        cancelledAt: args.now,
+        terminalError: {
+          code: 'usage_limited',
+          message: 'The sandbox was stopped because the billing balance ran low.',
+          retryable: false,
+        },
+        updatedAt: args.now,
+      })))
     return {
       ...clean(lease), status: 'stopping', reservedUntil: args.now,
       runtimeEndedAt: lease.runtimeEndedAt ?? args.now, cleanupAfter: args.now,
@@ -1827,13 +1790,9 @@ export const deleteHarnessSessionsForBindingByServer = mutation({
         q.eq('bindingId', args.bindingId),
       )
       .collect()
-    let count = 0
-    for (const row of rows) {
-      if (row.workspaceId !== args.workspaceId) continue
-      await ctx.db.delete(row._id)
-      count += 1
-    }
-    return count
+    const ownedRows = rows.filter((row) => row.workspaceId === args.workspaceId)
+    await Promise.all(ownedRows.map((row) => ctx.db.delete(row._id)))
+    return ownedRows.length
   },
 })
 
@@ -1882,27 +1841,18 @@ export const claimCommandsByServer = mutation({
     ])
     const rows = [...pendingRows, ...expiredClaimRows].sort((left, right) => left.sequence - right.sequence)
     const claimable: typeof rows = []
-    for (const row of rows) {
+    const candidates = rows.filter((row) => (
+      row.workspaceId === args.workspaceId
+      && (row.status === 'pending' || (row.status === 'claimed' && (row.claimExpiresAt ?? 0) <= args.now))
+    ))
+    const candidateRuns = await Promise.all(candidates.map((row) =>
+      ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', row.runId)).unique()))
+    for (let i = 0; i < candidates.length; i += 1) {
       if (claimable.length >= args.limit) break
-      if (
-        row.workspaceId !== args.workspaceId ||
-        !(
-          row.status === 'pending' ||
-          (row.status === 'claimed' && (row.claimExpiresAt ?? 0) <= args.now)
-        )
-      )
-        continue
-      const run = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_externalRunId', (q) => q.eq('externalRunId', row.runId))
-        .unique()
-      if (
-        run &&
-        row.type !== 'cancel' &&
-        (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
-          (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))
-      )
-        continue
+      const row = candidates[i]!
+      const run = candidateRuns[i]
+      if (run && row.type !== 'cancel' && (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
+        (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))) continue
       claimable.push(row)
     }
     return await Promise.all(
@@ -2047,14 +1997,10 @@ export const applyRemoteEventsByServer = mutation({
       if (event.type === 'approval_requested' || event.type === 'elicitation_requested') {
         const requestKey = typeof event.payload.requestKey === 'string' ? event.payload.requestKey : ''
         if (!requestKey) throw new Error('AGENT_REMOTE_REQUEST_INVALID')
-        const existing = await ctx.db
-          .query('agentApprovalRequests')
-          .withIndex('by_remoteSessionId_requestKey', (q) =>
-            q
-              .eq('remoteSessionId', session.sessionId)
-              .eq('requestKey', requestKey),
-          )
-          .unique()
+        // Sequential on purpose: requestKey dedup relies on this mutation's
+        // read-your-writes — a parallel batch would miss same-batch duplicates.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
+        const existing = await ctx.db.query('agentApprovalRequests').withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', session.sessionId).eq('requestKey', requestKey)).unique()
         if (!existing) {
           const options =
             event.type === 'approval_requested' &&
@@ -2076,26 +2022,14 @@ export const applyRemoteEventsByServer = mutation({
         }
       }
       if (event.type === 'artifact') {
-        const reference =
-          typeof event.payload.uploadReference === 'string'
-            ? event.payload.uploadReference
-            : ''
-        const artifact = await ctx.db
-          .query('agentArtifacts')
-          .withIndex('by_artifactId', (q) => q.eq('artifactId', reference))
-          .unique()
-        if (
-          !artifact ||
-          artifact.workspaceId !== args.workspaceId ||
-          artifact.environmentId !== args.environmentId ||
-          artifact.runId !== session.runId ||
-          artifact.remoteSessionId !== session.sessionId ||
-          !['clean', 'linked'].includes(artifact.status) ||
-          artifact.name !== event.payload.name ||
-          artifact.mediaType !== event.payload.mediaType ||
-          artifact.size !== event.payload.size ||
-          artifact.sha256 !== event.payload.sha256
-        ) {
+        const reference = typeof event.payload.uploadReference === 'string' ? event.payload.uploadReference : ''
+        // Event order is significant for validation; keep lookups sequential.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
+        const artifact = await ctx.db.query('agentArtifacts').withIndex('by_artifactId', q => q.eq('artifactId', reference)).unique()
+        if (!artifact || artifact.workspaceId !== args.workspaceId || artifact.environmentId !== args.environmentId
+          || artifact.runId !== session.runId || artifact.remoteSessionId !== session.sessionId
+          || !['clean', 'linked'].includes(artifact.status) || artifact.name !== event.payload.name
+          || artifact.mediaType !== event.payload.mediaType || artifact.size !== event.payload.size || artifact.sha256 !== event.payload.sha256) {
           throw new Error('AGENT_ARTIFACT_NOT_VALIDATED')
         }
         if (artifact.status !== 'linked') await ctx.db.patch(artifact._id, { status: 'linked', linkedAt: args.now, updatedAt: args.now })
@@ -2148,43 +2082,19 @@ export const applyRemoteEventsByServer = mutation({
       userId: run.userId, createdAt: args.now,
     })
     if (projection.terminal) {
-      const requests = await ctx.db
-        .query('agentApprovalRequests')
-        .withIndex('by_workspaceId_runId', (q) =>
-          q.eq('workspaceId', args.workspaceId).eq('runId', session.runId),
-        )
-        .take(100)
-      for (const request of requests)
-        if (!request.resolution) {
-          await ctx.db.patch(request._id, {
-            resolution: {
-              decision:
-                projection.runStatus === 'cancelled'
-                  ? 'cancelled'
-                  : projection.runStatus === 'failed'
-                    ? 'run_failed'
-                    : 'run_completed',
-              resolvedByPrincipalId: 'system:remote-supervisor',
-              resolvedAt: args.now,
-            },
-          })
-      }
-      const commands = await ctx.db
-        .query('agentRunCommands')
-        .withIndex('by_environmentId_sequence', (q) =>
-          q.eq('environmentId', args.environmentId),
-        )
-        .filter((q) => q.eq(q.field('runId'), session.runId))
-        .take(100)
-      for (const command of commands)
-        if (command.status !== 'cancelled') {
-          await ctx.db.patch(command._id, {
-            status: 'acknowledged',
-            acknowledgedAt: command.acknowledgedAt ?? args.now,
-            claimExpiresAt: undefined,
-            updatedAt: args.now,
-          })
-      }
+      const requests = await ctx.db.query('agentApprovalRequests')
+        .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', args.workspaceId).eq('runId', session.runId)).take(100)
+      await Promise.all(requests.filter((request) => !request.resolution).map((request) =>
+        ctx.db.patch(request._id, { resolution: {
+          decision: projection.runStatus === 'cancelled' ? 'cancelled' : projection.runStatus === 'failed' ? 'run_failed' : 'run_completed',
+          resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt: args.now,
+        } })))
+      const commands = await ctx.db.query('agentRunCommands')
+        .withIndex('by_environmentId_sequence', q => q.eq('environmentId', args.environmentId))
+        .filter(q => q.eq(q.field('runId'), session.runId)).take(100)
+      await Promise.all(commands.filter((command) => command.status !== 'cancelled').map((command) =>
+        ctx.db.patch(command._id, { status: 'acknowledged',
+          acknowledgedAt: command.acknowledgedAt ?? args.now, claimExpiresAt: undefined, updatedAt: args.now })))
     }
     return { accepted: true, acknowledgedSequence: last, duplicate: false,
       ...(projection.terminal ? { terminal: terminalBilling(session.capabilitySnapshot, projection.tokens, terminalOutcome(projection.runStatus)) } : {}) }
@@ -2204,53 +2114,25 @@ export const revokeEnvironmentByServer = mutation({
     if (!environment || environment.workspaceId !== args.workspaceId)
       return false
     if (environment.status === 'revoked') return true
-    await ctx.db.patch(environment._id, {
-      status: 'revoked',
-      revokedAt: args.now,
-      updatedAt: args.now,
-    })
-    for (const binding of await ctx.db
-      .query('agentBindings')
-      .withIndex('by_environmentId', (q) =>
-        q.eq('environmentId', args.environmentId),
-      )
-      .take(1_000))
-      await ctx.db.patch(binding._id, { enabled: false, updatedAt: args.now })
-    for (const command of await ctx.db
-      .query('agentRunCommands')
-      .withIndex('by_environmentId_sequence', (q) =>
-        q.eq('environmentId', args.environmentId),
-      )
-      .take(1_000))
-      if (command.status === 'pending' || command.status === 'claimed')
-        await ctx.db.patch(command._id, {
-          status: 'cancelled',
-          claimExpiresAt: args.now,
-          updatedAt: args.now,
-        })
-    for (const credential of await ctx.db
-      .query('agentEnvironmentCredentials')
-      .withIndex('by_environmentId_expiresAt', (q) =>
-        q.eq('environmentId', args.environmentId),
-      )
-      .take(1_000))
-      if (!credential.revokedAt)
-        await ctx.db.patch(credential._id, { revokedAt: args.now })
-    for (const lease of await ctx.db
-      .query('agentSandboxLeases')
-      .withIndex('by_workspaceId_environmentId', (q) =>
-        q
-          .eq('workspaceId', args.workspaceId)
-          .eq('environmentId', args.environmentId),
-      )
-      .take(1_000))
-      if (!['released', 'cleanup_failed'].includes(lease.status))
-        await ctx.db.patch(lease._id, {
-          status: 'stopping',
-          reservedUntil: args.now,
-          cleanupAfter: args.now,
-          updatedAt: args.now,
-        })
+    await ctx.db.patch(environment._id, { status: 'revoked', revokedAt: args.now, updatedAt: args.now })
+    const [bindings, envCommands, credentials, envLeases] = await Promise.all([
+      ctx.db.query('agentBindings').withIndex('by_environmentId', q => q.eq('environmentId', args.environmentId)).take(1_000),
+      ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', args.environmentId)).take(1_000),
+      ctx.db.query('agentEnvironmentCredentials').withIndex('by_environmentId_expiresAt', q => q.eq('environmentId', args.environmentId)).take(1_000),
+      ctx.db.query('agentSandboxLeases').withIndex('by_workspaceId_environmentId', q => q.eq('workspaceId', args.workspaceId).eq('environmentId', args.environmentId)).take(1_000),
+    ])
+    await Promise.all([
+      ...bindings.map((binding) => ctx.db.patch(binding._id, { enabled: false, updatedAt: args.now })),
+      ...envCommands
+        .filter((command) => command.status === 'pending' || command.status === 'claimed')
+        .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: args.now, updatedAt: args.now })),
+      ...credentials
+        .filter((credential) => !credential.revokedAt)
+        .map((credential) => ctx.db.patch(credential._id, { revokedAt: args.now })),
+      ...envLeases
+        .filter((lease) => !['released', 'cleanup_failed'].includes(lease.status))
+        .map((lease) => ctx.db.patch(lease._id, { status: 'stopping', reservedUntil: args.now, cleanupAfter: args.now, updatedAt: args.now })),
+    ])
     return true
   },
 })
@@ -2357,7 +2239,7 @@ export const deleteWorkspaceDataByServer = mutation({
         )
         .collect(),
     ])
-    for (const rows of groups) for (const row of rows) await ctx.db.delete(row._id)
+    await Promise.all(groups.flat().map((row) => ctx.db.delete(row._id)))
     return true
   },
 })
@@ -2484,7 +2366,7 @@ async function sweepRemoteRuns(
   const expiredRunIds: string[] = []
   const settlements = []
   const alerts: Array<Record<string, unknown>> = []
-  for (const run of active) {
+  const sweepResults = await Promise.all(active.map(async (run) => {
     const session = run.externalRunId
       ? await ctx.db
           .query('agentRemoteSessions')
@@ -2500,75 +2382,40 @@ async function sweepRemoteRuns(
           .unique()
       : null
     const offline = (environment?.lastSeenAt ?? 0) <= args.hostOfflineBefore
-    if (!offline && (run.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) > args.now) continue
+    if (!offline && (run.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) > args.now) return null
     const message = await ctx.db.get(run.assistantMessageId)
-    if (!session || !environment || !message || !run.externalRunId) continue
+    if (!session || !environment || !message || !run.externalRunId) return null
     const code = offline ? 'remote_host_offline' : 'remote_run_timeout'
-    const failureMessage = offline
-      ? 'The connected environment disappeared.'
-      : 'The connected agent run timed out.'
-    await ctx.db.patch(run._id, {
-      status: 'failed',
-      failedAt: args.now,
-      terminalError: { code, message: failureMessage, retryable: true },
-      updatedAt: args.now,
-    })
-    await ctx.db.patch(session._id, {
-      status: 'failed',
-      endedAt: args.now,
-      updatedAt: args.now,
-    })
-    await ctx.db.patch(message._id, {
-      content: message.content || failureMessage,
-      parts: conversationParts(
-        recoveryParts(
-          message.parts,
-          run.externalRunId,
-          environment.name,
-          code,
-          failureMessage,
-          args.now,
-        ),
-      ),
-      status: 'error',
-      updatedAt: args.now,
-    })
-    const commands = await ctx.db
-      .query('agentRunCommands')
-      .withIndex('by_environmentId_sequence', (q) =>
-        q.eq('environmentId', session.environmentId),
-      )
-      .filter((q) => q.eq(q.field('runId'), run.externalRunId!))
-      .take(100)
-    for (const command of commands) {
-      if (command.status === 'pending' || command.status === 'claimed') {
-        await ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })
-      }
-    }
-    const requests = await ctx.db
-      .query('agentApprovalRequests')
-      .withIndex('by_workspaceId_runId', (q) =>
-        q
-          .eq('workspaceId', session.workspaceId)
-          .eq('runId', run.externalRunId!),
-      )
-      .take(100)
-    for (const request of requests)
-      if (!request.resolution) {
-        await ctx.db.patch(request._id, {
-          resolution: {
-            decision: code,
-            resolvedByPrincipalId: 'system:remote-supervisor',
-            resolvedAt: args.now,
-          },
-        })
-    }
-    await ctx.db.insert('conversationEvents', { conversationId: run.conversationId,
-      workspaceId: session.workspaceId, messageId: message._id, type: 'message.failed', userId: run.userId, createdAt: args.now })
-    expiredRunIds.push(run.externalRunId)
+    const failureMessage = offline ? 'The connected environment disappeared.' : 'The connected agent run timed out.'
+    await Promise.all([
+      ctx.db.patch(run._id, { status: 'failed', failedAt: args.now,
+        terminalError: { code, message: failureMessage, retryable: true }, updatedAt: args.now }),
+      ctx.db.patch(session._id, { status: 'failed', endedAt: args.now, updatedAt: args.now }),
+      ctx.db.patch(message._id, { content: message.content || failureMessage,
+        parts: conversationParts(recoveryParts(message.parts, run.externalRunId, environment.name, code, failureMessage, args.now)),
+        status: 'error', updatedAt: args.now }),
+    ])
+    const [commands, requests] = await Promise.all([
+      ctx.db.query('agentRunCommands')
+        .withIndex('by_environmentId_sequence', q => q.eq('environmentId', session.environmentId))
+        .filter(q => q.eq(q.field('runId'), run.externalRunId!)).take(100),
+      ctx.db.query('agentApprovalRequests')
+        .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', session.workspaceId).eq('runId', run.externalRunId!)).take(100),
+    ])
+    await Promise.all([
+      ...commands
+        .filter((command) => command.status === 'pending' || command.status === 'claimed')
+        .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })),
+      ...requests
+        .filter((request) => !request.resolution)
+        .map((request) => ctx.db.patch(request._id, { resolution: {
+          decision: code, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt: args.now,
+        } })),
+      ctx.db.insert('conversationEvents', { conversationId: run.conversationId,
+        workspaceId: session.workspaceId, messageId: message._id, type: 'message.failed', userId: run.userId, createdAt: args.now }),
+    ])
     const settlement = terminalBilling(session.capabilitySnapshot, message.tokens, 'timeout')
-    settlements.push(settlement)
-    alerts.push({
+    const runAlerts: Array<Record<string, unknown>> = [{
       code: offline ? 'offline_environment' : 'lease_expired',
       workspaceId: session.workspaceId,
       agentId: settlement.agentId || run.agentId,
@@ -2577,15 +2424,15 @@ async function sweepRemoteRuns(
       remoteSessionId: session.sessionId,
       ...(settlement.reservationId ? { reservationId: settlement.reservationId } : {}),
       eventCursor: session.eventCursor,
-    })
+    }]
     for (const command of commands) if (
       (command.status === 'pending' || command.status === 'claimed') && command.updatedAt <= args.now - 2 * 60_000
-    ) alerts.push({
+    ) runAlerts.push({
       code: 'stuck_command', workspaceId: command.workspaceId, environmentId: command.environmentId,
       runId: command.runId, commandId: command.commandId, ageMs: args.now - command.updatedAt,
     })
     for (const request of requests) if (!request.resolution && request.requestedAt <= args.now - 15 * 60_000) {
-      alerts.push({
+      runAlerts.push({
         code: 'approval_age', workspaceId: request.workspaceId, environmentId: session.environmentId,
         runId: request.runId, remoteSessionId: request.remoteSessionId,
         eventCursor: session.eventCursor, ageMs: args.now - request.requestedAt,
@@ -2598,6 +2445,13 @@ async function sweepRemoteRuns(
         errorMessage: `remote_agent_${settlement.outcome}`,
       })
     }
+    return { runId: run.externalRunId, settlement, runAlerts }
+  }))
+  for (const result of sweepResults) {
+    if (!result) continue
+    expiredRunIds.push(result.runId)
+    settlements.push(result.settlement)
+    alerts.push(...result.runAlerts)
   }
   const [offlineEnvironments, staleOnlineEnvironments] = await Promise.all([
     ctx.db
@@ -2654,47 +2508,26 @@ async function sweepRemoteRuns(
         commandId: command.commandId,
         ageMs: args.now - command.updatedAt,
   })
-  const oldApprovals = await ctx.db
-    .query('agentApprovalRequests')
-    .withIndex('by_requestedAt', (q) =>
-      q.lte('requestedAt', args.now - 15 * 60_000),
-    )
-    .take(args.limit)
-  const alertedApprovals = new Set(
-    alerts
-      .map((alert) => `${alert.remoteSessionId}:${alert.runId}`)
-      .filter(Boolean),
-  )
-  for (const approval of oldApprovals) {
-    if (
-      approval.resolution ||
-      alertedApprovals.has(`${approval.remoteSessionId}:${approval.runId}`)
-    )
-      continue
-    const session = await ctx.db
-      .query('agentRemoteSessions')
-      .withIndex('by_sessionId', (q) =>
-        q.eq('sessionId', approval.remoteSessionId),
-      )
-      .unique()
-    alerts.push({
+  const oldApprovals = await ctx.db.query('agentApprovalRequests')
+    .withIndex('by_requestedAt', q => q.lte('requestedAt', args.now - 15 * 60_000)).take(args.limit)
+  const alertedApprovals = new Set(alerts.map(alert => `${alert.remoteSessionId}:${alert.runId}`).filter(Boolean))
+  const pendingOldApprovals = oldApprovals.filter((approval) =>
+    !approval.resolution && !alertedApprovals.has(`${approval.remoteSessionId}:${approval.runId}`))
+  const approvalSessions = await Promise.all(pendingOldApprovals.map((approval) =>
+    ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', approval.remoteSessionId)).unique()))
+  alerts.push(...pendingOldApprovals.map((approval, i) => {
+    const session = approvalSessions[i]
+    return {
       code: 'approval_age', workspaceId: approval.workspaceId,
       ...(session ? { environmentId: session.environmentId, eventCursor: session.eventCursor } : {}),
       runId: approval.runId, remoteSessionId: approval.remoteSessionId,
       ageMs: args.now - approval.requestedAt,
-    })
-  }
-  const cleanupFailures = await ctx.db
-    .query('agentSandboxLeases')
-    .withIndex('by_status_cleanupAfter', (q) =>
-      q.eq('status', 'cleanup_failed'),
-    )
-    .take(args.limit)
-  alerts.push(
-    ...cleanupFailures.map((lease) => ({
-      code: 'cleanup_failure',
-      workspaceId: lease.workspaceId,
-      environmentId: lease.environmentId,
+    }
+  }))
+  const cleanupFailures = await ctx.db.query('agentSandboxLeases')
+    .withIndex('by_status_cleanupAfter', q => q.eq('status', 'cleanup_failed')).take(args.limit)
+  alerts.push(...cleanupFailures.map(lease => ({
+    code: 'cleanup_failure', workspaceId: lease.workspaceId, environmentId: lease.environmentId,
     ...(lease.runId ? { runId: lease.runId } : {}),
     ...(lease.providerReference ? { providerReference: lease.providerReference } : {}),
     ...(lease.reservationId ? { reservationId: lease.reservationId } : {}),

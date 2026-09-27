@@ -50,11 +50,12 @@ export const runProjectionTick = internalAction({
       return null;
     }
 
-    for (const run of activeRuns) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await Promise.all((activeRuns as any[]).map(async (run: any) => {
       try {
-        const workflowRun = getRun(run.workflowRunId);
-        const exists = await workflowRun.exists;
-        if (!exists) continue;
+        const workflowRun = getRun(run.workflowRunId)
+        const exists = await workflowRun.exists
+        if (!exists) return
 
         // Get the latest projected event timestamp for this run
         const latestCursor = await ctx.runQuery(
@@ -102,29 +103,27 @@ export const runProjectionTick = internalAction({
           const stack = eventData?.stack as string | undefined;
           const attempt = eventData?.attempt as number | undefined;
 
-          await ctx.runMutation(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (internal as any).automations.workflowEventProjector
-              .recordStepEventInternal,
-            {
-              userId: run.userId,
-              workflowRunId: run.workflowRunId,
-              stepName,
-              stepStatus,
-              ...(run._id
-                ? { automationRunId: run._id as Id<"automationRuns"> }
-                : {}),
-              ...(attempt !== undefined ? { attempt } : {}),
-              ...(error ? { error: error.slice(0, 500) } : {}),
-              ...(stack ? { stack: stack.slice(0, 1000) } : {}),
-              serverSecret,
-            },
-          );
+          // Step events are ordered (created → completed); a parallel batch
+          // could commit them out of order, so keep this loop sequential.
+          /* eslint-disable @typescript-eslint/no-explicit-any */
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop
+          await ctx.runMutation((internal as any).automations.workflowEventProjector.recordStepEventInternal, {
+            userId: run.userId,
+            workflowRunId: run.workflowRunId,
+            stepName,
+            stepStatus,
+            ...(run._id ? { automationRunId: run._id as Id<'automationRuns'> } : {}),
+            ...(attempt !== undefined ? { attempt } : {}),
+            ...(error ? { error: error.slice(0, 500) } : {}),
+            ...(stack ? { stack: stack.slice(0, 1000) } : {}),
+            serverSecret,
+          })
         }
       } catch {
         // Skip this run on error, continue with the next one
       }
-    }
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    }))
 
     return null;
   },

@@ -119,20 +119,18 @@ export class WorkspaceService {
     const accesses = await this.repository.listForUser(required(userId, 'userId'), {
       includeArchived: true,
     })
-    for (const access of accesses) {
-      if (
-        access.workspace.kind !== 'organization'
-        || access.workspace.status !== 'active'
-        || access.membership.role !== 'owner'
-        || access.membership.status !== 'active'
-      ) {
-        continue
-      }
-      const memberships = await this.repository.listMemberships({
+    const ownedAccesses = accesses.filter((access) =>
+      access.workspace.kind === 'organization'
+      && access.workspace.status === 'active'
+      && access.membership.role === 'owner'
+      && access.membership.status === 'active')
+    const membershipLists = await Promise.all(ownedAccesses.map((access) =>
+      this.repository.listMemberships({
         workspaceId: access.workspace.id,
         status: 'active',
-      })
-      const hasAnotherOwner = memberships.some((membership) => (
+      })))
+    for (const [i, access] of ownedAccesses.entries()) {
+      const hasAnotherOwner = membershipLists[i]!.some((membership) => (
         membership.role === 'owner'
         && membership.principalId !== access.principal.id
       ))
@@ -759,20 +757,18 @@ export class WorkspaceService {
     if (actor.workspace.kind !== 'personal') return []
 
     const resourceType = required(args.resourceType, 'resourceType')
-    const bound: string[] = []
-    for (const value of new Set(args.resourceIds)) {
-      const resourceId = required(value, 'resourceId')
-      const existing = await this.repository.getResourceWorkspace({ resourceType, resourceId })
-      if (existing) continue
-      await this.repository.bindResource({
+    const resourceIds = [...new Set(args.resourceIds)].map((value) => required(value, 'resourceId'))
+    const existingScopes = await Promise.all(resourceIds.map((resourceId) =>
+      this.repository.getResourceWorkspace({ resourceType, resourceId })))
+    const unbound = resourceIds.filter((_, i) => !existingScopes[i])
+    await Promise.all(unbound.map((resourceId) =>
+      this.repository.bindResource({
         workspaceId: actor.workspace.id,
         resourceType,
         resourceId,
         now: this.now(),
-      })
-      bound.push(resourceId)
-    }
-    return bound
+      })))
+    return unbound
   }
 
   async assertResourceWorkspace(args: {

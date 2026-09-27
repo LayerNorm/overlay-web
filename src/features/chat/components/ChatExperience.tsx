@@ -1499,15 +1499,14 @@ export default function ChatExperience({
       if (!branchChatId) throw new Error("Could not create branch");
       const branchCopyRequestPrefix = createIdempotencyKey();
       for (const [messageIndex, message] of branchRows.entries()) {
-        const content =
-          (message.parts ?? [])
-            .filter((part) => part.type === "text" && part.text?.trim())
-            .map((part) => part.text!.trim())
-            .join("\n\n") ||
-          (message.role === "assistant" ? "[Response]" : "[Message]");
-        const parts = (message.parts ?? []).filter(
-          (part) => part.type === "text" || part.type === "file",
-        );
+        const content = (message.parts ?? [])
+          .filter((part) => part.type === 'text' && part.text?.trim())
+          .map((part) => part.text!.trim())
+          .join('\n\n') || (message.role === 'assistant' ? '[Response]' : '[Message]')
+        const parts = (message.parts ?? []).filter((part) => part.type === 'text' || part.type === 'file')
+        // Sequential on purpose: branch messages must be appended in order —
+        // parallel copies could interleave the conversation history.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const res = await overlayAppClient.conversations.addMessageResponse(
           {
             conversationId: branchChatId,

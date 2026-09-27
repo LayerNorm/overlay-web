@@ -447,20 +447,24 @@ export class WorkspaceSharingService {
     grants: WorkspaceResourceGrant[]
     workspaceId: string
   }): Promise<Set<string>> {
-    const reached = new Set<string>()
-    for (const grant of args.grants) {
+    const targets = await Promise.all(args.grants.map(async (grant) => {
       try {
-        const target = await this.resolveTarget({
+        return await this.resolveTarget({
           actorUserId: args.actorUserId,
           workspaceId: args.workspaceId,
           targetType: grant.targetType,
           targetId: grant.targetId,
         })
-        for (const principal of target.principals) reached.add(principal.principalId)
       } catch (_error) {
         // A target that no longer resolves reaches nobody; the stale grant is
         // still listed in the dialog so it can be removed.
+        return null
       }
+    }))
+    const reached = new Set<string>()
+    for (const target of targets) {
+      if (!target) continue
+      for (const principal of target.principals) reached.add(principal.principalId)
     }
     return reached
   }

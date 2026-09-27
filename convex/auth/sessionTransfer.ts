@@ -94,10 +94,8 @@ export const cleanExpired = mutation({
     const expired = await ctx.db
       .query('sessionTransferTokens')
       .collect()
-    for (const entry of expired) {
-      if (entry.expiresAt < now) {
-        await ctx.db.delete(entry._id)
-      }
-    }
+    await Promise.all(expired
+      .filter((entry) => entry.expiresAt < now)
+      .map((entry) => ctx.db.delete(entry._id)))
   },
 })

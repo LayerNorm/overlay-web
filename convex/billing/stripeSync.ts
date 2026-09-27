@@ -77,76 +77,81 @@ export const syncPaidSubscriptionsFromStripe = internalAction({
     let synced = 0
     let skipped = 0
 
-    for (const status of SYNC_STATUSES) {
-      const subs = await listAllSubscriptions(stripe, status)
-      for (const subscription of subs) {
-        const subscriptionId = subscription.id
-        const customerId =
-          typeof subscription.customer === 'string'
-            ? subscription.customer
-            : subscription.customer?.id
+    const subsByStatus = await Promise.all(
+      SYNC_STATUSES.map((status) => listAllSubscriptions(stripe, status)),
+    )
+    const outcomes = await Promise.all(subsByStatus.flat().map(async (subscription) => {
+      const subscriptionId = subscription.id
+      const customerId =
+        typeof subscription.customer === 'string'
+          ? subscription.customer
+          : subscription.customer?.id
 
-        const userId = subscription.metadata?.userId?.trim()
-        if (!userId) {
-          skipped++
-          results.push({
+      const userId = subscription.metadata?.userId?.trim()
+      if (!userId) {
+        return {
+          synced: false,
+          result: {
             subscriptionId,
             customerId,
-            outcome: 'skipped',
+            outcome: 'skipped' as const,
             reason: 'missing metadata.userId (auth provider user id from checkout)',
-          })
-          continue
+          },
         }
+      }
 
-        const plan = extractPlanFromSubscription(subscription)
-        if (plan.tier === 'free') {
-          skipped++
-          results.push({
+      const plan = extractPlanFromSubscription(subscription)
+      if (plan.tier === 'free') {
+        return {
+          synced: false,
+          result: {
             subscriptionId,
             customerId,
             userId,
-            outcome: 'skipped',
+            outcome: 'skipped' as const,
             reason: `unknown or unset price id (${plan.stripePriceId ?? 'none'}) — check Stripe price configuration`,
-          })
-          continue
+          },
         }
-
-        const customerInfo = extractCustomerInfo(
-          subscription.customer as Stripe.Customer | string
-        )
-        const email = subscription.metadata?.email || customerInfo.email
-        const name = customerInfo.name
-
-        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
-
-        await ctx.runMutation(internal.billing.subscriptions.upsertFromStripeInternal, {
-          userId,
-          email,
-          name,
-          stripeCustomerId:
-            typeof subscription.customer === 'string'
-              ? subscription.customer
-              : subscription.customer.id,
-          stripeSubscriptionId: subscription.id,
-          stripePriceId: plan.stripePriceId,
-          stripeQuantity: plan.stripeQuantity,
-          tier: plan.tier,
-          planKind: plan.planKind,
-          planVersion: plan.planVersion,
-          planAmountCents: plan.planAmountCents,
-          status: mapSubscriptionStatus(subscription.status),
-          currentPeriodStart,
-          currentPeriodEnd,
-        })
-
-        synced++
-        results.push({
-          subscriptionId,
-          customerId,
-          userId,
-          outcome: 'synced',
-        })
       }
+
+      const customerInfo = extractCustomerInfo(
+        subscription.customer as Stripe.Customer | string
+      )
+      const email = subscription.metadata?.email || customerInfo.email
+      const name = customerInfo.name
+
+      const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
+
+      await ctx.runMutation(internal.billing.subscriptions.upsertFromStripeInternal, {
+        userId,
+        email,
+        name,
+        stripeCustomerId:
+          typeof subscription.customer === 'string'
+            ? subscription.customer
+            : subscription.customer.id,
+        stripeSubscriptionId: subscription.id,
+        stripePriceId: plan.stripePriceId,
+        stripeQuantity: plan.stripeQuantity,
+        tier: plan.tier,
+        planKind: plan.planKind,
+        planVersion: plan.planVersion,
+        planAmountCents: plan.planAmountCents,
+        status: mapSubscriptionStatus(subscription.status),
+        currentPeriodStart,
+        currentPeriodEnd,
+      })
+
+      return {
+        synced: true,
+        result: { subscriptionId, customerId, userId, outcome: 'synced' as const },
+      }
+    }))
+
+    for (const { synced: didSync, result } of outcomes) {
+      if (didSync) synced++
+      else skipped++
+      results.push(result)
     }
 
     return { synced, skipped, results }

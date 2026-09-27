@@ -52,11 +52,10 @@ export const runMinuteTick = internalAction({
       limit: 25,
     })
 
-    for (const deliveryId of deliveryIds) {
-      await ctx.scheduler.runAfter(0, internal.webhooks.deliveryRunner.deliverOne, {
+    await Promise.all(deliveryIds.map((deliveryId) =>
+      ctx.scheduler.runAfter(0, internal.webhooks.deliveryRunner.deliverOne, {
         deliveryId,
-      })
-    }
+      })))
 
     return null
   },

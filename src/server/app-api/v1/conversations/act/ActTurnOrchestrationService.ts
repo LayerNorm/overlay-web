@@ -134,18 +134,24 @@ export async function executeActTurn(
   let concurrencySlot: { release: () => void } | null = null
   let requestModelId: string | undefined
   try {
-    const {
-      ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
-      ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
-      ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-      FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
-      MEMORY_SAVE_PROTOCOL,
-      cloneMessagesWithIndexedFileHint,
-      indexedFilesSystemNote,
-      indexedFilesSystemNotePreloaded,
-    } = await import('@/server/agent/knowledge-agent-instructions')
-    const { MATH_FORMAT_INSTRUCTION } = await import('@/shared/markdown/math-format-instructions')
-    const { TABLE_FORMAT_INSTRUCTION } = await import('@/shared/markdown/markdown-table-instructions')
+    const [
+      {
+        ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
+        ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
+        ACT_PAID_PLAN_ACT_TOOLS_REALITY,
+        FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
+        MEMORY_SAVE_PROTOCOL,
+        cloneMessagesWithIndexedFileHint,
+        indexedFilesSystemNote,
+        indexedFilesSystemNotePreloaded,
+      },
+      { MATH_FORMAT_INSTRUCTION },
+      { TABLE_FORMAT_INSTRUCTION },
+    ] = await Promise.all([
+      import('@/server/agent/knowledge-agent-instructions'),
+      import('@/shared/markdown/math-format-instructions'),
+      import('@/shared/markdown/markdown-table-instructions'),
+    ])
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
     let _tEnsureConversationMs = 0

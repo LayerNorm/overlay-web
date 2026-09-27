@@ -192,9 +192,10 @@ class DaytonaSandboxInstance implements SandboxInstance {
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>) {
     await this.sandbox.fs.uploadFiles(files.map((file) => ({ source: Buffer.from(file.contents), destination: file.path })))
-    for (const file of files) {
-      if (file.mode !== undefined) await this.sandbox.fs.setFilePermissions(file.path, { mode: file.mode.toString(8) })
-    }
+    await Promise.all(files.map((file) =>
+      file.mode !== undefined
+        ? this.sandbox.fs.setFilePermissions(file.path, { mode: file.mode.toString(8) })
+        : undefined))
   }
   async readFile(filePath: string) { return await this.sandbox.fs.downloadFile(filePath) }
   async listFiles(directory: string): Promise<SandboxFileEntry[]> {
