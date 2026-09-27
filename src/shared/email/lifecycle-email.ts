@@ -55,196 +55,214 @@ export function renderLifecycleEmail(
 
 function contentForEvent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
   switch (event.name) {
-    case 'user.created':
-      return {
-        body: 'Your account is ready. One workspace for the models you ask, the agents that act, and the people you work with.',
-        ctaLabel: 'Open Overlay',
-        ctaUrl: appPath(appUrl, '/app/chat'),
-        feature: featureRows([
-          ['Ask anything', 'Chat with frontier models in one place', appPath(appUrl, '/app/chat')],
-          ['Hand off work', 'Agents run tasks in the background while you move on', appPath(appUrl, '/app/automations')],
-          ['Bring the team', 'Shared workspaces, mentions, and direct messages', appPath(appUrl, '/app/settings?section=workspace')],
-        ]),
-        heading: 'Welcome to Overlay',
-        reason: 'You received this because an Overlay account was created for you.',
-        subject: 'Welcome to Overlay',
-      }
-    case 'subscription.changed': {
-      const status = stringAttribute(event.attributes.status) ?? 'updated'
-      const label = subscriptionLabel(status)
-      const billingUrl = appPath(appUrl, '/app/settings?section=account')
-      const feature = statusCard(label, status)
-      if (status === 'past_due') {
-        return {
-          body: `We couldn't collect your latest payment. Update your payment method to keep your plan and agents running.`,
-          ctaLabel: 'Update billing',
-          ctaUrl: billingUrl,
-          feature,
-          heading: 'Payment is past due',
-          reason: 'You received this because the subscription on your account changed.',
-          subject: 'Your Overlay subscription is past due',
-        }
-      }
-      if (status === 'canceled') {
-        return {
-          body: 'Your paid plan has ended and the account moved to the free tier. You can restart it any time from billing settings.',
-          ctaLabel: 'Review billing',
-          ctaUrl: billingUrl,
-          feature,
-          heading: 'Your subscription is canceled',
-          reason: 'You received this because the subscription on your account changed.',
-          subject: 'Your Overlay subscription is canceled',
-        }
-      }
-      if (status === 'active' || status === 'trialing') {
-        return {
-          body: status === 'trialing'
-            ? 'Your trial is active. Model usage, agents, and credits are all managed from Account settings.'
-            : `You're on a paid plan. Model usage, agents, and credits are all managed from Account settings.`,
-          ctaLabel: 'Review billing',
-          ctaUrl: billingUrl,
-          feature,
-          heading: status === 'trialing' ? 'Your trial is active' : 'Your subscription is active',
-          reason: 'You received this because the subscription on your account changed.',
-          subject: `Your Overlay subscription is ${label}`,
-        }
-      }
-      return {
-        body: `Your Overlay subscription status is now ${label}. Review billing details in Account settings.`,
-        ctaLabel: 'Review billing',
-        ctaUrl: billingUrl,
-        feature,
-        heading: 'Subscription updated',
-        reason: 'You received this because the subscription on your account changed.',
-        subject: 'Your Overlay subscription was updated',
-      }
+    case 'user.created': return welcomeContent(appUrl)
+    case 'subscription.changed': return subscriptionContent(event, appUrl)
+    case 'topup.succeeded': return topupContent(appUrl)
+    case 'automation.failed': return automationFailedContent(event, appUrl)
+    case 'api_key.changed': return apiKeyContent(event, appUrl)
+    case 'workspace.invitation_sent': return invitationContent(event, appUrl)
+    case 'workspace.mention': return mentionContent(event, appUrl)
+    case 'workspace.dm_received': return dmContent(event, appUrl)
+  }
+}
+
+function welcomeContent(appUrl: string): EmailContent {
+  return {
+    body: 'Your account is ready. One workspace for the models you ask, the agents that act, and the people you work with.',
+    ctaLabel: 'Open Overlay',
+    ctaUrl: appPath(appUrl, '/app/chat'),
+    feature: featureRows([
+      ['Ask anything', 'Chat with frontier models in one place', appPath(appUrl, '/app/chat')],
+      ['Hand off work', 'Agents run tasks in the background while you move on', appPath(appUrl, '/app/automations')],
+      ['Bring the team', 'Shared workspaces, mentions, and direct messages', appPath(appUrl, '/app/settings?section=workspace')],
+    ]),
+    heading: 'Welcome to Overlay',
+    reason: 'You received this because an Overlay account was created for you.',
+    subject: 'Welcome to Overlay',
+  }
+}
+
+function subscriptionContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const status = stringAttribute(event.attributes.status) ?? 'updated'
+  const label = subscriptionLabel(status)
+  const billingUrl = appPath(appUrl, '/app/settings?section=account')
+  const feature = statusCard(label, status)
+  if (status === 'past_due') {
+    return {
+      body: `We couldn't collect your latest payment. Update your payment method to keep your plan and agents running.`,
+      ctaLabel: 'Update billing',
+      ctaUrl: billingUrl,
+      feature,
+      heading: 'Payment is past due',
+      reason: 'You received this because the subscription on your account changed.',
+      subject: 'Your Overlay subscription is past due',
     }
-    case 'topup.succeeded':
-      return {
-        body: 'Your credits are ready to use. Agents, models, and sandboxes draw from this balance first.',
-        ctaLabel: 'View balance',
-        ctaUrl: appPath(appUrl, '/app/settings?section=account'),
-        feature: card(
-          `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
-          `<td style="vertical-align:middle;padding-right:10px;">${statusDot('#10b981')}</td>` +
-          `<td style="font-family:${SANS};font-size:12.5px;color:#0a0a0a;vertical-align:middle;">Credits added to your balance</td>` +
-          `</tr></table>`,
-        ),
-        heading: 'Top-up confirmed',
-        reason: 'You received this because a credit purchase completed on your account.',
-        subject: 'Your Overlay top-up is confirmed',
-      }
-    case 'automation.failed': {
-      const automationId = stringAttribute(event.resource.automationId)
-      const automationName = stringAttribute(event.attributes.automationName) ?? 'Automation run'
-      const execution = event.attributes.execution === 'manual' ? 'Manual' : 'Scheduled'
-      const failure = failureLabel(stringAttribute(event.attributes.failureClass))
-      return {
-        body: `One of your automations didn't finish. Open the run to see what happened and retry it when you're ready.`,
-        ctaLabel: 'Review the run',
-        ctaUrl: automationId
-          ? appPath(appUrl, `/app/automations?automationId=${encodeURIComponent(automationId)}`)
-          : appPath(appUrl, '/app/automations'),
-        feature: card(
-          `<table role="presentation" cellspacing="0" cellpadding="0" width="100%"><tr>` +
-          `<td style="vertical-align:top;padding-top:3px;padding-right:10px;width:7px;">${statusDot('#ef4444')}</td>` +
-          `<td><div style="font-family:${SANS};font-size:12.5px;font-weight:500;color:#0a0a0a;">${escapeHtml(automationName)}</div>` +
-          `<div style="font-family:${SANS};font-size:11.5px;color:#71717a;padding-top:3px;">${execution} run &middot; ${failure}</div></td>` +
-          `</tr></table>`,
-        ),
-        heading: 'An automation run failed',
-        reason: 'You received this because an automation you own failed.',
-        showPreferences: true,
-        subject: 'An Overlay automation needs attention',
-      }
+  }
+  if (status === 'canceled') {
+    return {
+      body: 'Your paid plan has ended and the account moved to the free tier. You can restart it any time from billing settings.',
+      ctaLabel: 'Review billing',
+      ctaUrl: billingUrl,
+      feature,
+      heading: 'Your subscription is canceled',
+      reason: 'You received this because the subscription on your account changed.',
+      subject: 'Your Overlay subscription is canceled',
     }
-    case 'api_key.changed': {
-      const action = stringAttribute(event.attributes.action) ?? 'changed'
-      const accountUrl = appPath(appUrl, '/app/settings?section=account')
-      const feature = card(
-        `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
-        `<td style="vertical-align:middle;padding-right:10px;font-family:${SANS};font-size:14px;color:#71717a;">&#9679;</td>` +
-        `<td><span style="font-family:${SANS};font-size:12.5px;color:#0a0a0a;">API key</span> ${pill(escapeHtml(action))}</td>` +
-        `</tr></table>`,
-      )
-      const bodies: Record<string, string> = {
-        created: `A new API key can act on your account. If this wasn't you, revoke it from settings and tell your admin.`,
-        revoked: `The key can no longer be used. If you didn't expect this, check the rest of your keys in settings.`,
-        rotated: 'The old secret stopped working. Update anywhere that still calls Overlay with it.',
-      }
-      return {
-        body: bodies[action]
-          ?? 'An API key on your Overlay account changed. If this was not you, revoke active keys and contact your administrator.',
-        ctaLabel: 'Review API keys',
-        ctaUrl: accountUrl,
-        feature,
-        heading: `API key ${action}`,
-        reason: 'You received this security notice because an API key on your account changed.',
-        subject: `An API key was ${action} on your Overlay account`,
-      }
+  }
+  if (status === 'active' || status === 'trialing') {
+    return {
+      body: status === 'trialing'
+        ? 'Your trial is active. Model usage, agents, and credits are all managed from Account settings.'
+        : `You're on a paid plan. Model usage, agents, and credits are all managed from Account settings.`,
+      ctaLabel: 'Review billing',
+      ctaUrl: billingUrl,
+      feature,
+      heading: status === 'trialing' ? 'Your trial is active' : 'Your subscription is active',
+      reason: 'You received this because the subscription on your account changed.',
+      subject: `Your Overlay subscription is ${label}`,
     }
-    case 'workspace.invitation_sent': {
-      const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'a workspace'
-      const role = stringAttribute(event.attributes.role) ?? 'member'
-      const invitationId = stringAttribute(event.resource.id)
-      const invitationUrl = invitationId
-        ? new URL(`/app/invitations/${encodeURIComponent(invitationId)}`, appUrl).toString()
-        : appUrl
-      return {
-        body: `You've been invited to collaborate in ${workspaceName}. Sign in with the email address that received this invitation to accept.`,
-        bodyHtml: `You've been invited to collaborate in this workspace. Sign in with the email address that received this invitation to accept.`,
-        ctaLabel: 'Accept invitation',
-        ctaUrl: invitationUrl,
-        feature: card(
-          `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
-          `<td style="vertical-align:middle;">${avatar(initials(workspaceName))}</td>` +
-          `<td style="vertical-align:middle;padding-left:12px;">` +
-          `<div style="font-family:${SANS};font-size:13px;font-weight:500;color:#0a0a0a;">${escapeHtml(workspaceName)}</div>` +
-          `<div style="font-family:${SANS};font-size:11.5px;color:#71717a;padding-top:2px;">Invited you as ${escapeHtml(role)}</div></td>` +
-          `</tr></table>`,
-        ),
-        heading: `Join ${workspaceName}`,
-        reason: 'You received this because someone invited this email address to an Overlay workspace.',
-        subject: `You've been invited to ${workspaceName} on Overlay`,
-      }
-    }
-    case 'workspace.mention': {
-      const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
-      const mentionedBy = stringAttribute(event.attributes.mentionedByDisplayName) ?? 'Someone'
-      const conversationTitle = stringAttribute(event.attributes.conversationTitle) ?? 'a conversation'
-      const conversationId = stringAttribute(event.attributes.conversationId)
-      return {
-        body: `${mentionedBy} mentioned you in ${conversationTitle} in ${workspaceName}. Open Overlay to see the context and reply.`,
-        bodyHtml: 'You were mentioned in a conversation. Open it to see the context and reply.',
-        ctaLabel: 'Open conversation',
-        ctaUrl: conversationId
-          ? appPath(appUrl, `/app/chat?view=channels&id=${encodeURIComponent(conversationId)}`)
-          : appPath(appUrl, '/app/chat'),
-        feature: chatCard(mentionedBy, `${conversationTitle} · ${workspaceName}`),
-        heading: `${mentionedBy} mentioned you`,
-        reason: 'You received this because someone mentioned you in a workspace conversation.',
-        showPreferences: true,
-        subject: `${mentionedBy} mentioned you in ${conversationTitle}`,
-      }
-    }
-    case 'workspace.dm_received': {
-      const fromName = stringAttribute(event.attributes.fromDisplayName) ?? 'Someone'
-      const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
-      const conversationId = stringAttribute(event.attributes.conversationId)
-      return {
-        body: `${fromName} sent you a direct message in ${workspaceName}. Open Overlay to read and reply.`,
-        bodyHtml: 'You have a new direct message waiting in your workspace.',
-        ctaLabel: 'Reply in Overlay',
-        ctaUrl: conversationId
-          ? appPath(appUrl, `/app/chat?view=dms&id=${encodeURIComponent(conversationId)}`)
-          : appPath(appUrl, '/app/chat'),
-        feature: chatCard(fromName, workspaceName),
-        heading: `${fromName} sent you a message`,
-        reason: 'You received this because someone sent you a direct message.',
-        showPreferences: true,
-        subject: `${fromName} sent you a message on Overlay`,
-      }
-    }
+  }
+  return {
+    body: `Your Overlay subscription status is now ${label}. Review billing details in Account settings.`,
+    ctaLabel: 'Review billing',
+    ctaUrl: billingUrl,
+    feature,
+    heading: 'Subscription updated',
+    reason: 'You received this because the subscription on your account changed.',
+    subject: 'Your Overlay subscription was updated',
+  }
+}
+
+function topupContent(appUrl: string): EmailContent {
+  return {
+    body: 'Your credits are ready to use. Agents, models, and sandboxes draw from this balance first.',
+    ctaLabel: 'View balance',
+    ctaUrl: appPath(appUrl, '/app/settings?section=account'),
+    feature: card(
+      `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
+      `<td style="vertical-align:middle;padding-right:10px;">${statusDot('#10b981')}</td>` +
+      `<td style="font-family:${SANS};font-size:12.5px;color:#0a0a0a;vertical-align:middle;">Credits added to your balance</td>` +
+      `</tr></table>`,
+    ),
+    heading: 'Top-up confirmed',
+    reason: 'You received this because a credit purchase completed on your account.',
+    subject: 'Your Overlay top-up is confirmed',
+  }
+}
+
+function automationFailedContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const automationId = stringAttribute(event.resource.automationId)
+  const automationName = stringAttribute(event.attributes.automationName) ?? 'Automation run'
+  const execution = event.attributes.execution === 'manual' ? 'Manual' : 'Scheduled'
+  const failure = failureLabel(stringAttribute(event.attributes.failureClass))
+  return {
+    body: `One of your automations didn't finish. Open the run to see what happened and retry it when you're ready.`,
+    ctaLabel: 'Review the run',
+    ctaUrl: automationId
+      ? appPath(appUrl, `/app/automations?automationId=${encodeURIComponent(automationId)}`)
+      : appPath(appUrl, '/app/automations'),
+    feature: card(
+      `<table role="presentation" cellspacing="0" cellpadding="0" width="100%"><tr>` +
+      `<td style="vertical-align:top;padding-top:3px;padding-right:10px;width:7px;">${statusDot('#ef4444')}</td>` +
+      `<td><div style="font-family:${SANS};font-size:12.5px;font-weight:500;color:#0a0a0a;">${escapeHtml(automationName)}</div>` +
+      `<div style="font-family:${SANS};font-size:11.5px;color:#71717a;padding-top:3px;">${execution} run &middot; ${failure}</div></td>` +
+      `</tr></table>`,
+    ),
+    heading: 'An automation run failed',
+    reason: 'You received this because an automation you own failed.',
+    showPreferences: true,
+    subject: 'An Overlay automation needs attention',
+  }
+}
+
+function apiKeyContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const action = stringAttribute(event.attributes.action) ?? 'changed'
+  const accountUrl = appPath(appUrl, '/app/settings?section=account')
+  const feature = card(
+    `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
+    `<td style="vertical-align:middle;padding-right:10px;font-family:${SANS};font-size:14px;color:#71717a;">&#9679;</td>` +
+    `<td><span style="font-family:${SANS};font-size:12.5px;color:#0a0a0a;">API key</span> ${pill(escapeHtml(action))}</td>` +
+    `</tr></table>`,
+  )
+  const bodies: Record<string, string> = {
+    created: `A new API key can act on your account. If this wasn't you, revoke it from settings and tell your admin.`,
+    revoked: `The key can no longer be used. If you didn't expect this, check the rest of your keys in settings.`,
+    rotated: 'The old secret stopped working. Update anywhere that still calls Overlay with it.',
+  }
+  return {
+    body: bodies[action]
+      ?? 'An API key on your Overlay account changed. If this was not you, revoke active keys and contact your administrator.',
+    ctaLabel: 'Review API keys',
+    ctaUrl: accountUrl,
+    feature,
+    heading: `API key ${action}`,
+    reason: 'You received this security notice because an API key on your account changed.',
+    subject: `An API key was ${action} on your Overlay account`,
+  }
+}
+
+function invitationContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'a workspace'
+  const role = stringAttribute(event.attributes.role) ?? 'member'
+  const invitationId = stringAttribute(event.resource.id)
+  const invitationUrl = invitationId
+    ? new URL(`/app/invitations/${encodeURIComponent(invitationId)}`, appUrl).toString()
+    : appUrl
+  return {
+    body: `You've been invited to collaborate in ${workspaceName}. Sign in with the email address that received this invitation to accept.`,
+    bodyHtml: `You've been invited to collaborate in this workspace. Sign in with the email address that received this invitation to accept.`,
+    ctaLabel: 'Accept invitation',
+    ctaUrl: invitationUrl,
+    feature: card(
+      `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
+      `<td style="vertical-align:middle;">${avatar(initials(workspaceName))}</td>` +
+      `<td style="vertical-align:middle;padding-left:12px;">` +
+      `<div style="font-family:${SANS};font-size:13px;font-weight:500;color:#0a0a0a;">${escapeHtml(workspaceName)}</div>` +
+      `<div style="font-family:${SANS};font-size:11.5px;color:#71717a;padding-top:2px;">Invited you as ${escapeHtml(role)}</div></td>` +
+      `</tr></table>`,
+    ),
+    heading: `Join ${workspaceName}`,
+    reason: 'You received this because someone invited this email address to an Overlay workspace.',
+    subject: `You've been invited to ${workspaceName} on Overlay`,
+  }
+}
+
+function mentionContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
+  const mentionedBy = stringAttribute(event.attributes.mentionedByDisplayName) ?? 'Someone'
+  const conversationTitle = stringAttribute(event.attributes.conversationTitle) ?? 'a conversation'
+  const conversationId = stringAttribute(event.attributes.conversationId)
+  return {
+    body: `${mentionedBy} mentioned you in ${conversationTitle} in ${workspaceName}. Open Overlay to see the context and reply.`,
+    bodyHtml: 'You were mentioned in a conversation. Open it to see the context and reply.',
+    ctaLabel: 'Open conversation',
+    ctaUrl: conversationId
+      ? appPath(appUrl, `/app/chat?view=channels&id=${encodeURIComponent(conversationId)}`)
+      : appPath(appUrl, '/app/chat'),
+    feature: chatCard(mentionedBy, `${conversationTitle} · ${workspaceName}`),
+    heading: `${mentionedBy} mentioned you`,
+    reason: 'You received this because someone mentioned you in a workspace conversation.',
+    showPreferences: true,
+    subject: `${mentionedBy} mentioned you in ${conversationTitle}`,
+  }
+}
+
+function dmContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const fromName = stringAttribute(event.attributes.fromDisplayName) ?? 'Someone'
+  const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
+  const conversationId = stringAttribute(event.attributes.conversationId)
+  return {
+    body: `${fromName} sent you a direct message in ${workspaceName}. Open Overlay to read and reply.`,
+    bodyHtml: 'You have a new direct message waiting in your workspace.',
+    ctaLabel: 'Reply in Overlay',
+    ctaUrl: conversationId
+      ? appPath(appUrl, `/app/chat?view=dms&id=${encodeURIComponent(conversationId)}`)
+      : appPath(appUrl, '/app/chat'),
+    feature: chatCard(fromName, workspaceName),
+    heading: `${fromName} sent you a message`,
+    reason: 'You received this because someone sent you a direct message.',
+    showPreferences: true,
+    subject: `${fromName} sent you a message on Overlay`,
   }
 }
 
