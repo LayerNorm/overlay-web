@@ -58,74 +58,146 @@ export function AutomationRunViewer({
       <div className="space-y-4">
         {/* Mode selector + run selector */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setMode('live')}
-              disabled={!workflowRunId}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                mode === 'live'
-                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                  : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
-              } disabled:opacity-40`}
-            >
-              Live
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('replay')}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                mode === 'replay'
-                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                  : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
-              }`}
-            >
-              Replay
-            </button>
-          </div>
-
-          {mode === 'replay' && runs && runs.length > 0 && (
-            <Select
-              value={selectedRunId ?? ''}
-              onChange={(e) => setSelectedRunId(e.target.value || null)}
-              className="text-xs"
-            >
-              <option value="">Select a run…</option>
-              {runs.filter((r) => r.workflowRunId).map((run) => (
-                <option key={run._id} value={run.workflowRunId!}>
-                  {run.status} — {new Date(run.scheduledFor).toLocaleString()}
-                </option>
-              ))}
-            </Select>
-          )}
-          {mode === 'replay' && runs && runs.length > 0 && !runs.some((r) => r.workflowRunId) && (
-            <span className="text-xs text-[var(--muted)]">
-              No replayable runs yet — trigger a test run first.
-            </span>
+          <RunModeSelector
+            mode={mode}
+            liveDisabled={!workflowRunId}
+            onSelectMode={setMode}
+          />
+          {mode === 'replay' && (
+            <ReplayRunPicker
+              runs={runs}
+              selectedRunId={selectedRunId}
+              onSelectRun={setSelectedRunId}
+            />
           )}
         </div>
 
         {/* Canvas with status overlay */}
-        {graph.nodes.length > 0 ? (
-          <Suspense
-            fallback={
-              <div className="h-96 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
-            }
-          >
-            {isLive && selectedRunId ? (
-              <LiveCanvas graph={graph} workflowRunId={selectedRunId} />
-            ) : selectedRunId ? (
-              <ReplayCanvas graph={graph} workflowRunId={selectedRunId} />
-            ) : (
-              <AutomationGraphCanvas graph={graph} onGraphChange={onGraphChange} readOnly={!onGraphChange} />
-            )}
-          </Suspense>
-        ) : (
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-8 text-center text-sm text-[var(--muted)]">
-            No automation steps to visualize.
-          </div>
-        )}
+        <RunViewerCanvas
+          graph={graph}
+          isLive={isLive}
+          selectedRunId={selectedRunId}
+          onGraphChange={onGraphChange}
+        />
       </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Live / replay mode toggle
+// ---------------------------------------------------------------------------
+
+function RunModeSelector({
+  mode,
+  liveDisabled,
+  onSelectMode,
+}: {
+  mode: 'live' | 'replay'
+  liveDisabled: boolean
+  onSelectMode: (mode: 'live' | 'replay') => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => onSelectMode('live')}
+        disabled={liveDisabled}
+        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+          mode === 'live'
+            ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
+            : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
+        } disabled:opacity-40`}
+      >
+        Live
+      </button>
+      <button
+        type="button"
+        onClick={() => onSelectMode('replay')}
+        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+          mode === 'replay'
+            ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
+            : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
+        }`}
+      >
+        Replay
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Historical run picker (replay mode only)
+// ---------------------------------------------------------------------------
+
+function ReplayRunPicker({
+  runs,
+  selectedRunId,
+  onSelectRun,
+}: {
+  runs?: AutomationRunSummary[]
+  selectedRunId: string | null
+  onSelectRun: (runId: string | null) => void
+}) {
+  if (!runs || runs.length === 0) return null
+  return (
+    <>
+      <Select
+        value={selectedRunId ?? ''}
+        onChange={(e) => onSelectRun(e.target.value || null)}
+        className="text-xs"
+      >
+        <option value="">Select a run…</option>
+        {runs.filter((r) => r.workflowRunId).map((run) => (
+          <option key={run._id} value={run.workflowRunId!}>
+            {run.status} — {new Date(run.scheduledFor).toLocaleString()}
+          </option>
+        ))}
+      </Select>
+      {!runs.some((r) => r.workflowRunId) && (
+        <span className="text-xs text-[var(--muted)]">
+          No replayable runs yet — trigger a test run first.
+        </span>
+      )}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Canvas area — live, replay, or idle editor canvas
+// ---------------------------------------------------------------------------
+
+function RunViewerCanvas({
+  graph,
+  isLive,
+  selectedRunId,
+  onGraphChange,
+}: {
+  graph: AutomationGraph
+  isLive: boolean
+  selectedRunId: string | null
+  onGraphChange?: (graph: AutomationGraph) => void
+}) {
+  if (graph.nodes.length === 0) {
+    return (
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-8 text-center text-sm text-[var(--muted)]">
+        No automation steps to visualize.
+      </div>
+    )
+  }
+  return (
+    <Suspense
+      fallback={
+        <div className="h-96 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
+      }
+    >
+      {isLive && selectedRunId ? (
+        <LiveCanvas graph={graph} workflowRunId={selectedRunId} />
+      ) : selectedRunId ? (
+        <ReplayCanvas graph={graph} workflowRunId={selectedRunId} />
+      ) : (
+        <AutomationGraphCanvas graph={graph} onGraphChange={onGraphChange} readOnly={!onGraphChange} />
+      )}
+    </Suspense>
   )
 }
 

@@ -81,16 +81,22 @@ export function ExtensionCatalog({
   )
 }
 
+function IntegrationStatusBadge({ isConnected }: { isConnected?: boolean }) {
+  return <Badge variant={isConnected ? 'success' : 'muted'}>{isConnected ? 'Connected' : 'Available'}</Badge>
+}
+
+function SkillStatusBadge({ enabled }: { enabled: boolean }) {
+  return <Badge variant={enabled ? 'success' : 'muted'}>{enabled ? 'On' : 'Off'}</Badge>
+}
+
+function McpStatusBadge({ enabled }: { enabled: boolean }) {
+  return <Badge variant={enabled ? 'success' : 'muted'}>{enabled ? 'On' : 'Off'}</Badge>
+}
+
 function StatusBadge({ item, disabledByPolicy }: { item: ExtensionCatalogItem; disabledByPolicy: boolean }) {
   if (disabledByPolicy) return <Badge variant="warning">Policy gated</Badge>
-  if (item.kind === 'integration') {
-    return <Badge variant={item.isConnected ? 'success' : 'muted'}>{item.isConnected ? 'Connected' : 'Available'}</Badge>
-  }
-  if (item.kind === 'skill') {
-    return <Badge variant={item.enabled === false ? 'muted' : 'success'}>{item.enabled === false ? 'Off' : 'On'}</Badge>
-  }
-  if (item.kind === 'mcp') {
-    return <Badge variant={item.enabled ? 'success' : 'muted'}>{item.enabled ? 'On' : 'Off'}</Badge>
-  }
+  if (item.kind === 'integration') return <IntegrationStatusBadge isConnected={item.isConnected} />
+  if (item.kind === 'skill') return <SkillStatusBadge enabled={item.enabled !== false} />
+  if (item.kind === 'mcp') return <McpStatusBadge enabled={item.enabled} />
   return <Badge variant="muted">{item.kind === 'modelProvider' ? 'Provider' : 'Registered'}</Badge>
 }
