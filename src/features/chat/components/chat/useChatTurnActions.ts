@@ -16,7 +16,6 @@ import type { useConversationUiState } from './useConversationUiState'
 import type { useChatRouteController } from './useChatRouteController'
 import type { useChatConversationLoader } from './useChatConversationLoader'
 import type { useChatSendController } from './useChatSendController'
-import type { useChatTitleController } from './useChatTitleController'
 import type { useChatPreferences } from './useChatPreferences'
 import type { useComposerTools } from './useComposerTools'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
@@ -70,7 +69,7 @@ export function useChatTurnActions({
   createNewChat: ReturnType<typeof useChatSendController>['createNewChat']
   loadChat: ReturnType<typeof useChatConversationLoader>['loadChat']
   runtimesRef: Runtimes['runtimesRef']
-  activeChatTitle: ReturnType<typeof useChatTitleController>['activeChatTitle']
+  activeChatTitle: string | null
   setExitingTurnIds: Dispatch<SetStateAction<string[]>>
 }) {
   const getResponseForExchangeForModel = useCallback((

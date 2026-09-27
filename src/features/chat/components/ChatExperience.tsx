@@ -98,6 +98,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
     shellRightPanel,
     shellRightPanelClose,
     shellRightPanelMode,
+    shellRightPanelOpen,
     shellRightPanelResize,
     shellRightPanelWidth,
   } = useChatShellPanels({
@@ -122,6 +123,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
             shellRightPanel,
             shellRightPanelClose,
             shellRightPanelMode,
+            shellRightPanelOpen,
             shellRightPanelResize,
             shellRightPanelWidth,
           },
