@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="om-body" cx="38%" cy="28%" r="78%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="22%" stop-color="#eceef1"/>
+      <stop offset="46%" stop-color="#a8adb5"/>
+      <stop offset="72%" stop-color="#4c5158"/>
+      <stop offset="100%" stop-color="#17191d"/>
+    </radialGradient>
+    <linearGradient id="om-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="52%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="80%" stop-color="#ffffff" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="om-soft6" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="om-soft2" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
+    <filter id="om-soft14" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <clipPath id="om-clip">
+      <circle cx="100" cy="100" r="96"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#om-clip)">
+    <circle cx="100" cy="100" r="96" fill="url(#om-body)"/>
+    <ellipse cx="138" cy="142" rx="44" ry="34" fill="#000000" opacity="0.22" filter="url(#om-soft14)"/>
+    <ellipse cx="80" cy="72" rx="54" ry="42" fill="#ffffff" opacity="0.26" filter="url(#om-soft14)" transform="rotate(-20 80 72)"/>
+    <circle cx="100" cy="100" r="88" fill="none" stroke="url(#om-rim)" stroke-width="7" filter="url(#om-soft6)"/>
+    <ellipse cx="100" cy="168" rx="54" ry="13" fill="#ffffff" opacity="0.3" filter="url(#om-soft6)"/>
+    <ellipse cx="73" cy="59" rx="27" ry="17" fill="#ffffff" opacity="0.9" filter="url(#om-soft6)" transform="rotate(-24 73 59)"/>
+    <ellipse cx="67" cy="51" rx="10" ry="7" fill="#ffffff" opacity="0.95" filter="url(#om-soft2)" transform="rotate(-24 67 51)"/>
+  </g>
+</svg>
