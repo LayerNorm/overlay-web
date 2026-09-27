@@ -348,9 +348,8 @@ export function SharedKnowledgeSurface({
   } = useSurfaceRouting({ mode, route, onUpdateQuery })
 
   if (pendingFilesLayout && !queryPending && layout === pendingFilesLayout) {
-      setPendingFilesLayout(null)
-    }
-  }, [layout, pendingFilesLayout, queryPending, setPendingFilesLayout])
+    setPendingFilesLayout(null)
+  }
 
   const {
     outputFilter,

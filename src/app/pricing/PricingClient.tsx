@@ -104,6 +104,8 @@ function BillingUnavailable({ theme }: { theme: PricingTheme }) {
       </main>
       <MarketingFooter />
     </StaticMarketingShell>
+  )
+}
 
 function PricingHero({
   authLoading,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
+import { useState, useCallback, useEffect, useEffectEvent, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
@@ -371,9 +371,16 @@ function useChatListEvents({
 }) {
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
 
-  useEffect(() => {
-    if (isPublicShowcase) return
-    if (!user) return
+  const removeActiveChat = useCallback((chatId: string) => {
+    removeCachedChat(chatId)
+    setDeletingChatIds((prev) => (
+      prev.includes(chatId) ? prev : [...prev, chatId]
+    ))
+    window.setTimeout(() => {
+      setChats((prev) => prev.filter((chat) => chat._id !== chatId))
+      setDeletingChatIds((prev) => prev.filter((id) => id !== chatId))
+    }, 180)
+  }, [setChats])
 
   const handleChatUpserted = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatCreatedDetail>
@@ -446,7 +453,7 @@ function useChatListEvents({
       }
     })
 
-    useEffect(() => {
+  useEffect(() => {
     if (isPublicShowcase) return
     if (!user) return
     window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)

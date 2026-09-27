@@ -495,7 +495,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
     <>
       {message.images.length > 0 ? (
         <div className={`flex w-full flex-wrap gap-1.5 ${message.mine ? 'justify-end' : ''}`}>
-          {message.images.map((attachment, index) => (
+          {message.images.map((attachment) => (
             <button
               key={attachment.url}
               type="button"

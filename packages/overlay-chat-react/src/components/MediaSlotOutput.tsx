@@ -16,86 +16,6 @@ function multiFrameClass(genType: MediaGenType, isMulti: boolean): string {
   return genType === 'image' ? 'h-[320px] w-full sm:h-[420px]' : 'h-[210px] w-full sm:h-[240px]'
 }
 
-function creatingLabel(genType: MediaGenType): string {
-  return genType === 'image' ? 'Creating image' : 'Creating video'
-}
-
-function MultiErrorBody({
-  genType,
-  result,
-}: {
-  genType: MediaGenType
-  result: GenerationResult
-}) {
-  return (
-    <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-elevated) text-red-500 shadow-sm">
-        <AlertCircle size={18} />
-      </span>
-      <div className="space-y-1">
-        <p className="text-sm font-medium" style={{ color: 'var(--chat-alert-error-text)' }}>
-          {result.upgradeRequired ? `${genType === 'image' ? 'Image' : 'Video'} generation requires a paid plan` : 'Generation failed'}
-        </p>
-        {result.upgradeRequired ? (
-          <p className="text-xs leading-relaxed opacity-90">
-            <a href="/pricing" className="underline underline-offset-2 hover:opacity-70">Upgrade here</a> to generate {genType === 'image' ? 'images' : 'videos'}.
-          </p>
-        ) : (
-          <p className="text-xs leading-relaxed opacity-90">{result.error ?? 'Please try again.'}</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function SingleErrorBody({
-  genType,
-  result,
-}: {
-  genType: MediaGenType
-  result: GenerationResult
-}) {
-  return (
-    <>
-      <AlertCircle size={12} />
-      {result.upgradeRequired
-        ? <><span>{genType === 'image' ? 'Image' : 'Video'} generation requires a paid plan. </span><a href="/pricing" className="underline underline-offset-2 hover:opacity-70">Upgrade here</a></>
-        : (result.error ?? 'Failed')
-      }
-    </>
-  )
-}
-
-function MediaErrorFrame({
-  genType,
-  isMulti,
-  result,
-}: {
-  genType: MediaGenType
-  isMulti: boolean
-  result: GenerationResult
-}) {
-  return (
-    <div
-      className={`rounded-xl border ${
-        isMulti ? `${multiFrameClass(genType, true)} flex items-center justify-center` : 'flex items-center gap-2 px-3 py-2 text-xs'
-      }`}
-      style={{
-        ...(!isMulti ? singleMediaBoxStyle(genType, false) : {}),
-        background: 'var(--chat-media-error-bg)',
-        borderColor: 'var(--chat-media-error-border)',
-        color: 'var(--chat-alert-error-text)',
-      }}
-    >
-      {isMulti ? (
-        <MultiErrorBody genType={genType} result={result} />
-      ) : (
-        <SingleErrorBody genType={genType} result={result} />
-      )}
-    </div>
-  )
-}
-
 function MediaElement({
   genType,
   url,
@@ -197,7 +117,7 @@ export function MediaSlotOutput({
   modelName,
   result,
 }: {
-  genType: MediaGenType
+  genType: 'image' | 'video'
   isMulti: boolean
   modelName: string
   result: GenerationResult | undefined
@@ -229,17 +149,17 @@ export function MediaSlotOutput({
     >
       {isMulti ? (
         <div className="h-5 text-xs font-medium text-(--muted)">
-          {isGenerating ? creatingLabel(genType) : ''}
+          {multiStatusLabel}
         </div>
-      ) : isGenerating ? (
+      ) : !result || result.status === 'generating' ? (
         <p className="text-xs font-medium text-(--muted)">
-          {creatingLabel(genType)}
+          {genType === 'image' ? 'Creating image' : 'Creating video'}
         </p>
       ) : null}
 
-      {isGenerating ? (
+      {!result || result.status === 'generating' ? (
         <div
-          className={`media-gen-mesh box-border shrink-0 overflow-hidden rounded-xl border border-[#e4e4e7] ${multiFrameClass(genType, isMulti)}`}
+          className={`media-gen-mesh box-border shrink-0 overflow-hidden rounded-xl border border-[#e4e4e7] ${isMulti ? multiFrameClass : ''}`}
           style={singleBoxStyle}
           aria-hidden
         />
@@ -258,7 +178,6 @@ export function MediaSlotOutput({
           {
             // Internal nav without Link — this package has no next/ dependency.
             // react-doctor-disable-next-line react-doctor/nextjs-no-a-element
-            // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- placeholder
           }
           {isMulti ? (
             <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">

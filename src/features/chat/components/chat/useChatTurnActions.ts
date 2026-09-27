@@ -93,7 +93,7 @@ export function useChatTurnActions({
       next[exchIdx] = tabIdx
       return next
     })
-  }, [])
+  }, [setSelectedTabPerExchange])
 
   const beginReplyToAssistantText = useCallback((assistantText: string, targetUserTurnId: string | null) => {
     const t = assistantText.trim()

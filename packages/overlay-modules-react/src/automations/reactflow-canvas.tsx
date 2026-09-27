@@ -30,10 +30,8 @@ import {
   GitBranch,
   ArrowRight,
   LayoutGrid,
-  Plus,
   Undo2,
   Redo2,
-  Trash2,
   X,
   CheckCircle2,
   XCircle,
@@ -44,7 +42,6 @@ import type {
   AutomationGraph,
   AutomationGraphNode,
   AutomationGraphNodeKind,
-  AutomationGraphNodeConfig,
   AutomationNodeRunStatus,
 } from '@overlay/app-core'
 import { autoLayout, NODE_WIDTH, NODE_HEIGHT } from './auto-layout'
@@ -55,7 +52,6 @@ import {
   deleteEdgeFromGraph,
   updateNodeInGraph,
   updateNodePositionInGraph,
-  graphFromReactFlowState,
   validateAutomationGraph,
   GraphHistory,
   type AutomationGraphValidationError,

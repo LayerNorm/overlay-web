@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
 import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'

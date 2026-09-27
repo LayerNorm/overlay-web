@@ -341,7 +341,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     void load().catch((loadError) => setError(message(loadError)))
-  }, [load])
+  }, [load, setError])
 
   useEffect(() => {
     if (section === 'overview' && (permissions.canViewUsage || permissions.canViewAudit)) return
@@ -377,7 +377,7 @@ export default function AdminPage() {
             </>
           }
         />
-      }
+      )}
     >
       <AppScreenBody maxWidth="xl" padding="md">
         {error ? (

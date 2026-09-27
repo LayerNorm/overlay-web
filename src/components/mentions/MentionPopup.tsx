@@ -205,7 +205,6 @@ function useMentionPopupKeys({
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleKeyDown is a stable useEffectEvent
   }, [])
 }
 
