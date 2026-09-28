@@ -45,7 +45,8 @@ jobs:
             }
 
             function isAllowlisted(login) {
-              return ALLOWLIST.has(String(login || '').toLowerCase());
+              const normalized = String(login || '').toLowerCase();
+              return ALLOWLIST.has(normalized) || normalized.endsWith('[bot]');
             }
 
             function signedLoginsForCurrentVersion(signatures) {
