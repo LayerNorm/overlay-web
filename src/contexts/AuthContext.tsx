@@ -40,6 +40,7 @@ async function fetchSessionState(): Promise<SessionCheckResult> {
   const response = await fetch('/api/auth/session', {
     credentials: 'same-origin',
     cache: 'no-store',
+    signal: AbortSignal.timeout(30_000),
   })
   const contentType = response.headers.get('content-type') || ''
   if (!response.ok || !contentType.includes('application/json')) {
