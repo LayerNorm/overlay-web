@@ -99,8 +99,11 @@ function useExpandedAgents({
   if (activeAgentId && !expanded.has(activeAgentId)) {
     setExpanded((current) => new Set(current).add(activeAgentId))
   }
+  // Fetch the URL agent's bundle once it is known absent. Reloading when the
+  // bundle is already present re-triggers on every setBundles and loops
+  // forever — directory-change events handle refreshes instead.
   useEffect(() => {
-    if (!activeAgentId || !(activeAgentId in bundles)) return
+    if (!activeAgentId || activeAgentId in bundles) return
     void loadBundle(activeAgentId)
   }, [activeAgentId, bundles, loadBundle])
 
@@ -111,7 +114,8 @@ function useExpandedAgents({
       else next.add(agentId)
       return next
     })
-    if (!(agentId in bundles)) void loadBundle(agentId)
+    const state = bundles[agentId]
+    if (state === undefined || state === 'error') void loadBundle(agentId)
   }, [bundles, loadBundle])
 
   return { expanded, toggleExpanded }
