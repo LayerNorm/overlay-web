@@ -51,6 +51,7 @@ export async function assertFreePricing(): Promise<void> {
     const res = await fetch(`${config.gatewayUrl}/models`, {
       headers: { Authorization: `Bearer ${config.gatewayApiKey}` },
     })
+    if (!res.ok) throw new Error(`catalog fetch failed: ${res.status}`)
     const data = (await res.json()) as { data?: { id: string; pricing?: { input?: string; output?: string } }[] }
     const priced = new Map((data.data ?? []).map((m) => [m.id, m.pricing]))
     for (const id of new Set(ids)) {

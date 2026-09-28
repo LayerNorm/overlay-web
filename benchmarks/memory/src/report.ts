@@ -113,7 +113,7 @@ if (runIds.length > 1) {
   combined.push('|---|' + runIds.map(() => '---').join('|') + '|')
   const datasets = [...new Set([...perRun.values()].flatMap((t) => [...t.keys()]))]
   for (const ds of datasets) {
-    combined.push(`| ${ds} | ${runIds.map((id) => { const t = perRun.get(id)!.get(ds); return t ? pct(t.correct, t.total) : '—' }).join(' | ')} |`)
+    combined.push(`| ${ds} | ${runIds.map((id) => { const t = perRun.get(id)?.get(ds); return t ? pct(t.correct, t.total) : '—' }).join(' | ')} |`)
   }
 }
 
