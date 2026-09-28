@@ -231,4 +231,3 @@ export function useByoConnection(args: {
   }
 }
 
-export type ByoConnection = ReturnType<typeof useByoConnection>

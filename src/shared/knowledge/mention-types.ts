@@ -19,9 +19,3 @@ export interface MentionCategory {
   items: MentionItem[]
 }
 
-export interface ResolvedMention {
-  type: MentionType
-  id: string
-  name: string
-  fileIds?: string[]
-}
