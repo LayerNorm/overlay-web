@@ -88,7 +88,7 @@ async function audit(): Promise<Audit> {
     messageCount: messages.rows,
     missingConversationScope: conversations.missingConversationScope,
     missingMessageAuthor: messages.missingMessageAuthor,
-    missingResourceScope: conversations.missingResourceScope,
+    missingResourceScope: conversations.missingResourceScope + messages.missingResourceScope,
   }
 }
 
