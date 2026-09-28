@@ -17,8 +17,27 @@ export const resourceRowClass =
 
 export type AgentsPanelView = 'personal' | 'workspace' | 'archived'
 
-export function agentThreadHref(baseHref: string, agentId: string, conversationId: string) {
-  const params = new URLSearchParams({ agent: agentId, view: 'dms', id: conversationId })
+function agentViewParams(init: Record<string, string>, view?: AgentsPanelView) {
+  // `view` is the agents panel's own tab (personal|workspace|archived), not
+  // the chats vocabulary — a 'dms' marker here resolves to 'personal' and
+  // hides workspace agents from the list. Personal stays param-free.
+  const params = new URLSearchParams(init)
+  if (view === 'workspace' || view === 'archived') params.set('view', view)
+  return params
+}
+
+export function agentHref(baseHref: string, agentId: string, view?: AgentsPanelView) {
+  const params = agentViewParams({ agent: agentId }, view)
+  return `${baseHref}?${params.toString()}`
+}
+
+export function agentThreadHref(
+  baseHref: string,
+  agentId: string,
+  conversationId: string,
+  view?: AgentsPanelView,
+) {
+  const params = agentViewParams({ agent: agentId, id: conversationId }, view)
   return `${baseHref}?${params.toString()}`
 }
 

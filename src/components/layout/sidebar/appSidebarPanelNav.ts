@@ -232,7 +232,11 @@ function buildAgentsPanelNav({
       beginSecondaryNavigation(next)
       const params = new URLSearchParams(currentSearchParams.toString())
       if (publicShowcase) params.set('showcase', '1')
-      if (next === 'personal') params.delete('view')
+      // With an agent open, Personal must stay explicit in the URL — the
+      // panel auto-corrects bare `?agent=` links to the agent's own tab, so
+      // a missing `view` would read as an uncorrected link and fight the
+      // deliberate switch.
+      if (next === 'personal' && !params.has('agent')) params.delete('view')
       else params.set('view', next)
       const query = params.toString()
       const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId

@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { AgentCreature } from '@/components/orb/Creature'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
 import type { AttachmentPreview } from '@overlay/chat-react'
@@ -964,7 +965,7 @@ export function RoomDialogs({
           onOpenChange={onAddPeopleOpenChange}
           onCreated={({ id, title: createdTitle, agentId }) => {
             if (agentId) {
-              router.push(`/app/agents?${new URLSearchParams({ agent: agentId, view: 'dms', id }).toString()}`)
+              router.push(agentThreadHref('/app/agents', agentId, id))
               return
             }
             const view = conversationType === 'channel' ? 'channels' : 'dms'

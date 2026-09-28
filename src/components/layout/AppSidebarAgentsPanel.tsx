@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArchiveRestore,
   ChevronRight,
@@ -32,6 +32,7 @@ import {
 } from '@/shared/chat/chat-title'
 import {
   arrayOrEmpty,
+  agentHref,
   agentThreadHref,
   resourceRowClass,
   type AgentsPanelView,
@@ -195,6 +196,7 @@ function useAgentDirectory(
 function useAgentActions({
   workspaceId,
   baseHref,
+  view,
   onNavigate,
   bundles,
   setBundles,
@@ -206,6 +208,7 @@ function useAgentActions({
 }: {
   workspaceId: string | null
   baseHref: string
+  view: AgentsPanelView
   onNavigate?: () => void
   bundles: AgentBundleMap
   setBundles: Dispatch<SetStateAction<AgentBundleMap>>
@@ -245,23 +248,23 @@ function useAgentActions({
           conversationType: 'dm',
         },
       })
-      const href = agentThreadHref(baseHref, agent.id, thread.conversationId)
+      const href = agentThreadHref(baseHref, agent.id, thread.conversationId, view)
       if (navigation === 'replace') router.replace(href)
       else router.push(href)
       if (navigation === 'push') onNavigate?.()
     } finally {
       setOpeningAgentId(null)
     }
-  }, [baseHref, onNavigate, openingAgentId, router, workspaceId])
+  }, [baseHref, onNavigate, openingAgentId, router, view, workspaceId])
 
   const openThread = useCallback((
     agent: WorkspaceAgentDirectoryItem,
     conversationId: string,
   ) => {
     rememberAgentOpened(workspaceId, agent.id)
-    router.push(agentThreadHref(baseHref, agent.id, conversationId))
+    router.push(agentThreadHref(baseHref, agent.id, conversationId, view))
     onNavigate?.()
-  }, [baseHref, onNavigate, router, workspaceId])
+  }, [baseHref, onNavigate, router, view, workspaceId])
 
   const createThread = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
     if (!workspaceId || creatingThreadFor) return
@@ -286,12 +289,12 @@ function useAgentActions({
           },
         }
       })
-      router.push(agentThreadHref(baseHref, agent.id, thread.conversationId))
+      router.push(agentThreadHref(baseHref, agent.id, thread.conversationId, view))
       onNavigate?.()
     } finally {
       setCreatingThreadFor(null)
     }
-  }, [baseHref, creatingThreadFor, onNavigate, router, setBundles, workspaceId])
+  }, [baseHref, creatingThreadFor, onNavigate, router, setBundles, view, workspaceId])
 
   const archiveThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -380,14 +383,14 @@ function useAgentActions({
           : undefined
         router.push(
           next
-            ? agentThreadHref(baseHref, agent.id, next.conversationId)
-            : `${baseHref}?agent=${encodeURIComponent(agent.id)}`,
+            ? agentThreadHref(baseHref, agent.id, next.conversationId, view)
+            : agentHref(baseHref, agent.id, view),
         )
       }
     } catch {
       void loadBundle(agent.id)
     }
-  }, [activeConversationId, baseHref, bundles, loadBundle, router, setArchivedThreadAgentIds, setBundles, workspaceId])
+  }, [activeConversationId, baseHref, bundles, loadBundle, router, setArchivedThreadAgentIds, setBundles, view, workspaceId])
 
   const restoreAgent = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
     if (!workspaceId) return
@@ -546,6 +549,8 @@ export function AgentsInlinePanel({
   view?: AgentsPanelView
   onNavigate?: () => void
 }) {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
@@ -607,6 +612,7 @@ export function AgentsInlinePanel({
   } = useAgentActions({
     workspaceId,
     baseHref,
+    view,
     onNavigate,
     bundles,
     setBundles,
@@ -626,6 +632,31 @@ export function AgentsInlinePanel({
       rememberAgentOpened(workspaceId, activeAgentId)
     }
   }, [activeAgentId, sortedAgents, workspaceId])
+
+  // Thread links arrive with a missing or foreign `view` (bare `?agent=`
+  // deep links, legacy `?view=dms` URLs). The Personal/Workspace bucket is
+  // viewer-relative anyway — the same link can belong under different tabs
+  // for the creator vs a teammate — so rewrite the URL to the tab that
+  // actually contains the open agent. An explicit agents view is a
+  // deliberate tab choice and stays untouched.
+  useEffect(() => {
+    if (loading || !activeAgentId || !searchParams || viewerPrincipalId == null) return
+    const viewParam = searchParams.get('view')
+    if (viewParam === 'personal' || viewParam === 'workspace' || viewParam === 'archived') return
+    const active = agents.find((agent) => agent.id === activeAgentId)
+    if (!active) return
+    const correctView: AgentsPanelView = active.archivedAt
+      ? 'archived'
+      : active.createdByPrincipalId === viewerPrincipalId
+        ? 'personal'
+        : 'workspace'
+    const wanted = correctView === 'personal' ? null : correctView
+    if (viewParam === wanted) return
+    const params = new URLSearchParams(searchParams.toString())
+    if (wanted) params.set('view', wanted)
+    else params.delete('view')
+    router.replace(`${pathname}?${params.toString()}`)
+  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname])
 
   return (
     <SidebarResourceList>

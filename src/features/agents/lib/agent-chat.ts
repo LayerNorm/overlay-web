@@ -21,8 +21,14 @@ export async function startAgentChat(args: {
   const surface = args.surface ?? 'chat'
   if (args.showcase) {
     const basePath = surface === 'agents' ? '/app/agents' : '/app/chat'
-    const params = new URLSearchParams({ showcase: '1', view: 'dms', id: args.agentPrincipalId })
-    if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
+    // `view=dms` belongs to the chats surface's subview vocabulary only; on
+    // the agents surface the panel resolves `view` against its own tabs.
+    const params = new URLSearchParams({ showcase: '1', id: args.agentPrincipalId })
+    if (surface === 'agents') {
+      if (args.agentId) params.set('agent', args.agentId)
+    } else {
+      params.set('view', 'dms')
+    }
     args.push(`${basePath}?${params.toString()}`)
     return args.agentPrincipalId
   }
@@ -45,8 +51,12 @@ export async function startAgentChat(args: {
     },
   })
   const basePath = buildWorkspaceHref(args.workspaceId, surface === 'agents' ? '/app/agents' : '/app/chat')
-  const params = new URLSearchParams({ view: 'dms', id: conversationId })
-  if (surface === 'agents' && args.agentId) params.set('agent', args.agentId)
+  const params = new URLSearchParams({ id: conversationId })
+  if (surface === 'agents') {
+    if (args.agentId) params.set('agent', args.agentId)
+  } else {
+    params.set('view', 'dms')
+  }
   args.push(`${basePath}?${params.toString()}`)
   return conversationId
 }

@@ -51,10 +51,15 @@ export function PersonalMentionConversionPrompt({
       savePendingCollaborationMessage({ conversationId, content: draft })
       const params = new URLSearchParams(window.location.search)
       params.set('id', conversationId)
-      params.set('view', kind === 'dm' ? 'dms' : 'channels')
       // A DM with an agent is a thread under that agent — it lives on the
-      // agents surface, not in the chat list.
-      if (dmAgentId) params.set('agent', dmAgentId)
+      // agents surface, not in the chat list. `view` there is the agents
+      // panel tab, not the chats subview, so the 'dms' marker must stay off.
+      if (dmAgentId) {
+        params.set('agent', dmAgentId)
+        params.delete('view')
+      } else {
+        params.set('view', kind === 'dm' ? 'dms' : 'channels')
+      }
       const pathname = dmAgentId ? '/app/agents' : window.location.pathname
       window.history.pushState(null, '', `${pathname}?${params.toString()}`)
       window.dispatchEvent(new Event('overlay:chat-route-selected'))

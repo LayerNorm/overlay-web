@@ -38,6 +38,7 @@ import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
 import { buildWorkspaceHref, isSameChatSurface } from '@/shared/workspaces/routing'
+import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
@@ -1021,7 +1022,7 @@ function ChatListDialogs({
             // Agent DMs are threads under the agent — they open on the agents
             // surface and never appear in the chat list.
             const href = agentId
-              ? `${buildWorkspaceHref(workspaceId, '/app/agents')}?${new URLSearchParams({ agent: agentId, view: 'dms', id }).toString()}`
+              ? agentThreadHref(buildWorkspaceHref(workspaceId, '/app/agents'), agentId, id)
               : `${baseHref}?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`
             router.push(href)
             onNavigate?.()
