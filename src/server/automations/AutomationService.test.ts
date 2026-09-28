@@ -327,7 +327,7 @@ test('AutomationService.testAutomation marks run failed and emits failure on exe
   assert.equal(failedEvents[0]?.error, 'executor failed')
   assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
   assert.deepEqual(eventBus.events[0]?.payload, {
-    attributes: { execution: 'manual', failureClass: 'unknown' },
+    attributes: { execution: 'manual', automationName: 'Automation', failureClass: 'unknown' },
     classification: 'operational',
     destinations: ['analytics', 'audit', 'email', 'metrics', 'notification'],
     eventId: (eventBus.events[0]?.payload as { eventId: string }).eventId,
@@ -357,7 +357,7 @@ test('AutomationService publishes successful run metadata without automation con
       return { attributes: payload.attributes, name: payload.name, resource: payload.resource }
     }),
     [{
-      attributes: { execution: 'manual' },
+      attributes: { execution: 'manual', automationName: 'Automation' },
       name: 'automation.succeeded',
       resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
     }],
