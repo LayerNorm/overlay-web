@@ -4,7 +4,6 @@ import {
   FREE_TIER_DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
-  isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import {
   gatewayCatalogModelToChatModel,
@@ -64,8 +63,6 @@ const REASONING_KIMI_K3: readonly ModelReasoningOption[] = [
 
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: 'stepfun-ai/step-3.5-flash', name: 'Free: Step 3.5 Flash', provider: 'nvidia', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
 ]
 
 export const OVERLAY_FREE_CHAT_MODELS: readonly ChatModel[] = SPECIAL_CHAT_MODELS
@@ -235,8 +232,6 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'stepfun-ai/step-3.5-flash',
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -274,10 +269,12 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'openrouter/minimax/minimax-m2.5:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/arcee-ai/trinity-large-thinking:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/openai/gpt-oss-120b:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'deepseek-ai/deepseek-v3.2': 'stepfun-ai/step-3.5-flash',
+  'openrouter/nvidia/nemotron-3-super-120b-a12b:free': FREE_TIER_DEFAULT_MODEL_ID,
+  'stepfun-ai/step-3.5-flash': FREE_TIER_DEFAULT_MODEL_ID,
+  'deepseek-ai/deepseek-v3.2': FREE_TIER_DEFAULT_MODEL_ID,
   'deepseek/deepseek-v4-flash': 'deepseek/deepseek-v4-flash-0731',
-  'moonshotai/kimi-k2-thinking': 'stepfun-ai/step-3.5-flash',
-  'minimaxai/minimax-m2.7': 'stepfun-ai/step-3.5-flash',
+  'moonshotai/kimi-k2-thinking': FREE_TIER_DEFAULT_MODEL_ID,
+  'minimaxai/minimax-m2.7': FREE_TIER_DEFAULT_MODEL_ID,
 }
 
 export function getModel(id: string): ChatModel | undefined {
@@ -356,7 +353,6 @@ export function modelUsesOpenRouterTransport(modelId: string): boolean {
  */
 export function modelUsesAiGatewayTransport(modelId: string): boolean {
   if (isByokModelId(modelId)) return false
-  if (isNvidiaNimChatModelId(modelId)) return false
   return !modelUsesOpenRouterTransport(modelId)
 }
 

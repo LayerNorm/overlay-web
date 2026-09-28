@@ -31,7 +31,6 @@ import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
-  isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
@@ -44,10 +43,6 @@ import {
   summarizeErrorForLog,
   summarizeToolInputForLog,
 } from '@/shared/security/safe-log'
-import {
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
-} from '@/server/ai/model-runtime'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
@@ -1236,15 +1231,6 @@ export async function executeActTurn(
     }
 
     const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
-      if (isNvidiaNimChatModelId(attemptModelId)) {
-        const nvidiaKey = await resolveNvidiaApiKey(accessToken)
-        if (!nvidiaKey) {
-          throw new Error('NVIDIA_API_KEY is not configured.')
-        }
-        streamedRoutedModelId = attemptModelId
-        return createNvidiaNimChatLanguageModel(attemptModelId, nvidiaKey)
-      }
-
       if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
         return getOpenRouterLanguageModelCapturingRoutedModel(
           FREE_TIER_AUTO_MODEL_ID,

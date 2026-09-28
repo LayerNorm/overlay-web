@@ -8,13 +8,8 @@ import {
 import { calculateGatewayLanguageTokenCostOrNull } from '@/shared/ai/gateway/model-pricing'
 import {
   FREE_TIER_AUTO_MODEL_ID,
-  NVIDIA_NIM_MODEL_IDS,
 } from '@/shared/ai/gateway/model-types'
 import { logger } from '@/server/observability/logger'
-import {
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
-} from '@/server/ai/gateway/nvidia-nim-openai'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/server/ai/gateway/openrouter-service'
 import { isGatewayCreditLow } from './gateway-credits'
 import { getGatewayCatalogModel, getGatewayLanguageCatalog } from './gateway-catalog'
@@ -133,16 +128,11 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
 
 /**
  * When the global gateway key is nearly out of credit, serve chat from the
- * OpenRouter free router (or the NVIDIA NIM free model when OpenRouter has no
- * key). Returns null when no free transport is configured.
+ * OpenRouter free router. Returns null when no free transport is configured.
  */
 async function getLowBalanceFallbackLanguageModel(accessToken?: string) {
   if (await resolveOpenRouterApiKey(accessToken)) {
     return getOpenRouterLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
-  }
-  const nvidiaKey = await resolveNvidiaApiKey(accessToken)
-  if (nvidiaKey) {
-    return createNvidiaNimChatLanguageModel(NVIDIA_NIM_MODEL_IDS[0], nvidiaKey)
   }
   return null
 }

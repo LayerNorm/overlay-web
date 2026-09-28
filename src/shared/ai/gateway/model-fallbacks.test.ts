@@ -9,13 +9,11 @@ import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gate
 
 test('free model fallbacks stay inside the free-tier catalog', () => {
   const fallbacks = getChatModelFallbackCandidates({
-    modelId: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
+    modelId: FREE_TIER_AUTO_MODEL_ID,
     paid: false,
   })
-  assert.equal(fallbacks[0], 'stepfun-ai/step-3.5-flash')
-  assert.ok(fallbacks.length > 0)
-  assert.ok(fallbacks.every(isFreeTierChatModelId))
-  assert.ok(!fallbacks.includes('openrouter/nvidia/nemotron-3-super-120b-a12b:free'))
+  // The free router is the only free model — it is excluded as a fallback for itself.
+  assert.deepEqual(fallbacks, [])
 })
 
 test('paid model fallbacks are strictly cheaper than the selected model', () => {
@@ -62,7 +60,12 @@ test('low-credit attempts dedupe and cap at maxCandidates', () => {
   const attempts = getLowCreditFallbackAttemptModelIds({
     modelId: 'anthropic/claude-opus-4.7',
     paid: true,
-    paidFallbackModelIds: ['anthropic/claude-opus-4.7', FREE_TIER_AUTO_MODEL_ID],
+    paidFallbackModelIds: [
+      'anthropic/claude-opus-4.7',
+      FREE_TIER_AUTO_MODEL_ID,
+      'claude-sonnet-4-6',
+      'claude-haiku-4-5',
+    ],
     maxCandidates: 3,
   })
   assert.equal(attempts.length, 3)
