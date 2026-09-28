@@ -39,7 +39,32 @@ export async function tryUploadFileToProvider(args: {
     // Fetch the file data from the URL (could be a data: URL or https: URL).
     const response = await fetch(url)
     if (!response.ok) return null
-    const data = new Uint8Array(await response.arrayBuffer())
+
+    const maxBytes = 20 * 1024 * 1024
+    const contentLength = Number(response.headers.get('content-length'))
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) return null
+    if (!response.body) return null
+
+    const chunks: Uint8Array[] = []
+    let totalBytes = 0
+    const reader = response.body.getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+
+    const data = new Uint8Array(totalBytes)
+    let offset = 0
+    for (const chunk of chunks) {
+      data.set(chunk, offset)
+      offset += chunk.byteLength
+    }
 
     const filesApi = resolveProviderFilesApi(provider)
     if (!filesApi) return null
