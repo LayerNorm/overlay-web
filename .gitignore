@@ -119,3 +119,8 @@ scripts/composio-slack-smoke/
 # Memory benchmark datasets + results (large downloaded corpora; never committed)
 benchmarks/memory/datasets/
 benchmarks/memory/results/
+
+# One-off bench ops scripts (probes, purges, sweeps) — kept local, not committed
+benchmarks/memory/probe-*.ts
+benchmarks/memory/purge-*.ts
+benchmarks/memory/sweep-*.ts
