@@ -40,3 +40,5 @@ export interface AppSidebarProps {
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   workspace?: AppSidebarWorkspaceAdapter
 }
+
+export const EMPTY_COLLABORATION_NOTIFICATIONS: NonNullable<AppSidebarProps['collaborationNotifications']> = []

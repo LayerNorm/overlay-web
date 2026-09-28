@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { chatsInlineItems, InlineNavChildren } from './AppSidebarInlinePanels'
+import { InlineNavChildren } from './AppSidebarInlinePanels'
+import { chatsInlineItems } from './sidebar-nav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 

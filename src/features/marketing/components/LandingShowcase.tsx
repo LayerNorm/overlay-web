@@ -30,16 +30,13 @@ import {
 } from "lucide-react";
 import { Creature, type CreatureShape } from "@/components/orb/Creature";
 import { OverlayMark } from "@/components/orb/Orb";
-import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
+import { LANDING_TOAST_EVENT, landingToast } from "@/features/marketing/lib/landing-toast";
+import { BrandLogo } from "@/features/marketing/components/BrandLogo";
+import { LOGO } from "@/features/marketing/lib/logos";
 
 /* ---------- demo toast (shared via window event) ---------- */
 
-const TOAST_EVENT = "overlay:landing-toast";
 
-export function landingToast(message: string) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: message }));
-}
 
 export function LandingToast() {
   const [message, setMessage] = useState<string | null>(null);
@@ -51,9 +48,9 @@ export function LandingToast() {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setMessage(null), 1400);
     };
-    window.addEventListener(TOAST_EVENT, onToast);
+    window.addEventListener(LANDING_TOAST_EVENT, onToast);
     return () => {
-      window.removeEventListener(TOAST_EVENT, onToast);
+      window.removeEventListener(LANDING_TOAST_EVENT, onToast);
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
@@ -66,49 +63,6 @@ export function LandingToast() {
 }
 
 /* ---------- theme-aware brand logos ---------- */
-
-function BrandLogo({
-  light,
-  dark,
-  alt = "",
-  className,
-}: {
-  light: string;
-  dark?: string;
-  alt?: string;
-  className?: string;
-}) {
-  const landing = useLandingThemeOptional();
-  const src = landing?.isLandingDark && dark ? dark : light;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} className={className} />;
-}
-
-export type LogoSpec = { light: string; dark?: string };
-
-const LOGO: Record<string, LogoSpec> = {
-  claude: { light: "https://svgl.app/library/claude-ai-icon.svg" },
-  openai: {
-    light: "https://svgl.app/library/openai.svg",
-    dark: "https://svgl.app/library/openai_dark.svg",
-  },
-  cursor: {
-    light: "https://svgl.app/library/cursor_light.svg",
-    dark: "https://svgl.app/library/cursor_dark.svg",
-  },
-  devin: {
-    light: "/assets/svg/devin.svg",
-    dark: "/assets/svg/devin_dark.svg",
-  },
-  apple: {
-    light: "https://svgl.app/library/apple.svg",
-    dark: "https://svgl.app/library/apple_dark.svg",
-  },
-  slack: { light: "https://svgl.app/library/slack.svg" },
-  telegram: { light: "https://svgl.app/library/telegram.svg" },
-  discord: { light: "https://svgl.app/library/discord.svg" },
-  google: { light: "https://svgl.app/library/google.svg" },
-};
 
 /* ---------- demo data ---------- */
 
@@ -326,6 +280,419 @@ function ByoMark({ item }: { item: (typeof BYO)[number] }) {
 
 /* ---------- the demo ---------- */
 
+function ShowcaseRail({
+  activePanel,
+  onSelectPanel,
+}: {
+  activePanel: PanelId;
+  onSelectPanel: (id: PanelId) => void;
+}) {
+  return (
+    <div className="rail">
+      <div className="rail-brand" title="overlay">
+        <OverlayMark size={15} label="Overlay" />
+      </div>
+      <nav className="rail-nav">
+        {RAIL.map((r) => (
+          <button
+            key={r.id}
+            className={`rail-btn${r.id === activePanel ? " active" : ""}`}
+            title={r.label}
+            onClick={() => onSelectPanel(r.id)}
+          >
+            <r.icon size={15} strokeWidth={1.75} />
+            {r.badge ? <span className="badge">{r.badge}</span> : null}
+          </button>
+        ))}
+      </nav>
+      <div className="rail-foot">
+        <button
+          className="rail-btn"
+          title="Settings"
+          onClick={() => landingToast("Settings")}
+        >
+          <Settings size={15} strokeWidth={1.6} />
+        </button>
+        <button
+          className="avatar-dot"
+          title="Account"
+          onClick={() => landingToast("Account")}
+        >
+          D
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PanelRows({
+  activePanel,
+  activeAgent,
+  onSelectAgent,
+}: {
+  activePanel: PanelId;
+  activeAgent: string;
+  onSelectAgent: (id: string) => void;
+}) {
+  switch (activePanel) {
+    case "agents":
+      return (
+        <>
+          {AGENTS.map((a) => (
+            <button
+              key={a.id}
+              className={`panel-row${a.id === activeAgent ? " active" : ""}`}
+              onClick={() => onSelectAgent(a.id)}
+            >
+              <span className="cw">
+                <Creature shape={a.shape} color={a.color} size={20} animated={false} />
+              </span>
+              <span className="meta">
+                <span className="name">{a.name}</span>
+              </span>
+              <span className="time">{a.time}</span>
+            </button>
+          ))}
+          <div className="panel-section-label">Your agents</div>
+          {BYO.map((b) => (
+            <button
+              key={b.name}
+              className="panel-row"
+              onClick={() => landingToast(`${b.name} is an external agent`)}
+            >
+              <ByoMark item={b} />
+              <span className="meta">
+                <span className="name">{b.name}</span>
+                <span className="sub" style={{ display: "block" }}>
+                  {b.sub}
+                </span>
+              </span>
+            </button>
+          ))}
+        </>
+      );
+    case "chats":
+      return (
+        <>
+          <div className="panel-subnav">
+            {[
+              { id: "personal", label: "Personal", icon: User },
+              { id: "dms", label: "DMs", icon: MessageSquare, cnt: "3" },
+              { id: "channels", label: "Channels", icon: Hash },
+              { id: "activity", label: "Activity", icon: Bell, cnt: "5" },
+            ].map((s) => (
+              <button
+                key={s.id}
+                className={`panel-subnav-item${s.id === "dms" ? " active" : ""}`}
+                onClick={() => landingToast(s.label)}
+              >
+                <s.icon size={13} strokeWidth={1.75} />
+                {s.label}
+                {s.cnt ? <span className="cnt">{s.cnt}</span> : null}
+              </button>
+            ))}
+          </div>
+          <div className="panel-search">
+            <div className="search-box">
+              <Search size={12} strokeWidth={1.75} />
+              Search chats
+            </div>
+          </div>
+          <div className="panel-list">
+            {CHATS.map((c) => (
+              <button
+                key={c.name}
+                className="panel-row"
+                onClick={() => landingToast(c.name)}
+              >
+                <span className="meta">
+                  <span className="name">{c.name}</span>
+                  <span className="sub" style={{ display: "block" }}>
+                    {c.sub}
+                  </span>
+                </span>
+                <span className="time">{c.time}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      );
+    case "files":
+    case "extensions":
+    case "automations": {
+      const rows =
+        activePanel === "files"
+          ? FILES.map((f) => ({ ...f, icon: FileText }))
+          : activePanel === "extensions"
+            ? EXTENSIONS
+            : AUTOS.map((a) => ({ ...a, icon: Workflow }));
+      return (
+        <>
+          <div className="panel-search">
+            <div className="search-box">
+              <Search size={12} strokeWidth={1.75} />
+              {PANEL_TITLE[activePanel].search}
+            </div>
+          </div>
+          <div className="panel-list">
+            {rows.map((r) => (
+              <button
+                key={r.name}
+                className="panel-row"
+                onClick={() => landingToast(r.name)}
+              >
+                {"logo" in r ? (
+                  <span className="byo-logo">
+                    <BrandLogo
+                      light={LOGO[r.logo].light}
+                      dark={LOGO[r.logo].dark}
+                    />
+                  </span>
+                ) : (
+                  <r.icon
+                    size={14}
+                    strokeWidth={1.75}
+                    style={{ color: "var(--muted)", flexShrink: 0 }}
+                  />
+                )}
+                <span className="meta">
+                  <span className="name">{r.name}</span>
+                  <span className="sub" style={{ display: "block" }}>
+                    {r.sub}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      );
+    }
+  }
+}
+
+function ShowcasePanel({
+  activePanel,
+  activeAgent,
+  onSelectAgent,
+}: {
+  activePanel: PanelId;
+  activeAgent: string;
+  onSelectAgent: (id: string) => void;
+}) {
+  const panel = PANEL_TITLE[activePanel];
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <span className="panel-title">{panel.title}</span>
+        <button
+          className="panel-icon-btn"
+          title="More"
+          onClick={() => landingToast("Panel options")}
+        >
+          <ChevronDown size={13} strokeWidth={1.75} />
+        </button>
+      </div>
+      <div className="panel-action">
+        <button
+          className="panel-action-btn"
+          onClick={() => landingToast(`${panel.action} opens the editor`)}
+        >
+          <Plus size={13} strokeWidth={1.75} />
+          {panel.action}
+        </button>
+      </div>
+      {activePanel === "agents" ? (
+        <div className="panel-search">
+          <div className="search-box">
+            <Search size={12} strokeWidth={1.75} />
+            Search agents
+          </div>
+        </div>
+      ) : null}
+      {activePanel === "agents" ? (
+        <div className="panel-list">
+          <PanelRows
+            activePanel={activePanel}
+            activeAgent={activeAgent}
+            onSelectAgent={onSelectAgent}
+          />
+        </div>
+      ) : (
+        <PanelRows
+          activePanel={activePanel}
+          activeAgent={activeAgent}
+          onSelectAgent={onSelectAgent}
+        />
+      )}
+    </div>
+  );
+}
+
+function ShowcaseMain({
+  agent,
+  messages,
+  typing,
+  draft,
+  onDraftChange,
+  onSend,
+}: {
+  agent: DemoAgent;
+  messages: DemoMessage[];
+  typing: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSend: () => void;
+}) {
+  return (
+    <div className="main">
+      <div className="main-topbar">
+        <div className="topbar-agent">
+          <span className="cw">
+            <Creature shape={agent.shape} color={agent.color} size={26} animated={false} />
+          </span>
+          <div>
+            <div className="name">{agent.name}</div>
+            <div className="status">
+              <span
+                className="status-dot"
+                style={{
+                  background:
+                    agent.status === "idle"
+                      ? "var(--muted-light)"
+                      : "var(--success)",
+                }}
+              />{" "}
+              {agent.sub}
+            </div>
+          </div>
+        </div>
+        <button
+          className="desktop-chip"
+          title="Open the live desktop stream"
+          onClick={() => landingToast("Live desktop stream opens here")}
+        >
+          <Monitor size={12} strokeWidth={1.75} /> View desktop
+        </button>
+        <button
+          className="chip"
+          title="Model"
+          onClick={() => landingToast("Model picker")}
+        >
+          <BrandLogo light={LOGO.claude.light} /> Sonnet 4.6{" "}
+          <ChevronDown size={10} strokeWidth={1.75} />
+        </button>
+        <button
+          className="topbar-icon-btn"
+          title="Agent settings"
+          onClick={() => landingToast("Agent settings")}
+        >
+          <Settings size={14} strokeWidth={1.6} />
+        </button>
+      </div>
+      <div className="thread">
+        {messages.map((m) =>
+          m.who === "user" ? (
+            <div className="msg-user" key={m.text}>
+              {m.text}
+            </div>
+          ) : (
+            <div className="msg-agent" key={m.worked}>
+              <span className="cw" style={{ marginTop: 2 }}>
+                <Creature
+                  shape={agent.shape}
+                  color={agent.color}
+                  size={22}
+                  animated={false}
+                />
+              </span>
+              <div className="body">
+                <button
+                  className="worked-row"
+                  onClick={() => landingToast("Expand the tool calls")}
+                >
+                  <Check size={12} strokeWidth={2} /> {m.worked}
+                </button>
+                <div className="text">{m.body}</div>
+                {m.code ? (
+                  <div className="code-block">
+                    <div className="code-head">
+                      <span>{m.code.file}</span>
+                      <span>{m.code.lang}</span>
+                    </div>
+                    <div className="code-body">{m.code.body}</div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ),
+        )}
+        {typing ? (
+          <div className="msg-agent">
+            <span className="cw" style={{ marginTop: 2 }}>
+              <Creature
+                shape={agent.shape}
+                color={agent.color}
+                size={22}
+                animated={false}
+              />
+            </span>
+            <div className="body">
+              <span className="dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div className="composer-wrap">
+        <div className="composer">
+          <input
+            value={draft}
+            onChange={(e) => onDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+            placeholder={`Message ${agent.name}, use @ to reference files, memory, tools…`}
+            aria-label={`Message ${agent.name}`}
+          />
+          <div className="composer-row">
+            <div className="composer-left">
+              <button title="Attach" onClick={() => landingToast("Attach a file")}>
+                <Paperclip size={15} strokeWidth={1.6} />
+              </button>
+              <button title="Mention" onClick={() => landingToast("Mention")}>
+                <AtSign size={15} strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="composer-right">
+              <button
+                className="chip"
+                title="Model"
+                onClick={() => landingToast("Model picker")}
+              >
+                <BrandLogo light={LOGO.claude.light} /> Sonnet 4.6{" "}
+                <ChevronDown size={10} strokeWidth={1.75} />
+              </button>
+              <button
+                className="send-btn"
+                title="Send"
+                onClick={onSend}
+              >
+                <ArrowRight size={14} strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LandingShowcase() {
   const [activeAgent, setActiveAgent] = useState("scout");
   const [activePanel, setActivePanel] = useState<PanelId>("agents");
@@ -376,368 +743,29 @@ export function LandingShowcase() {
     }, 1400);
   }
 
-  function panelRows(): ReactNode {
-    switch (activePanel) {
-      case "agents":
-        return (
-          <>
-            {AGENTS.map((a) => (
-              <button
-                key={a.id}
-                className={`panel-row${a.id === activeAgent ? " active" : ""}`}
-                onClick={() => selectAgent(a.id)}
-              >
-                <span className="cw">
-                  <Creature shape={a.shape} color={a.color} size={20} animated={false} />
-                </span>
-                <span className="meta">
-                  <span className="name">{a.name}</span>
-                </span>
-                <span className="time">{a.time}</span>
-              </button>
-            ))}
-            <div className="panel-section-label">Your agents</div>
-            {BYO.map((b) => (
-              <button
-                key={b.name}
-                className="panel-row"
-                onClick={() => landingToast(`${b.name} is an external agent`)}
-              >
-                <ByoMark item={b} />
-                <span className="meta">
-                  <span className="name">{b.name}</span>
-                  <span className="sub" style={{ display: "block" }}>
-                    {b.sub}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </>
-        );
-      case "chats":
-        return (
-          <>
-            <div className="panel-subnav">
-              {[
-                { id: "personal", label: "Personal", icon: User },
-                { id: "dms", label: "DMs", icon: MessageSquare, cnt: "3" },
-                { id: "channels", label: "Channels", icon: Hash },
-                { id: "activity", label: "Activity", icon: Bell, cnt: "5" },
-              ].map((s) => (
-                <button
-                  key={s.id}
-                  className={`panel-subnav-item${s.id === "dms" ? " active" : ""}`}
-                  onClick={() => landingToast(s.label)}
-                >
-                  <s.icon size={13} strokeWidth={1.75} />
-                  {s.label}
-                  {s.cnt ? <span className="cnt">{s.cnt}</span> : null}
-                </button>
-              ))}
-            </div>
-            <div className="panel-search">
-              <div className="search-box">
-                <Search size={12} strokeWidth={1.75} />
-                Search chats
-              </div>
-            </div>
-            <div className="panel-list">
-              {CHATS.map((c) => (
-                <button
-                  key={c.name}
-                  className="panel-row"
-                  onClick={() => landingToast(c.name)}
-                >
-                  <span className="meta">
-                    <span className="name">{c.name}</span>
-                    <span className="sub" style={{ display: "block" }}>
-                      {c.sub}
-                    </span>
-                  </span>
-                  <span className="time">{c.time}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        );
-      case "files":
-      case "extensions":
-      case "automations": {
-        const rows =
-          activePanel === "files"
-            ? FILES.map((f) => ({ ...f, icon: FileText }))
-            : activePanel === "extensions"
-              ? EXTENSIONS
-              : AUTOS.map((a) => ({ ...a, icon: Workflow }));
-        return (
-          <>
-            <div className="panel-search">
-              <div className="search-box">
-                <Search size={12} strokeWidth={1.75} />
-                {PANEL_TITLE[activePanel].search}
-              </div>
-            </div>
-            <div className="panel-list">
-              {rows.map((r) => (
-                <button
-                  key={r.name}
-                  className="panel-row"
-                  onClick={() => landingToast(r.name)}
-                >
-                  {"logo" in r ? (
-                    <span className="byo-logo">
-                      <BrandLogo
-                        light={LOGO[r.logo].light}
-                        dark={LOGO[r.logo].dark}
-                      />
-                    </span>
-                  ) : (
-                    <r.icon
-                      size={14}
-                      strokeWidth={1.75}
-                      style={{ color: "var(--muted)", flexShrink: 0 }}
-                    />
-                  )}
-                  <span className="meta">
-                    <span className="name">{r.name}</span>
-                    <span className="sub" style={{ display: "block" }}>
-                      {r.sub}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
-        );
-      }
-    }
-  }
-
-  const panel = PANEL_TITLE[activePanel];
-
   return (
     <>
       <div className="shot-frame">
         <div className="appshell">
           {/* primary rail */}
-          <div className="rail">
-            <div className="rail-brand" title="overlay">
-              <OverlayMark size={15} label="Overlay" />
-            </div>
-            <nav className="rail-nav">
-              {RAIL.map((r) => (
-                <button
-                  key={r.id}
-                  className={`rail-btn${r.id === activePanel ? " active" : ""}`}
-                  title={r.label}
-                  onClick={() => setActivePanel(r.id)}
-                >
-                  <r.icon size={15} strokeWidth={1.75} />
-                  {r.badge ? <span className="badge">{r.badge}</span> : null}
-                </button>
-              ))}
-            </nav>
-            <div className="rail-foot">
-              <button
-                className="rail-btn"
-                title="Settings"
-                onClick={() => landingToast("Settings")}
-              >
-                <Settings size={15} strokeWidth={1.6} />
-              </button>
-              <button
-                className="avatar-dot"
-                title="Account"
-                onClick={() => landingToast("Account")}
-              >
-                D
-              </button>
-            </div>
-          </div>
+          <ShowcaseRail activePanel={activePanel} onSelectPanel={setActivePanel} />
 
           {/* secondary panel (content swaps with rail) */}
-          <div className="panel">
-            <div className="panel-head">
-              <span className="panel-title">{panel.title}</span>
-              <button
-                className="panel-icon-btn"
-                title="More"
-                onClick={() => landingToast("Panel options")}
-              >
-                <ChevronDown size={13} strokeWidth={1.75} />
-              </button>
-            </div>
-            <div className="panel-action">
-              <button
-                className="panel-action-btn"
-                onClick={() => landingToast(`${panel.action} opens the editor`)}
-              >
-                <Plus size={13} strokeWidth={1.75} />
-                {panel.action}
-              </button>
-            </div>
-            {activePanel === "agents" ? (
-              <div className="panel-search">
-                <div className="search-box">
-                  <Search size={12} strokeWidth={1.75} />
-                  Search agents
-                </div>
-              </div>
-            ) : null}
-            {activePanel === "agents" ? (
-              <div className="panel-list">{panelRows()}</div>
-            ) : (
-              panelRows()
-            )}
-          </div>
+          <ShowcasePanel
+            activePanel={activePanel}
+            activeAgent={activeAgent}
+            onSelectAgent={selectAgent}
+          />
 
           {/* main: agent DM */}
-          <div className="main">
-            <div className="main-topbar">
-              <div className="topbar-agent">
-                <span className="cw">
-                  <Creature shape={agent.shape} color={agent.color} size={26} animated={false} />
-                </span>
-                <div>
-                  <div className="name">{agent.name}</div>
-                  <div className="status">
-                    <span
-                      className="status-dot"
-                      style={{
-                        background:
-                          agent.status === "idle"
-                            ? "var(--muted-light)"
-                            : "var(--success)",
-                      }}
-                    />{" "}
-                    {agent.sub}
-                  </div>
-                </div>
-              </div>
-              <button
-                className="desktop-chip"
-                title="Open the live desktop stream"
-                onClick={() => landingToast("Live desktop stream opens here")}
-              >
-                <Monitor size={12} strokeWidth={1.75} /> View desktop
-              </button>
-              <button
-                className="chip"
-                title="Model"
-                onClick={() => landingToast("Model picker")}
-              >
-                <BrandLogo light={LOGO.claude.light} /> Sonnet 4.6{" "}
-                <ChevronDown size={10} strokeWidth={1.75} />
-              </button>
-              <button
-                className="topbar-icon-btn"
-                title="Agent settings"
-                onClick={() => landingToast("Agent settings")}
-              >
-                <Settings size={14} strokeWidth={1.6} />
-              </button>
-            </div>
-            <div className="thread">
-              {messages.map((m, i) =>
-                m.who === "user" ? (
-                  <div className='msg-user' key={m.text}>
-                    {m.text}
-                  </div>
-                ) : (
-                  <div className='msg-agent' key={m.worked}>
-                    <span className="cw" style={{ marginTop: 2 }}>
-                      <Creature
-                        shape={agent.shape}
-                        color={agent.color}
-                        size={22}
-                        animated={false}
-                      />
-                    </span>
-                    <div className="body">
-                      <button
-                        className="worked-row"
-                        onClick={() => landingToast("Expand the tool calls")}
-                      >
-                        <Check size={12} strokeWidth={2} /> {m.worked}
-                      </button>
-                      <div className="text">{m.body}</div>
-                      {m.code ? (
-                        <div className="code-block">
-                          <div className="code-head">
-                            <span>{m.code.file}</span>
-                            <span>{m.code.lang}</span>
-                          </div>
-                          <div className="code-body">{m.code.body}</div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ),
-              )}
-              {typing ? (
-                <div className="msg-agent">
-                  <span className="cw" style={{ marginTop: 2 }}>
-                    <Creature
-                      shape={agent.shape}
-                      color={agent.color}
-                      size={22}
-                      animated={false}
-                    />
-                  </span>
-                  <div className="body">
-                    <span className="dots">
-                      <span />
-                      <span />
-                      <span />
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-            <div className="composer-wrap">
-              <div className="composer">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder={`Message ${agent.name}, use @ to reference files, memory, tools…`}
-                  aria-label={`Message ${agent.name}`}
-                />
-                <div className="composer-row">
-                  <div className="composer-left">
-                    <button title="Attach" onClick={() => landingToast("Attach a file")}>
-                      <Paperclip size={15} strokeWidth={1.6} />
-                    </button>
-                    <button title="Mention" onClick={() => landingToast("Mention")}>
-                      <AtSign size={15} strokeWidth={1.75} />
-                    </button>
-                  </div>
-                  <div className="composer-right">
-                    <button
-                      className="chip"
-                      title="Model"
-                      onClick={() => landingToast("Model picker")}
-                    >
-                      <BrandLogo light={LOGO.claude.light} /> Sonnet 4.6{" "}
-                      <ChevronDown size={10} strokeWidth={1.75} />
-                    </button>
-                    <button
-                      className="send-btn"
-                      title="Send"
-                      onClick={sendMessage}
-                    >
-                      <ArrowRight size={14} strokeWidth={1.75} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ShowcaseMain
+            agent={agent}
+            messages={messages}
+            typing={typing}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={sendMessage}
+          />
         </div>
       </div>
       <LandingToast />
@@ -837,7 +865,7 @@ export function LandingAgentField() {
       creature: { shape: "cloud", color: "#0284c7" },
       className: "af-pill af-float",
       style: { right: 150, top: 330, transform: "rotate(-3deg)", "--rot": "-3deg" } as React.CSSProperties,
-      toast: "Hermes — your agent, in the cloud",
+      toast: "Hermes — connected",
     },
   ];
 
@@ -888,5 +916,4 @@ export function LandingAgentField() {
   );
 }
 
-export { BrandLogo, LOGO };
-export const LANDING_AGENTS = AGENTS;
+

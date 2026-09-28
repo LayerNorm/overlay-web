@@ -312,7 +312,12 @@ function ViewerBody({ viewer }: { viewer: FileParityViewerScenario }) {
   // The DOCX fixture is deterministic post-conversion HTML; live DOCX files use
   // the same shared viewer's abortable fetch, Mammoth conversion, and sanitizer.
   if (viewer.kind === 'docx') {
-    return <div className="file-parity-document" dangerouslySetInnerHTML={{ __html: viewer.content }} />
+    return (
+      // Fixture HTML is generated deterministically from the checked-in DOCX
+      // fixture, same as the shared viewer's sanitized conversion output.
+      // react-doctor-disable-next-line react-doctor/dangerous-html-sink
+      <div className="file-parity-document" dangerouslySetInnerHTML={{ __html: viewer.content }} />
+    )
   }
   return <FileViewer name={viewer.name} content={viewer.content} url={viewer.source} />
 }
@@ -347,6 +352,8 @@ function EditorCard({
         <div><span>Notebook parity</span><small>{editor.title}</small></div>
         <span className={`file-parity-editor-status file-parity-editor-status--${editor.state}`}>{editor.state}</span>
       </header>
+      {/* Fixture HTML is deterministic scenario data, not user input. */}
+      {/* react-doctor-disable-next-line react-doctor/dangerous-html-sink */}
       <div className="app-note-editor" dangerouslySetInnerHTML={{ __html: editor.documentHtml }} />
     </article>
   )

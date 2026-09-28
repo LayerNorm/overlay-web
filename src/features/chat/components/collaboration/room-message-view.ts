@@ -229,3 +229,8 @@ export function toRoomMessageView({
     streaming: streaming || message.status === 'generating',
   }
 }
+
+/** The scroll target for pin and thread jumps. */
+export function roomMessageDomId(messageId: string): string {
+  return `room-message-${messageId}`
+}

@@ -1,6 +1,6 @@
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { AVATAR_COLORS } from '../components/AgentEditorForm'
+import { AVATAR_COLORS } from './agent-editor-utils'
 import { SHOWCASE_AGENTS } from './showcase-agents'
 
 export function getShowcaseAgent(

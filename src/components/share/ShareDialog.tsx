@@ -376,204 +376,338 @@ export function ShareDialogContent({
     <div className="max-h-[min(680px,75vh)] overflow-y-auto px-6 py-5">
       {hasResourceId ? (
         <>
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px_auto]">
-            <Select
-              value={target}
-              aria-label="Add a person, agent, team, or room"
-              onChange={(event) => onTargetChange(event.target.value)}
-              className="h-10 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
-            >
-              <option value="">Add a person, agent, team, or room…</option>
-              {groups(available).map(({ label, entries }) => entries.length > 0 ? (
-                <optgroup key={label} label={label}>
-                  {entries.map((entry) => (
-                    <option key={`${entry.targetType}:${entry.id}`} value={`${entry.targetType}:${entry.id}`}>{entry.name}</option>
-                  ))}
-                </optgroup>
-              ) : null)}
-            </Select>
-            <Select
-              value={role}
-              aria-label="Permission"
-              onChange={(event) => onRoleChange(event.target.value as WorkspaceShareAccessRole)}
-              className="h-10 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
-            >
-              {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </Select>
-            <button
-              type="button"
-              disabled={!target || busy}
-              onClick={onRequestGrant}
-              className="h-10 rounded-lg bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-40"
-            >
-              Add
-            </button>
-          </div>
-          <p className="mt-2 text-[11px] text-[var(--muted)]">
-            {roleOptions.find((option) => option.value === role)?.description}
-          </p>
+          <ShareTargetForm
+            target={target}
+            role={role}
+            roleOptions={roleOptions}
+            available={available}
+            busy={busy}
+            onTargetChange={onTargetChange}
+            onRoleChange={onRoleChange}
+            onRequestGrant={onRequestGrant}
+          />
 
           {pending ? (
-            <section
-              data-testid="share-dialog-confirmation"
-              className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
-            >
-              <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-                <TriangleAlert size={15} className="text-amber-500" />
-                {pending.kind === 'grant'
-                  ? `Share this ${SHARE_RESOURCE_LABELS[resourceType]} with ${pending.impact.targetName}?`
-                  : `Remove ${pending.impact.targetName}’s access?`}
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                {pending.kind === 'grant'
-                  ? `${describeTargetInheritance(pending.impact.targetType)} will be able to open “${resourceTitle}”.`
-                  : `Access granted through ${pending.impact.targetName} ends immediately, including open downloads, streams, and agent tool calls.`}
-              </p>
-              <ImpactList
-                label={pending.kind === 'grant' ? 'Gaining access' : 'Losing access'}
-                principals={pending.kind === 'grant' ? pending.impact.gaining : pending.impact.losing}
-                emptyLabel={pending.kind === 'grant'
-                  ? 'Nobody new — everyone here already has access another way'
-                  : 'Nobody loses access; every person here keeps it another way'}
-              />
-              {pending.impact.retaining.length > 0 ? (
-                <ImpactList
-                  label="Already has access another way"
-                  principals={pending.impact.retaining}
-                  emptyLabel=""
-                />
-              ) : null}
-              {pending.impact.dynamic ? (
-                <p className="mt-3 text-[11px] text-[var(--muted-light)]">
-                  This list changes with membership. People and agents added later inherit the same access.
-                </p>
-              ) : null}
-              <div className="mt-4 flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onConfirmPending}
-                  className="h-9 rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] disabled:opacity-40"
-                >
-                  {pending.kind === 'grant' ? 'Share with everyone listed' : 'Remove access'}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onCancelPending}
-                  className="h-9 rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
-                >
-                  Cancel
-                </button>
-              </div>
-            </section>
+            <PendingShareConfirmation
+              pending={pending}
+              resourceType={resourceType}
+              resourceTitle={resourceTitle}
+              busy={busy}
+              onConfirm={onConfirmPending}
+              onCancel={onCancelPending}
+            />
           ) : null}
 
-          <section className="mt-6">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Who has access</h3>
-            <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)]">
-              {loading ? (
-                <div data-testid="share-dialog-loading" className="flex h-20 items-center justify-center text-[var(--muted)]">
-                  <Loader2 size={16} className="animate-spin" />
-                </div>
-              ) : grants.length === 0 ? (
-                <div data-testid="share-dialog-empty" className="px-4 py-5 text-sm text-[var(--muted)]">
-                  Only the owner has explicit access.
-                </div>
-              ) : grants.map((grant) => {
-                const entry = entriesByKey.get(`${grant.targetType}:${grant.targetId}`)
-                return (
-                  <div key={grant.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-b-0">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">{entryIcon(entry)}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[var(--foreground)]">{entry?.name ?? 'Unavailable target'}</p>
-                      <p className="truncate text-[11px] text-[var(--muted)]">
-                        {describeTargetInheritance(grant.targetType)}
-                      </p>
-                    </div>
-                    <Select
-                      value={grant.accessRole}
-                      aria-label={`Permission for ${entry?.name ?? targetLabel(grant.targetType)}`}
-                      disabled={busy}
-                      onChange={(event) => onChangeRole(grant, event.target.value as WorkspaceShareAccessRole)}
-                      className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
-                    >
-                      {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </Select>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => onRequestRevoke(grant)}
-                      aria-label={`Remove access for ${entry?.name ?? targetLabel(grant.targetType)}`}
-                      className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-red-500"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
+          <ShareAccessList
+            loading={loading}
+            grants={grants}
+            entriesByKey={entriesByKey}
+            roleOptions={roleOptions}
+            busy={busy}
+            onChangeRole={onChangeRole}
+            onRequestRevoke={onRequestRevoke}
+          />
         </>
       ) : null}
 
       {canInvite ? (
-        <section className="mt-5 rounded-xl border border-[var(--border)] p-4">
-          <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]"><MailPlus size={15} /> Invite someone to the workspace</div>
-          <div className="mt-3 flex gap-2">
-            <input
-              type="email"
-              value={inviteEmail}
-              aria-label="Guest email"
-              onChange={(event) => onInviteEmailChange(event.target.value)}
-              placeholder="name@company.com"
-              className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm"
-            />
-            <button
-              type="button"
-              disabled={busy || !inviteEmail.trim()}
-              onClick={onInvite}
-              className="rounded-lg border border-[var(--border)] px-3 text-xs font-medium hover:bg-[var(--surface-subtle)] disabled:opacity-40"
-            >
-              Invite as guest
-            </button>
-          </div>
-        </section>
+        <ShareInviteSection
+          inviteEmail={inviteEmail}
+          busy={busy}
+          onInviteEmailChange={onInviteEmailChange}
+          onInvite={onInvite}
+        />
       ) : null}
 
-      <section className="mt-5">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">General access</h3>
-        <div
-          data-testid="share-dialog-general-access"
-          className="mt-2 flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
-            {publicLinksEnabled && publicUrl ? <Globe2 size={15} /> : <Lock size={15} />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[var(--foreground)]">
-              {!publicLinksEnabled
-                ? 'Public links are off for this workspace'
-                : publicUrl ? 'Anyone with the link' : 'Restricted'}
-            </p>
-            <p className="text-[11px] text-[var(--muted)]">
-              {!publicLinksEnabled
-                ? 'An owner or admin can turn public links back on in Workspace settings → Sharing & links.'
-                : publicUrl
-                  ? 'Public link access is view-only, separate from workspace grants, and redacts attachments that are not public themselves.'
-                  : 'Only explicitly granted workspace targets can open this resource.'}
-            </p>
-          </div>
-          {publicLinksEnabled && publicUrl ? (
-            <button type="button" onClick={onCopyLink} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-xs hover:bg-[var(--surface-subtle)]">
-              {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy link'}
-            </button>
-          ) : null}
-        </div>
-      </section>
+      <GeneralAccessSection
+        publicLinksEnabled={publicLinksEnabled}
+        publicUrl={publicUrl}
+        copied={copied}
+        onCopyLink={onCopyLink}
+      />
 
       {notice ? <p data-testid="share-dialog-notice" className="mt-4 text-xs text-[var(--muted)]">{notice}</p> : null}
     </div>
+  )
+}
+
+function ShareTargetForm({
+  target,
+  role,
+  roleOptions,
+  available,
+  busy,
+  onTargetChange,
+  onRoleChange,
+  onRequestGrant,
+}: {
+  target: string
+  role: WorkspaceShareAccessRole
+  roleOptions: ReturnType<typeof shareRoleOptions>
+  available: WorkspaceShareDirectoryEntry[]
+  busy: boolean
+  onTargetChange(value: string): void
+  onRoleChange(value: WorkspaceShareAccessRole): void
+  onRequestGrant(): void
+}) {
+  return (
+    <>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px_auto]">
+        <Select
+          value={target}
+          aria-label="Add a person, agent, team, or room"
+          onChange={(event) => onTargetChange(event.target.value)}
+          className="h-10 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+        >
+          <option value="">Add a person, agent, team, or room…</option>
+          {groups(available).map(({ label, entries }) => entries.length > 0 ? (
+            <optgroup key={label} label={label}>
+              {entries.map((entry) => (
+                <option key={`${entry.targetType}:${entry.id}`} value={`${entry.targetType}:${entry.id}`}>{entry.name}</option>
+              ))}
+            </optgroup>
+          ) : null)}
+        </Select>
+        <Select
+          value={role}
+          aria-label="Permission"
+          onChange={(event) => onRoleChange(event.target.value as WorkspaceShareAccessRole)}
+          className="h-10 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
+        >
+          {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </Select>
+        <button
+          type="button"
+          disabled={!target || busy}
+          onClick={onRequestGrant}
+          className="h-10 rounded-lg bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-[var(--muted)]">
+        {roleOptions.find((option) => option.value === role)?.description}
+      </p>
+    </>
+  )
+}
+
+function PendingShareConfirmation({
+  pending,
+  resourceType,
+  resourceTitle,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  pending: PendingShareChange
+  resourceType: WorkspaceShareResourceType
+  resourceTitle: string
+  busy: boolean
+  onConfirm(): void
+  onCancel(): void
+}) {
+  return (
+    <section
+      data-testid="share-dialog-confirmation"
+      className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
+    >
+      <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+        <TriangleAlert size={15} className="text-amber-500" />
+        {pending.kind === 'grant'
+          ? `Share this ${SHARE_RESOURCE_LABELS[resourceType]} with ${pending.impact.targetName}?`
+          : `Remove ${pending.impact.targetName}’s access?`}
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+        {pending.kind === 'grant'
+          ? `${describeTargetInheritance(pending.impact.targetType)} will be able to open “${resourceTitle}”.`
+          : `Access granted through ${pending.impact.targetName} ends immediately, including open downloads, streams, and agent tool calls.`}
+      </p>
+      <ImpactList
+        label={pending.kind === 'grant' ? 'Gaining access' : 'Losing access'}
+        principals={pending.kind === 'grant' ? pending.impact.gaining : pending.impact.losing}
+        emptyLabel={pending.kind === 'grant'
+          ? 'Nobody new — everyone here already has access another way'
+          : 'Nobody loses access; every person here keeps it another way'}
+      />
+      {pending.impact.retaining.length > 0 ? (
+        <ImpactList
+          label="Already has access another way"
+          principals={pending.impact.retaining}
+          emptyLabel=""
+        />
+      ) : null}
+      {pending.impact.dynamic ? (
+        <p className="mt-3 text-[11px] text-[var(--muted-light)]">
+          This list changes with membership. People and agents added later inherit the same access.
+        </p>
+      ) : null}
+      <div className="mt-4 flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConfirm}
+          className="h-9 rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] disabled:opacity-40"
+        >
+          {pending.kind === 'grant' ? 'Share with everyone listed' : 'Remove access'}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="h-9 rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function ShareAccessList({
+  loading,
+  grants,
+  entriesByKey,
+  roleOptions,
+  busy,
+  onChangeRole,
+  onRequestRevoke,
+}: {
+  loading: boolean
+  grants: WorkspaceResourceGrant[]
+  entriesByKey: Map<string, WorkspaceShareDirectoryEntry>
+  roleOptions: ReturnType<typeof shareRoleOptions>
+  busy: boolean
+  onChangeRole(grant: WorkspaceResourceGrant, role: WorkspaceShareAccessRole): void
+  onRequestRevoke(grant: WorkspaceResourceGrant): void
+}) {
+  return (
+    <section className="mt-6">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Who has access</h3>
+      <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)]">
+        {loading ? (
+          <div data-testid="share-dialog-loading" className="flex h-20 items-center justify-center text-[var(--muted)]">
+            <Loader2 size={16} className="animate-spin" />
+          </div>
+        ) : grants.length === 0 ? (
+          <div data-testid="share-dialog-empty" className="px-4 py-5 text-sm text-[var(--muted)]">
+            Only the owner has explicit access.
+          </div>
+        ) : grants.map((grant) => {
+          const entry = entriesByKey.get(`${grant.targetType}:${grant.targetId}`)
+          return (
+            <div key={grant.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-b-0">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">{entryIcon(entry)}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-[var(--foreground)]">{entry?.name ?? 'Unavailable target'}</p>
+                <p className="truncate text-[11px] text-[var(--muted)]">
+                  {describeTargetInheritance(grant.targetType)}
+                </p>
+              </div>
+              <Select
+                value={grant.accessRole}
+                aria-label={`Permission for ${entry?.name ?? targetLabel(grant.targetType)}`}
+                disabled={busy}
+                onChange={(event) => onChangeRole(grant, event.target.value as WorkspaceShareAccessRole)}
+                className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
+              >
+                {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onRequestRevoke(grant)}
+                aria-label={`Remove access for ${entry?.name ?? targetLabel(grant.targetType)}`}
+                className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-red-500"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function ShareInviteSection({
+  inviteEmail,
+  busy,
+  onInviteEmailChange,
+  onInvite,
+}: {
+  inviteEmail: string
+  busy: boolean
+  onInviteEmailChange(value: string): void
+  onInvite(): void
+}) {
+  return (
+    <section className="mt-5 rounded-xl border border-[var(--border)] p-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]"><MailPlus size={15} /> Invite someone to the workspace</div>
+      <div className="mt-3 flex gap-2">
+        <input
+          type="email"
+          value={inviteEmail}
+          aria-label="Guest email"
+          onChange={(event) => onInviteEmailChange(event.target.value)}
+          placeholder="name@company.com"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm"
+        />
+        <button
+          type="button"
+          disabled={busy || !inviteEmail.trim()}
+          onClick={onInvite}
+          className="rounded-lg border border-[var(--border)] px-3 text-xs font-medium hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+        >
+          Invite as guest
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function GeneralAccessSection({
+  publicLinksEnabled,
+  publicUrl,
+  copied,
+  onCopyLink,
+}: {
+  publicLinksEnabled: boolean
+  publicUrl?: string
+  copied: boolean
+  onCopyLink(): void
+}) {
+  return (
+    <section className="mt-5">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">General access</h3>
+      <div
+        data-testid="share-dialog-general-access"
+        className="mt-2 flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
+          {publicLinksEnabled && publicUrl ? <Globe2 size={15} /> : <Lock size={15} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            {!publicLinksEnabled
+              ? 'Public links are off for this workspace'
+              : publicUrl ? 'Anyone with the link' : 'Restricted'}
+          </p>
+          <p className="text-[11px] text-[var(--muted)]">
+            {!publicLinksEnabled
+              ? 'An owner or admin can turn public links back on in Workspace settings → Sharing & links.'
+              : publicUrl
+                ? 'Public link access is view-only, separate from workspace grants, and redacts attachments that are not public themselves.'
+                : 'Only explicitly granted workspace targets can open this resource.'}
+          </p>
+        </div>
+        {publicLinksEnabled && publicUrl ? (
+          <button type="button" onClick={onCopyLink} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-xs hover:bg-[var(--surface-subtle)]">
+            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy link'}
+          </button>
+        ) : null}
+      </div>
+    </section>
   )
 }
 

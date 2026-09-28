@@ -242,135 +242,152 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
-  if (type === 'markdown') {
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto px-8 py-6">
-        <FileMarkdown content={content} />
-      </div>
-    )
-  }
-
-  if (type === 'text') {
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--text flex-1 overflow-y-auto px-8 py-6">
-        <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap text-[var(--foreground)]">
-          {content}
-        </pre>
-      </div>
-    )
-  }
-
-  if (type === 'html') {
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--html flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-        <iframe
-          srcDoc={source}
-          sandbox={FILE_VIEWER_HTML_SANDBOX}
-          referrerPolicy="no-referrer"
-          className="min-h-0 flex-1 w-full border-none bg-white"
-          title={name}
-        />
-      </div>
-    )
-  }
-
-  if (type === 'csv') {
-    const rows = parseCSV(content)
-    const headers = rows[0] ?? []
-    const body = rows.slice(1)
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--csv flex-1 overflow-auto px-4 py-4">
-        <table className="border-collapse text-xs">
-          <thead>
-            <tr>
-              {headers.map((h, i) => (
-                // Positional table headers mirror CSV column order — no stable key exists.
-                // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-                <th
-                  key={i}
-                  className="whitespace-nowrap border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-left font-medium text-[var(--foreground)]"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {body.map((row, i) => (
-              // Positional table rows mirror CSV row order — no stable key exists.
-              // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-              <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--surface-subtle)]/50'}>
-                {row.map((cell, j) => (
-                  // Positional table cells mirror CSV column order — no stable key exists.
-                  // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-                  <td
-                    key={j}
-                    className="max-w-md whitespace-pre-wrap break-words border border-[var(--border)] px-3 py-1.5 align-top text-[var(--muted)]"
-                  >
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-
-  if (type === 'image') {
-    const mediaUrl = resolveSafeViewerUrl(source, 'media')
-    if (!mediaUrl) return <UnavailablePreview name={name} />
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--image flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
-        {/* Shared web/Electron viewer; Next's image runtime is intentionally unavailable here. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={mediaUrl} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
-      </div>
-    )
-  }
-
-  if (type === 'audio') {
-    const mediaUrl = resolveSafeViewerUrl(source, 'media')
-    if (!mediaUrl) return <UnavailablePreview name={name} />
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--audio flex flex-1 flex-col items-center justify-center gap-6 p-8">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
-          <Music size={28} className="text-[var(--muted)]" />
-        </div>
-        <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
-        <audio controls src={mediaUrl} className="w-full max-w-lg" />
-      </div>
-    )
-  }
-
-  if (type === 'video') {
-    const mediaUrl = resolveSafeViewerUrl(source, 'media')
-    if (!mediaUrl) return <UnavailablePreview name={name} />
-    return (
-      <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
-        <video controls src={mediaUrl} className="max-h-full max-w-full" />
-      </div>
-    )
-  }
-
+  if (type === 'markdown') return <MarkdownViewer content={content} />
+  if (type === 'text') return <TextViewer content={content} />
+  if (type === 'html') return <HtmlViewer name={name} source={source} />
+  if (type === 'csv') return <CsvViewer content={content} />
+  if (type === 'image') return <ImageViewer name={name} source={source} />
+  if (type === 'audio') return <AudioViewer name={name} source={source} />
+  if (type === 'video') return <VideoViewer name={name} source={source} />
   if (type === 'pdf') {
-    const iframeSrc = resolveSafeViewerUrl(source, 'pdf')
     return (
       <PdfViewer
         name={name}
         content={content}
-        iframeSrc={iframeSrc}
+        iframeSrc={resolveSafeViewerUrl(source, 'pdf')}
       />
     )
   }
-
   if (type === 'document') {
     const documentUrl = resolveSafeViewerUrl(url, 'document')
     if (documentUrl) return <DocumentViewer url={documentUrl} fetchImpl={fetchImpl} />
   }
+  return <BinaryViewer name={name} content={content} url={url} operations={operations} />
+}
 
-  // binary fallback
+function MarkdownViewer({ content }: { content: string }) {
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto px-8 py-6">
+      <FileMarkdown content={content} />
+    </div>
+  )
+}
+
+function TextViewer({ content }: { content: string }) {
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--text flex-1 overflow-y-auto px-8 py-6">
+      <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap text-[var(--foreground)]">
+        {content}
+      </pre>
+    </div>
+  )
+}
+
+function HtmlViewer({ name, source }: { name: string; source: string }) {
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--html flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+      <iframe
+        srcDoc={source}
+        sandbox={FILE_VIEWER_HTML_SANDBOX}
+        referrerPolicy="no-referrer"
+        className="min-h-0 flex-1 w-full border-none bg-white"
+        title={name}
+      />
+    </div>
+  )
+}
+
+function CsvViewer({ content }: { content: string }) {
+  const rows = parseCSV(content)
+  const headers = rows[0] ?? []
+  const body = rows.slice(1)
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--csv flex-1 overflow-auto px-4 py-4">
+      <table className="border-collapse text-xs">
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              // Positional table headers mirror CSV column order — no stable key exists.
+              // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+              <th
+                key={i}
+                className="whitespace-nowrap border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-left font-medium text-[var(--foreground)]"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, i) => (
+            // Positional table rows mirror CSV row order — no stable key exists.
+            // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+            <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--surface-subtle)]/50'}>
+              {row.map((cell, j) => (
+                // Positional table cells mirror CSV column order — no stable key exists.
+                // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+                <td
+                  key={j}
+                  className="max-w-md whitespace-pre-wrap break-words border border-[var(--border)] px-3 py-1.5 align-top text-[var(--muted)]"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ImageViewer({ name, source }: { name: string; source: string }) {
+  const mediaUrl = resolveSafeViewerUrl(source, 'media')
+  if (!mediaUrl) return <UnavailablePreview name={name} />
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--image flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
+      {/* Shared web/Electron viewer; Next's image runtime is intentionally unavailable here. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={mediaUrl} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
+    </div>
+  )
+}
+
+function AudioViewer({ name, source }: { name: string; source: string }) {
+  const mediaUrl = resolveSafeViewerUrl(source, 'media')
+  if (!mediaUrl) return <UnavailablePreview name={name} />
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--audio flex flex-1 flex-col items-center justify-center gap-6 p-8">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
+        <Music size={28} className="text-[var(--muted)]" />
+      </div>
+      <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
+      <audio controls src={mediaUrl} className="w-full max-w-lg" />
+    </div>
+  )
+}
+
+function VideoViewer({ name, source }: { name: string; source: string }) {
+  const mediaUrl = resolveSafeViewerUrl(source, 'media')
+  if (!mediaUrl) return <UnavailablePreview name={name} />
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
+      <video controls src={mediaUrl} className="max-h-full max-w-full" />
+    </div>
+  )
+}
+
+function BinaryViewer({
+  name,
+  content,
+  url,
+  operations,
+}: {
+  name: string
+  content: string
+  url?: string
+  operations?: FileViewerOperations
+}) {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   const labels: Record<string, string> = {
     docx: 'Word Document', doc: 'Word Document',
@@ -420,21 +437,9 @@ function PdfViewer({
     <div className="overlay-file-viewer overlay-file-viewer--pdf flex min-h-0 flex-1 flex-col overflow-hidden">
       {showingText ? (
         hasExtractedText ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-            <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
-              {previewFailed
-                ? 'The PDF preview could not be displayed, so the extracted text is shown instead.'
-                : 'Extracted text fallback for this PDF.'}
-            </p>
-            <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
-              {content}
-            </pre>
-          </div>
+          <PdfExtractedText content={content} previewFailed={previewFailed} />
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
-            <FileType size={28} />
-            <p className="text-sm font-medium text-[var(--foreground)]">Could not load PDF preview</p>
-          </div>
+          <PdfPreviewUnavailable />
         )
       ) : (
         <iframe
@@ -447,25 +452,69 @@ function PdfViewer({
         />
       )}
       {iframeSrc ? (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-xs text-[var(--muted)]">
-          <span>
-            {previewFailed
-              ? hasExtractedText ? 'Showing extracted text' : 'PDF preview unavailable'
-              : hasExtractedText ? 'PDF preview' : 'No extracted text is available for this file.'}
-          </span>
-          {hasExtractedText ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
-              onClick={() => {
-                setPreviewFailed(false)
-                setShowText((value) => !value)
-              }}
-            >
-              {showingText ? 'Try PDF preview' : 'Show extracted text'}
-            </button>
-          ) : null}
-        </div>
+        <PdfViewerStatusBar
+          previewFailed={previewFailed}
+          hasExtractedText={hasExtractedText}
+          showingText={showingText}
+          onToggleText={() => {
+            setPreviewFailed(false)
+            setShowText((value) => !value)
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function PdfExtractedText({ content, previewFailed }: { content: string; previewFailed: boolean }) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+      <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
+        {previewFailed
+          ? 'The PDF preview could not be displayed, so the extracted text is shown instead.'
+          : 'Extracted text fallback for this PDF.'}
+      </p>
+      <pre className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+        {content}
+      </pre>
+    </div>
+  )
+}
+
+function PdfPreviewUnavailable() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+      <FileType size={28} />
+      <p className="text-sm font-medium text-[var(--foreground)]">Could not load PDF preview</p>
+    </div>
+  )
+}
+
+function PdfViewerStatusBar({
+  previewFailed,
+  hasExtractedText,
+  showingText,
+  onToggleText,
+}: {
+  previewFailed: boolean
+  hasExtractedText: boolean
+  showingText: boolean
+  onToggleText: () => void
+}) {
+  const status = previewFailed
+    ? hasExtractedText ? 'Showing extracted text' : 'PDF preview unavailable'
+    : hasExtractedText ? 'PDF preview' : 'No extracted text is available for this file.'
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-xs text-[var(--muted)]">
+      <span>{status}</span>
+      {hasExtractedText ? (
+        <button
+          type="button"
+          className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+          onClick={onToggleText}
+        >
+          {showingText ? 'Try PDF preview' : 'Show extracted text'}
+        </button>
       ) : null}
     </div>
   )

@@ -31,28 +31,23 @@ import {
 
 // ─── Connection Row ───
 
-export function ProviderConnectionRow({
+function useProviderConnectionActions({
   connection,
-  gatewayModels,
-  gatewayLoading,
+  defaultGateway,
+  effectiveSettingsIds,
+  onRefreshConnections,
+  onRefreshGateway,
+  onSettingsChange,
+  onUpdateConnection,
   settingsEnabledModelIds,
   settingsModelOrder,
-  settingsDisabled,
-  onSettingsChange,
-  onRefreshConnections,
-  onUpdateConnection,
-  onRefreshGateway,
-  onEdit,
-  onDelete,
 }: {
   connection: ByokConnectionRow
-  gatewayModels: readonly GatewayCatalogModel[]
-  gatewayLoading: boolean
-  settingsEnabledModelIds: readonly string[]
-  settingsModelOrder: readonly string[]
-  settingsDisabled: boolean
-  onSettingsChange: (patch: { enabledChatModelIds?: string[]; modelOrder?: string[] }) => Promise<unknown>
+  defaultGateway: boolean
+  effectiveSettingsIds: ReadonlySet<string>
   onRefreshConnections: () => Promise<void>
+  onRefreshGateway: () => Promise<void>
+  onSettingsChange: (patch: { enabledChatModelIds?: string[]; modelOrder?: string[] }) => Promise<unknown>
   onUpdateConnection: (
     connectionId: string,
     patch: Partial<
@@ -69,39 +64,14 @@ export function ProviderConnectionRow({
       >
     >,
   ) => void
-  onRefreshGateway: () => Promise<void>
-  onEdit: () => void
-  onDelete: () => void
+  settingsEnabledModelIds: readonly string[]
+  settingsModelOrder: readonly string[]
 }) {
-  const preset = getByokPreset(connection.providerId)
-  // For custom-endpoint connections the preset label ("Custom
-  // OpenAI-compatible") is identical across rows — the host distinguishes them.
-  const endpointHost = useMemo(() => {
-    try {
-      return new URL(connection.endpoint).hostname.replace(/^www\./, '')
-    } catch {
-      return ''
-    }
-  }, [connection.endpoint])
-  const discoveredCount = getDiscoveredModelCount(connection)
-  const hasError = connection.status === 'error'
-  const defaultGateway = isDefaultGatewayConnection(connection)
-  const allModels = useMemo(
-    () => buildProviderModelOptions(connection, gatewayModels),
-    [connection, gatewayModels],
-  )
-  const effectiveSettingsIds = useMemo(
-    () => new Set(getEffectiveSettingsModelIds(settingsEnabledModelIds)),
-    [settingsEnabledModelIds],
-  )
-  const enabledCount = allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
-  const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
   const [discovering, setDiscovering] = useState(false)
   const [savingModelId, setSavingModelId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
-  const filteredModels = useMemo(() => filterModels(allModels, query), [allModels, query])
 
   const discoverModels = useCallback(async () => {
     if (discovering) return
@@ -223,214 +193,399 @@ export function ProviderConnectionRow({
     settingsModelOrder,
   ])
 
+  return {
+    expanded,
+    setExpanded,
+    query,
+    setQuery,
+    discovering,
+    savingModelId,
+    rowError,
+    discoverModels,
+    toggleModel,
+  }
+}
+
+export function ProviderConnectionRow({
+  connection,
+  gatewayModels,
+  gatewayLoading,
+  settingsEnabledModelIds,
+  settingsModelOrder,
+  settingsDisabled,
+  onSettingsChange,
+  onRefreshConnections,
+  onUpdateConnection,
+  onRefreshGateway,
+  onEdit,
+  onDelete,
+}: {
+  connection: ByokConnectionRow
+  gatewayModels: readonly GatewayCatalogModel[]
+  gatewayLoading: boolean
+  settingsEnabledModelIds: readonly string[]
+  settingsModelOrder: readonly string[]
+  settingsDisabled: boolean
+  onSettingsChange: (patch: { enabledChatModelIds?: string[]; modelOrder?: string[] }) => Promise<unknown>
+  onRefreshConnections: () => Promise<void>
+  onUpdateConnection: (
+    connectionId: string,
+    patch: Partial<
+      Pick<
+        ByokConnectionRow,
+        | 'enabledModelIds'
+        | 'status'
+        | 'lastError'
+        | 'lastTestedAt'
+        | 'discoveredModelsJson'
+        | 'discoveredAt'
+        | 'displayName'
+        | 'endpoint'
+      >
+    >,
+  ) => void
+  onRefreshGateway: () => Promise<void>
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const preset = getByokPreset(connection.providerId)
+  // For custom-endpoint connections the preset label ("Custom
+  // OpenAI-compatible") is identical across rows — the host distinguishes them.
+  const endpointHost = useMemo(() => {
+    try {
+      return new URL(connection.endpoint).hostname.replace(/^www\./, '')
+    } catch {
+      return ''
+    }
+  }, [connection.endpoint])
+  const discoveredCount = getDiscoveredModelCount(connection)
+  const defaultGateway = isDefaultGatewayConnection(connection)
+  const allModels = useMemo(
+    () => buildProviderModelOptions(connection, gatewayModels),
+    [connection, gatewayModels],
+  )
+  const effectiveSettingsIds = useMemo(
+    () => new Set(getEffectiveSettingsModelIds(settingsEnabledModelIds)),
+    [settingsEnabledModelIds],
+  )
+  const enabledCount = allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
+  const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
+  const providerLabel = preset?.allowsCustomEndpoint && endpointHost
+    ? `${preset.label} · ${endpointHost}`
+    : (preset?.label ?? connection.providerId)
+  const {
+    expanded,
+    setExpanded,
+    query,
+    setQuery,
+    discovering,
+    savingModelId,
+    rowError,
+    discoverModels,
+    toggleModel,
+  } = useProviderConnectionActions({
+    connection,
+    defaultGateway,
+    effectiveSettingsIds,
+    onRefreshConnections,
+    onRefreshGateway,
+    onSettingsChange,
+    onUpdateConnection,
+    settingsEnabledModelIds,
+    settingsModelOrder,
+  })
+  const filteredModels = useMemo(() => filterModels(allModels, query), [allModels, query])
+  const discoverDisabled = discovering || (defaultGateway && gatewayLoading)
+
   return (
     <div>
-      <div className="flex items-center gap-3 px-4 py-3.5">
-        {/* Status indicator */}
-        <span
-          className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
-            hasError
-              ? 'bg-red-500'
-              : connection.status === 'active'
-                ? 'bg-green-500'
-                : 'bg-[var(--muted-light)]'
-          }`}
+      <ProviderConnectionHeader
+        connection={connection}
+        providerLabel={providerLabel}
+        enabledCount={enabledCount}
+        displayModelCount={displayModelCount}
+        discovering={discovering}
+        discoverDisabled={discoverDisabled}
+        expanded={expanded}
+        onDiscover={discoverModels}
+        onToggleExpanded={() => setExpanded((value) => !value)}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />
+      {expanded ? (
+        <ProviderModelsPanel
+          connectionDisplayName={connection.displayName}
+          query={query}
+          onQueryChange={setQuery}
+          onDiscover={discoverModels}
+          discoverDisabled={discoverDisabled}
+          discovering={discovering}
+          rowError={rowError}
+          models={filteredModels}
+          effectiveSettingsIds={effectiveSettingsIds}
+          savingModelId={savingModelId}
+          settingsDisabled={settingsDisabled}
+          onToggleModel={toggleModel}
         />
+      ) : null}
+    </div>
+  )
+}
 
-        {/* Connection info */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-[var(--foreground)]">
-              {connection.displayName}
+function ProviderConnectionHeader({
+  connection,
+  providerLabel,
+  enabledCount,
+  displayModelCount,
+  discovering,
+  discoverDisabled,
+  expanded,
+  onDiscover,
+  onToggleExpanded,
+  onEdit,
+  onDelete,
+}: {
+  connection: ByokConnectionRow
+  providerLabel: string
+  enabledCount: number
+  displayModelCount: number
+  discovering: boolean
+  discoverDisabled: boolean
+  expanded: boolean
+  onDiscover: () => void
+  onToggleExpanded: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const hasError = connection.status === 'error'
+  return (
+    <div className="flex items-center gap-3 px-4 py-3.5">
+      {/* Status indicator */}
+      <span
+        className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
+          hasError
+            ? 'bg-red-500'
+            : connection.status === 'active'
+              ? 'bg-green-500'
+              : 'bg-[var(--muted-light)]'
+        }`}
+      />
+
+      {/* Connection info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium text-[var(--foreground)]">
+            {connection.displayName}
+          </span>
+          {connection.isDefault ? (
+            <span className="shrink-0 rounded-full bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--muted)]">
+              DEFAULT
             </span>
-            {connection.isDefault ? (
-              <span className="shrink-0 rounded-full bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--muted)]">
-                DEFAULT
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-[var(--muted)]">
-            <span className="truncate">
-              {preset?.allowsCustomEndpoint && endpointHost
-                ? `${preset.label} · ${endpointHost}`
-                : (preset?.label ?? connection.providerId)}
-            </span>
-            <span>·</span>
-            <span className="shrink-0">
-              {enabledCount} enabled
-              {displayModelCount > 0 ? ` · ${displayModelCount} model${displayModelCount !== 1 ? 's' : ''}` : ' · 0 models'}
-            </span>
-            {connection.lastTestedAt ? (
-              <>
-                <span>·</span>
-                <span className='shrink-0'>
-                  Searched {formatRelativeTime(connection.lastTestedAt)}
-                </span>
-              </>
-            ) : null}
-          </div>
-          {hasError && connection.lastError ? (
-            <div className="mt-1 flex items-center gap-1 text-xs text-red-500">
-              <AlertCircle size={11} className="shrink-0" />
-              <span className="truncate">{connection.lastError}</span>
-            </div>
           ) : null}
         </div>
-
-        {/* Actions */}
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={discoverModels}
-            disabled={discovering || (defaultGateway && gatewayLoading)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
-            aria-label="Search provider models"
-          >
-            {discovering ? (
-              <Loader2 size={14} className='animate-spin' />
-            ) : (
-              <Search size={14} strokeWidth={1.8} />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-            aria-label={expanded ? 'Hide provider models' : 'Show provider models'}
-          >
-            <ChevronRight
-              size={15}
-              strokeWidth={1.8}
-              className={`transition-transform ${expanded ? 'rotate-90' : ''}`}
-            />
-          </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-            aria-label="Edit provider"
-          >
-            <Pencil size={14} strokeWidth={1.8} />
-          </button>
-          {connection.isDeletable ? (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-red-500"
-              aria-label="Delete provider"
-            >
-              <Trash2 size={14} strokeWidth={1.8} />
-            </button>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-[var(--muted)]">
+          <span className="truncate">{providerLabel}</span>
+          <span>·</span>
+          <span className="shrink-0">
+            {enabledCount} enabled
+            {displayModelCount > 0 ? ` · ${displayModelCount} model${displayModelCount !== 1 ? 's' : ''}` : ' · 0 models'}
+          </span>
+          {connection.lastTestedAt ? (
+            <>
+              <span>·</span>
+              <span className="shrink-0">Searched {formatRelativeTime(connection.lastTestedAt)}</span>
+            </>
           ) : null}
         </div>
+        {hasError && connection.lastError ? (
+          <div className="mt-1 flex items-center gap-1 text-xs text-red-500">
+            <AlertCircle size={11} className="shrink-0" />
+            <span className="truncate">{connection.lastError}</span>
+          </div>
+        ) : null}
       </div>
 
-      {expanded ? (
-        <div className="border-t border-[var(--border)] bg-[var(--background)]/30 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={`Search ${connection.displayName} models`}
-                className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] pl-9 pr-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={discoverModels}
-              disabled={discovering || (defaultGateway && gatewayLoading)}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-elevated)] disabled:opacity-50"
-            >
-              {discovering ? (
-                <Loader2 size={13} className='animate-spin' />
-              ) : (
-                <RefreshCw size={13} />
-              )}
-              Search
-            </button>
-          </div>
+      {/* Actions */}
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onDiscover}
+          disabled={discoverDisabled}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+          aria-label="Search provider models"
+        >
+          {discovering ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} strokeWidth={1.8} />}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          aria-label={expanded ? 'Hide provider models' : 'Show provider models'}
+        >
+          <ChevronRight
+            size={15}
+            strokeWidth={1.8}
+            className={`transition-transform ${expanded ? 'rotate-90' : ''}`}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          aria-label="Edit provider"
+        >
+          <Pencil size={14} strokeWidth={1.8} />
+        </button>
+        {connection.isDeletable ? (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-red-500"
+            aria-label="Delete provider"
+          >
+            <Trash2 size={14} strokeWidth={1.8} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
 
-          {rowError ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
-              <AlertCircle size={13} className="shrink-0" />
-              <span>{rowError}</span>
-            </div>
-          ) : null}
+function ProviderModelsPanel({
+  connectionDisplayName,
+  query,
+  onQueryChange,
+  onDiscover,
+  discoverDisabled,
+  discovering,
+  rowError,
+  models,
+  effectiveSettingsIds,
+  savingModelId,
+  settingsDisabled,
+  onToggleModel,
+}: {
+  connectionDisplayName: string
+  query: string
+  onQueryChange: (query: string) => void
+  onDiscover: () => void
+  discoverDisabled: boolean
+  discovering: boolean
+  rowError: string | null
+  models: ProviderModelOption[]
+  effectiveSettingsIds: ReadonlySet<string>
+  savingModelId: string | null
+  settingsDisabled: boolean
+  onToggleModel: (model: ProviderModelOption) => void
+}) {
+  return (
+    <div className="border-t border-[var(--border)] bg-[var(--background)]/30 px-4 py-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder={`Search ${connectionDisplayName} models`}
+            className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] pl-9 pr-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onDiscover}
+          disabled={discoverDisabled}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+        >
+          {discovering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          Search
+        </button>
+      </div>
 
-          <div className="mt-3 max-h-[26rem] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
-            {filteredModels.length > 0 ? (
-              <div className="divide-y divide-[var(--border)]">
-                {filteredModels.map((model) => {
-                  const checked = effectiveSettingsIds.has(model.appModelId)
-                  const saving = savingModelId === model.rawId
-                  return (
-                    <div
-                      key={model.appModelId}
-                      className="flex items-center gap-4 px-3 py-3 transition-colors hover:bg-[var(--surface-muted)]"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className='truncate text-sm font-medium text-[var(--foreground)]'>
-                            {model.name}
-                          </span>
-                          {model.supportsVision ? (
-                            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
-                              <ScanEye size={11} strokeWidth={1.6} />
-                            </span>
-                          ) : null}
-                          {model.supportsReasoning ? (
-                            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
-                              <Sparkles size={11} strokeWidth={1.6} />
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
-                          <span className='truncate'>
-                            {model.provider ?? connection.displayName}
-                          </span>
-                          <span>·</span>
-                          <span className="truncate">{model.rawId}</span>
-                          {model.inputPricePerMillion !== undefined || model.outputPricePerMillion !== undefined ? (
-                            <>
-                              <span>·</span>
-                              <span>
-                                {formatPrice(model.inputPricePerMillion)} in
-                              </span>
-                              <span>·</span>
-                              <span>
-                                {formatPrice(model.outputPricePerMillion)} out
-                              </span>
-                            </>
-                          ) : null}
-                          {model.isDefault ? (
-                            <>
-                              <span>·</span>
-                              <span>Default</span>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                      <SettingsToggle
-                        checked={checked}
-                        disabled={settingsDisabled || saving}
-                        onChange={() => { void toggleModel(model) }}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="px-4 py-10 text-center text-sm text-[var(--muted)]">
-                {query.trim()
-                  ? 'No models match your search.'
-                  : 'No models discovered yet. Search this provider to load its model list.'}
-              </div>
-            )}
-          </div>
+      {rowError ? (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+          <AlertCircle size={13} className="shrink-0" />
+          <span>{rowError}</span>
         </div>
       ) : null}
+
+      <div className="mt-3 max-h-[26rem] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+        {models.length > 0 ? (
+          <div className="divide-y divide-[var(--border)]">
+            {models.map((model) => (
+              <ProviderModelRow
+                key={model.appModelId}
+                model={model}
+                checked={effectiveSettingsIds.has(model.appModelId)}
+                saving={savingModelId === model.rawId}
+                settingsDisabled={settingsDisabled}
+                connectionDisplayName={connectionDisplayName}
+                onToggle={onToggleModel}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center text-sm text-[var(--muted)]">
+            {query.trim()
+              ? 'No models match your search.'
+              : 'No models discovered yet. Search this provider to load its model list.'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ProviderModelRow({
+  model,
+  checked,
+  saving,
+  settingsDisabled,
+  connectionDisplayName,
+  onToggle,
+}: {
+  model: ProviderModelOption
+  checked: boolean
+  saving: boolean
+  settingsDisabled: boolean
+  connectionDisplayName: string
+  onToggle: (model: ProviderModelOption) => void
+}) {
+  return (
+    <div className="flex items-center gap-4 px-3 py-3 transition-colors hover:bg-[var(--surface-muted)]">
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-[var(--foreground)]">{model.name}</span>
+          {model.supportsVision ? (
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+              <ScanEye size={11} strokeWidth={1.6} />
+            </span>
+          ) : null}
+          {model.supportsReasoning ? (
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+              <Sparkles size={11} strokeWidth={1.6} />
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
+          <span className="truncate">{model.provider ?? connectionDisplayName}</span>
+          <span>·</span>
+          <span className="truncate">{model.rawId}</span>
+          {model.inputPricePerMillion !== undefined || model.outputPricePerMillion !== undefined ? (
+            <>
+              <span>·</span>
+              <span>{formatPrice(model.inputPricePerMillion)} in</span>
+              <span>·</span>
+              <span>{formatPrice(model.outputPricePerMillion)} out</span>
+            </>
+          ) : null}
+          {model.isDefault ? <><span>·</span><span>Default</span></> : null}
+        </div>
+      </div>
+      <SettingsToggle
+        checked={checked}
+        disabled={settingsDisabled || saving}
+        onChange={() => { onToggle(model) }}
+      />
     </div>
   )
 }

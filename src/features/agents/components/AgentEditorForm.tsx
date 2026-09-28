@@ -12,8 +12,8 @@ import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { AVATAR_COLORS } from '../lib/agent-editor-utils'
 
-export const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
 
@@ -298,6 +298,94 @@ const COMPUTER_SIZE_OPTIONS = [
   { value: 'large', label: 'Large · 8 vCPU, 16 GB' },
 ] as const
 
+function ComputerSizePicker({ size, onSizeChange, disabled }: {
+  size: ComputerSize
+  onSizeChange(next: ComputerSize): void
+  disabled?: boolean
+}) {
+  return (
+    <label className="block text-xs font-medium">
+      Size
+      <ListboxSelect
+        className="mt-1.5"
+        aria-label="Computer size"
+        value={size}
+        options={[...COMPUTER_SIZE_OPTIONS]}
+        onChange={(value) => onSizeChange(value as ComputerSize)}
+        disabled={disabled}
+        portal
+      />
+    </label>
+  )
+}
+
+function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerLabel, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
+  status: Computer['status']
+  canTogglePower: boolean
+  canDeleteComputer: boolean
+  powerLabel: string
+  openBusy: boolean
+  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  onOpenDesktop(): void
+  onTogglePower(): void
+  onDelete(): void
+}) {
+  const busy = lifecycleBusy !== null || openBusy
+  return (
+    <>
+      {status === 'ready' ? (
+        <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy || lifecycleBusy !== null}>
+          {openBusy ? 'Opening…' : 'Open desktop'}
+        </Button>
+      ) : null}
+      {canTogglePower ? (
+        <Button variant="secondary" size="sm" onClick={onTogglePower} disabled={busy}>
+          {powerLabel}
+        </Button>
+      ) : null}
+      {canDeleteComputer ? (
+        <Button variant="secondary" size="sm" onClick={onDelete} disabled={busy} aria-label="Delete computer">
+          {lifecycleBusy === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+        </Button>
+      ) : null}
+    </>
+  )
+}
+
+function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
+  computer: Computer
+  openBusy: boolean
+  lifecycleBusy: 'start' | 'stop' | 'delete' | null
+  onOpenDesktop(): void
+  onTogglePower(): void
+  onDelete(): void
+}) {
+  const canTogglePower = computer.status === 'ready' || computer.status === 'stopped'
+  const canDeleteComputer = canTogglePower || computer.status === 'error'
+  const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop' : 'Start'
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] p-3">
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground)]"><Monitor size={13} className="shrink-0 text-[var(--muted)]" />{computer.name ?? 'Computer'}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{computer.status} · {computer.size} · size is fixed once provisioned</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <ComputerCardActions
+          status={computer.status}
+          canTogglePower={canTogglePower}
+          canDeleteComputer={canDeleteComputer}
+          powerLabel={powerLabel}
+          openBusy={openBusy}
+          lifecycleBusy={lifecycleBusy}
+          onOpenDesktop={onOpenDesktop}
+          onTogglePower={onTogglePower}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
+  )
+}
+
 /**
  * Accessory rendered under the Computer tool-group row: the size picker while
  * unprovisioned, the provisioned machine card with lifecycle controls, and the
@@ -319,78 +407,16 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
   if (!enabled && !computer) return null
   return (
     <div className="space-y-3 border-b border-[var(--border)] pb-3 pt-1 last:border-b-0">
-      {enabled && !computer ? (
-        <label className="block text-xs font-medium">
-          Size
-          <ListboxSelect
-            className="mt-1.5"
-            aria-label="Computer size"
-            value={size}
-            options={[...COMPUTER_SIZE_OPTIONS]}
-            onChange={(value) => onSizeChange(value as ComputerSize)}
-            disabled={disabled}
-            portal
-          />
-        </label>
-      ) : null}
+      {enabled && !computer ? <ComputerSizePicker size={size} onSizeChange={onSizeChange} disabled={disabled} /> : null}
       {enabled && computer ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] p-3">
-          <div className="min-w-0">
-            <p className='flex items-center gap-1.5 text-xs font-medium text-[var(--foreground)]'>
-              <Monitor size={13} className='shrink-0 text-[var(--muted)]' />
-              {computer.name ?? 'Computer'}
-            </p>
-            <p className='mt-0.5 text-[11px] leading-4 text-[var(--muted)]'>
-              {computer.status} · {computer.size} · size is fixed once
-              provisioned
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {computer.status === 'ready' ? (
-              <Button
-                variant='secondary'
-                size='sm'
-                onClick={onOpenDesktop}
-                disabled={openBusy || lifecycleBusy !== null}
-              >
-                {openBusy ? 'Opening…' : 'Open desktop'}
-              </Button>
-            ) : null}
-            {computer.status === 'ready' || computer.status === 'stopped' ? (
-              <Button
-                variant='secondary'
-                size='sm'
-                onClick={onTogglePower}
-                disabled={lifecycleBusy !== null || openBusy}
-              >
-                {lifecycleBusy === 'stop'
-                  ? 'Stopping…'
-                  : lifecycleBusy === 'start'
-                    ? 'Starting…'
-                    : computer.status === 'ready'
-                      ? 'Stop'
-                      : 'Start'}
-              </Button>
-            ) : null}
-            {computer.status === 'ready' ||
-            computer.status === 'stopped' ||
-            computer.status === 'error' ? (
-              <Button
-                variant='secondary'
-                size='sm'
-                onClick={onDelete}
-                disabled={lifecycleBusy !== null || openBusy}
-                aria-label='Delete computer'
-              >
-                {lifecycleBusy === 'delete' ? (
-                  <Loader2 size={13} className='animate-spin' />
-                ) : (
-                  <Trash2 size={13} />
-                )}
-              </Button>
-            ) : null}
-          </div>
-        </div>
+        <ProvisionedComputerCard
+          computer={computer}
+          openBusy={openBusy}
+          lifecycleBusy={lifecycleBusy}
+          onOpenDesktop={onOpenDesktop}
+          onTogglePower={onTogglePower}
+          onDelete={onDelete}
+        />
       ) : null}
       {enabled && !computer ? (
         <p className='text-[11px] leading-4 text-[var(--muted)]'>
@@ -663,6 +689,44 @@ export function ManagedHarnessFields({ harness, instructions, onInstructionsChan
   )
 }
 
+function HostedRuntimeSection({ hostedRuntime, hostedRuntimeLocked = false, managedPickerFailed = false, managedHarnesses, managedHarness, onManagedPickerRetry, onHostedRuntimeChange }: {
+  hostedRuntime: string
+  hostedRuntimeLocked?: boolean
+  managedPickerFailed?: boolean
+  managedHarnesses: ManagedHarnessPickerEntry[]
+  managedHarness?: ManagedHarnessPickerEntry
+  onManagedPickerRetry?(): void
+  onHostedRuntimeChange(value: string): void
+}) {
+  if (managedPickerFailed && !hostedRuntimeLocked) {
+    return (
+      <div>
+        <p className="text-xs font-medium">Runtime</p>
+        <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
+          <p className="text-xs leading-4 text-[var(--muted)]">Couldn&rsquo;t load runtimes — only Overlay is available right now.</p>
+          <button type="button" onClick={onManagedPickerRetry} className="shrink-0 text-xs font-medium text-[var(--foreground)] underline-offset-2 hover:underline">Retry</button>
+        </div>
+      </div>
+    )
+  }
+  if (hostedRuntimeLocked) {
+    return (
+      <div>
+        <p className="text-xs font-medium">Runtime</p>
+        <div className="mt-1.5 flex items-baseline gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
+          <p className="text-sm text-[var(--foreground)]">{managedHarness?.label ?? 'Overlay'}</p>
+          <p className="text-[11px] leading-4 text-[var(--muted)]">Fixed at creation — archive and recreate the agent to switch.</p>
+        </div>
+      </div>
+    )
+  }
+  // Legacy entries render the bound runtime's label above but are never
+  // selectable for a new runtime — grandfathered, not creatable.
+  return managedHarnesses.some((entry) => !entry.legacy) ? (
+    <HostedRuntimeSelector value={hostedRuntime} harnesses={managedHarnesses.filter((entry) => !entry.legacy)} onChange={onHostedRuntimeChange} />
+  ) : null
+}
+
 export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelOptions, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, hostedRuntime, hostedRuntimeLocked = false, managedPickerFailed = false, onManagedPickerRetry, onHostedRuntimeChange, managedHarnesses, harnessModel, onHarnessModelChange, managedModelAccess, onManagedModelAccessChange, managedByokConnections, managedProvider, managedWorkingDirectory, managedSandboxStatus, managedResetBusy, onManagedReset, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
@@ -737,40 +801,15 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
     }
     return (
       <>
-        {managedPickerFailed && !hostedRuntimeLocked ? (
-          <div>
-            <p className="text-xs font-medium">Runtime</p>
-            <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
-              <p className='text-xs leading-4 text-[var(--muted)]'>
-                Couldn&rsquo;t load runtimes — only Overlay is available right
-                now.
-              </p>
-              <button
-                type='button'
-                onClick={onManagedPickerRetry}
-                className='shrink-0 text-xs font-medium text-[var(--foreground)] underline-offset-2 hover:underline'
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        ) : hostedRuntimeLocked ? (
-          <div>
-            <p className="text-xs font-medium">Runtime</p>
-            <div className="mt-1.5 flex items-baseline gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
-              <p className='text-sm text-[var(--foreground)]'>
-                {managedHarness?.label ?? 'Overlay'}
-              </p>
-              <p className='text-[11px] leading-4 text-[var(--muted)]'>
-                Fixed at creation — archive and recreate the agent to switch.
-              </p>
-            </div>
-          </div>
-        ) : managedHarnesses.some((entry) => !entry.legacy) ? (
-          // Legacy entries render the bound runtime's label above but are never
-          // selectable for a new runtime — grandfathered, not creatable.
-          <HostedRuntimeSelector value={hostedRuntime} harnesses={managedHarnesses.filter((entry) => !entry.legacy)} onChange={onHostedRuntimeChange} />
-        ) : null}
+        <HostedRuntimeSection
+          hostedRuntime={hostedRuntime}
+          hostedRuntimeLocked={hostedRuntimeLocked}
+          managedPickerFailed={managedPickerFailed}
+          managedHarnesses={managedHarnesses}
+          managedHarness={managedHarness}
+          onManagedPickerRetry={onManagedPickerRetry}
+          onHostedRuntimeChange={onHostedRuntimeChange}
+        />
         {managedHarness ? (
           <ManagedHarnessFields
             harness={managedHarness}
@@ -979,166 +1018,32 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
         </div>
         <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
           {choice === 'existing' ? (
-            environmentsLoading ? (
-              <p className='flex items-center gap-2 text-xs text-[var(--muted)]'>
-                <Loader2 size={14} className='animate-spin' /> Loading
-                environments…
-              </p>
-            ) : compatibleEnvironments.length > 0 ? (
-              <div className='space-y-3'>
-                <label className='block text-xs font-medium'>
-                  Environment
-                  <ListboxSelect
-                    className='mt-1.5'
-                    aria-label='Connected environment'
-                    value={environmentId}
-                    options={compatibleEnvironments.map((environment) => ({
-                      value: environment.id,
-                      label: `${environment.name} · ${environment.status}`,
-                    }))}
-                    onChange={onEnvironmentChange}
-                    portal
-                  />
-                </label>
-                <label className='block text-xs font-medium'>
-                  Default working directory
-                  <Input
-                    className='mt-1.5'
-                    value={workingDirectory}
-                    onChange={(event) =>
-                      onWorkingDirectoryChange(event.target.value)
-                    }
-                    placeholder='/Users/you/Projects/app'
-                  />
-                </label>
-                <p className='text-[11px] leading-4 text-[var(--muted)]'>
-                  This must be inside the environment’s approved roots. The
-                  environment may host other agents too.
-                </p>
-              </div>
-            ) : (
-              <div className='text-xs text-[var(--muted)]'>
-                <p>
-                  No connected environment currently advertises this harness.
-                </p>
-                {selectedHarnessConnectable ? (
-                  <p className='mt-1'>
-                    Connect a computer, VPS, or sandbox to continue.
-                  </p>
-                ) : null}
-              </div>
-            )
-          ) : null}
-          {choice === 'connect' ? (
-            <div className='space-y-3'>
-              <div>
-                <p className='text-xs font-medium text-[var(--foreground)]'>
-                  Connect any computer, VPS, or sandbox
-                </p>
-                <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
-                  Outbound-only. No inbound port is opened.
-                </p>
-              </div>
-              {!command ? (
-                <Button
-                  variant='secondary'
-                  size='sm'
-                  disabled={environmentBusy !== null}
-                  onClick={onBeginConnection}
-                >
-                  {environmentBusy === 'connect'
-                    ? 'Creating…'
-                    : 'Create connection'}
-                </Button>
-              ) : (
-                <div className='space-y-2.5'>
-                  <div
-                    className='grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-1'
-                    role='radiogroup'
-                    aria-label='Setup mode'
-                  >
-                    <button
-                      type='button'
-                      role='radio'
-                      aria-checked={setupMode === 'paste'}
-                      onClick={() => setSetupMode('paste')}
-                      className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}
-                    >
-                      <Sparkles size={12} /> Automatic setup
-                    </button>
-                    <button
-                      type='button'
-                      role='radio'
-                      aria-checked={setupMode === 'manual'}
-                      onClick={() => setSetupMode('manual')}
-                      className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}
-                    >
-                      <Terminal size={12} /> Manual setup
-                    </button>
-                  </div>
-                  {setupMode === 'paste' ? (
-                    <div className='space-y-2'>
-                      <p className='text-[11px] leading-4 text-[var(--muted)]'>
-                        Paste this into a chat with the agent on this machine —
-                        it runs the connection command for you and keeps it
-                        alive.
-                      </p>
-                      <div className='rounded-lg border border-[var(--border)] bg-[var(--background)] p-2.5'>
-                        <pre className='max-h-44 overflow-y-auto whitespace-pre-wrap break-words px-0.5 font-mono text-[11px] leading-4 text-[var(--foreground)]'>
-                          {setupPrompt}
-                        </pre>
-                      </div>
-                      <Button
-                        variant='secondary'
-                        size='sm'
-                        onClick={copyPrompt}
-                        className='gap-1.5'
-                      >
-                        {copiedPrompt ? (
-                          <>
-                            <Check size={13} /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={13} /> Copy prompt
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className='flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2'>
-                      <code className='min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-[var(--foreground)]'>
-                        {command}
-                      </code>
-                      <button
-                        type='button'
-                        aria-label='Copy connection command'
-                        onClick={onCopyCommand}
-                        className='flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                      >
-                        {copied ? <Check size={14} /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {command && !setupEnvironment ? (
-                <p className='flex items-center gap-2 text-[11px] text-[var(--muted)]'>
-                  <Loader2 size={13} className='animate-spin' /> Waiting for the
-                  host to connect…
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          {setupEnvironment ? (
-            <EnvironmentApprovalPanel
-              environment={setupEnvironment}
-              roots={setupRoots}
-              busy={environmentBusy === 'approve'}
-              onRootsChange={onSetupRootsChange}
-              onApprove={onApproveSetup}
+            <ExistingEnvironmentFields
+              environmentsLoading={environmentsLoading}
+              compatibleEnvironments={compatibleEnvironments}
+              selectedHarnessConnectable={selectedHarnessConnectable}
+              environmentId={environmentId}
+              onEnvironmentChange={onEnvironmentChange}
+              workingDirectory={workingDirectory}
+              onWorkingDirectoryChange={onWorkingDirectoryChange}
             />
           ) : null}
+          {choice === 'connect' ? (
+            <ConnectMachineFields
+              command={command}
+              environmentBusy={environmentBusy}
+              onBeginConnection={onBeginConnection}
+              setupMode={setupMode}
+              onSetupModeChange={setSetupMode}
+              setupPrompt={setupPrompt}
+              copiedPrompt={copiedPrompt}
+              onCopyPrompt={copyPrompt}
+              copied={copied}
+              onCopyCommand={onCopyCommand}
+              setupEnvironment={setupEnvironment}
+            />
+          ) : null}
+          {setupEnvironment ? <EnvironmentApprovalPanel environment={setupEnvironment} roots={setupRoots} busy={environmentBusy === 'approve'} onRootsChange={onSetupRootsChange} onApprove={onApproveSetup} /> : null}
         </div>
       </section>
       {environmentError || copyError ? (
@@ -1146,6 +1051,88 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
           {environmentError ?? copyError}
         </p>
       ) : null}
+    </div>
+  )
+}
+
+function ExistingEnvironmentFields({ environmentsLoading, compatibleEnvironments, selectedHarnessConnectable, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange }: {
+  environmentsLoading: boolean
+  compatibleEnvironments: AgentEnvironmentResource[]
+  selectedHarnessConnectable: boolean
+  environmentId: string
+  onEnvironmentChange(value: string): void
+  workingDirectory: string
+  onWorkingDirectoryChange(value: string): void
+}) {
+  if (environmentsLoading) {
+    return <p className="flex items-center gap-2 text-xs text-[var(--muted)]"><Loader2 size={14} className="animate-spin" /> Loading environments…</p>
+  }
+  if (compatibleEnvironments.length === 0) {
+    return (
+      <div className="text-xs text-[var(--muted)]">
+        <p>No connected environment currently advertises this harness.</p>
+        {selectedHarnessConnectable ? <p className="mt-1">Connect a computer, VPS, or sandbox to continue.</p> : null}
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <label className="block text-xs font-medium">Environment<ListboxSelect className="mt-1.5" aria-label="Connected environment" value={environmentId} options={compatibleEnvironments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))} onChange={onEnvironmentChange} portal /></label>
+      <label className="block text-xs font-medium">Default working directory<Input className="mt-1.5" value={workingDirectory} onChange={(event) => onWorkingDirectoryChange(event.target.value)} placeholder="/Users/you/Projects/app" /></label>
+      <p className="text-[11px] leading-4 text-[var(--muted)]">This must be inside the environment’s approved roots. The environment may host other agents too.</p>
+    </div>
+  )
+}
+
+function SetupPromptPane({ setupPrompt, copiedPrompt, onCopyPrompt }: {
+  setupPrompt: string
+  copiedPrompt: boolean
+  onCopyPrompt(): void
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] leading-4 text-[var(--muted)]">Paste this into a chat with the agent on this machine — it runs the connection command for you and keeps it alive.</p>
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-2.5"><pre className="max-h-44 overflow-y-auto whitespace-pre-wrap break-words px-0.5 font-mono text-[11px] leading-4 text-[var(--foreground)]">{setupPrompt}</pre></div>
+      <Button variant="secondary" size="sm" onClick={onCopyPrompt} className="gap-1.5">{copiedPrompt ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompt</>}</Button>
+    </div>
+  )
+}
+
+function ConnectMachineFields({ command, environmentBusy, onBeginConnection, setupMode, onSetupModeChange, setupPrompt, copiedPrompt, onCopyPrompt, copied, onCopyCommand, setupEnvironment }: {
+  command: string
+  environmentBusy: string | null
+  onBeginConnection(): void
+  setupMode: 'paste' | 'manual'
+  onSetupModeChange(mode: 'paste' | 'manual'): void
+  setupPrompt: string
+  copiedPrompt: boolean
+  onCopyPrompt(): void
+  copied: boolean
+  onCopyCommand(): void
+  setupEnvironment?: AgentEnvironmentResource
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-xs font-medium text-[var(--foreground)]">Connect any computer, VPS, or sandbox</p>
+        <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Outbound-only. No inbound port is opened.</p>
+      </div>
+      {!command ? (
+        <Button variant="secondary" size="sm" disabled={environmentBusy !== null} onClick={onBeginConnection}>{environmentBusy === 'connect' ? 'Creating…' : 'Create connection'}</Button>
+      ) : (
+        <div className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-1" role="radiogroup" aria-label="Setup mode">
+            <button type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Sparkles size={12} /> Automatic setup</button>
+            <button type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Terminal size={12} /> Manual setup</button>
+          </div>
+          {setupMode === 'paste' ? (
+            <SetupPromptPane setupPrompt={setupPrompt} copiedPrompt={copiedPrompt} onCopyPrompt={onCopyPrompt} />
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-[var(--foreground)]">{command}</code><button type="button" aria-label="Copy connection command" onClick={onCopyCommand} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
+          )}
+        </div>
+      )}
+      {command && !setupEnvironment ? <p className="flex items-center gap-2 text-[11px] text-[var(--muted)]"><Loader2 size={13} className="animate-spin" /> Waiting for the host to connect…</p> : null}
     </div>
   )
 }
@@ -1211,9 +1198,3 @@ export function EnvironmentApprovalPanel({
   )
 }
 
-export function parseRoots(value: string) {
-  return value
-    .split(/[,\n]/)
-    .map((root) => root.trim())
-    .filter(Boolean)
-}

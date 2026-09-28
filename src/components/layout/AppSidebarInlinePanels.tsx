@@ -4,18 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
-import {
-  Archive,
-  Bell,
-  Hash,
-  Loader2,
-  Mail,
-  MessageSquare,
-  Package,
-  Plug,
-  Server,
-  Sparkles,
-} from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -37,7 +26,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 
-export const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []
+import { arrayOrEmpty } from './sidebar-nav'
 const nextSidebarMutation = createKnowledgeMutationPublisher(
   `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
 )
@@ -196,20 +185,9 @@ export function FilesInlinePanel({
 }
 
 
-export const toolsInlineItems = [
-  { id: 'connectors', label: 'Connectors', icon: Plug },
-  { id: 'skills', label: 'Skills', icon: Sparkles },
-  { id: 'mcps', label: 'MCPs', icon: Server },
-  { id: 'apps', label: 'Apps', icon: Package, locked: true },
-] as const
 
-export const chatsInlineItems = [
-  { id: 'personal', label: 'Personal', icon: MessageSquare },
-  { id: 'dms', label: 'Direct Messages', icon: Mail },
-  { id: 'channels', label: 'Channels', icon: Hash },
-  { id: 'activity', label: 'Activity', icon: Bell },
-  { id: 'archived', label: 'Archived', icon: Archive },
-] as const
+
+
 
 export interface InlineNavItem {
   id: string

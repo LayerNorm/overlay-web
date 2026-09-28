@@ -22,6 +22,54 @@ type TopUpPreferenceControlProps = {
   footer?: ReactNode;
 };
 
+type TopUpPalette = {
+  panel: string;
+  sliderSurface: string;
+  label: string;
+  heading: string;
+  value: string;
+  copy: string;
+  note: string;
+  checkboxRow: string;
+  checkboxTitle: string;
+  checkboxBody: string;
+  input: string;
+};
+
+function appPalette(): TopUpPalette {
+  return {
+    panel: "rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm",
+    sliderSurface: "mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4",
+    label: "text-sm text-[var(--muted)]",
+    heading: "text-sm font-medium text-[var(--foreground)]",
+    value: "font-medium text-[var(--foreground)]",
+    copy: "mt-2 text-sm leading-relaxed text-[var(--muted)]",
+    note: "mt-3 text-xs text-[var(--muted)]",
+    checkboxRow: "mt-4 flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4",
+    checkboxTitle: "text-sm font-medium text-[var(--foreground)]",
+    checkboxBody: "mt-1 text-xs leading-relaxed text-[var(--muted)]",
+    input: "mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-300 accent-zinc-900 dark:bg-zinc-700 dark:accent-zinc-100",
+  };
+}
+
+function marketingPalette(isDark: boolean): TopUpPalette {
+  return {
+    panel: `rounded-[26px] border px-5 py-5 ${isDark ? "border-zinc-800 bg-zinc-950/50 shadow-[0_18px_50px_rgba(0,0,0,0.18)]" : "border-zinc-200 bg-zinc-50/90 shadow-[0_14px_36px_rgba(10,10,10,0.05)]"}`,
+    sliderSurface: `mt-4 rounded-[22px] border p-4 ${isDark ? "border-zinc-800 bg-zinc-950/80" : "border-zinc-200 bg-white"}`,
+    label: `text-sm ${isDark ? "text-zinc-400" : "text-zinc-500"}`,
+    heading: `text-sm font-medium ${isDark ? "text-zinc-100" : "text-zinc-900"}`,
+    value: isDark ? "font-medium text-zinc-100" : "font-medium text-zinc-900",
+    copy: `mt-2 text-sm leading-relaxed ${isDark ? "text-zinc-400" : "text-zinc-600"}`,
+    note: `mt-3 text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`,
+    checkboxRow: `mt-4 flex items-start gap-3 rounded-[22px] border p-4 ${isDark ? "border-zinc-800 bg-zinc-950/80" : "border-zinc-200 bg-white"}`,
+    checkboxTitle: isDark ? "text-sm font-medium text-zinc-100" : "text-sm font-medium text-zinc-900",
+    checkboxBody: isDark ? "mt-1 text-xs leading-relaxed text-zinc-400" : "mt-1 text-xs leading-relaxed text-zinc-600",
+    input: isDark
+      ? "mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-zinc-100"
+      : "mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-200 accent-zinc-900",
+  };
+}
+
 export function TopUpPreferenceControl({
   variant,
   isDark = false,
@@ -45,36 +93,7 @@ export function TopUpPreferenceControl({
   const maxDollars = Math.round(maxAmountCents) / 100;
   const stepDollars = Math.max(1, Math.round(stepAmountCents) / 100);
 
-  const palette =
-    variant === "app"
-      ? {
-          panel: "rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-sm",
-          sliderSurface: "mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4",
-          label: "text-sm text-[var(--muted)]",
-          heading: "text-sm font-medium text-[var(--foreground)]",
-          value: "font-medium text-[var(--foreground)]",
-          copy: "mt-2 text-sm leading-relaxed text-[var(--muted)]",
-          note: "mt-3 text-xs text-[var(--muted)]",
-          checkboxRow: "mt-4 flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4",
-          checkboxTitle: "text-sm font-medium text-[var(--foreground)]",
-          checkboxBody: "mt-1 text-xs leading-relaxed text-[var(--muted)]",
-          input: "mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-300 accent-zinc-900 dark:bg-zinc-700 dark:accent-zinc-100",
-        }
-      : {
-          panel: `rounded-[26px] border px-5 py-5 ${isDark ? "border-zinc-800 bg-zinc-950/50 shadow-[0_18px_50px_rgba(0,0,0,0.18)]" : "border-zinc-200 bg-zinc-50/90 shadow-[0_14px_36px_rgba(10,10,10,0.05)]"}`,
-          sliderSurface: `mt-4 rounded-[22px] border p-4 ${isDark ? "border-zinc-800 bg-zinc-950/80" : "border-zinc-200 bg-white"}`,
-          label: `text-sm ${isDark ? "text-zinc-400" : "text-zinc-500"}`,
-          heading: `text-sm font-medium ${isDark ? "text-zinc-100" : "text-zinc-900"}`,
-          value: isDark ? "font-medium text-zinc-100" : "font-medium text-zinc-900",
-          copy: `mt-2 text-sm leading-relaxed ${isDark ? "text-zinc-400" : "text-zinc-600"}`,
-          note: `mt-3 text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`,
-          checkboxRow: `mt-4 flex items-start gap-3 rounded-[22px] border p-4 ${isDark ? "border-zinc-800 bg-zinc-950/80" : "border-zinc-200 bg-white"}`,
-          checkboxTitle: isDark ? "text-sm font-medium text-zinc-100" : "text-sm font-medium text-zinc-900",
-          checkboxBody: isDark ? "mt-1 text-xs leading-relaxed text-zinc-400" : "mt-1 text-xs leading-relaxed text-zinc-600",
-          input: isDark
-            ? "mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-zinc-100"
-            : "mt-4 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-200 accent-zinc-900",
-        };
+  const palette = variant === "app" ? appPalette() : marketingPalette(isDark);
 
   return (
     <div className={palette.panel}>

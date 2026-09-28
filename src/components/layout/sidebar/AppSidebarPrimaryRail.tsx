@@ -22,15 +22,9 @@ export interface PrimaryRailItem {
   onSelect: () => void
 }
 
-function RailButton({
-  item,
-  expanded,
-}: {
-  item: PrimaryRailItem
-  expanded: boolean
-}) {
-  const { label, icon: Icon, active, pending, disabled, badgeCount, href, title, dataTour, onSelect } = item
-  const className = `relative flex h-9 w-full items-center rounded-md transition-colors ${
+function railButtonClassName(item: PrimaryRailItem, expanded: boolean) {
+  const { active, disabled } = item
+  return `relative flex h-9 w-full items-center rounded-md transition-colors ${
         expanded ? 'gap-2.5 px-3' : 'justify-center px-0'
       } ${
         disabled
@@ -39,7 +33,24 @@ function RailButton({
             ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
             : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
       }`
-  const content = (
+}
+
+function RailBadge({ count, expanded }: { count: number; expanded: boolean }) {
+  return (
+    <span
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--border)] px-0.5 text-[9px] font-medium text-[var(--foreground)] ${
+        expanded ? 'shrink-0' : 'absolute right-0.5 top-0.5 h-3.5 min-w-3.5 text-[8px]'
+      }`}
+      aria-hidden
+    >
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
+function RailButtonContent({ item, expanded }: { item: PrimaryRailItem; expanded: boolean }) {
+  const { label, icon: Icon, pending, badgeCount } = item
+  return (
     <>
       {pending ? (
         <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
@@ -47,18 +58,26 @@ function RailButton({
         <Icon size={15} className="shrink-0" />
       )}
       {expanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">{label}</span> : null}
-      {badgeCount ? (
-        <span
-          className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--border)] px-0.5 text-[9px] font-medium text-[var(--foreground)] ${
-            expanded ? 'shrink-0' : 'absolute right-0.5 top-0.5 h-3.5 min-w-3.5 text-[8px]'
-          }`}
-          aria-hidden
-        >
-          {badgeCount > 9 ? '9+' : badgeCount}
-        </span>
-      ) : null}
+      {badgeCount ? <RailBadge count={badgeCount} expanded={expanded} /> : null}
     </>
   )
+}
+
+function RailButton({
+  item,
+  expanded,
+}: {
+  item: PrimaryRailItem
+  expanded: boolean
+}) {
+  const { label, active, disabled, href, title, dataTour, onSelect } = item
+  const sharedProps = {
+    title: title ?? label,
+    'aria-current': active ? 'page' as const : undefined,
+    'data-tour': dataTour,
+    className: railButtonClassName(item, expanded),
+  }
+  const content = <RailButtonContent item={item} expanded={expanded} />
 
   if (href && !disabled) {
     return (
@@ -69,11 +88,8 @@ function RailButton({
           event.preventDefault()
           onSelect()
         }}
-        title={title ?? label}
         aria-label={label}
-        aria-current={active ? 'page' : undefined}
-        data-tour={dataTour}
-        className={className}
+        {...sharedProps}
       >
         {content}
       </Link>
@@ -85,11 +101,8 @@ function RailButton({
       type="button"
       onClick={onSelect}
       disabled={disabled}
-      title={title ?? label}
       aria-label={disabled ? `${label} (coming soon)` : label}
-      aria-current={active ? 'page' : undefined}
-      data-tour={dataTour}
-      className={className}
+      {...sharedProps}
     >
       {content}
     </button>

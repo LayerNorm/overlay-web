@@ -7,7 +7,7 @@ import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { buildWorkspaceAgentInput } from './agent-editor-input'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { AVATAR_COLORS } from '../components/AgentEditorForm'
+import { AVATAR_COLORS } from './agent-editor-utils'
 
 /** Opens (or creates) the agent's main thread, then navigates to it. Resolves the conversation id (null when it cannot be determined). */
 export async function startAgentChat(args: {

@@ -2,6 +2,7 @@
 
 import {
   Suspense,
+  type MouseEventHandler,
   type ReactNode,
   type RefObject,
 } from 'react'
@@ -177,8 +178,7 @@ export interface ChatExperienceHeaderProps {
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
 }
 
-export function ChatExperienceHeader({
-  hideHeader = false,
+function HeaderTitleSection({
   activeChatId,
   editingChatId,
   editingChatTitle,
@@ -191,40 +191,516 @@ export function ChatExperienceHeader({
   onBeginHeaderChatRename,
   showRenameButton,
   projectName,
-  showAutomationChatTab,
-  appMode,
-  isTemporaryChat,
-  isActiveLoading,
-  onTemporaryChatToggle,
-  onGenerationModeChange,
-  generationMode,
-  personalChatMode,
-  onPersonalChatModeChange,
-  renderExportMenu,
+}: Pick<ChatExperienceHeaderProps,
+  | 'activeChatId'
+  | 'editingChatId'
+  | 'editingChatTitle'
+  | 'onEditingChatTitleChange'
+  | 'onCommitChatRename'
+  | 'onCancelChatRename'
+  | 'headerTitleInputRef'
+  | 'showAutomationHeaderControls'
+  | 'titleLabel'
+  | 'onBeginHeaderChatRename'
+  | 'showRenameButton'
+  | 'projectName'
+>) {
+  return (
+    <div
+      className={`group/header-title min-w-0 items-center gap-2 md:min-w-0 md:flex-1 ${
+        activeChatId && editingChatId === activeChatId
+          ? 'flex w-full'
+          : showAutomationHeaderControls
+            ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
+            : 'flex w-full md:w-auto'
+      }`}
+    >
+      {activeChatId && editingChatId === activeChatId ? (
+        <input
+          ref={headerTitleInputRef}
+          aria-label="Conversation title"
+          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
+          value={editingChatTitle}
+          onChange={(e) => onEditingChatTitleChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void onCommitChatRename(activeChatId)
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              onCancelChatRename()
+            }
+          }}
+          onBlur={() => void onCommitChatRename(activeChatId)}
+        />
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <h2
+            className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[20rem] md:truncate lg:max-w-[24rem]"
+            title={titleLabel}
+          >
+            <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
+          </h2>
+          {showRenameButton ? (
+            <button
+              type="button"
+              onClick={onBeginHeaderChatRename}
+              className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/header-title:opacity-100 focus-visible:opacity-100"
+              aria-label="Rename chat"
+            >
+              <Pencil size={14} />
+            </button>
+          ) : null}
+        </div>
+      )}
+      {projectName ? (
+        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+          <FolderOpen size={9} />
+          <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function ModelQualitiesHoverCard({
+  modelId,
+  position,
+  resolveModel,
+  reasoning,
+  onReasoningChange,
+  onHoveredModelChange,
+}: {
+  modelId: string
+  position: ModelQualitiesPosition
+  resolveModel: (modelId: string) => ChatModel | undefined
+  reasoning?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel | undefined) => void
+  onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
+}) {
+  return (
+    <div
+      className="fixed z-[100] hidden w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
+      style={{
+        left: position.x,
+        top: position.y,
+        transform: 'translate(calc(-100% - 8px), -50%)',
+      }}
+      onMouseEnter={() => onHoveredModelChange(modelId, position)}
+      onMouseLeave={() => onHoveredModelChange(null, null)}
+    >
+      <Suspense fallback={null}>
+        <ModelQualitiesPanel
+          model={resolveModel(modelId)}
+          reasoning={reasoning}
+          onReasoningChange={onReasoningChange}
+        />
+      </Suspense>
+    </div>
+  )
+}
+
+function ModelGroupDivider({ label }: { label: string }) {
+  return (
+    <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
+      {label}
+    </div>
+  )
+}
+
+function modelGroupDividerLabel({
+  isFreeTier,
+  isFreeModelRow,
+  previousIsFreeModelRow,
+  textModelsLoading,
+  index,
+}: {
+  isFreeTier: boolean
+  isFreeModelRow: boolean
+  previousIsFreeModelRow: boolean
+  textModelsLoading: boolean
+  index: number
+}): 'Premium' | 'Free' | null {
+  const showFreeTierGroupDivider = isFreeTier && !isFreeModelRow && previousIsFreeModelRow
+  const showFreeGroupDivider =
+    !isFreeTier &&
+    isFreeModelRow &&
+    (!previousIsFreeModelRow || (textModelsLoading && index === 0))
+  if (showFreeTierGroupDivider) return 'Premium'
+  if (showFreeGroupDivider) return 'Free'
+  return null
+}
+
+function ModelPickerRow({
+  modelId,
+  name,
+  selected,
+  disabled = false,
+  onSelect,
+  onHoverStart,
+  badges,
+}: {
+  modelId: string
+  name: string
+  selected: boolean
+  disabled?: boolean
+  onSelect: () => void
+  onHoverStart?: MouseEventHandler<HTMLButtonElement>
+  badges?: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      data-model-row={onHoverStart ? modelId : undefined}
+      disabled={disabled}
+      onClick={onSelect}
+      onMouseEnter={onHoverStart}
+      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
+        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
+      } ${selected ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+    >
+      <span className="flex items-center gap-2">
+        {selected ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
+        {name}
+      </span>
+      {badges}
+    </button>
+  )
+}
+
+function MediaModelList({
+  models,
+  selectedModelIds,
+  selectionMode,
+  onToggleModel,
+}: {
+  models: { id: string; name: string }[]
+  selectedModelIds: string[]
+  selectionMode: AskModelSelectionMode
+  onToggleModel: (modelId: string) => void
+}) {
+  const selectedModelIdSet = new Set(selectedModelIds)
+  return (
+    <>
+      {models.map((m) => {
+        const isSel = selectedModelIdSet.has(m.id)
+        const isDisabled =
+          selectionMode === 'multiple' && !isSel && selectedModelIds.length >= 4
+        return (
+          <ModelPickerRow
+            key={m.id}
+            modelId={m.id}
+            name={m.name}
+            selected={isSel}
+            disabled={isDisabled}
+            onSelect={() => onToggleModel(m.id)}
+          />
+        )
+      })}
+    </>
+  )
+}
+
+function TextModelRows({
+  models,
+  isFreeTier,
+  isFreeTierChatModelId,
+  textModelsLoading,
+  onHoveredModelChange,
+  isSelected,
+  isDisabled,
+  onSelect,
+}: {
+  models: ChatModel[]
+  isFreeTier: boolean
+  isFreeTierChatModelId: (modelId: string) => boolean
+  textModelsLoading: boolean
+  onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
+  isSelected: (model: ChatModel) => boolean
+  isDisabled: (model: ChatModel, selected: boolean) => boolean
+  onSelect: (model: ChatModel) => void
+}) {
+  return (
+    <>
+      {models.map((m, index, allModels) => {
+        const isSel = isSelected(m)
+        const dividerLabel = modelGroupDividerLabel({
+          isFreeTier,
+          isFreeModelRow: isFreeTierChatModelId(m.id),
+          previousIsFreeModelRow: index > 0 ? isFreeTierChatModelId(allModels[index - 1].id) : false,
+          textModelsLoading,
+          index,
+        })
+        return (
+          <div key={m.id}>
+            {dividerLabel ? <ModelGroupDivider label={dividerLabel} /> : null}
+            <ModelPickerRow
+              modelId={m.id}
+              name={m.name}
+              selected={isSel}
+              disabled={isDisabled(m, isSel)}
+              onSelect={() => onSelect(m)}
+              onHoverStart={(e) => {
+                const r = e.currentTarget.getBoundingClientRect()
+                onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
+              }}
+              badges={<ModelBadges model={m} />}
+            />
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+function ModelSelectionModeButtons({
+  selectionMode,
+  onSelectionModeChange,
+  isModeDisabled,
+}: {
+  selectionMode: AskModelSelectionMode
+  onSelectionModeChange: (mode: AskModelSelectionMode) => void
+  isModeDisabled: (mode: AskModelSelectionMode) => boolean
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
+      {(['single', 'multiple'] as const).map((selMode) => {
+        const isActive = selectionMode === selMode
+        const disabled = isModeDisabled(selMode)
+        return (
+          <button
+            key={selMode}
+            type="button"
+            onClick={() => onSelectionModeChange(selMode)}
+            disabled={disabled}
+            className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+              isActive
+                ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+            } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+          >
+            {selMode}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function AutomationModelPicker({
   modelPickerRef,
-  videoSubModePickerRef,
-  modelPickerListScrollRef,
-  showModelPicker,
   onToggleModelPicker,
-  onSetShowModelPicker,
-  modelPickerLabel,
+  getChatModelDisplayName,
+  automationHeaderModelId,
+  showModelPicker,
   hoveredModelId,
   modelQualitiesPos,
   onHoveredModelChange,
   resolveModel,
+  reasoning,
+  onReasoningChange,
+  modelPickerListScrollRef,
+  textModelsLoading,
   isFreeTier,
-  isFreeTierChatModelId,
-  automationHeaderModelId,
   automationHeaderModels,
+  isFreeTierChatModelId,
   onSaveAutomationHeaderModel,
-  getChatModelDisplayName,
+  onSetShowModelPicker,
+}: Pick<ChatExperienceHeaderProps,
+  | 'modelPickerRef'
+  | 'onToggleModelPicker'
+  | 'getChatModelDisplayName'
+  | 'automationHeaderModelId'
+  | 'showModelPicker'
+  | 'hoveredModelId'
+  | 'modelQualitiesPos'
+  | 'onHoveredModelChange'
+  | 'resolveModel'
+  | 'reasoning'
+  | 'onReasoningChange'
+  | 'modelPickerListScrollRef'
+  | 'textModelsLoading'
+  | 'isFreeTier'
+  | 'automationHeaderModels'
+  | 'isFreeTierChatModelId'
+  | 'onSaveAutomationHeaderModel'
+  | 'onSetShowModelPicker'
+>) {
+  return (
+    <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
+      <DelayedTooltip label="Choose automation model" side="bottom">
+        <button
+          type="button"
+          onClick={onToggleModelPicker}
+          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-[13rem]"
+          aria-label="Automation model"
+        >
+          <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
+          <ChevronDown size={11} className="shrink-0" />
+        </button>
+      </DelayedTooltip>
+      {showModelPicker ? (
+        <>
+          {hoveredModelId && modelQualitiesPos ? (
+            <ModelQualitiesHoverCard
+              modelId={hoveredModelId}
+              position={modelQualitiesPos}
+              resolveModel={resolveModel}
+              reasoning={reasoning}
+              onReasoningChange={onReasoningChange}
+              onHoveredModelChange={onHoveredModelChange}
+            />
+          ) : null}
+          <div
+            data-tour="model-picker"
+            className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+          >
+            <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
+              {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
+              <TextModelRows
+                models={automationHeaderModels}
+                isFreeTier={isFreeTier}
+                isFreeTierChatModelId={isFreeTierChatModelId}
+                textModelsLoading={textModelsLoading}
+                onHoveredModelChange={onHoveredModelChange}
+                isSelected={(m) => m.id === automationHeaderModelId}
+                isDisabled={() => false}
+                onSelect={(m) => {
+                  void onSaveAutomationHeaderModel(m.id)
+                  onSetShowModelPicker(false)
+                }}
+              />
+              {textModelsLoading && isFreeTier ? <PremiumModelsLoadingRows divider /> : null}
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+function AutomationDetailTabButtons({
   automationDetailTab,
   onSelectAutomationDetailTab,
+}: Pick<ChatExperienceHeaderProps, 'automationDetailTab' | 'onSelectAutomationDetailTab'>) {
+  return (
+    <div className="flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
+      {AUTOMATION_DETAIL_TABS.map((tab) => {
+        const active = automationDetailTab === tab.id
+        const TabIcon = tab.icon
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onSelectAutomationDetailTab(tab.id)}
+            className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
+              active
+                ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <TabIcon size={12} strokeWidth={1.75} />
+            {tab.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function AutomationHeaderControls(props: Pick<ChatExperienceHeaderProps,
+  | 'modelPickerRef'
+  | 'onToggleModelPicker'
+  | 'getChatModelDisplayName'
+  | 'automationHeaderModelId'
+  | 'showModelPicker'
+  | 'hoveredModelId'
+  | 'modelQualitiesPos'
+  | 'onHoveredModelChange'
+  | 'resolveModel'
+  | 'reasoning'
+  | 'onReasoningChange'
+  | 'modelPickerListScrollRef'
+  | 'textModelsLoading'
+  | 'isFreeTier'
+  | 'automationHeaderModels'
+  | 'isFreeTierChatModelId'
+  | 'onSaveAutomationHeaderModel'
+  | 'onSetShowModelPicker'
+  | 'automationDetailTab'
+  | 'onSelectAutomationDetailTab'
+>) {
+  return (
+    <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
+      <AutomationModelPicker {...props} />
+      <AutomationDetailTabButtons
+        automationDetailTab={props.automationDetailTab}
+        onSelectAutomationDetailTab={props.onSelectAutomationDetailTab}
+      />
+    </div>
+  )
+}
+
+function VideoSubModePicker({
+  videoSubModePickerRef,
+  isActiveLoading,
+  onToggleVideoSubModePicker,
   videoSubMode,
   showVideoSubModePicker,
-  onToggleVideoSubModePicker,
-  onSetShowVideoSubModePicker,
   onVideoSubModeChange,
+  onSetShowVideoSubModePicker,
+}: Pick<ChatExperienceHeaderProps,
+  | 'videoSubModePickerRef'
+  | 'isActiveLoading'
+  | 'onToggleVideoSubModePicker'
+  | 'videoSubMode'
+  | 'showVideoSubModePicker'
+  | 'onVideoSubModeChange'
+  | 'onSetShowVideoSubModePicker'
+>) {
+  return (
+    <div ref={videoSubModePickerRef} className="relative min-w-0 md:w-auto">
+      <button
+        type="button"
+        onClick={onToggleVideoSubModePicker}
+        disabled={isActiveLoading}
+        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
+          isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+        }`}
+      >
+        <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
+        <ChevronDown size={11} className="shrink-0" />
+      </button>
+      {showVideoSubModePicker ? (
+        <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
+          {VIDEO_SUB_MODES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                onVideoSubModeChange(value)
+                onSetShowVideoSubModePicker(false)
+              }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+            >
+              {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ChatModelPickerDropdown({
+  generationMode,
+  onGenerationModeChange,
+  isActiveLoading,
+  modelPickerListScrollRef,
+  textModelsLoading,
+  isFreeTier,
   imageModels,
   selectedImageModels,
   imageModelSelectionMode,
@@ -236,480 +712,289 @@ export function ChatExperienceHeader({
   onToggleVideoModel,
   onVideoModelSelectionModeChange,
   selectableTextModels,
-  textModelsLoading,
   askModelSelectionMode,
   selectedActModel,
   selectedModels,
   onToggleTextModel,
   onTextModelSelectionModeChange,
+  isFreeTierChatModelId,
+  onHoveredModelChange,
   hasAutomationContext,
-  reasoning,
-  onReasoningChange,
-}: ChatExperienceHeaderProps) {
-  const selectedImageModelSet = new Set(selectedImageModels)
-  const selectedVideoModelSet = new Set(selectedVideoModels)
+}: Pick<ChatExperienceHeaderProps,
+  | 'generationMode'
+  | 'onGenerationModeChange'
+  | 'isActiveLoading'
+  | 'modelPickerListScrollRef'
+  | 'textModelsLoading'
+  | 'isFreeTier'
+  | 'imageModels'
+  | 'selectedImageModels'
+  | 'imageModelSelectionMode'
+  | 'onToggleImageModel'
+  | 'onImageModelSelectionModeChange'
+  | 'videoModels'
+  | 'selectedVideoModels'
+  | 'videoModelSelectionMode'
+  | 'onToggleVideoModel'
+  | 'onVideoModelSelectionModeChange'
+  | 'selectableTextModels'
+  | 'askModelSelectionMode'
+  | 'selectedActModel'
+  | 'selectedModels'
+  | 'onToggleTextModel'
+  | 'onTextModelSelectionModeChange'
+  | 'isFreeTierChatModelId'
+  | 'onHoveredModelChange'
+  | 'hasAutomationContext'
+>) {
   const selectedModelSet = new Set(selectedModels)
   return (
-    <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
-      <div
-        className={`group/header-title min-w-0 items-center gap-2 md:min-w-0 md:flex-1 ${
-          activeChatId && editingChatId === activeChatId
-            ? 'flex w-full'
-            : showAutomationHeaderControls
-              ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
-              : 'flex w-full md:w-auto'
-        }`}
-      >
-        {activeChatId && editingChatId === activeChatId ? (
-          <input
-            ref={headerTitleInputRef}
-            aria-label="Conversation title"
-            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
-            value={editingChatTitle}
-            onChange={(e) => onEditingChatTitleChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void onCommitChatRename(activeChatId)
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault()
-                onCancelChatRename()
-              }
-            }}
-            onBlur={() => void onCommitChatRename(activeChatId)}
+    <div
+      data-tour="model-picker"
+      className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+    >
+      <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
+        <DelayedTooltip
+          label="Cycle text / image / video (⇧⌘.)"
+          side="left"
+          className="block w-full"
+        >
+          <span data-tour="generation-mode-toggle" className="block w-full">
+            <GenerationModeToggle
+              mode={generationMode}
+              onChange={onGenerationModeChange}
+              disabled={isActiveLoading}
+              layout="stretch"
+            />
+          </span>
+        </DelayedTooltip>
+      </div>
+      <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
+        {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
+          <PremiumModelsLoadingRows />
+        ) : null}
+        {generationMode === 'image' ? (
+          <MediaModelList
+            models={imageModels}
+            selectedModelIds={selectedImageModels}
+            selectionMode={imageModelSelectionMode}
+            onToggleModel={onToggleImageModel}
+          />
+        ) : generationMode === 'video' ? (
+          <MediaModelList
+            models={videoModels}
+            selectedModelIds={selectedVideoModels}
+            selectionMode={videoModelSelectionMode}
+            onToggleModel={onToggleVideoModel}
           />
         ) : (
-          <div className="flex min-w-0 flex-1 items-center gap-1">
-            <h2
-              className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[20rem] md:truncate lg:max-w-[24rem]"
-              title={titleLabel}
-            >
-              <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
-            </h2>
-            {showRenameButton ? (
-              <button
-                type="button"
-                onClick={onBeginHeaderChatRename}
-                className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/header-title:opacity-100 focus-visible:opacity-100"
-                aria-label="Rename chat"
-              >
-                <Pencil size={14} />
-              </button>
-            ) : null}
-          </div>
+          <TextModelRows
+            models={selectableTextModels}
+            isFreeTier={isFreeTier}
+            isFreeTierChatModelId={isFreeTierChatModelId}
+            textModelsLoading={textModelsLoading}
+            onHoveredModelChange={onHoveredModelChange}
+            isSelected={(m) =>
+              askModelSelectionMode === 'single'
+                ? m.id === selectedActModel
+                : selectedModelSet.has(m.id)
+            }
+            isDisabled={(m, isSel) =>
+              askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
+            }
+            onSelect={(m) => onToggleTextModel(m.id)}
+          />
         )}
-        {projectName ? (
-          <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-            <FolderOpen size={9} />
-            <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
-          </span>
+        {generationMode === 'text' && textModelsLoading && isFreeTier ? (
+          <PremiumModelsLoadingRows divider />
         ) : null}
       </div>
-
-      {showAutomationHeaderControls ? (
-        <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
-          <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-            <DelayedTooltip label="Choose automation model" side="bottom">
-              <button
-                type="button"
-                onClick={onToggleModelPicker}
-                className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-[13rem]"
-                aria-label="Automation model"
-              >
-                <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
-                <ChevronDown size={11} className="shrink-0" />
-              </button>
-            </DelayedTooltip>
-            {showModelPicker ? (
-              <>
-                {hoveredModelId && modelQualitiesPos ? (
-                  <div
-                    className="fixed z-[100] hidden w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
-                    style={{
-                      left: modelQualitiesPos.x,
-                      top: modelQualitiesPos.y,
-                      transform: 'translate(calc(-100% - 8px), -50%)',
-                    }}
-                    onMouseEnter={() => onHoveredModelChange(hoveredModelId, modelQualitiesPos)}
-                    onMouseLeave={() => onHoveredModelChange(null, null)}
-                  >
-                    <Suspense fallback={null}>
-                      <ModelQualitiesPanel
-                        model={resolveModel(hoveredModelId)}
-                        reasoning={reasoning}
-                        onReasoningChange={onReasoningChange}
-                      />
-                    </Suspense>
-                  </div>
-                ) : null}
-                <div
-                  data-tour="model-picker"
-                  className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                >
-                  <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-                    {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
-                    {automationHeaderModels.map((m, index, models) => {
-                      const isSel = m.id === automationHeaderModelId
-                      const isFreeModelRow = isFreeTierChatModelId(m.id)
-                      const previous = models[index - 1]
-                      const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
-                      const showFreeTierGroupDivider = isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                      const showFreeGroupDivider =
-                        !isFreeTier &&
-                        isFreeModelRow &&
-                        (!previousIsFreeModelRow || (textModelsLoading && index === 0))
-                      const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
-                      const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
-                      return (
-                        <div key={m.id}>
-                          {showDivider ? (
-                            <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                              {dividerLabel}
-                            </div>
-                          ) : null}
-                          <button
-                            type="button"
-                            data-model-row={m.id}
-                            onClick={() => {
-                              void onSaveAutomationHeaderModel(m.id)
-                              onSetShowModelPicker(false)
-                            }}
-                            onMouseEnter={(e) => {
-                              const r = e.currentTarget.getBoundingClientRect()
-                              onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
-                            }}
-                            className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
-                              isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                              {m.name}
-                            </span>
-                            <ModelBadges model={m} />
-                          </button>
-                        </div>
-                      )
-                    })}
-                    {textModelsLoading && isFreeTier ? <PremiumModelsLoadingRows divider /> : null}
-                  </div>
-                </div>
-              </>
-            ) : null}
-          </div>
-          <div className="flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
-            {AUTOMATION_DETAIL_TABS.map((tab) => {
-              const active = automationDetailTab === tab.id
-              const TabIcon = tab.icon
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onSelectAutomationDetailTab(tab.id)}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
-                    active
-                      ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                      : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                  }`}
-                >
-                  <TabIcon size={12} strokeWidth={1.75} />
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
+      {generationMode === 'image' ? (
+        <div className="border-t border-[var(--border)] px-2 py-2">
+          <ModelSelectionModeButtons
+            selectionMode={imageModelSelectionMode}
+            onSelectionModeChange={onImageModelSelectionModeChange}
+            isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
+          />
+        </div>
+      ) : null}
+      {generationMode === 'video' ? (
+        <div className="border-t border-[var(--border)] px-2 py-2">
+          <ModelSelectionModeButtons
+            selectionMode={videoModelSelectionMode}
+            onSelectionModeChange={onVideoModelSelectionModeChange}
+            isModeDisabled={(mode) => isActiveLoading || (isFreeTier && mode === 'multiple')}
+          />
+        </div>
+      ) : null}
+      {generationMode === 'text' && !hasAutomationContext ? (
+        <div className="border-t border-[var(--border)] px-2 py-2">
+          <ModelSelectionModeButtons
+            selectionMode={askModelSelectionMode}
+            onSelectionModeChange={onTextModelSelectionModeChange}
+            isModeDisabled={(mode) => isFreeTier && mode === 'multiple'}
+          />
         </div>
       ) : null}
 
-      {appMode === 'automate' || !showAutomationChatTab ? null : (
-      <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:min-w-0 md:shrink-0 md:flex-row md:items-center md:justify-end md:gap-2">
-        <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
-          {!hasAutomationContext ? (
-            <PersonalChatModeToggle
-              mode={personalChatMode}
-              onChange={onPersonalChatModeChange}
+    </div>
+  )
+}
+
+function ChatModelPicker({
+  modelPickerRef,
+  onToggleModelPicker,
+  modelPickerLabel,
+  showModelPicker,
+  generationMode,
+  hoveredModelId,
+  modelQualitiesPos,
+  onHoveredModelChange,
+  resolveModel,
+  reasoning,
+  onReasoningChange,
+  onGenerationModeChange,
+  isActiveLoading,
+  modelPickerListScrollRef,
+  textModelsLoading,
+  isFreeTier,
+  imageModels,
+  selectedImageModels,
+  imageModelSelectionMode,
+  onToggleImageModel,
+  onImageModelSelectionModeChange,
+  videoModels,
+  selectedVideoModels,
+  videoModelSelectionMode,
+  onToggleVideoModel,
+  onVideoModelSelectionModeChange,
+  selectableTextModels,
+  askModelSelectionMode,
+  selectedActModel,
+  selectedModels,
+  onToggleTextModel,
+  onTextModelSelectionModeChange,
+  isFreeTierChatModelId,
+  hasAutomationContext,
+}: Pick<ChatExperienceHeaderProps,
+  | 'modelPickerRef'
+  | 'onToggleModelPicker'
+  | 'modelPickerLabel'
+  | 'showModelPicker'
+  | 'generationMode'
+  | 'hoveredModelId'
+  | 'modelQualitiesPos'
+  | 'onHoveredModelChange'
+  | 'resolveModel'
+  | 'reasoning'
+  | 'onReasoningChange'
+  | 'onGenerationModeChange'
+  | 'isActiveLoading'
+  | 'modelPickerListScrollRef'
+  | 'textModelsLoading'
+  | 'isFreeTier'
+  | 'imageModels'
+  | 'selectedImageModels'
+  | 'imageModelSelectionMode'
+  | 'onToggleImageModel'
+  | 'onImageModelSelectionModeChange'
+  | 'videoModels'
+  | 'selectedVideoModels'
+  | 'videoModelSelectionMode'
+  | 'onToggleVideoModel'
+  | 'onVideoModelSelectionModeChange'
+  | 'selectableTextModels'
+  | 'askModelSelectionMode'
+  | 'selectedActModel'
+  | 'selectedModels'
+  | 'onToggleTextModel'
+  | 'onTextModelSelectionModeChange'
+  | 'isFreeTierChatModelId'
+  | 'hasAutomationContext'
+>) {
+  return (
+    <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
+      <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
+        <button
+          type="button"
+          onClick={onToggleModelPicker}
+          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:w-auto md:max-w-[13rem]"
+        >
+          <span className="min-w-0 truncate">{modelPickerLabel}</span>
+          <ChevronDown size={11} className="shrink-0" />
+        </button>
+      </DelayedTooltip>
+      {showModelPicker ? (
+        <>
+          {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
+            <ModelQualitiesHoverCard
+              modelId={hoveredModelId}
+              position={modelQualitiesPos}
+              resolveModel={resolveModel}
+              reasoning={reasoning}
+              onReasoningChange={onReasoningChange}
+              onHoveredModelChange={onHoveredModelChange}
             />
           ) : null}
-          {generationMode === 'video' ? (
-            <div ref={videoSubModePickerRef} className="relative min-w-0 md:w-auto">
-              <button
-                type="button"
-                onClick={onToggleVideoSubModePicker}
-                disabled={isActiveLoading}
-                className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
-                  isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
-                }`}
-              >
-                <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
-                <ChevronDown size={11} className="shrink-0" />
-              </button>
-              {showVideoSubModePicker ? (
-                <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
-                  {VIDEO_SUB_MODES.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => {
-                        onVideoSubModeChange(value)
-                        onSetShowVideoSubModePicker(false)
-                      }}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                    >
-                      {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-            <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
-              <button
-                type="button"
-                onClick={onToggleModelPicker}
-                className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:w-auto md:max-w-[13rem]"
-              >
-                <span className="min-w-0 truncate">{modelPickerLabel}</span>
-                <ChevronDown size={11} className="shrink-0" />
-              </button>
-            </DelayedTooltip>
-            {showModelPicker ? (
-              <>
-                {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
-                  <div
-                    className="fixed z-[100] hidden w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
-                    style={{
-                      left: modelQualitiesPos.x,
-                      top: modelQualitiesPos.y,
-                      transform: 'translate(calc(-100% - 8px), -50%)',
-                    }}
-                    onMouseEnter={() => onHoveredModelChange(hoveredModelId, modelQualitiesPos)}
-                    onMouseLeave={() => onHoveredModelChange(null, null)}
-                  >
-                    <Suspense fallback={null}>
-                      <ModelQualitiesPanel
-                        model={resolveModel(hoveredModelId)}
-                        reasoning={reasoning}
-                        onReasoningChange={onReasoningChange}
-                      />
-                    </Suspense>
-                  </div>
-                ) : null}
-                <div
-                  data-tour="model-picker"
-                  className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                >
-                  <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
-                    <DelayedTooltip
-                      label="Cycle text / image / video (⇧⌘.)"
-                      side="left"
-                      className="block w-full"
-                    >
-                      <span data-tour="generation-mode-toggle" className="block w-full">
-                        <GenerationModeToggle
-                          mode={generationMode}
-                          onChange={onGenerationModeChange}
-                          disabled={isActiveLoading}
-                          layout="stretch"
-                        />
-                      </span>
-                    </DelayedTooltip>
-                  </div>
-                  <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
-                    {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
-                      <PremiumModelsLoadingRows />
-                    ) : null}
-                    {generationMode === 'image'
-                      ? imageModels.map((m) => {
-                          const isSel = selectedImageModelSet.has(m.id)
-                          const isDisabled =
-                            imageModelSelectionMode === 'multiple' && !isSel && selectedImageModels.length >= 4
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              disabled={isDisabled}
-                              onClick={() => onToggleImageModel(m.id)}
-                              className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
-                                isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-                              } ${isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                            >
-                              <span className="flex items-center gap-2">
-                                {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                                {m.name}
-                              </span>
-                            </button>
-                          )
-                        })
-                      : generationMode === 'video'
-                        ? videoModels.map((m) => {
-                            const isSel = selectedVideoModelSet.has(m.id)
-                            const isDisabled =
-                              videoModelSelectionMode === 'multiple' && !isSel && selectedVideoModels.length >= 4
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                disabled={isDisabled}
-                                onClick={() => onToggleVideoModel(m.id)}
-                                className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
-                                  isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-                                } ${isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                              >
-                                <span className="flex items-center gap-2">
-                                  {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                                  {m.name}
-                                </span>
-                              </button>
-                            )
-                          })
-                        : selectableTextModels.map((m, index, models) => {
-                            const isSel =
-                              askModelSelectionMode === 'single'
-                                ? m.id === selectedActModel
-                                : selectedModelSet.has(m.id)
-                            const isDisabled =
-                              askModelSelectionMode === 'multiple' && !isSel && selectedModels.length >= 4
-                            const isFreeModelRow = isFreeTierChatModelId(m.id)
-                            const previous = models[index - 1]
-                            const previousIsFreeModelRow = previous ? isFreeTierChatModelId(previous.id) : false
-                            const showFreeTierGroupDivider =
-                              isFreeTier && !isFreeModelRow && previousIsFreeModelRow
-                            const showFreeGroupDivider =
-                              !isFreeTier &&
-                              isFreeModelRow &&
-                              (!previousIsFreeModelRow || (textModelsLoading && index === 0))
-                            const showDivider = showFreeTierGroupDivider || showFreeGroupDivider
-                            const dividerLabel = showFreeTierGroupDivider ? 'Premium' : 'Free'
-                            return (
-                              <div key={m.id}>
-                                {showDivider ? (
-                                  <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-                                    {dividerLabel}
-                                  </div>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  data-model-row={m.id}
-                                  disabled={isDisabled}
-                                  onClick={() => onToggleTextModel(m.id)}
-                                  onMouseEnter={(e) => {
-                                    const r = e.currentTarget.getBoundingClientRect()
-                                    onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
-                                  }}
-                                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
-                                    isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-                                  } ${isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
-                                >
-                                  <span className="flex items-center gap-2">
-                                    {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                                    {m.name}
-                                  </span>
-                                  <ModelBadges model={m} />
-                                </button>
-                              </div>
-                            )
-                          })}
-                    {generationMode === 'text' && textModelsLoading && isFreeTier ? (
-                      <PremiumModelsLoadingRows divider />
-                    ) : null}
-                  </div>
-                  {generationMode === 'image' ? (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((selectionMode) => {
-                          const isActive = imageModelSelectionMode === selectionMode
-                          return (
-                            <button
-                              key={selectionMode}
-                              type="button"
-                              onClick={() => onImageModelSelectionModeChange(selectionMode)}
-                              disabled={isActiveLoading || (isFreeTier && selectionMode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && selectionMode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {selectionMode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                  {generationMode === 'video' ? (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((selectionMode) => {
-                          const isActive = videoModelSelectionMode === selectionMode
-                          return (
-                            <button
-                              key={selectionMode}
-                              type="button"
-                              onClick={() => onVideoModelSelectionModeChange(selectionMode)}
-                              disabled={isActiveLoading || (isFreeTier && selectionMode === 'multiple')}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${
-                                isActiveLoading || (isFreeTier && selectionMode === 'multiple') ? 'cursor-not-allowed opacity-40' : ''
-                              }`}
-                            >
-                              {selectionMode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                  {generationMode === 'text' && !hasAutomationContext ? (
-                    <div className="border-t border-[var(--border)] px-2 py-2">
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
-                        {(['single', 'multiple'] as const).map((selMode) => {
-                          const isActive = askModelSelectionMode === selMode
-                          const multipleDisabled = isFreeTier && selMode === 'multiple'
-                          return (
-                            <button
-                              key={selMode}
-                              type="button"
-                              onClick={() => onTextModelSelectionModeChange(selMode)}
-                              disabled={multipleDisabled}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                                isActive
-                                  ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-                              } ${multipleDisabled ? 'cursor-not-allowed opacity-40' : ''}`}
-                            >
-                              {selMode}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
+          <ChatModelPickerDropdown
+            generationMode={generationMode}
+            onGenerationModeChange={onGenerationModeChange}
+            isActiveLoading={isActiveLoading}
+            modelPickerListScrollRef={modelPickerListScrollRef}
+            textModelsLoading={textModelsLoading}
+            isFreeTier={isFreeTier}
+            imageModels={imageModels}
+            selectedImageModels={selectedImageModels}
+            imageModelSelectionMode={imageModelSelectionMode}
+            onToggleImageModel={onToggleImageModel}
+            onImageModelSelectionModeChange={onImageModelSelectionModeChange}
+            videoModels={videoModels}
+            selectedVideoModels={selectedVideoModels}
+            videoModelSelectionMode={videoModelSelectionMode}
+            onToggleVideoModel={onToggleVideoModel}
+            onVideoModelSelectionModeChange={onVideoModelSelectionModeChange}
+            selectableTextModels={selectableTextModels}
+            askModelSelectionMode={askModelSelectionMode}
+            selectedActModel={selectedActModel}
+            selectedModels={selectedModels}
+            onToggleTextModel={onToggleTextModel}
+            onTextModelSelectionModeChange={onTextModelSelectionModeChange}
+            isFreeTierChatModelId={isFreeTierChatModelId}
+            onHoveredModelChange={onHoveredModelChange}
+            hasAutomationContext={hasAutomationContext}
+          />
+        </>
+      ) : null}
+    </div>
+  )
+}
 
-                </div>
-              </>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5 md:hidden">
-            {appMode === 'chat' ? (
-              <TemporaryChatButton
-                active={isTemporaryChat}
-                disabled={isActiveLoading}
-                onClick={onTemporaryChatToggle}
-              />
-            ) : null}
-            {renderExportMenu()}
-          </div>
-        </div>
-        <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+function ChatHeaderControls(props: ChatExperienceHeaderProps) {
+  const {
+    hasAutomationContext,
+    personalChatMode,
+    onPersonalChatModeChange,
+    generationMode,
+    appMode,
+    isTemporaryChat,
+    isActiveLoading,
+    onTemporaryChatToggle,
+    renderExportMenu,
+  } = props
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:min-w-0 md:shrink-0 md:flex-row md:items-center md:justify-end md:gap-2">
+      <div className="flex w-full min-w-0 items-center justify-between gap-2 md:contents">
+        {!hasAutomationContext ? (
+          <PersonalChatModeToggle
+            mode={personalChatMode}
+            onChange={onPersonalChatModeChange}
+          />
+        ) : null}
+        {generationMode === 'video' ? (
+          <VideoSubModePicker {...props} />
+        ) : null}
+        <ChatModelPicker {...props} />
+        <div className="flex shrink-0 items-center gap-1.5 md:hidden">
           {appMode === 'chat' ? (
             <TemporaryChatButton
               active={isTemporaryChat}
@@ -720,7 +1005,51 @@ export function ChatExperienceHeader({
           {renderExportMenu()}
         </div>
       </div>
-      )}
+      <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+        {appMode === 'chat' ? (
+          <TemporaryChatButton
+            active={isTemporaryChat}
+            disabled={isActiveLoading}
+            onClick={onTemporaryChatToggle}
+          />
+        ) : null}
+        {renderExportMenu()}
+      </div>
+    </div>
+  )
+}
+
+export function ChatExperienceHeader(props: ChatExperienceHeaderProps) {
+  const {
+    hideHeader = false,
+    showAutomationHeaderControls,
+    appMode,
+    showAutomationChatTab,
+  } = props
+  return (
+    <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
+      <HeaderTitleSection
+        activeChatId={props.activeChatId}
+        editingChatId={props.editingChatId}
+        editingChatTitle={props.editingChatTitle}
+        onEditingChatTitleChange={props.onEditingChatTitleChange}
+        onCommitChatRename={props.onCommitChatRename}
+        onCancelChatRename={props.onCancelChatRename}
+        headerTitleInputRef={props.headerTitleInputRef}
+        showAutomationHeaderControls={props.showAutomationHeaderControls}
+        titleLabel={props.titleLabel}
+        onBeginHeaderChatRename={props.onBeginHeaderChatRename}
+        showRenameButton={props.showRenameButton}
+        projectName={props.projectName}
+      />
+
+      {showAutomationHeaderControls ? (
+        <AutomationHeaderControls {...props} />
+      ) : null}
+
+      {appMode !== 'automate' && showAutomationChatTab ? (
+        <ChatHeaderControls {...props} />
+      ) : null}
     </AppScreenHeader>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
 import { useDialogFocus, usePresence } from '@overlay/ui'
@@ -102,117 +102,153 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
       </button>
 
       {dialogMounted ? (
-        // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
-        // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-        <div
-          role="presentation"
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
-            dialogVisible ? 'opacity-100' : 'opacity-0'
-          }`}
-          onClick={close}
-        >
-          {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-          {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-account-title"
-            onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
-              dialogVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
-            } ${
-              isLandingDark ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'
-            }`}
-          >
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                    isLandingDark ? 'bg-red-950/40 text-red-400' : 'bg-red-50 text-red-600'
-                  }`}
-                >
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-                <h2 id="delete-account-title" className="text-lg font-semibold">
-                  Delete your Overlay account?
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={close}
-                aria-label="Close"
-                disabled={submitting}
-                className={`rounded-md p-1 transition-colors disabled:opacity-50 ${
-                  isLandingDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'
-                }`}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <p className={`mb-3 text-sm leading-relaxed ${isLandingDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
-              This permanently deletes your account, all chats, notes, knowledge files, saved
-              memories, automations, and connected integrations. Any active paid subscription will
-              be canceled.
-            </p>
-            <p className={`mb-5 text-sm font-medium ${isLandingDark ? 'text-zinc-200' : 'text-zinc-900'}`}>
-              This action cannot be undone.
-            </p>
-
-            <label htmlFor="delete-account-confirm" className={`mb-1 block text-xs font-medium uppercase tracking-wide ${
-              isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
-            }`}>
-              Type DELETE to confirm
-            </label>
-            <input
-              id="delete-account-confirm"
-              type="text"
-              value={confirmInput}
-              onChange={(e) => {
-                setConfirmInput(e.target.value)
-                if (error) setError(null)
-              }}
-              autoFocus
-              autoComplete="off"
-              disabled={submitting}
-              placeholder="DELETE"
-              className={`w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors disabled:opacity-50 ${
-                isLandingDark
-                  ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder-zinc-500 focus:border-zinc-500'
-                  : 'border-zinc-300 bg-white text-zinc-900 placeholder-zinc-400 focus:border-zinc-500'
-              }`}
-            />
-
-            {error ? (
-              <p className="mt-3 text-sm text-red-500">{error}</p>
-            ) : null}
-
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={close}
-                disabled={submitting}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                  isLandingDark
-                    ? 'border border-zinc-700 text-zinc-200 hover:bg-zinc-800'
-                    : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
-                }`}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={submitting || confirmInput.trim().toLowerCase() !== 'delete'}
-                className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submitting ? 'Deleting…' : 'Delete account'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteAccountDialog
+          visible={dialogVisible}
+          dialogRef={dialogRef}
+          isLandingDark={isLandingDark}
+          confirmInput={confirmInput}
+          submitting={submitting}
+          error={error}
+          onClose={close}
+          onConfirmInputChange={(value) => {
+            setConfirmInput(value)
+            if (error) setError(null)
+          }}
+          onConfirm={handleConfirm}
+        />
       ) : null}
     </>
+  )
+}
+
+function DeleteAccountDialog({
+  visible,
+  dialogRef,
+  isLandingDark,
+  confirmInput,
+  submitting,
+  error,
+  onClose,
+  onConfirmInputChange,
+  onConfirm,
+}: {
+  visible: boolean
+  dialogRef: RefObject<HTMLDivElement | null>
+  isLandingDark: boolean
+  confirmInput: string
+  submitting: boolean
+  error: string | null
+  onClose(): void
+  onConfirmInputChange(value: string): void
+  onConfirm(): void
+}) {
+  return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
+    <div
+      role="presentation"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
+      onClick={onClose}
+    >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-account-title"
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
+        } ${
+          isLandingDark ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'
+        }`}
+      >
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                isLandingDark ? 'bg-red-950/40 text-red-400' : 'bg-red-50 text-red-600'
+              }`}
+            >
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <h2 id="delete-account-title" className="text-lg font-semibold">
+              Delete your Overlay account?
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            disabled={submitting}
+            className={`rounded-md p-1 transition-colors disabled:opacity-50 ${
+              isLandingDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'
+            }`}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className={`mb-3 text-sm leading-relaxed ${isLandingDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
+          This permanently deletes your account, all chats, notes, knowledge files, saved
+          memories, automations, and connected integrations. Any active paid subscription will
+          be canceled.
+        </p>
+        <p className={`mb-5 text-sm font-medium ${isLandingDark ? 'text-zinc-200' : 'text-zinc-900'}`}>
+          This action cannot be undone.
+        </p>
+
+        <label htmlFor="delete-account-confirm" className={`mb-1 block text-xs font-medium uppercase tracking-wide ${
+          isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
+        }`}>
+          Type DELETE to confirm
+        </label>
+        <input
+          id="delete-account-confirm"
+          type="text"
+          value={confirmInput}
+          onChange={(e) => onConfirmInputChange(e.target.value)}
+          autoFocus
+          autoComplete="off"
+          disabled={submitting}
+          placeholder="DELETE"
+          className={`w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors disabled:opacity-50 ${
+            isLandingDark
+              ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder-zinc-500 focus:border-zinc-500'
+              : 'border-zinc-300 bg-white text-zinc-900 placeholder-zinc-400 focus:border-zinc-500'
+          }`}
+        />
+
+        {error ? (
+          <p className="mt-3 text-sm text-red-500">{error}</p>
+        ) : null}
+
+        <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+              isLandingDark
+                ? 'border border-zinc-700 text-zinc-200 hover:bg-zinc-800'
+                : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+            }`}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting || confirmInput.trim().toLowerCase() !== 'delete'}
+            className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? 'Deleting…' : 'Delete account'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

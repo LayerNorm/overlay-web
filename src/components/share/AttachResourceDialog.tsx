@@ -174,100 +174,20 @@ export function AttachResourceDialog({
         </header>
 
         <div className="max-h-[min(560px,70vh)] overflow-y-auto px-6 py-5">
-          {loading ? (
-            <div data-testid="attach-resource-loading" className="flex h-20 items-center justify-center text-[var(--muted)]">
-              <Loader2 size={16} className="animate-spin" />
-            </div>
-          ) : resources.length === 0 ? (
-            <p data-testid="attach-resource-empty" className="text-sm text-[var(--muted)]">
-              You do not manage any files, automations, or agents yet.
-            </p>
-          ) : (
-            <>
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px]">
-                <Select
-                  value={selected}
-                  aria-label="Resource"
-                  onChange={(event) => { setSelected(event.target.value); setImpact(null) }}
-                  className="h-10 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
-                >
-                  <option value="">Choose a resource…</option>
-                  {resources.map((item) => (
-                    <option key={key(item)} value={key(item)}>
-                      {item.title} · {SHARE_RESOURCE_LABELS[item.resourceType]}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={role}
-                  aria-label="Permission"
-                  onChange={(event) => setRole(event.target.value as WorkspaceShareAccessRole)}
-                  className="h-10 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
-                >
-                  {shareRoleOptions(resource?.resourceType ?? 'file').map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </Select>
-              </div>
-
-              {resource && !impact ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void checkAccess()}
-                  className="mt-4 h-10 rounded-lg bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-40"
-                >
-                  Check who can open it
-                </button>
-              ) : null}
-
-              {impact ? (
-                <section
-                  data-testid="attach-resource-impact"
-                  className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
-                >
-                  <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-                    <TriangleAlert size={15} className="text-amber-500" />
-                    {impact.gaining.length === 0
-                      ? 'Everyone in this room can already open it'
-                      : `${impact.gaining.length} ${impact.gaining.length === 1 ? 'participant' : 'participants'} cannot open it yet`}
-                  </div>
-                  {impact.gaining.length > 0 ? (
-                    <ul className="mt-2 space-y-1">
-                      {impact.gaining.map((principal) => (
-                        <li key={principal.principalId} className="flex items-center gap-2 text-xs text-[var(--foreground)]">
-                          {principal.kind === 'agent' ? <Bot size={12} /> : <User size={12} />}
-                          <span className="truncate">{principal.name}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <p className="mt-3 text-[11px] text-[var(--muted)]">
-                    Sharing with the room follows its membership: people and agents added later
-                    inherit the same access until the grant is removed.
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void shareAndPost()}
-                      className="h-9 rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] disabled:opacity-40"
-                    >
-                      Share with this room and post
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void postWithoutAccess()}
-                      className="h-9 rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
-                    >
-                      Post link only
-                    </button>
-                  </div>
-                </section>
-              ) : null}
-            </>
-          )}
+          <AttachResourceBody
+            loading={loading}
+            resources={resources}
+            selected={selected}
+            role={role}
+            resource={resource}
+            impact={impact}
+            busy={busy}
+            onSelectedChange={(value) => { setSelected(value); setImpact(null) }}
+            onRoleChange={setRole}
+            onCheckAccess={checkAccess}
+            onShareAndPost={shareAndPost}
+            onPostWithoutAccess={postWithoutAccess}
+          />
 
           {notice ? <p data-testid="attach-resource-notice" className="mt-4 text-xs text-[var(--muted)]">{notice}</p> : null}
         </div>
@@ -276,7 +196,184 @@ export function AttachResourceDialog({
   )
 }
 
-export function attachableResourceIcon(resourceType: WorkspaceShareResourceType) {
+function AttachResourcePicker({
+  resources,
+  selected,
+  role,
+  resourceType,
+  onSelectedChange,
+  onRoleChange,
+}: {
+  resources: AttachableResource[]
+  selected: string
+  role: WorkspaceShareAccessRole
+  resourceType: WorkspaceShareResourceType
+  onSelectedChange: (value: string) => void
+  onRoleChange: (role: WorkspaceShareAccessRole) => void
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px]">
+      <Select
+        value={selected}
+        aria-label="Resource"
+        onChange={(event) => onSelectedChange(event.target.value)}
+        className="h-10 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+      >
+        <option value="">Choose a resource…</option>
+        {resources.map((item) => (
+          <option key={key(item)} value={key(item)}>
+            {item.title} · {SHARE_RESOURCE_LABELS[item.resourceType]}
+          </option>
+        ))}
+      </Select>
+      <Select
+        value={role}
+        aria-label="Permission"
+        onChange={(event) => onRoleChange(event.target.value as WorkspaceShareAccessRole)}
+        className="h-10 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
+      >
+        {shareRoleOptions(resourceType).map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </Select>
+    </div>
+  )
+}
+
+function ShareImpactSection({
+  impact,
+  busy,
+  onShareAndPost,
+  onPostWithoutAccess,
+}: {
+  impact: WorkspaceShareImpact
+  busy: boolean
+  onShareAndPost: () => Promise<void>
+  onPostWithoutAccess: () => Promise<void>
+}) {
+  return (
+    <section
+      data-testid="attach-resource-impact"
+      className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
+    >
+      <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+        <TriangleAlert size={15} className="text-amber-500" />
+        {impact.gaining.length === 0
+          ? 'Everyone in this room can already open it'
+          : `${impact.gaining.length} ${impact.gaining.length === 1 ? 'participant' : 'participants'} cannot open it yet`}
+      </div>
+      {impact.gaining.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {impact.gaining.map((principal) => (
+            <li key={principal.principalId} className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+              {principal.kind === 'agent' ? <Bot size={12} /> : <User size={12} />}
+              <span className="truncate">{principal.name}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="mt-3 text-[11px] text-[var(--muted)]">
+        Sharing with the room follows its membership: people and agents added later
+        inherit the same access until the grant is removed.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void onShareAndPost()}
+          className="h-9 rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] disabled:opacity-40"
+        >
+          Share with this room and post
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void onPostWithoutAccess()}
+          className="h-9 rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+        >
+          Post link only
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function AttachResourceBody({
+  loading,
+  resources,
+  selected,
+  role,
+  resource,
+  impact,
+  busy,
+  onSelectedChange,
+  onRoleChange,
+  onCheckAccess,
+  onShareAndPost,
+  onPostWithoutAccess,
+}: {
+  loading: boolean
+  resources: AttachableResource[]
+  selected: string
+  role: WorkspaceShareAccessRole
+  resource: AttachableResource | undefined
+  impact: WorkspaceShareImpact | null
+  busy: boolean
+  onSelectedChange: (value: string) => void
+  onRoleChange: (role: WorkspaceShareAccessRole) => void
+  onCheckAccess: () => Promise<void>
+  onShareAndPost: () => Promise<void>
+  onPostWithoutAccess: () => Promise<void>
+}) {
+  if (loading) {
+    return (
+      <div data-testid="attach-resource-loading" className="flex h-20 items-center justify-center text-[var(--muted)]">
+        <Loader2 size={16} className="animate-spin" />
+      </div>
+    )
+  }
+  if (resources.length === 0) {
+    return (
+      <p data-testid="attach-resource-empty" className="text-sm text-[var(--muted)]">
+        You do not manage any files, automations, or agents yet.
+      </p>
+    )
+  }
+  return (
+    <>
+      <AttachResourcePicker
+        resources={resources}
+        selected={selected}
+        role={role}
+        resourceType={resource?.resourceType ?? 'file'}
+        onSelectedChange={onSelectedChange}
+        onRoleChange={onRoleChange}
+      />
+
+      {resource && !impact ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void onCheckAccess()}
+          className="mt-4 h-10 rounded-lg bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-40"
+        >
+          Check who can open it
+        </button>
+      ) : null}
+
+      {impact ? (
+        <ShareImpactSection
+          impact={impact}
+          busy={busy}
+          onShareAndPost={onShareAndPost}
+          onPostWithoutAccess={onPostWithoutAccess}
+        />
+      ) : null}
+    </>
+  )
+}
+
+function attachableResourceIcon(resourceType: WorkspaceShareResourceType) {
   if (resourceType === 'automation') return <Workflow size={13} />
   if (resourceType === 'agent') return <Bot size={13} />
   return <FileText size={13} />

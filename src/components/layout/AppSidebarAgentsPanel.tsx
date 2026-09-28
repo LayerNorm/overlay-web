@@ -1,14 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Archive,
   ArchiveRestore,
   ChevronRight,
   Loader2,
-  User,
-  Users,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarResourceList } from '@overlay/ui/primitives'
@@ -33,91 +30,18 @@ import {
   dispatchChatCreated,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
-import { arrayOrEmpty } from './AppSidebarInlinePanels'
 import {
-  AgentThreadRows,
+  arrayOrEmpty,
   agentThreadHref,
   resourceRowClass,
   type AgentsPanelView,
-} from './AppSidebarAgentThreads'
+} from './sidebar-nav'
+import { AgentThreadRows } from './AppSidebarAgentThreads'
 
-export function AgentsInlinePanel({
-  workspaceId,
-  baseHref = '/app/agents',
-  view = 'personal',
-  onNavigate,
-}: {
-  workspaceId: string | null
-  baseHref?: string
-  view?: AgentsPanelView
-  onNavigate?: () => void
-}) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
-  const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
-  const [archivedThreadAgentIds, setArchivedThreadAgentIds] = useState<Set<string>>(new Set())
-  const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
-  const [loading, setLoading] = useState(true)
-  const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
-  const [openError, setOpenError] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [bundles, setBundles] = useState<Record<string, WorkspaceAgentBundle | 'loading' | 'error'>>({})
-  const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
-  const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
-  const activeConversationId = searchParams?.get('id') ?? null
+type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
-  // Unsaved editor drafts overlay the fetched directory so the row renames and
-  // re-skins while the user types; the override clears on save/cancel/close.
-  const previewedAgents = useMemo(
-    () => agents.map((agent) => {
-      const patch = draftPreviews[agent.id]
-      return patch ? { ...agent, ...patch } : agent
-    }),
-    [agents, draftPreviews],
-  )
-
-  // Tab bucketing: the Archived tab holds archived agents plus live agents
-  // that own archived threads; live agents split into Personal (created by
-  // me) and Workspace (the rest).
-  const tabAgents = useMemo(
-    () => previewedAgents.filter((agent) => {
-      if (view === 'archived') {
-        return Boolean(agent.archivedAt) || archivedThreadAgentIds.has(agent.id)
-      }
-      if (agent.archivedAt) return false
-      return view === 'personal'
-        ? agent.createdByPrincipalId === viewerPrincipalId
-        : agent.createdByPrincipalId !== viewerPrincipalId
-    }),
-    [previewedAgents, view, viewerPrincipalId, archivedThreadAgentIds],
-  )
-
-  // Most recently used first; agents with no recorded use stay alphabetical.
-  const sortedAgents = useMemo(
-    () => sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)),
-    [tabAgents, workspaceId],
-  )
-
-  const loadAgents = useCallback(async (showLoading = true) => {
-    if (!workspaceId) {
-      setAgents([])
-      setViewerPrincipalId(null)
-      setLoading(false)
-      return
-    }
-    if (showLoading) setLoading(true)
-    try {
-      const response = await overlayAppClient.agents.list(workspaceId, { includeArchived: true })
-      setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
-      setViewerPrincipalId(response.viewerPrincipalId ?? null)
-      setArchivedThreadAgentIds(new Set(response.archivedThreadAgentIds ?? []))
-    } catch {
-      setAgents([])
-    } finally {
-      if (showLoading) setLoading(false)
-    }
-  }, [workspaceId])
+function useAgentBundles(workspaceId: string | null) {
+  const [bundles, setBundles] = useState<AgentBundleMap>({})
 
   const loadBundle = useCallback(async (agentId: string) => {
     if (!workspaceId) return
@@ -129,27 +53,6 @@ export function AgentsInlinePanel({
       setBundles((current) => ({ ...current, [agentId]: 'error' }))
     }
   }, [workspaceId])
-
-  useEffect(() => { void loadAgents() }, [loadAgents])
-
-  useEffect(() => {
-    setOpenError(null)
-  }, [workspaceId])
-
-  useEffect(() => {
-    const refreshAgents = (event: Event) => {
-      const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
-      if (changedWorkspaceId && changedWorkspaceId !== workspaceId) return
-      void loadAgents(false)
-      // Agent lifecycle events (rename/archive/restore) can change what the
-      // expanded bundles contain — refetch them rather than diffing.
-      for (const agentId of Object.keys(bundles)) {
-        if (expanded.has(agentId)) void loadBundle(agentId)
-      }
-    }
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-  }, [bundles, expanded, loadAgents, loadBundle, workspaceId])
 
   // A first-message rename applies the generated title to the thread row it
   // belongs to without refetching the whole bundle.
@@ -178,12 +81,93 @@ export function AgentsInlinePanel({
     return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
   }, [])
 
+  return { bundles, setBundles, loadBundle }
+}
+
+function useExpandedAgents({
+  activeAgentId,
+  bundles,
+  loadBundle,
+}: {
+  activeAgentId: string | null
+  bundles: AgentBundleMap
+  loadBundle: (agentId: string) => Promise<void>
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
   // The agent in the URL stays expanded so its threads remain in view.
-  useEffect(() => {
-    if (!activeAgentId || expanded.has(activeAgentId)) return
+  if (activeAgentId && !expanded.has(activeAgentId)) {
     setExpanded((current) => new Set(current).add(activeAgentId))
-    if (!(activeAgentId in bundles)) void loadBundle(activeAgentId)
-  }, [activeAgentId, bundles, expanded, loadBundle])
+  }
+  useEffect(() => {
+    if (!activeAgentId || !(activeAgentId in bundles)) return
+    void loadBundle(activeAgentId)
+  }, [activeAgentId, bundles, loadBundle])
+
+  const toggleExpanded = useCallback((agentId: string) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (next.has(agentId)) next.delete(agentId)
+      else next.add(agentId)
+      return next
+    })
+    if (!(agentId in bundles)) void loadBundle(agentId)
+  }, [bundles, loadBundle])
+
+  return { expanded, toggleExpanded }
+}
+
+function useAgentDirectory(
+  workspaceId: string | null,
+  expanded: Set<string>,
+  loadBundle: (agentId: string) => Promise<void>,
+  setBundles: Dispatch<SetStateAction<AgentBundleMap>>,
+) {
+  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
+  const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
+  const [archivedThreadAgentIds, setArchivedThreadAgentIds] = useState<Set<string>>(new Set())
+  const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
+  const [loading, setLoading] = useState(true)
+
+  const loadAgents = useCallback(async (showLoading = true) => {
+    if (!workspaceId) {
+      setAgents([])
+      setViewerPrincipalId(null)
+      setLoading(false)
+      return
+    }
+    if (showLoading) setLoading(true)
+    try {
+      const response = await overlayAppClient.agents.list(workspaceId, { includeArchived: true })
+      setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
+      setViewerPrincipalId(response.viewerPrincipalId ?? null)
+      setArchivedThreadAgentIds(new Set(response.archivedThreadAgentIds ?? []))
+    } catch {
+      setAgents([])
+    } finally {
+      if (showLoading) setLoading(false)
+    }
+  }, [workspaceId])
+
+  useEffect(() => { void loadAgents() }, [loadAgents])
+
+  useEffect(() => {
+    const refreshAgents = (event: Event) => {
+      const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
+      if (changedWorkspaceId && changedWorkspaceId !== workspaceId) return
+      void loadAgents(false)
+      // Agent lifecycle events (rename/archive/restore) can change what the
+      // expanded bundles contain — refetch them rather than diffing.
+      setBundles((current) => {
+        for (const agentId of Object.keys(current)) {
+          if (expanded.has(agentId)) void loadBundle(agentId)
+        }
+        return current
+      })
+    }
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
+    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
+  }, [expanded, loadAgents, loadBundle, setBundles, workspaceId])
 
   useEffect(() => {
     setDraftPreviews({})
@@ -201,15 +185,40 @@ export function AgentsInlinePanel({
     return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
   }, [workspaceId])
 
-  const toggleExpanded = useCallback((agentId: string) => {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (next.has(agentId)) next.delete(agentId)
-      else next.add(agentId)
-      return next
-    })
-    if (!(agentId in bundles)) void loadBundle(agentId)
-  }, [bundles, loadBundle])
+  return { agents, viewerPrincipalId, archivedThreadAgentIds, setArchivedThreadAgentIds, draftPreviews, loading }
+}
+
+function useAgentActions({
+  workspaceId,
+  baseHref,
+  onNavigate,
+  bundles,
+  setBundles,
+  loadBundle,
+  activeAgentId,
+  activeConversationId,
+  sortedAgents,
+  setArchivedThreadAgentIds,
+}: {
+  workspaceId: string | null
+  baseHref: string
+  onNavigate?: () => void
+  bundles: AgentBundleMap
+  setBundles: Dispatch<SetStateAction<AgentBundleMap>>
+  loadBundle: (agentId: string) => Promise<void>
+  activeAgentId: string | null
+  activeConversationId: string | null
+  sortedAgents: WorkspaceAgentDirectoryItem[]
+  setArchivedThreadAgentIds: Dispatch<SetStateAction<Set<string>>>
+}) {
+  const router = useRouter()
+  const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
+  const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    setOpenError(null)
+  }, [workspaceId])
 
   const openAgent = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -278,7 +287,7 @@ export function AgentsInlinePanel({
     } finally {
       setCreatingThreadFor(null)
     }
-  }, [baseHref, creatingThreadFor, onNavigate, router, workspaceId])
+  }, [baseHref, creatingThreadFor, onNavigate, router, setBundles, workspaceId])
 
   const archiveThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -320,7 +329,7 @@ export function AgentsInlinePanel({
     } catch {
       void loadBundle(agent.id)
     }
-  }, [bundles, loadBundle, workspaceId])
+  }, [bundles, loadBundle, setArchivedThreadAgentIds, setBundles, workspaceId])
 
   const deleteThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -374,7 +383,7 @@ export function AgentsInlinePanel({
     } catch {
       void loadBundle(agent.id)
     }
-  }, [activeConversationId, baseHref, bundles, loadBundle, router, workspaceId])
+  }, [activeConversationId, baseHref, bundles, loadBundle, router, setArchivedThreadAgentIds, setBundles, workspaceId])
 
   const restoreAgent = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
     if (!workspaceId) return
@@ -385,16 +394,6 @@ export function AgentsInlinePanel({
       setOpenError(`Could not restore ${agent.name}. Check your connection and retry.`)
     }
   }, [workspaceId])
-
-  // Remember agents opened through direct links or refreshes so recency
-  // ordering covers every entry path. Initial conversation selection lives
-  // in AgentConversationWorkspace (single owner); the sidebar only opens on
-  // explicit clicks.
-  useEffect(() => {
-    if (activeAgentId && sortedAgents.some((agent) => agent.id === activeAgentId)) {
-      rememberAgentOpened(workspaceId, activeAgentId)
-    }
-  }, [activeAgentId, sortedAgents, workspaceId])
 
   const openAgentById = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -417,6 +416,213 @@ export function AgentsInlinePanel({
     void openAgentById(targetAgent, 'replace')
   }, [activeAgentId, openAgentById, sortedAgents, workspaceId])
 
+  return {
+    openingAgentId,
+    openError,
+    creatingThreadFor,
+    openAgentById,
+    openThread,
+    createThread,
+    archiveThread,
+    deleteThread,
+    restoreAgent,
+    retryOpen,
+  }
+}
+
+function AgentListRow({
+  agent,
+  view,
+  isExpanded,
+  isActive,
+  anyOpening,
+  isOpening,
+  bundle,
+  activeConversationId,
+  creatingThread,
+  onToggleExpanded,
+  onOpenAgent,
+  onRestoreAgent,
+  onOpenThread,
+  onCreateThread,
+  onArchiveThread,
+  onDeleteThread,
+}: {
+  agent: WorkspaceAgentDirectoryItem
+  view: AgentsPanelView
+  isExpanded: boolean
+  isActive: boolean
+  anyOpening: boolean
+  isOpening: boolean
+  bundle: WorkspaceAgentBundle | 'loading' | 'error'
+  activeConversationId: string | null
+  creatingThread: boolean
+  onToggleExpanded: (agentId: string) => void
+  onOpenAgent: (agent: WorkspaceAgentDirectoryItem) => void
+  onRestoreAgent: (agent: WorkspaceAgentDirectoryItem) => void
+  onOpenThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
+  onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
+  onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
+  onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
+}) {
+  return (
+    <div>
+      <div className="group/agent relative">
+        <button
+          type="button"
+          disabled={anyOpening}
+          className={`${resourceRowClass} pr-7 ${isActive ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+          onClick={() => {
+            if (!isExpanded) onToggleExpanded(agent.id)
+            onOpenAgent(agent)
+          }}
+        >
+          {isOpening
+            ? <Loader2 size={13} className="shrink-0 animate-spin" />
+            : <AgentCreature agent={agent} size={16} />}
+          <span className="truncate">{agent.name}</span>
+        </button>
+        <span className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+          {view === 'archived' && agent.archivedAt ? (
+            <button
+              type="button"
+              aria-label={`Restore ${agent.name}`}
+              title={`Restore ${agent.name}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onRestoreAgent(agent)
+              }}
+              className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            >
+              <ArchiveRestore size={12} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
+            aria-expanded={isExpanded}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleExpanded(agent.id)
+            }}
+            className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          >
+            <ChevronRight
+              size={12}
+              className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+            />
+          </button>
+        </span>
+      </div>
+      {isExpanded ? (
+        <AgentThreadRows
+          agent={agent}
+          bundle={bundle}
+          view={view}
+          activeConversationId={activeConversationId}
+          onOpenThread={onOpenThread}
+          onCreateThread={onCreateThread}
+          onArchiveThread={onArchiveThread}
+          onDeleteThread={onDeleteThread}
+          creatingThread={creatingThread}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+export function AgentsInlinePanel({
+  workspaceId,
+  baseHref = '/app/agents',
+  view = 'personal',
+  onNavigate,
+}: {
+  workspaceId: string | null
+  baseHref?: string
+  view?: AgentsPanelView
+  onNavigate?: () => void
+}) {
+  const searchParams = useSearchParams()
+  const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
+  const activeConversationId = searchParams?.get('id') ?? null
+
+  const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
+  const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
+  const {
+    agents,
+    viewerPrincipalId,
+    archivedThreadAgentIds,
+    setArchivedThreadAgentIds,
+    draftPreviews,
+    loading,
+  } = useAgentDirectory(workspaceId, expanded, loadBundle, setBundles)
+
+  // Unsaved editor drafts overlay the fetched directory so the row renames and
+  // re-skins while the user types; the override clears on save/cancel/close.
+  const previewedAgents = useMemo(
+    () => agents.map((agent) => {
+      const patch = draftPreviews[agent.id]
+      return patch ? { ...agent, ...patch } : agent
+    }),
+    [agents, draftPreviews],
+  )
+
+  // Tab bucketing: the Archived tab holds archived agents plus live agents
+  // that own archived threads; live agents split into Personal (created by
+  // me) and Workspace (the rest).
+  const tabAgents = useMemo(
+    () => previewedAgents.filter((agent) => {
+      if (view === 'archived') {
+        return Boolean(agent.archivedAt) || archivedThreadAgentIds.has(agent.id)
+      }
+      if (agent.archivedAt) return false
+      return view === 'personal'
+        ? agent.createdByPrincipalId === viewerPrincipalId
+        : agent.createdByPrincipalId !== viewerPrincipalId
+    }),
+    [previewedAgents, view, viewerPrincipalId, archivedThreadAgentIds],
+  )
+
+  // Most recently used first; agents with no recorded use stay alphabetical.
+  const sortedAgents = useMemo(
+    () => sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)),
+    [tabAgents, workspaceId],
+  )
+
+  const {
+    openingAgentId,
+    openError,
+    creatingThreadFor,
+    openAgentById,
+    openThread,
+    createThread,
+    archiveThread,
+    deleteThread,
+    restoreAgent,
+    retryOpen,
+  } = useAgentActions({
+    workspaceId,
+    baseHref,
+    onNavigate,
+    bundles,
+    setBundles,
+    loadBundle,
+    activeAgentId,
+    activeConversationId,
+    sortedAgents,
+    setArchivedThreadAgentIds,
+  })
+
+  // Remember agents opened through direct links or refreshes so recency
+  // ordering covers every entry path. Initial conversation selection lives
+  // in AgentConversationWorkspace (single owner); the sidebar only opens on
+  // explicit clicks.
+  useEffect(() => {
+    if (activeAgentId && sortedAgents.some((agent) => agent.id === activeAgentId)) {
+      rememberAgentOpened(workspaceId, activeAgentId)
+    }
+  }, [activeAgentId, sortedAgents, workspaceId])
+
   return (
     <SidebarResourceList>
       {loading ? (
@@ -427,72 +633,29 @@ export function AgentsInlinePanel({
         sortedAgents.map((agent) => {
           const isExpanded = expanded.has(agent.id)
           return (
-            <div key={agent.id}>
-              <div className="group/agent relative">
-                <button
-                  type="button"
-                  disabled={Boolean(openingAgentId)}
-                  className={`${resourceRowClass} pr-7 ${activeAgentId === agent.id && !activeConversationId ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-                  onClick={() => {
-                    if (!isExpanded) toggleExpanded(agent.id)
-                    void openAgentById(agent)
-                  }}
-                >
-                  {openingAgentId === agent.id
-                    ? <Loader2 size={13} className="shrink-0 animate-spin" />
-                    : <AgentCreature agent={agent} size={16} />}
-                  <span className="truncate">{agent.name}</span>
-                </button>
-                <span className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-                  {view === 'archived' && agent.archivedAt ? (
-                    <button
-                      type="button"
-                      aria-label={`Restore ${agent.name}`}
-                      title={`Restore ${agent.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        void restoreAgent(agent)
-                      }}
-                      className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                    >
-                      <ArchiveRestore size={12} />
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
-                    aria-expanded={isExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      toggleExpanded(agent.id)
-                    }}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <ChevronRight
-                      size={12}
-                      className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                    />
-                  </button>
-                </span>
-              </div>
-              {isExpanded ? (
-                <AgentThreadRows
-                  agent={agent}
-                  bundle={bundles[agent.id] ?? 'loading'}
-                  view={view}
-                  activeConversationId={activeConversationId}
-                  onOpenThread={openThread}
-                  onCreateThread={(target) => void createThread(target)}
-                  onArchiveThread={(target, conversationId, archived) => {
-                    void archiveThread(target, conversationId, archived)
-                  }}
-                  onDeleteThread={(target, conversationId) => {
-                    void deleteThread(target, conversationId)
-                  }}
-                  creatingThread={creatingThreadFor === agent.id}
-                />
-              ) : null}
-            </div>
+            <AgentListRow
+              key={agent.id}
+              agent={agent}
+              view={view}
+              isExpanded={isExpanded}
+              isActive={activeAgentId === agent.id && !activeConversationId}
+              anyOpening={Boolean(openingAgentId)}
+              isOpening={openingAgentId === agent.id}
+              bundle={bundles[agent.id] ?? 'loading'}
+              activeConversationId={activeConversationId}
+              creatingThread={creatingThreadFor === agent.id}
+              onToggleExpanded={toggleExpanded}
+              onOpenAgent={(target) => void openAgentById(target)}
+              onRestoreAgent={(target) => void restoreAgent(target)}
+              onOpenThread={openThread}
+              onCreateThread={(target) => void createThread(target)}
+              onArchiveThread={(target, conversationId, archived) => {
+                void archiveThread(target, conversationId, archived)
+              }}
+              onDeleteThread={(target, conversationId) => {
+                void deleteThread(target, conversationId)
+              }}
+            />
           )
         })
       ) : (
@@ -515,10 +678,3 @@ export function AgentsInlinePanel({
     </SidebarResourceList>
   )
 }
-
-export const agentsInlineItems = [
-  { id: 'personal', label: 'Personal', icon: User },
-  { id: 'workspace', label: 'Workspace', icon: Users },
-  { id: 'archived', label: 'Archived', icon: Archive },
-] as const
-

@@ -141,66 +141,39 @@ function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChat
   return true
 }
 
-function TextChatMessage(props: TextChatMessageProps) {
-  recordRender('TextChatMessage')
+function resolveStreamSelection(props: TextChatMessageProps) {
   const {
-    message,
     exchangeIndex,
-    primaryMessages,
-    latestExchangeIndex,
-    actChat,
     chatInstances,
     exchangeModes,
     exchangeModels,
     selectedTabPerExchange,
     selectedModels,
-    isActiveLoading,
-    isOptimisticLoading,
-    interruptedExchangeIdx,
-    exitingTurnIds,
-    sourcesPanel,
   } = props
   const modelList = exchangeModels[exchangeIndex] ?? []
   const selectedTab = selectedTabPerExchange[exchangeIndex] ?? 0
   const selectedModelId = modelList[selectedTab] ?? selectedModels[0] ?? ''
-  const isLatest = exchangeIndex === latestExchangeIndex
   const isActExchange = (exchangeModes[exchangeIndex] ?? 'ask') === 'act'
   const isMultiAct = isActExchange && modelList.length > 1
   const streamSlotIndex = !selectedModelId ? -1 : isMultiAct ? modelList.indexOf(selectedModelId) : isActExchange ? -1 : selectedModels.indexOf(selectedModelId)
   const slotInstance = streamSlotIndex >= 0 ? chatInstances[streamSlotIndex] : null
-  const initialResponseMsg = props.getResponseForExchangeForModel(selectedModelId, exchangeIndex, isMultiAct ? modelList : undefined)
-  const actResponseMsg = isActExchange && !isMultiAct
+  return { modelList, selectedTab, selectedModelId, isActExchange, isMultiAct, streamSlotIndex, slotInstance }
+}
+
+type StreamSelection = ReturnType<typeof resolveStreamSelection>
+
+function resolveExchangeResponse(props: TextChatMessageProps, selection: StreamSelection) {
+  const { message, exchangeIndex, latestExchangeIndex, primaryMessages, actChat } = props
+  const isLatest = exchangeIndex === latestExchangeIndex
+  const initialResponseMsg = props.getResponseForExchangeForModel(selection.selectedModelId, exchangeIndex, selection.isMultiAct ? selection.modelList : undefined)
+  const actResponseMsg = selection.isActExchange && !selection.isMultiAct
     ? resolveActAssistant(primaryMessages, actChat.messages, message.id)
     : null
-  const responseMsg = (isActExchange && !isMultiAct
+  const responseMsg = (selection.isActExchange && !selection.isMultiAct
     ? (isLatest ? (actResponseMsg ?? initialResponseMsg) : (initialResponseMsg ?? actResponseMsg))
     : initialResponseMsg) as UIMessage | null
   const responseText = responseMsg ? getMessageText(responseMsg) : ''
-
-  const multiActInstance = streamSlotIndex >= 0 ? chatInstances[streamSlotIndex] : null
   const persistedStatus = (responseMsg as { status?: 'generating' | 'completed' | 'error' } | null)?.status
-  const activeHttpLoading = isLatest && (
-    (isActExchange
-      ? (isMultiAct
-          ? (multiActInstance?.status === 'streaming' || multiActInstance?.status === 'submitted')
-          : (actChat.status === 'streaming' || actChat.status === 'submitted'))
-      : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
-    isOptimisticLoading ||
-    (isActExchange && isActiveLoading && persistedStatus !== 'completed')
-  )
-  const instLoading = activeHttpLoading
-  const persistedErrorText = persistedStatus === 'error'
-    ? persistedGenerationErrorMessage(responseText)
-    : 'Generation failed'
-  const instError = isLatest
-    ? persistedStatus === 'error'
-      ? new Error(persistedErrorText)
-      : isActExchange
-        ? isMultiAct && streamSlotIndex >= 0
-          ? chatInstances[streamSlotIndex]?.error ?? null
-          : isMultiAct ? null : actChat.error
-        : slotInstance?.error ?? null
-    : null
   const responseParts = responseMsg && Array.isArray((responseMsg as { parts?: unknown[] }).parts)
     ? (responseMsg as { parts: unknown[] }).parts
     : undefined
@@ -214,95 +187,211 @@ function TextChatMessage(props: TextChatMessageProps) {
     && responseTimestamps.updatedAt > responseTimestamps.createdAt
     ? responseTimestamps.updatedAt - responseTimestamps.createdAt
     : null
-  const normalizedAssistant = (() => {
-    if (persistedStatus === 'error' && looksLikeStoredGenerationError(responseText)) {
-      return { blocks: [], sources: [] }
-    }
-    const terminalState = persistedStatus === 'completed'
-      ? 'completed'
-      : persistedStatus === 'error'
+  return { isLatest, responseMsg, responseText, persistedStatus, responseParts, responseMessageId, workedDurationMs }
+}
+
+type ExchangeResponse = ReturnType<typeof resolveExchangeResponse>
+
+function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSelection, response: ExchangeResponse) {
+  const { actChat, chatInstances, isActiveLoading, isOptimisticLoading } = props
+  const { isActExchange, isMultiAct, streamSlotIndex, slotInstance } = selection
+  const { isLatest, persistedStatus, responseText } = response
+  const activeHttpLoading = isLatest && (
+    (isActExchange
+      ? (isMultiAct
+          ? (slotInstance?.status === 'streaming' || slotInstance?.status === 'submitted')
+          : (actChat.status === 'streaming' || actChat.status === 'submitted'))
+      : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
+    isOptimisticLoading ||
+    (isActExchange && isActiveLoading && persistedStatus !== 'completed')
+  )
+  const persistedErrorText = persistedStatus === 'error'
+    ? persistedGenerationErrorMessage(responseText)
+    : 'Generation failed'
+  const instError = isLatest
+    ? persistedStatus === 'error'
+      ? new Error(persistedErrorText)
+      : isActExchange
+        ? isMultiAct && streamSlotIndex >= 0
+          ? chatInstances[streamSlotIndex]?.error ?? null
+          : isMultiAct ? null : actChat.error
+        : slotInstance?.error ?? null
+    : null
+  return { instLoading: activeHttpLoading, instError }
+}
+
+function buildNormalizedAssistant({
+  persistedStatus,
+  responseText,
+  responseParts,
+  status,
+}: {
+  persistedStatus: 'generating' | 'completed' | 'error' | undefined
+  responseText: string
+  responseParts: unknown[] | undefined
+  status: ChatExchangeStatus
+}) {
+  if (persistedStatus === 'error' && looksLikeStoredGenerationError(responseText)) {
+    return { blocks: [], sources: [] }
+  }
+  const terminalState = persistedStatus === 'completed'
+    ? 'completed'
+    : persistedStatus === 'error'
+      ? 'error'
+      : status === 'completed'
+        ? 'completed'
+        : status === 'error'
         ? 'error'
-        : props.status === 'completed'
-          ? 'completed'
-          : props.status === 'error'
-        ? 'error'
-        : props.status === 'cancelled'
+        : status === 'cancelled'
           ? 'cancelled'
-          : props.status === 'interrupted'
+          : status === 'interrupted'
             ? 'interrupted'
             : undefined
-    const normalized = normalizeTranscriptAssistantParts(responseParts, terminalState ? { terminalState } : undefined)
-    const blocks = normalized.blocks
-    if (blocks.length === 0 && responseText.trim()) {
-      return {
-        blocks: [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }],
-        sources: normalized.sources,
-      }
+  const normalized = normalizeTranscriptAssistantParts(responseParts, terminalState ? { terminalState } : undefined)
+  const blocks = normalized.blocks
+  if (blocks.length === 0 && responseText.trim()) {
+    return {
+      blocks: [{ kind: 'text' as const, text: normalizeAgentAssistantText(responseText) }],
+      sources: normalized.sources,
     }
-    return normalized
-  })()
-  const assistantVisualBlocks = normalizedAssistant.blocks
-  const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
-  const hasAssistantActivity = assistantVisualBlocks.length > 0
-  const isStreaming = activeHttpLoading && hasAssistantActivity
-  const isTextStreaming = activeHttpLoading && hasAssistantText
-  const rawUserText = getMessageText(message)
-  const metaDocs = getUserMessageDocNames(message)
-  const { bodyText, docNames: parsedDocNames } = splitUserDisplayText(rawUserText)
+  }
+  return normalized
+}
+
+function resolveTurnReplyState(
+  props: TextChatMessageProps,
+  instError: Error | null | undefined,
+  assistantPlainForReply: string,
+) {
+  const { message, exitingTurnIds, interruptedExchangeIdx, exchangeIndex } = props
   const turnId = getUserTurnId(message)
   const isExiting = !!turnId && exitingTurnIds.includes(turnId)
-  const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
   const errLabelForTurn = errorLabel(instError)
   const interruptedHere = interruptedExchangeIdx === exchangeIndex && !errLabelForTurn
   const replyPlain = interruptedHere && assistantPlainForReply.trim()
     ? `${assistantPlainForReply}\n\nResponse was interrupted.`
     : interruptedHere ? 'Response was interrupted.' : assistantPlainForReply
+  return { turnId, isExiting, errLabelForTurn, interruptedHere, replyPlain }
+}
+
+function resolveModelLabel(responseMsg: UIMessage | null, selectedModelId: string, modelList: string[]): string {
   const routedModelId = responseMsg ? getRoutedModelId(responseMsg) : null
   const routedModelName = selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelId ? getChatModelDisplayName(routedModelId) : null
   const modelLabelSingle = selectedModelId === FREE_TIER_AUTO_MODEL_ID && routedModelName ? `Free · ${routedModelName}` : getChatModelDisplayName(selectedModelId)
+  return modelList.length > 1 ? `${modelLabelSingle} · ${modelList.length} models` : modelLabelSingle
+}
+
+function resolveUserDisplayParts(message: UIMessage) {
+  const rawUserText = getMessageText(message)
+  const metaDocs = getUserMessageDocNames(message)
+  const { bodyText, docNames: parsedDocNames } = splitUserDisplayText(rawUserText)
+  return {
+    userBodyText: metaDocs.length > 0 ? rawUserText.trim() : bodyText,
+    userDocumentNames: metaDocs.length > 0 ? metaDocs : parsedDocNames,
+    userIndexedAttachments: (message as { metadata?: { indexedAttachments?: { name: string; fileIds: string[] }[] } }).metadata?.indexedAttachments ?? [],
+    userImages: getMessageImageAttachments(message),
+    userMentions: (message as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } }).metadata?.mentions,
+    replyThreadMeta: getUserReplyThreadMeta(message),
+  }
+}
+
+function computeSourcesOpen(sourcesPanel: { turnId: string } | null, turnId: string | null | undefined, messageId: string): boolean {
+  return !!sourcesPanel && sourcesPanel.turnId === (turnId ?? messageId)
+}
+
+function computeRetryDisabled({
+  turnId,
+  isExiting,
+  isLatest,
+  isActiveLoading,
+  instLoading,
+}: {
+  turnId: string | null | undefined
+  isExiting: boolean
+  isLatest: boolean
+  isActiveLoading: boolean
+  instLoading: boolean
+}): boolean {
+  return !turnId || isExiting || (isLatest && isActiveLoading) || instLoading
+}
+
+const CONTINUE_PROMPTS = ['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const
+
+function resolveContinueHandler(assistantPlainForReply: string, onContinue: () => void): (() => void) | undefined {
+  return CONTINUE_PROMPTS.some((s) => assistantPlainForReply.includes(s)) ? onContinue : undefined
+}
+
+function TextChatMessage(props: TextChatMessageProps) {
+  recordRender('TextChatMessage')
+  const { message, exchangeIndex } = props
+  const selection = resolveStreamSelection(props)
+  const response = resolveExchangeResponse(props, selection)
+  const { instLoading, instError } = resolveStreamLoadState(props, selection, response)
+  const normalizedAssistant = buildNormalizedAssistant({
+    persistedStatus: response.persistedStatus,
+    responseText: response.responseText,
+    responseParts: response.responseParts,
+    status: props.status,
+  })
+  const assistantVisualBlocks = normalizedAssistant.blocks
+  const hasAssistantText = assistantVisualBlocks.some((block) => block.kind === 'text' && block.text.trim().length > 0)
+  const hasAssistantActivity = assistantVisualBlocks.length > 0
+  const isStreaming = instLoading && hasAssistantActivity
+  const isTextStreaming = instLoading && hasAssistantText
+  const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
+  const turn = resolveTurnReplyState(props, instError, assistantPlainForReply)
+  const modelLabel = resolveModelLabel(response.responseMsg, selection.selectedModelId, selection.modelList)
+  const userDisplay = resolveUserDisplayParts(message)
+  const responseMessageId = response.responseMessageId
 
   return (
     <ChatToolSurface
       userMsgId={message.id}
-      userBodyText={metaDocs.length > 0 ? rawUserText.trim() : bodyText}
-      userDocumentNames={metaDocs.length > 0 ? metaDocs : parsedDocNames}
-      userIndexedAttachments={(message as { metadata?: { indexedAttachments?: { name: string; fileIds: string[] }[] } }).metadata?.indexedAttachments ?? []}
-      userImages={getMessageImageAttachments(message)}
+      userBodyText={userDisplay.userBodyText}
+      userDocumentNames={userDisplay.userDocumentNames}
+      userIndexedAttachments={userDisplay.userIndexedAttachments}
+      userImages={userDisplay.userImages}
       exchIdx={exchangeIndex}
-      responseModelId={selectedModelId}
+      responseModelId={selection.selectedModelId}
       assistantVisualBlocks={assistantVisualBlocks}
       responseSources={normalizedAssistant.sources}
       isStreaming={isStreaming}
       isTextStreaming={isTextStreaming}
-      workedDurationMs={workedDurationMs}
-      errorMessage={errLabelForTurn}
-      exchModelList={modelList}
-      selectedTab={selectedTab}
+      workedDurationMs={response.workedDurationMs}
+      errorMessage={turn.errLabelForTurn}
+      exchModelList={selection.modelList}
+      selectedTab={selection.selectedTab}
       onTabSelect={(tabIndex) => props.onTabSelect(exchangeIndex, tabIndex)}
       isLoadingTabs={false}
       responseInProgress={instLoading}
       status={props.status}
-      sourceCitations={(responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined)?.metadata?.sourceCitations}
-      turnIdForActions={turnId}
-      modelLabel={modelList.length > 1 ? `${modelLabelSingle} · ${modelList.length} models` : modelLabelSingle}
-      onDeleteTurn={() => turnId && props.onDeleteTurn(turnId)}
-      onReply={() => props.onReplyToAssistantText(replyPlain, turnId)}
-      onBranch={() => props.onBranch(turnId)}
-      interrupted={interruptedHere}
-      actionsLocked={isLatest && isActiveLoading}
-      isExiting={isExiting}
-      replyThreadMeta={getUserReplyThreadMeta(message)}
+      sourceCitations={(response.responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined)?.metadata?.sourceCitations}
+      turnIdForActions={turn.turnId}
+      modelLabel={modelLabel}
+      onDeleteTurn={() => turn.turnId && props.onDeleteTurn(turn.turnId)}
+      onReply={() => props.onReplyToAssistantText(turn.replyPlain, turn.turnId)}
+      onBranch={() => props.onBranch(turn.turnId)}
+      interrupted={turn.interruptedHere}
+      actionsLocked={response.isLatest && props.isActiveLoading}
+      isExiting={turn.isExiting}
+      replyThreadMeta={userDisplay.replyThreadMeta}
       onJumpToReply={props.onJumpToReply}
       onOpenDraft={props.onOpenDraft}
       onCreateAutomationDraft={props.onCreateAutomationDraft}
       onOpenSources={props.onOpenSources}
-      isSourcesOpenForThis={!!sourcesPanel && sourcesPanel.turnId === (turnId ?? message.id)}
-      onRetry={() => props.onRetry(message, exchangeIndex, isActExchange, modelList)}
-      retryDisabled={!turnId || isExiting || (isLatest && isActiveLoading) || instLoading}
+      isSourcesOpenForThis={computeSourcesOpen(props.sourcesPanel, turn.turnId, message.id)}
+      onRetry={() => props.onRetry(message, exchangeIndex, selection.isActExchange, selection.modelList)}
+      retryDisabled={computeRetryDisabled({
+        turnId: turn.turnId,
+        isExiting: turn.isExiting,
+        isLatest: response.isLatest,
+        isActiveLoading: props.isActiveLoading,
+        instLoading,
+      })}
       onOpenFilePreview={props.onOpenFilePreview}
       onOpenAttachmentPreview={props.onOpenAttachmentPreview}
-      userMentions={(message as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } }).metadata?.mentions}
-      onContinue={(['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const).some((s) => assistantPlainForReply.includes(s)) ? props.onContinue : undefined}
+      userMentions={userDisplay.userMentions}
+      onContinue={resolveContinueHandler(assistantPlainForReply, props.onContinue)}
       getModelDisplayName={getChatModelDisplayName}
       onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
       generatedUiConnectorActions={props.generatedUiConnectorActions}

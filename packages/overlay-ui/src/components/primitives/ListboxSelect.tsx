@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '../../utils/cn'
@@ -43,13 +43,97 @@ export function ListboxSelect<T extends string>({
   portal = true,
 }: ListboxSelectProps<T>) {
   const [open, setOpen] = useState(false)
-  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null)
+  const [menuPosition, setMenuPosition] = useState<ListboxMenuPosition | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const selected = options.find((option) => option.value === value)?.label ?? value
 
+  useListboxDismiss(open, rootRef, menuRef, setOpen)
+  useListboxMenuPosition(open, portal, buttonRef, menuRef, setMenuPosition)
+
+  const groupedOptions = groupListboxOptions(options)
+
+  const menu = open ? (
+    <ListboxMenu
+      menuRef={menuRef}
+      portal={portal}
+      menuPosition={menuPosition}
+      menuClassName={menuClassName}
+      groupedOptions={groupedOptions}
+      value={value}
+      onSelect={(optionValue) => {
+        onChange(optionValue)
+        setOpen(false)
+      }}
+    />
+  ) : null
+
+  return (
+    <div ref={rootRef} className={cn('relative min-w-0', className)}>
+      {name ? <input type="hidden" name={name} value={value} /> : null}
+      <button
+        ref={buttonRef}
+        id={id}
+        type="button"
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => {
+          if (disabled) return
+          setMenuPosition(null)
+          setOpen((current) => !current)
+        }}
+        className={cn(
+          'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
+          disabled
+            ? 'cursor-not-allowed text-[var(--muted-light)]'
+            : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]',
+          buttonClassName,
+        )}
+      >
+        <span className="min-w-0 truncate">{selected}</span>
+        <ChevronDown size={11} className={cn('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
+      </button>
+      {!portal ? menu : null}
+      {portal && menu && typeof document !== 'undefined' ? createPortal(menu, document.body) : null}
+    </div>
+  )
+}
+
+interface ListboxMenuPosition {
+  left: number
+  top: number
+  width: number
+  maxHeight: number
+}
+
+interface ListboxOptionGroup<T extends string> {
+  group?: string
+  options: ListboxOption<T>[]
+}
+
+function groupListboxOptions<T extends string>(options: ListboxOption<T>[]) {
+  return options.reduce<ListboxOptionGroup<T>[]>((groups, option) => {
+    const last = groups.at(-1)
+    if (last && last.group === option.group) {
+      last.options.push(option)
+    } else {
+      groups.push({ group: option.group, options: [option] })
+    }
+    return groups
+  }, [])
+}
+
+function useListboxDismiss(
+  open: boolean,
+  rootRef: RefObject<HTMLDivElement | null>,
+  menuRef: RefObject<HTMLDivElement | null>,
+  setOpen: (open: boolean) => void,
+) {
   useEffect(() => {
     if (!open) return
     function handlePointerDown(event: MouseEvent) {
@@ -66,8 +150,16 @@ export function ListboxSelect<T extends string>({
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [open])
+  }, [open, rootRef, menuRef, setOpen])
+}
 
+function useListboxMenuPosition(
+  open: boolean,
+  portal: boolean,
+  buttonRef: RefObject<HTMLButtonElement | null>,
+  menuRef: RefObject<HTMLDivElement | null>,
+  setMenuPosition: (position: ListboxMenuPosition | null) => void,
+) {
   useLayoutEffect(() => {
     if (!open || !portal) return
     function updateMenuPosition() {
@@ -98,19 +190,29 @@ export function ListboxSelect<T extends string>({
       window.removeEventListener('resize', updateMenuPosition)
       window.removeEventListener('scroll', updateMenuPosition, true)
     }
-  }, [open, portal])
+  }, [open, portal, buttonRef, menuRef, setMenuPosition])
+}
 
-  const groupedOptions = options.reduce<Array<{ group?: string; options: ListboxOption<T>[] }>>((groups, option) => {
-    const last = groups.at(-1)
-    if (last && last.group === option.group) {
-      last.options.push(option)
-    } else {
-      groups.push({ group: option.group, options: [option] })
-    }
-    return groups
-  }, [])
+interface ListboxMenuProps<T extends string> {
+  menuRef: RefObject<HTMLDivElement | null>
+  portal: boolean
+  menuPosition: ListboxMenuPosition | null
+  menuClassName?: string
+  groupedOptions: ListboxOptionGroup<T>[]
+  value: T
+  onSelect: (value: T) => void
+}
 
-  const menu = open ? (
+function ListboxMenu<T extends string>({
+  menuRef,
+  portal,
+  menuPosition,
+  menuClassName,
+  groupedOptions,
+  value,
+  onSelect,
+}: ListboxMenuProps<T>) {
+  return (
     <div
       ref={menuRef}
       className={cn(
@@ -148,10 +250,7 @@ export function ListboxSelect<T extends string>({
                     ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]'
                     : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]',
                 )}
-                onClick={() => {
-                  onChange(option.value)
-                  setOpen(false)
-                }}
+                onClick={() => onSelect(option.value)}
               >
                 {option.label}
               </button>
@@ -159,39 +258,6 @@ export function ListboxSelect<T extends string>({
           })}
         </div>
       ))}
-    </div>
-  ) : null
-
-  return (
-    <div ref={rootRef} className={cn('relative min-w-0', className)}>
-      {name ? <input type="hidden" name={name} value={value} /> : null}
-      <button
-        ref={buttonRef}
-        id={id}
-        type="button"
-        disabled={disabled}
-        aria-label={ariaLabel}
-        aria-describedby={ariaDescribedBy}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => {
-          if (disabled) return
-          setMenuPosition(null)
-          setOpen((current) => !current)
-        }}
-        className={cn(
-          'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
-          disabled
-            ? 'cursor-not-allowed text-[var(--muted-light)]'
-            : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]',
-          buttonClassName,
-        )}
-      >
-        <span className="min-w-0 truncate">{selected}</span>
-        <ChevronDown size={11} className={cn('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
-      </button>
-      {!portal ? menu : null}
-      {portal && menu && typeof document !== 'undefined' ? createPortal(menu, document.body) : null}
     </div>
   )
 }

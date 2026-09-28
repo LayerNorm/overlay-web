@@ -39,6 +39,50 @@ export interface TileProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   footer?: ReactNode
 }
 
+function tileClassName(interactive: boolean, selected: boolean, className?: string) {
+  return cn(
+    'group relative flex min-h-32 w-full flex-col rounded-lg border p-4 text-left transition-colors',
+    interactive
+      ? 'cursor-pointer border-[var(--border)] bg-[var(--surface-elevated)] hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)] disabled:pointer-events-none disabled:opacity-60'
+      : null,
+    selected
+      ? 'border-[var(--muted-light)] bg-[var(--surface-subtle)]'
+      : null,
+    !interactive && !selected
+      ? 'border-[var(--border)] bg-[var(--surface-elevated)]'
+      : null,
+    className,
+  )
+}
+
+type TileBodyProps = Pick<
+  TileProps,
+  'leading' | 'title' | 'description' | 'topRight' | 'footer' | 'children'
+>
+
+function TileBody({ leading, title, description, topRight, footer, children }: TileBodyProps) {
+  return (
+    <>
+      <div className="flex min-w-0 items-start gap-3">
+        {leading ? <div className="shrink-0">{leading}</div> : null}
+        <div className="min-w-0 flex-1">
+          {title ? <div className="truncate text-sm font-medium text-[var(--foreground)]">{title}</div> : null}
+          {description ? (
+            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">{description}</div>
+          ) : null}
+          {children}
+        </div>
+        {topRight ? <div className="flex shrink-0 items-center gap-1.5">{topRight}</div> : null}
+      </div>
+      {footer ? (
+        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-[11px] text-[var(--muted-light)]">
+          {footer}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 export function Tile({
   as,
   href,
@@ -63,37 +107,18 @@ export function Tile({
       onClick={onClick}
       disabled={Component === 'button' ? disabled : undefined}
       aria-disabled={disabled || undefined}
-      className={cn(
-        'group relative flex min-h-32 w-full flex-col rounded-lg border p-4 text-left transition-colors',
-        interactive
-          ? 'cursor-pointer border-[var(--border)] bg-[var(--surface-elevated)] hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)] disabled:pointer-events-none disabled:opacity-60'
-          : null,
-        selected
-          ? 'border-[var(--muted-light)] bg-[var(--surface-subtle)]'
-          : null,
-        !interactive && !selected
-          ? 'border-[var(--border)] bg-[var(--surface-elevated)]'
-          : null,
-        className,
-      )}
+      className={tileClassName(interactive, selected, className)}
       {...props}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        {leading ? <div className="shrink-0">{leading}</div> : null}
-        <div className="min-w-0 flex-1">
-          {title ? <div className="truncate text-sm font-medium text-[var(--foreground)]">{title}</div> : null}
-          {description ? (
-            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">{description}</div>
-          ) : null}
-          {children}
-        </div>
-        {topRight ? <div className="flex shrink-0 items-center gap-1.5">{topRight}</div> : null}
-      </div>
-      {footer ? (
-        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-[11px] text-[var(--muted-light)]">
-          {footer}
-        </div>
-      ) : null}
+      <TileBody
+        leading={leading}
+        title={title}
+        description={description}
+        topRight={topRight}
+        footer={footer}
+      >
+        {children}
+      </TileBody>
     </Component>
   )
 }

@@ -17,6 +17,97 @@ export type RenderAttachmentViewer = (args: {
   headerRight: ReactNode
 }) => ReactNode
 
+type ShellPanelKind = 'attachment' | 'link' | 'sources'
+
+type ShellPanelState = {
+  attachmentPreview: AttachmentPreview | null
+  attachmentPreviewMode: AttachmentPreviewMode
+  linkPreview: { url: string; title?: string } | null
+  sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
+}
+
+function resolveShellPanelKind({
+  attachmentPreview,
+  attachmentPreviewMode,
+  linkPreview,
+  sourcesPanel,
+}: ShellPanelState): ShellPanelKind | null {
+  if (attachmentPreview && attachmentPreviewMode === 'panel') return 'attachment'
+  if (linkPreview) return 'link'
+  if (sourcesPanel) return 'sources'
+  return null
+}
+
+function renderShellRightPanel({
+  panelKind,
+  attachmentPreview,
+  closeAttachmentPreview,
+  closeLinkPreview,
+  closeSourcesPanel,
+  linkPreview,
+  panelPresentation,
+  setPanelPresentation,
+  setAttachmentPreviewMode,
+  sourcesPanel,
+  renderAttachmentViewer,
+}: ShellPanelState & {
+  panelKind: ShellPanelKind | null
+  closeAttachmentPreview: () => void
+  closeLinkPreview: () => void
+  closeSourcesPanel: () => void
+  panelPresentation: PanelPresentation
+  setPanelPresentation: (presentation: PanelPresentation) => void
+  setAttachmentPreviewMode: (mode: AttachmentPreviewMode) => void
+  renderAttachmentViewer: RenderAttachmentViewer
+}): ReactNode {
+  if (panelKind === 'attachment' && attachmentPreview) {
+    return (
+      <AttachmentPreviewPanel
+        preview={attachmentPreview}
+        mode="panel"
+        onClose={closeAttachmentPreview}
+        onModeChange={setAttachmentPreviewMode}
+        renderViewer={renderAttachmentViewer}
+      />
+    )
+  }
+  if (panelKind === 'link' && linkPreview) {
+    return (
+      <LinkPreviewPanel
+        url={linkPreview.url}
+        title={linkPreview.title}
+        onClose={closeLinkPreview}
+        presentation={panelPresentation}
+        onPresentationChange={setPanelPresentation}
+        checkEmbeddable={checkLinkEmbeddable}
+      />
+    )
+  }
+  if (panelKind === 'sources' && sourcesPanel) {
+    return (
+      <ChatSourcesPanel
+        variant="shell"
+        open
+        onClose={closeSourcesPanel}
+        sources={sourcesPanel.sources}
+        presentation={panelPresentation}
+        onPresentationChange={setPanelPresentation}
+      />
+    )
+  }
+  return null
+}
+
+function resolveShellPanelMode(
+  panelKind: ShellPanelKind | null,
+  panelPresentation: PanelPresentation,
+): 'docked' | 'floating' {
+  if ((panelKind === 'link' || panelKind === 'sources') && panelPresentation !== 'sidebar') {
+    return 'floating'
+  }
+  return 'docked'
+}
+
 export function useChatShellPanels({
   attachmentPreview,
   attachmentPreviewMode,
@@ -47,48 +138,42 @@ export function useChatShellPanels({
   sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
   renderAttachmentViewer: RenderAttachmentViewer
 }) {
-  const shellRightPanel = attachmentPreview && attachmentPreviewMode === 'panel' ? (
-    <AttachmentPreviewPanel
-      preview={attachmentPreview}
-      mode="panel"
-      onClose={closeAttachmentPreview}
-      onModeChange={setAttachmentPreviewMode}
-      renderViewer={renderAttachmentViewer}
-    />
-  ) : linkPreview ? (
-    <LinkPreviewPanel
-      url={linkPreview.url}
-      title={linkPreview.title}
-      onClose={closeLinkPreview}
-      presentation={panelPresentation}
-      onPresentationChange={setPanelPresentation}
-      checkEmbeddable={checkLinkEmbeddable}
-    />
-  ) : sourcesPanel ? (
-    <ChatSourcesPanel
-      variant="shell"
-      open
-      onClose={closeSourcesPanel}
-      sources={sourcesPanel.sources}
-      presentation={panelPresentation}
-      onPresentationChange={setPanelPresentation}
-    />
-  ) : null
+  const panelKind = resolveShellPanelKind({
+    attachmentPreview,
+    attachmentPreviewMode,
+    linkPreview,
+    sourcesPanel,
+  })
 
-  const shellRightPanelClose = attachmentPreview && attachmentPreviewMode === 'panel'
-    ? closeAttachmentPreview
-    : linkPreview
-      ? closeLinkPreview
-      : sourcesPanel
-        ? closeSourcesPanel
-        : undefined
-  const defaultRightPanelWidth =
-    attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : linkPreview ? 520 : 380
-  const shellRightPanelWidth = panelWidth ?? defaultRightPanelWidth
-  const shellRightPanelMode: 'docked' | 'floating' =
-    (sourcesPanel || linkPreview) && !(attachmentPreview && attachmentPreviewMode === 'panel')
-      ? (panelPresentation === 'sidebar' ? 'docked' : 'floating')
-      : 'docked'
+  const shellRightPanel = renderShellRightPanel({
+    panelKind,
+    attachmentPreview,
+    attachmentPreviewMode,
+    closeAttachmentPreview,
+    closeLinkPreview,
+    closeSourcesPanel,
+    linkPreview,
+    panelPresentation,
+    setPanelPresentation,
+    setAttachmentPreviewMode,
+    sourcesPanel,
+    renderAttachmentViewer,
+  })
+
+  const closeByPanelKind: Record<ShellPanelKind, () => void> = {
+    attachment: closeAttachmentPreview,
+    link: closeLinkPreview,
+    sources: closeSourcesPanel,
+  }
+  const shellRightPanelClose = panelKind ? closeByPanelKind[panelKind] : undefined
+
+  const defaultWidthByPanelKind: Record<ShellPanelKind, number> = {
+    attachment: 440,
+    link: 520,
+    sources: 380,
+  }
+  const shellRightPanelWidth = panelWidth ?? (panelKind ? defaultWidthByPanelKind[panelKind] : 380)
+  const shellRightPanelMode = resolveShellPanelMode(panelKind, panelPresentation)
 
   return {
     shellRightPanelResize: setPanelWidth,
