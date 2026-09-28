@@ -49,6 +49,14 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },
   ],
+  // The agents sidebar fires the directory read plus one bundle fetch per
+  // expanded agent on every shell mount. Without dedicated buckets that
+  // cheap-read traffic falls into the shared `api:default:*` pools and can
+  // lock the whole app out during a burst.
+  'GET /api/v1/agents': [
+    { bucket: 'agents:read:ip', limit: 900, windowMs: TEN_MINUTES },
+    { bucket: 'agents:read:user', limit: 450, windowMs: TEN_MINUTES },
+  ],
   'POST /api/v1/browser-task': [
     { bucket: 'browser-task:ip', limit: 20, windowMs: TEN_MINUTES },
     { bucket: 'browser-task:user', limit: 10, windowMs: TEN_MINUTES },
@@ -166,6 +174,24 @@ type DynamicEndpointRateLimit = {
 }
 
 const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/agents\/[^/]+(\/(bundle|threads|automations))?$/,
+    limits: [
+      { bucket: 'agents:read:ip', limit: 900, windowMs: TEN_MINUTES },
+      { bucket: 'agents:read:user', limit: 450, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    // Agent open/thread-create gestures — writes, so tighter than reads but
+    // well above what a human session generates.
+    method: 'POST',
+    pattern: /^\/api\/v1\/agents\/[^/]+\/threads(\/resolve)?$/,
+    limits: [
+      { bucket: 'agents:threads:write:ip', limit: 240, windowMs: TEN_MINUTES },
+      { bucket: 'agents:threads:write:user', limit: 120, windowMs: TEN_MINUTES },
+    ],
+  },
   {
     method: 'GET',
     pattern: /^\/api\/v1\/conversations\/[^/]+\/presence$/,
