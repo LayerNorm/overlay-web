@@ -330,9 +330,3 @@ export interface ConversationCollaborationRepository {
   }): Promise<WorkspaceNotificationPreferences>
 }
 
-export type ConversationParticipantStatePatch = {
-  archivedAt?: Date | null
-  lastReadAt?: Date | null
-  markedUnreadAt?: Date | null
-  notificationLevel?: ConversationNotificationLevel
-}
