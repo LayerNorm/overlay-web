@@ -20,7 +20,7 @@ export default function robots(): MetadataRoute.Robots {
         '/auth/',
         '/explore/',
         '/share/',
-        '/%5F_fixtures/',
+        '/dev-fixtures/',
       ],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,

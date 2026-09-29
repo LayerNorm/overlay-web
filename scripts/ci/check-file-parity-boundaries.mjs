@@ -35,7 +35,7 @@ if (/\.app-note-editor\b/.test(read('src/app/globals.css'))) {
 }
 
 requireText(
-  'src/app/%5F_fixtures/file-parity/page.tsx',
+  'src/app/dev-fixtures/file-parity/page.tsx',
   /NODE_ENV === 'production'.*FILE_PARITY_FIXTURES/s,
   'web fixture route must stay production-gated',
 )
