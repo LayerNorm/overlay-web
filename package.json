@@ -284,7 +284,7 @@
     "resend": "^6.18.1",
     "server-only": "^0.0.1",
     "stripe": "^20.3.1",
-    "undici": "7.29.0",
+    "undici": "7.29.1",
     "workflow": "4.8.9",
     "zod": "^3.25.76"
   },
@@ -330,7 +330,7 @@
     "@mintlify/previewing": {
       "react": "$react"
     },
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "hono": "4.13.8",
     "ip-address": "10.3.1",
     "js-yaml": "4.3.2",
