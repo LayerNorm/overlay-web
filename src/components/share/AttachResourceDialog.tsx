@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bot, FileText, Loader2, TriangleAlert, User, Workflow, X } from 'lucide-react'
+import { Bot, Loader2, TriangleAlert, User, X } from 'lucide-react'
 import { useDialogFocus, usePresence } from '@overlay/ui'
 import type {
   WorkspaceShareAccessRole,
@@ -373,11 +373,6 @@ function AttachResourceBody({
   )
 }
 
-function attachableResourceIcon(resourceType: WorkspaceShareResourceType) {
-  if (resourceType === 'automation') return <Workflow size={13} />
-  if (resourceType === 'agent') return <Bot size={13} />
-  return <FileText size={13} />
-}
 
 function key(resource: AttachableResource) {
   return `${resource.resourceType}:${resource.resourceId}`
