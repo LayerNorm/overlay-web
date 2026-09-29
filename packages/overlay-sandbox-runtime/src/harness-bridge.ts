@@ -294,11 +294,16 @@ export function createOverlayHarnessSandboxProvider(args: {
         ...(defaults.resources ? { resources: defaults.resources } : {}),
         ...(defaults.metadata ? { metadata: defaults.metadata } : {}),
       })
-      const session = await wrap(instance)
-      // Overlay runtimes have no snapshot hook — run one-time setup now, like
-      // other non-snapshot providers per the contract.
-      await onFirstCreate?.(session.restricted(), { abortSignal })
-      return session
+      try {
+        const session = await wrap(instance)
+        // Overlay runtimes have no snapshot hook — run one-time setup now, like
+        // other non-snapshot providers per the contract.
+        await onFirstCreate?.(session.restricted(), { abortSignal })
+        return session
+      } catch (error) {
+        await instance.delete()
+        throw error
+      }
     },
     resumeSession: async ({ sessionId }) => wrap(await runtime.reconnect(harnessSandboxName(namePrefix, sessionId))),
   }
