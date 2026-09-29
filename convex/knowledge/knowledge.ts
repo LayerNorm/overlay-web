@@ -186,6 +186,7 @@ export async function embedViaGateway(texts: string[]): Promise<{ vectors: numbe
   }
   const res = await fetch(GATEWAY_EMBED_URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
