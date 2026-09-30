@@ -69,7 +69,7 @@ function serviceWith(args: {
 }): SurfaceService {
   const repository = {
     findConnectionByTeam: async () => args.connection ?? null,
-    findBindingByChannel: async () => args.binding ?? null,
+    listBindingsByChannel: async () => (args.binding ? [args.binding] : []),
   } as unknown as SurfaceRepository
   const agents = {
     get: async () => args.agent ?? null,
@@ -86,9 +86,9 @@ function serviceWith(args: {
   })
 }
 
-test('resolveInboundBinding returns the live binding, agent, and creator identity', async () => {
+test('resolveInboundBindings returns the live binding, agent, and creator identity', async () => {
   const service = serviceWith({ connection: connection(), binding: binding(), agent: agent() })
-  const resolved = await service.resolveInboundBinding({
+  const [resolved] = await service.resolveInboundBindings({
     platform: 'slack',
     externalTeamId: 'T1',
     channelId: 'C1',
@@ -99,29 +99,29 @@ test('resolveInboundBinding returns the live binding, agent, and creator identit
   assert.equal(resolved?.creatorPrincipalId, 'principal_creator_1')
 })
 
-test('resolveInboundBinding no-ops for missing, degraded, or removed routing', async () => {
+test('resolveInboundBindings no-ops for missing, degraded, or removed routing', async () => {
   // Unknown team — the install was never completed or belongs elsewhere.
-  assert.equal(await serviceWith({ connection: null }).resolveInboundBinding({
+  assert.deepEqual(await serviceWith({ connection: null }).resolveInboundBindings({
     platform: 'slack', externalTeamId: 'T_UNKNOWN', channelId: 'C1',
-  }), null)
+  }), [])
   // Degraded connection (token revoked) stops routing until repaired.
-  assert.equal(await serviceWith({
+  assert.deepEqual(await serviceWith({
     connection: connection({ status: 'degraded' }),
     binding: binding(),
     agent: agent(),
-  }).resolveInboundBinding({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), null)
+  }).resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), [])
   // Removed binding — the channel was disconnected in the editor.
-  assert.equal(await serviceWith({
+  assert.deepEqual(await serviceWith({
     connection: connection(),
     binding: binding({ status: 'removed' }),
     agent: agent(),
-  }).resolveInboundBinding({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), null)
+  }).resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), [])
   // Archived agent — the row is gone but the binding remains.
-  assert.equal(await serviceWith({
+  assert.deepEqual(await serviceWith({
     connection: connection(),
     binding: binding(),
     agent: agent({ archivedAt: Date.now() }),
-  }).resolveInboundBinding({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), null)
+  }).resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), [])
 })
 
 const memberActor = {
@@ -162,16 +162,16 @@ test('canBindAgent is false for guests and non-creators of personal agents', asy
   }), false)
 })
 
-test('resolveInboundBinding no-ops when the creator principal has no user', async () => {
+test('resolveInboundBindings no-ops when the creator principal has no user', async () => {
   const service = serviceWith({
     connection: connection(),
     binding: binding(),
     agent: agent(),
     principal: { id: 'principal_creator_1' },
   })
-  assert.equal(await service.resolveInboundBinding({
+  assert.deepEqual(await service.resolveInboundBindings({
     platform: 'slack', externalTeamId: 'T1', channelId: 'C1',
-  }), null)
+  }), [])
 })
 
 function serviceWithConnections(connections: SurfaceConnection[]) {
@@ -186,7 +186,7 @@ function serviceWithConnections(connections: SurfaceConnection[]) {
       Object.assign(row, patch)
       return row
     },
-    findBindingByChannel: async () => null,
+    listBindingsByChannel: async () => [],
   } as unknown as SurfaceRepository
   const service = new SurfaceService({
     repository,
@@ -207,9 +207,9 @@ test('degradeConnectionByTeam marks the install non-active and stops routing', a
   assert.deepEqual(updates, [{ id: 'surface_connection_1', patch: { status: 'degraded', updatedAt: 999 } }])
   assert.equal(rows[0]!.status, 'degraded')
   // The degraded row no longer routes inbound messages.
-  assert.equal(await service.resolveInboundBinding({
+  assert.deepEqual(await service.resolveInboundBindings({
     platform: 'slack', externalTeamId: 'T1', channelId: 'C1',
-  }), null)
+  }), [])
   // Idempotent — a retried event does not write again.
   assert.equal(await service.degradeConnectionByTeam({
     platform: 'slack', teamId: 'T1', status: 'degraded',
@@ -245,4 +245,42 @@ test('degradeConnectionByTeam no-ops for unknown teams and missing ids', async (
     platform: 'slack', status: 'degraded',
   }), false)
   assert.equal(updates.length, 0)
+})
+
+test('several agents can share a channel; the same agent cannot bind twice', async () => {
+  const rows: SurfaceBinding[] = []
+  const agents: Record<string, WorkspaceAgentDirectoryItem> = {
+    agent_1: agent({ id: 'agent_1', name: 'PR agent' }),
+    agent_2: agent({ id: 'agent_2', name: 'Product Agent' }),
+  }
+  const repository = {
+    getConnection: async () => connection(),
+    findConnectionByTeam: async () => connection(),
+    listBindingsByChannel: async (_connectionId: string, channelId: string) =>
+      rows.filter((row) => row.channelId === channelId),
+    createBinding: async (row: SurfaceBinding) => { rows.push(row); return row },
+  } as unknown as SurfaceRepository
+  let nextId = 0
+  const service = new SurfaceService({
+    repository,
+    agents: { get: async ({ agentId }: { agentId: string }) => agents[agentId] ?? null } as unknown as WorkspaceAgentRepository,
+    channelLister: async () => [],
+    resolvePrincipal: async (principalId) => ({ id: principalId, userId: 'user_creator' }) as never,
+    id: () => `id_${++nextId}`,
+  })
+  const bind = (agentId: string) => service.createBinding({
+    actor: memberActor,
+    workspaceId: 'workspace_1',
+    agentId,
+    connectionId: 'surface_connection_1',
+    channelId: 'C1',
+    channelName: 'general',
+  })
+
+  await bind('agent_1')
+  await bind('agent_2')
+  await assert.rejects(bind('agent_1'), /already connected to the agent/)
+
+  const inbound = await service.resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' })
+  assert.deepEqual(inbound.map(({ agent: bound }) => bound.name), ['PR agent', 'Product Agent'])
 })

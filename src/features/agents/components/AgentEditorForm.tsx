@@ -532,7 +532,7 @@ export function AgentSurfacesSection({
                       <Hash size={11} className="shrink-0 text-[var(--muted)]" />{binding.channelName ?? binding.channelId}
                     </p>
                     <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">
-                      Anyone in {binding.channelName ? `#${binding.channelName}` : 'this channel'} can talk to {name}. It acts with your access.
+                      Anyone in {binding.channelName ? `#${binding.channelName}` : 'this channel'} can reach {name} with @Overlay {name}. It acts with your access.
                     </p>
                   </div>
                   {canBind ? (

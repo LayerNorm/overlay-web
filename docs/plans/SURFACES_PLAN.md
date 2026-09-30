@@ -112,7 +112,7 @@ surfaceBindings                    -- agent ↔ channel
   createdByUserId
   status: 'active' | 'removed'
   createdAt, updatedAt
-  unique (connectionId, channelId) -- v1: one agent per channel
+  unique (connectionId, channelId, agentId) -- several agents may share a channel (2026-09-30)
 ```
 
 `conversations` gains optional fields (additive, no backfill):

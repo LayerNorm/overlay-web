@@ -948,9 +948,9 @@ export async function runAppDataRepositoryContractSuite(
         updatedAt: now + 4,
       })
       assert.equal((await surfaces.getBinding(binding.id))?.channelId, 'C123')
-      assert.equal(
-        (await surfaces.findBindingByChannel(connection.id, 'C123'))?.id,
-        binding.id,
+      assert.deepEqual(
+        (await surfaces.listBindingsByChannel(connection.id, 'C123')).map(({ id }) => id),
+        [binding.id],
       )
       assert.deepEqual(
         (await surfaces.listBindingsByAgent(binding.agentId)).map((row) => row.id),

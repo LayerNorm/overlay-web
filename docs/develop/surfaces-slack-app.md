@@ -107,6 +107,19 @@ settings:
 - **`interactivity`** — enabled now so native feedback buttons work and
   approval cards are an additive change later.
 
+## Several agents in one channel
+
+One Slack install has one bot user (`@Overlay`), and any number of agents can
+be bound to the same channel. Each reply is posted under the answering agent's
+name. Inbound routing (`src/shared/surfaces/surface-routing.ts`):
+
+1. `@Overlay <agent name> …`: the agent named right after the mention (longest
+   bound name wins; the name is stripped from the prompt).
+2. A follow-up in a thread goes to the agent that owns the thread (stored in the
+   Chat SDK thread state) unless another agent is named.
+3. A channel with a single agent answers every mention, as before.
+4. Otherwise the bot replies with the list of agents to choose from.
+
 ## Env vars
 
 | Var | Purpose |

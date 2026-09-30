@@ -105,13 +105,13 @@ export class ConvexSurfaceRepository implements SurfaceRepository {
     return doc ? mapBindingDoc(doc) : null
   }
 
-  async findBindingByChannel(connectionId: string, channelId: string): Promise<SurfaceBinding | null> {
-    const doc = await convex.query<BindingDoc | null>('surfaces/surfaces:findBindingByChannel', {
+  async listBindingsByChannel(connectionId: string, channelId: string): Promise<SurfaceBinding[]> {
+    const docs = await convex.query<BindingDoc[]>('surfaces/surfaces:listBindingsByChannel', {
       connectionId,
       channelId,
       serverSecret: this.serverSecret,
     })
-    return doc ? mapBindingDoc(doc) : null
+    return (docs ?? []).map(mapBindingDoc)
   }
 
   async listBindingsByAgent(agentId: string): Promise<SurfaceBinding[]> {

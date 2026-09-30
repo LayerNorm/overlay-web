@@ -131,14 +131,12 @@ export class SurfaceService {
     if (!channelId) {
       throw new SurfaceServiceError('validation', 'channelId is required')
     }
-    const existing = await this.repository.findBindingByChannel(connection.id, channelId)
-    if (existing && existing.status === 'active') {
-      throw new SurfaceServiceError(
-        'conflict',
-        existing.agentId === args.agentId
-          ? 'This channel is already connected to the agent'
-          : 'This channel is already connected to another agent',
-      )
+    // Several agents may share a channel (people address one by name); only a
+    // duplicate binding of the same agent conflicts.
+    const existing = (await this.repository.listBindingsByChannel(connection.id, channelId))
+      .find((row) => row.agentId === args.agentId && row.status === 'active')
+    if (existing) {
+      throw new SurfaceServiceError('conflict', 'This channel is already connected to the agent')
     }
     const now = this.now()
     return await this.repository.createBinding({
@@ -246,38 +244,43 @@ export class SurfaceService {
   }
 
   /**
-   * Webhook routing: platform team + channel → live connection → active
-   * binding → bound agent → creator identity. Returns null for every miss so
-   * inbound handlers can no-op quietly (removed bindings, uninstalled
-   * workspaces, archived agents all behave identically).
+   * Webhook routing: platform team + channel → live connection → every active
+   * binding → bound agent → creator identity. Several agents may share a
+   * channel; the caller picks one (routeSurfaceMessage). Misses drop out, so
+   * removed bindings, uninstalled workspaces, and archived agents all yield
+   * an empty list and inbound handlers no-op quietly.
    */
-  async resolveInboundBinding(args: {
+  async resolveInboundBindings(args: {
     platform: SurfacePlatform
     externalTeamId: string
     channelId: string
-  }): Promise<ResolvedInboundBinding | null> {
+  }): Promise<ResolvedInboundBinding[]> {
     const connection = await this.repository.findConnectionByTeam(
       args.platform,
       args.externalTeamId,
     )
-    if (!connection || connection.status !== 'active') return null
-    const binding = await this.repository.findBindingByChannel(connection.id, args.channelId)
-    if (!binding || binding.status !== 'active') return null
-    const agent = await this.agents.get({
-      agentId: binding.agentId,
-      workspaceId: connection.workspaceId,
-    })
-    if (!agent || agent.archivedAt) return null
-    const principal = await this.resolvePrincipal(agent.createdByPrincipalId)
-    if (!principal?.userId) return null
-    return {
-      connection,
-      binding,
-      agent,
-      creatorUserId: principal.userId,
-      creatorPrincipalId: principal.id,
-    }
+    if (!connection || connection.status !== 'active') return []
+    const bindings = (await this.repository.listBindingsByChannel(connection.id, args.channelId))
+      .filter((binding) => binding.status === 'active')
+    const resolved = await Promise.all(bindings.map(async (binding) => {
+      const agent = await this.agents.get({
+        agentId: binding.agentId,
+        workspaceId: connection.workspaceId,
+      })
+      if (!agent || agent.archivedAt) return null
+      const principal = await this.resolvePrincipal(agent.createdByPrincipalId)
+      if (!principal?.userId) return null
+      return {
+        connection,
+        binding,
+        agent,
+        creatorUserId: principal.userId,
+        creatorPrincipalId: principal.id,
+      }
+    }))
+    return resolved.filter((entry): entry is ResolvedInboundBinding => entry !== null)
   }
+
 
   /**
    * Binding gate: the actor must be able to see the agent (existence check is

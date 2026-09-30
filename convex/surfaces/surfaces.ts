@@ -145,18 +145,19 @@ export const createBinding = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const existing = await ctx.db
+    // Several agents can share a channel; the key is (connection, channel,
+    // agent). A re-bind of a removed row reactivates it instead of creating a
+    // duplicate.
+    const existing = (await ctx.db
       .query('surfaceBindings')
       .withIndex('by_connectionId_channelId', (q) => q
         .eq('connectionId', args.connectionId)
         .eq('channelId', args.channelId))
-      .unique()
-    // One agent per channel. A re-bind to a removed row reactivates it instead
-    // of creating a duplicate channel key.
+      .collect())
+      .find((row) => row.agentId === args.agentId)
     if (existing) {
       if (existing.status === 'removed') {
         await ctx.db.patch(existing._id, {
-          agentId: args.agentId,
           channelName: args.channelName,
           status: args.status,
           createdByUserId: args.createdByUserId,
@@ -191,7 +192,26 @@ export const getBinding = query({
   },
 })
 
+/**
+ * Pre-multi-agent callers: the first active binding in the channel. Kept so a
+ * web deployment older than this function set keeps routing (a channel may now
+ * hold several rows, which `.unique()` would reject).
+ */
 export const findBindingByChannel = query({
+  args: { connectionId: v.string(), channelId: v.string(), serverSecret: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db
+      .query('surfaceBindings')
+      .withIndex('by_connectionId_channelId', (q) => q
+        .eq('connectionId', args.connectionId)
+        .eq('channelId', args.channelId))
+      .collect()
+    return rows.find((row) => row.status === 'active') ?? rows[0] ?? null
+  },
+})
+
+export const listBindingsByChannel = query({
   args: { connectionId: v.string(), channelId: v.string(), serverSecret: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -200,7 +220,7 @@ export const findBindingByChannel = query({
       .withIndex('by_connectionId_channelId', (q) => q
         .eq('connectionId', args.connectionId)
         .eq('channelId', args.channelId))
-      .unique()
+      .collect()
   },
 })
 

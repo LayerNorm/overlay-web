@@ -12,6 +12,7 @@ import { resolveSurfaceAuthorStatus } from '@/server/surfaces/surface-authors'
 import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import { stripSlackMentionMarkup } from '@/shared/surfaces/surface-prompts'
+import { ambiguousAgentPrompt, routeSurfaceMessage } from '@/shared/surfaces/surface-routing'
 import {
   surfaceAgentTurnWorkflow,
   type SurfaceAgentTurnInput,
@@ -54,12 +55,12 @@ async function handleInboundSlackMessage(args: {
   if (!teamId || !channelId) return
 
   const context = getOverlayServerContext()
-  const resolved = await context.surfaceService.resolveInboundBinding({
+  const candidates = await context.surfaceService.resolveInboundBindings({
     platform: 'slack',
     externalTeamId: teamId,
     channelId,
   })
-  if (!resolved) {
+  if (candidates.length === 0) {
     if (args.replyWhenUnbound) {
       await thread.post(
         'No Overlay agent is connected to this channel yet — connect one from the agent editor in Overlay.',
@@ -73,8 +74,34 @@ async function handleInboundSlackMessage(args: {
     return
   }
 
-  const text = stripSlackMentionMarkup(message.text ?? '')
-  const { binding, agent, connection, creatorUserId, creatorPrincipalId } = resolved
+  // Several agents may share the channel: pick by a leading agent name, then
+  // by the agent that owns this thread, then the channel's only agent.
+  const threadState = await thread.state.catch((_error) => null) as { surfaceBindingId?: string } | null
+  const route = routeSurfaceMessage({
+    candidates: candidates.map((candidate) => ({ ...candidate, bindingId: candidate.binding.id, agentName: candidate.agent.name })),
+    text: stripSlackMentionMarkup(message.text ?? ''),
+    threadBindingId: threadState?.surfaceBindingId,
+  })
+  if (route.kind !== 'agent') {
+    // Only answer ambiguity when addressed; unaddressed thread chatter stays quiet.
+    if (route.kind === 'ambiguous' && args.replyWhenUnbound) {
+      await thread.post(ambiguousAgentPrompt(route.agentNames)).catch((error) => {
+        logger.warn('[surfaces/slack] agent-choice notice failed', {
+          channelId,
+          error: summarizeErrorForLog(error),
+        })
+      })
+    }
+    return
+  }
+  const text = route.text
+  const { binding, agent, connection, creatorUserId, creatorPrincipalId } = route.candidate
+  await thread.setState({ surfaceBindingId: binding.id }).catch((error) => {
+    logger.warn('[surfaces/slack] thread owner state write failed', {
+      threadId: thread.id,
+      error: summarizeErrorForLog(error),
+    })
+  })
 
   if (args.subscribe) {
     await thread.subscribe().catch((error) => {
