@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { canManageWorkspace } from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
   EnvironmentMachineError,
@@ -13,6 +14,14 @@ import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../shared'
  */
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
+    // A desktop stream is interactive control of the agent's machine, so it
+    // carries the same owner/admin gate as approve, roots, revoke, and reset.
+    if (!canManageWorkspace(context.workspace.membership.role)) {
+      return NextResponse.json(
+        { error: 'Workspace owner or admin access is required', code: 'workspace_manager_required' },
+        { status: 403, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
     const mode = context.parsedJson.mode === 'vnc' ? 'vnc' as const : 'webrtc' as const
     const ticket = await openEnvironmentDesktop({
       workspaceId: context.workspace.workspace.id,

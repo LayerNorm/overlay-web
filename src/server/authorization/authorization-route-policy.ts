@@ -33,6 +33,9 @@ export type AuthorizationRoutePolicyRule = {
 
 const publicPolicy = (): AuthorizationRoutePolicy => ({ access: 'public' })
 const authenticated = (): AuthorizationRoutePolicy => ({ access: 'authenticated' })
+// Server-to-server only: the handler verifies `x-internal-api-secret` and no
+// user session can satisfy it.
+const internal = (): AuthorizationRoutePolicy => ({ access: 'internal' })
 const capability = (
   ...capabilities: AuthorizationCapability[]
 ): AuthorizationRoutePolicy => ({ access: 'capability', capabilities })
@@ -61,6 +64,33 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/agents/:agentId',
     methods: { GET: authenticated(), PATCH: authenticated(), DELETE: authenticated() },
   },
+  // Agent sub-resources resolve the agent through WorkspaceAgentService with
+  // the caller as actor, which enforces visibility and manager rules.
+  { path: '/api/v1/agents/:agentId/automations', methods: { GET: authenticated() } },
+  { path: '/api/v1/agents/:agentId/bundle', methods: { GET: authenticated() } },
+  { path: '/api/v1/agents/:agentId/restore', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/agents/:agentId/threads',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  // Must precede `:threadId` — the first matching path wins.
+  { path: '/api/v1/agents/:agentId/threads/resolve', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/agents/:agentId/threads/:threadId',
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
+  },
+  // Computers: ComputerService enforces owner / workspace-visibility access.
+  {
+    path: '/api/v1/computers',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/computers/:computerId',
+    methods: { GET: authenticated(), DELETE: authenticated() },
+  },
+  { path: '/api/v1/computers/:computerId/start', methods: { POST: authenticated() } },
+  { path: '/api/v1/computers/:computerId/stop', methods: { POST: authenticated() } },
+  { path: '/api/v1/computers/:computerId/desktop', methods: { POST: authenticated() } },
   {
     path: '/api/v1/agent-environments',
     methods: { GET: authenticated() },
@@ -71,7 +101,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/agent-environments/managed',
-    methods: { POST: authenticated() },
+    methods: { GET: authenticated(), POST: authenticated() },
   },
   {
     path: '/api/v1/agent-environments/:environmentId/approve',
@@ -85,6 +115,9 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },
   },
+  // Owner/admin is enforced in the handler (desktop) or control plane (reset).
+  { path: '/api/v1/agent-environments/:environmentId/desktop', methods: { POST: authenticated() } },
+  { path: '/api/v1/agent-environments/:environmentId/reset-harness', methods: { POST: authenticated() } },
   {
     path: '/api/v1/agent-bindings',
     methods: { GET: authenticated(), PUT: authenticated(), DELETE: authenticated() },
@@ -117,6 +150,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/search',
     methods: { GET: authenticated() },
   },
+  { path: '/api/v1/mention-search', methods: { GET: authenticated() } },
   {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
@@ -175,6 +209,16 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/onboarding/complete', methods: { POST: authenticated() } },
   { path: '/api/v1/onboarding/reset', methods: { POST: authenticated() } },
   { path: '/api/v1/subscription', methods: { GET: authenticated() } },
+  // Workspace billing: WorkspaceBillingService requires an owner/admin
+  // billing manager for every operation.
+  {
+    path: '/api/v1/workspaces/:workspaceId/billing',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  { path: '/api/v1/workspaces/:workspaceId/billing/checkout', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/portal', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
   {
     path: '/api/v1/subscription/settings',
     methods: { GET: authenticated(), POST: authenticated() },
@@ -344,6 +388,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
     },
   },
+  { path: '/api/v1/conversations/agent-greeting', methods: { POST: authenticated() } },
   {
     path: '/api/v1/conversations/act',
     methods: { POST: resource('conversation', 'edit', { optional: true }, 'conversations.edit', 'models.use') },
@@ -409,6 +454,12 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: resource('file', 'view', {}, 'files.read') },
   },
   { path: '/api/v1/files/ingest-document', methods: { POST: capability('files.upload') } },
+  {
+    path: '/api/v1/files/ingest-jobs',
+    methods: { GET: capability('files.read'), POST: capability('files.upload') },
+  },
+  // Called by the Convex ingestion runner with the internal API secret.
+  { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
   { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
   { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
   {
@@ -448,6 +499,24 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/notebook-agent', methods: { POST: capability('models.use', 'tools.use') } },
   { path: '/api/v1/browser-task', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/daytona/run', methods: { POST: capability('tools.use') } },
+  { path: '/api/v1/sandbox/run', methods: { POST: capability('tools.use') } },
+  {
+    path: '/api/v1/imports/slack',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  // Called by the Slack import cron with the internal API secret.
+  { path: '/api/v1/imports/slack/process', methods: { POST: internal() } },
+  // BYOK provider connections are scoped to the caller's own user id.
+  {
+    path: '/api/v1/providers/connections',
+    methods: {
+      GET: authenticated(),
+      POST: authenticated(),
+      PATCH: authenticated(),
+      DELETE: authenticated(),
+    },
+  },
+  { path: '/api/v1/providers/connections/test', methods: { POST: authenticated() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
   {
