@@ -13,6 +13,7 @@ import {
   Paperclip,
   Pin,
   Share2,
+  Slack,
   UserRound,
   UsersRound,
   X,
@@ -179,11 +180,14 @@ export function RoomHeaderIcon({
   conversationType,
   otherCount,
   size,
+  surfacePlatform,
 }: {
   conversationType: 'dm' | 'channel'
   otherCount: number
   size: number
+  surfacePlatform?: string | null
 }) {
+  if (surfacePlatform === 'slack') return <Slack size={size} />
   if (conversationType === 'channel') return <Hash size={size} />
   if (otherCount <= 1) return <UserRound size={size} />
   return <UsersRound size={size} />
@@ -194,18 +198,20 @@ export function RoomHeaderLeading({
   headerAgent,
   conversationType,
   otherCount,
+  surfacePlatform,
 }: {
   soloAgentParticipant: ConversationParticipant | null
   headerAgent: { name: string; avatarColor?: string; avatarShape?: string } | null
   conversationType: 'dm' | 'channel'
   otherCount: number
+  surfacePlatform?: string | null
 }) {
   if (soloAgentParticipant) {
     return <AgentCreature agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
   }
   return (
     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-      <RoomHeaderIcon conversationType={conversationType} otherCount={otherCount} size={15} />
+      <RoomHeaderIcon conversationType={conversationType} otherCount={otherCount} size={15} surfacePlatform={surfacePlatform} />
     </span>
   )
 }
@@ -249,6 +255,7 @@ export function RoomHeaderActions({
   menuTriggerRef,
   onAttach,
   onShare,
+  readOnly = false,
 }: {
   desktop: ReturnType<typeof useAgentDesktop>
   vm: ReturnType<typeof useRoomViewModels>
@@ -264,6 +271,8 @@ export function RoomHeaderActions({
   menuTriggerRef: React.RefObject<HTMLButtonElement | null>
   onAttach: () => void
   onShare: () => void
+  /** Surface-mirrored rooms take no attachments. */
+  readOnly?: boolean
 }) {
   const { currentParticipant } = vm
   const { updateState: onUpdateState, archiveMenuAction: onArchive } = roomActions
@@ -284,7 +293,7 @@ export function RoomHeaderActions({
           <Pin size={13} />{collab.pins.length}
         </button>
       ) : null}
-      {!showcase ? (
+      {!showcase && !readOnly ? (
         <button
           type="button"
           onClick={onAttach}
@@ -688,6 +697,7 @@ export function RoomSidePanel({
   onAddPeople,
   onClosePanel,
   ctx,
+  readOnlyNotice,
 }: {
   roomPanel: RoomPanelKind | null
   conversationType: 'dm' | 'channel'
@@ -702,6 +712,8 @@ export function RoomSidePanel({
   onAddPeople: () => void
   onClosePanel: () => void
   ctx: RoomMessageContext
+  /** Replaces the thread composer for surface-mirrored rooms. */
+  readOnlyNotice?: string
 }) {
   const { threadRoot, threadReplies, pinnedSummaries } = vm
   const {
@@ -748,6 +760,7 @@ export function RoomSidePanel({
           setThreadInput('')
           void sendMessage(text, { threadRootMessageId: threadRoot.id })
         }}
+        readOnlyNotice={readOnlyNotice}
         onClose={() => {
           onClosePanel()
           setThreadRootId(null)
@@ -766,6 +779,22 @@ export function RoomSidePanel({
     )
   }
   return null
+}
+
+export function surfaceReadOnlyNotice(surfacePlatform: string): string {
+  return `Mirrored from ${surfacePlatform === 'slack' ? 'Slack' : surfacePlatform} — reply in the original thread.`
+}
+
+/** Stands in for the composer: surface-mirrored rooms are read-only in Overlay. */
+export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: string }) {
+  return (
+    <div className="border-t border-[var(--border)] px-4 py-3.5">
+      <div className="flex items-center justify-center gap-2 text-xs text-[var(--muted)]">
+        {surfacePlatform === 'slack' ? <Slack size={13} /> : <Hash size={13} />}
+        <span>{surfaceReadOnlyNotice(surfacePlatform)}</span>
+      </div>
+    </div>
+  )
 }
 
 export function RoomComposer({

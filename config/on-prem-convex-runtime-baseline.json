@@ -169,8 +169,15 @@
     "src/app/api/v1/skills/route.ts",
     "src/app/api/v1/subscription/route.ts",
     "src/app/api/v1/subscription/settings/route.ts",
+    "src/app/api/v1/surfaces/bindings/[bindingId]/route.ts",
+    "src/app/api/v1/surfaces/bindings/route.ts",
+    "src/app/api/v1/surfaces/connections/[connectionId]/channels/route.ts",
+    "src/app/api/v1/surfaces/connections/route.ts",
+    "src/app/api/v1/surfaces/slack/callback/route.ts",
+    "src/app/api/v1/surfaces/slack/connect/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
+    "src/app/api/v1/webhooks/slack/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/checkout/route.ts",
@@ -278,6 +285,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "slack import job processor",
       "target": "(internal as any).imports.slackRunner.runMinuteTick"
+    },
+    {
+      "cadence": "{ minutes: 15 }",
+      "name": "surface chat state expiry sweep",
+      "target": "(internal as any).surfaces.chatState.pruneExpired"
     },
     {
       "cadence": "{ minutes: 2 }",
@@ -388,6 +400,10 @@
     "src/server/storage/providers/index.ts",
     "src/server/storage/r2-budget.ts",
     "src/server/storage/r2-upload-intents.ts",
+    "src/server/surfaces/ConvexSurfaceRepository.ts",
+    "src/server/surfaces/chat.ts",
+    "src/server/surfaces/convex-chat-state.ts",
+    "src/server/surfaces/surface-authors.ts",
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/usage/ConvexUsageRepository.ts",
     "src/server/usage/index.ts",

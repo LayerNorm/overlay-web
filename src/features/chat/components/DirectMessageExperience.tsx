@@ -24,6 +24,8 @@ import {
   RoomNoticeBar,
   RoomRealtimeSubscriptions,
   RoomSidePanel,
+  SurfaceReadOnlyComposer,
+  surfaceReadOnlyNotice,
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 
@@ -74,6 +76,9 @@ function resolveRoomRightPanel({
         onAddPeople={() => room.setAddPeopleOpen(true)}
         onClosePanel={() => room.setRoomPanel(null)}
         ctx={messageCtx}
+        readOnlyNotice={room.transcript.surfacePlatform
+          ? surfaceReadOnlyNotice(room.transcript.surfacePlatform)
+          : undefined}
       />
     ) : null)
   const rightPanelClose = panels.shellRightPanel
@@ -191,6 +196,7 @@ export function DirectMessageExperience({
                 headerAgent={vm.headerAgent}
                 conversationType={conversationType}
                 otherCount={vm.otherParticipants.length}
+                surfacePlatform={transcript.surfacePlatform}
               />
             )}
             actions={(
@@ -209,6 +215,7 @@ export function DirectMessageExperience({
                 menuTriggerRef={room.menuTriggerRef}
                 onAttach={() => room.setAttachOpen(true)}
                 onShare={() => room.setShareOpen(true)}
+                readOnly={Boolean(transcript.surfacePlatform)}
               />
             )}
           />
@@ -225,19 +232,23 @@ export function DirectMessageExperience({
               agentResponding={room.agentResponding}
               ctx={messageCtx}
             />
-            <RoomComposer
-              composer={composer}
-              title={vm.title}
-              mentionCategories={vm.mentionCategories}
-              agentCommands={vm.agentCommands}
-              capabilities={capabilities}
-              participantsHaveAgent={roster.participants.some((participant) => participant.principalType === 'agent')}
-              memoryEnabled={room.memoryEnabled}
-              setMemoryEnabled={room.setMemoryEnabled}
-              setMentions={room.setMentions}
-              onOpenAttachmentPreview={panels.openAttachmentPreview}
-              onOpenFilePreview={panels.openFilePreview}
-            />
+            {transcript.surfacePlatform ? (
+              <SurfaceReadOnlyComposer surfacePlatform={transcript.surfacePlatform} />
+            ) : (
+              <RoomComposer
+                composer={composer}
+                title={vm.title}
+                mentionCategories={vm.mentionCategories}
+                agentCommands={vm.agentCommands}
+                capabilities={capabilities}
+                participantsHaveAgent={roster.participants.some((participant) => participant.principalType === 'agent')}
+                memoryEnabled={room.memoryEnabled}
+                setMemoryEnabled={room.setMemoryEnabled}
+                setMentions={room.setMentions}
+                onOpenAttachmentPreview={panels.openAttachmentPreview}
+                onOpenFilePreview={panels.openFilePreview}
+              />
+            )}
           </AppScreenBody>
         </div>
       </AppScreenShell>

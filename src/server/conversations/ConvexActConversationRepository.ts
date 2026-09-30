@@ -42,6 +42,12 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     userId: string
     isAutomation?: boolean
     workspaceId?: string
+    conversationType?: 'personal' | 'dm' | 'channel'
+    createdByPrincipalId?: string
+    externalPlatform?: string
+    externalChannelId?: string
+    externalThreadId?: string
+    surfaceBindingId?: string
   }): Promise<ConversationId> {
     const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
       ...args,
@@ -183,7 +189,11 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     turnId: string
     userId: string
     variantIndex?: number
+    authorKind?: 'human' | 'agent' | 'model' | 'system'
+    authorPrincipalId?: string
     importedAuthorName?: string
+    importedAuthorEmail?: string
+    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   }): Promise<Id<'conversationMessages'> | null> {
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {
       ...args,

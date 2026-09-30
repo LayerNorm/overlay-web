@@ -445,6 +445,8 @@ export function useRoomTranscript({
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
+  /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
+  const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
   const [stickToBottom, setStickToBottom] = useState(true)
   const listRef = useRef<HTMLDivElement>(null)
   /** Latest messages for callbacks that must not close over a stale render. */
@@ -466,6 +468,7 @@ export function useRoomTranscript({
     const result = await overlayAppClient.conversations.get<{
       title?: string
       conversationType?: 'personal' | 'dm' | 'channel'
+      externalPlatform?: string
       messages: Array<{
         id: string
         authorKind: RoomMessageRecord['authorKind']
@@ -514,6 +517,7 @@ export function useRoomTranscript({
         }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
       : null
     setConversationTitle(result.title?.trim() || null)
+    setSurfacePlatform(result.externalPlatform ?? null)
     setHasMoreMessages(result.hasMore === true)
     const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
       ...message,
@@ -649,6 +653,7 @@ export function useRoomTranscript({
     hasMoreMessages,
     loadingOlderMessages,
     conversationTitle,
+    surfacePlatform,
     listRef,
     messagesRef,
     stickToBottom,
@@ -1326,6 +1331,7 @@ export function useRoomComposer({
   sendMessage,
   mentions,
   setMentions,
+  readOnly = false,
 }: {
   showcase: boolean
   activeWorkspaceId: string | null | undefined
@@ -1340,6 +1346,8 @@ export function useRoomComposer({
   }) => Promise<void>
   mentions: MentionItem[]
   setMentions: Dispatch<SetStateAction<MentionItem[]>>
+  /** Surface-mirrored rooms accept no uploads. */
+  readOnly?: boolean
 }) {
   // ── composer state (identical wiring to the personal chat composer) ─────────
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
@@ -1474,7 +1482,7 @@ export function useRoomComposer({
     onDragEnter: (event: ReactDragEvent<HTMLDivElement>) => {
       event.preventDefault()
       dragCounterRef.current++
-      if (event.dataTransfer.types.includes('Files')) setIsDragging(true)
+      if (!readOnly && event.dataTransfer.types.includes('Files')) setIsDragging(true)
     },
     onDragOver: (event: ReactDragEvent<HTMLDivElement>) => event.preventDefault(),
     onDragLeave: (event: ReactDragEvent<HTMLDivElement>) => {
@@ -1489,6 +1497,7 @@ export function useRoomComposer({
       event.preventDefault()
       dragCounterRef.current = 0
       setIsDragging(false)
+      if (readOnly) return
       const files = Array.from(event.dataTransfer.files ?? [])
       const images = files.filter((file) => file.type.startsWith('image/'))
       const documents = files.filter((file) => !file.type.startsWith('image/'))
@@ -2229,6 +2238,7 @@ export function useDirectMessageRoom({
     sendMessage,
     mentions,
     setMentions,
+    readOnly: Boolean(transcript.surfacePlatform),
   })
   const remoteControls = useRemoteAgentControls({
     activeWorkspaceId,

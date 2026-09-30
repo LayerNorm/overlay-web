@@ -165,4 +165,13 @@ crons.daily(
   {},
 )
 
+// Chat SDK dedupe keys, locks, and queue entries carry TTLs; reads already
+// ignore expired rows, so this only bounds table growth.
+crons.interval(
+  'surface chat state expiry sweep',
+  { minutes: 15 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).surfaces.chatState.pruneExpired,
+)
+
 export default crons

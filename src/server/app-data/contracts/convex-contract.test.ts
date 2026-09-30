@@ -13,6 +13,7 @@ import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
 import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
+import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
 import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
 
@@ -34,6 +35,7 @@ test('real Convex app-data repository contracts', {
     chatSuggestions: new ConvexChatSuggestionRepository(),
     computers: new ConvexComputerRepository(),
     conversations,
+    surfaces: new ConvexSurfaceRepository(),
     daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
     deleteAccount: deleteConvexAccount,
     files: new ConvexFileRepository(),

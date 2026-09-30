@@ -66,6 +66,9 @@ import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRe
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
+import { SurfaceService } from '@/server/surfaces/SurfaceService'
+import { listSlackChannels } from '@/server/surfaces/slack-directory'
+import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -125,6 +128,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
+  surfaceService: SurfaceService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   authorizationService: AuthorizationService
@@ -257,6 +261,13 @@ export function createOverlayServerContext(
     },
     limits: computerLimits,
   })
+  const surfaceService = new SurfaceService({
+    repository: appData.repositories.surfaces,
+    agents: workspaceAgentRepository,
+    channelLister: (connection, adapter) =>
+      listSlackChannels(connection, adapter as SlackAdapter),
+    resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
+  })
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,
     repository: appData.repositories.connectedAgents,
@@ -386,6 +397,7 @@ export function createOverlayServerContext(
     connectedAgentControlPlane,
     managedAgentSandboxBilling,
     computerService,
+    surfaceService,
     workspaceSharingService,
     workspaceSearchService,
     authorizationService,

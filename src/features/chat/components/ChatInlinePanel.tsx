@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useEffectEvent, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, Bot, Check, Hash, MessageSquare, Pencil, UserRound, UsersRound } from 'lucide-react'
+import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -52,6 +52,7 @@ type Conversation = {
   lastModified: number
   conversationType?: 'personal' | 'dm' | 'channel'
   otherParticipantTypes?: Array<'human' | 'agent'>
+  externalPlatform?: string
 }
 
 type ChatView = 'personal' | 'dms' | 'channels' | 'all'
@@ -80,6 +81,7 @@ function ChatConversationIcon({
   size: number
   className?: string
 }) {
+  if (chat.externalPlatform === 'slack') return <Slack size={size} className={className} />
   if (chat.conversationType === 'channel') return <Hash size={size} className={className} />
   if (chat.conversationType === 'dm') {
     return <DirectMessageIcon participantTypes={chat.otherParticipantTypes} size={size} className={className} />

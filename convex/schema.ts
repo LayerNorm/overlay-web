@@ -47,6 +47,7 @@ export default defineSchema({
     workspaceId: v.optional(v.string()),
     status: v.union(v.literal('active'), v.literal('suspended'), v.literal('closed')),
     primaryBillingContactUserId: v.optional(v.string()),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     pricingVersion: v.literal('markup_25_v1'),
     markupBasisPoints: v.number(),
     createdAt: v.number(),
@@ -649,6 +650,67 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
 
+  // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
+  // is metadata for one platform install — the Chat SDK state adapter owns
+  // token resolution keyed on externalTeamId. surfaceBindings maps an agent
+  // onto a platform channel; channel membership is the access policy.
+  surfaceConnections: defineTable({
+    id: v.string(),
+    workspaceId: v.string(),
+    platform: v.union(v.literal('slack')),
+    externalTeamId: v.string(),
+    externalTeamName: v.optional(v.string()),
+    externalEnterpriseId: v.optional(v.string()),
+    botUserId: v.optional(v.string()),
+    status: v.union(
+      v.literal('active'),
+      v.literal('degraded'),
+      v.literal('uninstalled'),
+    ),
+    installedByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_platform_team', ['platform', 'externalTeamId']),
+
+  surfaceBindings: defineTable({
+    id: v.string(),
+    connectionId: v.string(),
+    agentId: v.string(),
+    channelId: v.string(),
+    channelName: v.optional(v.string()),
+    status: v.union(v.literal('active'), v.literal('removed')),
+    createdByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_connectionId', ['connectionId'])
+    .index('by_connectionId_channelId', ['connectionId', 'channelId'])
+    .index('by_agentId', ['agentId']),
+
+  // Chat SDK state for surfaces (installations and bot tokens, thread
+  // subscriptions, locks, dedupe keys, lists, queues). Serverless instances
+  // share it through surfaces/chatState; values are JSON strings. List and
+  // queue entries are separate rows ordered by _creationTime within a key.
+  surfaceChatState: defineTable({
+    namespace: v.union(
+      v.literal('cache'),
+      v.literal('list'),
+      v.literal('queue'),
+      v.literal('subscription'),
+      v.literal('lock'),
+    ),
+    key: v.string(),
+    value: v.optional(v.string()),
+    token: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
+  })
+    .index('by_namespace_key', ['namespace', 'key'])
+    .index('by_expiresAt', ['expiresAt']),
+
   projects: defineTable({
     workspaceId: v.optional(v.string()),
     userId: v.string(),
@@ -987,8 +1049,9 @@ export default defineSchema({
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
-    // Compatibility-only fields for channel rows written by external-surface
-    // (e.g. Slack) releases on shared deployments; not read or written here.
+    // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
+    // externalThreadId is the platform's thread key (Slack thread_ts); the pair
+    // (surfaceBindingId, externalThreadId) identifies the conversation.
     externalPlatform: v.optional(v.string()),
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
@@ -1004,6 +1067,7 @@ export default defineSchema({
     .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
+    .index('by_surfaceBindingId_externalThreadId', ['surfaceBindingId', 'externalThreadId'])
     .searchIndex('search_title', {
       searchField: 'title',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],

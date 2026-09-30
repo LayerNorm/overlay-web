@@ -15,6 +15,7 @@ import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } fr
 import { buildAgentsDirectoryHref } from '../lib/agent-chat'
 import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
 import { useByoConnection } from './use-byo-connection'
+import { useAgentSurfaces } from './use-agent-surfaces'
 import { useAgentEditorBootstrap } from './use-agent-editor-bootstrap'
 import { useAgentRuntime } from './use-agent-runtime'
 import { useAgentEditorForm } from './use-agent-editor-form'
@@ -84,6 +85,7 @@ export function AgentEditorPage({
     setModelAccess: runtime.setModelAccess,
   })
 
+  const surfaces = useAgentSurfaces({ activeWorkspaceId, showcase, agent, agentType: runtime.agentType })
   const computer = useAgentComputer({
     showcase, computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
@@ -196,6 +198,7 @@ export function AgentEditorPage({
       runtime={runtime}
       byo={byo}
       computer={computer}
+      surfaces={surfaces}
       closeEditor={closeEditor}
       sayHello={sayHello}
       persistNew={persistNew}

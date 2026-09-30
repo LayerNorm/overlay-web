@@ -81,6 +81,8 @@ import {
 } from '@/server/ai/provider-connections'
 import type { ComputerRepository } from '@/server/computers/ComputerRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
+import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
+import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -110,6 +112,7 @@ export interface AppDataRepositories {
   providerConnections: ProviderConnectionRepository
   settings: AppSettingsRepository
   skills: SkillRepository
+  surfaces: SurfaceRepository
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   webhooks: WebhookRepository
@@ -155,6 +158,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       providerConnections: new ConvexProviderConnectionRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       skills: new ConvexSkillRepository(),
+      surfaces: new ConvexSurfaceRepository(),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),

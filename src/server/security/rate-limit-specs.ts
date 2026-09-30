@@ -165,6 +165,14 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'GET /api/v1/mcps/oauth/callback': [
     { bucket: 'mcps/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
   ],
+  // Slack surface OAuth is a browser navigation outside handleBffRoute; both
+  // legs rate-limit before reading the session, so they key on IP.
+  'GET /api/v1/surfaces/slack/connect': [
+    { bucket: 'surfaces/slack:connect:ip', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/surfaces/slack/callback': [
+    { bucket: 'surfaces/slack:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {

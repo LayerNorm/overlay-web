@@ -82,6 +82,7 @@ export function RoomThreadPanel({
   onInputChange,
   onSubmit,
   onClose,
+  readOnlyNotice,
 }: {
   roomLabel: string
   replyCount: number
@@ -92,6 +93,8 @@ export function RoomThreadPanel({
   onInputChange: (value: string) => void
   onSubmit: () => void
   onClose: () => void
+  /** Replaces the reply form — used for mirrored surface threads. */
+  readOnlyNotice?: string
 }) {
   return (
     <AppScreenSidePanel
@@ -114,6 +117,11 @@ export function RoomThreadPanel({
       <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-5">{messages}</div>
       </div>
+      {readOnlyNotice ? (
+        <div className="shrink-0 border-t border-[var(--border)] px-4 py-3 text-center text-xs text-[var(--muted)]">
+          {readOnlyNotice}
+        </div>
+      ) : (
       <form
         className="m-3 flex shrink-0 items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 focus-within:border-[var(--muted-light)]"
         onSubmit={(event) => {
@@ -144,6 +152,7 @@ export function RoomThreadPanel({
           <Send size={14} />
         </button>
       </form>
+      )}
     </AppScreenSidePanel>
   )
 }

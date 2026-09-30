@@ -17,6 +17,7 @@ export type CachedConversation = {
   conversationType?: 'personal' | 'dm' | 'channel'
   otherParticipantTypes?: Array<'human' | 'agent'>
   createdByPrincipalId?: string
+  externalPlatform?: string
 }
 
 const CACHE_TTL_MS = 15_000

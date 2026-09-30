@@ -319,8 +319,18 @@ export const create = mutation({
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
     isAutomation: v.optional(v.boolean()),
+    conversationType: v.optional(v.union(
+      v.literal('personal'),
+      v.literal('dm'),
+      v.literal('channel'),
+    )),
+    createdByPrincipalId: v.optional(v.string()),
+    externalPlatform: v.optional(v.string()),
+    externalChannelId: v.optional(v.string()),
+    externalThreadId: v.optional(v.string()),
+    surfaceBindingId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation, conversationType, createdByPrincipalId, externalPlatform, externalChannelId, externalThreadId, surfaceBindingId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -346,6 +356,12 @@ export const create = mutation({
       askModelIds: ask,
       actModelId: act,
       isAutomation: isAutomation ?? false,
+      conversationType,
+      createdByPrincipalId,
+      externalPlatform,
+      externalChannelId,
+      externalThreadId,
+      surfaceBindingId,
     })
     // Emit a conversation event so personal conversation list version
     // subscriptions can detect the change without a full reload.

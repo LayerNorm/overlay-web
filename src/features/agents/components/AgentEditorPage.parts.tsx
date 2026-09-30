@@ -23,6 +23,8 @@ import type { useByoConnection } from './use-byo-connection'
 import type { useAgentComputer } from './use-agent-computer'
 import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentRuntime } from './use-agent-runtime'
+import type { useAgentSurfaces } from './use-agent-surfaces'
+import { AgentSurfacesField } from './AgentSurfacesField'
 
 type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
@@ -40,6 +42,7 @@ type AgentEditorFormSectionProps = {
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
   computer: ReturnType<typeof useAgentComputer>
+  surfaces: ReturnType<typeof useAgentSurfaces>
   closeEditor(): void
   persistNew(): void
   saveEdit(): void
@@ -63,6 +66,7 @@ function AgentEditorFormSection({
   runtime,
   byo,
   computer,
+  surfaces,
   closeEditor,
   persistNew,
   saveEdit,
@@ -240,6 +244,10 @@ function AgentEditorFormSection({
             } : undefined}
           />
 
+          {agentType === 'overlay' ? (
+            <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />
+          ) : null}
+
           <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
 
           {mode === 'edit' && agent?.principalId ? (
@@ -350,6 +358,7 @@ export function AgentEditorView({
   runtime,
   byo,
   computer,
+  surfaces,
   closeEditor,
   sayHello,
   persistNew,
@@ -381,6 +390,7 @@ export function AgentEditorView({
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
   computer: ReturnType<typeof useAgentComputer>
+  surfaces: ReturnType<typeof useAgentSurfaces>
   closeEditor(): void
   sayHello(): void
   persistNew(): void
@@ -449,6 +459,7 @@ export function AgentEditorView({
             runtime={runtime}
             byo={byo}
             computer={computer}
+            surfaces={surfaces}
             closeEditor={closeEditor}
             persistNew={persistNew}
             saveEdit={saveEdit}
