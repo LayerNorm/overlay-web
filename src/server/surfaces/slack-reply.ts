@@ -22,6 +22,17 @@ export function truncateForSlack(text: string): string {
  * Slack's 12k `markdown_text` cap fall back to legacy mrkdwn in `text`.
  * The SDK loads dynamically so workflow bundles never resolve it (chat.ts).
  */
+// The Slack app's own name. Slack shows it as the sender of every reply (it
+// ignores the per-message `username` override for this app), so replies from
+// any other agent open with the agent's name.
+const SLACK_APP_NAME = 'Overlay'
+
+export function withAgentAttribution(text: string, agentName: string): string {
+  const name = agentName.trim()
+  if (!name || name.toLowerCase() === SLACK_APP_NAME.toLowerCase()) return text
+  return `**${name}**\n\n${text}`
+}
+
 export async function slackReplyPayload(markdown: string): Promise<{ markdown_text: string } | { text: string }> {
   const { SlackFormatConverter } = await import('@chat-adapter/slack')
   const converter = new SlackFormatConverter()
@@ -66,7 +77,7 @@ export async function postSlackAgentMessage(args: {
     })
     return { posted: false }
   }
-  const body = await slackReplyPayload(args.text)
+  const body = await slackReplyPayload(withAgentAttribution(args.text, args.agentName))
   return await args.adapter.withBotToken(
     installation.botToken,
     async () => {

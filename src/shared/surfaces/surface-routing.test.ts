@@ -45,3 +45,12 @@ test('an unnamed message in a shared channel is ambiguous and lists the agents',
   assert.deepEqual(result, { kind: 'ambiguous', agentNames: ['PR agent', 'Product Agent'] })
   assert.match(ambiguousAgentPrompt(['PR agent', 'Product Agent']), /\*PR agent\*, \*Product Agent\*.*`@Overlay PR agent …`/)
 })
+
+test('an agent named like the bot does not swallow mentions routed on raw text', () => {
+  const overlay = { bindingId: 'b_overlay', agentName: 'Overlay' }
+  // Raw Slack text with the mention markup already stripped.
+  const named = routeSurfaceMessage({ candidates: [overlay, pr], text: 'PR agent review this' })
+  assert.equal(named.kind === 'agent' && named.candidate.bindingId, 'b_pr')
+  const explicit = routeSurfaceMessage({ candidates: [overlay, pr], text: 'Overlay summarize the thread' })
+  assert.equal(explicit.kind === 'agent' && explicit.candidate.bindingId, 'b_overlay')
+})

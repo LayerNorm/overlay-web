@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { slackReplyPayload } from './slack-reply'
+import { slackReplyPayload, withAgentAttribution } from './slack-reply'
 
 test('agent markdown is sent as Slack-rendered markdown_text', async () => {
   const payload = await slackReplyPayload('**pong** — see [docs](https://example.com)\n\n- one\n- two')
@@ -16,4 +16,10 @@ test('replies over the markdown_text cap fall back to mrkdwn text', async () => 
   // Standard **bold** becomes Slack mrkdwn *bold*.
   assert.match(payload.text, /^\*bold\* /)
   assert.doesNotMatch(payload.text, /\*\*bold\*\*/)
+})
+
+test('replies from agents other than the app name open with the agent name', () => {
+  assert.equal(withAgentAttribution('hello', 'PR agent'), '**PR agent**\n\nhello')
+  assert.equal(withAgentAttribution('hello', 'Overlay'), 'hello')
+  assert.equal(withAgentAttribution('hello', ''), 'hello')
 })

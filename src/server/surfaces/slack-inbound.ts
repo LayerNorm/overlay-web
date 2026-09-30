@@ -79,7 +79,9 @@ async function handleInboundSlackMessage(args: {
   const threadState = await thread.state.catch((_error) => null) as { surfaceBindingId?: string } | null
   const route = routeSurfaceMessage({
     candidates: candidates.map((candidate) => ({ ...candidate, bindingId: candidate.binding.id, agentName: candidate.agent.name })),
-    text: stripSlackMentionMarkup(message.text ?? ''),
+    // Route on Slack's raw text: the SDK's normalized `message.text` renders the
+    // bot mention as plain "@Overlay", which reads as the agent named Overlay.
+    text: stripSlackMentionMarkup(typeof raw?.text === 'string' ? raw.text : message.text ?? ''),
     threadBindingId: threadState?.surfaceBindingId,
   })
   if (route.kind !== 'agent') {
