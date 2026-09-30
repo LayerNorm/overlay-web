@@ -9,6 +9,7 @@ import {
   type AuthorizationRole,
   type AuthorizationSubject,
   type ResourceAction,
+  type ResourceGrant,
 } from '@overlay/authz-contracts'
 
 export type AuthorizationCapabilityPolicy = {
@@ -213,30 +214,7 @@ export class AuthorizationService {
         resourceType: args.resourceType,
       }),
     ])
-    const policyGrants = [...exactGrants, ...wildcardGrants]
-    if (policyGrants.length === 0) {
-      return {
-        allowed: true,
-        capability: args.capability,
-        resourceType: args.resourceType,
-        resourceId: args.resourceId,
-        requiredAction: 'view',
-        reason: 'resource_unrestricted',
-      }
-    }
-
-    const effectiveAccessRole = strongestAccessRole(policyGrants
-      .filter((grant) => principalMatches(args.subject, grant.principalType, grant.principalId))
-      .map(({ accessRole }) => accessRole))
-    return {
-      allowed: Boolean(effectiveAccessRole),
-      capability: args.capability,
-      resourceType: args.resourceType,
-      resourceId: args.resourceId,
-      requiredAction: 'view',
-      effectiveAccessRole,
-      reason: effectiveAccessRole ? 'resource_access_granted' : 'resource_access_missing',
-    }
+    return catalogGrantDecision(args, [...exactGrants, ...wildcardGrants])
   }
 
   async filterCatalogResourceIds(args: {
@@ -245,17 +223,28 @@ export class AuthorizationService {
     resourceType: string
     subject: AuthorizationSubject
   }): Promise<string[]> {
-    const decisions = await Promise.all(args.resourceIds.map(async (resourceId) => ({
-      resourceId,
-      decision: await this.checkResolvedCatalogResourceAccess({
-        capability: args.capability,
-        resourceId,
+    // Same decision as checkResolvedCatalogResourceAccess per id, but the
+    // capability, owner, and wildcard-grant inputs are shared across the list,
+    // so they are resolved once instead of once per resource.
+    if (!this.capabilityDecision(args.subject, args.capability).allowed) return []
+    if (args.subject.isDeploymentOwner) return [...args.resourceIds]
+    const [wildcardGrants, exactGrants] = await Promise.all([
+      this.deps.repositories.resourceGrants.listForResource({
+        resourceId: '*',
         resourceType: args.resourceType,
-        subject: args.subject,
       }),
-    })))
-    return decisions.filter(({ decision }) => decision.allowed).map(({ resourceId }) => resourceId)
+      Promise.all(args.resourceIds.map((resourceId) =>
+        this.deps.repositories.resourceGrants.listForResource({
+          resourceId,
+          resourceType: args.resourceType,
+        }))),
+    ])
+    return args.resourceIds.filter((resourceId, index) => catalogGrantDecision(
+      { ...args, resourceId },
+      [...exactGrants[index], ...wildcardGrants],
+    ).allowed)
   }
+
 
   async getResourceOwner(args: { resourceType: string; resourceId: string }): Promise<string | null> {
     return this.deps.repositories.resourceOwners.getOwner(args)
@@ -324,4 +313,32 @@ function principalMatches(
   if (principalType === 'user') return principalId === subject.userId
   if (principalType === 'group') return subject.groupIds.includes(principalId)
   return subject.roleIds.includes(principalId)
+}
+
+function catalogGrantDecision(
+  args: CatalogResourceAuthorizationRequest,
+  policyGrants: readonly ResourceGrant[],
+): AuthorizationDecision {
+  if (policyGrants.length === 0) {
+    return {
+      allowed: true,
+      capability: args.capability,
+      resourceType: args.resourceType,
+      resourceId: args.resourceId,
+      requiredAction: 'view',
+      reason: 'resource_unrestricted',
+    }
+  }
+  const effectiveAccessRole = strongestAccessRole(policyGrants
+    .filter((grant) => principalMatches(args.subject, grant.principalType, grant.principalId))
+    .map(({ accessRole }) => accessRole))
+  return {
+    allowed: Boolean(effectiveAccessRole),
+    capability: args.capability,
+    resourceType: args.resourceType,
+    resourceId: args.resourceId,
+    requiredAction: 'view',
+    effectiveAccessRole,
+    reason: effectiveAccessRole ? 'resource_access_granted' : 'resource_access_missing',
+  }
 }

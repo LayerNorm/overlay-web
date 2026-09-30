@@ -203,6 +203,48 @@ test('catalog resources stay open until an exact or wildcard policy is configure
   }), ['open-model', 'restricted-model'])
 })
 
+test('batched catalog filtering matches the per-resource decision', async () => {
+  const fixture = createFixture()
+  fixture.roles.push(role('connector_user', ['integrations.use']))
+  fixture.userRoles.push({ userId: 'user_1', roleId: 'connector_user', createdAt: 1 })
+  fixture.grants.push(
+    catalogGrant('only_user_2', 'connector', 'slack', 'user', 'user_2'),
+    catalogGrant('only_user_1', 'connector', 'github', 'user', 'user_1'),
+  )
+  const service = new AuthorizationService({ repositories: fixture.repositories })
+  const ids = ['gmail', 'slack', 'github']
+  const decide = async (subject: Awaited<ReturnType<typeof service.resolveSubject>>) => {
+    const single = []
+    for (const resourceId of ids) {
+      const decision = await service.checkResolvedCatalogResourceAccess({
+        capability: 'integrations.use',
+        resourceId,
+        resourceType: 'connector',
+        subject,
+      })
+      if (decision.allowed) single.push(resourceId)
+    }
+    const batched = await service.filterCatalogResourceIds({
+      capability: 'integrations.use',
+      resourceIds: ids,
+      resourceType: 'connector',
+      subject,
+    })
+    assert.deepEqual(batched, single)
+    return batched
+  }
+
+  const member = await service.resolveSubject('user_1')
+  assert.deepEqual(await decide(member), ['gmail', 'github'])
+  // No capability: nothing is visible, regardless of grants.
+  assert.deepEqual(await decide(await service.resolveSubject('user_3')), [])
+  // Deployment owners bypass catalog grants.
+  assert.deepEqual(await decide({ ...member, isDeploymentOwner: true }), ids)
+  // A wildcard grant applies to every connector in the list.
+  fixture.grants.push(catalogGrant('everyone', 'connector', '*', 'role', 'connector_user'))
+  assert.deepEqual(await decide(member), ids)
+})
+
 type Fixture = {
   grants: ResourceGrant[]
   groupRoles: GroupRoleAssignment[]

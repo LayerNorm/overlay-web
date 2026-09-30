@@ -5,6 +5,12 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { getBaseUrl } from '@/server/web/app-url'
 import { getIntegrationProvider, IntegrationService } from '@/server/integrations'
 import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
+import {
+  authorizeCatalogResource,
+  filterCatalogResources,
+  type AuthorizationService,
+} from '@/server/authorization'
+import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 
 function getAllowedAppOrigins(): string[] {
   const values = [process.env.NEXT_PUBLIC_APP_URL, process.env.DEV_NEXT_PUBLIC_APP_URL, getBaseUrl()]
@@ -38,8 +44,27 @@ function service() {
 }
 
 interface IntegrationsRouteDependencies {
+  authorization?: AuthorizationService
   service?: IntegrationService
   workspaceConnectors?: WorkspaceConnectorRepository
+}
+
+// Connectors an administrator withheld in the catalog (Admin > Catalog) are
+// hidden here and cannot be connected. Chat and automation turns enforce the
+// same `connector` policy when they load tools.
+function withAllowedConnectors<T extends { providerKey: string }>(
+  context: AppApiRouteContext,
+  dependencies: IntegrationsRouteDependencies,
+  values: readonly T[],
+): Promise<T[]> {
+  return filterCatalogResources({
+    authorization: dependencies.authorization ?? getOverlayServerContext().authorizationService,
+    capability: 'integrations.use',
+    context,
+    getId: ({ providerKey }) => normalizeIntegrationProviderKey(providerKey),
+    resourceType: 'connector',
+    values,
+  })
 }
 
 function catalogErrorMessage(error: unknown): string {
@@ -81,11 +106,12 @@ export async function GET(
         cursor: searchParams.get('cursor') || undefined,
         limit: Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100),
       })
+      const items = await withAllowedConnectors(context, dependencies, page.items)
       return NextResponse.json({
         provider: integrations.id,
         providerCapabilities: integrations.capabilities,
-        data: page.items,
-        items: page.items,
+        data: items,
+        items,
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         syncCursor: page.syncCursor,
@@ -123,8 +149,16 @@ export async function GET(
       }
     }
     const mappedProviderKeys = new Set(mappings.map((mapping) => mapping.providerKey))
-    const filteredConnections = connected.connections.filter((connection) => mappedProviderKeys.has(connection.providerKey))
-    const filteredItems = connected.items.filter((item) => mappedProviderKeys.has(item.providerKey))
+    const filteredConnections = await withAllowedConnectors(
+      context,
+      dependencies,
+      connected.connections.filter((connection) => mappedProviderKeys.has(connection.providerKey)),
+    )
+    const filteredItems = await withAllowedConnectors(
+      context,
+      dependencies,
+      connected.items.filter((item) => mappedProviderKeys.has(item.providerKey)),
+    )
     return NextResponse.json({
       provider: integrations.id,
       providerCapabilities: integrations.capabilities,
@@ -176,6 +210,17 @@ export async function POST(
         providerCapabilities: integrations.capabilities,
       })
     }
+
+    // Disconnecting stays available so users can always remove a connector
+    // that an administrator later withheld.
+    const denied = await authorizeCatalogResource({
+      authorization: dependencies.authorization ?? getOverlayServerContext().authorizationService,
+      capability: 'integrations.use',
+      context,
+      resourceId: normalizeIntegrationProviderKey(providerKey),
+      resourceType: 'connector',
+    })
+    if (denied) return denied
 
     const result = await integrations.connect(connectionContext)
     if (result.connectionId) {
