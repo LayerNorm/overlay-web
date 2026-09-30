@@ -282,7 +282,7 @@
     "mdast-util-to-string": "^4.0.0",
     "micromark-extension-gfm": "^3.0.0",
     "micromark-extension-math": "^3.1.0",
-    "next": "16.3.5",
+    "next": "16.3.8",
     "pdf-parse": "^1.1.1",
     "pg": "^8.22.0",
     "posthog-js": "^1.369.0",
@@ -329,7 +329,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "overrides": {
-    "axios": "1.18.1",
+    "axios": "1.20.0",
     "follow-redirects": "1.16.0",
     "postcss": "8.5.26",
     "protobufjs": "8.6.6",
@@ -374,6 +374,7 @@
     },
     "@vercel/queue": {
       "brace-expansion": "5.0.12"
-    }
+    },
+    "@grpc/grpc-js": "1.14.5"
   }
 }

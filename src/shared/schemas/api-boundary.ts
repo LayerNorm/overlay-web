@@ -871,6 +871,14 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete', reason: 'Connected-agent artifact completion; boundary definition pending. Protected by device-key authentication.' },
   { routePath: '/api/v1/agent-environments/artifacts/cleanup', reason: 'Internal artifact cleanup cron trigger; not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/operations/reconcile', reason: 'Internal reconciliation cron trigger; not part of the public web API reference.' },
+  // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
+  { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
+  { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
+  { routePath: '/api/v1/webhooks/slack', reason: 'Inbound Slack Events API webhook, authenticated by the Slack request signature.' },
+  { routePath: '/api/v1/surfaces/connections', reason: 'Surface connection listing; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/surfaces/connections/[connectionId]/channels', reason: 'Surface channel listing; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/surfaces/bindings', reason: 'Agent surface binding management; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/surfaces/bindings/[bindingId]', reason: 'Agent surface binding removal; boundary definition pending. Protected by workspace authorization.' },
   // Automation action routes pending full boundary definitions.
   { routePath: '/api/v1/automations/[id]/approve', reason: 'Automation approval action; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/cancel-scheduler', reason: 'Automation scheduler control; boundary definition pending. Protected by workspace authorization.' },

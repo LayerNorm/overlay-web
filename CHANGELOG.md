@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Security
+
+- **Next.js 16.3.8** fixes a remote-code-execution advisory in `next/og` `ImageResponse` (GHSA-vcvr-r3jv-pc5j), which the share pages' Open Graph images use. `axios` (1.20.0) and `@grpc/grpc-js` (1.14.5) are pinned past advisories published 2026-09-30 that failed the required production audit on every commit.
+
 ### Added
 
 - **Overlay workspace tools for every harness agent**: hosted harness agents (Claude Code, Codex, OpenCode, Pi, Hermes in an Overlay sandbox) and connected agents on a user's own machine now get the same workspace tools as an Overlay agent with the same grant: notes, files, memory, knowledge search, automations, connected apps, and MCP servers. Hosted harnesses receive them as host-executed tools, so each call runs on Overlay's servers and the sandbox gets no token or extra egress. Connected agents receive an MCP server (`POST /api/agent-mcp`) through the Agent Host, authenticated by a per-run token that stops working when the run ends. It needs a host release (the metadata key is ignored by older hosts). Agents also get file tools (`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`). Reads join the Knowledge group and writes form a new File editing group; revision-guarded writes return 409 on a concurrent change. Grants saved before a group grew now hold the tools that joined it, which also fixes agents created before the patch-style note tools not receiving them. Fixed: every tool call in an agent turn shared one idempotency key, so a second write to the same route in one turn was rejected with 409; keys are now derived per tool call and per request, which keeps replays idempotent.
