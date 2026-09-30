@@ -6,10 +6,10 @@ import type {
   StripeSubscriptionVerificationRow,
 } from './billing-account-migration'
 
-const {
+import {
   compareBillingBalanceSnapshots,
   verifyStripeSubscriptionsExactly,
-} = await import(new URL('./billing-account-migration.ts', import.meta.url).href)
+} from './billing-account-migration.ts'
 
 test('balance parity names every divergent field', () => {
   const legacy: BillingBalanceSnapshot = {

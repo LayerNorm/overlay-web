@@ -3,13 +3,13 @@ import 'server-only'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const {
+import {
   API_KEY_PREFIX,
   API_KEY_LENGTH,
   generateApiKey,
   hashApiKey,
   isApiKeyCandidate,
-} = await import(new URL('./crypto.ts', import.meta.url).href)
+} from './crypto.ts'
 
 test('generateApiKey emits prefixed opaque keys', () => {
   const key = generateApiKey()

@@ -5,11 +5,12 @@ import { createShowcaseWorkspaceClient } from './showcase-workspace-client'
 
 test('showcase workspace client switches and creates without network writes', async () => {
   const client = createShowcaseWorkspaceClient(SHOWCASE_WORKSPACES)
+  const [personal, organization] = SHOWCASE_WORKSPACES
   const initial = await client.list()
-  assert.equal(initial.activeWorkspaceId, 'showcase-personal')
+  assert.equal(initial.activeWorkspaceId, personal.id)
 
-  const activated = await client.activate('showcase-acme')
-  assert.equal(activated.activeWorkspaceId, 'showcase-acme')
+  const activated = await client.activate(organization.id)
+  assert.equal(activated.activeWorkspaceId, organization.id)
 
   const created = await client.create({ name: 'Research Guild' })
   assert.equal(created.workspace.slug, 'research-guild')

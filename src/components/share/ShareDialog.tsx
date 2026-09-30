@@ -460,7 +460,7 @@ function ShareTargetForm({
           className="h-10 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
         >
           <option value="">Add a person, agent, team, or room…</option>
-          {groups(available).map(({ label, entries }) => entries.length > 0 ? (
+          {shareDirectoryGroups(available).map(({ label, entries }) => entries.length > 0 ? (
             <optgroup key={label} label={label}>
               {entries.map((entry) => (
                 <option key={`${entry.targetType}:${entry.id}`} value={`${entry.targetType}:${entry.id}`}>{entry.name}</option>
@@ -744,7 +744,7 @@ function canonicalType(type: ShareDialogResource['type']): WorkspaceShareResourc
   return type === 'chat' ? 'conversation' : type
 }
 
-function groups(entries: WorkspaceShareDirectoryEntry[]) {
+export function shareDirectoryGroups(entries: WorkspaceShareDirectoryEntry[]) {
   return [
     { label: 'People & agents', entries: entries.filter((entry) => entry.targetType === 'principal') },
     { label: 'Teams', entries: entries.filter((entry) => entry.targetType === 'team') },

@@ -134,7 +134,10 @@ test('dispatch re-gates availability and threads harness model + instructions', 
     read('src/server/agents/managed-harness-steps.ts'),
   ])
   const dispatch = invocation.slice(invocation.indexOf('export async function startManagedHarnessTurn'))
-  assert.match(dispatch, /managedHarnessAvailability\(/)
+  // Dispatch uses the run gate (flag + workspace policy); the rollout stage
+  // only gates creation (450f05a0a, harness grandfathering).
+  assert.match(dispatch, /managedHarnessRunAvailability\(/)
+  assert.doesNotMatch(dispatch, /managedHarnessAvailability\(/)
   assert.match(dispatch, /managedHarnessModelOption\(/)
   assert.match(dispatch, /harnessModel/)
   assert.match(dispatch, /instructions/)

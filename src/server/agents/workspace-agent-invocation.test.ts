@@ -74,7 +74,7 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   )
 
   // A duplicate trigger must not bill the same reply twice.
-  assert.match(messageRoute, /if \(turn\.resumed\) continue/)
+  assert.match(messageRoute, /if \(turn\.resumed\) (?:continue|return)/)
 
   assert.match(workflow, /'use workflow'/)
   for (const step of [
@@ -238,7 +238,8 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
   for (const source of [contract, convexRoom]) {
     assert.match(source, /enqueueMemoryExtraction/)
   }
-  assert.match(convexExtractor, /AGENT_SYSTEM_PROMPT/)
+  // Agent-owned extraction uses its own prompt (M1 memory write path).
+  assert.match(convexExtractor, /targetActor === "agent" \? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT/)
   assert.match(convexExtractor, /memoryOwnerId/)
   assert.match(convexMemoryQuery, /hasSameMemoryExtractionAuthor\(message, validTarget\)/)
 })

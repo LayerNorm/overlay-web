@@ -162,6 +162,11 @@ jobs:
       - name: Verify core route contracts
         run: npm run test:route-characterization
 
+      # Every tracked *.test.* file, each with the runner it needs
+      # (scripts/ci/run-all-tests.mjs). Nothing runs outside this gate.
+      - name: Run the full test suite
+        run: npm run test:all
+
       - name: Verify migration and endpoint safety rails
         run: npm run check:config && npm run test:release-safety
 

@@ -24,16 +24,17 @@ test('Phase 5 protects the agent directory and lifecycle API', () => {
 })
 
 test('Phase 5 persists identity, runtime configuration, public-room enrollment, and resource scope', async () => {
-  const migration = await readFile(`${root}/migrations/app-data/0035_workspace_agents.sql`, 'utf8')
+  // Convex is the only app-data provider (64b4257ae removed the Postgres
+  // migrations this used to read).
+  const schema = await readFile(`${root}/convex/schema.ts`, 'utf8')
+  const definitions = schema.slice(schema.indexOf('workspaceAgentDefinitions: defineTable'))
   for (const invariant of [
-    'workspace_agent_definitions',
-    'principal_id',
+    'principalId',
     'instructions',
     'harness',
-    'allowed_tool_ids',
-    'invocation_policy',
-    "'mention'",
-  ]) assert.match(migration, new RegExp(invariant))
+    'allowedToolIds',
+    "invocationPolicy: v.literal\\('mention'\\)",
+  ]) assert.match(definitions, new RegExp(invariant))
 })
 
 test('Phase 5 invocation is implicit only in a one-human one-agent DM', () => {
@@ -69,17 +70,14 @@ test('Phase 5 group and channel invocation is human mention or agent-thread repl
   }), ['agent'])
 })
 
-test('Phase 5 ships the Buzz-inspired directory and explicit mention-first copy', async () => {
-  const [directory, form, page] = await Promise.all([
-    readFile(`${root}/src/features/agents/components/AgentsDirectory.tsx`, 'utf8'),
+test('Phase 5 ships agent creation and explicit mention-first copy', async () => {
+  // The tile directory was retired for agent-first routing (cd3b0741f);
+  // agents are created from the agent conversation workspace.
+  const [form, workspace] = await Promise.all([
     readFile(`${root}/src/features/agents/components/AgentEditorForm.tsx`, 'utf8'),
-    readFile(`${root}/src/features/agents/components/AgentEditorPage.tsx`, 'utf8'),
+    readFile(`${root}/src/features/agents/components/AgentConversationWorkspace.tsx`, 'utf8'),
   ])
-  assert.doesNotMatch(directory, /Agent teams/)
-  assert.match(directory, /New agent/)
-  assert.match(directory, /listBindings/)
-  assert.match(directory, /getAgentRuntimeLabel/)
-  assert.match(page, /Create agent/)
+  assert.match(workspace, /Create agent/)
   assert.match(form, /Create connection/)
   assert.match(form, /Bring your own agent/)
   assert.doesNotMatch(form, /Create Overlay Cloud environment/)

@@ -1,107 +1,103 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { AuthorizationCapability } from '@overlay/authz-contracts'
-import type { AdministrativePrincipal, AdministrativeRepository } from './AdministrativeRepository'
+import type {
+  AdministrativePrincipal,
+  AdministrativeRepository,
+  AdministrativeRole,
+} from './AdministrativeRepository'
 import { AdministrativeService } from './AdministrativeService'
 import type { AuditRepository } from './AuditRepository'
 import { AuditService } from './AuditService'
 
-test('custom capabilities authorize legacy administration checks', async () => {
-  const service = createService({
-    allowedCapabilities: new Set<AuthorizationCapability>([
-      'roles.manage',
-      'users.read',
-      'audit.read',
-      'usage.read',
-      'usage.manage',
-      'support.access',
-    ]),
-  }).service
+// The capability-backed administration layer was reverted in e02a88843; these
+// tests cover the fixed-role service that is live today.
 
-  assert.equal(await service.canManageAdministrators('custom_admin'), true)
-  assert.equal(await service.canViewUsers('custom_admin'), true)
-  assert.equal(await service.canViewAudit('custom_admin'), true)
-  assert.equal(await service.canManageBilling('custom_admin'), true)
-  assert.equal(await service.canViewUsage('custom_admin'), true)
-  assert.equal(await service.canAccessSupportControls('custom_admin'), true)
+test('fixed administrative roles grant only their own controls', async () => {
+  const { service } = createService([
+    principal('admin_1', 'admin'),
+    principal('auditor_1', 'auditor'),
+    principal('billing_1', 'billing_admin'),
+    principal('support_1', 'support'),
+  ])
+
+  assert.deepEqual(await checks(service, 'admin_1'), [true, true, true, true])
+  assert.deepEqual(await checks(service, 'auditor_1'), [false, true, false, false])
+  assert.deepEqual(await checks(service, 'billing_1'), [false, false, true, false])
+  assert.deepEqual(await checks(service, 'support_1'), [false, false, false, true])
+  assert.deepEqual(await checks(service, 'nobody'), [false, false, false, false])
 })
 
-test('legacy roles remain authoritative when custom authorization is absent or unavailable', async () => {
-  const principal: AdministrativePrincipal = {
-    userId: 'legacy_auditor',
-    role: 'auditor',
-    createdAt: 1,
-    updatedAt: 1,
-  }
-  const service = createService({ principal, authorizationThrows: true }).service
+test('a revoked principal loses every administrative control', async () => {
+  const { service } = createService([
+    { ...principal('former_admin', 'admin'), revokedAt: 2, revokedBy: 'admin_1' },
+  ])
 
-  assert.equal(await service.canViewAudit('legacy_auditor'), true)
-  assert.equal(await service.canManageAdministrators('legacy_auditor'), false)
+  assert.deepEqual(await checks(service, 'former_admin'), [false, false, false, false])
+  await assert.rejects(service.list('former_admin'), /Administrative authorization required/)
 })
 
-test('generic capability assertions preserve legacy role compatibility', async () => {
-  const service = createService({
-    principal: {
-      userId: 'legacy_billing',
-      role: 'billing_admin',
-      createdAt: 1,
-      updatedAt: 1,
-    },
-    authorizationThrows: true,
-  }).service
+test('only administrators can grant roles, and every grant is audited', async () => {
+  const fixture = createService([principal('admin_1', 'admin'), principal('auditor_1', 'auditor')])
 
-  await service.assertCapability('legacy_billing', 'usage.read')
   await assert.rejects(
-    service.assertCapability('legacy_billing', 'roles.manage'),
+    fixture.service.grant({ actorUserId: 'auditor_1', userId: 'someone', role: 'admin' }),
     /Administrative authorization required/,
   )
-})
+  assert.deepEqual(fixture.auditActions, [])
 
-test('legacy grants remain successful when compatibility synchronization temporarily fails', async () => {
-  const fixture = createService({
-    principal: {
-      userId: 'admin_1',
-      role: 'admin',
-      createdAt: 1,
-      updatedAt: 1,
-    },
-    compatibilityThrows: true,
-  })
-
-  const principal = await fixture.service.grant({
+  const granted = await fixture.service.grant({
     actorUserId: 'admin_1',
-    userId: 'auditor_1',
-    role: 'auditor',
+    userId: 'support_1',
+    role: 'support',
   })
-  assert.equal(principal.role, 'auditor')
-  assert.ok(fixture.auditActions.includes('authorization.compatibility.sync'))
-  assert.ok(fixture.auditActions.includes('administration.principal.grant'))
+  assert.equal(granted.role, 'support')
+  assert.equal(await fixture.service.canAccessSupportControls('support_1'), true)
+  assert.deepEqual(fixture.auditActions, ['administration.principal.grant'])
 })
 
-function createService(options: {
-  allowedCapabilities?: Set<AuthorizationCapability>
-  authorizationThrows?: boolean
-  compatibilityThrows?: boolean
-  principal?: AdministrativePrincipal
-}) {
-  const principals = new Map<string, AdministrativePrincipal>()
-  if (options.principal) principals.set(options.principal.userId, options.principal)
+test('administrators cannot revoke their own role', async () => {
+  const fixture = createService([principal('admin_1', 'admin'), principal('auditor_1', 'auditor')])
+
+  await assert.rejects(
+    fixture.service.revoke({ actorUserId: 'admin_1', userId: 'admin_1' }),
+    /cannot revoke their own active role/,
+  )
+  assert.equal(await fixture.service.revoke({ actorUserId: 'admin_1', userId: 'auditor_1' }), true)
+  assert.equal(await fixture.service.canViewAudit('auditor_1'), false)
+  assert.deepEqual(fixture.auditActions, ['administration.principal.revoke'])
+})
+
+function principal(userId: string, role: AdministrativeRole): AdministrativePrincipal {
+  return { userId, role, createdAt: 1, updatedAt: 1 }
+}
+
+async function checks(service: AdministrativeService, userId: string) {
+  return [
+    await service.canManageAdministrators(userId),
+    await service.canViewAudit(userId),
+    await service.canManageBilling(userId),
+    await service.canAccessSupportControls(userId),
+  ]
+}
+
+function createService(initial: AdministrativePrincipal[]) {
+  const principals = new Map(initial.map((entry) => [entry.userId, entry]))
   const repository: AdministrativeRepository = {
     async get({ userId }) { return principals.get(userId) ?? null },
     async list() { return [...principals.values()] },
     async grant(input) {
-      const principal: AdministrativePrincipal = {
+      const granted: AdministrativePrincipal = {
         ...input,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
-      principals.set(input.userId, principal)
-      return principal
+      principals.set(input.userId, granted)
+      return granted
     },
     async revoke({ revokedBy, userId }) {
-      const principal = principals.get(userId)
-      if (!principal) return false
-      principals.set(userId, { ...principal, revokedAt: Date.now(), revokedBy })
+      const existing = principals.get(userId)
+      if (!existing) return false
+      principals.set(userId, { ...existing, revokedAt: Date.now(), revokedBy })
       return true
     },
   }
@@ -116,25 +112,6 @@ function createService(options: {
   const service = new AdministrativeService({
     repository,
     audit: new AuditService(auditRepository),
-    authorization: {
-      async checkCapability({ capability }) {
-        if (options.authorizationThrows) throw new Error('authorization unavailable')
-        return {
-          allowed: options.allowedCapabilities?.has(capability) ?? false,
-          capability,
-          reason: options.allowedCapabilities?.has(capability)
-            ? 'resource_access_granted'
-            : 'capability_missing',
-        }
-      },
-    },
-    compatibility: {
-      async syncPrincipal() {
-        if (options.compatibilityThrows) throw new Error('compatibility unavailable')
-      },
-      async revokePrincipal() {},
-      async migrate() { return { active: 0, revoked: 0, total: 0 } },
-    },
   })
   return { auditActions, service }
 }

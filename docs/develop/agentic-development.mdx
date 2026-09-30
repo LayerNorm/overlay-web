@@ -117,6 +117,8 @@ Overlay does not require the maximum possible gate for every change. It requires
 | Auth, billing, tenant boundaries, secrets, or data migration | Relevant security/contract tests, explicit rollback, and staging verification. |
 | Convex or production runtime behavior | Staging web and backend on the same revision, followed by production smoke after promotion. |
 
+`npm run test:all` runs every tracked test file with the runner it needs (`scripts/ci/run-all-tests.mjs`) and is part of the required CI gate; run it before any direct push. New route handlers under `src/app/api/v1` also need an entry in `src/server/authorization/authorization-route-policy.ts`, which that suite enforces.
+
 Required GitHub checks remain mandatory. Zero approving reviews is intentional for the current sole-maintainer setup; do not add a gate that the pull-request author cannot satisfy. The Integration agent performs the substantive review and may request Builder changes when evidence or implementation is incomplete.
 
 ## Preserve meaningful history

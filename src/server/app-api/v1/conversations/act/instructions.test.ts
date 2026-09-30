@@ -34,7 +34,6 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
     memoryContext: '\nMEMORY_CONTEXT',
     mentionsContext: '\nMENTIONS_CONTEXT',
     paid: true,
-    projectInstructions: 'PROJECT_RULES',
     skillsContext: '\nSKILLS_CONTEXT',
     userSystemPromptExtension: 'USER_SYSTEM',
     ...overrides,
@@ -48,7 +47,8 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   })
 
   assert.match(instructions, /^You are Overlay’s browser agent\./)
-  assert.match(instructions, /Project instructions:\nPROJECT_RULES/)
+  // Projects were removed (9a6141f5b); no project block is composed.
+  assert.doesNotMatch(instructions, /Project instructions/)
   assert.match(instructions, /generate_image, generate_video/)
   assert.match(instructions, /You are in Automate mode\./)
   assert.match(instructions, /interactive_browser_session/)

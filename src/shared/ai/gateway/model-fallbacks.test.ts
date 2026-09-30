@@ -4,7 +4,7 @@ import {
   getChatModelFallbackCandidates,
   getLowCreditFallbackAttemptModelIds,
 } from './model-fallbacks'
-import { getModel } from '@/shared/ai/gateway/model-data'
+import { getModel, registerGatewayCatalogModels } from '@/shared/ai/gateway/model-data'
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 
 test('free model fallbacks stay inside the free-tier catalog', () => {
@@ -16,7 +16,30 @@ test('free model fallbacks stay inside the free-tier catalog', () => {
   assert.deepEqual(fallbacks, [])
 })
 
+// Paid-model prices come from the live AI Gateway catalog, registered at
+// runtime; the static curated rows carry no prices. Register a priced slice so
+// the paid fallback path runs the same way it does in production.
+function registerPricedAnthropicCatalog() {
+  const language = (id: string, name: string, input: number, output: number) => ({
+    gatewayId: id,
+    id,
+    inputPricePerMillion: input,
+    name,
+    outputPricePerMillion: output,
+    pricing: {},
+    provider: 'anthropic',
+    tags: ['vision', 'reasoning'],
+    type: 'language' as const,
+  })
+  registerGatewayCatalogModels([
+    language('anthropic/claude-opus-4.7', 'Claude Opus 4.7', 15, 75),
+    language('claude-sonnet-4-6', 'Claude Sonnet 4.6', 3, 15),
+    language('claude-haiku-4-5', 'Claude Haiku 4.5', 1, 5),
+  ])
+}
+
 test('paid model fallbacks are strictly cheaper than the selected model', () => {
+  registerPricedAnthropicCatalog()
   const selected = getModel('anthropic/claude-opus-4.7')
   assert.ok(selected?.pricePer1mTokens)
   const fallbacks = getChatModelFallbackCandidates({
@@ -33,6 +56,7 @@ test('paid model fallbacks are strictly cheaper than the selected model', () => 
 })
 
 test('paid fallbacks respect zero data retention settings', () => {
+  registerPricedAnthropicCatalog()
   const fallbacks = getChatModelFallbackCandidates({
     modelId: 'anthropic/claude-opus-4.7',
     paid: true,

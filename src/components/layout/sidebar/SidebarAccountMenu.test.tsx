@@ -41,8 +41,10 @@ test('usage, storage, and apps collapse behind disclosure headers', () => {
 
 test('account settings and sign out stay one click away', () => {
   const html = render()
-  assert.match(html, /href="\/app\/settings\?section=account"/)
+  // Account settings live in the unified settings panel (917b411d5 removed
+  // the duplicate `?section=account` entry).
   assert.match(html, /href="\/app\/settings"/)
-  assert.match(html, /Account/)
+  assert.doesNotMatch(html, /href="\/app\/settings\?section=account"/)
+  assert.match(html, />Settings</)
   assert.match(html, /Sign out/)
 })
