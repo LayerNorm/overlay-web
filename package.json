@@ -123,7 +123,7 @@
     "docs:update": "npm run docs:generate:api && npm run docs:health",
     "docs:check": "npm run docs:generate:api && npm run docs:health && cd docs && node ../scripts/ci/run-mint.mjs validate && node ../scripts/ci/run-mint.mjs broken-links --check-anchors",
     "docs:check:self-hosting": "npm run docs:health",
-    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "security:audit": "node scripts/ci/security-audit.mjs",
     "check:owner-funded-boundary": "node scripts/ci/check-owner-funded-boundary.mjs",
     "test:desktop-security:backend": "npm run check:desktop-provider-key-boundary && npm run check:owner-funded-boundary && npm run test:auth:native-validation && NODE_OPTIONS=--conditions=react-server tsx --test src/server/auth/session-transfer-crypto.test.ts src/server/billing/billing-runtime.test.ts src/server/billing/owner-funded-operations.test.ts src/server/billing/transcription-billing.test.ts src/server/security/rate-limit-specs.test.ts src/server/security/ssrf.test.ts src/server/shared/providers/convex-rate-limiter.test.ts src/server/outputs/GenerationUsagePolicy.test.ts src/server/releases/desktop-download-policy.test.ts",
     "test:auth:env": "node --experimental-strip-types scripts/qa/auth-dev-env-check.ts",
@@ -344,13 +344,13 @@
     "socket.io-parser": "4.2.7",
     "ws@>=7.0.0 <7.5.11": "7.5.11",
     "@workflow/world-local": {
-      "undici": "7.29.0"
+      "undici": "7.29.1"
     },
     "@workflow/world-vercel": {
-      "undici": "7.29.0"
+      "undici": "7.29.1"
     },
     "glob@13.0.6": {
-      "brace-expansion": "5.0.9"
+      "brace-expansion": "5.0.12"
     },
     "qs": "6.16.0",
     "@types/react": "19.2.18",
@@ -358,6 +358,9 @@
     "adm-zip": "0.6.1",
     "@mintlify/scraping": {
       "puppeteer": "25.11.0"
+    },
+    "@vercel/queue": {
+      "brace-expansion": "5.0.12"
     }
   }
 }

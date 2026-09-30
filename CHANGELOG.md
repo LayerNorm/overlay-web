@@ -33,6 +33,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Production dependency audit is green again**: new `undici` and `brace-expansion` advisories (including a TLS certificate-validation bypass) failed the CI audit. The Workflow runtime's pinned `undici` override moves to 7.29.1 and `brace-expansion` to 5.0.12. `npm run security:audit` now runs `scripts/ci/security-audit.mjs`, which still fails on any high or critical advisory except three reviewed, expiring (2026-10-14) exceptions for install paths overrides cannot reach: `pi-coding-agent`'s shrinkwrapped `undici`/`brace-expansion` (fixed by the pending `@ai-sdk/harness` family bump) and `eve`'s pinned `undici` (agent-host CLI only, not the web runtime).
+
 - **Slack replies render formatting**: agent replies are standard Markdown, which Slack showed literally (`**pong**`). Replies now go out as Slack's native `markdown_text` (the same path the Chat SDK uses); replies over Slack's 12,000-character `markdown_text` limit fall back to converted Slack mrkdwn.
 
 - **Route authorization inventory is complete**: 38 API route methods (computers, agent threads, agent bundles, workspace billing, provider connections, file ingest jobs, Slack import, mention search, sandbox run, and others) were missing from `authorization-route-policy.ts`; each now records its actual access model, and the two internal-secret callbacks are marked `internal`.
