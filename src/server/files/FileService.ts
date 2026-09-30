@@ -181,6 +181,8 @@ export class FileService {
     workspaceId?: string
   }): Promise<{ id: unknown; ids?: string[]; parts?: number }> {
     const createRequest = parseCreateFileRequest(args.body, args.userId)
+    // Listings are workspace-scoped; a row without its workspace is invisible.
+    if (args.workspaceId) createRequest.fileArgs.workspaceId = args.workspaceId
     let id: unknown
     const ids: string[] = []
 
@@ -462,6 +464,7 @@ export class FileService {
     file: File | null
     parentId?: string
     userId: string
+    workspaceId?: string
   }): Promise<{ id: string | undefined; ids: string[]; name: string; parts: number }> {
     let uploadedR2Key: string | null = null
     let uploadedR2RetainedByFileRecord = false
@@ -542,6 +545,7 @@ export class FileService {
           r2Key,
           sourceSizeBytes: Math.max(0, Math.round(buf.byteLength)),
           userId: args.userId,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         })
         uploadedR2RetainedByFileRecord = ids.length > 0
         if (ids.length !== partWrites.length) {

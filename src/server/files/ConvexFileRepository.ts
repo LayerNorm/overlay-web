@@ -93,6 +93,7 @@ export class ConvexFileRepository implements FileRepository {
     r2Key: string
     sourceSizeBytes: number
     userId: string
+    workspaceId?: string
   }): Promise<string[]> {
     return await convex.mutation<string[]>('files/files:createExtractedDocument', {
       ...args,

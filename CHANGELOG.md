@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Fixed
+
+- **Files and folders created through `/api/v1/files` land in the caller's workspace.** `FileService` received the request's workspace but dropped it on every create path: new folders, text files, R2 uploads, and ingested documents. The rows had no `workspaceId`, so workspace-scoped listings (the Files page, `list_files`) never showed them. Background ingestion now carries the job's workspace too. Rows created before this fix still have no workspace; `migrations/backfillWorkspaceIds` can assign them.
+
 ### Security
 
 - **Next.js 16.3.8** fixes a remote-code-execution advisory in `next/og` `ImageResponse` (GHSA-vcvr-r3jv-pc5j), which the share pages' Open Graph images use. `axios` (1.20.0) and `@grpc/grpc-js` (1.14.5) are pinned past advisories published 2026-09-30 that failed the required production audit on every commit.

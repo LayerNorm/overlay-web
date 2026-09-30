@@ -411,3 +411,25 @@ test('FileService.searchText preserves match response shape', async () => {
   assert.equal(result.matches[0]?.fileName, 'notes.txt')
   assert.equal(result.matches[0]?.snippet.includes('beta'), true)
 })
+
+test('FileService creates files in the caller\'s workspace so workspace listings include them', async () => {
+  const repository = createRepository()
+  const service = createService(repository)
+  await service.createFile({ userId: 'user_1', workspaceId: 'ws_1', body: { name: 'Docs', type: 'folder', kind: 'folder' } })
+  await service.createFile({ userId: 'user_1', workspaceId: 'ws_1', body: { name: 'large.txt', type: 'file', textContent: 'a'.repeat(900_000) } })
+  assert.deepEqual(repository.createdFiles.map((file) => file.workspaceId), ['ws_1', 'ws_1', 'ws_1'])
+
+  let extractedWorkspaceId: string | undefined
+  const ingestRepository = createRepository({
+    async createExtractedDocument(args) {
+      extractedWorkspaceId = args.workspaceId
+      return ['file_document']
+    },
+  })
+  await createService(ingestRepository, createStorage()).ingestDocument({
+    file: new File(['document body'], 'document.txt', { type: 'text/plain' }),
+    userId: 'user_1',
+    workspaceId: 'ws_1',
+  })
+  assert.equal(extractedWorkspaceId, 'ws_1')
+})

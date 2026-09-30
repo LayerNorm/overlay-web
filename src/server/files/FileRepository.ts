@@ -79,6 +79,7 @@ export interface FileRepository {
     r2Key: string
     sourceSizeBytes: number
     userId: string
+    workspaceId?: string
   }): Promise<string[]>
   updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void>
   removeFile(args: {
