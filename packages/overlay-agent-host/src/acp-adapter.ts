@@ -4,6 +4,25 @@ import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 
+/**
+ * Overlay sends each turn an MCP server (its workspace tools: notes, files,
+ * memory, knowledge, connected apps) with a run-scoped bearer token. It is
+ * offered to the agent only over HTTP, and only when the agent says it
+ * supports HTTP MCP servers.
+ */
+export function overlayMcpServers(metadata: Record<string, unknown>, agentSupportsHttp: boolean): acp.McpServer[] {
+  const overlayMcp = metadata.overlayMcp as { url?: unknown; token?: unknown } | undefined
+  if (!agentSupportsHttp || typeof overlayMcp?.url !== 'string' || typeof overlayMcp.token !== 'string') return []
+  let url: URL
+  try {
+    url = new URL(overlayMcp.url)
+  } catch {
+    return []
+  }
+  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') return []
+  return [{ type: 'http', name: 'overlay', url: url.toString(), headers: [{ name: 'Authorization', value: `Bearer ${overlayMcp.token}` }] }]
+}
+
 export type AcpAdapterOptions = {
   id: string
   displayName: string
@@ -101,13 +120,14 @@ export class AcpAgentAdapter implements AgentAdapter {
         if (sessionId && initialized.agentCapabilities?.loadSession !== true) {
           throw new Error(`ACP adapter ${this.options.id} does not support session resume`)
         }
+        const mcpServers = overlayMcpServers(input.metadata, Boolean(initialized.agentCapabilities?.mcpCapabilities?.http))
         if (sessionId) {
           await context.request(acp.methods.agent.session.load, {
-            sessionId, cwd: input.workingDirectory, additionalDirectories: input.additionalDirectories, mcpServers: [],
+            sessionId, cwd: input.workingDirectory, additionalDirectories: input.additionalDirectories, mcpServers,
           })
         } else {
           const created = await context.request(acp.methods.agent.session.new, {
-            cwd: input.workingDirectory, additionalDirectories: input.additionalDirectories, mcpServers: [],
+            cwd: input.workingDirectory, additionalDirectories: input.additionalDirectories, mcpServers,
           })
           sessionId = created.sessionId
         }

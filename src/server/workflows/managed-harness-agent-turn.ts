@@ -1,6 +1,7 @@
 import { createHook, getWorkflowMetadata } from 'workflow'
 import type { ConnectedAgentSandboxBilling } from '@/server/agents/ConnectedAgentRepository'
 import type { ManagedHarnessId } from '@overlay/workspace-contracts'
+import type { ManagedHarnessToolGrant } from '@/server/agents/managed-harness-tools'
 import {
   abandonWorkspaceAgentRun,
   attachWorkspaceAgentRun,
@@ -67,6 +68,10 @@ export type ManagedHarnessTurnInput = {
   /** Agent's standing instructions, applied to the HarnessAgent. */
   instructions?: string
   invocationNonce: string
+  /** The room message that summoned the agent; gates which mutation tools it gets. */
+  latestUserText?: string
+  /** The agent's tool grant — its Overlay workspace tools run host-side each slice. */
+  toolGrant?: ManagedHarnessToolGrant
   /** Slice ceiling — dispatch derives it from the connected-agent run-time cap. */
   maxTurnSlices: number
   memoryEnabled?: boolean
@@ -120,9 +125,12 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
     byokConnectionUserId: input.byokConnectionUserId,
     instructions: input.instructions,
     invocationNonce: input.invocationNonce,
+    latestUserText: input.latestUserText,
+    memoryEnabled: input.memoryEnabled,
     modelId: input.modelId,
     prompt: input.prompt,
     runId: input.runId,
+    toolGrant: input.toolGrant,
     threadRootMessageId: input.threadRootMessageId,
     turnId: input.turnId,
     turnMessageId: input.turnMessageId,

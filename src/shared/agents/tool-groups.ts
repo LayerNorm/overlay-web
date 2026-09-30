@@ -45,8 +45,14 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
   {
     id: 'knowledge',
     label: 'Knowledge & file search',
-    description: 'Search the workspace knowledge base and uploaded files.',
-    toolIds: ['search_knowledge', 'search_in_files'],
+    description: 'Search, list, and read the workspace knowledge base and files.',
+    toolIds: ['search_knowledge', 'search_in_files', 'list_files', 'read_file'],
+  },
+  {
+    id: 'files',
+    label: 'File editing',
+    description: 'Create and edit text files, make folders, and move or rename files.',
+    toolIds: ['write_file', 'create_folder', 'move_file'],
   },
   {
     id: 'web_search',
@@ -181,11 +187,25 @@ export function agentToolCapabilities(
  */
 const LEGACY_MEMORY_WRITE_TOOL_IDS = ['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory']
 
+/**
+ * Tools added to a group after agents were granted it. A group is enabled only
+ * when every one of its tools is granted, so a saved grant is read as holding
+ * the tools that joined its group later (file reads joined knowledge search;
+ * patch-style note edits joined whole-note updates).
+ */
+const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: readonly string[] }> = [
+  { grantedBy: ['search_knowledge', 'search_in_files'], adds: ['list_files', 'read_file'] },
+  { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+]
+
 export function normalizeAgentToolGrant(allowedToolIds: readonly string[]): string[] {
   const granted = new Set(allowedToolIds)
   if (!granted.has('search_memory') && LEGACY_MEMORY_WRITE_TOOL_IDS.some((id) => granted.has(id))) {
     granted.add('search_memory')
     granted.add('search_messages')
+  }
+  for (const { grantedBy, adds } of LATER_GROUP_MEMBERS) {
+    if (grantedBy.every((id) => granted.has(id))) adds.forEach((id) => granted.add(id))
   }
   return [...granted]
 }

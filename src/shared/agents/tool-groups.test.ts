@@ -112,3 +112,15 @@ test('the computer group needs every computer tool id to count as enabled', () =
     true,
   )
 })
+
+test('grants saved before a group grew still hold the tools that joined it', () => {
+  const beforeNoteEdits = ['list_notes', 'get_note', 'create_note', 'update_note', 'delete_note']
+  const beforeFileReads = ['search_knowledge', 'search_in_files']
+  const groups = enabledAgentToolGroupIds([...beforeNoteEdits, ...beforeFileReads])
+  assert.ok(groups.has('notes'))
+  assert.ok(groups.has('knowledge'))
+  assert.ok(!groups.has('files'), 'file editing is a new grant, not implied by search')
+  const normalized = normalizeAgentToolGrant(beforeNoteEdits)
+  for (const id of ['append_to_note', 'replace_note_section', 'edit_note']) assert.ok(normalized.includes(id))
+  assert.ok(!normalizeAgentToolGrant(['get_note']).includes('edit_note'), 'read-only note grants gain no writes')
+})

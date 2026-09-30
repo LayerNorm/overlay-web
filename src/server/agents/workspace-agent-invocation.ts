@@ -36,6 +36,9 @@ import {
 } from '@/shared/agents/connected-agent-rollout'
 import { isManagedHarnessId, type AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import { managedHarnessAgentTurnWorkflow } from '@/server/workflows/managed-harness-agent-turn'
+import type { ManagedHarnessToolGrant } from '@/server/agents/managed-harness-tools'
+import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
+import { getBaseUrl } from '@/server/web/app-url'
 import { MANAGED_HARNESS_TIME_SLICE_SECONDS } from '@/server/agents/managed-harness-steps'
 import { managedHarnessRunAvailability } from '@/server/agents/harnesses/availability'
 import { managedHarnessModelOption } from '@/shared/agents/harness-catalog'
@@ -210,6 +213,8 @@ export type WorkspaceAgentInvocation = {
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
+  /** The agent's tool grant — managed harnesses get their Overlay tools from it. */
+  toolGrant?: ManagedHarnessToolGrant
   remoteTarget?: {
     adapterId: string
     bindingId: string
@@ -435,6 +440,10 @@ export async function resolveWorkspaceAgentInvocations(args: {
       instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
+      toolGrant: {
+        allowedToolIds: [...agent.allowedToolIds],
+        isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay'),
+      },
       ...(target && adapterId && workingDirectory ? {
         remoteTarget: {
           adapterId,
@@ -488,6 +497,41 @@ export function buildRemoteAgentPrompt(args: {
     ? `${envelope.slice(0, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
     : envelope
   return `${boundedContext}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
+}
+
+/**
+ * The Overlay MCP server a connected agent's host hands to its ACP runtime,
+ * so the agent gets the same workspace tools as a managed harness. The token
+ * is scoped to this run; older hosts ignore the metadata key.
+ */
+function overlayMcpMetadata(args: {
+  actorUserId: string
+  conversationId: string
+  invocation: WorkspaceAgentInvocation & { remoteTarget: NonNullable<WorkspaceAgentInvocation['remoteTarget']> }
+  latestUserText?: string
+  memoryEnabled: boolean
+  runId: string
+  ttlMs: number
+  workspaceId: string
+}): { overlayMcp?: { url: string; token: string } } {
+  if (!args.invocation.toolGrant) return {}
+  const token = mintAgentMcpToken({
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    agentId: args.invocation.agentId,
+    agentPrincipalId: args.invocation.agentPrincipalId,
+    conversationId: args.conversationId,
+    environmentId: args.invocation.remoteTarget.environmentId,
+    runId: args.runId,
+    turnId: args.invocation.turnId,
+    invocationNonce: args.invocation.invocationNonce,
+    modelId: args.invocation.modelId,
+    memoryEnabled: args.memoryEnabled,
+    grant: args.invocation.toolGrant,
+    ...(args.latestUserText ? { latestUserText: args.latestUserText } : {}),
+    ttlMs: args.ttlMs,
+  })
+  return token ? { overlayMcp: { url: `${getBaseUrl()}/api/agent-mcp`, token } } : {}
 }
 
 export async function startRemoteWorkspaceAgentTurn(args: {
@@ -617,6 +661,16 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           conversationId: args.conversationId,
           messageId: args.messageId,
           initiatorPrincipalId: args.initiatorPrincipalId,
+          ...overlayMcpMetadata({
+            actorUserId: args.actorUserId,
+            conversationId: args.conversationId,
+            invocation: args.invocation,
+            latestUserText: room.latestUserText,
+            memoryEnabled: args.memoryEnabled,
+            runId,
+            ttlMs: policy.maxRunTimeMs + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS + AGENT_MCP_TOKEN_SLACK_MS,
+            workspaceId: args.workspaceId,
+          }),
         },
       },
       threadRootMessageId: args.threadRootMessageId,
@@ -842,6 +896,8 @@ export async function startManagedHarnessTurn(args: {
       ...(remoteTarget.byokConnectionUserId ? { byokConnectionUserId: remoteTarget.byokConnectionUserId } : {}),
       ...(args.invocation.instructions?.trim() ? { instructions: args.invocation.instructions.trim() } : {}),
       invocationNonce: args.invocation.invocationNonce,
+      ...(room.latestUserText ? { latestUserText: room.latestUserText } : {}),
+      ...(args.invocation.toolGrant ? { toolGrant: args.invocation.toolGrant } : {}),
       // The turn's slice ceiling tracks the same run-time cap a remote run gets.
       maxTurnSlices: Math.max(1, Math.ceil(policy.maxRunTimeMs / (MANAGED_HARNESS_TIME_SLICE_SECONDS * 1_000))),
       memoryEnabled: args.memoryEnabled,

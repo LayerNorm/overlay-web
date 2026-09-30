@@ -144,7 +144,9 @@ test('dispatch re-gates availability and threads harness model + instructions', 
   assert.match(workflow, /harnessModel: input\.harnessModel/)
   assert.match(workflow, /instructions: input\.instructions/)
   assert.match(steps, /model: input\.harnessModel/)
-  assert.match(steps, /instructions: input\.instructions/)
+  // The agent's instructions reach the HarnessAgent, extended with the Overlay tools note.
+  assert.match(steps, /\[input\.instructions, overlayTools\.instructions\]/)
+  assert.match(steps, /tools: overlayTools\.tools/)
 })
 
 test('managed route serves the gated picker and enforces availability on POST', async () => {

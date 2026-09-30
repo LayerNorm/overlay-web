@@ -1,6 +1,7 @@
 import 'server-only'
 
 export {
+  asSchema,
   convertToModelMessages,
   createUIMessageStreamResponse,
   experimental_generateVideo,

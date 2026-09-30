@@ -1,6 +1,8 @@
 const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
+  'list_files',
+  'read_file',
   'search_memory',
   'search_messages',
   'save_memory',
@@ -19,6 +21,7 @@ const NOTE_MUTATION_TOOL_IDS = [
   'update_note',
   'delete_note',
 ] as const
+const FILE_MUTATION_TOOL_IDS = ['write_file', 'create_folder', 'move_file'] as const
 const IMAGE_TOOL_IDS = ['generate_image'] as const
 const VIDEO_TOOL_IDS = [
   'generate_video',
@@ -56,6 +59,13 @@ function isExplicitNoteMutationRequest(text: string): boolean {
     /\b(update|edit|rewrite|rename|delete|remove)\b.{0,40}\b(note|notes)\b/i,
     /\b(note|notes)\b.{0,40}\b(create|write|make|save|add|update|edit|rewrite|rename|delete|remove)\b/i,
     /\bsave\b.{0,30}\b(to|as)\b.{0,10}\b(note|notes)\b/i,
+  ])
+}
+
+function isExplicitFileMutationRequest(text: string): boolean {
+  return matchesAny(text, [
+    /\b(create|write|make|save|add|edit|update|rename|move|organi[sz]e)\b.{0,40}\b(file|files|folder|folders|document|csv|markdown|txt)\b/i,
+    /\b(file|files|folder|folders)\b.{0,40}\b(create|write|make|save|edit|update|rename|move|organi[sz]e)\b/i,
   ])
 }
 
@@ -117,6 +127,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (isExplicitNoteMutationRequest(text)) {
     addAll(allowed, NOTE_MUTATION_TOOL_IDS)
+  }
+  if (isExplicitFileMutationRequest(text)) {
+    addAll(allowed, FILE_MUTATION_TOOL_IDS)
   }
   if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)

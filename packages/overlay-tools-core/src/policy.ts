@@ -26,6 +26,11 @@ export const COMPUTER_TOOL_IDS = [
 export const OVERLAY_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
+  'list_files',
+  'read_file',
+  'write_file',
+  'create_folder',
+  'move_file',
   'search_memory',
   'search_messages',
   'save_memory',

@@ -28,6 +28,7 @@ import {
 import { createAgentMessageStream } from '@/server/agents/agent-message-stream'
 import { createHarnessTranscriptWritable, type HarnessTranscriptSnapshot } from '@/server/agents/harnesses/transcript-writable'
 import { createManagedHarnessAgent, managedHarnessDescriptor } from '@/server/agents/harnesses/registry'
+import type { ManagedHarnessToolGrant } from '@/server/agents/managed-harness-tools'
 import { managedHarnessEntry } from '@/shared/agents/harness-catalog'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
@@ -82,11 +83,16 @@ type HarnessTurnIdentity = {
   /** The agent record's standing instructions. */
   instructions?: string
   invocationNonce: string
+  /** The summoning room message; gates mutation tools like a native turn. */
+  latestUserText?: string
+  memoryEnabled?: boolean
   modelId: string
   /** The full room-context prompt envelope, sent once on the first slice. */
   prompt: string
   runId: string
   threadRootMessageId?: string
+  /** The agent's grant for its Overlay workspace tools. */
+  toolGrant?: ManagedHarnessToolGrant
   turnId: string
   turnMessageId: string
   workingDirectory: string
@@ -348,19 +354,24 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
     harnessId: input.harnessId,
     workspaceId: input.workspaceId,
   })
-  const [sandbox, authentication] = await Promise.all([
+  const [sandbox, authentication, overlayTools] = await Promise.all([
     wrapHarnessSandbox(
     instance,
     instance.provider,
     harnessSandboxPorts(input.harnessId),
     ),
     resolveManagedHarnessAuthentication(input, instance.provider),
+    // Overlay workspace tools run here, host-side; the sandbox gains nothing.
+    // Imported lazily so the tool pipeline stays out of workflow bundles.
+    import('@/server/agents/managed-harness-tools').then(({ buildManagedHarnessTools }) => buildManagedHarnessTools(input)),
   ])
+  const instructions = [input.instructions, overlayTools.instructions].filter(Boolean).join('\n\n')
   const agent = await createManagedHarnessAgent({
     harnessId: input.harnessId,
     ...(input.harnessModel ? { model: input.harnessModel } : {}),
     ...(authentication ? { authentication } : {}),
-    ...(input.instructions ? { instructions: input.instructions } : {}),
+    ...(instructions ? { instructions } : {}),
+    ...(Object.keys(overlayTools.tools).length > 0 ? { tools: overlayTools.tools } : {}),
     sandbox,
     sandboxConfig: {
       // Binding directories are absolute POSIX roots; the harness resolves

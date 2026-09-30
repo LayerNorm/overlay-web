@@ -224,7 +224,15 @@ export class FileService {
     userId: string
     workspaceId?: string
   }): Promise<{ success: true }> {
-    await this.deps.repository.updateFile(buildUpdateFileArgs(args.body, args.userId))
+    try {
+      await this.deps.repository.updateFile(buildUpdateFileArgs(args.body, args.userId))
+    } catch (error) {
+      // `expectedUpdatedAt` guards agent writes against a concurrent edit.
+      if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
+        serviceError({ error: 'The file changed since it was read.', conflict: true }, 409)
+      }
+      throw error
+    }
     return { success: true }
   }
 

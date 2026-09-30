@@ -426,7 +426,31 @@ until the fresh enrollment-to-mention matrix, provider-invoice reconciliation, c
 artifact-retention observation, and matching production Convex rollout and stability evidence are
 complete.
 
-## Trust boundaries and threat model
+## Overlay workspace tools for harness agents
+
+Every harness agent gets the same Overlay workspace tools a native agent with the same grant gets —
+notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
+(`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,
+automations, connected apps, and MCP servers — built by the same pipeline (`buildWorkspaceAgentTooling`:
+the agent's grant intersected with workspace policy, entitlements, and the summoning message's
+mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
+duplicate the runtime's own machine (`computer_*`, `run_daytona_sandbox`) and generated UI are
+withheld, and MCP calls whose server policy requires approval are refused with an explanation,
+because no room approval exists for them yet.
+
+- **Managed harnesses** (`managedHarnessAgentTurnWorkflow`) receive the tools as `HarnessAgent`
+  host-executed tools. Each slice rebuilds them from the grant carried in the workflow input, and a
+  call runs in the workflow step on Overlay's servers. The sandbox gains no token and no egress.
+- **Connected agents** receive an MCP server. The remote-turn start command carries
+  `metadata.overlayMcp = { url: <app origin>/api/agent-mcp, token }`; the Agent Host passes it to ACP
+  `session/new`/`session/load` as an HTTP MCP server with an `Authorization: Bearer` header, only when
+  the runtime advertises `mcpCapabilities.http` and the URL is HTTPS (or localhost). The token
+  (`ovmcp_…`, `src/server/agents/agent-mcp-token.ts`) is HMAC-signed with
+  `OVERLAY_AGENT_MCP_SECRET` (falling back to the service-auth secret), scoped to one run, expires
+  after the run-time cap plus slack, and is refused as soon as the run's remote session is no longer
+  live. Older hosts ignore the metadata key, so no protocol version change was needed; a published
+  host release is required for connected agents to use the tools.
+
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
   transcript projections, audit, and artifact policy. A host owns only private harness state,

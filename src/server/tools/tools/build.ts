@@ -45,6 +45,14 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import {
+  executeCreateFolder,
+  executeListFiles,
+  executeMoveFile,
+  executeReadFile,
+  executeWriteFile,
+} from './files-executes'
+import { runInToolCallScope } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
 /**
@@ -377,6 +385,85 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('search_in_files')
         return executeSearchInFiles(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('list_files')) {
+    tools.list_files = tool({
+      description:
+        'List files and folders in the Overlay workspace (id, name, type, parent folder, size, last edit). ' +
+        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
+      inputSchema: z.object({
+        folderId: z.string().optional().describe('Folder id from a previous list_files result'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('list_files')
+        return executeListFiles(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_file')) {
+    tools.read_file = tool({
+      description:
+        'Read the text of a workspace file (uploads keep their extracted text). Long files come back in chunks: ' +
+        'pass the returned nextOffset to continue. Returns a revision to pass to write_file when you change the file. Use get_note for notes.',
+      inputSchema: z.object({
+        fileId: z.string(),
+        offset: z.number().int().min(0).optional().describe('Character offset to continue from'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_file')
+        return executeReadFile(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('write_file')) {
+    tools.write_file = tool({
+      description:
+        'Create a text file in the Overlay workspace (name, optional folderId), or replace an existing file\'s text (fileId). ' +
+        'When replacing, pass the revision from read_file as expectedRevision so you never overwrite a newer change.',
+      inputSchema: z.object({
+        fileId: z.string().optional().describe('Existing file to replace; omit to create a new file'),
+        name: z.string().optional().describe('File name with extension, e.g. "report.md" (required when creating)'),
+        folderId: z.string().optional().describe('Folder to create the file in'),
+        content: z.string().describe('The full text of the file'),
+        expectedRevision: z.string().optional(),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('write_file')
+        return executeWriteFile(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('create_folder')) {
+    tools.create_folder = tool({
+      description: 'Create a folder in the Overlay workspace, optionally inside another folder.',
+      inputSchema: z.object({
+        name: z.string(),
+        parentId: z.string().optional().describe('Parent folder id; omit for the top level'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('create_folder')
+        return executeCreateFolder(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('move_file')) {
+    tools.move_file = tool({
+      description: 'Move a file or folder to another folder (folderId null = top level) and/or rename it.',
+      inputSchema: z.object({
+        fileId: z.string(),
+        folderId: z.string().nullable().optional().describe('Destination folder id, or null for the top level'),
+        name: z.string().optional().describe('New name'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('move_file')
+        return executeMoveFile(options, input)
       },
     })
   }
@@ -927,5 +1014,16 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
   }
 
+  return withToolCallScopes(tools)
+}
+
+/** Runs each tool's execute in its call scope, so its internal writes get per-call idempotency keys. */
+function withToolCallScopes(tools: ToolSet): ToolSet {
+  for (const definition of Object.values(tools)) {
+    const target = definition as { execute?: (input: unknown, options: { toolCallId?: string }) => unknown }
+    const execute = target.execute
+    if (typeof execute !== 'function') continue
+    target.execute = (input, options) => runInToolCallScope(options?.toolCallId, () => execute.call(target, input, options))
+  }
   return tools
 }
