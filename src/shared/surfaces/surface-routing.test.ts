@@ -54,3 +54,7 @@ test('an agent named like the bot does not swallow mentions routed on raw text',
   const explicit = routeSurfaceMessage({ candidates: [overlay, pr], text: 'Overlay summarize the thread' })
   assert.equal(explicit.kind === 'agent' && explicit.candidate.bindingId, 'b_overlay')
 })
+
+test('the ambiguity example avoids repeating the bot name', () => {
+  assert.match(ambiguousAgentPrompt(['Overlay', 'PR agent']), /`@Overlay PR agent …`/)
+})

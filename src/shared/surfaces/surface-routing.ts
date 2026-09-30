@@ -53,6 +53,8 @@ export function routeSurfaceMessage<T extends SurfaceRoutingCandidate>(args: {
 
 export function ambiguousAgentPrompt(agentNames: readonly string[], botName = 'Overlay'): string {
   const names = agentNames.map((name) => `*${name}*`).join(', ')
+  // "@Overlay Overlay …" reads like a typo; prefer an agent not named like the bot.
+  const example = agentNames.find((name) => name.toLowerCase() !== botName.toLowerCase()) ?? agentNames[0]
   return `Several agents are in this channel: ${names}. Start your message with the agent's name, `
-    + `for example \`@${botName} ${agentNames[0]} …\`.`
+    + `for example \`@${botName} ${example} …\`.`
 }
