@@ -8,10 +8,30 @@ import { degradeSlackConnectionByTeam, isSlackTokenRevokedError } from './slack-
 // Slack rejects messages over ~40k chars; keep well under with headroom for
 // markdown expansion.
 const SLACK_MESSAGE_CHAR_LIMIT = 38_000
+// `markdown_text` (Slack-rendered standard markdown) is capped at 12k chars.
+const SLACK_MARKDOWN_TEXT_CHAR_LIMIT = 12_000
 
 export function truncateForSlack(text: string): string {
   if (text.length <= SLACK_MESSAGE_CHAR_LIMIT) return text
   return `${text.slice(0, SLACK_MESSAGE_CHAR_LIMIT - 20).trimEnd()}\n\n…`
+}
+
+/**
+ * Agent replies are standard markdown; Slack renders it natively through
+ * `markdown_text`, which is how the Chat SDK posts markdown too. Replies over
+ * Slack's 12k `markdown_text` cap fall back to legacy mrkdwn in `text`.
+ * The SDK loads dynamically so workflow bundles never resolve it (chat.ts).
+ */
+export async function slackReplyPayload(markdown: string): Promise<{ markdown_text: string } | { text: string }> {
+  const { SlackFormatConverter } = await import('@chat-adapter/slack')
+  const converter = new SlackFormatConverter()
+  if (markdown.length <= SLACK_MARKDOWN_TEXT_CHAR_LIMIT) {
+    const payload = converter.toSlackPayload({ markdown })
+    if ('markdown_text' in payload && typeof payload.markdown_text === 'string') {
+      return { markdown_text: payload.markdown_text }
+    }
+  }
+  return { text: truncateForSlack(converter.toResponseUrlText({ markdown })) }
 }
 
 /**
@@ -46,7 +66,7 @@ export async function postSlackAgentMessage(args: {
     })
     return { posted: false }
   }
-  const text = truncateForSlack(args.text)
+  const body = await slackReplyPayload(args.text)
   return await args.adapter.withBotToken(
     installation.botToken,
     async () => {
@@ -55,18 +75,18 @@ export async function postSlackAgentMessage(args: {
           const result = await args.adapter.webClient.chat.update({
             channel: args.channelId,
             ts: args.editTs,
-            text,
-          })
+            ...body,
+          } as Parameters<typeof args.adapter.webClient.chat.update>[0])
           return { ts: result.ts ?? args.editTs, posted: true }
         }
         const result = await args.adapter.webClient.chat.postMessage({
           channel: args.channelId,
           ...(args.threadTs ? { thread_ts: args.threadTs } : {}),
-          text,
+          ...body,
           username: args.agentName,
           unfurl_links: false,
           unfurl_media: false,
-        })
+        } as Parameters<typeof args.adapter.webClient.chat.postMessage>[0])
         return { ts: result.ts ?? undefined, posted: Boolean(result.ok) }
       } catch (error) {
         if (isSlackTokenRevokedError(error)) {

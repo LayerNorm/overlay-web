@@ -33,6 +33,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Slack replies render formatting**: agent replies are standard Markdown, which Slack showed literally (`**pong**`). Replies now go out as Slack's native `markdown_text` (the same path the Chat SDK uses); replies over Slack's 12,000-character `markdown_text` limit fall back to converted Slack mrkdwn.
+
 - **Route authorization inventory is complete**: 38 API route methods (computers, agent threads, agent bundles, workspace billing, provider connections, file ingest jobs, Slack import, mention search, sandbox run, and others) were missing from `authorization-route-policy.ts`; each now records its actual access model, and the two internal-secret callbacks are marked `internal`.
 - **Environment desktop streams require a workspace owner or admin**: `POST /api/v1/agent-environments/{id}/desktop` issued live desktop tickets to any workspace member; it now carries the same manager gate as the other environment operations.
 - **Withheld connectors are enforced on the integrations route**: connectors an administrator withholds in the catalog were already filtered out of chat and automation turns, but still appeared in the integrations search and connected lists and could be connected. They are now hidden there and a direct connect returns `403`. Batched catalog filtering also resolves the capability, owner, and wildcard grants once per list instead of once per resource.
