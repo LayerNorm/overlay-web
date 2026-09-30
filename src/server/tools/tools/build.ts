@@ -5,10 +5,13 @@ import { z } from 'zod'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
+  executeAppendToNote,
   executeCreateNote,
   executeDeleteNote,
+  executeEditNote,
   executeGetNote,
   executeListNotes,
+  executeReplaceNoteSection,
   executeUpdateNote,
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
@@ -380,7 +383,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   if (shouldExposeTool('list_notes')) {
     tools.list_notes = tool({
-    description: 'List the user\'s notes in Overlay.',
+    description: 'List the user\'s notes in Overlay (id, title, tags), most recently edited first.',
     inputSchema: z.object({}),
     execute: async (input) => {
       assertToolAllowed('list_notes')
@@ -391,9 +394,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   if (shouldExposeTool('get_note')) {
     tools.get_note = tool({
-    description: 'Load a single note by id (full title, body, tags).',
+    description:
+      'Load a note by id. Returns its Markdown content, tags, heading outline, and `revision`. ' +
+      'Pass that revision as expectedRevision when you edit the note so you never overwrite a change made after you read it.',
     inputSchema: z.object({
-      noteId: z.string().describe('Convex notes document id'),
+      noteId: z.string().describe('The note id from list_notes'),
     }),
     execute: async (input) => {
       assertToolAllowed('get_note')
@@ -678,10 +683,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
     if (shouldExposeTool('create_note')) {
       tools.create_note = tool({
-      description: 'Create a new note (title, markdown/plain content, optional tags).',
+      description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists).',
       inputSchema: z.object({
         title: z.string().optional(),
-        content: z.string(),
+        content: z.string().describe('Markdown body'),
         tags: z.array(z.string()).optional(),
       }),
       execute: async (input) => {
@@ -691,14 +696,79 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
     }
 
+    const expectedRevision = z
+      .string()
+      .optional()
+      .describe('The revision from get_note. The edit is refused if the note changed since then.')
+
+    if (shouldExposeTool('append_to_note')) {
+      tools.append_to_note = tool({
+      description:
+        'Add Markdown to the end (or start) of a note without rewriting it. Prefer this for logs, new sections, and additions.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        content: z.string().describe('Markdown to add'),
+        position: z.enum(['end', 'start']).optional().describe('Default: end'),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('append_to_note')
+        return executeAppendToNote(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('replace_note_section')) {
+      tools.replace_note_section = tool({
+      description:
+        'Replace everything under one heading of a note (up to the next heading of the same or higher level), keeping the heading. ' +
+        'Use the heading text from get_note\'s outline.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        heading: z.string().describe('Heading text, e.g. "Next steps"'),
+        content: z.string().describe('New Markdown for the section body (no heading line)'),
+        createIfMissing: z.boolean().optional().describe('Append the section as a new ## heading when it does not exist'),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('replace_note_section')
+        return executeReplaceNoteSection(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('edit_note')) {
+      tools.edit_note = tool({
+      description:
+        'Make precise find-and-replace edits to a note\'s Markdown. Each find must be copied exactly from get_note and match once ' +
+        '(add surrounding text to make it unique, or set replaceAll). Edits apply in order and all succeed or none do.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        edits: z.array(z.object({
+          find: z.string().min(1),
+          replace: z.string(),
+          replaceAll: z.boolean().optional(),
+        })).min(1).max(50),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('edit_note')
+        return executeEditNote(options, input)
+      },
+    })
+    }
+
     if (shouldExposeTool('update_note')) {
       tools.update_note = tool({
-      description: 'Update an existing note by id (any subset of title, content, tags).',
+      description:
+        'Rename a note, set its tags, or replace its whole Markdown content. ' +
+        'To change part of a note use edit_note, replace_note_section, or append_to_note instead of resending everything.',
       inputSchema: z.object({
         noteId: z.string(),
         title: z.string().optional(),
-        content: z.string().optional(),
+        content: z.string().optional().describe('Full replacement Markdown body'),
         tags: z.array(z.string()).optional(),
+        expectedRevision,
       }),
       execute: async (input) => {
         assertToolAllowed('update_note')

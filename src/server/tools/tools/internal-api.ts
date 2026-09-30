@@ -44,7 +44,8 @@ export async function callInternalApi(
       ? await buildServiceAuthToken({
           userId: body.userId,
           method,
-          path,
+          // Verification compares against the request pathname, without the query.
+          path: path.split('?')[0]!,
         })
       : null
   return fetch(url, {
@@ -72,6 +73,7 @@ export async function callInternalApiGet(
   forwardCookie?: string,
   serverSecret?: string,
   userId?: string,
+  workspaceId?: string,
 ): Promise<Response> {
   const urlObject = new URL(pathWithQuery, baseUrl ?? 'http://localhost')
   if (userId && !urlObject.searchParams.has('userId')) {
@@ -93,6 +95,7 @@ export async function callInternalApiGet(
     headers: {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
+      ...(workspaceId?.trim() ? { [ACTIVE_WORKSPACE_HEADER]: workspaceId.trim() } : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
     },
   })

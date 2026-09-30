@@ -10,6 +10,7 @@ import type {
   UpdateNoteResponse,
 } from '@overlay/app-core'
 import { BillingQuotaError, QuotaEnforcer } from '@overlay/billing'
+import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
 
 export interface NoteRecord {
   _id: string
@@ -91,7 +92,8 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
     _id: note._id,
     userId: note.userId,
     title: note.name || 'Untitled',
-    content: note.textContent ?? note.content ?? '',
+    // Notes are Markdown; rows written before the switch still hold TipTap HTML.
+    content: toCanonicalNoteMarkdown(note.textContent ?? note.content ?? ''),
     tags: note.tags ?? [],
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
@@ -129,7 +131,8 @@ export class NoteService {
     args: Omit<CreateNoteRequest, 'accessToken' | 'userId'> & { userId: string },
   ): Promise<CreateNoteResponse> {
     await this.assertWriteQuota(args.userId)
-    const content = args.content ?? ''
+    // Older desktop and web clients still send editor HTML.
+    const content = toCanonicalNoteMarkdown(args.content ?? '')
     const result = await this.context.noteRepository.createNote({
       userId: args.userId,
       title: normalizeNoteTitle(args.title),
@@ -155,7 +158,7 @@ export class NoteService {
       noteId: args.noteId,
       userId: args.userId,
       title: args.title,
-      content: args.content,
+      content: args.content === undefined ? undefined : toCanonicalNoteMarkdown(args.content),
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),

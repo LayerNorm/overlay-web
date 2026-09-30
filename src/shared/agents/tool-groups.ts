@@ -73,7 +73,16 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'notes',
     label: 'Notes',
     description: 'Read and write documents in the workspace.',
-    toolIds: ['list_notes', 'get_note', 'create_note', 'update_note', 'delete_note'],
+    toolIds: [
+      'list_notes',
+      'get_note',
+      'create_note',
+      'append_to_note',
+      'replace_note_section',
+      'edit_note',
+      'update_note',
+      'delete_note',
+    ],
   },
   {
     id: 'skills',

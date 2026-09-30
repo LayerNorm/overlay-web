@@ -8,9 +8,7 @@ import {
   createNotebookFileUpdateRequest,
   createNotebookPersistedNote,
   createRenamedNotebookNote,
-  markdownToNotebookHtml,
   notebookAgentEventToUiItem,
-  normalizeNotebookContent,
   normalizeNotebookTitle,
   noteDocToKnowledgeFile,
   parseNotebookAgentStreamLine,
@@ -149,14 +147,4 @@ test('notebook agent stream helpers parse events and map UI items', () => {
   })
   assert.equal(notebookAgentEventToUiItem({ type: 'text', text: '  ' }), null)
   assert.equal(notebookAgentEventToUiItem({ type: 'done' }), null)
-})
-
-test('markdown normalization preserves html and converts plain markdown', () => {
-  assert.equal(normalizeNotebookContent('<p>Already HTML</p>'), '<p>Already HTML</p>')
-  assert.equal(normalizeNotebookContent(''), '')
-  assert.equal(markdownToNotebookHtml('# Heading\n\n- **Task**'), '<h1>Heading</h1><ul><li><p><strong>Task</strong></p></li></ul>')
-  assert.equal(
-    normalizeNotebookContent('| A | B |\n| - | :-: |\n| 1 | 2 |'),
-    '<table><thead><tr><th>A</th><th style="text-align: center;">B</th></tr></thead><tbody><tr><td>1</td><td style="text-align: center;">2</td></tr></tbody></table>',
-  )
 })

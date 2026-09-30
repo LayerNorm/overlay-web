@@ -57,6 +57,17 @@ function textOf(file: Partial<Doc<'files'>>): string {
   return file.textContent ?? file.content ?? ''
 }
 
+/** Notes always have a visible title; blank names render as an empty header. */
+function fileName(kind: FileKind, name: string): string {
+  return kind === 'note' ? name.trim() || 'Untitled' : name
+}
+
+function noteTags(tags: string[] | undefined): string[] | undefined {
+  if (tags === undefined) return undefined
+  const unique = [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))]
+  return unique.slice(0, 50)
+}
+
 function isTextIndexable(kind: FileKind, text: string): boolean {
   if (kind === 'folder') return false
   return text.trim().length > 0
@@ -108,6 +119,7 @@ function normalizeFile(file: Doc<'files'>) {
     expiresAt: file.expiresAt,
     legacyNoteId: file.legacyNoteId,
     legacyOutputId: file.legacyOutputId,
+    tags: file.tags,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,
@@ -127,6 +139,11 @@ function previewTextOf(value: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/\r\n?/g, '\n')
+    // Notes are Markdown: drop syntax that reads as noise in a card preview.
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|```.*$|\$\$$)/gm, '')
+    .replace(/^(\s*)[-*+]\s+\[[ xX]\]\s+/gm, '$1- ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|~~|\\(?=[\\`*_{}[\]()#+\-.!$|]))/g, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -690,6 +707,7 @@ export const create = mutation({
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
     name: v.string(),
+    tags: v.optional(v.array(v.string())),
     type: v.optional(v.union(v.literal('file'), v.literal('folder'))),
     kind: v.optional(v.union(
       v.literal('folder'),
@@ -751,6 +769,8 @@ export const create = mutation({
     const explicitSize = args.sizeBytesOverride ?? args.sizeBytes ?? 0
     const sizeBytes = type === 'file' ? Math.max(textBytes, explicitSize) : 0
     const clientId = args.clientId?.trim() || undefined
+    const name = fileName(kind, args.name)
+    const tags = kind === 'note' ? noteTags(args.tags) : undefined
     if (kind === 'note' && clientId) {
       const exactCandidate = await ctx.db
         .query('files')
@@ -789,7 +809,8 @@ export const create = mutation({
         const contentChanged = previousText !== textContent || Boolean(existingNote.deletedAt)
         await ctx.db.patch(existingNote._id, {
           clientId,
-          name: args.name,
+          name,
+          ...(tags !== undefined ? { tags } : {}),
           content: textContent,
           textContent: undefined,
           sizeBytes,
@@ -833,7 +854,8 @@ export const create = mutation({
       userId: args.userId,
       workspaceId: args.workspaceId,
       clientId,
-      name: args.name,
+      name,
+      tags,
       type,
       kind,
       parentId: args.parentId,
@@ -841,7 +863,7 @@ export const create = mutation({
       storageId: args.storageId,
       r2Key: args.r2Key,
       mimeType: args.mimeType,
-      extension: args.extension ?? extensionOf(args.name),
+      extension: args.extension ?? extensionOf(name),
       sizeBytes,
       contentHash: args.contentHash,
       duplicateOfFileId: canonicalDuplicate?._id,
@@ -996,6 +1018,7 @@ export const update = mutation({
     serverSecret: v.optional(v.string()),
     fileId: v.id('files'),
     name: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
     content: v.optional(v.string()),
     textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
@@ -1054,9 +1077,10 @@ export const update = mutation({
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (updates.name !== undefined) {
-      patch.name = updates.name
+      patch.name = fileName(kind, updates.name)
       patch.extension = extensionOf(updates.name)
     }
+    if (updates.tags !== undefined && kind === 'note') patch.tags = noteTags(updates.tags)
     if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError

@@ -11,7 +11,14 @@ const DEFAULT_BASE_TOOL_IDS = [
 ] as const
 
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const
-const NOTE_MUTATION_TOOL_IDS = ['create_note', 'update_note', 'delete_note'] as const
+const NOTE_MUTATION_TOOL_IDS = [
+  'create_note',
+  'append_to_note',
+  'replace_note_section',
+  'edit_note',
+  'update_note',
+  'delete_note',
+] as const
 const IMAGE_TOOL_IDS = ['generate_image'] as const
 const VIDEO_TOOL_IDS = [
   'generate_video',

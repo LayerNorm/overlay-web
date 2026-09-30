@@ -1607,6 +1607,8 @@ export default defineSchema({
     legacyNoteId: v.optional(v.id('notes')),
     legacyOutputId: v.optional(v.id('outputs')),
     projectId: v.optional(v.string()),
+    // Note tags (kind 'note' only).
+    tags: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),

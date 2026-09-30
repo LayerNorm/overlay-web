@@ -32,7 +32,6 @@ import {
   createNotebookDraftState,
   createRenamedNotebookNote,
   notebookAgentEventToUiItem,
-  normalizeNotebookContent,
   normalizeNotebookTitle,
   parseNotebookAgentStreamLine,
   upsertNotebookNote,
@@ -42,6 +41,7 @@ import {
   type NotebookNote,
   type NoteDoc,
 } from '@overlay/app-core'
+import { noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
 import type { SlashMenuItem } from './slash-menu'
 import { createSlashMenuItems } from './slash-menu-items'
 import {
@@ -107,10 +107,12 @@ export function useEditorLifecycle({
     lifecycleControllerRef.current ??= new NotebookEditorController({
       debounceMs: 800,
       async save(request) {
+        // The editor tracks TipTap HTML; notes are stored as Markdown.
+        const content = toCanonicalNoteMarkdown(request.content)
         const result = await repositoryRef.current.save({
           noteId: request.id,
           title: request.title,
-          content: request.content,
+          content,
           expectedUpdatedAt: request.baseRevision ? Number(request.baseRevision) : undefined,
         })
         if (result.conflict) return { conflict: result.conflict }
@@ -119,7 +121,7 @@ export function useEditorLifecycle({
           : {
               ...(activeNoteRef.current ?? createLocalNotebookNote(request.id)),
               title: normalizeNotebookTitle(request.title),
-              content: request.content,
+              content,
               updatedAt: Date.now(),
             }
         setNotes((current) => upsertNotebookNote(current, persisted))
@@ -577,7 +579,7 @@ export function useNotebookNotes({
       return
     }
 
-    editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
+    editor.commands.setContent(noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(activeNote.content || '')))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
     hydratingEditorRef.current = false
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent

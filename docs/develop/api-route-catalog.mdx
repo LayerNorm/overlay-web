@@ -184,7 +184,7 @@ This is the complete route-entry-point inventory for the web app as of 2026-08-3
 ## 9. Memories, notes, and skills
 
 - `GET, POST, PATCH, DELETE /api/v1/memory` — Lists workspace-scoped memories, creates a memory attributed to the current user, updates creator-owned memory, or deletes creator-owned memory. Files: `src/app/api/v1/memory/route.ts`; `src/server/app-api/v1/memory/route.ts`; `src/server/memory/MemoryService.ts`; `src/server/authorization/AuthorizationService.ts`.
-- `GET, POST, PATCH, DELETE /api/v1/notes` — Lists, creates, updates, or deletes owner/workspace-authorized notes. Files: `src/app/api/v1/notes/route.ts`; `src/server/app-api/v1/notes/route.ts`; `src/server/notes/NoteService.ts`.
+- `GET, POST, PATCH, DELETE /api/v1/notes` — Lists, creates, updates, or deletes owner/workspace-authorized notes. Content is Markdown: writes containing legacy TipTap HTML are converted before storage and legacy rows are converted on read. `PATCH` accepts `expectedUpdatedAt` and returns `409` with `conflict.remoteRevision` when the note changed; agent note tools (`get_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`) write through this route with that guard. Files: `src/app/api/v1/notes/route.ts`; `src/server/app-api/v1/notes/route.ts`; `src/server/notes/NoteService.ts`; `src/server/tools/tools/notes-executes.ts`.
 - `GET, POST, PATCH, DELETE /api/v1/skills` — Lists, creates, updates, or deletes user/workspace skills, including the directory metadata and on-demand instruction content used by agents. Files: `src/app/api/v1/skills/route.ts`; `src/server/app-api/v1/skills/route.ts`; `convex/integrations/skills.ts`; `src/server/app-data/repositories.ts`.
 
 ## 10. Sharing and workspace collaboration

@@ -71,6 +71,8 @@ const MAX_AGENTS_PER_MESSAGE = 5
  */
 const AGENT_TURN_TIMEOUT_MS = 300_000
 
+const NOTE_WRITE_TOOL_IDS = ['create_note', 'append_to_note', 'replace_note_section', 'edit_note', 'update_note'] as const
+
 const UNVERIFIED_NOTE_ACTION_CLAIM = /\b(?:I|we)\s+(?:have\s+)?(?:saved|created|wrote|written|updated|edited)\s+(?:a|the|your)?\s*note\b[^.!?\n]*[.!?]?/gi
 
 function hasSuccessfulTool(
@@ -98,7 +100,7 @@ export function reconcileUnverifiedAgentActionClaims(
 ): { content: string; parts: Array<Record<string, unknown>> } {
   if (
     !UNVERIFIED_NOTE_ACTION_CLAIM.test(persistence.content)
-    || hasSuccessfulTool(persistence.parts, 'create_note')
+    || NOTE_WRITE_TOOL_IDS.some((toolId) => hasSuccessfulTool(persistence.parts, toolId))
   ) {
     UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
     return persistence

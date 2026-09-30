@@ -71,12 +71,12 @@ export class ConvexNoteRepository implements NoteRepository {
     clientId?: string
     workspaceId?: string
   }): Promise<{ id: string; note: NoteRecord | null }> {
-    void args.tags
     const fileId = await convex.mutation<string>('files/files:create', {
       userId: args.userId,
       serverSecret: this.serverSecret,
       clientId: args.clientId,
       name: args.title,
+      ...(args.tags ? { tags: args.tags } : {}),
       kind: 'note',
       type: 'file',
       content: args.content,
@@ -104,7 +104,6 @@ export class ConvexNoteRepository implements NoteRepository {
     expectedUpdatedAt?: number
     workspaceId?: string
   }): Promise<NoteRecord | null> {
-    void args.tags
     const existing = await this.getNote({
       noteId: args.noteId,
       userId: args.userId,
@@ -118,6 +117,7 @@ export class ConvexNoteRepository implements NoteRepository {
         serverSecret: this.serverSecret,
         fileId: existing._id,
         name: args.title,
+        ...(args.tags !== undefined ? { tags: args.tags } : {}),
         ...(args.content !== undefined
           ? { content: args.content, contentHash: hashTextContent(args.content) }
           : {}),
