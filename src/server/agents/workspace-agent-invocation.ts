@@ -896,8 +896,8 @@ export async function startManagedHarnessTurn(args: {
       ...(remoteTarget.byokConnectionUserId ? { byokConnectionUserId: remoteTarget.byokConnectionUserId } : {}),
       ...(args.invocation.instructions?.trim() ? { instructions: args.invocation.instructions.trim() } : {}),
       invocationNonce: args.invocation.invocationNonce,
-      ...(room.latestUserText ? { latestUserText: room.latestUserText } : {}),
-      ...(args.invocation.toolGrant ? { toolGrant: args.invocation.toolGrant } : {}),
+      latestUserText: room.latestUserText,
+      toolGrant: args.invocation.toolGrant,
       // The turn's slice ceiling tracks the same run-time cap a remote run gets.
       maxTurnSlices: Math.max(1, Math.ceil(policy.maxRunTimeMs / (MANAGED_HARNESS_TIME_SLICE_SECONDS * 1_000))),
       memoryEnabled: args.memoryEnabled,
