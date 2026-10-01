@@ -17,6 +17,8 @@ dist
 
 .cursor
 .claude
+# Local scratch (gitignored); `vercel deploy` uploads the working tree, and these files import packages the app no longer depends on.
+artifacts
 .deepsec
 .devin
 .gstack
