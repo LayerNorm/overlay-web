@@ -257,12 +257,30 @@ After Create the dialog shows startup phases until Ready, then opens the agent's
 
 **Prerequisite (done 2026-10-01): Boat API migration.** Box renamed itself Boat; the legacy Box endpoints advertise a 2026-10-31 sunset. The adapter now targets `https://boat.dev/api/v1`, so Phase 0's image work targets Boat only.
 
-**Phase 0 status (2026-10-01): built; one live gate open.**
+**Phase 0 status (2026-10-02): done and verified end to end.**
 
-- Done and verified live on Boat: the image (`overlay-agent-v1`, built and checked by `infra/agent-image/publish-boat.mts`); a real Claude Code turn through `AcpxAgentAdapter` on a machine from that image, including session resume across runs; the host's managed `connect` passing the image check and reaching production's enrollment endpoint (rejected only for the test code); the host stop/restart commands used by wake.
-- Done and unit-tested: `CloudAgentMachineService` (provision → auto-approve → lease → bind, cleanup on failure, wake), `POST /api/v1/agent-environments/cloud`, wake-on-turn, and `activeUntil` so the idle meter never stops a machine mid-turn.
-- Open: the end-to-end exit criterion (create behind the flag → @mention answered → idle-stop → wake on next mention) needs a control plane the machine can reach: a staging deploy or a local tunnel.
-- Findings: Boat's `~/.claude` and `~/.codex` are provider mounts that error without Boat-linked credentials, so agent config lives under `~/.overlay` (Phase 4 imports go there). The adapter dropped a command's own `environment` (fixed).
+Completed:
+
+- [x] acpx engine in the Agent Host (`AcpxAgentAdapter`, `--engine acpx`, acpx 0.19.2), with `image-check` gating managed enrollment. On-your-machine hosts unchanged.
+- [x] Overlay agent image: `infra/agent-image/provision.sh` + `publish-boat.mts`, published as Boat snapshot `overlay-agent-v1` (host 0.3.7, claude-agent-acp 0.81.1, codex-acp 1.13.1). E2B template script not written yet (no E2B adapter; part of Phase 6).
+- [x] Managed enrollment: single-use code redeemed by the host on boot, environment auto-approved with the fixed `/home/user/workspace` grant, lease created, agent bound (`CloudAgentMachineService`, `POST /api/v1/agent-environments/cloud`).
+- [x] Lifecycle: idle-stop via the lease meter (turns hold `activeUntil`), wake on every Overlay Cloud turn (resume + restart host), delete via revoke + reaper.
+- [x] Startup phases: not surfaced yet (Phase 2 UI); provisioning is synchronous and takes ~12–15 s.
+
+Verified live (local dev server on dev Convex, exposed with a cloudflared tunnel, real Boat machines):
+
+- Provisioning end to end in 12–15 s: machine from `overlay-agent-v1`, host enrolled, credential issued, environment approved, agent bound.
+- An @mention in the agent's thread answered by Claude Code on the machine ("cloud-ok"), through the remote-run path, acpx, and the Overlay MCP server URL.
+- Wake: machine stopped, next message sent, server woke it (`outcome: resumed`), host restarted, reply "wake-path-ok" ~25 s after the message, with no manual help.
+- Idle-stop: the reconcile job's lease meter stopped the idle machine on its own (15-minute idle window; the machine read `stopped` afterwards and the lease stayed `running` for the next wake).
+- Model credentials were injected into the host config by the test (Phase 1 delivers them per run).
+
+Fixes found by the live run:
+
+- The machine's server URL came from the request origin, which behind a proxy or tunnel is an internal host. It now uses the configured app URL (`getBaseUrl()`), like the MCP URL.
+- Wake only fired when the environment read offline, but a just-stopped machine still reads online for a heartbeat window. Every Overlay Cloud turn now checks its machine (a no-op when running with a live host).
+- Boat's `~/.claude` and `~/.codex` are provider mounts that error without Boat-linked credentials, so agent config lives under `~/.overlay` (Phase 4 imports go there). The Boat adapter dropped a command's own `environment` (fixed).
+- Remote runs also need `OVERLAY_FEATURE_REMOTE_AGENT_RUNS` (with the connected-agent control plane flag and rollout stage); provisioning should become asynchronous with visible startup phases in Phase 2 (Cloudflare and some proxies cut requests at 100 s).
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |

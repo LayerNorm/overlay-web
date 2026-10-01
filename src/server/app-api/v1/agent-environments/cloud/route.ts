@@ -5,6 +5,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import { CLOUD_AGENT_ADAPTER_IDS } from '@/server/agents/cloud/cloud-agent-machine'
 import { CloudAgentMachineError, CloudAgentMachineService } from '@/server/agents/cloud/CloudAgentMachineService'
+import { getBaseUrl } from '@/server/web/app-url'
 import { agentEnvironmentErrorResponse } from '../shared'
 
 export const cloudAgentMachineRequestSchema = z.object({
@@ -18,7 +19,7 @@ export const cloudAgentMachineRequestSchema = z.object({
  * Overlay agent image, running Claude Code or Codex behind the Agent Host,
  * enrolled, approved, and bound to the agent. Behind `overlayCloudEnvironments`.
  */
-export async function POST(request: Request, context: AppApiRouteContext) {
+export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const config = await getOverlayRuntimeConfig()
     if (config.features.overlayCloudEnvironments !== true) {
@@ -37,7 +38,9 @@ export async function POST(request: Request, context: AppApiRouteContext) {
       agentId: body.agentId,
       adapterId: body.adapterId,
       size: body.size,
-      serverUrl: new URL(request.url).origin,
+      // The configured app URL, not the request origin: behind a proxy or tunnel the
+      // origin can be an internal host the machine cannot reach.
+      serverUrl: getBaseUrl(),
     })
     return NextResponse.json(provisioned, { status: 201, headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

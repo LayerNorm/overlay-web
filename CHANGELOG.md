@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
-- **Overlay Cloud agent machines (Phase 0, behind `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`).** `POST /api/v1/agent-environments/cloud` provisions a Boat machine for an agent from the new Overlay agent image (`overlay-agent-v1`, built by `infra/agent-image`), starts the Agent Host on it with Claude Code or Codex, approves the environment with a fixed workspace root, and binds the agent. Idle machines are stopped by the lease meter and resumed when a turn arrives. The Agent Host gains an acpx engine (`--engine acpx`, acpx 0.19.2) and an `image-check` command; on-your-machine hosts are unchanged. No UI yet.
+- **Overlay Cloud agent machines (Phase 0, behind `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`).** `POST /api/v1/agent-environments/cloud` provisions a Boat machine for an agent from the new Overlay agent image (`overlay-agent-v1`, built by `infra/agent-image`), starts the Agent Host on it with Claude Code or Codex, approves the environment with a fixed workspace root, and binds the agent. Idle machines are stopped by the lease meter and resumed when a turn arrives. The Agent Host gains an acpx engine (`--engine acpx`, acpx 0.19.2) and an `image-check` command; on-your-machine hosts are unchanged. No UI yet. Verified end to end against real Boat machines: provisioning in 12–15 s, an @mention answered by Claude Code on the machine, and a stopped machine woken by the next message. The machine's server URL comes from the configured app URL rather than the request origin, and every Overlay Cloud turn checks (and if needed wakes) its machine.
 
 ### Fixed
 

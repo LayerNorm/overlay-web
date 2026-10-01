@@ -682,7 +682,10 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         eventCursor: 0,
       },
     })
-    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud' && !args.invocation.remoteTarget.online) {
+    // Every Overlay Cloud turn checks its machine: an idle-stopped machine can
+    // still read online for a heartbeat window. wake() is a no-op when the
+    // machine is running with a live host.
+    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
       wakeCloudAgentAfterResponse({ workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId })
     }
     return started
