@@ -79,7 +79,6 @@ import type * as migrations_backfillAutomationConversations from "../migrations/
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.js";
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
-import type * as migrations_removeDaytonaData from "../migrations/removeDaytonaData.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
 import type * as platform_http from "../platform/http.js";
 import type * as platform_idempotency from "../platform/idempotency.js";
@@ -175,7 +174,6 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "migrations/notesToMarkdown": typeof migrations_notesToMarkdown;
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
-  "migrations/removeDaytonaData": typeof migrations_removeDaytonaData;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
   "platform/http": typeof platform_http;
   "platform/idempotency": typeof platform_idempotency;

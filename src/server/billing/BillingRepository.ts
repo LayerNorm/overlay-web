@@ -14,7 +14,6 @@ export type PersonalBillingBackfillResult = {
   attached: {
     budgetReservations: number
     budgetTopUps: number
-    daytonaUsageLedger: number
     subscriptions: number
     tokenUsage: number
     toolInvocations: number

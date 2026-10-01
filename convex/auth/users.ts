@@ -459,18 +459,6 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
-        .query('daytonaWorkspaces')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('daytonaUsageLedger')
-        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
         .query('toolInvocations')
         .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
         .collect(),

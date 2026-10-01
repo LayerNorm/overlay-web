@@ -11,7 +11,6 @@ const ATTACH_BATCH_SIZE = 100
 const attachmentCountsValidator = v.object({
   budgetReservations: v.number(),
   budgetTopUps: v.number(),
-  daytonaUsageLedger: v.number(),
   subscriptions: v.number(),
   tokenUsage: v.number(),
   toolInvocations: v.number(),
@@ -107,7 +106,6 @@ export const backfillPersonalByUserByServer = mutation({
     const attached = {
       budgetReservations: 0,
       budgetTopUps: 0,
-      daytonaUsageLedger: 0,
       subscriptions: 0,
       tokenUsage: 0,
       toolInvocations: 0,
@@ -245,7 +243,6 @@ async function attachLegacyRows(
     tokenUsage,
     budgetReservations,
     usageOperations,
-    daytonaUsageLedger,
     toolInvocations,
   ] = await Promise.all([
     ctx.db
@@ -273,12 +270,6 @@ async function attachLegacyRows(
       )
       .take(ATTACH_BATCH_SIZE + 1),
     ctx.db
-      .query('daytonaUsageLedger')
-      .withIndex('by_userId_billingAccountId', (q) =>
-        q.eq('userId', userId).eq('billingAccountId', undefined),
-      )
-      .take(ATTACH_BATCH_SIZE + 1),
-    ctx.db
       .query('toolInvocations')
       .withIndex('by_userId_billingAccountId', (q) =>
         q.eq('userId', userId).eq('billingAccountId', undefined),
@@ -288,7 +279,6 @@ async function attachLegacyRows(
   const pages = {
     budgetReservations,
     budgetTopUps,
-    daytonaUsageLedger,
     tokenUsage,
     toolInvocations,
     usageOperations,
@@ -300,7 +290,6 @@ async function attachLegacyRows(
     attached: {
       budgetReservations: Math.min(budgetReservations.length, ATTACH_BATCH_SIZE),
       budgetTopUps: Math.min(budgetTopUps.length, ATTACH_BATCH_SIZE),
-      daytonaUsageLedger: Math.min(daytonaUsageLedger.length, ATTACH_BATCH_SIZE),
       tokenUsage: Math.min(tokenUsage.length, ATTACH_BATCH_SIZE),
       toolInvocations: Math.min(toolInvocations.length, ATTACH_BATCH_SIZE),
       usageOperations: Math.min(usageOperations.length, ATTACH_BATCH_SIZE),

@@ -493,35 +493,6 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
 
-  // Removed with Daytona. Kept only until `migrations/removeDaytonaData` has emptied it in
-  // every deployment; then drop it from the schema.
-  daytonaWorkspaces: defineTable({
-    userId: v.string(),
-    sandboxId: v.string(),
-    sandboxName: v.string(),
-    volumeId: v.string(),
-    volumeName: v.string(),
-    tier: v.union(v.literal('pro'), v.literal('max')),
-    state: v.union(
-      v.literal('provisioning'),
-      v.literal('started'),
-      v.literal('stopped'),
-      v.literal('archived'),
-      v.literal('error'),
-      v.literal('missing'),
-    ),
-    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
-    mountPath: v.string(),
-    lastMeteredAt: v.optional(v.number()),
-    lastKnownStartedAt: v.optional(v.number()),
-    lastKnownStoppedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_sandboxId', ['sandboxId'])
-    .index('by_state_updatedAt', ['state', 'updatedAt']),
-
   maintenanceCursors: defineTable({
     key: v.string(),
     cursor: v.optional(v.string()),
@@ -538,36 +509,6 @@ export default defineSchema({
     scope: v.string(),
     completedAt: v.number(),
   }).index('by_key_scope', ['key', 'scope']),
-
-  // Removed with Daytona. See `daytonaWorkspaces`.
-  daytonaUsageLedger: defineTable({
-    userId: v.string(),
-    billingAccountId: v.optional(v.string()),
-    sandboxId: v.string(),
-    tier: v.union(v.literal('pro'), v.literal('max')),
-    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
-    startedAt: v.number(),
-    endedAt: v.number(),
-    durationSeconds: v.number(),
-    cpu: v.number(),
-    memoryGiB: v.number(),
-    diskGiB: v.number(),
-    costUsd: v.number(),
-    costCents: v.number(),
-    reason: v.union(
-      v.literal('start'),
-      v.literal('task'),
-      v.literal('stop'),
-      v.literal('archive'),
-      v.literal('resize'),
-      v.literal('reconcile'),
-    ),
-    createdAt: v.number(),
-  })
-    .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
-    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
-    .index('by_sandboxId_createdAt', ['sandboxId', 'createdAt']),
 
   /** One row per tool invocation (audit / cost-class tracking for chat tools). */
   toolInvocations: defineTable({

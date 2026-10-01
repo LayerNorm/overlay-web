@@ -16,7 +16,6 @@ export interface AccountDataDeletionCounts {
   conversationEvents: number
   conversationMessages: number
   conversations: number
-  daytonaWorkspaces: number
   files: number
   knowledgeChunkEmbeddings: number
   knowledgeChunks: number
