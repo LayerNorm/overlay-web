@@ -12,33 +12,38 @@ Creating an agent should take two fields and one button. Anything a person does 
 
 ## New flow
 
-A small dialog. The first control is a two-way switch: **Overlay agent** or **Other agent**. Choosing Other agent reveals a quiet second line, **On Overlay Cloud** or **On your machine**, so the hierarchy reads as agent type, then where it runs. A one-line hint under the switch explains the current choice. Avatar and name are always shown, and the name is required.
+A small dialog. The first question is **what** you are creating, then **where** it runs, never both at once:
+
+- **Agent** is a `ListboxSelect` with two groups: *Overlay* (Overlay agent) and *Bring your own* (Claude Code, Codex, Hermes). A one-line hint sits under it. A dropdown scales as more agents are added.
+- **Runs on** appears only for a bring-your-own agent: a two-option segmented control, *Overlay Cloud* or *Your machine*, with a hint line ("A sandbox we host. Nothing to set up." / "Your computer or server. It connects out to Overlay."). Same segmented style as Access, so there is one pattern for a short either/or.
+
+Avatar and name are always shown, and the name is required. **Access** is always visible near the bottom (Only me by default).
 
 ### Overlay agent
 
 1. **Avatar and name.** The creature and colour are picked for the person; clicking the avatar reshuffles it.
 2. **What should it do?** One textarea. This is the agent's instructions. Required.
 3. **Computer** (its own row, directly under the description, off by default). A computer is a provisioned resource, so it needs explicit enablement and is not part of the tool list. Turning it on reveals a size `ListboxSelect` in the same row; the machine is created on save.
-4. **Advanced** (collapsed). The header summarises the current choices, for example "Auto · Standard tools · Only me". Inside:
+4. **Access** (always visible, all agent types): Only me (default) or Everyone in this workspace.
+5. **Advanced** (collapsed, Overlay agents only). The header summarises the current choices, for example "Auto · All tools". Inside:
    - **Model** uses the shared `ListboxSelect`, not a native select, ordered by `CHAT_MODEL_QUALITY_PRIORITY` with Auto first.
-   - **Tools** has presets (Standard / Read only / Everything), and every tool group is listed as a plain label with a toggle. Nothing sits behind a "customize" link; Computer is not in this list.
-   - **Access**: Only me (default) or Everyone in this workspace.
-5. **Create agent**, disabled until name and instructions are filled in.
+   - **Tools** has presets (Everything / Standard / Read only; Everything is the default), and every tool group is listed as a plain label with a toggle. Nothing sits behind a "customize" link; Computer is not in this list.
+6. **Create agent**, disabled until name and instructions are filled in.
 
-### Other agent: on Overlay Cloud
+### Bring your own: Overlay Cloud
 
-Agent (`ListboxSelect`: Claude Code, Codex, Hermes), Size, and Advanced (Access). Instructions are generated from the agent, as for connected agents today. Blocked until the Box/E2B rebuild lands; the dialog row stays hidden until then.
+Agent, Runs on, name, Size (`ListboxSelect`), Access. Instructions are generated from the agent, as for connected agents today. Blocked until the Box/E2B rebuild lands; the "Overlay Cloud" option stays hidden until then.
 
-### Other agent: on your machine
+### Bring your own: your machine
 
-Agent, then the one-line connect command with a copy button and a "Waiting for the machine to connect…" state, then Advanced (Access). The button reads "Create and connect".
+Agent, Runs on, name, then the one-line connect command with a copy button and a "Waiting for the machine to connect…" state, then Access. The button reads "Create and connect".
 
 ### Defaults
 
 | Setting | Default | Notes |
 | --- | --- | --- |
 | Model | Auto | |
-| Tools | Standard: memory, knowledge, files, notes, web search | Browser stays off until asked for. Web search is on because it no longer costs per call (Exa-style search API). |
+| Tools | Everything | Every tool group is on, except Computer, which is its own explicit row. Web search is on because it no longer costs per call. |
 | Computer | Off | Explicit opt-in. |
 | Access | Only me | |
 
