@@ -12,32 +12,26 @@ Creating an agent should take two fields and one button. Anything a person does 
 
 ## New flow
 
-A small dialog. Three levels, each its own control, so the hierarchy is never guessed:
+One small dialog, one column, top to bottom:
 
-1. **Overlay agent | Other agent**: a two-way segmented switch at the top, with a one-line hint. Overlay agents are the default and the first-class path.
-2. **Agent** (Other agent only): a `ListboxSelect` of Claude Code, Codex, Hermes. A dropdown scales as more agents are added.
-3. **Runs on** (Other agent only): a two-option segmented control, *Overlay Cloud* or *Your machine*, with a hint line ("A sandbox we host. Nothing to set up." / "Your computer or server. It connects out to Overlay."). Same style as Access, so one pattern for a short either/or.
+1. **Avatar**, centred at the top. Hovering shows a pencil; clicking opens a popover with the eight creature shapes (`WORKSPACE_AGENT_CREATURE_SHAPES`) and a colour row. The shape grid previews each body in the current colour.
+2. **Name** (required).
+3. **Description**. Overlay agents use it as their instructions (required for them).
+4. **Type**: segmented *Overlay agent | Other agent*. Overlay agent is the default.
+5. If **Overlay agent**:
+   1. **Computer**: a bordered row with a toggle, off by default. A computer is a provisioned resource, so it needs explicit enablement and is not in the tool list. On reveals a size `ListboxSelect`.
+   2. **Access**: segmented *Only me | Everyone in this workspace*.
+   3. **Advanced** (collapsed; header reads e.g. "Auto · All tools"): **Model** (`ListboxSelect`, `CHAT_MODEL_QUALITY_PRIORITY`, Auto first) and **Tools** (presets Everything / Standard / Read only, then every tool group as a label and a toggle).
+6. If **Other agent**:
+   1. **Agent**: `ListboxSelect` of Claude Code, Codex, Hermes.
+   2. **Runs on**: segmented *Overlay Cloud | Your machine*.
+   3. **Computer config**: Overlay Cloud shows the sandbox size `ListboxSelect`; Your machine shows the one-line connect command with a copy button and "Waiting for the machine…".
+   4. **Access**.
+7. Footer: Cancel, then **Create agent** ("Create and connect" for Your machine), disabled until the required fields are filled.
 
-Avatar and name are always shown, and the name is required. **Access** is always visible near the bottom (Only me by default).
+### Copy
 
-### Overlay agent
-
-1. **Avatar and name.** The creature and colour are picked for the person; clicking the avatar reshuffles it.
-2. **What should it do?** One textarea. This is the agent's instructions. Required.
-3. **Computer** (its own row, directly under the description, off by default). A computer is a provisioned resource, so it needs explicit enablement and is not part of the tool list. Turning it on reveals a size `ListboxSelect` in the same row; the machine is created on save.
-4. **Access** (always visible, all agent types): Only me (default) or Everyone in this workspace.
-5. **Advanced** (collapsed, Overlay agents only). The header summarises the current choices, for example "Auto · All tools". Inside:
-   - **Model** uses the shared `ListboxSelect`, not a native select, ordered by `CHAT_MODEL_QUALITY_PRIORITY` with Auto first.
-   - **Tools** has presets (Everything / Standard / Read only; Everything is the default), and every tool group is listed as a plain label with a toggle. Nothing sits behind a "customize" link; Computer is not in this list.
-6. **Create agent**, disabled until name and instructions are filled in.
-
-### Bring your own: Overlay Cloud
-
-Name, Size (`ListboxSelect`), Access. Instructions are generated from the agent, as for connected agents today. Blocked until the Box/E2B rebuild lands; the "Overlay Cloud" option stays hidden until then.
-
-### Bring your own: your machine
-
-Name, then the one-line connect command with a copy button and a "Waiting for the machine to connect…" state, then Access. The button reads "Create and connect".
+No hint lines in the dialog. Labels are one or two words. Anything that needs explaining gets a small Lucide `Info` icon after the label that shows the text on hover or keyboard focus (Description, Type, Runs on, Computer, Connect, Access).
 
 ### Defaults
 
@@ -55,7 +49,8 @@ Moved out of creation, still available after the agent exists: Reachable on (Sla
 - `buildWorkspaceAgentInput` already takes everything the dialog needs; the dialog just supplies defaults for what it hides (`enabledToolGroups`, `visibility`, `modelId`, avatar).
 - Defaults live in one place (`DEFAULT_NEW_AGENT_TOOL_GROUPS`, new, in `src/shared/agents/tool-groups.ts`) so the dialog and the API agree.
 - `isAgentEditorValid` stays the save gate.
-- The dialog reuses `Creature`, `Toggle`, `ListboxSelect` and `OptionRow` from the existing chrome. No new dependencies.
+- The dialog reuses `Creature`, `Toggle` and `ListboxSelect` from the existing chrome, and the app's tooltip primitive for the info icons. No new dependencies.
+- The avatar popover writes `avatarShape` and `avatarColor`, which the API already stores. `AVATAR_COLORS` grows from 6 to 11 (white, brown, red, orange, amber, green, teal, blue, purple, pink, grey); the eye colour already adapts to light bodies.
 
 ## Later (not in this change)
 
@@ -68,3 +63,5 @@ Moved out of creation, still available after the agent exists: Reachable on (Sla
 - Web search is in the default tool set.
 - Tools are listed, not hidden behind a link.
 - All dropdowns use `ListboxSelect`.
+- Descriptive copy lives behind info icons, not in the layout.
+- The avatar is edited in place (shape and colour); image generation and upload are not part of creation.
