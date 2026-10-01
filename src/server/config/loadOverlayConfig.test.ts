@@ -190,6 +190,102 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
   })
 })
 
+test('configOverridesFromEnv maps Azure OpenAI and Bedrock model settings without inferring a provider', () => {
+  const overrides = configOverridesFromEnv({
+    LLM_GATEWAY: 'azure-openai',
+    AZURE_OPENAI_RESOURCE_NAME: 'overlay-east',
+    AZURE_OPENAI_BASE_URL: 'https://azure-proxy.example.com/openai',
+    AZURE_OPENAI_API_VERSION: '2025-04-01-preview',
+    AZURE_OPENAI_DEPLOYMENTS: 'openai/gpt-5.4-mini=gpt-mini,anthropic/claude-opus-4.7=claude-opus',
+    BEDROCK_REGION: 'us-east-2',
+    BEDROCK_MODEL_IDS: 'openai/gpt-5.4-mini=us.anthropic.claude-sonnet-4-6-v1:0',
+  })
+
+  assert.deepEqual(overrides.llm, {
+    gatewayProvider: 'azure-openai',
+    azureOpenAI: {
+      resourceName: 'overlay-east',
+      baseURL: 'https://azure-proxy.example.com/openai',
+      apiVersion: '2025-04-01-preview',
+      deployments: {
+        'openai/gpt-5.4-mini': 'gpt-mini',
+        'anthropic/claude-opus-4.7': 'claude-opus',
+      },
+    },
+    bedrock: {
+      region: 'us-east-2',
+      modelIds: {
+        'openai/gpt-5.4-mini': 'us.anthropic.claude-sonnet-4-6-v1:0',
+      },
+    },
+  })
+
+  assert.deepEqual(configOverridesFromEnv({
+    BEDROCK_REGION: '',
+    AWS_REGION: 'us-west-2',
+    AWS_BEARER_TOKEN_BEDROCK: 'not-in-config',
+    AZURE_OPENAI_API_KEY: 'not-in-config',
+  }).llm, {
+    bedrock: { region: 'us-west-2' },
+  })
+})
+
+test('loadOverlayConfig selects an explicitly configured cloud model provider', async () => {
+  const azure = await load({
+    env: {
+      LLM_GATEWAY: 'azure-openai',
+      AZURE_OPENAI_RESOURCE_NAME: 'overlay-east',
+      AZURE_OPENAI_API_VERSION: '2025-04-01-preview',
+      AZURE_OPENAI_DEPLOYMENTS: 'openai/gpt-5.4-mini=gpt-mini',
+    },
+  })
+  assert.equal(azure.llm.gatewayProvider, 'azure-openai')
+  assert.equal(azure.llm.azureOpenAI.resourceName, 'overlay-east')
+  assert.equal(azure.llm.azureOpenAI.deployments['openai/gpt-5.4-mini'], 'gpt-mini')
+
+  const bedrock = await load({
+    env: {
+      LLM_GATEWAY: 'bedrock',
+      AWS_REGION: 'us-west-2',
+      BEDROCK_MODEL_IDS: 'openai/gpt-5.4-mini=us.anthropic.claude-sonnet-4-6-v1:0',
+    },
+  })
+  assert.equal(bedrock.llm.gatewayProvider, 'bedrock')
+  assert.equal(bedrock.llm.bedrock.region, 'us-west-2')
+  assert.equal(bedrock.llm.bedrock.modelIds['openai/gpt-5.4-mini'], 'us.anthropic.claude-sonnet-4-6-v1:0')
+
+  const credentialsOnly = await load({
+    env: {
+      AZURE_OPENAI_API_KEY: 'azure-secret',
+      AWS_BEARER_TOKEN_BEDROCK: 'bedrock-secret',
+    },
+  })
+  assert.equal(credentialsOnly.llm.gatewayProvider, 'openrouter')
+})
+
+test('configOverridesFromEnv rejects malformed provider model maps', () => {
+  assert.throws(
+    () => configOverridesFromEnv({ AZURE_OPENAI_DEPLOYMENTS: 'openai/gpt-5.4-mini' }),
+    /AZURE_OPENAI_DEPLOYMENTS must be comma-separated overlayModelId=providerId pairs/,
+  )
+  assert.throws(
+    () => configOverridesFromEnv({ BEDROCK_MODEL_IDS: 'openai/gpt-5.4-mini=one,broken=' }),
+    /BEDROCK_MODEL_IDS must be comma-separated overlayModelId=providerId pairs/,
+  )
+})
+
+test('loadOverlayConfig reports malformed provider model maps as config errors', async () => {
+  await assert.rejects(
+    () => load({
+      env: { BEDROCK_MODEL_IDS: 'openai/gpt-5.4-mini=us.anthropic.model-v1:0,broken=' },
+    }),
+    {
+      name: 'OverlayConfigError',
+      message: /BEDROCK_MODEL_IDS must be comma-separated overlayModelId=providerId pairs/,
+    },
+  )
+})
+
 test('configOverridesFromEnv maps Executor integration service settings', () => {
   const overrides = configOverridesFromEnv({
     OVERLAY_PROVIDER_INTEGRATIONS: 'executor',

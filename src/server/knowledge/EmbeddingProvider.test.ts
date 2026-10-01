@@ -6,13 +6,27 @@ import type { OverlayRuntimeConfig } from '@/shared/config'
 import { createEmbeddingProvider, KNOWLEDGE_EMBEDDING_DIMENSIONS } from './EmbeddingProvider'
 
 const originalFetch = globalThis.fetch
-const originalGatewayKey = process.env.AI_GATEWAY_API_KEY
-const originalOpenAiKey = process.env.OPENAI_API_KEY
+const envNames = [
+  'AI_GATEWAY_API_KEY',
+  'OPENAI_API_KEY',
+  'AZURE_OPENAI_API_KEY',
+  'AZURE_OPENAI_RESOURCE_NAME',
+  'AZURE_OPENAI_BASE_URL',
+  'AZURE_OPENAI_API_VERSION',
+  'AZURE_OPENAI_EMBEDDING_DEPLOYMENT',
+  'BEDROCK_REGION',
+  'BEDROCK_EMBEDDING_MODEL_ID',
+  'AWS_REGION',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'AWS_BEARER_TOKEN_BEDROCK',
+] as const
+const originalEnv = new Map(envNames.map((name) => [name, process.env[name]]))
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  restoreEnv('AI_GATEWAY_API_KEY', originalGatewayKey)
-  restoreEnv('OPENAI_API_KEY', originalOpenAiKey)
+  for (const name of envNames) restoreEnv(name, originalEnv.get(name))
 })
 
 test('AI Gateway embedding requests require zero-data-retention routing', async () => {
@@ -50,7 +64,75 @@ test('direct OpenAI embedding requests omit AI Gateway provider options', async 
   }])
 })
 
-function configFor(provider: 'ai-gateway' | 'openai'): OverlayRuntimeConfig {
+test('Azure OpenAI embeddings use the configured resource, deployment, and API key', async () => {
+  process.env.AZURE_OPENAI_API_KEY = 'test-azure-key'
+  process.env.AZURE_OPENAI_RESOURCE_NAME = 'overlay-east'
+  process.env.AZURE_OPENAI_API_VERSION = '2025-04-01-preview'
+  process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT = 'embedding-small'
+  let requestUrl = ''
+  let requestModel = ''
+  let apiKeyHeader: string | null = null
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    requestUrl = request.url
+    apiKeyHeader = request.headers.get('api-key')
+    requestModel = JSON.parse(await request.clone().text()).model
+    return embeddingResponse()
+  }
+
+  const provider = createEmbeddingProvider(configFor('azure-openai'))
+  await provider.embed(['Azure embedding context'])
+
+  assert.match(requestUrl, /^https:\/\/overlay-east\.openai\.azure\.com\/openai\/v1\/embeddings/)
+  assert.equal(requestModel, 'embedding-small')
+  assert.equal(apiKeyHeader, 'test-azure-key')
+  assert.equal(provider.identity.modelId, 'embedding-small')
+})
+
+test('Bedrock embeddings use the region, model URL, and signed AWS credentials', async () => {
+  process.env.BEDROCK_REGION = 'us-east-2'
+  process.env.BEDROCK_EMBEDDING_MODEL_ID = 'amazon.titan-embed-text-v1'
+  process.env.AWS_ACCESS_KEY_ID = 'test-access-key'
+  process.env.AWS_SECRET_ACCESS_KEY = 'test-secret-key'
+  delete process.env.AWS_SESSION_TOKEN
+  delete process.env.AWS_BEARER_TOKEN_BEDROCK
+  let requestUrl = ''
+  let authorization: string | null = null
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    requestUrl = request.url
+    authorization = request.headers.get('authorization')
+    return Response.json({
+      embedding: Array.from({ length: KNOWLEDGE_EMBEDDING_DIMENSIONS }, () => 0),
+      inputTextTokenCount: 3,
+    })
+  }
+
+  const provider = createEmbeddingProvider(configFor('bedrock'))
+  const vectors = await provider.embed(['Bedrock embedding context'])
+
+  assert.equal(requestUrl, 'https://bedrock-runtime.us-east-2.amazonaws.com/model/amazon.titan-embed-text-v1/invoke')
+  assert.match(authorization ?? '', /^AWS4-HMAC-SHA256 /)
+  assert.equal(vectors[0]?.length, KNOWLEDGE_EMBEDDING_DIMENSIONS)
+})
+
+test('cloud embeddings reject vectors that do not match the knowledge index dimensions', async () => {
+  process.env.BEDROCK_REGION = 'us-east-2'
+  process.env.AWS_ACCESS_KEY_ID = 'test-access-key'
+  process.env.AWS_SECRET_ACCESS_KEY = 'test-secret-key'
+  delete process.env.AWS_BEARER_TOKEN_BEDROCK
+  globalThis.fetch = async () => Response.json({
+    embedding: [0, 1, 2],
+    inputTextTokenCount: 3,
+  })
+
+  await assert.rejects(
+    createEmbeddingProvider(configFor('bedrock')).embed(['wrong dimension']),
+    /Expected 1536 dims, got 3/,
+  )
+})
+
+function configFor(provider: 'ai-gateway' | 'openai' | 'azure-openai' | 'bedrock'): OverlayRuntimeConfig {
   return {
     providers: {
       embeddings: { provider },

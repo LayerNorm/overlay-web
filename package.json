@@ -165,7 +165,9 @@
     "test:auth:ui": "tsx scripts/qa/auth-ui-smoke.ts"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "5.0.33",
     "@ai-sdk/anthropic": "^4.0.22",
+    "@ai-sdk/azure": "4.0.22",
     "@ai-sdk/google": "^4.0.33",
     "@ai-sdk/groq": "^4.0.14",
     "@ai-sdk/harness": "1.0.102",
@@ -184,6 +186,7 @@
     "@ai-sdk/xai": "^4.0.58",
     "@aws-sdk/client-secrets-manager": "3.1019.0",
     "@aws-sdk/client-sesv2": "^3.1106.0",
+    "@aws-sdk/credential-provider-node": "3.972.83",
     "@aws-sdk/s3-request-presigner": "^3.1019.0",
     "@better-auth/sso": "^1.6.23",
     "@chat-adapter/slack": "^4.40.0",

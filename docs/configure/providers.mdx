@@ -14,7 +14,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Auth | `workos`, `better-auth`, `oidc`, `none` | `workos` is the hosted default. `better-auth` owns the web session and supports provider-driven enterprise SSO with its own separate Postgres database. `oidc` remains a low-level bearer/access-token verifier for deployment-specific browser wiring. |
 | Billing | `stripe`, `none` | `stripe` supports subscriptions, top-ups, portal sessions, and webhooks. Use `none` for private deployments. |
 | Object storage | `r2`, `s3`, `none` | `r2` is the hosted default. `s3` covers AWS S3 and compatible enterprise object stores. Keep compatible stores under `s3`; set `storage.s3.forcePathStyle=true` only when required. |
-| Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | All listed model providers have active routing paths except `none`, which intentionally disables generation. |
+| Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `azure-openai`, `bedrock`, `none` | All listed model providers have active routing paths except `none`, which intentionally disables generation. Azure and Bedrock require explicit `LLM_GATEWAY` selection and provider-specific model configuration. |
 | Database | `convex` | `convex` is the only app-data provider and the hosted default. Enterprise self-hosting runs the official `convex-backend` binary; see [Self-hosted Convex backend](/deploy-operate/self-hosted-convex). |
 
 ## Enterprise Provider Families
@@ -22,7 +22,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Purpose | Values | Data processed | Current support |
 | --- | --- | --- | --- |
 | Vector search | `convex`, `none` | Embeddings and searchable text chunks | `convex` and `none` are supported. |
-| Embeddings | `ai-gateway`, `openai`, `none` | Text chunks sent for embedding | `ai-gateway`, `openai`, and `none` are current paths. |
+| Embeddings | `ai-gateway`, `openai`, `azure-openai`, `bedrock`, `none` | Text chunks sent for embedding | All listed providers have active paths. Embedding calls run in Convex; configure the provider and its credentials in the Convex deployment environment too. |
 | Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | `composio`, `executor`, and `none` are supported. `executor` delegates OAuth and shared connection lifecycle to a customer-hosted Executor service. `mcp` is declared but rejected as a provider family until bootstrap wiring exists. |
 | Browser use | `browser-use`, `none` | Browser tasks, page content, and entered credentials | `browser-use` and `none` are supported. |
 | Sandboxes | `vercel`, `daytona`, `none` | Commands, staged files, and generated artifacts | `vercel`, `daytona`, and `none` are supported. `vercel` uses the official `@vercel/sandbox` SDK and is the default Overlay Cloud backend. |
@@ -32,7 +32,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` supports hosted BYOK flows. `aws-secrets-manager` supports BYOK provider keys for private deployments; Convex stores only the opaque secret ARN. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | All declared providers are supported. Multi-instance production/on-prem deployments should use Redis with fail-closed behavior; memory is development-only. |
 
-Previously declared but unimplemented values—including `pgvector`, `pinecone`, `self-hosted-playwright`, `e2b`, `local-firecracker`, the removed web-search providers, and HashiCorp `vault`—are now unknown enum values and fail config parsing. `azure-openai` embeddings and `mcp` integration-provider selection remain declared but are rejected until their adapters are implemented.
+Previously declared but unimplemented values—including `pgvector`, `pinecone`, `self-hosted-playwright`, `e2b`, `local-firecracker`, the removed web-search providers, and HashiCorp `vault`—are now unknown enum values and fail config parsing. `mcp` integration-provider selection remains declared but is rejected until its adapter is implemented.
 
 ## Disable External Processors
 
@@ -71,7 +71,7 @@ VECTOR_SEARCH_ENABLED=false
 OVERLAY_FEATURE_VECTOR_SEARCH=false
 ```
 
-To enable memory and knowledge search, use `convex` vector search plus one supported embeddings provider (`ai-gateway` or `openai`). Convex performs indexing, model-versioned embeddings, scoped hybrid retrieval, and cleanup inside the deployment; no separate worker is required.
+To enable memory and knowledge search, use `convex` vector search plus one embeddings provider (`ai-gateway`, `openai`, `azure-openai`, or `bedrock`). Convex performs indexing, model-versioned embeddings, scoped hybrid retrieval, and cleanup inside the deployment; no separate worker is required.
 
 ```env
 OVERLAY_PROVIDER_VECTOR_SEARCH=convex
@@ -80,3 +80,33 @@ OVERLAY_EMBEDDING_MODEL_VERSION=text-embedding-3-small-v1
 VECTOR_SEARCH_ENABLED=true
 OVERLAY_FEATURE_VECTOR_SEARCH=true
 ```
+
+Set `OVERLAY_PROVIDER_EMBEDDINGS` and the selected provider's embedding
+variables in the Convex deployment environment, not only on the web runtime.
+Azure OpenAI embeddings require `AZURE_OPENAI_API_KEY` and
+`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, plus `AZURE_OPENAI_RESOURCE_NAME` or
+`AZURE_OPENAI_BASE_URL`. Use a `text-embedding-3-small` deployment: its default
+1,536 dimensions match the existing index.
+
+Bedrock embeddings default to `amazon.titan-embed-text-v1` in
+`BEDROCK_REGION` (or `AWS_REGION`). Bedrock Titan vectors are not interchangeable
+with OpenAI or AI Gateway vectors even when both have 1,536 dimensions; changing
+providers for an indexed deployment requires a full re-index. Titan v2 and
+Cohere models with fewer than 1,536 dimensions are rejected by the existing
+index compatibility check.
+
+For model requests, Bedrock uses the AWS default credential chain on the app
+runtime (IAM role, IRSA, SSO, or environment credentials), or
+`AWS_BEARER_TOKEN_BEDROCK`. Convex-side embeddings need
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (plus `AWS_SESSION_TOKEN` when
+using temporary credentials), or `AWS_BEARER_TOKEN_BEDROCK`, in the Convex
+deployment environment.
+
+For Azure or Bedrock chat models, select the gateway explicitly with
+`LLM_GATEWAY=azure-openai` or `LLM_GATEWAY=bedrock`; key presence alone does not
+change the selected provider. `AZURE_OPENAI_DEPLOYMENTS` and
+`BEDROCK_MODEL_IDS` accept comma-separated `overlayModelId=providerId` pairs.
+Azure models without a deployment mapping use the OpenAI model identifier as
+the deployment name. Bedrock catalog model IDs need a mapping; native Bedrock
+model IDs and inference-profile ARNs can be passed through directly. Keep
+credentials in environment secrets, not runtime config.

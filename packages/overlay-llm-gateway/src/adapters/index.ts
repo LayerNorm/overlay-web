@@ -1,4 +1,6 @@
 export * from './anthropic'
+export * from './azure-openai'
+export * from './bedrock'
 export * from './byok-gateway'
 export * from './byok-presets'
 export * from './groq'

@@ -287,9 +287,25 @@ function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
       : readEnv(env, 'OPENROUTER_API_KEY')
         ? 'openrouter'
         : readEnv(env, 'OPENAI_API_KEY')
-          ? 'openai'
-          : undefined)
-  if (!gatewayProvider && !readEnv(env, 'DEFAULT_CHAT_MODEL_ID') && !readEnv(env, 'LLM_MODEL_ALLOWLIST')) {
+        ? 'openai'
+        : undefined)
+  const azureOpenAI = compactObject({
+    resourceName: readEnv(env, 'AZURE_OPENAI_RESOURCE_NAME'),
+    baseURL: readEnv(env, 'AZURE_OPENAI_BASE_URL'),
+    apiVersion: readEnv(env, 'AZURE_OPENAI_API_VERSION'),
+    deployments: parseProviderIdMap(env, 'AZURE_OPENAI_DEPLOYMENTS'),
+  })
+  const bedrock = compactObject({
+    region: readEnv(env, 'BEDROCK_REGION') ?? readEnv(env, 'AWS_REGION'),
+    modelIds: parseProviderIdMap(env, 'BEDROCK_MODEL_IDS'),
+  })
+  if (
+    !gatewayProvider &&
+    !readEnv(env, 'DEFAULT_CHAT_MODEL_ID') &&
+    !readEnv(env, 'LLM_MODEL_ALLOWLIST') &&
+    Object.keys(azureOpenAI).length === 0 &&
+    Object.keys(bedrock).length === 0
+  ) {
     return null
   }
 
@@ -299,6 +315,8 @@ function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
     defaultChatModelId: readEnv(env, 'DEFAULT_CHAT_MODEL_ID'),
     modelAllowlist: readEnv(env, 'LLM_MODEL_ALLOWLIST') ? splitCsv(readEnv(env, 'LLM_MODEL_ALLOWLIST')) : undefined,
     apiKeyEnvVar: readEnv(env, 'LLM_API_KEY_ENV_VAR'),
+    azureOpenAI: Object.keys(azureOpenAI).length > 0 ? azureOpenAI : undefined,
+    bedrock: Object.keys(bedrock).length > 0 ? bedrock : undefined,
   })
 }
 
@@ -656,6 +674,27 @@ function splitCsv(value: string | undefined): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean)
+}
+
+function parseProviderIdMap(env: EnvSource, name: string): Record<string, string> | undefined {
+  const value = readEnv(env, name)
+  if (!value) return undefined
+
+  const pairs = value.split(',')
+  const entries: Array<[string, string]> = []
+  const seen = new Set<string>()
+  for (const pair of pairs) {
+    const separator = pair.indexOf('=')
+    const modelId = separator < 0 ? '' : pair.slice(0, separator).trim()
+    const providerId = separator < 0 ? '' : pair.slice(separator + 1).trim()
+    if (!modelId || !providerId || separator !== pair.lastIndexOf('=') || seen.has(modelId)) {
+      throw new Error(`${name} must be comma-separated overlayModelId=providerId pairs with unique model IDs`)
+    }
+    seen.add(modelId)
+    entries.push([modelId, providerId])
+  }
+
+  return Object.fromEntries(entries)
 }
 
 function compactObject(input: Record<string, unknown>): Record<string, unknown> {

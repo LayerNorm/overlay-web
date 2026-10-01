@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { defaultProvider } from '@aws-sdk/credential-provider-node'
 import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
@@ -92,6 +93,8 @@ import {
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
+import { AzureOpenAIGateway } from '@overlay/llm-gateway/azure-openai'
+import { BedrockGateway } from '@overlay/llm-gateway/bedrock'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
 import { BUILT_IN_MODELS } from '@overlay/llm-gateway/models'
 import type {
@@ -567,6 +570,25 @@ function createLlmGateway(config: OverlayRuntimeConfig | null): LLMGateway {
         getApiKey: () => resolveConfiguredEnvSecret(config.llm.apiKeyEnvVar ?? 'GROQ_API_KEY'),
         models: filterRuntimeModels(config.llm.modelAllowlist),
       })
+    case 'azure-openai':
+      return new AzureOpenAIGateway({
+        getApiKey: () => resolveConfiguredEnvSecret(config.llm.apiKeyEnvVar ?? 'AZURE_OPENAI_API_KEY'),
+        resourceName: config.llm.azureOpenAI.resourceName,
+        baseURL: config.llm.azureOpenAI.baseURL,
+        apiVersion: config.llm.azureOpenAI.apiVersion,
+        deployments: config.llm.azureOpenAI.deployments,
+        models: filterRuntimeModels(config.llm.modelAllowlist),
+      })
+    case 'bedrock': {
+      const apiKey = resolveConfiguredEnvSecret('AWS_BEARER_TOKEN_BEDROCK') ?? undefined
+      return new BedrockGateway({
+        region: config.llm.bedrock.region,
+        modelIds: config.llm.bedrock.modelIds,
+        apiKey,
+        credentialProvider: apiKey ? undefined : defaultProvider(),
+        models: filterRuntimeModels(config.llm.modelAllowlist),
+      })
+    }
     case 'none':
       return new NoOpLLMGateway()
   }

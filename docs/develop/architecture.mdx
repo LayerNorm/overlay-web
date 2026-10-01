@@ -10,6 +10,7 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `src/server/app-api/v1/**` holds the route orchestration behind those Next route wrappers.
 - `src/server/**` holds server-only auth, billing, storage, AI, tools, route services, and provider adapters.
 - `src/shared/**` holds isomorphic contracts and client-safe helpers.
+- `src/shared/knowledge/cloud-embeddings.ts` holds the Azure OpenAI and Bedrock embedding SDK calls shared by Convex knowledge actions and server embedding providers; keep it free of runtime environment access, Node built-ins, and server-only imports.
 - `src/contexts/**` holds app-wide client providers (`AuthContext`, `WorkspaceContext`); `src/hooks/**` holds app-wide client hooks (`useWorkspaceChanged`). Both may import `@/shared` only.
 - `src/features/**` holds web feature containers and feature-local helpers. Cross-feature imports are banned; shared primitives belong in `@/shared`, `@/contexts`, or `@/hooks` (e.g. the workspace provider, routing helpers, and types that used to sit inside `features/workspaces`).
 - `src/server/workflows/**` holds Vercel Workflow SDK durable orchestration (`automation-run`, `automation-schedule`, `personal-chat-work`, `workspace-agent-turn`). Workflow bodies bundle for the workflow runtime — keep their imports to `"use step"` functions and `@/` alias modules only.

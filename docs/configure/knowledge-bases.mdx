@@ -40,6 +40,29 @@ Each source is canonical and versioned. Indexing is durable. Search is scoped to
 
 Knowledge indexing and retrieval run inside the Convex deployment using Convex vector search plus the configured embeddings provider. The browser and API contracts are provider-independent.
 
+## Embedding providers and re-indexing
+
+Set `OVERLAY_PROVIDER_EMBEDDINGS` and the selected provider's credentials in
+the Convex deployment environment. Setting them only on the web app does not
+configure knowledge indexing or search. Azure OpenAI requires
+`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and either
+`AZURE_OPENAI_RESOURCE_NAME` or `AZURE_OPENAI_BASE_URL`. Use a
+`text-embedding-3-small` deployment for the existing 1,536-dimensional index.
+
+Bedrock defaults to the 1,536-dimensional `amazon.titan-embed-text-v1`, but
+those vectors are not interchangeable with existing OpenAI or AI Gateway
+vectors. Titan v2 and some other Bedrock embedding models return fewer
+dimensions and are rejected by the index compatibility check. Choose the
+embedding provider before indexing a deployment; switching providers or models
+requires re-indexing stored sources. Change `OVERLAY_EMBEDDING_MODEL_VERSION`
+to trigger the maintenance re-index.
+
+Bedrock chat requests run on the app server and use its AWS default credential
+chain (IAM role, IRSA, SSO, or environment keys) or `AWS_BEARER_TOKEN_BEDROCK`.
+Convex-side Bedrock embeddings need `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN` for temporary credentials), or
+`AWS_BEARER_TOKEN_BEDROCK`, set in the Convex deployment environment.
+
 ## Authorization requirements
 
 The relevant capabilities are:

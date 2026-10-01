@@ -10,6 +10,8 @@
     ".": "./src/index.ts",
     "./adapters": "./src/adapters/index.ts",
     "./anthropic": "./src/adapters/anthropic.ts",
+    "./azure-openai": "./src/adapters/azure-openai.ts",
+    "./bedrock": "./src/adapters/bedrock.ts",
     "./contracts": "./src/contracts.ts",
     "./groq": "./src/adapters/groq.ts",
     "./models": "./src/models.ts",
@@ -21,7 +23,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "5.0.33",
     "@ai-sdk/anthropic": "^4.0.22",
+    "@ai-sdk/azure": "4.0.22",
     "@ai-sdk/groq": "^4.0.14",
     "@ai-sdk/openai": "^4.0.21",
     "@ai-sdk/openai-compatible": "^3.0.15",

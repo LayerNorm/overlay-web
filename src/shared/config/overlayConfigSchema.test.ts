@@ -735,3 +735,60 @@ test('redactOverlayRuntimeConfig exposes connection metadata without credentials
     clientSecretEnv: undefined,
   }])
 })
+
+test('OverlayRuntimeConfigSchema validates Azure OpenAI and Bedrock provider settings', () => {
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse({
+      ...minimalSaasConfig,
+      llm: {
+        ...minimalSaasConfig.llm,
+        gatewayProvider: 'azure-openai',
+      },
+    }),
+    /llm\.azureOpenAI\.resourceName or llm\.azureOpenAI\.baseURL is required/,
+  )
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse({
+      ...minimalSaasConfig,
+      llm: {
+        ...minimalSaasConfig.llm,
+        gatewayProvider: 'bedrock',
+      },
+    }),
+    /llm\.bedrock\.region is required/,
+  )
+
+  const azure = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    llm: {
+      ...minimalSaasConfig.llm,
+      gatewayProvider: 'azure-openai',
+      azureOpenAI: {
+        resourceName: 'overlay-east',
+        deployments: { 'openai/gpt-5.4-mini': 'gpt-mini' },
+      },
+    },
+    providers: {
+      embeddings: { provider: 'azure-openai' },
+    },
+  })
+  assert.equal(azure.llm.azureOpenAI.deployments['openai/gpt-5.4-mini'], 'gpt-mini')
+  assert.equal(azure.providers.embeddings?.provider, 'azure-openai')
+
+  const bedrock = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    llm: {
+      ...minimalSaasConfig.llm,
+      gatewayProvider: 'bedrock',
+      bedrock: {
+        region: 'us-east-1',
+        modelIds: { 'openai/gpt-5.4-mini': 'us.anthropic.claude-sonnet-4-6-v1:0' },
+      },
+    },
+    providers: {
+      embeddings: { provider: 'bedrock' },
+    },
+  })
+  assert.equal(bedrock.llm.bedrock.region, 'us-east-1')
+  assert.equal(bedrock.providers.embeddings?.provider, 'bedrock')
+})

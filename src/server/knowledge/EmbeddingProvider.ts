@@ -1,6 +1,10 @@
 import 'server-only'
 
 import type { OverlayRuntimeConfig } from '@/shared/config'
+import {
+  embedWithCloudProvider,
+  type CloudEmbeddingSettings,
+} from '@/shared/knowledge/cloud-embeddings'
 
 export const KNOWLEDGE_EMBEDDING_DIMENSIONS = 1536
 
@@ -8,7 +12,7 @@ export type EmbeddingModelIdentity = {
   dimensions: number
   modelId: string
   modelVersion: string
-  provider: 'ai-gateway' | 'openai'
+  provider: 'ai-gateway' | 'openai' | 'azure-openai' | 'bedrock'
 }
 
 export interface EmbeddingProvider {
@@ -43,7 +47,69 @@ export function createEmbeddingProvider(config: OverlayRuntimeConfig): Embedding
       },
     })
   }
+  if (provider === 'azure-openai') {
+    const apiKey = process.env.AZURE_OPENAI_API_KEY?.trim()
+    if (!apiKey) throw new Error('AZURE_OPENAI_API_KEY is required for knowledge embeddings')
+    const deployment = process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT?.trim()
+    if (!deployment) throw new Error('AZURE_OPENAI_EMBEDDING_DEPLOYMENT is required for knowledge embeddings')
+    const resourceName = process.env.AZURE_OPENAI_RESOURCE_NAME?.trim()
+    const baseURL = process.env.AZURE_OPENAI_BASE_URL?.trim()
+    if (!resourceName && !baseURL) {
+      throw new Error('AZURE_OPENAI_RESOURCE_NAME or AZURE_OPENAI_BASE_URL is required for knowledge embeddings')
+    }
+    return new CloudEmbeddingProvider({
+      settings: {
+        provider,
+        apiKey,
+        resourceName,
+        baseURL,
+        apiVersion: process.env.AZURE_OPENAI_API_VERSION?.trim(),
+        deployment,
+      },
+      identity: {
+        dimensions: KNOWLEDGE_EMBEDDING_DIMENSIONS,
+        modelId: deployment,
+        modelVersion,
+        provider,
+      },
+    })
+  }
+  if (provider === 'bedrock') {
+    const region = process.env.BEDROCK_REGION?.trim() || process.env.AWS_REGION?.trim()
+    if (!region) throw new Error('BEDROCK_REGION or AWS_REGION is required for knowledge embeddings')
+    const modelId = process.env.BEDROCK_EMBEDDING_MODEL_ID?.trim() || 'amazon.titan-embed-text-v1'
+    return new CloudEmbeddingProvider({
+      settings: { provider, region, modelId },
+      identity: {
+        dimensions: KNOWLEDGE_EMBEDDING_DIMENSIONS,
+        modelId,
+        modelVersion,
+        provider,
+      },
+    })
+  }
   throw new Error(`Unsupported embeddings provider: ${provider}`)
+}
+
+class CloudEmbeddingProvider implements EmbeddingProvider {
+  readonly identity: EmbeddingModelIdentity
+
+  constructor(private readonly options: {
+    settings: CloudEmbeddingSettings
+    identity: EmbeddingModelIdentity
+  }) {
+    this.identity = options.identity
+  }
+
+  async embed(texts: string[]): Promise<number[][]> {
+    const { vectors } = await embedWithCloudProvider(this.options.settings, texts, {
+      expectedDimensions: this.identity.dimensions,
+    })
+    if (vectors.length !== texts.length) {
+      throw new Error(`Embeddings response returned ${vectors.length} vectors for ${texts.length} inputs`)
+    }
+    return vectors
+  }
 }
 
 class HttpEmbeddingProvider implements EmbeddingProvider {

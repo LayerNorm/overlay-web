@@ -24,6 +24,8 @@ export const OverlayLlmGatewayProviderSchema = z.enum([
   'openai',
   'anthropic',
   'groq',
+  'azure-openai',
+  'bedrock',
   'none',
 ])
 export const OverlayProviderKeySourceSchema = z.enum(['env', 'workos-vault', 'config', 'none'])
@@ -44,7 +46,7 @@ export const OverlayComplianceProfileSchema = z.enum([
 ])
 export const OverlayDatabaseProviderSchema = z.enum(['convex'])
 export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'none'])
-export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
+export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'bedrock', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'none'])
 export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'none'])
@@ -394,6 +396,22 @@ export const OverlayRuntimeConfigSchema = z
       defaultChatModelId: OptionalStringSchema,
       modelAllowlist: z.array(z.string().trim().min(1)).default([]),
       apiKeyEnvVar: OptionalStringSchema,
+      azureOpenAI: z
+        .object({
+          resourceName: OptionalStringSchema,
+          baseURL: OptionalUrlSchema,
+          apiVersion: OptionalStringSchema,
+          deployments: z.record(z.string().trim().min(1), z.string().trim().min(1)).default({}),
+        })
+        .strict()
+        .default({}),
+      bedrock: z
+        .object({
+          region: OptionalStringSchema,
+          modelIds: z.record(z.string().trim().min(1), z.string().trim().min(1)).default({}),
+        })
+        .strict()
+        .default({}),
     }),
     integrations: z
       .object({
@@ -466,6 +484,21 @@ export const OverlayRuntimeConfigSchema = z
       email: config.providers.email?.provider ?? config.email?.provider ?? 'none',
       secrets: config.providers.secrets?.provider ?? 'env',
       rateLimit: config.providers.rateLimit?.provider ?? (config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex'),
+    }
+
+    if (selectedProviders.models === 'azure-openai' && !config.llm.azureOpenAI.resourceName && !config.llm.azureOpenAI.baseURL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['llm', 'azureOpenAI', 'resourceName'],
+        message: 'llm.azureOpenAI.resourceName or llm.azureOpenAI.baseURL is required when the model provider is azure-openai',
+      })
+    }
+    if (selectedProviders.models === 'bedrock' && !config.llm.bedrock.region) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['llm', 'bedrock', 'region'],
+        message: 'llm.bedrock.region is required when the model provider is bedrock',
+      })
     }
 
     if (effectiveCapabilities.transactionalEmail && selectedProviders.email !== 'none') {
@@ -545,9 +578,6 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
-      'azure-openai': 'Azure OpenAI embeddings are declared for enterprise config v2 but no embeddings adapter exists yet. Use embeddings.provider=ai-gateway, openai, or none.',
-    })
     if (effectiveCapabilities.vectorSearch && selectedProviders.embeddings === 'none') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

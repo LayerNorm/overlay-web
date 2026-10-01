@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
+import { AzureOpenAIGateway } from '@overlay/llm-gateway/azure-openai'
+import { BedrockGateway } from '@overlay/llm-gateway/bedrock'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
 import { createOverlayServerContext } from './bootstrap'
 import { OpenAILLMGateway, OpenRouterGateway } from './ai/providers'
@@ -274,4 +276,33 @@ test('configured Anthropic and Groq gateways use real provider adapters instead 
 
   assert.equal(createOverlayServerContext({ appConfig: {}, runtimeConfig: anthropic }).llmGateway instanceof AnthropicGateway, true)
   assert.equal(createOverlayServerContext({ appConfig: {}, runtimeConfig: groq }).llmGateway instanceof GroqGateway, true)
+})
+
+test('configured Azure OpenAI and Bedrock gateways use their provider adapters', () => {
+  const base = fixture('onprem-s3-oidc-openai.json')
+  const azure = parseOverlayRuntimeConfig({
+    ...base,
+    llm: {
+      ...base.llm,
+      gatewayProvider: 'azure-openai',
+      modelAllowlist: ['openai/gpt-5.4-mini'],
+      azureOpenAI: {
+        resourceName: 'overlay-east',
+      },
+    },
+  })
+  const bedrock = parseOverlayRuntimeConfig({
+    ...base,
+    llm: {
+      ...base.llm,
+      gatewayProvider: 'bedrock',
+      modelAllowlist: ['openai/gpt-5.4-mini'],
+      bedrock: {
+        region: 'us-east-1',
+      },
+    },
+  })
+
+  assert.equal(createOverlayServerContext({ appConfig: {}, runtimeConfig: azure }).llmGateway instanceof AzureOpenAIGateway, true)
+  assert.equal(createOverlayServerContext({ appConfig: {}, runtimeConfig: bedrock }).llmGateway instanceof BedrockGateway, true)
 })

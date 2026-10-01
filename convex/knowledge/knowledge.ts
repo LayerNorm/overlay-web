@@ -22,6 +22,7 @@ import {
   KNOWLEDGE_CHUNK_OVERLAP,
   chunkKnowledgeText,
 } from '../../src/shared/knowledge/chunking'
+import { embedWithCloudProvider } from '../../src/shared/knowledge/cloud-embeddings'
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 
 export type HybridSearchChunk = {
@@ -179,41 +180,118 @@ function truncateSearchQuery(q: string, maxTerms = 16): string {
   return terms.slice(0, maxTerms).join(' ')
 }
 
-export async function embedViaGateway(texts: string[]): Promise<{ vectors: number[][]; promptTokens: number }> {
-  const key = process.env.AI_GATEWAY_API_KEY
-  if (!key) {
-    throw new Error('Missing AI_GATEWAY_API_KEY in Convex environment')
-  }
-  const res = await fetch(GATEWAY_EMBED_URL, {
-    method: 'POST',
-    signal: AbortSignal.timeout(30_000),
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: texts.length === 1 ? texts[0]! : texts,
-    }),
-  })
-  if (!res.ok) {
-    const t = await res.text()
-    throw new Error(`Embeddings HTTP ${res.status}: ${t.slice(0, 500)}`)
-  }
-  const data = (await res.json()) as {
-    data: Array<{ embedding: number[]; index: number }>
-    usage?: { prompt_tokens?: number; total_tokens?: number }
-  }
-  const sorted = [...data.data].sort((a, b) => a.index - b.index)
-  const vectors = sorted.map((d) => {
-    const e = d.embedding
-    if (e.length !== EMBEDDING_DIM) {
-      throw new Error(`Expected ${EMBEDDING_DIM} dims, got ${e.length}`)
+export async function embedKnowledgeTexts(texts: string[]): Promise<{ vectors: number[][]; promptTokens: number }> {
+  const provider = process.env.OVERLAY_PROVIDER_EMBEDDINGS?.trim() || 'ai-gateway'
+  if (provider === 'ai-gateway') {
+    const key = process.env.AI_GATEWAY_API_KEY
+    if (!key) {
+      throw new Error('Missing AI_GATEWAY_API_KEY in Convex environment')
     }
-    return e
-  })
-  const promptTokens = data.usage?.prompt_tokens ?? data.usage?.total_tokens ?? 0
-  return { vectors, promptTokens }
+    const res = await fetch(GATEWAY_EMBED_URL, {
+      method: 'POST',
+      signal: AbortSignal.timeout(30_000),
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL,
+        input: texts.length === 1 ? texts[0]! : texts,
+      }),
+    })
+    if (!res.ok) {
+      const t = await res.text()
+      throw new Error(`Embeddings HTTP ${res.status}: ${t.slice(0, 500)}`)
+    }
+    const data = (await res.json()) as {
+      data: Array<{ embedding: number[]; index: number }>
+      usage?: { prompt_tokens?: number; total_tokens?: number }
+    }
+    const sorted = [...data.data].sort((a, b) => a.index - b.index)
+    const vectors = sorted.map((d) => {
+      const e = d.embedding
+      if (e.length !== EMBEDDING_DIM) {
+        throw new Error(`Expected ${EMBEDDING_DIM} dims, got ${e.length}`)
+      }
+      return e
+    })
+    const promptTokens = data.usage?.prompt_tokens ?? data.usage?.total_tokens ?? 0
+    return { vectors, promptTokens }
+  }
+
+  if (provider === 'openai') {
+    const key = process.env.OPENAI_API_KEY?.trim()
+    if (!key) throw new Error('Missing OPENAI_API_KEY in Convex environment')
+    const url = process.env.OPENAI_EMBED_URL?.trim() || 'https://api.openai.com/v1/embeddings'
+    const res = await fetch(url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(30_000),
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: texts.length === 1 ? texts[0]! : texts,
+      }),
+    })
+    if (!res.ok) {
+      const t = await res.text()
+      throw new Error(`Embeddings HTTP ${res.status}: ${t.slice(0, 500)}`)
+    }
+    const data = (await res.json()) as {
+      data: Array<{ embedding: number[]; index: number }>
+      usage?: { prompt_tokens?: number; total_tokens?: number }
+    }
+    const sorted = [...data.data].sort((a, b) => a.index - b.index)
+    const vectors = sorted.map((d) => {
+      const e = d.embedding
+      if (e.length !== EMBEDDING_DIM) {
+        throw new Error(`Expected ${EMBEDDING_DIM} dims, got ${e.length}`)
+      }
+      return e
+    })
+    const promptTokens = data.usage?.prompt_tokens ?? data.usage?.total_tokens ?? 0
+    return { vectors, promptTokens }
+  }
+
+  if (provider === 'azure-openai') {
+    const apiKey = process.env.AZURE_OPENAI_API_KEY?.trim()
+    if (!apiKey) throw new Error('Missing AZURE_OPENAI_API_KEY in Convex environment')
+    const deployment = process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT?.trim()
+    if (!deployment) throw new Error('Missing AZURE_OPENAI_EMBEDDING_DEPLOYMENT in Convex environment')
+    const resourceName = process.env.AZURE_OPENAI_RESOURCE_NAME?.trim()
+    const baseURL = process.env.AZURE_OPENAI_BASE_URL?.trim()
+    if (!resourceName && !baseURL) {
+      throw new Error('Missing AZURE_OPENAI_RESOURCE_NAME or AZURE_OPENAI_BASE_URL in Convex environment')
+    }
+    return embedWithCloudProvider({
+      provider: 'azure-openai',
+      apiKey,
+      resourceName,
+      baseURL,
+      apiVersion: process.env.AZURE_OPENAI_API_VERSION?.trim(),
+      deployment,
+    }, texts, {
+      expectedDimensions: EMBEDDING_DIM,
+      abortSignal: AbortSignal.timeout(30_000),
+    })
+  }
+
+  if (provider === 'bedrock') {
+    const region = process.env.BEDROCK_REGION?.trim() || process.env.AWS_REGION?.trim()
+    if (!region) throw new Error('Missing BEDROCK_REGION or AWS_REGION in Convex environment')
+    return embedWithCloudProvider({
+      provider: 'bedrock',
+      region,
+      modelId: process.env.BEDROCK_EMBEDDING_MODEL_ID?.trim() || 'amazon.titan-embed-text-v1',
+    }, texts, {
+      expectedDimensions: EMBEDDING_DIM,
+      abortSignal: AbortSignal.timeout(30_000),
+    })
+  }
+
+  throw new Error(`Unsupported embeddings provider: ${provider}`)
 }
 
 // ─── Internal: purge + replace indexed content ───────────────────────────────
@@ -595,7 +673,7 @@ export const reindexFileInternal = internalAction({
       })
       for (let i = 0; i < segments.length; i += BATCH) {
         const batch = segments.slice(i, i + BATCH).map((s) => s.text)
-        const { vectors, promptTokens } = await embedViaGateway(batch)
+        const { vectors, promptTokens } = await embedKnowledgeTexts(batch)
         allEmb.push(...vectors)
         totalTokens += promptTokens
       }
@@ -758,7 +836,7 @@ async function indexSourceTextBilled(
       userId: args.userId,
       reservationId,
     })
-    const embedded = await embedViaGateway(segments.map((s) => s.text))
+    const embedded = await embedKnowledgeTexts(segments.map((s) => s.text))
     promptTokens = embedded.promptTokens
     await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
       userId: args.userId,
@@ -1446,7 +1524,7 @@ export const hybridSearch = action({
         userId: args.billingUserId,
         reservationId,
       })
-      const embedded = await embedViaGateway([q])
+      const embedded = await embedKnowledgeTexts([q])
       vectors = embedded.vectors
       promptTokens = embedded.promptTokens
     } catch (err) {

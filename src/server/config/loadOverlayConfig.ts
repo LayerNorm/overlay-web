@@ -50,7 +50,7 @@ export async function loadOverlayConfig(
     readJsonConfigFile(resolveConfigFilePath(options, env), options.cwd),
     readRemoteConfig(resolveRemoteConfigUrl(options, env), options.fetcher),
   ])
-  const envConfig = configOverridesFromEnv(env)
+  const envConfig = configOverridesFromEnvOrThrow(env)
 
   return parseConfigOrThrow(
     mergeOverlayRuntimeConfig(defaultConfig, fileConfig, remoteConfig, envConfig),
@@ -70,7 +70,7 @@ export function loadOverlayConfigSync(
   }
 
   const fileConfig = readJsonConfigFileSync(resolveConfigFilePath(options, env), options.cwd)
-  const envConfig = configOverridesFromEnv(env)
+  const envConfig = configOverridesFromEnvOrThrow(env)
   return parseConfigOrThrow(mergeOverlayRuntimeConfig(defaultConfig, fileConfig, envConfig))
 }
 
@@ -124,6 +124,16 @@ function parseConfigOrThrow(value: unknown): OverlayRuntimeConfig {
   try {
     return parseOverlayRuntimeConfig(value)
   } catch (error) {
+    const formatted = formatOverlayConfigError(error)
+    throw new OverlayConfigError(formatted.message, formatted.issues)
+  }
+}
+
+function configOverridesFromEnvOrThrow(env: EnvSource): OverlayRuntimeConfigLayer {
+  try {
+    return configOverridesFromEnv(env)
+  } catch (error) {
+    if (error instanceof OverlayConfigError) throw error
     const formatted = formatOverlayConfigError(error)
     throw new OverlayConfigError(formatted.message, formatted.issues)
   }
