@@ -99,21 +99,7 @@ function AgentEditorFormSection({
   const {
     agentType,
     setAgentType,
-    hostedRuntime,
-    setHostedRuntime,
-    harnessModel,
-    setHarnessModel,
-    managedPicker,
-    managedPickerFailed,
-    setManagedPickerRetry,
-    managedByokConnections,
-    managedProvider,
-    managedWorkingDirectory,
-    managedEnvironment,
-    managedResetBusy,
-    resetManagedHarness,
-    modelAccess,
-    setModelAccess,
+    legacyHostedRuntime,
   } = runtime
   const {
     adapterId,
@@ -186,29 +172,7 @@ function AgentEditorFormSection({
             onToggleToolGroup={toggleToolGroup}
             advanced={advanced}
             onAdvancedChange={setAdvanced}
-            hostedRuntime={hostedRuntime}
-            hostedRuntimeLocked={mode === 'edit' && !freshDraft}
-            managedPickerFailed={managedPickerFailed}
-            onManagedPickerRetry={() => setManagedPickerRetry((count) => count + 1)}
-            onHostedRuntimeChange={(value) => {
-              setHostedRuntime(value)
-              // Reset the model pick so the new runtime's default applies.
-              setHarnessModel('')
-              // A different runtime supports a different connection set.
-              setModelAccess('overlay')
-              markDirty()
-            }}
-            managedHarnesses={managedPicker?.harnesses ?? []}
-            harnessModel={harnessModel}
-            onHarnessModelChange={(value) => { setHarnessModel(value); markDirty() }}
-            managedModelAccess={modelAccess}
-            onManagedModelAccessChange={(value) => { setModelAccess(value); markDirty() }}
-            managedByokConnections={managedByokConnections}
-            managedProvider={managedProvider}
-            managedWorkingDirectory={managedWorkingDirectory}
-            managedSandboxStatus={managedEnvironment?.status ?? null}
-            managedResetBusy={managedResetBusy}
-            onManagedReset={managedEnvironment ? () => void resetManagedHarness() : undefined}
+            legacyHostedRuntime={legacyHostedRuntime}
             adapterId={adapterId}
             harnessOptions={harnessOptions}
             onHarnessChange={(value) => { chooseHarness(value); markDirty() }}

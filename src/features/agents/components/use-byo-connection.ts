@@ -27,10 +27,10 @@ export function useByoConnection(args: {
   agentType: AgentType
   connectedAgentsEnabled: boolean
   setAgentType(value: AgentType): void
-  /** Edit mode: a `protocol:'harness'` binding belongs to the managed branch — the page maps it onto hosted-runtime state. */
-  onManagedBinding?(binding: AgentBinding, environment: AgentEnvironmentResource | undefined): void
+  /** Edit mode: a `protocol:'harness'` binding belongs to a hosted runtime that was removed — the page shows the agent read-only. */
+  onLegacyHostedBinding?(): void
 }) {
-  const { activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType, onManagedBinding } = args
+  const { activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding } = args
   const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
   const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
@@ -66,10 +66,7 @@ export function useByoConnection(args: {
       const binding = bindingResult.bindings[0]
       if (!binding) return
       if (binding.protocolAdapter === 'harness') {
-        onManagedBinding?.(
-          binding,
-          environmentResult.environments.find((environment) => environment.id === binding.environmentId),
-        )
+        onLegacyHostedBinding?.()
         return
       }
       const bindingAdapterId = typeof binding.adapterConfig.adapterId === 'string'
@@ -86,9 +83,9 @@ export function useByoConnection(args: {
       if (!cancelled) setEnvironmentsLoading(false)
     })
     return () => { cancelled = true }
-    // `onManagedBinding` must be a stable useCallback from the page — a new
+    // `onLegacyHostedBinding` must be a stable useCallback from the page — a new
     // function identity every render would refetch environments in a loop.
-  }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, setAgentType, onManagedBinding, showcase])
+  }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, showcase])
 
   useEffect(() => {
     if (!command || setupEnvironmentId) return

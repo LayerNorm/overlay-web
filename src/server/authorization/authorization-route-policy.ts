@@ -100,10 +100,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: authenticated() },
   },
   {
-    path: '/api/v1/agent-environments/managed',
-    methods: { GET: authenticated(), POST: authenticated() },
-  },
-  {
     path: '/api/v1/agent-environments/:environmentId/approve',
     methods: { POST: authenticated() },
   },
@@ -115,9 +111,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },
   },
-  // Owner/admin is enforced in the handler (desktop) or control plane (reset).
+  // Owner/admin is enforced in the handler.
   { path: '/api/v1/agent-environments/:environmentId/desktop', methods: { POST: authenticated() } },
-  { path: '/api/v1/agent-environments/:environmentId/reset-harness', methods: { POST: authenticated() } },
   {
     path: '/api/v1/agent-bindings',
     methods: { GET: authenticated(), PUT: authenticated(), DELETE: authenticated() },
@@ -499,7 +494,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/notebook-agent', methods: { POST: capability('models.use', 'tools.use') } },
   { path: '/api/v1/browser-task', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/daytona/run', methods: { POST: capability('tools.use') } },
-  { path: '/api/v1/sandbox/run', methods: { POST: capability('tools.use') } },
   {
     path: '/api/v1/imports/slack',
     methods: { GET: authenticated(), POST: authenticated() },

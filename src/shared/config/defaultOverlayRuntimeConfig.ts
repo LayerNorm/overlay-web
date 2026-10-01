@@ -67,7 +67,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     models: { provider: 'openrouter' },
     integrations: { provider: 'composio' },
     browser: { provider: 'browser-use' },
-    sandbox: { provider: 'vercel' },
+    sandbox: { provider: 'box' },
     webSearch: { provider: 'elo' },
     analytics: { provider: 'posthog' },
     errorReporting: { provider: 'sentry' },

@@ -1,40 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Daytona, Sandbox as DaytonaSandbox } from '@daytona/sdk'
-import type { Sandbox, Snapshot } from '@vercel/sandbox'
 import { DaytonaSandboxRuntime } from './daytona'
 import type { SandboxCreateRequest } from './contracts'
-import { VercelSandboxRuntime, type VercelSandboxSdk } from './vercel'
-
-test('Vercel adapter maps the Overlay policy to the official SDK without leaking SDK values', async () => {
-  let createParams: Parameters<VercelSandboxSdk['create']>[0] | undefined
-  const sandbox = {
-    name: 'overlay-vercel',
-    status: 'running',
-    [Symbol.asyncDispose]: async () => {},
-  } as unknown as Sandbox & AsyncDisposable
-  const sdk: VercelSandboxSdk = {
-    create: async (params) => { createParams = params; return sandbox },
-    get: async () => sandbox,
-    getSnapshot: async () => ({ delete: async () => {} }) as unknown as Snapshot,
-  }
-  const instance = await new VercelSandboxRuntime({ sdk }).create(request('overlay-vercel'))
-
-  assert.equal(instance.provider, 'vercel')
-  assert.equal(instance.reference, 'overlay-vercel')
-  assert.deepEqual(createParams, {
-    name: 'overlay-vercel',
-    persistent: true,
-    timeout: 600_000,
-    ports: [3000],
-    resources: { vcpus: 2 },
-    networkPolicy: { allow: ['getoverlay.io'], subnets: { allow: undefined, deny: ['10.0.0.0/8'] } },
-    env: { OVERLAY_TEST: '1' },
-    tags: { workspace: 'workspace-1' },
-    keepLastSnapshots: { count: 1, deleteEvicted: true },
-    image: 'registry.example/overlay-host:phase-6',
-  })
-})
 
 test('Daytona adapter maps the same Overlay policy to Daytona behind the same contract', async () => {
   let createParams: Record<string, unknown> | undefined

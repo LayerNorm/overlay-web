@@ -68,21 +68,17 @@ export function AgentEditorPage({
   const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
   const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled } = bootstrap
 
-  const managedHarnessAgentsEnabled = capabilities.managedHarnessAgents === true
-  const runtime = useAgentRuntime({
-    showcase, activeWorkspaceId, managedHarnessAgentsEnabled, showcaseAgent, agent, setError,
-  })
+  const runtime = useAgentRuntime({ showcaseAgent })
 
   const byo = useByoConnection({
     activeWorkspaceId, showcase, agent, agentType: runtime.agentType, connectedAgentsEnabled,
-    setAgentType: runtime.setAgentType, onManagedBinding: runtime.onManagedBinding,
+    setAgentType: runtime.setAgentType, onLegacyHostedBinding: runtime.onLegacyHostedBinding,
   })
 
   const form = useAgentEditorForm({
     initial, showcaseAgent, agent, showcase, activeWorkspaceId,
-    setHostedRuntime: runtime.setHostedRuntime,
+    setLegacyHostedRuntime: runtime.setLegacyHostedRuntime,
     setAgentType: runtime.setAgentType,
-    setModelAccess: runtime.setModelAccess,
   })
 
   const surfaces = useAgentSurfaces({ activeWorkspaceId, showcase, agent, agentType: runtime.agentType })
@@ -103,9 +99,7 @@ export function AgentEditorPage({
   const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = isAgentEditorValid({
     name: form.name, instructions: form.instructions, modelId: form.modelId,
-    agentType: runtime.agentType, hostedRuntime: runtime.hostedRuntime,
-    harnessBillingModelId: runtime.harnessBillingModelId,
-    managedHarnessEnabled: Boolean(runtime.managedPicker), connectedAgentsEnabled,
+    agentType: runtime.agentType, legacyHostedRuntime: runtime.legacyHostedRuntime, connectedAgentsEnabled,
     bindingValid: byo.bindingValid,
   })
 
@@ -120,8 +114,6 @@ export function AgentEditorPage({
         description: form.description,
         instructions: form.instructions,
         agentType: runtime.agentType,
-        hostedRuntime: runtime.hostedRuntime,
-        harnessBillingModelId: runtime.harnessBillingModelId,
         harnessLabel,
         adapterId: byo.adapterId,
         modelId: form.modelId,
@@ -133,7 +125,7 @@ export function AgentEditorPage({
       teamIds: agent?.teamIds ?? [],
     }
   }, [byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
-    runtime.agentType, runtime.hostedRuntime, runtime.harnessBillingModelId,
+    runtime.agentType,
     form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
     agent])
 

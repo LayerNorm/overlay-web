@@ -15,12 +15,7 @@ import type {
   ConnectedAgentSandboxLeasePayer,
   RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
-import { MANAGED_HARNESS_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
-import {
-  calculateVercelSandboxCostUsd,
-  estimateVercelSandboxReservationUsd,
-  sandboxProviderCostLimitUsd,
-} from '@/server/ai/sandbox/vercel-pricing'
+import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 
 const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
 const DEFAULT_LOW_BALANCE_CUTOFF_CENTS = 100
@@ -245,7 +240,7 @@ export class ManagedAgentSandboxBilling {
     // still bills the elapsed window it ran through.
     if (!stopping && instanceRunning && typeof probe.instance.stop === 'function') {
       const lastActiveAt = idleActivityTimestamp(usage, effectiveLease, now)
-      const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_HARNESS_IDLE_TIMEOUT_MS
+      const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_SANDBOX_IDLE_TIMEOUT_MS
       if (now - lastActiveAt > idleTimeoutMs) {
         await probe.instance.stop().then(() => {
           logger.info('Managed sandbox idle-stopped by meter', {
@@ -704,6 +699,12 @@ export class ManagedAgentSandboxBilling {
   private now() { return this.dependencies.now?.() ?? Date.now() }
 }
 
+/** Largest provider cost one run may reserve before it is refused. */
+export function sandboxProviderCostLimitUsd() {
+  const configured = Number(process.env.OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN?.trim())
+  return Number.isFinite(configured) && configured > 0 ? configured : 15
+}
+
 export class ManagedAgentSandboxBudgetError extends Error {
   constructor(readonly statusCode: number, readonly code: string) {
     super(code)
@@ -723,10 +724,6 @@ export function sandboxCostUsd(args: {
     diskGiB: args.resources.diskGiB,
     elapsedSeconds: wallTimeMs / 1_000,
   }).costUsd
-  if (args.provider === 'vercel') return calculateVercelSandboxCostUsd({
-    memoryGb: args.resources.memoryGiB,
-    usage: args.usage,
-  })
   if (args.provider === 'box') {
     // Provider-reported dollars are authoritative — the usage API already
     // applies the size multiplier and list price, so deltas of it bill exact
@@ -745,12 +742,6 @@ function sandboxReservationCostUsd(args: {
   provider: string
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
 }) {
-  if (args.provider === 'vercel') return estimateVercelSandboxReservationUsd({
-    maxEgressBytes: args.maxSandboxEgressBytes,
-    maxRunTimeMs: args.maxRunTimeMs,
-    memoryGb: args.resources.memoryGiB,
-    vcpus: args.resources.vcpus,
-  })
   return sandboxCostUsd({
     provider: args.provider,
     resources: args.resources,

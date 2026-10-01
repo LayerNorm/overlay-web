@@ -6,12 +6,12 @@ import { asSchema, type ToolSet } from '@/server/ai/sdk'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { verifyAgentMcpToken, type AgentMcpTokenClaims } from './agent-mcp-token'
-import { buildManagedHarnessTools } from './managed-harness-tools'
+import { buildAgentMcpTools } from './agent-mcp-tools'
 
 /**
  * Overlay's MCP server for connected agents (Claude Code, Codex, Hermes… on a
  * user's own machine through the Agent Host). It serves the same Overlay
- * workspace tools a managed harness gets host-side — notes, files, memory,
+ * workspace tools a native Overlay agent gets — notes, files, memory,
  * knowledge, automations, connected apps — over MCP Streamable HTTP.
  *
  * Stateless: every POST carries the per-turn bearer token, the tool set is
@@ -46,7 +46,7 @@ const defaultDependencies: AgentMcpDependencies = {
     }).catch((_error) => null)
     return Boolean(session && LIVE_SESSION_STATUSES.has(session.status))
   },
-  buildTools: (claims) => buildManagedHarnessTools({
+  buildTools: (claims) => buildAgentMcpTools({
     actorUserId: claims.userId,
     agentId: claims.agentId,
     agentPrincipalId: claims.agentPrincipalId,
