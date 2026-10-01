@@ -149,13 +149,20 @@ test('dispatch re-gates availability and threads harness model + instructions', 
   assert.match(steps, /tools: overlayTools\.tools/)
 })
 
-test('managed route serves the gated picker and enforces availability on POST', async () => {
-  const route = await read('src/server/app-api/v1/agent-environments/managed/route.ts')
+test('creating agents on Overlay Cloud is disabled for every workspace', async () => {
+  const [route, availability] = await Promise.all([
+    read('src/server/app-api/v1/agent-environments/managed/route.ts'),
+    read('src/server/agents/harnesses/availability.ts'),
+  ])
+  // The picker probe answers from the creation gate, which is closed.
   assert.match(route, /export async function GET/)
-  // Both GET and POST consult the same availability helper — no divergence.
-  assert.equal((route.match(/managedHarnessAvailability\(/g) ?? []).length, 2)
-  assert.match(route, /availability\.harnesses\.some/)
-  assert.match(route, /managedHarnessSandboxProviders\(\)\.includes/)
+  assert.match(route, /managedHarnessAvailability\(/)
+  // POST provisions nothing, whatever the flags say.
+  const post = route.slice(route.indexOf('export async function POST'), route.indexOf('async function legacyBoundHarnesses'))
+  assert.match(post, /status: 410/)
+  assert.doesNotMatch(post, /provision\(/)
+  const gate = availability.slice(availability.indexOf('export async function managedHarnessAvailability('), availability.indexOf('/**\n * Run gate'))
+  assert.match(gate, /return DISABLED/)
 })
 
 test('the editor reset path is a dedicated endpoint on the control plane', async () => {

@@ -149,3 +149,31 @@ test('noteOutline lists headings', () => {
     { level: 2, text: 'Notes' },
   ])
 })
+
+test('whitespace inside bold or italic moves outside it, so emoji next to it survive', () => {
+  assert.equal(editorHtmlToNoteMarkdown('<p>🎯<strong> Goal</strong></p>'), '🎯 **Goal**\n')
+  assert.equal(editorHtmlToNoteMarkdown('<p><strong>Goal </strong>🎯 next</p>'), '**Goal** 🎯 next\n')
+  assert.equal(editorHtmlToNoteMarkdown('<p>a<strong> b </strong>c</p>'), 'a **b** c\n')
+  assert.equal(editorHtmlToNoteMarkdown('<p>and<em> </em><strong>bold</strong></p>'), 'and **bold**\n')
+  assert.doesNotMatch(editorHtmlToNoteMarkdown('<p>🎯<strong>Goal</strong>🚀</p>'), /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|&#x[dD][89a-fA-F]/)
+})
+
+test('tables whose cells hold inline formatting stay GFM tables', () => {
+  const markdown = editorHtmlToNoteMarkdown('<table><tbody><tr><th><p><strong>A</strong></p></th></tr><tr><td><p><em>1</em></p></td></tr></tbody></table>')
+  assert.match(markdown, /^\| \*\*A\*\* \|/)
+  assert.equal(editorHtmlToNoteMarkdown(noteMarkdownToEditorHtml(markdown)), markdown)
+})
+
+test('dollar signs in table cells are escaped so they never read back as math', () => {
+  const markdown = editorHtmlToNoteMarkdown('<table><tbody><tr><th><p>Plan</p></th><th><p>Now</p></th><th><p>Goal</p></th></tr><tr><td><p>MRR</p></td><td><p>$16</p></td><td><p>$5,000+</p></td></tr></tbody></table>')
+  assert.match(markdown, /\\\$16/)
+  assert.equal(editorHtmlToNoteMarkdown(noteMarkdownToEditorHtml(markdown)), markdown)
+})
+
+test('inline math holding a pipe keeps a table row intact across saves', () => {
+  const html = '<table><tbody><tr><th><p>A</p></th><th><p>B</p></th></tr><tr><td><p><span data-type="inline-math" data-latex="16 |"></span>x</p></td><td><p></p></td></tr></tbody></table>'
+  const markdown = editorHtmlToNoteMarkdown(html)
+  const again = editorHtmlToNoteMarkdown(noteMarkdownToEditorHtml(markdown))
+  assert.equal(again, markdown)
+  assert.match(noteMarkdownToEditorHtml(markdown), /data-latex="16 \|"/)
+})

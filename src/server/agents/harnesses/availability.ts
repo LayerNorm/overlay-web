@@ -62,11 +62,16 @@ export function managedHarnessCatalogFor(args: {
  * provisioned. Managed HarnessAgents are a grandfathered surface: the rollout
  * stage gates NEW creation only, so existing bindings keep running at `off`.
  */
-export async function managedHarnessAvailability(args: {
+export async function managedHarnessAvailability(_args: {
   actorUserId: string
   workspaceId: string
 }): Promise<ManagedHarnessAvailability> {
-  return managedHarnessAvailabilityInternal(args, true)
+  // Creating agents that run on Overlay Cloud is switched off for every
+  // workspace, independent of flags and rollout stage. Those runtimes are being
+  // rebuilt on Box (and E2B for self-hosting) from the ground up; see
+  // docs/plans/SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md. Existing bindings are
+  // governed by `managedHarnessRunAvailability` until they are removed.
+  return DISABLED
 }
 
 /**

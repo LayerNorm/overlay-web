@@ -9,7 +9,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown, gfmToMarkdown } from 'mdast-util-gfm'
 import { mathFromMarkdown, mathToMarkdown, type InlineMath, type Math } from 'mdast-util-math'
 import { defaultHandlers as mdastDefaultHandlers, toHast, type Handler, type State as ToHastState } from 'mdast-util-to-hast'
-import { toMarkdown } from 'mdast-util-to-markdown'
+import { toMarkdown, type Handle as ToMarkdownHandle } from 'mdast-util-to-markdown'
 import { gfm } from 'micromark-extension-gfm'
 import { math } from 'micromark-extension-math'
 
@@ -93,10 +93,13 @@ function withAlignment(fallback: Handle): Handle {
   return (state, node, parent) => (alignedBlock(node) ? htmlNode(compactHtml(node)) : fallback(state, node, parent))
 }
 
+const CELL_BLOCK_TAGS = new Set(['p', 'div', 'ul', 'ol', 'pre', 'blockquote', 'table', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+
 function cellIsSimple(cell: Element): boolean {
   if (Number(cell.properties?.colSpan ?? 1) > 1 || Number(cell.properties?.rowSpan ?? 1) > 1) return false
   if (cell.properties?.colwidth) return false
-  const blocks = cell.children.filter((child) => child.type === 'element')
+  // Inline formatting is fine; at most one paragraph of block content.
+  const blocks = cell.children.filter((child): child is Element => child.type === 'element' && CELL_BLOCK_TAGS.has(child.tagName))
   return blocks.length <= 1 && blocks.every((block) => block.tagName === 'p' && !alignedBlock(block))
 }
 
@@ -186,13 +189,62 @@ function tightenLists(node: MdastNodes): void {
   if ('children' in node) for (const child of node.children) tightenLists(child)
 }
 
+/**
+ * The editor often puts the space beside bold or italic text inside it
+ * (`<strong> Goal</strong>`). Markdown cannot open emphasis on a space, so the
+ * serializer escapes the neighboring characters instead, which reads badly and
+ * splits emoji. Moving that whitespace outside the span avoids both.
+ */
+function hoistEmphasisWhitespace(node: MdastNodes): void {
+  if (!('children' in node)) return
+  const children = node.children as MdastNodes[]
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index]!
+    hoistEmphasisWhitespace(child)
+    if (child.type !== 'strong' && child.type !== 'emphasis' && child.type !== 'delete') continue
+    const first = child.children[0]
+    const last = child.children[child.children.length - 1]
+    const lead = first?.type === 'text' ? /^\s+/.exec(first.value)?.[0] ?? '' : ''
+    const trail = last?.type === 'text' ? /\s+$/.exec(last.value)?.[0] ?? '' : ''
+    if (lead && first?.type === 'text') first.value = first.value.slice(lead.length)
+    if (trail && last?.type === 'text') last.value = last.value.slice(0, last.value.length - trail.length)
+    const empty = child.children.every((part) => part.type === 'text' && !part.value)
+    const inserted: MdastNodes[] = [
+      ...(lead ? [{ type: 'text', value: lead } as MdastNodes] : []),
+      // An emphasis that held only whitespace has nothing left to emphasize.
+      ...(empty ? [] : [child]),
+      // When the span was only whitespace, `lead` and `trail` are the same text.
+      ...(trail && !empty ? [{ type: 'text', value: trail } as MdastNodes] : []),
+    ]
+    children.splice(index, 1, ...inserted)
+    index += inserted.length - 1
+  }
+}
+
+/** Rejoins a surrogate pair the serializer split into a lone half and a character reference. */
+function repairSplitSurrogates(markdown: string): string {
+  return markdown
+    .replace(/([\uD800-\uDBFF])&#x(D[C-F][0-9A-F]{2});/gi, (_match, high: string, low: string) => high + String.fromCharCode(parseInt(low, 16)))
+    .replace(/&#x(D[89AB][0-9A-F]{2});([\uDC00-\uDFFF])/gi, (_match, high: string, low: string) => String.fromCharCode(parseInt(high, 16)) + low)
+}
+
 export function editorHtmlToNoteMarkdown(html: string): string {
   if (!html.trim()) return ''
   const tree = fromHtml(html, { fragment: true })
   fillInlineMath(tree)
   const mdast = toMdast(tree, { handlers: htmlToMdastHandlers }) as MdastRoot
   tightenLists(mdast)
+  hoistEmphasisWhitespace(mdast)
   return serializeNoteMarkdown(mdast)
+}
+
+const mathMarkdown = mathToMarkdown()
+
+/** GFM splits table rows on `|` before reading inline content, so math in a cell escapes its pipes like code does. */
+const inlineMathInTables: ToMarkdownHandle = (node, parent, state, info) => {
+  const math = node as InlineMath
+  const value = state.stack.includes('tableCell') ? math.value.replace(/\|/g, '\\|') : math.value
+  return (mathMarkdown.handlers!.inlineMath as ToMarkdownHandle)({ ...math, value }, parent, state, info)
 }
 
 export function serializeNoteMarkdown(mdast: MdastRoot): string {
@@ -203,18 +255,32 @@ export function serializeNoteMarkdown(mdast: MdastRoot): string {
     listItemIndent: 'one',
     rule: '-',
     strong: '*',
-    extensions: [gfmToMarkdown(), mathToMarkdown()],
+    // `$` must be escaped in table cells too, or `$16 | $5` reads back as
+    // inline math spanning the cell separator.
+    extensions: [
+      gfmToMarkdown(),
+      mathMarkdown,
+      { handlers: { inlineMath: inlineMathInTables }, unsafe: [{ character: '$', inConstruct: 'tableCell' }] },
+    ],
   })
-  return markdown.trim() ? markdown : ''
+  return markdown.trim() ? repairSplitSurrogates(markdown) : ''
 }
 
 // ── Markdown → HTML ─────────────────────────────────────────────────────────
 
+/** Undoes the `\\|` a table cell needs around inline math (GFM does the same for code). */
+function unescapeTableMathPipes(node: MdastNodes, inCell = false): void {
+  if (inCell && node.type === 'inlineMath') node.value = node.value.replace(/\\\|/g, '|')
+  if ('children' in node) for (const child of node.children) unescapeTableMathPipes(child, inCell || node.type === 'tableCell')
+}
+
 export function parseNoteMarkdown(markdown: string): MdastRoot {
-  return fromMarkdown(markdown, {
+  const tree = fromMarkdown(markdown, {
     extensions: [gfm(), math()],
     mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
   })
+  unescapeTableMathPipes(tree)
+  return tree
 }
 
 function isTaskList(list: List): boolean {
