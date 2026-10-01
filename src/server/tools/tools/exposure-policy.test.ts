@@ -31,14 +31,8 @@ test('exposure policy exposes high-risk non-media tools only for explicit matchi
   const defaultTools = allowedOverlayToolIdsForTurn({
     latestUserText: 'Summarize my saved notes about pricing',
   })
-  assert.equal(defaultTools.includes('run_daytona_sandbox'), false)
   assert.equal(defaultTools.includes('generate_image'), false)
   assert.equal(defaultTools.includes('create_note'), false)
-
-  const daytonaTools = allowedOverlayToolIdsForTurn({
-    latestUserText: 'Run a Python script in the sandbox to convert these files into a PowerPoint',
-  })
-  assert.equal(daytonaTools.includes('run_daytona_sandbox'), true)
 
   const noteTools = allowedOverlayToolIdsForTurn({
     latestUserText: 'Create a note with this summary and save it to my notes',

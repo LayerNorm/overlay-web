@@ -10,15 +10,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./conformance": "./src/conformance.ts",
-    "./box": "./src/box.ts",
-    "./daytona": "./src/daytona.ts"
+    "./box": "./src/box.ts"
   },
   "scripts": {
     "test": "tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@daytona/sdk": "0.200.1"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -122,7 +122,6 @@
     "src/app/api/v1/conversations/search/route.ts",
     "src/app/api/v1/conversations/share/route.ts",
     "src/app/api/v1/conversations/stop/route.ts",
-    "src/app/api/v1/daytona/run/route.ts",
     "src/app/api/v1/discovery/route.ts",
     "src/app/api/v1/extensions/[extensionId]/[...path]/route.ts",
     "src/app/api/v1/files/[fileId]/content/route.ts",
@@ -241,11 +240,6 @@
     },
     {
       "cadence": "{ minutes: 1 }",
-      "name": "daytona workspace reconciliation",
-      "target": "internal.ai.sandbox.daytonaReconcile.runMinuteTick"
-    },
-    {
-      "cadence": "{ minutes: 1 }",
       "name": "document ingestion job processor",
       "target": "(internal as any).files.ingestion.runner.runMinuteTick"
     },
@@ -311,7 +305,6 @@
     }
   ],
   "convexRuntimeImportFiles": [
-    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -340,7 +333,6 @@
     "src/server/ai/catalog/index.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
     "src/server/ai/provider-connections/index.ts",
-    "src/server/ai/sandbox/ConvexDaytonaWorkspaceRepository.ts",
     "src/server/app-api/v1/bootstrap/route.ts",
     "src/server/app-api/v1/imports/slack/route.ts",
     "src/server/app-api/v1/mention-search/route.ts",

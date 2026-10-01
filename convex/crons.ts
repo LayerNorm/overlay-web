@@ -3,13 +3,6 @@ import { internal } from './_generated/api'
 
 const crons = cronJobs()
 
-// Daytona webhooks may later accelerate reconciliation, but this cron remains the billing truth.
-crons.interval(
-  'daytona workspace reconciliation',
-  { minutes: 1 },
-  internal.ai.sandbox.daytonaReconcile.runMinuteTick,
-)
-
 // Claims due automation runs every minute and dispatches each to the BFF,
 // which executes it as a durable one-shot automation workflow. Sleep()-based
 // per-automation scheduling workflows could not survive in the current

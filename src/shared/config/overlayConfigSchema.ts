@@ -49,8 +49,8 @@ export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'bedrock', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'none'])
-// `vercel` is inert: Vercel Sandbox was removed. It is still accepted so existing configs
-// and env overrides keep validating; nothing reads it.
+// `vercel` and `daytona` are inert: both providers were removed. They are still accepted so
+// existing configs and env overrides keep validating; nothing reads them.
 export const OverlaySandboxProviderSchema = z.enum(['box', 'vercel', 'daytona', 'none'])
 export const OverlayWebSearchProviderSchema = z.enum(['elo', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])

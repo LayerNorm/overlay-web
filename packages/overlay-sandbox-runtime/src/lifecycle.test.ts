@@ -20,7 +20,7 @@ test('Overlay deletes a sandbox at its absolute hard deadline', async () => {
 function lifecycleSandbox(): SandboxInstance {
   let state: Awaited<ReturnType<SandboxInstance['status']>> = 'running'
   return {
-    provider: 'vercel', reference: 'lifecycle', name: 'lifecycle',
+    provider: 'box', reference: 'lifecycle', name: 'lifecycle',
     capabilities: {
       commandStreaming: true, files: true, environmentVariables: true, ports: true,
       snapshots: true, persistence: true, networkPolicy: true, credentialBrokering: true,

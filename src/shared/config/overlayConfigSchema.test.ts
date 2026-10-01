@@ -467,7 +467,7 @@ test('OverlayRuntimeConfigSchema rejects unimplemented sandbox provider values',
   }
 })
 
-test('OverlayRuntimeConfigSchema accepts box, legacy Vercel, and Daytona sandbox providers', () => {
+test('OverlayRuntimeConfigSchema accepts Box and legacy Vercel and Daytona sandbox values', () => {
   for (const provider of ['box', 'vercel', 'daytona'] as const) {
     const result = OverlayRuntimeConfigSchema.safeParse({
       ...minimalSaasConfig,

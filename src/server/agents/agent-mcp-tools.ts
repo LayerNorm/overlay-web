@@ -23,7 +23,6 @@ import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
  */
 export const HARNESS_WITHHELD_TOOL_IDS: ReadonlySet<string> = new Set([
   ...COMPUTER_TOOL_IDS,
-  'run_daytona_sandbox',
   'present_generated_ui',
 ])
 

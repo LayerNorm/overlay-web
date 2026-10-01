@@ -15,7 +15,7 @@ test('the default master agent holds every grant without enumerating them', () =
   assert.equal(grant.capabilities.has('integrations'), true)
   assert.equal(grant.capabilities.has('mcp'), true)
   assert.equal(grant.overlayToolIds.includes('search_memory'), true)
-  assert.equal(grant.overlayToolIds.includes('run_daytona_sandbox'), true)
+  assert.equal(grant.overlayToolIds.includes('computer_exec'), true)
 })
 
 test('an explicit grant on the master agent is honoured over the implicit one', () => {
@@ -25,7 +25,7 @@ test('an explicit grant on the master agent is honoured over the implicit one', 
     isDefaultMaster: true,
   })
   assert.equal(grant.capabilities.size, 0)
-  assert.equal(grant.overlayToolIds.includes('run_daytona_sandbox'), false)
+  assert.equal(grant.overlayToolIds.includes('computer_exec'), false)
 })
 
 test('a narrow grant yields only what it names', () => {

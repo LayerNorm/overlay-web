@@ -1,7 +1,6 @@
 import test from 'node:test'
 import { BoxSandboxRuntime } from './box'
 import { runSandboxConformance } from './conformance'
-import { DaytonaSandboxRuntime } from './daytona'
 import type { SandboxCreateRequest, SandboxRuntime } from './contracts'
 
 const live = process.env.OVERLAY_SANDBOX_LIVE_CONFORMANCE === '1'
@@ -12,12 +11,6 @@ const providers: Array<{
   request: (name: string) => SandboxCreateRequest
   verifyNetworkEnforcement: boolean
 }> = [
-  {
-    name: 'daytona',
-    runtime: () => new DaytonaSandboxRuntime({ config: daytonaConfig() }),
-    request: (name) => baseRequest(name),
-    verifyNetworkEnforcement: true,
-  },
   {
     // Box has no network policy surface — the port reports it unsupported and
     // the request asks for allow_all instead of an allowlist.
@@ -58,10 +51,5 @@ function baseRequest(name: string): SandboxCreateRequest {
 
 function providerAvailable(name: string): boolean {
   if (name === 'box') return Boolean(process.env.BOX_API_KEY)
-  if (name === 'daytona') return Boolean(process.env.DAYTONA_API_KEY)
   return false
-}
-
-function daytonaConfig() {
-  return { apiKey: process.env.DAYTONA_API_KEY, apiUrl: process.env.DAYTONA_API_URL }
 }

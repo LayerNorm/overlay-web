@@ -47,7 +47,6 @@ function tierIdForPaidAmount(cents: number): TierId {
 
 const PAID_FEATURE_BULLETS = [
   'Premium chat models',
-  'Daytona sandboxes',
   'Browser tasks',
   'Image and video generation',
   'Advanced agents and premium workflows',

@@ -20,10 +20,9 @@ test('Collaboration realtime uses Convex subscriptions and never the removed BFF
 })
 
 test('dominant Convex maintenance and listing paths stay indexed and bounded', async () => {
-  const [conversations, files, daytona] = await Promise.all([
+  const [conversations, files] = await Promise.all([
     readFile(`${root}/convex/chat/conversations.ts`, 'utf8'),
     readFile(`${root}/convex/files/files.ts`, 'utf8'),
-    readFile(`${root}/convex/ai/sandbox/daytonaReconcile.ts`, 'utf8'),
   ])
   const emptyCleanup = conversations.slice(conversations.indexOf('export const runEmptyConversationCleanup'))
   assert.match(emptyCleanup, /withIndex\('by_createdAt'/)
@@ -34,8 +33,4 @@ test('dominant Convex maintenance and listing paths stay indexed and bounded', a
   assert.match(fileList, /export const listPage = query/)
   assert.match(fileList, /\.paginate\(\{/)
   assert.doesNotMatch(fileList.split('export const get = query')[0] ?? '', /\.collect\(\)/)
-
-  assert.match(daytona, /getReconciliationPlanInternal/)
-  assert.match(daytona, /if \(!plan\.shouldRun\) return summary/)
-  assert.match(daytona, /workspaceNeedsSync/)
 })

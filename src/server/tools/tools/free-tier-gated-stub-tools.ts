@@ -16,21 +16,6 @@ const interactiveBrowserInputSchema = z.object({
   proxyCountryCode: z.string().optional().describe('2-letter country code for residential proxy'),
 })
 
-const runDaytonaSandboxInputSchema = z.object({
-  task: z.string().describe('Short summary of what the sandbox should do'),
-  runtime: z.enum(['node', 'python']).describe('Sandbox runtime: node for JavaScript tooling, python for Python tooling'),
-  command: z.string().describe('Shell command to execute inside the sandbox workspace'),
-  code: z.string().optional().describe('Optional inline source code to write into the sandbox before execution'),
-  inputFileIds: z
-    .array(z.string())
-    .optional()
-    .describe('Optional existing Overlay file ids to upload into the sandbox input directory'),
-  expectedOutputs: z
-    .array(z.string())
-    .min(1)
-    .describe('File paths relative to the sandbox workspace that should be imported back into Outputs after execution'),
-})
-
 /**
  * Stubs for paid-only Act tools on the **free** plan only. Never merge this tool set for
  * paid users — they receive the real web_search/deep_search/web_fetch and `createWebTools` implementations.
@@ -86,17 +71,6 @@ export function createFreeTierGatedStubTools(forFreeTierActOnly: boolean): ToolS
         _overlayGatedFeature: true as const,
         feature: 'remote_browser' as const,
         message: 'Remote browser sessions are available on a paid plan.',
-      }),
-    }),
-    run_daytona_sandbox: tool({
-      description:
-        'Run a CLI or script in the user’s persistent Daytona workspace. On the free plan this tool only ' +
-        'registers the need for the code workspace. Call it when the user needs sandbox execution.',
-      inputSchema: runDaytonaSandboxInputSchema,
-      execute: async () => ({
-        _overlayGatedFeature: true as const,
-        feature: 'workspace' as const,
-        message: 'The code workspace is available on a paid plan.',
       }),
     }),
   }

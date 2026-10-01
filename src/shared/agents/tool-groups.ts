@@ -128,12 +128,6 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     ],
   },
   {
-    id: 'sandbox',
-    label: 'Code sandbox',
-    description: 'Run code in an isolated Daytona sandbox.',
-    toolIds: ['run_daytona_sandbox'],
-  },
-  {
     id: 'browser',
     label: 'Browser',
     description: 'Drive an interactive browser session.',

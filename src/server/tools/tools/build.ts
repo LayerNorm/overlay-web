@@ -33,7 +33,6 @@ import {
   executeListAutomations,
   executeListSkills,
   executePauseAutomation,
-  executeRunDaytonaSandbox,
   executeSaveMemory,
   executeSaveMemoryBatch,
   executeSearchInFiles,
@@ -657,33 +656,6 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('draft_skill_from_chat')
         return executeDraftSkillFromChat(options, input)
-      },
-    })
-    }
-
-  if (includePaidOnlyOverlay && shouldExposeTool('run_daytona_sandbox')) {
-      tools.run_daytona_sandbox = tool({
-      description:
-        'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
-        'Use this for programmatic workflows like app building, code generation, file transforms, slideshow generation, or media pipelines that should run through command-line tooling rather than browser automation. ' +
-        'Selected Overlay files are uploaded into the workspace, declared output files are imported back into the Outputs tab, and the workspace persists across runs.',
-      inputSchema: z.object({
-        task: z.string().describe('Short summary of what the sandbox should do'),
-        runtime: z.enum(['node', 'python']).describe('Sandbox runtime: node for JavaScript tooling, python for Python tooling'),
-        command: z.string().describe('Shell command to execute inside the sandbox workspace'),
-        code: z.string().optional().describe('Optional inline source code to write into the sandbox before execution'),
-        inputFileIds: z
-          .array(z.string())
-          .optional()
-          .describe('Optional existing Overlay file ids to upload into the sandbox input directory'),
-        expectedOutputs: z
-          .array(z.string())
-          .min(1)
-          .describe('File paths relative to the sandbox workspace that should be imported back into Outputs after execution'),
-      }),
-      execute: async (input) => {
-        assertToolAllowed('run_daytona_sandbox')
-        return executeRunDaytonaSandbox(options, input)
       },
     })
     }

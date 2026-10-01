@@ -18,7 +18,6 @@ const overlayIds = [...overlayToolIdSet()]
 const expectedOverlayBuckets: Record<string, ReturnType<typeof toolCostBucketForId>> = {
   browser_run_task: 'browser',
   interactive_browser_session: 'browser',
-  run_daytona_sandbox: 'daytona',
   generate_image: 'image',
   generate_video: 'video',
   animate_image: 'video',

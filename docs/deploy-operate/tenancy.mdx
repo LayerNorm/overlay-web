@@ -83,8 +83,8 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `budgetReservations` | `userId` | Deployment boundary | Add `tenantId`; reservation and reconciliation queries must be tenant-scoped. |
 | `usageOperations` | `userId` | Deployment boundary | Add `tenantId`; operation identity, request fingerprints, and reconciliation must be tenant-scoped. |
 | `administrativePrincipals` | `userId` | Deployment boundary | Add `tenantId`; administrative role grants and revocations must be tenant-scoped and audited. |
-| `daytonaWorkspaces` | `userId` | Deployment boundary | Add `tenantId`; sandbox lifecycle and metering indexes must include tenant context. |
-| `daytonaUsageLedger` | `userId` | Deployment boundary | Add `tenantId`; ledger reads and reconciliation must be tenant-scoped. |
+| `daytonaWorkspaces` | `userId` | Deployment boundary | Removed with Daytona (emptied by `migrations/removeDaytonaData`, then dropped from the schema). Add `tenantId`; sandbox lifecycle and metering indexes must include tenant context. |
+| `daytonaUsageLedger` | `userId` | Deployment boundary | Removed with Daytona (see above). Add `tenantId`; ledger reads and reconciliation must be tenant-scoped. |
 | `toolInvocations` | `userId` | Deployment boundary | Add `tenantId`; audit/cost views must include tenant context. |
 | `dailyUsage` | `userId` | Deployment boundary | Add `tenantId`; usage counters must include tenant context. |
 | `projects` | `userId` | Deployment boundary | Add `tenantId`; project hierarchy indexes must include tenant context. |

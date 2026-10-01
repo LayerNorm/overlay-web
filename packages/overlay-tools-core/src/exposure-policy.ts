@@ -31,7 +31,6 @@ const VIDEO_TOOL_IDS = [
   'edit_video',
 ] as const
 const BROWSER_TOOL_IDS = ['interactive_browser_session'] as const
-const DAYTONA_TOOL_IDS = ['run_daytona_sandbox'] as const
 const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
 const AUTOMATION_TOOL_IDS = [
   'list_automations',
@@ -72,14 +71,6 @@ function isExplicitFileMutationRequest(text: string): boolean {
 function isExplicitBrowserRequest(text: string): boolean {
   return matchesAny(text, [
     /\b(log ?in|sign ?in|fill out|fill in|submit|click|browser session|use the browser|open the website|navigate to|take a screenshot|screenshot|scrape the page|web app|website flow|form)\b/i,
-  ])
-}
-
-function isExplicitDaytonaRequest(text: string): boolean {
-  return matchesAny(text, [
-    /\b(daytona|sandbox|workspace)\b/i,
-    /\b(run|execute|build|compile|render|convert|transform|process|generate)\b.{0,60}\b(script|code|cli|command|terminal|shell|workspace|file|files|pdf|ppt|pptx|powerpoint|slides|spreadsheet|xlsx|docx)\b/i,
-    /\b(python|node|bash|shell|terminal|cli|ffmpeg|pandoc)\b/i,
   ])
 }
 
@@ -139,9 +130,6 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (params.mediaToolIntent === 'video') {
     addAll(allowed, VIDEO_TOOL_IDS)
-  }
-  if (isExplicitDaytonaRequest(text)) {
-    addAll(allowed, DAYTONA_TOOL_IDS)
   }
   if (isExplicitSkillDraftRequest(text)) {
     addAll(allowed, SKILL_DRAFT_TOOL_IDS)

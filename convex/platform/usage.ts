@@ -5,7 +5,6 @@ import { requireAccessToken, requireServerSecret, validateServerSecret } from '.
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from '../files/lib/storageQuota'
-import { roundCurrencyAmount } from '../../src/shared/ai/sandbox/daytona-pricing'
 import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
 import {
   allocateUsageCharge,
@@ -108,7 +107,8 @@ async function authorizeUserAccess(params: {
 }
 
 function roundCreditAmount(value: number): number {
-  return roundCurrencyAmount(value)
+  if (!Number.isFinite(value)) return 0
+  return Math.round(value * 10_000) / 10_000
 }
 
 function allowancePercentUsed(buckets: UsageBuckets): number {

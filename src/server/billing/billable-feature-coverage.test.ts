@@ -30,7 +30,6 @@ test('workspace-funded provider boundaries resolve resource and subject payer co
     'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts',
     'src/server/agents/workspace-agent-invocation.ts',
     'src/server/app-api/v1/browser-task/route.ts',
-    'src/server/app-api/v1/daytona/run/lifecycle.ts',
     'src/server/app-api/v1/generate-image/route.ts',
     'src/server/app-api/v1/generate-video/route.ts',
     'src/server/app-api/v1/transcribe/route.ts',

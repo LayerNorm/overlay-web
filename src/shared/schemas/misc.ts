@@ -9,12 +9,6 @@ export const OnboardingMutationRequest = z.object({
   ...AuthFields,
 }).passthrough()
 
-export const DaytonaRunRequest = z.object({
-  ...AuthFields,
-  code: z.string().optional(),
-  command: z.string().optional(),
-}).passthrough()
-
 export const BrowserTaskRequest = z.object({
   ...AuthFields,
   task: z.string().optional(),

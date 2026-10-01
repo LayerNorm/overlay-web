@@ -1,6 +1,6 @@
 /** Provider-neutral sandbox primitives owned by Overlay. Provider SDK types must not cross this boundary. */
 
-export type SandboxProviderId = 'daytona' | 'box'
+export type SandboxProviderId = 'box'
 export type SandboxLifecycleState =
   | 'provisioning'
   | 'running'
@@ -105,9 +105,8 @@ export type SandboxPort = {
   access: 'private' | 'public'
   expiresAt?: number
   /**
-   * Headers a client must send when connecting to `url` — e.g. Daytona's
-   * `x-daytona-preview-token` for private preview links. These are
-   * credentials for the port; never log them.
+   * Headers a client must send when connecting to `url` (for example a
+   * private preview token). These are credentials for the port; never log them.
    */
   headers?: Record<string, string>
 }

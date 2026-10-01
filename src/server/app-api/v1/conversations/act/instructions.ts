@@ -50,7 +50,6 @@ export function buildActAgentInstructions(params: {
     notes.automationDraftNote +
     requestedToolsNote(params.requestedToolIds ?? [], params.memoryEnabled !== false) +
     notes.browserToolNote +
-    notes.sandboxToolNote +
     notes.toolAuthorizationNote +
     notes.knowledgeNote +
     params.memoryContext +
@@ -90,9 +89,6 @@ function buildActInstructionNotes(params: Parameters<typeof buildActAgentInstruc
         ? '\n\n' + params.constants.ACT_PAID_PLAN_ACT_TOOLS_REALITY
         : '\n\n' + params.constants.FREE_TIER_NO_PAID_AGENT_CAPABILITIES
       : '\n\nNo callable tools are registered for this turn. Never emit or simulate a tool call. Answer only from the conversation and context supplied in this prompt.',
-    sandboxToolNote: availableTools.has('run_daytona_sandbox')
-      ? '\nYou also have a run_daytona_sandbox tool for CLI and code execution in the user’s persistent Daytona workspace. When you use it, never invent details about generated files that you did not actually inspect. Only claim filenames, artifact counts, runtime, exit status, or other facts that came directly from the tool result, your own generated code, or a follow-up inspection step.'
-      : '',
     toolAuthorizationNote: '\n' +
       HIGH_RISK_TOOL_AUTHORIZATION_NOTE +
       '\nOnly use Composio or other third-party integration tools when the user explicitly asked in this chat to act on that external service or account.',
@@ -200,8 +196,6 @@ function requestedToolsNote(
       lines.push(memoryEnabled
         ? '- Memory: the user selected memory for this message. Use the provided memory context, and call search_memory if stored memory is needed beyond that context.'
         : '- Memory: the user selected memory, but memory is off for this turn. Do not use memory tools or memory context.')
-    } else if (toolId === 'sandbox') {
-      lines.push('- Sandbox: the user selected sandbox for this message. Call run_daytona_sandbox when a command, script, file transform, or code execution can help answer.')
     } else if (toolId === 'browser') {
       lines.push('- Browser Use: the user selected browser use for this message. Call interactive_browser_session when the task needs UI interaction, authenticated browsing, screenshots, or a JS-heavy page.')
     }

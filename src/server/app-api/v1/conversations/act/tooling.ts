@@ -415,9 +415,6 @@ function withRequestedOverlayToolIds(
       allowed.add('save_memory')
       allowed.add('save_memory_batch')
     }
-    if (toolId === 'sandbox') {
-      allowed.add('run_daytona_sandbox')
-    }
     if (toolId === 'browser') {
       allowed.add('interactive_browser_session')
     }
@@ -445,9 +442,6 @@ export function applyRuntimeToolGates(
   }
   if (!capabilities.browserUse) {
     allowed.delete('interactive_browser_session')
-  }
-  if (!capabilities.sandboxes) {
-    allowed.delete('run_daytona_sandbox')
   }
   if (!capabilities.computers) {
     for (const toolId of COMPUTER_TOOL_IDS) allowed.delete(toolId)

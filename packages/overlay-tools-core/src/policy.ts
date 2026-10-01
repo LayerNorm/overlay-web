@@ -39,7 +39,6 @@ export const OVERLAY_TOOL_IDS = [
   'delete_memory',
   'browser_run_task',
   'interactive_browser_session',
-  'run_daytona_sandbox',
   'list_notes',
   'get_note',
   'create_note',
