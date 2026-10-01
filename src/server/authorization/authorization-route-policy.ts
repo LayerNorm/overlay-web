@@ -100,6 +100,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: authenticated() },
   },
   {
+    path: '/api/v1/agent-environments/cloud',
+    methods: { POST: authenticated() },
+  },
+  {
     path: '/api/v1/agent-environments/:environmentId/approve',
     methods: { POST: authenticated() },
   },

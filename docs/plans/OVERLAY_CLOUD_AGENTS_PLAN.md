@@ -257,6 +257,13 @@ After Create the dialog shows startup phases until Ready, then opens the agent's
 
 **Prerequisite (done 2026-10-01): Boat API migration.** Box renamed itself Boat; the legacy Box endpoints advertise a 2026-10-31 sunset. The adapter now targets `https://boat.dev/api/v1`, so Phase 0's image work targets Boat only.
 
+**Phase 0 status (2026-10-01): built; one live gate open.**
+
+- Done and verified live on Boat: the image (`overlay-agent-v1`, built and checked by `infra/agent-image/publish-boat.mts`); a real Claude Code turn through `AcpxAgentAdapter` on a machine from that image, including session resume across runs; the host's managed `connect` passing the image check and reaching production's enrollment endpoint (rejected only for the test code); the host stop/restart commands used by wake.
+- Done and unit-tested: `CloudAgentMachineService` (provision → auto-approve → lease → bind, cleanup on failure, wake), `POST /api/v1/agent-environments/cloud`, wake-on-turn, and `activeUntil` so the idle meter never stops a machine mid-turn.
+- Open: the end-to-end exit criterion (create behind the flag → @mention answered → idle-stop → wake on next mention) needs a control plane the machine can reach: a staging deploy or a local tunnel.
+- Findings: Boat's `~/.claude` and `~/.codex` are provider mounts that error without Boat-linked credentials, so agent config lives under `~/.overlay` (Phase 4 imports go there). The adapter dropped a command's own `environment` (fixed).
+
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
 | **0. Machine** | acpx spike and adoption in the Agent Host, Overlay layer (`provision.sh`) published as a Boat snapshot (E2B template build script alongside), managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |

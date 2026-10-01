@@ -155,6 +155,18 @@ export const webApiBoundaryDefinitions = [
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
   },
   {
+    method: 'POST', path: '/api/v1/agent-environments/cloud',
+    schema: {
+      json: z.object({
+        agentId: z.string().min(1).max(256),
+        adapterId: z.enum(['claude-code', 'codex']),
+        size: z.enum(['small', 'default', 'large']).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Provision an Overlay Cloud machine for an agent (Claude Code or Codex)', tag: 'Agent environments',
+  },
+  {
     method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
     summary: 'Redeem an enrollment code and register a device public key', tag: 'Agent environments',
   },

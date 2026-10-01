@@ -38,6 +38,7 @@ import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import type { AgentMcpToolGrant } from '@/server/agents/agent-mcp-tools'
 import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
 import { getBaseUrl } from '@/server/web/app-url'
+import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
 
 /**
  * Step budgets.
@@ -608,6 +609,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         requestFingerprint,
         userId: args.actorUserId,
         workspaceId: args.workspaceId,
+        activeForMs: policy.maxRunTimeMs + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
       })
     }
     const started = await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
@@ -680,6 +682,9 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         eventCursor: 0,
       },
     })
+    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud' && !args.invocation.remoteTarget.online) {
+      wakeCloudAgentAfterResponse({ workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId })
+    }
     return started
   } catch (error) {
     await server.chatUsagePolicy.releaseReservation({

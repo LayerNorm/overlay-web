@@ -20,6 +20,10 @@ export const agentHostConfigSchema = z.object({
       command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional(),
     }).strict(),
     z.object({
+      id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('acpx'),
+      agent: z.string().min(1), env: z.record(z.string(), z.string()).optional(),
+    }).strict(),
+    z.object({
       id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('eve'),
       host: z.string().url(), bearerTokenEnv: z.string().min(1).optional(),
     }).strict(),
@@ -30,6 +34,7 @@ export type AgentHostConfig = Omit<AgentHostFileConfig, 'adapters'> & {
   adapters: Array<
     | { id: string; displayName: string; protocol: 'fake' }
     | { id: string; displayName: string; protocol: 'acp'; command: string; args?: string[]; env?: Record<string, string> }
+    | { id: string; displayName: string; protocol: 'acpx'; agent: string; env?: Record<string, string> }
     | { id: string; displayName: string; protocol: 'eve'; host: string; bearerTokenEnv?: string }
   >
   credential?: string

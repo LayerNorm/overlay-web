@@ -68,6 +68,8 @@ export class ManagedAgentSandboxBilling {
     requestFingerprint: string
     userId: string
     workspaceId: string
+    /** The turn may run this long; the idle meter will not stop the machine before then. */
+    activeForMs?: number
   }): Promise<ConnectedAgentSandboxBilling> {
     const lease = await this.dependencies.repository.getActiveSandboxLease({
       workspaceId: args.workspaceId,
@@ -125,19 +127,19 @@ export class ManagedAgentSandboxBilling {
       userId: args.userId,
       workspaceId: args.workspaceId,
     }).then((resolved) => sandboxLeasePayer(resolved, args.userId)).catch((_error) => undefined)
-    if (payer) {
-      await this.dependencies.repository.patchSandboxLeaseUsage({
-        workspaceId: args.workspaceId,
-        leaseId: lease.id,
-        patch: { lastPayer: payer },
-        now: this.now(),
-      }).catch((error) => {
-        logger.warn('[managed-harness] sandbox lease payer write failed', {
-          environmentId: args.environmentId,
-          error: error instanceof Error ? error.message : String(error),
-        })
+    const activityAt = this.now()
+    await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId: args.workspaceId,
+      leaseId: lease.id,
+      // A starting turn is activity, and the machine stays up for its whole run.
+      patch: { ...(payer ? { lastPayer: payer } : {}), lastActiveAt: activityAt, activeUntil: activityAt + Math.max(0, args.activeForMs ?? 0) },
+      now: this.now(),
+    }).catch((error) => {
+      logger.warn('[managed-harness] sandbox lease payer write failed', {
+        environmentId: args.environmentId,
+        error: error instanceof Error ? error.message : String(error),
       })
-    }
+    })
     return {
       baselineUsage: serializableUsage(baselineUsage),
       leaseId: lease.id,
@@ -240,7 +242,8 @@ export class ManagedAgentSandboxBilling {
     if (!stopping && instanceRunning && typeof probe.instance.stop === 'function') {
       const lastActiveAt = idleActivityTimestamp(usage, effectiveLease, now)
       const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_SANDBOX_IDLE_TIMEOUT_MS
-      if (now - lastActiveAt > idleTimeoutMs) {
+      const turnInFlight = finiteNumber(usage.activeUntil) > now
+      if (!turnInFlight && now - lastActiveAt > idleTimeoutMs) {
         await probe.instance.stop().then(() => {
           logger.info('Managed sandbox idle-stopped by meter', {
             environmentId: effectiveLease.environmentId,
@@ -378,6 +381,7 @@ export class ManagedAgentSandboxBilling {
           leaseId: billing.leaseId,
           patch: {
             lastActiveAt: this.now(),
+            activeUntil: 0,
             lastSettlement: {
               agentId: settlement.agentId,
               environmentId: settlement.environmentId,
@@ -441,6 +445,7 @@ export class ManagedAgentSandboxBilling {
         leaseId: billing.leaseId,
         patch: {
           lastActiveAt: this.now(),
+          activeUntil: 0,
           meteredUsage: serializableUsage(currentUsage),
           meteredProviderReference: providerReference,
           meteredAt: this.now(),

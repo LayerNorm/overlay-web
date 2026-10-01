@@ -417,8 +417,11 @@ test('legacy settle follows a repointed lease and seeds the meter cursor', async
   assert.deepEqual(reconnects, ['destroyed-sandbox', 'recreated-sandbox'])
   assert.equal(usageEvents.length, 1)
   assert.equal(usageEvents[0]?.type, 'sandbox')
-  assert.deepEqual(patches[0]?.meteredUsage, { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 })
-  assert.equal(patches[0]?.meteredProviderReference, 'recreated-sandbox')
+  // reserve marks the turn as activity; settle seeds the meter cursor and ends it.
+  assert.equal(patches[0]?.lastActiveAt, 5_000)
+  assert.equal(patches.at(-1)?.activeUntil, 0)
+  assert.deepEqual(patches.at(-1)?.meteredUsage, { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 })
+  assert.equal(patches.at(-1)?.meteredProviderReference, 'recreated-sandbox')
 })
 
 test('meterLease bills elapsed wall-clock when provider counters are stalled mid-session', async () => {
@@ -587,6 +590,43 @@ test('meterLease leaves a recently-active sandbox running', async () => {
   })
   const result = await service.meterLease(lease)
   assert.equal(result.applied, true)
+  assert.deepEqual(events, [])
+})
+
+test('meterLease does not idle-stop a sandbox while a turn is in flight', async () => {
+  const events: string[] = []
+  const lease = leaseFixture({
+    usage: {
+      lastActiveAt: 60_000,
+      activeUntil: 2_000_000,
+      idleTimeoutMs: 900_000,
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const runtime: SandboxRuntime = {
+    provider: 'box', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      stop: async () => { events.push('stop') },
+      usage: async () => ({ wallTimeMs: 60_000 }),
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 1_000_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
+    } as never,
+    runtime: () => runtime,
+  })
+  await service.meterLease(lease)
   assert.deepEqual(events, [])
 })
 

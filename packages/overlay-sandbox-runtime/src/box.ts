@@ -391,7 +391,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async runCommand(request: SandboxCommandRequest): Promise<SandboxCommandHandle> {
-    const command = shellJoin(request.command, request.args, this.environment)
+    const command = shellJoin(request.command, request.args, { ...this.environment, ...request.environment })
     const response = await this.runtime.request<{
       processId?: number
       pid?: number
@@ -465,9 +465,10 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     return { port, url: response.url, access: 'private' }
   }
 
-  async snapshot(): Promise<SandboxSnapshot> {
+  async snapshot(options?: { name?: string }): Promise<SandboxSnapshot> {
     // Named-snapshot names are [a-z0-9-]{1,63}; box ids carry underscores.
-    const name = `ov-${this.reference.replace(/[^a-z0-9-]/g, '')}-${Date.now().toString(36)}`
+    const name = options?.name ?? `ov-${this.reference.replace(/[^a-z0-9-]/g, '')}-${Date.now().toString(36)}`
+    if (!/^[a-z0-9-]{1,63}$/.test(name)) throw new BoxApiError(400, 'invalid_snapshot_name', `invalid snapshot name: ${name}`)
     await this.runtime.request('POST', '/named-snapshots', {
       body: { sandboxId: this.reference, name },
     })

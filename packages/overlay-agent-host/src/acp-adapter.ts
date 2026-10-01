@@ -223,7 +223,7 @@ async function normalizeAcpUpdate(
   }
 }
 
-async function emitToolContent(
+export async function emitToolContent(
   toolCallId: string,
   title: string,
   content: acp.ToolCallContent[] | null | undefined,

@@ -417,3 +417,14 @@ test('legacy box envelopes are still read', async () => {
   const instance = await runtime(fetch).create(request())
   assert.equal(instance.reference, 'bx_legacy')
 })
+
+test('a command environment is applied on top of the machine environment', async () => {
+  const { calls, fetch } = recorder((call) => call.url.endsWith('/commands')
+    ? ok({ processId: 7, pid: 70 })
+    : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  const instance = await runtime(fetch).reconnect('bx_1')
+  await instance.updateEnvironment({ SHARED: 'machine', OVERRIDE: 'machine' })
+  await instance.runCommand({ command: 'printenv', environment: { OVERRIDE: 'command', ONLY: 'command' }, timeoutMs: 1_000 })
+  const command = (calls.find((call) => call.url.endsWith('/commands'))?.body as { command: string }).command
+  assert.equal(command, "env SHARED='machine' OVERRIDE='command' ONLY='command' printenv")
+})

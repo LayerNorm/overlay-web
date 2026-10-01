@@ -2961,6 +2961,102 @@
         }
       }
     },
+    "/api/v1/agent-environments/cloud": {
+      "post": {
+        "operationId": "postAgentEnvironmentsCloud",
+        "summary": "Provision an Overlay Cloud machine for an agent (Claude Code or Codex)",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "adapterId": {
+                    "type": "string",
+                    "enum": [
+                      "claude-code",
+                      "codex"
+                    ]
+                  },
+                  "size": {
+                    "type": "string",
+                    "enum": [
+                      "small",
+                      "default",
+                      "large"
+                    ]
+                  }
+                },
+                "required": [
+                  "agentId",
+                  "adapterId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agent-environments/enroll": {
       "post": {
         "operationId": "postAgentEnvironmentsEnroll",

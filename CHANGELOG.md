@@ -4,6 +4,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Added
+
+- **Overlay Cloud agent machines (Phase 0, behind `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`).** `POST /api/v1/agent-environments/cloud` provisions a Boat machine for an agent from the new Overlay agent image (`overlay-agent-v1`, built by `infra/agent-image`), starts the Agent Host on it with Claude Code or Codex, approves the environment with a fixed workspace root, and binds the agent. Idle machines are stopped by the lease meter and resumed when a turn arrives. The Agent Host gains an acpx engine (`--engine acpx`, acpx 0.19.2) and an `image-check` command; on-your-machine hosts are unchanged. No UI yet.
+
+### Fixed
+
+- **Sandbox commands honour their own environment.** The Boat adapter applied only the machine-wide environment and silently dropped a command's `environment`.
+
+### Security
+
+- **`devalue` 5.9.4** is pinned past three advisories (GHSA-j22f-vq7h-c4qm, GHSA-mcm9-63f2-9j32, GHSA-x5rw-q4pp-hg5g) that failed the production audit.
+
 ### Changed
 
 - **Computers moved to Boat's API.** Box renamed itself Boat, and the legacy `ascii.dev/api/box/v1` endpoints advertise a 2026-10-31 sunset. The sandbox adapter now calls `https://boat.dev/api/v1` (`/sandboxes/*`, `sandbox` envelopes, `sandboxId` in named snapshots) and still reads legacy `box` envelopes. `BOAT_API_KEY` is preferred; the existing `BOX_API_KEY` keeps working, so no secret change is needed to deploy. `BOAT_API_BASE_URL` can override the base. The internal provider id stays `box`, so leases, prices, and stored references are unchanged. Verified with the live conformance and desktop suites against Boat.

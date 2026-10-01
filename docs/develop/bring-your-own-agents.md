@@ -14,9 +14,10 @@ flow, memory, and package boundaries.
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
-`external`. Overlay Cloud is Box (E2B is planned for self-hosting); Vercel Sandbox and
-Daytona were removed. Creating agents that run on Overlay Cloud is currently disabled while
-those runtimes are rebuilt (see `docs/plans/SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md`); the
+`external`. Overlay Cloud is Boat, formerly Box (E2B is planned for self-hosting); Vercel
+Sandbox and Daytona were removed. Overlay Cloud agents are being rebuilt on the same Agent Host
+(`docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`); the machine layer (Phase 0) exists behind
+`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, and the product UI does not offer it yet. The
 connected (on-your-machine) path described here is unaffected.
 
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
@@ -477,10 +478,31 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`). Hosted other-agents are not offered at the
-moment; when they return they will build on the connected-agent protocol, so the one-time
-enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge
-described above stay the only host authentication path.
+Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`).
+An Overlay Cloud agent uses the same connected-agent protocol and host:
+
+- **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
+  `@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`) on top of Boat's
+  system layer and writes `/etc/overlay/image.json`. `publish-boat.mts` freezes it as the named
+  snapshot `overlay-agent-v<N>` (`OVERLAY_CLOUD_AGENT_IMAGE`). The image holds no credentials and
+  no enrolled identity; `overlay-agent-host image-check` enforces both and runs before a managed
+  host enrolls.
+- **Engine.** Managed hosts run ACP agents through acpx's runtime (`--engine acpx`,
+  `AcpxAgentAdapter`). Each run's Overlay MCP server and provider credentials reach the agent
+  process only; the acpx connection is closed after every turn and the session resumes on the
+  next. On-your-machine hosts keep the direct ACP adapter.
+- **Enrollment.** `POST /api/v1/agent-environments/cloud` mints the same single-use enrollment
+  code, boots the machine, and the host redeems it with its Ed25519 key. Overlay created the
+  machine, so the server approves the environment itself instead of a person confirming a phrase,
+  with the filesystem grant fixed to `/home/user/workspace`. The short-lived credential, signed
+  polling, and ACP bridge are unchanged.
+- **Lifecycle.** The sandbox lease meter idle-stops a machine after 15 minutes without a turn
+  (a turn holds `activeUntil` for its maximum run time). A turn queued for an offline machine
+  resumes it and restarts the host from saved state after the response is sent. Revoking the
+  environment stops and deletes the machine through the lease reaper.
+- **Boat quirk.** `~/.claude` and `~/.codex` on Boat are provider-managed mounts that fail with
+  I/O errors when no Boat credentials are linked; agent config therefore lives under `~/.overlay`
+  (Phase 4 imports go there).
 
 ## Public resources and protocol policy
 
