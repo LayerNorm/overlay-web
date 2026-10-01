@@ -11,7 +11,6 @@ const rules = [
   ['src/server/app-api/v1/browser-task/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
   ['src/server/app-api/v1/notebook-agent/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
   ['src/server/app-api/v1/transcribe/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
-  ['src/server/app-api/v1/daytona/run/route.ts', 'reserveDaytonaRunBudget', 'generationUsagePolicy.markStarted'],
 ]
 
 const failures = []

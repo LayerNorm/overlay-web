@@ -18,7 +18,6 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
     availableToolIds: [
       'deep_search',
       'interactive_browser_session',
-      'run_daytona_sandbox',
       'save_memory',
       'web_fetch',
       'web_search',
@@ -52,7 +51,6 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   assert.match(instructions, /generate_image, generate_video/)
   assert.match(instructions, /You are in Automate mode\./)
   assert.match(instructions, /interactive_browser_session/)
-  assert.match(instructions, /run_daytona_sandbox/)
   assert.match(instructions, /Every code artifact you write must be returned in a fenced Markdown code block/)
   assert.match(instructions, /never place source code, HTML, CSS, JavaScript, JSON, SQL/)
   assert.match(instructions, /WEB_KNOWLEDGE/)
@@ -96,6 +94,5 @@ test('buildActAgentInstructions does not advertise tools when none are registere
   assert.match(instructions, /No callable tools are registered for this turn/)
   assert.match(instructions, /No knowledge or memory tools are callable in this turn/)
   assert.doesNotMatch(instructions, /You also have an interactive_browser_session tool/)
-  assert.doesNotMatch(instructions, /You also have a run_daytona_sandbox tool/)
   assert.doesNotMatch(instructions, /PAID_REALITY/)
 })

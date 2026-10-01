@@ -31,7 +31,6 @@ const FREE_TIER_STUB_TOOL_IDS = [
   'deep_search',
   'web_fetch',
   'interactive_browser_session',
-  'run_daytona_sandbox',
 ] as const
 
 export type WorkspaceAgentToolGrant = {

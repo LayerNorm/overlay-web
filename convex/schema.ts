@@ -493,6 +493,8 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
 
+  // Removed with Daytona. Kept only until `migrations/removeDaytonaData` has emptied it in
+  // every deployment; then drop it from the schema.
   daytonaWorkspaces: defineTable({
     userId: v.string(),
     sandboxId: v.string(),
@@ -537,6 +539,7 @@ export default defineSchema({
     completedAt: v.number(),
   }).index('by_key_scope', ['key', 'scope']),
 
+  // Removed with Daytona. See `daytonaWorkspaces`.
   daytonaUsageLedger: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),

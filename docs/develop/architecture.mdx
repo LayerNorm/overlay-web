@@ -29,8 +29,8 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
   device keys, SQLite delivery state, filesystem grants, and fake/ACP adapters; it does not own
   workspace identity, transcripts, approvals, policy, or billing.
 - `packages/overlay-sandbox-runtime/**` is the provider-neutral managed execution boundary. It
-  owns sandbox lifecycle, command/file/port/snapshot/network/usage contracts and Vercel/Daytona
-  translations. Provider SDK types and raw handles do not cross into public routes, billing, or
+  owns sandbox lifecycle, command/file/port/snapshot/network/usage contracts and provider
+  translations (Box today, E2B planned). Provider SDK types and raw handles do not cross into public routes, billing, or
   connected-agent persistence.
 
 App data lives exclusively in Convex: `src/server/app-data/capabilities.ts`
@@ -61,9 +61,9 @@ resolution. Host routes are explicit BFF exceptions because they use outbound ma
 method-scoped opaque credentials plus Ed25519 request proofs and atomic nonces. Route handlers
 never select a provider directly; both modes use `ConnectedAgentRepository` from app data.
 
-`ManagedAgentSandboxService` provisions the private runtime selected by operators, starts the
-same Agent Host image used by every environment, and records the provider-neutral sandbox lease.
-The browser sees `Overlay Cloud`, an environment, and lease state, not a Vercel or Daytona object.
+Overlay Cloud machines are provisioned for Computers and, later, for hosted other-agents; the
+private runtime is Box. The browser sees `Overlay Cloud`, an environment, and lease state, not a
+provider object.
 
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 
@@ -176,7 +176,7 @@ per-step 8,192 output-token ceiling. A tool loop must not reserve only its first
 model call: later completed steps would otherwise exceed the reservation and be
 quarantined even when provider usage is valid.
 
-Box is the managed sandbox provider (Vercel Sandbox was removed; Daytona is being removed; E2B is planned for self-hosting). Agent-environment leases no longer hold a
+Box is the managed sandbox provider (Vercel Sandbox and Daytona were removed; E2B is planned for self-hosting). Agent-environment leases no longer hold a
 worst-case 24-hour reservation: `ManagedAgentSandboxBilling.reserve` takes only a small bootstrap
 hold (the low-balance floor plus a short coverage window), and a per-lease meter debits the wallet
 periodically while the sandbox runs. Each tick reads provider `instance.usage()` counters, computes

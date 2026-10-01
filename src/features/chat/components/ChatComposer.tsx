@@ -13,7 +13,6 @@ import {
   Plus,
   Send,
   Slash,
-  SquareTerminal,
   Video,
   X,
   type LucideIcon,
@@ -90,12 +89,6 @@ const TOOL_REQUEST_OPTIONS: Array<{
     label: 'Browser Use',
     description: 'Drive a real browser',
     Icon: MousePointerClick,
-  },
-  {
-    id: 'sandbox',
-    label: 'Sandbox',
-    description: 'Run code or commands',
-    Icon: SquareTerminal,
   },
 ]
 
@@ -420,7 +413,6 @@ function isToolRequestEnabled(
 ): boolean {
   if (toolId === 'web_search') return props.capabilities.webSearch
   if (toolId === 'browser') return props.capabilities.browserUse
-  if (toolId === 'sandbox') return props.capabilities.sandboxes
   if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
   return true
 }

@@ -65,7 +65,6 @@ Every user-facing resource is scoped to exactly one workspace. Switching workspa
 | API idempotency keys | `apiIdempotencyKeys` | Infra |
 | Service auth replay nonces | `serviceAuthReplayNonces` | Infra |
 | Email outbox / suppressions | `emailOutbox`, `emailSuppressions` | Infra |
-| Daytona workspaces / usage | `daytonaWorkspaces`, `daytonaUsageLedger` | Sandbox infra |
 | Tool invocations | `toolInvocations` | Execution tracking |
 
 ---
@@ -157,7 +156,6 @@ route POST handlers to pass `workspaceId: context.workspace.workspace.id`.
 | `POST /api/v1/webhooks` | `webhooks/route.ts` |
 | `POST /api/v1/generate-video` | `generate-video/route.ts` (output creation) |
 | `POST /api/v1/generate-image` | `generate-image/route.ts` (output creation) |
-| `POST /api/v1/daytona/run` | `daytona/run/route.ts` (output creation) |
 | `POST /api/v1/browser-task` | `browser-task/route.ts` (output creation) |
 
 **Service/repository input types updated (10 files):**

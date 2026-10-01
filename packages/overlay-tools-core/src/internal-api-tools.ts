@@ -9,14 +9,12 @@ function categoryForToolId(toolId: string): ToolDefinition['category'] {
   if (toolId.includes('knowledge') || toolId.includes('files')) return 'knowledge'
   if (toolId.includes('browser')) return 'browser'
   if (toolId.includes('image') || toolId.includes('video') || toolId.includes('motion')) return 'media'
-  if (toolId.includes('daytona')) return 'developer'
   return 'internal'
 }
 
 function riskForToolId(toolId: string): ToolDefinition['risk'] {
   if (
     toolId.startsWith('delete_') ||
-    toolId === 'run_daytona_sandbox' ||
     toolId === 'interactive_browser_session' ||
     toolId.includes('video') ||
     toolId.includes('image')

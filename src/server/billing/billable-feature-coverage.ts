@@ -80,10 +80,9 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
     category: 'browser_and_sandbox',
     enforcement: [
       'src/server/app-api/v1/browser-task/route.ts',
-      'src/server/app-api/v1/daytona/run/lifecycle.ts',
       'src/server/billing/billing-runtime.ts',
     ],
-    id: 'browser-and-daytona-provider-spend',
+    id: 'browser-provider-spend',
     mode: 'metered',
   },
   {

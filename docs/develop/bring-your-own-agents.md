@@ -14,8 +14,8 @@ flow, memory, and package boundaries.
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
-`external`. Overlay Cloud is Box (E2B is planned for self-hosting); Vercel Sandbox was removed and
-Daytona is being removed. Creating agents that run on Overlay Cloud is currently disabled while
+`external`. Overlay Cloud is Box (E2B is planned for self-hosting); Vercel Sandbox and
+Daytona were removed. Creating agents that run on Overlay Cloud is currently disabled while
 those runtimes are rebuilt (see `docs/plans/SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md`); the
 connected (on-your-machine) path described here is unaffected.
 
@@ -194,8 +194,7 @@ The managed-sandbox boundary is `@overlay/sandbox-runtime`. Its contract covers
 lifecycle and reconnect, streamed and cancellable commands, files, process environment, ports,
 snapshots and persistence, network policy, broker-owned credential references, idle and hard
 timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Box is the
-Overlay Cloud adapter; the Daytona adapter remains until it is removed, and an E2B adapter is
-planned for self-hosting. Provider SDK objects and references are never public response fields.
+Overlay Cloud adapter, and an E2B adapter is planned for self-hosting. Provider SDK objects and references are never public response fields.
 The lease meter (`ManagedAgentSandboxBilling`) bills a lease from provider-reported usage and
 enforces the idle window and the 24-hour hard cap; Box has no idle timer, so idle-stop is ours.
 
@@ -264,7 +263,7 @@ Host-side BYOK model tokens remain observable but never become Overlay model usa
 environment has no sandbox reservation. Overlay Cloud creates a distinct pre-dispatch `sandbox`
 reservation under `agent:<agentId>` in addition to any explicitly Overlay-funded model reservation.
 Actual Box usage settles the provider-reported dollars (falling back to the rate card on billable
-seconds); Daytona settles its resource-time dimensions until it is removed. The reservation ledger is the exact-once boundary, and an unavailable
+seconds). The reservation ledger is the exact-once boundary, and an unavailable
 provider or failed usage read moves the reservation to reconciliation instead of guessing at a
 charge. `OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN` rejects an estimated run above USD 15 by
 default before provider work starts. A durable settlement marker is created atomically with each managed run and is cleared only
@@ -334,7 +333,7 @@ Live sandbox conformance uses the strictest portable lifecycle constraint shared
 providers. Resume the original persistent sandbox before deleting its snapshot, then delete the
 snapshot explicitly during cleanup.
 
-The 2026-08-25 live conformance run passed for Vercel Sandbox (since removed) and Daytona. Phase 9 remains open
+The 2026-08-25 live conformance run passed for Vercel Sandbox and Daytona (both since removed). Phase 9 remains open
 until the fresh enrollment-to-mention matrix, provider-invoice reconciliation, calendar-time
 artifact-retention observation, and matching production Convex rollout and stability evidence are
 complete.
@@ -347,7 +346,7 @@ notes (including the patch-style `edit_note`, `replace_note_section`, and `appen
 automations, connected apps, and MCP servers — built by the same pipeline (`buildWorkspaceAgentTooling`:
 the agent's grant intersected with workspace policy, entitlements, and the summoning message's
 mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
-duplicate the agent's own machine (`computer_*`, `run_daytona_sandbox`) and generated UI are
+duplicate the agent's own machine (`computer_*`) and generated UI are
 withheld, and MCP calls whose server policy requires approval are refused with an explanation,
 because no room approval exists for them yet.
 

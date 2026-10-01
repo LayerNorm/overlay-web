@@ -1,4 +1,4 @@
-export const CHAT_TOOL_REQUEST_IDS = ['web_search', 'memory', 'sandbox', 'browser'] as const
+export const CHAT_TOOL_REQUEST_IDS = ['web_search', 'memory', 'browser'] as const
 
 export type ChatToolRequestId = (typeof CHAT_TOOL_REQUEST_IDS)[number]
 

@@ -1,4 +1,4 @@
-export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'daytona' | 'composio' | 'internal'
+export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'composio' | 'internal'
 
 export type ToolBucket = ToolCostBucket
 
@@ -52,7 +52,6 @@ export function toolCostBucketForId(toolId: string): ToolCostBucket {
     toolId === 'edit_video'
   ) return 'video'
   if (toolId === 'browser_run_task' || toolId === 'interactive_browser_session') return 'browser'
-  if (toolId === 'run_daytona_sandbox') return 'daytona'
   if (INTERNAL_TOOL_IDS.has(toolId)) return 'internal'
   return 'composio'
 }
@@ -64,7 +63,6 @@ export function shouldPersistToolInvocation(bucket: ToolCostBucket): boolean {
     bucket === 'image' ||
     bucket === 'video' ||
     bucket === 'browser' ||
-    bucket === 'daytona' ||
     bucket === 'composio'
   )
 }

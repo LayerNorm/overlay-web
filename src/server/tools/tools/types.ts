@@ -21,7 +21,7 @@ export interface OverlayToolsOptions {
   /** Original browser Cookie header — required for server-side tool `fetch` to `/api/v1/*` (middleware expects session cookie). */
   forwardCookie?: string
   /**
-   * When `false`, omits paid-only tools (remote browser session, Daytona workspace sandbox). Default: include them.
+   * When `false`, omits paid-only tools (remote browser session). Default: include them.
    * Free tier should pass `false`.
    */
   includePaidOnlyOverlayTools?: boolean

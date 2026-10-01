@@ -83,11 +83,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'generation:image:user', limit: 15, windowMs: TEN_MINUTES },
     { bucket: 'generation:image:workspace', limit: 30, windowMs: TEN_MINUTES },
   ],
-  'POST /api/v1/daytona/run': [
-    { bucket: 'sandbox:daytona:ip', limit: 20, windowMs: TEN_MINUTES },
-    { bucket: 'sandbox:daytona:user', limit: 10, windowMs: TEN_MINUTES },
-    { bucket: 'sandbox:daytona:workspace', limit: 20, windowMs: TEN_MINUTES },
-  ],
   'POST /api/v1/generate-title': [
     { bucket: 'helper:title:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:title:user', limit: 60, windowMs: TEN_MINUTES },

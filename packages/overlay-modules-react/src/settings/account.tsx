@@ -389,7 +389,7 @@ export function AccountFreeUsageCard({
         />
       </div>
       <p className={`mt-4 text-xs ${mutedClass}`}>
-        Auto is unlimited on free. Upgrade to a paid plan to use premium models, Daytona, browser tasks, and generation tools.
+        Auto is unlimited on free. Upgrade to a paid plan to use premium models, browser tasks, and generation tools.
       </p>
     </div>
   )

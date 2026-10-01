@@ -55,7 +55,7 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
   assert.equal('web_search' in freePrimary.tools, true)
   assert.equal('deep_search' in freePrimary.tools, true)
   assert.equal('web_fetch' in freePrimary.tools, true)
-  assert.equal('run_daytona_sandbox' in freePrimary.tools, true)
+  assert.equal('run_daytona_sandbox' in freePrimary.tools, false)
 
   const compareSlot = buildActTooling({
     allowedOverlayToolIds: [],

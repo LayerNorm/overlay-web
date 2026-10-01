@@ -2,7 +2,6 @@ import 'server-only'
 
 import type { SandboxRuntime } from '@overlay/sandbox-runtime'
 import { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
-import { DaytonaSandboxRuntime } from '@overlay/sandbox-runtime/daytona'
 
 /** Idle window after which the lease meter stops an Overlay Cloud machine. */
 export const MANAGED_SANDBOX_IDLE_TIMEOUT_MS = 15 * 60_000
@@ -27,11 +26,6 @@ export function managedSandboxRuntimeFromEnv(providerOverride?: string): Sandbox
       throw new ManagedSandboxError('Box is not configured: set BOX_API_KEY', 503, 'managed_sandbox_provider_invalid')
     }
     return new BoxSandboxRuntime({ apiKey })
-  }
-  if (provider === 'daytona') {
-    return new DaytonaSandboxRuntime({
-      config: { apiKey: process.env.DAYTONA_API_KEY, apiUrl: process.env.DAYTONA_API_URL },
-    })
   }
   throw new ManagedSandboxError(`Unsupported managed sandbox provider: ${provider}`, 503, 'managed_sandbox_provider_invalid')
 }

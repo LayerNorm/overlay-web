@@ -41,8 +41,6 @@ import {
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
-import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
-import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
 import {
   ConvexWebhookRepository,
@@ -99,7 +97,6 @@ export interface AppDataRepositories {
   conversationCollaboration: ConversationCollaborationRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
-  daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
   fileIngestionJobs: FileIngestionJobRepository
   idempotency: IdempotencyRepository
@@ -145,7 +142,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       conversationCollaboration: new ConvexConversationCollaborationRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
-      daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
       fileIngestionJobs: new ConvexFileIngestionJobRepository(),
       idempotency: new ConvexIdempotencyRepository(),

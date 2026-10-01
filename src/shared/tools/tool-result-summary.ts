@@ -33,29 +33,6 @@ export function summarizeToolResultForTranscript(params: {
   const toolMessage = readString(output?.message)
   const toolError = readString(output?.error) || readString(output?.errorMessage)
 
-  if (toolName === 'run_daytona_sandbox') {
-    const success = output?.success === true
-    const artifacts = listArtifactNames(output?.artifacts)
-    const missingExpected = Array.isArray(output?.missingExpectedOutputs)
-      ? output?.missingExpectedOutputs.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      : []
-
-    if (success) {
-      if (artifacts.length > 0) {
-        return `Daytona sandbox completed successfully and exported ${artifacts.length} artifact${artifacts.length === 1 ? '' : 's'} to Outputs: ${artifacts.join(', ')}.`
-      }
-      return toolMessage || 'Daytona sandbox completed successfully.'
-    }
-
-    if (artifacts.length > 0 || missingExpected.length > 0) {
-      const artifactSuffix = artifacts.length > 0 ? ` Imported: ${artifacts.join(', ')}.` : ''
-      const missingSuffix = missingExpected.length > 0 ? ` Missing declared outputs: ${missingExpected.join(', ')}.` : ''
-      return `Daytona sandbox did not complete cleanly.${artifactSuffix}${missingSuffix}`.trim()
-    }
-
-    return toolError || toolMessage || 'Daytona sandbox failed.'
-  }
-
   if (toolName === 'generate_image') {
     if (output?.success === true) {
       return 'Generated an image and saved it to Outputs.'

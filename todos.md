@@ -51,10 +51,6 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   claude-code/codex/opencode/pi/hermes with providers vercel+daytona; OpenCode
   provisioning 201 (test sandbox destroyed via reset-harness; orphan env row
   `overlay-harness-dc2ff13a` left for reconcile).
-- [ ] **Hermes live turn before picker exposure** — `harness-acp@1.0.40`
-  constructs fine but `hermes acp` hasn't run a real turn in-sandbox; verify
-  before enabling it in the create-agent UI (Phase 3 ships it in the catalog —
-  consider policy-allowlisting it out until verified).
 - [x] **Set the managed-harness feature flags** — `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`
   is set on staging. `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` defaults to
   `general`, so every staging workspace passes the rollout gate; narrow it to
@@ -129,18 +125,6 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   resumes the same workflow (check the reply continues on the same turn), and
   denying produces a `tool-output-denied` part in the transcript. Also verify
   stop-button cancellation while the workflow is parked.
-- [ ] **Daytona managed provider — deferred for now** (owner call, Phase 4
-  follow-up). When revisiting: `DAYTONA_API_KEY` is already in local env;
-  set `OVERLAY_HARNESS_SANDBOX_PROVIDER=daytona`, provision
-  `POST /api/v1/agent-environments/managed` with `{mode:'harness',
-  harnessId:'claude-code', provider:'daytona'}`, run a turn, and confirm the
-  harness reaches its in-sandbox bridge port through the private preview link.
-- [ ] **Verify a BYOK managed turn** — add a user `user-vercel-ai-gateway`
-  provider connection (Settings), bind a managed `claude-code` agent to it via
-  Model access, DM the agent, and confirm the turn is funded by the connection
-  (no Overlay model-usage reservation) with the key read from the vault at run
-  time — it must never appear in binding config, workflow state, or sandbox
-  env.
 - [ ] **Mobile parity in `overlay-mobile`** — the sibling app needs the managed
   capability bootstrap plus harness/provider labels in the agents roster and
   editor parity with the web pickers (runtime, model, model access).

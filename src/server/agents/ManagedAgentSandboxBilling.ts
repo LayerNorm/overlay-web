@@ -7,7 +7,6 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { getMarkupBasisPoints } from '@/shared/billing/billing-pricing'
-import { computeDaytonaRuntimeCost } from '@/shared/ai/sandbox/daytona-pricing'
 import { logger } from '@/server/observability/logger'
 import type {
   ConnectedAgentRepository,
@@ -233,8 +232,8 @@ export class ManagedAgentSandboxBilling {
     // wall-clock — see usageDelta for the virtual-cursor rule that keeps the
     // final post-stop total from double-charging.
     const instanceRunning = probe.status !== 'stopped' && probe.status !== 'archived' && probe.status !== 'deleted' && probe.status !== 'failed'
-    // Provider-side idle-stop: Vercel has no equivalent of Daytona's
-    // autoStopInterval, so the meter enforces the lease's idle window itself —
+    // Provider-side idle-stop: Box has no idle timer, so the meter enforces
+    // the lease's idle window itself —
     // a running sandbox with no activity for idleTimeoutMs is stopped while
     // the lease stays 'running'; the next turn's acquire resumes it. The tick
     // still bills the elapsed window it ran through.
@@ -259,8 +258,8 @@ export class ManagedAgentSandboxBilling {
       }
     }
     if (probe.usage === null) {
-      // Stopped instance with unreadable counters (e.g. Daytona metrics on a
-      // stopped sandbox): advance the meter window without charging so the
+      // Stopped instance with unreadable counters (a provider that does not
+      // report metrics for a stopped sandbox): advance the meter window without charging so the
       // stopped span is never billed as elapsed on the next running tick. A
       // never-metered lease has no window to advance — its first successful
       // read adopts counters instead.
@@ -718,12 +717,6 @@ export function sandboxCostUsd(args: {
   usage: Pick<SandboxUsage, 'activeCpuTimeMs' | 'egressBytes' | 'wallTimeMs' | 'providerMetrics'>
 }) {
   const wallTimeMs = Math.max(0, args.usage.wallTimeMs ?? 0)
-  if (args.provider === 'daytona') return computeDaytonaRuntimeCost({
-    cpu: args.resources.vcpus,
-    memoryGiB: args.resources.memoryGiB,
-    diskGiB: args.resources.diskGiB,
-    elapsedSeconds: wallTimeMs / 1_000,
-  }).costUsd
   if (args.provider === 'box') {
     // Provider-reported dollars are authoritative — the usage API already
     // applies the size multiplier and list price, so deltas of it bill exact

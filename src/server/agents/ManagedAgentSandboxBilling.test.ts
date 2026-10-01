@@ -631,10 +631,10 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
 })
 
 test('provider pricing uses provider-native runtime dimensions', () => {
-  assert.equal(sandboxCostUsd({
+  assert.throws(() => sandboxCostUsd({
     provider: 'daytona', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
     usage: { wallTimeMs: 60_000 },
-  }) > 0, true)
+  }), /MANAGED_SANDBOX_PROVIDER_UNPRICED/)
   assert.equal(sandboxCostUsd({
     provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
     usage: { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 },

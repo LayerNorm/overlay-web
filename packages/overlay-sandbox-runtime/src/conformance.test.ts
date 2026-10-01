@@ -15,7 +15,7 @@ const capabilities: SandboxCapabilities = {
   hardTimeout: true, idleStop: true, usage: true, desktop: false,
 }
 
-for (const provider of ['vercel', 'daytona'] as const) {
+for (const provider of ['box'] as const) {
   test(`reference runtime satisfies the ${provider} capability profile`, async () => {
     const runtime = new MemoryRuntime(provider)
     await runSandboxConformance(runtime, request(`${provider}-conformance`))

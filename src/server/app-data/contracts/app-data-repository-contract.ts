@@ -15,7 +15,6 @@ import type { FileRepository } from '@/server/files/FileRepository'
 import type { NoteRepository } from '@/server/notes'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { UserRepository } from '@/server/users/types'
-import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { MemoryRepository } from '@/server/memory'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
@@ -30,7 +29,6 @@ export interface AppDataRepositoryContractBackend {
   computers: ComputerRepository
   conversations: ActConversationRepository
   surfaces: SurfaceRepository
-  daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
   memories: MemoryRepository
@@ -642,26 +640,6 @@ export async function runAppDataRepositoryContractSuite(
       assert.ok(shared?.token)
       await backend.files.removeFile({ fileId: outputId, userId })
       assert.equal(await backend.files.getFile({ fileId: outputId, userId }), null)
-    })
-
-    await t.test(`${backend.name}: Daytona workspace checkpoints are provider-neutral`, async () => {
-      const now = Date.now()
-      const workspace = await backend.daytonaWorkspaces.upsert({
-        userId,
-        sandboxId: `sandbox_${randomUUID()}`,
-        sandboxName: 'contract-sandbox',
-        volumeId: `volume_${randomUUID()}`,
-        volumeName: 'contract-volume',
-        tier: 'pro',
-        state: 'stopped',
-        resourceProfile: 'pro',
-        mountPath: '/home/daytona/workspace',
-        lastMeteredAt: now,
-      })
-      assert.equal(workspace.userId, userId)
-      assert.equal(workspace.state, 'stopped')
-      assert.equal((await backend.daytonaWorkspaces.getByUserId({ userId }))?.sandboxId, workspace.sandboxId)
-      assert.equal(await backend.daytonaWorkspaces.getByUserId({ userId: foreignUserId }), null)
     })
 
     await t.test(`${backend.name}: usage policy has explicit reservation/accounting behavior`, async () => {
