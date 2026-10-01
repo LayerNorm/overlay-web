@@ -106,11 +106,30 @@ Overlay (Next.js + Convex)                         Box machine (one per agent)
 - **Wake on work, pause on idle.** A turn for a paused agent sets desired `ready`; the reconciler resumes the same sandbox and waits for the host to reconnect, then the queued command is claimed. Idle 15 minutes (existing `MANAGED_SANDBOX_IDLE_TIMEOUT_MS`) → pause. Opening the transcript never wakes it.
 - **Startup phases** reported by reconciler and host: Allocating → Booting → Connecting → Signing in → Ready. Shown in the dialog after Create and on the agent page.
 
-### Base image
+### Base image: one definition, two targets
 
-- Built from a pinned `Dockerfile` in the repo (`infra/agent-image/`), published as a Box image by CI on release: Ubuntu, Node 22, Python 3, git, ripgrep, the Agent Host at the current version, and the two launch adapters pre-installed at the versions the host pins in `adapter-manifests.ts` (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`), so a cold start never runs `npx -y` downloads.
-- Credential-free by test (CI fails if `~/.claude/.credentials.json`, `~/.codex/auth.json`, or any token file exists in the image).
-- Image version is recorded on the environment; existing agents keep theirs until "Update" (no silent replacement), new agents get the current one.
+Boat (Box's new name) machines already ship a system layer: Ubuntu 24.04, Node 24, Python/uv, Go, Rust, Java, Docker, Chrome, ffmpeg, `gh`, and the Claude Code, Codex, OpenCode, Hermes, Cursor, Pi, OpenClaw, Kimi, and Prime CLIs (docs.boat.dev/machines). That layer is free in snapshots. We use it, and add a small pinned **Overlay layer** on top:
+
+- **Use from Boat's system layer:** toolchains, and agent CLIs that are their own ACP server or needed for sign-in (`hermes acp`, `opencode acp`, `openclaw acp`, Cursor, Kimi, and the `codex` CLI for device-code login later).
+- **Add in the Overlay layer (pinned exact versions):** the Agent Host, `acpx`, and the ACP adapters for the launch agents (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`). These bundle their own engines, so the preinstalled `claude`/`codex` binaries are not what runs a session, and Boat's unpinned system versions can change under us. Anything an agent needs that the system layer lacks is installed here too.
+- **Drift guard:** the host's `doctor` checks system CLI versions against a supported range and falls back to the Overlay layer's pinned copy when a system CLI drifts out of range.
+
+One script, `infra/agent-image/provision.sh`, defines the Overlay layer and writes `/etc/overlay/image.json` (image version, pinned versions). Two publishers run it:
+
+| Target | How | Result |
+| --- | --- | --- |
+| Boat (Overlay Cloud) | Boat has no custom-image API, so `publish-boat.ts` provisions a fresh machine, runs `provision.sh`, verifies, and freezes it as a named snapshot `overlay-agent-v<N>` (Zuse does the same with `box-publish.sh`). Agent machines are created `from` that snapshot; the adapter already supports this. | Named snapshot per version |
+| E2B (self-hosted) | `build.e2b.ts` uses E2B's template builder (`Template().fromImage(...)` or a Dockerfile, then `runCmd('bash provision.sh')`), built with `Template.build(template, 'overlay-agent', { tags: ['v<N>'] })` against the operator's E2B API. | Template `overlay-agent:v<N>` |
+
+Rules for both:
+
+- **Credential-free**, enforced in CI (no `~/.claude/.credentials.json`, `~/.codex/auth.json`, tokens).
+- **The host is not running in the image.** No start command bakes a host into the snapshot; the reconciler starts it at machine creation with the boot token, so a snapshot never contains an enrolled identity.
+- **Mandatory, not optional.** The sandbox adapters take the image from server config only (`providers.sandbox.agentImage`: snapshot name for Boat, template name and tag for E2B), never from a request. At boot the host reads `/etc/overlay/image.json` and refuses to enroll if the image version is outside the control plane's supported window, so an unprepared sandbox cannot become an agent machine.
+- **Versioned rollout.** The environment records its image version; new agents get the current one, existing agents keep theirs until Update.
+- **CI publishes both** on release and runs one conformance check per target: boot, `overlay-agent-host doctor`, one fake ACP turn.
+
+For self-hosters, setup is one documented step: run `npx tsx infra/agent-image/build.e2b.ts` against their E2B, then set `providers.sandbox.agentImage`. Overlay's startup check fails clearly if the template is missing or its `image.json` version is unsupported.
 
 ### Managed enrollment
 
@@ -238,7 +257,7 @@ After Create the dialog shows startup phases until Ready, then opens the agent's
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
-| **0. Machine** | acpx spike and adoption in the Agent Host, base image + CI publish, managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |
+| **0. Machine** | acpx spike and adoption in the Agent Host, Overlay layer (`provision.sh`) published as a Boat snapshot (E2B template build script alongside), managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |
 | **1. Accounts** | Settings → Accounts, vault, per-run grants, Claude Code setup-token or API key, Codex API key, auth-error states | Runs on a Claude Max setup-token with no model charge; expired token shows "reconnect" and recovers. |
 | **2. Dialog + agent page** | "Other agent → Overlay Cloud" enabled, agent page tabs, conversation cards | A teammate can create, use, pause, and delete a cloud agent without docs. |
 | **3. Overlay resources** | MCP coverage audit + contract test, native skills sync, real approval round trip | The cloud agent can read/write files and notes, run an automation, use a connector and a user MCP server, and ask for approval. |
