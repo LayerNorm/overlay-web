@@ -41,7 +41,7 @@ Zuse (github.com/swarajbachu/zuse, open source) is a desktop app wrapping Claude
 
 | Piece | Where | Reuse |
 | --- | --- | --- |
-| Agent Host (CLI/daemon), ACP adapters for Codex, Claude Code, Hermes | `packages/overlay-agent-host` | Runs unchanged inside the machine. |
+| Agent Host (CLI/daemon), ACP adapters for Codex, Claude Code, Hermes | `packages/overlay-agent-host` | Runs inside the machine; its ACP layer is replaced by `acpx/runtime` (see below). |
 | Agent Bridge Protocol: enrollment, signed polling, durable commands, events | `packages/overlay-agent-bridge-protocol`, `ConnectedAgentControlPlaneService` | Unchanged; add a managed enrollment path. |
 | `overlay_cloud` environment kind, sandbox leases, lease billing | `connected-agents.ts`, `ManagedAgentSandboxBilling`, `environment-machine.ts` | Leases + compute billing exist; `modelUsageBilling` already skips model charges for cloud runs. |
 | Box sandbox runtime: create from image, snapshot, restore, fork, pause/resume, exec, writeFiles, ports | `packages/overlay-sandbox-runtime/src/box.ts` | Machine provisioning and lifecycle. |
@@ -51,6 +51,38 @@ Zuse (github.com/swarajbachu/zuse, open source) is a desktop app wrapping Claude
 
 What is missing: a base image, managed enrollment, the lifecycle reconciler, provider accounts, config import, agent-to-agent tools, and the agent page around a cloud agent.
 
+## Adopt, don't build: acpx + the ACP Registry
+
+Researched 2026-10-01. Two open-source pieces cover most of the agent-session layer we would otherwise write:
+
+| Candidate | What it is | Verdict |
+| --- | --- | --- |
+| **acpx** (`openclaw/acpx`, MIT, ★3.3k, v0.19.4, releases near-daily) | Headless ACP client with a programmatic runtime (`acpx/runtime`): persistent and resumable sessions, prompt queueing, cancel/steer, permission and elicitation callbacks, model inspection, usage reporting, 25 built-in agent definitions (Claude Code, Codex, Gemini, Copilot, Cursor, OpenCode, Pi, Grok Build, Kiro, Qwen, Droid, Devin, …). | **Adopt as the Agent Host's session engine.** |
+| **ACP Registry** (`agentclientprotocol/registry`, Apache-2.0, maintained by the ACP project) | Machine-readable catalog of 41 ACP agents with install/launch commands (22 npx, 19 binaries, 2 uvx) at `cdn.agentclientprotocol.com/registry/v1/latest/registry.json`. | **Adopt as the agent catalog** for "which agents can I bring" and for installing them on a machine. |
+| Claw Orchestrator (★587, MIT) | Wraps CLIs as sessions plus councils, planner/coder/reviewer loops, 78 tools, OpenAI-compatible endpoint. | **Skip.** Its orchestration layer is what Overlay itself is; it wraps CLIs rather than being ACP-first. |
+| coder/agentapi | HTTP API over agent CLIs via terminal emulation. | **Skip.** Archived 2026-09-13; screen-scraping. |
+| Jockey, AgentConnect, kodizm/acp | Desktop apps or small single-author bridges. | **Skip.** |
+
+**Why acpx fits our host specifically.** Its runtime options map one-to-one onto what the bridge needs, all supplied by the embedding host:
+
+- `sessionStore` is pluggable (`load`/`save`), so session records can live where the host keeps state today (or be mirrored to Overlay).
+- `mcpServers` accepts a resolver called per session connection and never persisted: the per-run Overlay MCP server (`ovmcp_` token) plugs in here.
+- `agentProcessEnv` is a child-only environment, snapshotted and never persisted: the per-run provider grant (`CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`) goes here. One machine per agent means one runtime per credential set.
+- `onPermissionRequest` / `onElicitation` callbacks become Overlay approval cards and questions in the conversation.
+- `agentRegistry` is replaceable, so we can merge acpx's built-ins with ACP Registry entries and pin versions ourselves.
+
+**What changes in our code.** The Agent Host keeps everything Overlay-specific: enrollment, the Agent Bridge Protocol transport, signed polling, command claiming, event normalization to Overlay's run events, filesystem grants, launchd/daemon. It replaces its own ACP layer (`acp-adapter.ts`, `adapter-manifests.ts`, the session parts of `runtime.ts`, about 550 lines) with `acpx/runtime`. The on-your-machine host gets the same upgrade for free, so both subcategories support every acpx/registry agent at once.
+
+**What it does not remove.** Each agent's own sign-in (subscriptions, keys) still differs per vendor, so "supported" at launch still means Claude Code and Codex with first-class accounts. Other registry agents can be offered as experimental "bring your own key" agents once the engine is in.
+
+**Risks and mitigations.**
+
+- Pre-1.0 API: pin an exact version, wrap it behind the host's existing `adapter.ts` interface, and run our host tests plus acpx's conformance suite on every bump.
+- Node ≥ 22.13: matches the base image and the host's Node requirement.
+- Upstream direction: acpx's stated vision is "the smallest useful ACP client" and "a reusable backend for tools", which is our use; we can fork if that changes (MIT).
+
+**Spike before Phase 0 (1–2 days):** put `acpx/runtime` behind `adapter.ts` in a branch; run a Claude Code and a Codex turn through the bridge locally with the Overlay MCP server injected via `mcpServers` and credentials via `agentProcessEnv`; then the same inside a Box machine. Go if session resume, cancel, permission round trip, and MCP tool calls all work.
+
 ## Architecture
 
 ```text
@@ -58,8 +90,8 @@ Overlay (Next.js + Convex)                         Box machine (one per agent)
 ┌──────────────────────────────────┐               ┌──────────────────────────────────┐
 │ New-agent dialog / agent page    │               │ Overlay base image (no secrets)  │
 │ Lifecycle reconciler ────────────┼─ Box API ───▶ │  Agent Host (daemon)             │
-│   desired state, revisions       │               │   ├─ ACP: claude-agent-acp       │
-│ Bridge control plane ◀───────────┼── outbound ── │   └─ ACP: codex-acp              │
+│   desired state, revisions       │               │   acpx runtime → claude-agent-acp│
+│ Bridge control plane ◀───────────┼── outbound ── │                → codex-acp       │
 │   runs, commands, events         │   HTTPS only  │ Provider accounts vault ─────────┼─ per-run ───▶ │  ~/.claude, ~/.codex (profile)   │
 │   (setup-token, API keys, broker)│   grant       │  /workspace (persistent disk)    │
 │ Agent profiles (imported config) ┼─ apply ─────▶ │                                  │
@@ -206,7 +238,7 @@ After Create the dialog shows startup phases until Ready, then opens the agent's
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
-| **0. Machine** | Base image + CI publish, managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |
+| **0. Machine** | acpx spike and adoption in the Agent Host, base image + CI publish, managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |
 | **1. Accounts** | Settings → Accounts, vault, per-run grants, Claude Code setup-token or API key, Codex API key, auth-error states | Runs on a Claude Max setup-token with no model charge; expired token shows "reconnect" and recovers. |
 | **2. Dialog + agent page** | "Other agent → Overlay Cloud" enabled, agent page tabs, conversation cards | A teammate can create, use, pause, and delete a cloud agent without docs. |
 | **3. Overlay resources** | MCP coverage audit + contract test, native skills sync, real approval round trip | The cloud agent can read/write files and notes, run an automation, use a connector and a user MCP server, and ask for approval. |
