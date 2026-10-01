@@ -112,4 +112,4 @@ OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
 npm run docs:health
 ```
 
-The config parser rejects unsupported-but-declared providers with explicit boot errors. `convex` is the only accepted app-data provider; `postgres` and `pgvector` configs now fail validation with guidance toward `convex`. Private deployments still require `billing.provider="none"` and `capabilities.billing=false` until the billing parity phase. Values such as `e2b` or `self-hosted-playwright` still fail during config validation instead of silently falling back.
+Previously declared but unimplemented provider values were removed from their enums and now fail as unknown enum values during config parsing. `convex` is the only accepted app-data and vector-search provider besides `none`; values such as `pgvector`, `pinecone`, `e2b`, and `self-hosted-playwright` are not accepted. `azure-openai` embeddings and `mcp` integration-provider selection remain declared but are rejected until their adapters are implemented. Private deployments still require `billing.provider="none"` and `capabilities.billing=false` until the billing parity phase.

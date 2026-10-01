@@ -21,16 +21,18 @@ Use `none` plus the matching feature flag when a provider family must be disable
 
 | Purpose | Values | Data processed | Current support |
 | --- | --- | --- | --- |
-| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | `convex` and `none` are supported. `pgvector` was removed with the Postgres app-data provider; `pinecone` is declared but rejected until an adapter exists. |
-| Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | `ai-gateway`, `openai`, and `none` are current paths. `azure-openai` is declared but rejected until implemented. |
+| Vector search | `convex`, `none` | Embeddings and searchable text chunks | `convex` and `none` are supported. |
+| Embeddings | `ai-gateway`, `openai`, `none` | Text chunks sent for embedding | `ai-gateway`, `openai`, and `none` are current paths. |
 | Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | `composio`, `executor`, and `none` are supported. `executor` delegates OAuth and shared connection lifecycle to a customer-hosted Executor service. `mcp` is declared but rejected as a provider family until bootstrap wiring exists. |
-| Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, and entered credentials | `browser-use` and `none` are supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
-| Sandboxes | `vercel`, `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, and generated artifacts | `vercel`, `daytona`, and `none` are supported. `vercel` uses the official `@vercel/sandbox` SDK and is the default Overlay Cloud backend. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
-| Web search | `elo`, `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries, result snippets, and fetched page content | `elo` and `none` are supported. `elo` routes `web_search`/`deep_search` through ELO to Tavily and Parallel and `web_fetch` to TinyFish (`ELO_API_KEY`, `TINYFISH_API_KEY`). `ai-gateway`, `perplexity`, and `tavily` are declared but rejected — the gateway search path was removed. |
+| Browser use | `browser-use`, `none` | Browser tasks, page content, and entered credentials | `browser-use` and `none` are supported. |
+| Sandboxes | `vercel`, `daytona`, `none` | Commands, staged files, and generated artifacts | `vercel`, `daytona`, and `none` are supported. `vercel` uses the official `@vercel/sandbox` SDK and is the default Overlay Cloud backend. |
+| Web search | `elo`, `none` | Search queries, result snippets, and fetched page content | `elo` and `none` are supported. `elo` routes `web_search`/`deep_search` through ELO to Tavily and Parallel and `web_fetch` to TinyFish (`ELO_API_KEY`, `TINYFISH_API_KEY`). |
 | Analytics | `posthog`, `none` | Pageviews and product events | `posthog` and `none` are supported. Set feature and provider to disabled values to avoid SDK initialization. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | `sentry` and `none` are supported. Set feature and provider to disabled values to avoid initialization. |
-| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` supports hosted BYOK flows. `aws-secrets-manager` supports BYOK provider keys for private deployments; Convex stores only the opaque secret ARN. Vault remains declared but unsupported. |
+| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` supports hosted BYOK flows. `aws-secrets-manager` supports BYOK provider keys for private deployments; Convex stores only the opaque secret ARN. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | All declared providers are supported. Multi-instance production/on-prem deployments should use Redis with fail-closed behavior; memory is development-only. |
+
+Previously declared but unimplemented values—including `pgvector`, `pinecone`, `self-hosted-playwright`, `e2b`, `local-firecracker`, the removed web-search providers, and HashiCorp `vault`—are now unknown enum values and fail config parsing. `azure-openai` embeddings and `mcp` integration-provider selection remain declared but are rejected until their adapters are implemented.
 
 ## Disable External Processors
 

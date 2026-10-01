@@ -448,7 +448,7 @@ test('OverlayRuntimeConfigSchema rejects pgvector now that the Postgres provider
           embeddings: { provider: 'openai' },
         },
       }),
-    /pgvector was removed/,
+    /Invalid enum value[\s\S]*pgvector/,
   )
 })
 
@@ -461,7 +461,7 @@ test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', ()
           sandbox: { provider: 'e2b' },
         },
       }),
-    /E2B sandboxes are declared/,
+    /Invalid enum value[\s\S]*e2b/,
   )
 })
 

@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Changed
+
+- **Provider configuration exposes only implemented options**: removed declared-but-unimplemented vector search, browser, sandbox, web search, and HashiCorp Vault values from their enums. Configs using these old values now fail with the standard unknown-enum error instead of a custom unsupported-provider message.
+
 ### Added
 
 - **Workspace files in every managed harness sandbox**: before a hosted Claude Code, Codex, OpenCode, Pi, or Hermes turn, the summoning person's workspace files are mirrored into `./overlay` in the agent's working directory (notes as `.md`). After the turn, files the agent changed or created there are saved back to Overlay. Edits update the original guarded by the mirrored revision, an edit that raced a change in Overlay is saved as an "(agent copy)", and deleting a mirrored file never deletes it in Overlay. The mirror is rebuilt each turn, needs the agent's `read_file` grant (saving back needs `write_file`), and is limited to 2,000 files and 100 MB. `OVERLAY_HARNESS_FILE_SYNC=0` turns it off. The sync runs host-side through the same file and note services as the app, so no storage credentials enter the sandbox.

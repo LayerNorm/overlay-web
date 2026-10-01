@@ -43,16 +43,16 @@ export const OverlayComplianceProfileSchema = z.enum([
   'custom',
 ])
 export const OverlayDatabaseProviderSchema = z.enum(['convex'])
-export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
+export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
-export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
-export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'e2b', 'local-firecracker', 'none'])
-export const OverlayWebSearchProviderSchema = z.enum(['elo', 'ai-gateway', 'perplexity', 'tavily', 'none'])
+export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'none'])
+export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'none'])
+export const OverlayWebSearchProviderSchema = z.enum(['elo', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
 export const OverlayEmailProviderSchema = z.enum(['resend', 'ses', 'smtp', 'none'])
-export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'vault', 'none'])
+export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'none'])
 export const OverlayRateLimitProviderSchema = z.enum(['convex', 'redis', 'memory', 'none'])
 export const OverlayRateLimitFailureModeSchema = z.enum(['deny', 'memory'])
 
@@ -545,10 +545,6 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
-      pgvector: 'pgvector was removed with the Postgres app-data provider. Use vectorSearch.provider=convex or none.',
-      pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
-    })
     addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
       'azure-openai': 'Azure OpenAI embeddings are declared for enterprise config v2 but no embeddings adapter exists yet. Use embeddings.provider=ai-gateway, openai, or none.',
     })
@@ -578,21 +574,6 @@ export const OverlayRuntimeConfigSchema = z
         }
       }
     }
-    addUnsupportedProviderIssue(ctx, ['providers', 'browser', 'provider'], selectedProviders.browser, {
-      'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
-    })
-    addUnsupportedProviderIssue(ctx, ['providers', 'sandbox', 'provider'], selectedProviders.sandbox, {
-      e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
-      'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
-    })
-    addUnsupportedProviderIssue(ctx, ['providers', 'webSearch', 'provider'], selectedProviders.webSearch, {
-      'ai-gateway': 'The AI Gateway web search path was removed. Web search now routes through ELO to Tavily/Parallel. Use webSearch.provider=elo or none.',
-      perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=elo or none.',
-      tavily: 'Direct Tavily web search is declared but not implemented; Tavily is reached through ELO. Use webSearch.provider=elo or none.',
-    })
-    addUnsupportedProviderIssue(ctx, ['providers', 'secrets', 'provider'], selectedProviders.secrets, {
-      vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
-    })
     if (selectedProviders.rateLimit === 'redis') {
       const redis = config.rateLimit.redis
       const hasTcp = Boolean(redis.url)
